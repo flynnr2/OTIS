@@ -109,12 +109,12 @@ The receiver should prioritize:
 
 ## Candidate Parts
 
-| Component                  | Notes                                                |
-|----------------------------|------------------------------------------------------|
-| u-blox ZED-F9T             | likely best modern serious timing choice             |
-| u-blox NEO-M8T             | excellent proven timing receiver                     |
-| u-blox LEA-M8T             | mature timing-oriented option                        |
-| u-blox timing evaluation kits | useful during early development                  |
+| Component                     | Notes                                             |
+|-------------------------------|---------------------------------------------------|
+| u-blox ZED-F9T                | likely best modern serious timing choice          |
+| u-blox NEO-M8T                | excellent proven timing receiver                  |
+| u-blox LEA-M8T                | mature timing-oriented option                     |
+| u-blox timing evaluation kits | useful during early development                   |
 
 ## Initial Direction
 
@@ -239,12 +239,12 @@ OTIS should prioritize:
 
 ## Candidate Approaches
 
-| Component / Approach       | Notes                                                |
-|----------------------------|------------------------------------------------------|
-| LT3042 regulators          | strong low-noise analog rail candidate               |
-| Separate analog/digital rails | strongly encouraged                             |
-| Linear regulation          | preferred for sensitive timing sections              |
-| Shielded OCXO enclosure    | likely beneficial later                              |
+| Component / Approach          | Notes                                             |
+|-------------------------------|---------------------------------------------------|
+| LT3042 regulators             | strong low-noise analog rail candidate            |
+| Separate analog/digital rails | strongly encouraged                               |
+| Linear regulation             | preferred for sensitive timing sections           |
+| Shielded OCXO enclosure       | likely beneficial later                           |
 
 ---
 
@@ -270,7 +270,53 @@ The host should provide:
 
 ---
 
-# 8. Environmental Instrumentation
+# 8. Instrument-Service Peripherals
+
+OTIS may support optional instrumentation-service peripherals.
+
+These are not part of the deterministic timing fabric.
+
+They must remain architecturally isolated from:
+
+- deterministic capture;
+- timing semantics;
+- discipline-loop behavior.
+
+## Candidate Features
+
+| Feature                    | Likely Role                                         |
+|----------------------------|-----------------------------------------------------|
+| OLED display               | local instrument status                             |
+| environmental sensors      | thermal and environmental telemetry                 |
+| status LEDs                | coarse state visibility                             |
+| optional local SD logging  | secondary or backup storage                         |
+
+## Architectural Guidance
+
+Preferred conceptual partitioning:
+
+```text
+PIO / DMA          deterministic timing fabric
+Core 0             timing and discipline core
+Core 1             instrumentation-service core
+OTIS Host          archival, replay, dashboards, analysis
+```
+
+Optional service peripherals should preferably execute on:
+
+- Core 1;
+- dedicated low-priority queues;
+- bounded service loops.
+
+They must never:
+
+- stall deterministic timing work;
+- redefine timing truth;
+- compromise replayability.
+
+---
+
+# 9. Environmental Instrumentation
 
 Environmental telemetry is important because timing systems are strongly affected by:
 
@@ -289,7 +335,7 @@ Environmental telemetry is important because timing systems are strongly affecte
 
 ---
 
-# 9. Future FPGA / CPLD Direction
+# 10. Future FPGA / CPLD Direction
 
 OTIS is initially MCU-first.
 
