@@ -1,0 +1,28 @@
+mode: pendulum_synchronome
+version: 1
+
+description: |
+  Host-side interpretation profile for a Synchronome-style pendulum.
+  Firmware remains application-neutral.
+
+inputs:
+  photogate_channel: 0
+  pps_channel: 1
+
+assumptions:
+  nominal_period_s: 2.0
+  impulse_period_swings: 15
+  impulse_side: inferred
+
+interpretation:
+  pair_edges: true
+  infer_tick_tock: true
+  derive_half_cycles: true
+  derive_full_cycles: true
+  classify_impulse_phase: true
+
+analysis:
+  allan_deviation: true
+  asymmetry_analysis: true
+  environmental_correlation: true
+  phase_fold_analysis: true
