@@ -2,7 +2,8 @@
 
 ## Purpose
 
-The canonical event model defines the raw records emitted by OTIS capture firmware and persisted by the host.
+The canonical event model defines the raw observation records emitted by OTIS
+capture firmware and persisted by the host.
 
 It should be:
 
@@ -12,9 +13,10 @@ It should be:
 - lossless;
 - application-neutral.
 
-The RP2040 firmware should not interpret events as pendulum swings, oscillator phase measurements, or radio timing intervals.
+The RP2040 firmware should not interpret events as pendulum swings, oscillator
+phase measurements, or radio timing intervals.
 
-Firmware emits timestamped events.
+Firmware emits timestamped observations.
 Host software interprets them.
 
 ## Architectural Principle
@@ -24,12 +26,27 @@ RP2040 firmware = deterministic timestamp appliance
 Host software   = interpretation + analysis engine
 ```
 
-## Canonical Event Record
+## Canonical Observation Records
 
-The conceptual record type is `EVENT_CAPTURE`. In `raw_events_v1.csv`, the compact
-CSV tag `EVT` is used as the wire encoding of `EVENT_CAPTURE`.
+OTIS currently distinguishes two raw observation record types:
 
-Conceptual event structure:
+| Conceptual type | Compact tag | Meaning |
+|---|---|---|
+| `EVENT_CAPTURE` | `EVT` | external/user timing event captured by the timing fabric |
+| `REF_CAPTURE` | `REF` | declared reference event captured by the timing fabric |
+
+Both are raw observations. Neither encodes application-specific conclusions.
+
+`EVT` is for user/external event channels such as photogates, comparator
+crossings, oscillator comparison pulses, encoder transitions, RF timing pulses,
+or laboratory triggers.
+
+`REF` is for declared reference inputs such as GNSS PPS or another reference
+event used for discipline, syntonization, synchronization, or later comparison.
+
+Do not encode GNSS PPS as `EVT` plus a semantic flag. Use `REF`.
+
+## Conceptual Record Structure
 
 ```text
 record_type,
@@ -38,31 +55,59 @@ event_seq,
 channel_id,
 edge,
 timestamp_ticks,
-clock_domain,
+capture_domain,
 flags
 ```
 
-Example:
+`capture_domain` is the native timing domain in which `timestamp_ticks` was
+latched. It is not necessarily UTC, and it is not necessarily the same thing as a
+reference domain or oscillator source name.
+
+## Examples
 
 ```csv
 EVT,1,123456,0,R,9876543210,MAIN,0
 EVT,1,123457,0,F,9876548120,MAIN,0
-EVT,1,123458,1,R,9880000000,MAIN,PPS_CANDIDATE
+REF,1,123458,1,R,9880000000,MAIN,0
 ```
+
+In this example, the `REF` row is a captured reference event, such as a GNSS PPS
+edge, latched in the local `MAIN` capture domain.
+
+## Flags
+
+Flags describe capture status and quality metadata. They must not carry primary
+record-type semantics.
+
+For example, use:
+
+```text
+REF,...,0
+```
+
+not:
+
+```text
+EVT,...,PPS_CANDIDATE
+```
+
+Reference identity, validity, lock state, and discipline conclusions should be
+represented by explicit reference records, configuration/provenance records, or
+discipline-state telemetry rather than by overloading `EVENT_CAPTURE`.
 
 ## Why this split matters
 
-The same raw event stream may represent:
+The same raw observation stream may represent:
 
 - pendulum photogate events;
-- GPS PPS edges;
+- GNSS PPS edges;
 - oscillator comparison pulses;
 - TIC measurements;
 - HAM/radio timing experiments;
 - encoder transitions;
 - laboratory trigger signals.
 
-Interpretation should therefore live entirely host-side.
+Interpretation should therefore live host-side.
 
 ## Canonical OTIS Run Artifacts
 
