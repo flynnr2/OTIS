@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Canonical event stream emitted by OTIS firmware.
+Canonical compact CSV encoding of `EVENT_CAPTURE` records emitted by OTIS firmware.
 
-This is the primary scientific artifact.
+This is the primary timing-observation scientific artifact.
 
 ## Schema
 
 | Field | Meaning |
 |---|---|
-| record_type | EVT |
+| record_type | compact record tag; `EVT` means `EVENT_CAPTURE` |
 | schema_version | schema revision |
 | event_seq | monotonic event counter |
 | channel_id | capture channel |
@@ -18,6 +18,18 @@ This is the primary scientific artifact.
 | timestamp_ticks | raw reference-domain timestamp |
 | clock_domain | clock source domain |
 | flags | capture status flags |
+
+## Record Type Semantics
+
+`EVENT_CAPTURE` is the conceptual OTIS record type for external/user timing
+observations captured by the timing fabric.
+
+`EVT` is the compact CSV wire tag for `EVENT_CAPTURE` in this schema.
+
+The record describes what was captured, not what the event means in a particular
+experiment. Mode profiles and host-side analysis interpret channels, edges, and
+intervals as pendulum ticks, oscillator comparison pulses, TIC measurements, radio
+timing events, or other application-specific meanings.
 
 ## Design Constraints
 
