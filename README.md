@@ -34,16 +34,16 @@ OTIS is guided by several foundational principles:
 
 ## Documentation Structure
 
-| Directory | Purpose |
-|---|---|
-| docs/00_FOUNDATIONS | conceptual foundations |
-| docs/10_REFERENCE_ARCHITECTURE | timing and reference architecture |
-| docs/20_TELEMETRY | telemetry philosophy and schemas |
-| docs/30_ANALYSIS | statistical and metrological analysis |
-| docs/40_HARDWARE | hardware architecture and stages |
-| docs/50_SOFTWARE | host and software architecture |
-| docs/60_EXPERIMENTS | methodology and characterization |
-| docs/90_ROADMAP | staged implementation plans |
+| Directory                           | Purpose                               |
+|-------------------------------------|---------------------------------------|
+| docs/00_FOUNDATIONS                 | conceptual foundations                |
+| docs/10_REFERENCE_ARCHITECTURE      | timing and reference architecture     |
+| docs/20_TELEMETRY                   | telemetry philosophy and schemas      |
+| docs/30_ANALYSIS                    | statistical and metrological analysis |
+| docs/40_HARDWARE                    | hardware architecture and stages      |
+| docs/50_SOFTWARE                    | host and software architecture        |
+| docs/60_EXPERIMENTS                 | methodology and characterization      |
+| docs/90_ROADMAP                     | staged implementation plans           |
 
 ## License
 
