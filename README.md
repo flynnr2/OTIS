@@ -29,6 +29,7 @@ OTIS is guided by several foundational principles:
 - All timestamps belong to explicit timing domains, with capture/reference domains named where relevant.
 - Raw telemetry is a primary scientific artifact.
 - Replayability and provenance matter.
+- Component quality affects metrological authority, not raw capture semantics.
 - Instrumentation semantics matter more than implementation convenience.
 - Deterministic capture matters more than feature count.
 
@@ -41,7 +42,7 @@ OTIS is guided by several foundational principles:
 | docs/20_TELEMETRY                   | telemetry philosophy and schemas      |
 | docs/30_ANALYSIS                    | statistical and metrological analysis |
 | docs/40_HARDWARE                    | hardware architecture and stages      |
-| docs/50_SOFTWARE                    | host and software architecture        |
+| docs/50_SOFTWARE                    | firmware, host, and software architecture |
 | docs/60_EXPERIMENTS                 | methodology and characterization      |
 | docs/90_ROADMAP                     | staged implementation plans           |
 
