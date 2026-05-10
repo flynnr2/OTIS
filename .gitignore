@@ -1,0 +1,71 @@
+#######################################
+# Scratch dirs
+#######################################
+Data/
+
+#######################################
+# OS junk
+#######################################
+.DS_Store
+Docs/.DS_Store
+Docs/datasheets/.DS_Store
+Nano.Every/.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+#######################################
+# Editor / IDE
+#######################################
+.vscode/
+*.code-workspace
+Nano.Every/build
+
+.idea/
+*.iml
+*.ipr
+*.iws
+
+*.swp
+*.swo
+*~
+*.tmp
+*.log
+
+#######################################
+# Arduino / local build outputs
+# (only matters if you configure builds to land in the repo)
+#######################################
+build/
+out/
+dist/
+
+*.elf
+*.hex
+*.bin
+*.map
+
+#######################################
+# PlatformIO (only if you use it)
+#######################################
+.pio/
+.pioenvs/
+.piolibdeps/
+
+#######################################
+# Other stuff
+#######################################
+
+secrets.h
+*.env
+
+compile_commands.json
+.clangd/
+.cache/
