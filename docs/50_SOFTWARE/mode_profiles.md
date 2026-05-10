@@ -11,7 +11,7 @@ Firmware remains application-neutral.
 The RP2040 should not know:
 
 - whether a pendulum emits 2 or 4 events;
-- whether an input is PPS;
+- whether an input is a reference such as GNSS PPS;
 - whether a signal represents a clock, encoder, or radio timing pulse;
 - whether timing should be interpreted as tick/tock.
 
@@ -21,9 +21,12 @@ Profiles define those semantics host-side.
 
 ```yaml
 mode: pendulum_synchronome
+profile_schema_version: 1
+profile_version: 1
 inputs:
   photogate_channel: 0
-  pps_channel: 1
+reference_inputs:
+  gnss_pps_channel: 1
 assumptions:
   nominal_period_s: 2.0
   impulse_period_swings: 15
@@ -53,3 +56,11 @@ derived datasets
         ↓
 analysis + visualisation
 ```
+
+## Profile Versioning
+
+`profile_schema_version` identifies the structure of the profile file itself.
+
+`profile_version` identifies the semantic version of a specific profile. It may
+change when channel mappings, assumptions, or interpretation policy change even
+if the YAML schema remains the same.

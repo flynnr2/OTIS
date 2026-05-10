@@ -25,8 +25,8 @@ Long-term direction:
 
 OTIS is guided by several foundational principles:
 
-- The CPU is never in the timing path.
-- All timestamps belong to explicit reference domains.
+- The CPU must not establish event time; deterministic capture fabric creates timing truth.
+- All timestamps belong to explicit timing domains, with capture/reference domains named where relevant.
 - Raw telemetry is a primary scientific artifact.
 - Replayability and provenance matter.
 - Instrumentation semantics matter more than implementation convenience.
