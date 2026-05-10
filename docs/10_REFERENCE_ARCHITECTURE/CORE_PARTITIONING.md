@@ -1,0 +1,218 @@
+# OTIS Core Partitioning
+
+This document describes the conceptual partitioning of responsibilities within
+OTIS timing systems.
+
+The goal is to preserve deterministic timing semantics while still permitting:
+
+- telemetry emission;
+- instrumentation services;
+- environmental sensing;
+- dashboards;
+- optional local displays;
+- durable logging.
+
+---
+
+# Fundamental Principle
+
+The timing fabric establishes timing truth.
+
+The CPU observes and manages timing information.
+
+The CPU does **not** create event time.
+
+---
+
+# Conceptual Layering
+
+```text
+PIO / DMA          deterministic timing fabric
+Core 0             timing and discipline core
+Core 1             service and instrumentation core
+OTIS Host          archival, replay, dashboards, analysis
+```
+
+---
+
+# Timing Fabric
+
+The timing fabric is responsible for:
+
+- reciprocal counting;
+- PPS capture;
+- external event capture;
+- deterministic timestamp latching;
+- pulse generation;
+- reference-domain observation.
+
+The timing fabric should operate independently of:
+
+- interrupt latency;
+- filesystem activity;
+- display updates;
+- sensor polling;
+- host responsiveness.
+
+## Candidate Implementations
+
+| Implementation          | Notes                                            |
+|-------------------------|--------------------------------------------------|
+| RP2040 PIO + DMA        | likely initial OTIS MVP direction                |
+| FPGA timing fabric      | future advanced timing architecture              |
+| CPLD glue logic         | useful deterministic support logic               |
+
+---
+
+# Core 0 — Timing and Discipline Core
+
+Core 0 should be treated as timing-critical infrastructure.
+
+## Responsibilities
+
+| Responsibility                  | Notes                                   |
+|---------------------------------|-----------------------------------------|
+| drain capture rings             | deterministic handling                  |
+| discipline loop                 | DAC steering and lock control           |
+| reference-domain bookkeeping    | timing semantics and provenance         |
+| telemetry classification        | timing-aware record generation          |
+| queue management                | bounded deterministic behavior          |
+
+## Core 0 Should Avoid
+
+| Avoid                             | Reason                                 |
+|-----------------------------------|----------------------------------------|
+| OLED rendering                    | unnecessary latency and contention     |
+| filesystem writes                 | unpredictable stalls                   |
+| network stacks                    | uncontrolled timing behavior           |
+| sensor polling                    | low-priority activity                  |
+| blocking serial writes            | backpressure risk                      |
+| heap-heavy allocation             | determinism and fragmentation concerns |
+
+Core 0 should remain:
+
+- deterministic;
+- bounded;
+- observable;
+- timing-focused.
+
+---
+
+# Core 1 — Instrument Service Core
+
+Core 1 may host optional instrument-service functionality.
+
+## Potential Responsibilities
+
+| Responsibility                  | Notes                                   |
+|---------------------------------|-----------------------------------------|
+| OLED updates                    | optional local status                   |
+| environmental sensors           | low-rate telemetry                      |
+| telemetry formatting            | non-critical processing                 |
+| optional SD logging             | secondary storage path                  |
+| command handling                | non-timing-critical interaction         |
+| USB/UART packaging              | transport-layer work                    |
+
+## Important Constraints
+
+Core 1 may:
+
+- fall behind;
+- shed non-critical work;
+- drop telemetry with explicit flags;
+- reduce display update rates.
+
+Core 1 must **never**:
+
+- stall Core 0;
+- compromise deterministic capture;
+- redefine timing truth.
+
+---
+
+# OTIS Host Responsibilities
+
+The preferred durable logging and analysis layer remains OTIS Host.
+
+Potential host environments include:
+
+- Raspberry Pi Zero 2 W;
+- larger Raspberry Pi systems;
+- Linux laptops/workstations.
+
+## Host Responsibilities
+
+| Responsibility                  | Notes                                   |
+|---------------------------------|-----------------------------------------|
+| append-only logging             | primary durable storage                 |
+| replay tooling                  | reproducibility                         |
+| dashboards                      | observability                           |
+| Allan deviation analysis        | long-run characterization               |
+| telemetry archival              | scientific record preservation          |
+| APIs                            | future ecosystem support                |
+
+The host is not timing authority.
+
+The host consumes timing telemetry generated by the timing fabric.
+
+---
+
+# Optional Peripheral Philosophy
+
+OTIS may support:
+
+- OLED displays;
+- environmental sensors;
+- SD logging;
+- status LEDs;
+- local controls.
+
+However:
+
+these are instrument-service features, not timing-fabric features.
+
+They must remain architecturally isolated from deterministic timing behavior.
+
+---
+
+# SD Logging Guidance
+
+Direct SD logging from the timing appliance is acceptable as:
+
+- optional functionality;
+- backup capture;
+- local convenience.
+
+It should not initially be treated as the primary archival architecture.
+
+Preferred architecture:
+
+```text
+OTIS Core  →  telemetry stream  →  OTIS Host logging and archival
+```
+
+Filesystem activity must never compromise:
+
+- deterministic capture;
+- timestamp provenance;
+- discipline behavior.
+
+---
+
+# Architectural Summary
+
+```text
+GNSS PPS
+    ↓
+disciplined reference oscillator
+    ↓
+PIO / DMA timing fabric
+    ↓
+hardware-latched event timestamps
+    ↓
+Core 0 timing semantics and discipline
+    ↓
+Core 1 instrumentation services
+    ↓
+OTIS Host archival and analysis
+```
