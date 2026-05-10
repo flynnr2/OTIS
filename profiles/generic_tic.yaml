@@ -1,0 +1,18 @@
+mode: generic_tic
+version: 1
+
+description: |
+  Generic time interval counter profile.
+
+inputs:
+  input_a: 0
+  input_b: 1
+
+interpretation:
+  derive_intervals: true
+  derive_phase: optional
+
+analysis:
+  histogram: true
+  jitter_statistics: true
+  allan_deviation: optional
