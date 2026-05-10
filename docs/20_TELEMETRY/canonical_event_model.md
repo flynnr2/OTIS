@@ -26,6 +26,9 @@ Host software   = interpretation + analysis engine
 
 ## Canonical Event Record
 
+The conceptual record type is `EVENT_CAPTURE`. In `raw_events_v1.csv`, the compact
+CSV tag `EVT` is used as the wire encoding of `EVENT_CAPTURE`.
+
 Conceptual event structure:
 
 ```text
