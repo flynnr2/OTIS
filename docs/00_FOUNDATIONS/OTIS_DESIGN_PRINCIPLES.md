@@ -22,13 +22,26 @@ Raw timing telemetry is a primary scientific artifact.
 
 Derived values must not overwrite or obscure raw observations.
 
-## 4. Replayability
+## 4. Component Quality Does Not Define Architecture
+
+Lower-quality parts reduce absolute metrological authority, not architectural
+validity.
+
+A system built with an inexpensive GNSS module or TCXO should preserve the same
+capture, provenance, replay, and analysis semantics as a system built with a
+timing-grade receiver and OCXO.
+
+Component quality affects uncertainty, noise floor, holdover, lock robustness,
+and confidence in final timing claims. It must not affect the meaning of raw
+capture records or firmware state.
+
+## 5. Replayability
 
 Logs should permit deterministic offline replay and reconstruction.
 
 Replayability is a first-class architectural goal.
 
-## 5. Provenance
+## 6. Provenance
 
 All derived values should carry explicit provenance:
 - source reference domain;
@@ -36,13 +49,13 @@ All derived values should carry explicit provenance:
 - estimation methodology;
 - schema version.
 
-## 6. Explicit Clock Domains
+## 7. Explicit Clock Domains
 
 Clock domains must be named and explicit.
 
 Cross-domain comparisons must declare assumptions and transformations.
 
-## 7. Instrumentation First
+## 8. Instrumentation First
 
 OTIS prioritizes:
 - correctness;
@@ -55,7 +68,7 @@ It does not optimize primarily for:
 - minimal firmware;
 - consumer UX.
 
-## 8. Architecture Before Implementation
+## 9. Architecture Before Implementation
 
 Conceptual architecture must remain distinct from implementation choices.
 
@@ -63,13 +76,13 @@ Examples:
 - deterministic capture is architectural;
 - RP2040 PIO is an implementation choice.
 
-## 9. Host Isolation
+## 10. Host Isolation
 
 Networking, dashboards, and storage must not compromise timing correctness.
 
 Timing truth belongs to the timing fabric, not the host.
 
-## 10. Scientific Explicitness
+## 11. Scientific Explicitness
 
 Known limitations, assumptions, and unresolved questions should be documented
 explicitly.
