@@ -3,10 +3,15 @@
 #include "otis_board.h"
 #include "otis_protocol.h"
 #include "otis_records.h"
+#include "otis_status_led.h"
 
 void setup() {
+  otis_status_led_begin();
+
   Serial.begin(115200);
   delay(1500);
+  otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
+  otis_status_led_poll(millis());
 
   otis_emit_csv_headers();
   otis_emit_health(1u, 1600000000ull, OTIS_DOMAIN_RP2040_TIMER0,
@@ -34,4 +39,4 @@ void setup() {
                               OTIS_FLAG_NONE);
 }
 
-void loop() {}
+void loop() { otis_status_led_poll(millis()); }

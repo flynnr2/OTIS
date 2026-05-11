@@ -29,6 +29,10 @@ After boot, the sketch emits CSV header lines and sample `STS`, `EVT`, `REF`,
 and `CNT` records over USB serial. This is still a synthetic SW1 smoke emitter,
 not live GPIO, PPS, or oscillator capture.
 
+Status LED support is compiled out by default. Build with
+`OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
+does not require RGB LED, NINA, or WiFi LED libraries.
+
 ## H0 channel pin convention
 
 The first live-capture pass should use this Arduino pin convention:
