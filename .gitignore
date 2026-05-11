@@ -38,6 +38,9 @@ Nano.Every/build
 *~
 *.tmp
 *.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 #######################################
 # Arduino / local build outputs
