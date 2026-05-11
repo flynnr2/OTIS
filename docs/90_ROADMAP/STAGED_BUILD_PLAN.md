@@ -47,6 +47,12 @@ Emit replayable `raw_events_v1.csv` compatible records plus health/provenance me
 
 Reconstruct timing relationships and analysis products from raw artifacts and manifests.
 
+### Stage 1F — Sampled Environmental Telemetry Contract
+
+Define the basic contract for sampled environmental telemetry used as
+oscillator/reference provenance. This should preserve the distinction between
+timing capture channels and slower contextual measurements.
+
 ## Stage 2 — Basic GPSDO / Controlled Oscillator
 
 Implement:

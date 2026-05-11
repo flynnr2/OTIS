@@ -42,6 +42,12 @@ The initial H0 mapping is a profile convention, not a permanent firmware law:
 
 Device status uses `health_v1.csv` / `STS`; it is not a channel in `raw_events_v1`.
 
+Environmental measurements are also not raw capture channels by default.
+Temperature, humidity, pressure, supply rails, and similar sampled context should
+be represented as named telemetry or manifest provenance until OTIS defines a
+sampled-observation contract. See
+`docs/20_TELEMETRY/ENVIRONMENTAL_TELEMETRY.md`.
+
 ## Domain Semantics
 
 `capture_domain` names the native timing domain in which `timestamp_ticks` was latched.
