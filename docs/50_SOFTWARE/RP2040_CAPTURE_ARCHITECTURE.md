@@ -25,6 +25,13 @@ Suggested first-pass division:
 
 The exact split may evolve, but timing capture must remain isolated from non-deterministic host/service work.
 
+For the Arduino Nano RP2040 Connect path, SW1 targets the Earle Philhower
+`arduino-pico` core. Its Arduino-facing multicore model maps naturally onto the
+intended split: `setup()` / `loop()` can own host-facing USB serial transport on
+core 0, while `setup1()` / `loop1()` can later own capture/ring-buffer work on
+core 1. The first GPIO proof may remain single-core until the record contract
+and live edge path are proven.
+
 ## Capture Families
 
 The RP2040 should emit separate semantic record families:

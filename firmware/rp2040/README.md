@@ -1,6 +1,12 @@
 # RP2040 firmware scaffold
 
-This directory is the SW1 firmware landing zone for the H0 OTIS prototype.
+This directory is the low-level Pico SDK SW1 firmware scaffold for the H0 OTIS
+prototype.
+
+The active Arduino Nano RP2040 Connect entrypoint lives in
+`firmware/arduino/otis_nano_rp2040_connect` and targets the Earle Philhower
+`arduino-pico` core. Keep this Pico SDK scaffold as a reference/escape hatch for
+PIO/DMA-heavy work that becomes awkward inside the Arduino build flow.
 
 ## SW1 goal
 

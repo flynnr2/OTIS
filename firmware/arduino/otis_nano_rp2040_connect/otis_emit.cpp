@@ -3,6 +3,19 @@
 #include "otis_protocol.h"
 #include "otis_records.h"
 
+static void otis_print_uint64(uint64_t value) {
+  char buffer[21];
+  char *cursor = &buffer[20];
+  *cursor = '\0';
+
+  do {
+    *--cursor = (char)('0' + (value % 10u));
+    value /= 10u;
+  } while (value != 0u);
+
+  Serial.print(cursor);
+}
+
 void otis_emit_csv_headers(void) {
   Serial.println(
       "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags");
@@ -26,7 +39,7 @@ void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
   Serial.print(',');
   Serial.print(edge);
   Serial.print(',');
-  Serial.print((unsigned long)timestamp_ticks);
+  otis_print_uint64(timestamp_ticks);
   Serial.print(',');
   Serial.print(capture_domain);
   Serial.print(',');
@@ -48,13 +61,13 @@ void otis_emit_count_observation(uint32_t count_seq, uint32_t channel_id,
   Serial.print(',');
   Serial.print(channel_id);
   Serial.print(',');
-  Serial.print((unsigned long)gate_open_ticks);
+  otis_print_uint64(gate_open_ticks);
   Serial.print(',');
-  Serial.print((unsigned long)gate_close_ticks);
+  otis_print_uint64(gate_close_ticks);
   Serial.print(',');
   Serial.print(gate_domain);
   Serial.print(',');
-  Serial.print((unsigned long)counted_edges);
+  otis_print_uint64(counted_edges);
   Serial.print(',');
   Serial.print(source_edge);
   Serial.print(',');
@@ -73,7 +86,7 @@ void otis_emit_health(uint32_t status_seq, uint64_t timestamp_ticks,
   Serial.print(',');
   Serial.print(status_seq);
   Serial.print(',');
-  Serial.print((unsigned long)timestamp_ticks);
+  otis_print_uint64(timestamp_ticks);
   Serial.print(',');
   Serial.print(status_domain);
   Serial.print(',');

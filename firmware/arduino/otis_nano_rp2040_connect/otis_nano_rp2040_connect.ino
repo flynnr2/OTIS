@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "otis_board.h"
 #include "otis_protocol.h"
 #include "otis_records.h"
 
@@ -10,6 +11,12 @@ void setup() {
   otis_emit_csv_headers();
   otis_emit_health(1u, 1600000000ull, OTIS_DOMAIN_RP2040_TIMER0,
                    "system", "boot", "true", OTIS_SEVERITY_INFO,
+                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_emit_health(2u, 1600000001ull, OTIS_DOMAIN_RP2040_TIMER0,
+                   "system", "arduino_core", OTIS_TARGET_ARDUINO_CORE,
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_emit_health(3u, 1600000002ull, OTIS_DOMAIN_RP2040_TIMER0,
+                   "system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
                    OTIS_FLAG_PROFILE_ASSUMPTION);
   otis_emit_raw_event(OTIS_RECORD_EVT, 1000u, OTIS_CHANNEL_GENERIC_EVENT,
                       OTIS_EDGE_RISING, 1600001234ull,

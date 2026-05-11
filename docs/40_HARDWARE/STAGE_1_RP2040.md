@@ -49,6 +49,16 @@ PIO responsibilities may include:
 
 Firmware should keep the timing-critical path small. The CPU may drain buffers, attach metadata, and emit telemetry, but it should not create event time after the fact.
 
+## Arduino Nano RP2040 Connect Firmware Target
+
+The H0/SW1 Arduino entrypoint targets the Earle Philhower `arduino-pico` core
+for the Arduino Nano RP2040 Connect. The Arduino Mbed OS Nano Boards core is not
+the target for OTIS timing firmware.
+
+This choice preserves a simple Arduino sketch workflow for early smoke tests
+while keeping direct access to RP2040/Pico SDK facilities, `setup1()` /
+`loop1()` multicore structure, and PIO tooling for later capture steps.
+
 ## Stage 1 Milestones
 
 ### Stage 1A — PPS Capture
