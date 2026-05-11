@@ -1,0 +1,2 @@
+; Placeholder for future RP2040 PIO edge-capture program.
+; Do not add clever PIO before the USB-only and GPIO-loopback proof steps pass.

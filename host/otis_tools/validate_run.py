@@ -4,20 +4,8 @@ from pathlib import Path
 import argparse
 import sys
 
-from .contracts import (
-    COUNT_OBSERVATION_FIELDS,
-    HEALTH_FIELDS,
-    RAW_EVENT_FIELDS,
-    validate_csv_header,
-)
+from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
 from .run_loader import load_manifest
-
-
-FIELD_MAP = {
-    "raw_events_v1": RAW_EVENT_FIELDS,
-    "count_observations_v1": COUNT_OBSERVATION_FIELDS,
-    "health_v1": HEALTH_FIELDS,
-}
 
 
 def validate_run(run_dir: Path) -> int:
@@ -25,11 +13,21 @@ def validate_run(run_dir: Path) -> int:
     failures: list[str] = []
 
     for file_entry in manifest.files:
-        family = file_entry.get("contract")
+        contract = file_entry.get("contract")
         rel_path = file_entry.get("path")
-        if family not in FIELD_MAP or not rel_path:
+        if not rel_path:
+            failures.append("manifest file entry missing path")
             continue
-        result = validate_csv_header(run_dir / rel_path, FIELD_MAP[family])
+        if contract not in CONTRACT_FIELDS:
+            failures.append(f"{rel_path}: unsupported or missing contract {contract!r}")
+            continue
+
+        context = CsvValidationContext(
+            contract=contract,
+            known_channels=manifest.known_channels,
+            known_domains=manifest.known_domains,
+        )
+        result = validate_csv(run_dir / rel_path, context)
         if result.ok:
             print(f"OK {rel_path}: {result.row_count} rows")
         else:
