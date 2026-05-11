@@ -12,6 +12,25 @@ from host.otis_tools.validate_run import validate_run
 EXAMPLE = Path("examples/h0_pps_tcxo_synthetic")
 
 
+def _copy_example(tmp_path: Path) -> Path:
+    run_dir = tmp_path / "run"
+    shutil.copytree(EXAMPLE, run_dir)
+    return run_dir
+
+
+def _rewrite_csv_cell(path: Path, row_index: int, field_name: str, value: str) -> None:
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames
+        rows = list(reader)
+    assert fieldnames is not None
+    rows[row_index][field_name] = value
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def test_load_manifest() -> None:
     manifest = load_manifest(EXAMPLE)
     assert manifest.run_id == "h0_pps_tcxo_synthetic_001"
@@ -31,38 +50,46 @@ def test_render_report_mentions_contracts() -> None:
 
 
 def test_validate_run_rejects_bad_channel(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    shutil.copytree(EXAMPLE, run_dir)
-
-    raw_path = run_dir / "raw_events.csv"
-    with raw_path.open("r", newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
-        fieldnames = handle.seek(0) or csv.DictReader(handle).fieldnames
-    assert fieldnames is not None
-    rows[0]["channel_id"] = "99"
-    with raw_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "channel_id", "99")
 
     assert validate_run(run_dir) == 1
 
 
 def test_validate_run_rejects_reserved_flags(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    shutil.copytree(EXAMPLE, run_dir)
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "health.csv", 0, "flags", str(1 << 16))
 
-    health_path = run_dir / "health.csv"
-    with health_path.open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = reader.fieldnames
-        rows = list(reader)
-    assert fieldnames is not None
-    rows[0]["flags"] = str(1 << 16)
-    with health_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    assert validate_run(run_dir) == 1
+
+
+def test_validate_run_accepts_contract_edge_enums(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "edge", "B")
+    _rewrite_csv_cell(run_dir / "count_observations.csv", 0, "source_edge", "B")
+
+    assert validate_run(run_dir) == 0
+
+
+def test_validate_run_rejects_invalid_edge(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "edge", "X")
+
+    assert validate_run(run_dir) == 1
+
+
+def test_validate_run_accepts_contract_health_severities(tmp_path: Path) -> None:
+    for severity in ("INFO", "WARN", "ERROR", "FATAL"):
+        run_dir = tmp_path / severity.lower()
+        shutil.copytree(EXAMPLE, run_dir)
+        _rewrite_csv_cell(run_dir / "health.csv", 0, "severity", severity)
+
+        assert validate_run(run_dir) == 0
+
+
+def test_validate_run_rejects_invalid_health_severity(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "health.csv", 0, "severity", "CRITICAL")
 
     assert validate_run(run_dir) == 1
 

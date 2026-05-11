@@ -9,7 +9,8 @@ int main(void) {
 
     otis_emit_csv_headers();
     otis_emit_health(1u, 1600000000ull, OTIS_DOMAIN_RP2040_TIMER0,
-                     "system", "boot", "true", "INFO", OTIS_FLAG_PROFILE_ASSUMPTION);
+                     "system", "boot", "true", OTIS_SEVERITY_INFO,
+                     OTIS_FLAG_PROFILE_ASSUMPTION);
     otis_emit_raw_event(OTIS_RECORD_EVT, 1000u, OTIS_CHANNEL_GENERIC_EVENT,
                         OTIS_EDGE_RISING, 1600001234ull,
                         OTIS_DOMAIN_RP2040_TIMER0, OTIS_FLAG_NONE);

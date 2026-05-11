@@ -79,8 +79,8 @@ DOMAIN_FIELDS = {
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
-VALID_EDGES = {"R", "F"}
-VALID_SEVERITIES = {"DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"}
+VALID_EDGES = {"R", "F", "B"}
+VALID_SEVERITIES = {"INFO", "WARN", "ERROR", "FATAL"}
 
 
 @dataclass(frozen=True)

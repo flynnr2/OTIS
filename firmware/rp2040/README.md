@@ -36,4 +36,4 @@ Each step should leave behind a run directory with raw serial logs, parsed CSVs,
 - `src/health.c`: future health/status ownership boundary.
 - `src/capture_pio.pio`: placeholder for capture PIO program.
 
-The files are intentionally boring. The first firmware should prove contracts and run discipline before adding clever capture or control-loop machinery.
+The files are intentionally boring. The first firmware should prove contracts and run rigor before adding clever capture or control-loop machinery.

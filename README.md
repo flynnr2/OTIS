@@ -46,9 +46,10 @@ Do not add DAC steering, GPSDO loops, or application-specific profile interpreta
 From the repository root:
 
 ```bash
-python -m pytest
-python -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
-python -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
+python3 -m pip install -e ".[dev]"
+python3 -m pytest
+python3 -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
+python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
 ```
 
 ## License
