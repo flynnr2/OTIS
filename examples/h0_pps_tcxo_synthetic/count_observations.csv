@@ -1,0 +1,3 @@
+record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags
+CNT,1,1,2,1600000000,1616000000,rp2040_timer0,16000000,R,h0_tcxo_16mhz,0
+CNT,1,2,2,1616000000,1632000000,rp2040_timer0,15999998,R,h0_tcxo_16mhz,0

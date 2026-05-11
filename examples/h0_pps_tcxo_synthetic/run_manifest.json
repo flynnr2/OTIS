@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "run_id": "h0_pps_tcxo_synthetic_001",
+  "created_utc": "2026-05-11T00:00:00Z",
+  "profile": {"name": "h0_reference", "version": 1},
+  "hardware": {
+    "capture_board": "RP2040",
+    "reference": "Adafruit Ultimate GPS breakout PPS",
+    "oscillator": "ECS-TXO-5032-160-TR 16 MHz TCXO",
+    "front_end": "SN74AHCT1G14 edge-conditioning experiment"
+  },
+  "firmware": {"name": "synthetic_fixture", "version": "0"},
+  "host": {"tool": "otis_tools", "version": "0"},
+  "domains": [{"name": "rp2040_timer0", "nominal_hz": 16000000}],
+  "channels": [
+    {"channel_id": 0, "role": "generic_pulse", "record_family": "raw_events_v1"},
+    {"channel_id": 1, "role": "pps_reference", "record_family": "raw_events_v1"},
+    {"channel_id": 2, "role": "xcxo_observation", "record_family": "count_observations_v1"}
+  ],
+  "contracts": {
+    "raw_events_v1": 1,
+    "count_observations_v1": 1,
+    "health_v1": 1,
+    "run_manifest_v1": 1
+  },
+  "files": [
+    {"path": "raw_events.csv", "contract": "raw_events_v1"},
+    {"path": "count_observations.csv", "contract": "count_observations_v1"},
+    {"path": "health.csv", "contract": "health_v1"}
+  ]
+}

@@ -1,0 +1,5 @@
+record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags
+EVT,1,1000,0,R,1600001234,rp2040_timer0,0
+EVT,1,1001,0,F,1600001872,rp2040_timer0,0
+REF,1,1002,1,R,1616000000,rp2040_timer0,0
+REF,1,1003,1,R,1632000000,rp2040_timer0,0
