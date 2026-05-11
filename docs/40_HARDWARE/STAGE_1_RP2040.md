@@ -59,6 +59,83 @@ This choice preserves a simple Arduino sketch workflow for early smoke tests
 while keeping direct access to RP2040/Pico SDK facilities, `setup1()` /
 `loop1()` multicore structure, and PIO tooling for later capture steps.
 
+## Status Indication: RP2040 Built-in RGB LED
+
+The Arduino Nano RP2040 Connect built-in RGB LED may be used as a coarse
+human-visible bring-up indicator. It is a convenience/debug/status indicator,
+not a diagnostic data channel. Serial logs, CSV output, and later dashboard
+state remain authoritative.
+
+LED updates must never occur inside ISRs, capture callbacks, PIO timing paths,
+PPS handlers, or other timing-sensitive code. The status LED layer must be
+low-rate, nonblocking, heap-free, and silent: no blocking delays, no dynamic
+allocation, no `Serial` printing, and no dependency that can disturb capture
+timing. Prefer state-change-driven updates over periodic redraws; periodic LED
+polling, if used for blink timing, belongs only in noncritical foreground code.
+
+The rest of OTIS must not call board LED pins or RGB libraries directly. Use a
+single board abstraction such as:
+
+```c
+void otis_status_led_set(OtisSystemState state);
+```
+
+All board-specific RGB LED details are hidden behind this layer. Compile-time
+gating is required:
+
+- `OTIS_ENABLE_STATUS_LED=0`: all status LED calls compile to no-ops and do not
+  require RGB LED libraries or NINA/WiFi LED dependencies.
+- `OTIS_ENABLE_STATUS_LED=1`: the board-port implementation may drive the
+  built-in RGB LED from noncritical foreground code only.
+
+On the Nano RP2040 Connect, the built-in RGB LED is common-anode and uses
+inverted logic: `HIGH` is off and `LOW` is on. Treat this as a board-port
+specific detail, not core OTIS logic. If LED support proves intrusive because of
+NINA/RGB library behavior, keep the abstraction and compile the implementation
+out.
+
+State priority is deterministic. If several conditions are true, the highest
+applicable state wins:
+
+1. Fatal/config fault overrides everything.
+2. Missing/invalid oscillator overrides PPS/acquisition states.
+3. PPS missing/stale overrides lock/acquire states.
+4. Holdover/degraded overrides healthy lock.
+5. Healthy locked/logging is the lowest-priority steady-state success.
+
+Optional activity overlays must be brief and must not obscure fault or health
+state. Unknown state must fail safe to LED off or red fault; the current minimal
+Arduino stub uses LED off.
+
+Initial color/pattern contract:
+
+| State | LED behavior |
+|---|---|
+| Boot starting | brief white flash |
+| Waiting for PPS/GPS | slow blue pulse or blink |
+| PPS seen / acquiring | solid blue |
+| Locked / healthy / logging | solid green |
+| Valid capture heartbeat | brief green blink only if it does not obscure health |
+| Holdover / degraded | yellow pulse or blink |
+| Missing oscillator / missing clock source | fast red blink |
+| Fatal/config fault | solid red |
+| USB/config/debug mode | purple |
+| Optional host/API/WiFi activity | brief cyan/white overlay only when safe |
+
+Acceptance criteria:
+
+- Code builds with `OTIS_ENABLE_STATUS_LED=0`.
+- Code builds with `OTIS_ENABLE_STATUS_LED=1`.
+- No timing-critical source file directly manipulates the RGB LED.
+- A grep for board-specific RGB calls shows they are confined to the status LED
+  module.
+- No ISR contains status LED calls.
+- State priority is deterministic and documented.
+- Unknown state fails safe to LED off or red fault, explicitly documented.
+
+This is intentionally small. Do not introduce dashboards, menus, animation
+frameworks, telemetry protocols, or new runtime dependencies for this layer.
+
 ## Stage 1 Milestones
 
 ### Stage 1A — PPS Capture
