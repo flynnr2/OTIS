@@ -33,18 +33,19 @@ Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
 does not require RGB LED, NINA, or WiFi LED libraries.
 
-## H0 channel pin convention
+## Frozen SW1 channel pin convention
 
-The first live-capture pass should use this Arduino pin convention:
+The SW1 live-capture pass uses this Arduino pin convention:
 
 | OTIS channel | Role | Arduino pin |
 |---:|---|---:|
-| `CH0` | generic pulse/event input | `D2` |
-| `CH1` | PPS/reference input | `D3` |
-| `CH2` | divided/gated oscillator observation | `D4` |
+| `CH0` | generic pulse/event input | `D10` |
+| `CH1` | PPS/reference input | `D14` |
+| `CH2` | divided/gated oscillator observation | `D2` |
 
-These are firmware conventions for the H0 prototype. Electrical conditioning,
-voltage limits, and final bench wiring remain hardware responsibilities.
+These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
+conditioning, voltage limits, and final bench wiring remain hardware
+responsibilities.
 
 ## Optional CLI compile
 

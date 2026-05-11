@@ -11,9 +11,9 @@
 #define OTIS_TARGET_BOARD "arduino_nano_rp2040_connect"
 
 enum OtisNanoRp2040Pins : uint8_t {
-  OTIS_PIN_GENERIC_EVENT = 2u,
-  OTIS_PIN_PPS_REFERENCE = 3u,
-  OTIS_PIN_OSC_OBSERVATION = 4u,
+  OTIS_PIN_GENERIC_EVENT = 10u,
+  OTIS_PIN_PPS_REFERENCE = 14u,
+  OTIS_PIN_OSC_OBSERVATION = 2u,
 };
 
 #endif

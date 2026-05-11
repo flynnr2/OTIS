@@ -54,13 +54,15 @@ Preferred approaches:
 - divider chains;
 - hardware counters with explicit observation windows.
 
-## Suggested H0 Inputs
+## Frozen SW1 H0 Inputs
 
-| Channel | Role |
-|---:|---|
-| `CH0` | generic pulse/event input |
-| `CH1` | PPS/reference input |
-| `CH2` | TCXO/XCXO observation input |
+The SW1 Arduino Nano RP2040 Connect live-capture convention is:
+
+| Channel | Role | Arduino pin |
+|---:|---|---:|
+| `CH0` | generic pulse/event input | `D10` |
+| `CH1` | PPS/reference input | `D14` |
+| `CH2` | divided/gated oscillator observation input | `D2` |
 
 ## Overflow Policy
 
