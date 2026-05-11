@@ -2,103 +2,85 @@
 
 ## Purpose
 
-Canonical compact CSV encoding of raw OTIS timing-observation records emitted by
-capture firmware.
+Canonical compact CSV encoding of raw OTIS edge-capture records emitted by capture firmware.
 
-This is the primary timing-observation scientific artifact.
+This is the primary timing-observation artifact for individual pulse edges. It is intentionally application-neutral.
 
 ## Schema
 
-| Field | Meaning |
-|---|---|
-| record_type | compact record tag; `EVT` means `EVENT_CAPTURE`, `REF` means `REF_CAPTURE` |
-| schema_version | schema revision for this CSV contract |
-| event_seq | monotonic observation counter within the emitting device/run |
-| channel_id | capture channel |
-| edge | captured edge; `R` = rising, `F` = falling |
-| timestamp_ticks | raw timestamp ticks latched by the timing fabric |
-| capture_domain | native domain in which `timestamp_ticks` was captured |
-| flags | unsigned numeric capture-status bitmask |
+| Field | Type | Meaning |
+|---|---|---|
+| `record_type` | enum | compact record tag; `EVT` means user/event capture, `REF` means reference capture |
+| `schema_version` | uint | schema revision; currently `1` |
+| `event_seq` | uint64 | monotonic observation counter within the emitting device/run |
+| `channel_id` | uint16 | physical or logical capture channel |
+| `edge` | enum | captured edge: `R` rising, `F` falling, `B` both/unspecified edge when hardware cannot disambiguate |
+| `timestamp_ticks` | uint64 | raw timestamp ticks latched or reconstructed by the timing fabric |
+| `capture_domain` | string | native domain in which `timestamp_ticks` was captured |
+| `flags` | uint32 | numeric bitmask from `capture_flags_v1` |
 
 ## Record Type Semantics
 
-`EVENT_CAPTURE` is the conceptual OTIS record type for external/user timing
-observations captured by the timing fabric.
+| Tag | Conceptual type | Use |
+|---|---|---|
+| `EVT` | `EVENT_CAPTURE` | external/user timing observations such as photogates, comparator pulses, TIC inputs, and generic event pulses |
+| `REF` | `REF_CAPTURE` | declared reference events such as GNSS PPS, lab reference PPS, or other reference-class timing pulses |
 
-`REF_CAPTURE` is the conceptual OTIS record type for declared reference events
-captured by the timing fabric, such as GNSS PPS or another reference input.
+Reference captures should not be encoded as `EVT` plus a semantic flag. Use `REF` so host tooling, replay, and discipline analysis preserve the distinction between user events and reference observations.
 
-`EVT` is the compact CSV wire tag for `EVENT_CAPTURE`.
+The record describes what was captured, not what the event means in a particular experiment. Profiles and host-side analysis interpret channels, edges, and intervals as pendulum ticks, oscillator comparison pulses, radio timing events, or other application-specific meanings.
 
-`REF` is the compact CSV wire tag for `REF_CAPTURE`.
+## H0 Reference Channels
 
-Reference captures should not be encoded as `EVT` plus a semantic flag. Use `REF`
-so host tooling, replay, and discipline analysis can preserve the distinction
-between user events and reference observations.
+The initial H0 mapping is a profile convention, not a permanent firmware law:
 
-The record describes what was captured, not what the event means in a particular
-experiment. Mode profiles and host-side analysis interpret channels, edges, and
-intervals as pendulum ticks, oscillator comparison pulses, TIC measurements, radio
-timing events, or other application-specific meanings.
+| Channel | H0 role | Expected record family |
+|---:|---|---|
+| `0` | generic pulse/event input | `EVT` |
+| `1` | GNSS PPS reference input | `REF` |
+| `2` | TCXO/XCXO observation input when divided to capturable pulse rates | `EVT` or count observation, depending on mode |
+
+Device status uses `health_v1.csv` / `STS`; it is not a channel in `raw_events_v1`.
 
 ## Domain Semantics
 
-`capture_domain` names the native timing domain in which `timestamp_ticks` was
-latched.
+`capture_domain` names the native timing domain in which `timestamp_ticks` was latched.
 
-It does not necessarily mean:
+It does not necessarily mean UTC, the external reference domain, the oscillator source by itself, or a host-reconstructed timeline.
 
-- UTC;
-- the external reference domain;
-- the oscillator source by itself;
-- a host-reconstructed timeline.
+Derived datasets may project raw captures into reconstructed, disciplined, reference, UTC, or host domains. Those projections must preserve provenance back to this raw `capture_domain`.
 
-Derived datasets may project raw captures into reconstructed, disciplined,
-reference, UTC, or host domains. Those projections must preserve provenance back
-to this raw `capture_domain`.
+## Pulse Examples
+
+```csv
+record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags
+EVT,1,1000,0,R,1600001234,rp2040_timer0,0
+EVT,1,1001,0,F,1600001872,rp2040_timer0,0
+REF,1,1002,1,R,1600010000,rp2040_timer0,0
+```
+
+A host profile might derive a pulse width from the first two rows and a phase offset versus the `REF` row, but those are derived products, not raw capture semantics.
+
+## Relationship to Count Observations
+
+High-rate oscillator observation must not be represented by emitting every oscillator edge. For TCXO/XCXO observation at rates such as 10 MHz or 16 MHz, use `count_observations_v1.csv` unless the oscillator has been divided down to an event rate that is intentionally capturable as raw edges.
 
 ## Flags
 
-`flags` is an unsigned numeric bitmask. Symbolic names may be used in
-documentation and host tooling, but compact CSV records should carry the numeric
-value.
+`flags` is a numeric bitmask defined by `data_contracts/capture_flags_v1.md`.
 
-Initial allocation:
-
-| Bit | Hex | Symbol | Meaning |
-|---:|---:|---|---|
-| 0 | `0x00000001` | `CAPTURE_OVERFLOW_NEARBY` | capture occurred near a counter overflow or required overflow disambiguation |
-| 1 | `0x00000002` | `CAPTURE_RING_OVERRUN` | capture ring overran before the host/firmware drained it |
-| 2 | `0x00000004` | `EDGE_ORDER_SUSPECT` | edge order or polarity sequence was unexpected |
-| 3 | `0x00000008` | `REFERENCE_VALIDITY_SUSPECT` | reference capture was emitted but reference validity was uncertain |
-| 4 | `0x00000010` | `TIMESTAMP_RECONSTRUCTED` | timestamp includes deterministic reconstruction beyond the hardware latch |
-| 5 | `0x00000020` | `SOURCE_HEALTH_SUSPECT` | input source or conditioning health was suspect |
-
-Unallocated bits are reserved and must be emitted as zero until assigned by a
-future schema revision.
-
-Flags are for capture status and quality metadata. They must not be used to
-change the primary semantic class of a record. For example, use `REF` for GNSS PPS
-captures rather than `EVT` with a `PPS_CANDIDATE` flag.
-
-## Design Constraints
-
-- application-neutral;
-- replayable;
-- lossless;
-- deterministic;
-- explicit provenance.
+Unallocated bits are reserved and must be emitted as zero until assigned by a future schema revision.
 
 ## Non-Goals
 
-This file does NOT directly encode:
+This file does not directly encode:
 
-- pendulum semantics;
-- tick/tock interpretation;
+- pendulum tick/tock interpretation;
 - oscillator phase analysis;
 - Allan deviation;
 - derived timing metrics;
 - lock-state conclusions;
-- oscillator steering decisions.
+- oscillator steering decisions;
+- device health messages.
 
-Those belong host-side or in explicit state/control telemetry.
+Those belong in host-side analysis, derived datasets, status streams, or explicit control telemetry.
