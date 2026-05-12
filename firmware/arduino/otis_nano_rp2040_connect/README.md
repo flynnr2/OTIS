@@ -32,8 +32,13 @@ not live GPIO, PPS, or oscillator capture.
 Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
 does not require RGB LED, NINA, or WiFi LED libraries.
-When enabled, this smoke sketch emits a brief white boot flash, then leaves the
-RGB LED in the USB/config/debug state so LED wiring is easy to verify.
+When enabled, this smoke sketch emits a brief boot indication, then leaves a
+visible USB/config/debug status indication. The Nano RP2040 Connect has both a
+plain `LED_BUILTIN` and an RGB LED. Under the Philhower `arduino-pico` core,
+the RGB channels are driven directly as active-low GPIOs: red `GPIO16`, green
+`GPIO17`, and blue `GPIO25`. WiFiNINA is not required for status LED use. RGB
+status still requires explicit opt-in with `OTIS_STATUS_LED_USE_NINA_RGB=1`;
+without that opt-in, LED-enabled builds use `LED_BUILTIN`.
 
 RP2040 boot diagnostics are also compiled out by default. Build with
 `OTIS_ENABLE_RP2040_BOOT_DIAG=1` to emit one `BOOTDIAG,v=1` register snapshot
@@ -63,4 +68,12 @@ Do not assign either pin to general live-capture inputs.
 
 ```bash
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect
+```
+
+To validate the RGB LED path, compile with both LED macros enabled:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_STATUS_LED=1 -DOTIS_STATUS_LED_USE_NINA_RGB=1" \
+  firmware/arduino/otis_nano_rp2040_connect
 ```
