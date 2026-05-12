@@ -47,11 +47,15 @@ The SW1 live-capture pass uses this Arduino pin convention:
 |---:|---|---:|
 | `CH0` | generic pulse/event input | `D10` |
 | `CH1` | PPS/reference input | `D14` |
-| `CH2` | divided/gated oscillator observation | `D2` |
+| `CH2` | divided/gated oscillator observation | `D8` / `GPIO20` / `GPIN0` |
 
 These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
 conditioning, voltage limits, and final bench wiring remain hardware
 responsibilities.
+
+`D9` / `GPIO21` / `GPOUT0` is reserved for internal clock visibility.
+`D2` / `GPIO25` / `GPOUT3` is reserved for the secondary diagnostic clock.
+Do not assign either pin to general live-capture inputs.
 
 ## Optional CLI compile
 
