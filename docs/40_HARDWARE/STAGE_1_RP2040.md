@@ -68,10 +68,11 @@ belongs in `firmware/arduino/otis_nano_rp2040_connect/`.
 
 ## Status Indication: Nano Built-in LEDs
 
-The Arduino Nano RP2040 Connect exposes both a plain `LED_BUILTIN` and an RGB
-LED. Either may be used as a coarse human-visible bring-up indicator. They are
-convenience/debug/status indicators, not diagnostic data channels. Serial logs,
-CSV output, and later dashboard state remain authoritative.
+The Arduino Nano RP2040 Connect exposes both a plain `LED_BUILTIN` and a NINA
+RGB LED. OTIS currently uses only `LED_BUILTIN` as a coarse human-visible
+bring-up indicator. It is a convenience/debug/status indicator, not a diagnostic
+data channel. Serial logs, CSV output, and later dashboard state remain
+authoritative.
 
 LED updates must never occur inside ISRs, capture callbacks, PIO timing paths,
 PPS handlers, or other timing-sensitive code. The status LED layer must be
@@ -79,28 +80,31 @@ low-rate, nonblocking, heap-free, and silent: no blocking delays, no dynamic
 allocation, no `Serial` printing, and no dependency that can disturb capture
 timing. Prefer state-change-driven updates over periodic redraws; periodic LED
 polling, if used for blink timing, belongs only in noncritical foreground code.
+The startup LED self-test is the only deliberate blocking sequence; it runs from
+foreground setup code after serial initialization, emits no serial output, and
+must never be called from ISR, capture, PIO, or PPS paths.
 
-The rest of OTIS must not call board LED pins or RGB libraries directly. Use a
-single board abstraction such as:
+The rest of OTIS must not call board LED pins directly. Use a single board
+abstraction such as:
 
 ```c
 void otis_status_led_set(OtisSystemState state);
 ```
 
-All board-specific RGB LED details are hidden behind this layer. Compile-time
-gating is required:
+All board-specific LED details are hidden behind this layer. Compile-time gating
+is required:
 
 - `OTIS_ENABLE_STATUS_LED=0`: all status LED calls compile to no-ops and do not
   require RGB LED libraries or NINA/WiFi LED dependencies.
 - `OTIS_ENABLE_STATUS_LED=1`: the board-port implementation may drive the
-  built-in LED, and may drive the RGB LED from noncritical foreground code only
-  when `OTIS_STATUS_LED_USE_NINA_RGB=1` is set.
+  built-in LED from noncritical foreground code only.
+- `OTIS_ENABLE_STATUS_LED_BOOT_TEST=0`: disables the startup LED self-test while
+  preserving later status LED behavior.
 
-Under the Philhower `arduino-pico` RP2040 core, the Nano RP2040 Connect RGB LED
-is driven directly as active-low GPIOs: red `GPIO16`, green `GPIO17`, and blue
-`GPIO25`. WiFiNINA is not required for status LED use, and status LED code must
-not include WiFiNINA or Arduino_SpiNINA solely to drive the RGB LED. If RGB
-status is not explicitly enabled, use `LED_BUILTIN` as the fallback.
+The Nano RP2040 Connect RGB LED is part of the NINA WiFi module. There appear to
+be compatibility issues between the Earle Philhower `arduino-pico` RP2040 core
+and the WiFiNINA/Arduino_SpiNINA libraries, so OTIS intentionally does not drive
+the NINA RGB LED for now.
 
 State priority is deterministic. If several conditions are true, the highest
 applicable state wins:
@@ -120,22 +124,22 @@ Initial color/pattern contract:
 | State | LED behavior |
 |---|---|
 | Boot starting | brief white flash |
-| Waiting for PPS/GPS | slow blue pulse or blink |
-| PPS seen / acquiring | solid blue |
-| Locked / healthy / logging | solid green |
-| Valid capture heartbeat | brief green blink only if it does not obscure health |
-| Holdover / degraded | yellow pulse or blink |
-| Missing oscillator / missing clock source | fast red blink |
-| Fatal/config fault | solid red |
-| USB/config/debug mode | purple |
-| Optional host/API/WiFi activity | brief cyan/white overlay only when safe |
+| Waiting for PPS/GPS | slow blink |
+| PPS seen / acquiring | solid on |
+| Locked / healthy / logging | solid on |
+| Valid capture heartbeat | brief blink only if it does not obscure health |
+| Holdover / degraded | slow blink |
+| Missing oscillator / missing clock source | fast blink |
+| Fatal/config fault | solid on |
+| USB/config/debug mode | solid on |
+| Optional host/API/WiFi activity | brief blink only when safe |
 
 Acceptance criteria:
 
 - Code builds with `OTIS_ENABLE_STATUS_LED=0`.
 - Code builds with `OTIS_ENABLE_STATUS_LED=1`.
-- No timing-critical source file directly manipulates the RGB LED.
-- A grep for board-specific RGB calls shows they are confined to the status LED
+- No timing-critical source file directly manipulates the status LED.
+- A grep for board-specific LED calls shows they are confined to the status LED
   module.
 - No ISR contains status LED calls.
 - State priority is deterministic and documented.
