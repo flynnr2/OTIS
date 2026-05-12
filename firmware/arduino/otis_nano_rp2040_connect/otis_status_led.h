@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #ifndef OTIS_ENABLE_STATUS_LED
-#define OTIS_ENABLE_STATUS_LED 0
+#define OTIS_ENABLE_STATUS_LED 1
 #endif
 
 typedef enum OtisSystemState {
