@@ -4,10 +4,32 @@
 
 #include <Arduino.h>
 
-#if defined(ARDUINO_NANO_RP2040_CONNECT) && defined(NINA_PINS_AS_CLASS)
-#define OTIS_STATUS_LED_HAS_RGB 1
+#if defined(LED_BUILTIN)
+#define OTIS_STATUS_LED_HAS_BUILTIN_LED 1
 #else
-#define OTIS_STATUS_LED_HAS_RGB 0
+#define OTIS_STATUS_LED_HAS_BUILTIN_LED 0
+#endif
+
+#ifndef OTIS_STATUS_LED_USE_NINA_RGB
+#define OTIS_STATUS_LED_USE_NINA_RGB 0
+#endif
+
+#if OTIS_STATUS_LED_USE_NINA_RGB && defined(ARDUINO_ARCH_RP2040) && \
+    defined(ARDUINO_NANO_RP2040_CONNECT)
+#define OTIS_STATUS_LED_HAS_NINA_RGB 1
+#else
+#define OTIS_STATUS_LED_HAS_NINA_RGB 0
+#endif
+
+#if OTIS_STATUS_LED_USE_NINA_RGB && !OTIS_STATUS_LED_HAS_NINA_RGB
+#warning \
+    "OTIS_STATUS_LED_USE_NINA_RGB is only implemented for Nano RP2040 Connect under arduino-pico; falling back to LED_BUILTIN."
+#endif
+
+#if OTIS_STATUS_LED_HAS_NINA_RGB
+static const uint8_t OTIS_STATUS_LED_RGB_RED_PIN = 16u;
+static const uint8_t OTIS_STATUS_LED_RGB_GREEN_PIN = 17u;
+static const uint8_t OTIS_STATUS_LED_RGB_BLUE_PIN = 25u;
 #endif
 
 typedef enum OtisStatusLedPattern {
@@ -36,6 +58,12 @@ static OtisStatusLedColor otis_status_led_color(bool red, bool green,
   return color;
 }
 
+#if OTIS_STATUS_LED_HAS_NINA_RGB
+static void otis_status_led_write_active_low(uint8_t pin, bool enabled) {
+  digitalWrite(pin, enabled ? LOW : HIGH);
+}
+#endif
+
 static uint8_t otis_status_led_priority(OtisSystemState state) {
   switch (state) {
     case OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT:
@@ -61,10 +89,13 @@ static uint8_t otis_status_led_priority(OtisSystemState state) {
 }
 
 static void otis_status_led_write(OtisStatusLedColor color) {
-#if OTIS_STATUS_LED_HAS_RGB
-  digitalWrite(LEDR.get(), color.red ? LOW : HIGH);
-  digitalWrite(LEDG.get(), color.green ? LOW : HIGH);
-  digitalWrite(LEDB.get(), color.blue ? LOW : HIGH);
+#if OTIS_STATUS_LED_HAS_NINA_RGB
+  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_RED_PIN, color.red);
+  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_GREEN_PIN, color.green);
+  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_BLUE_PIN, color.blue);
+#elif OTIS_STATUS_LED_HAS_BUILTIN_LED
+  digitalWrite(LED_BUILTIN, (color.red || color.green || color.blue) ? HIGH
+                                                                     : LOW);
 #else
   (void)color;
 #endif
@@ -85,10 +116,12 @@ static void otis_status_led_set_base(OtisSystemState state,
 }
 
 void otis_status_led_begin(void) {
-#if OTIS_STATUS_LED_HAS_RGB
-  pinMode(LEDR.get(), OUTPUT);
-  pinMode(LEDG.get(), OUTPUT);
-  pinMode(LEDB.get(), OUTPUT);
+#if OTIS_STATUS_LED_HAS_NINA_RGB
+  pinMode(OTIS_STATUS_LED_RGB_RED_PIN, OUTPUT);
+  pinMode(OTIS_STATUS_LED_RGB_GREEN_PIN, OUTPUT);
+  pinMode(OTIS_STATUS_LED_RGB_BLUE_PIN, OUTPUT);
+#elif OTIS_STATUS_LED_HAS_BUILTIN_LED
+  pinMode(LED_BUILTIN, OUTPUT);
 #endif
   otis_status_led_write(otis_status_led_color(false, false, false));
 }

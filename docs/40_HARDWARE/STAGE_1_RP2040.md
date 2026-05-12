@@ -66,12 +66,12 @@ The standalone Pico SDK scaffold is deprecated and archived under
 `firmware/deprecated/rp2040_pico_sdk/` for reference only. New SW1 firmware work
 belongs in `firmware/arduino/otis_nano_rp2040_connect/`.
 
-## Status Indication: RP2040 Built-in RGB LED
+## Status Indication: Nano Built-in LEDs
 
-The Arduino Nano RP2040 Connect built-in RGB LED may be used as a coarse
-human-visible bring-up indicator. It is a convenience/debug/status indicator,
-not a diagnostic data channel. Serial logs, CSV output, and later dashboard
-state remain authoritative.
+The Arduino Nano RP2040 Connect exposes both a plain `LED_BUILTIN` and an RGB
+LED. Either may be used as a coarse human-visible bring-up indicator. They are
+convenience/debug/status indicators, not diagnostic data channels. Serial logs,
+CSV output, and later dashboard state remain authoritative.
 
 LED updates must never occur inside ISRs, capture callbacks, PIO timing paths,
 PPS handlers, or other timing-sensitive code. The status LED layer must be
@@ -93,13 +93,14 @@ gating is required:
 - `OTIS_ENABLE_STATUS_LED=0`: all status LED calls compile to no-ops and do not
   require RGB LED libraries or NINA/WiFi LED dependencies.
 - `OTIS_ENABLE_STATUS_LED=1`: the board-port implementation may drive the
-  built-in RGB LED from noncritical foreground code only.
+  built-in LED, and may drive the RGB LED from noncritical foreground code only
+  when `OTIS_STATUS_LED_USE_NINA_RGB=1` is set.
 
-On the Nano RP2040 Connect, the built-in RGB LED is common-anode and uses
-inverted logic: `HIGH` is off and `LOW` is on. Treat this as a board-port
-specific detail, not core OTIS logic. If LED support proves intrusive because of
-NINA/RGB library behavior, keep the abstraction and compile the implementation
-out.
+Under the Philhower `arduino-pico` RP2040 core, the Nano RP2040 Connect RGB LED
+is driven directly as active-low GPIOs: red `GPIO16`, green `GPIO17`, and blue
+`GPIO25`. WiFiNINA is not required for status LED use, and status LED code must
+not include WiFiNINA or Arduino_SpiNINA solely to drive the RGB LED. If RGB
+status is not explicitly enabled, use `LED_BUILTIN` as the fallback.
 
 State priority is deterministic. If several conditions are true, the highest
 applicable state wins:
