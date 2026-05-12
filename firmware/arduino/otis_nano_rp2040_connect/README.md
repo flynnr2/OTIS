@@ -23,11 +23,22 @@ If the local Arduino CLI uses a different board identifier, confirm it with:
 arduino-cli board listall | grep -i "Nano RP2040"
 ```
 
-## Expected behavior
+## SW1 bring-up modes
 
-After boot, the sketch emits CSV header lines and sample `STS`, `EVT`, `REF`,
-and `CNT` records over USB serial. This is still a synthetic SW1 smoke emitter,
-not live GPIO, PPS, or oscillator capture.
+Select one bring-up mode at compile time with `OTIS_SW1_BRINGUP_MODE`.
+The default is `SW1_SYNTHETIC_USB`.
+
+| Mode | Purpose | Records |
+|---|---|---|
+| `SW1_SYNTHETIC_USB` | USB serial, framing, parser, and validation sanity | synthetic `STS`, `EVT`, `REF`, `CNT` |
+| `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
+| `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
+| `SW1_TCXO_OBSERVE` | count a conditioned/divided TCXO observation input, with PPS capture if wired | gated `CNT` on `CH2`, `REF` on `CH1` |
+
+The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
+timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
+yet the later PIO/DMA hardware-latched path. The TCXO mode emits count windows
+instead of pretending that every 16 MHz edge is a host-useful raw event.
 
 Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
@@ -59,6 +70,9 @@ The SW1 live-capture pass uses this Arduino pin convention:
 | `CH1` | PPS/reference input | `D14` |
 | `CH2` | divided/gated oscillator observation | `D8` / `GPIO20` / `GPIN0` |
 
+`SW1_GPIO_LOOPBACK` additionally drives `D7` as a local output. Jumper `D7` to
+`D10` for that mode only.
+
 These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
 conditioning, voltage limits, and final bench wiring remain hardware
 responsibilities.
@@ -67,8 +81,58 @@ responsibilities.
 `D2` / `GPIO25` / `GPOUT3` is reserved for the secondary diagnostic clock.
 Do not assign either pin to general live-capture inputs.
 
-## Optional CLI compile
+## CLI compile and upload
 
 ```bash
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect
+```
+
+Explicit mode builds:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_SYNTHETIC_USB \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE \
+  firmware/arduino/otis_nano_rp2040_connect
+```
+
+Upload by adding the detected port:
+
+```bash
+arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS \
+  firmware/arduino/otis_nano_rp2040_connect
+```
+
+Capture serial into a run directory by piping monitor output through the host
+splitter:
+
+```bash
+arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
+  | python3 -m host.otis_tools.capture_serial \
+      --template examples/h0_gps_pps \
+      --run-dir runs/h0_gps_pps_001 \
+      --run-id h0_gps_pps_001
+
+python3 -m host.otis_tools.validate_run runs/h0_gps_pps_001
+python3 -m host.otis_tools.report_run runs/h0_gps_pps_001
+```
+
+To validate the RGB LED path, compile with both LED macros enabled:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_STATUS_LED=1 -DOTIS_STATUS_LED_USE_NINA_RGB=1" \
+  firmware/arduino/otis_nano_rp2040_connect
 ```

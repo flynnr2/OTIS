@@ -88,6 +88,7 @@ class CsvValidationContext:
     contract: str
     known_channels: frozenset[int]
     known_domains: frozenset[str]
+    template: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,23 @@ def _check_timestamps(contract: str, row: dict[str, str], row_number: int, error
             )
 
 
+def _check_timestamp_monotonicity(
+    contract: str,
+    parsed_timestamps: dict[str, int],
+    row_number: int,
+    previous_timestamps: dict[str, int],
+    errors: list[str],
+) -> None:
+    for field_name in TIMESTAMP_FIELDS[contract]:
+        if field_name not in parsed_timestamps:
+            continue
+        previous = previous_timestamps.get(field_name)
+        current = parsed_timestamps[field_name]
+        if previous is not None and current < previous:
+            errors.append(f"row {row_number}: {field_name} must be monotonic; previous={previous}, current={current}")
+        previous_timestamps[field_name] = current
+
+
 def _check_channel(context: CsvValidationContext, row: dict[str, str], row_number: int, errors: list[str]) -> None:
     field_name = CHANNEL_FIELDS.get(context.contract)
     if not field_name:
@@ -194,6 +212,7 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
     errors: list[str] = []
     row_count = 0
     previous_seq: int | None = None
+    previous_timestamps: dict[str, int] = {}
 
     if context.contract not in CONTRACT_FIELDS:
         return CsvValidationResult(path=path, row_count=0, errors=(f"unsupported contract {context.contract!r}",))
@@ -208,10 +227,22 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             errors.append(f"header mismatch: expected {expected_fields}, got {actual}")
 
         for row_count, row in enumerate(reader, start=1):
+            if None in row:
+                errors.append(f"row {row_count}: malformed row has too many columns")
+            for field_name in expected_fields:
+                if row.get(field_name) is None:
+                    errors.append(f"row {row_count}: malformed row missing field {field_name}")
             _check_schema_version(row, row_count, errors)
             _check_record_type(context.contract, row, row_count, errors)
             previous_seq = _check_sequence(context.contract, row, row_count, previous_seq, errors)
             _check_timestamps(context.contract, row, row_count, errors)
+            parsed_timestamps: dict[str, int] = {}
+            for field_name in TIMESTAMP_FIELDS[context.contract]:
+                try:
+                    parsed_timestamps[field_name] = int(row.get(field_name, ""), 10)
+                except (TypeError, ValueError):
+                    continue
+            _check_timestamp_monotonicity(context.contract, parsed_timestamps, row_count, previous_timestamps, errors)
             _check_channel(context, row, row_count, errors)
             _check_domains(context, row, row_count, errors)
             _check_flags(row, row_count, errors)

@@ -19,6 +19,15 @@ class RunManifest:
         return list(self.data.get("files", []))
 
     @property
+    def is_template(self) -> bool:
+        return bool(self.data.get("template", False))
+
+    @property
+    def bringup_mode(self) -> str | None:
+        mode = self.data.get("bringup_mode")
+        return str(mode) if mode is not None else None
+
+    @property
     def known_channels(self) -> frozenset[int]:
         channels: set[int] = set()
         for channel in self.data.get("channels", []):

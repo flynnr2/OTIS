@@ -76,6 +76,29 @@ The SW1 H0 pin convention keeps RP2040 clock-function pins explicit:
 
 Do not reuse `D9` or `D2` as general capture inputs.
 
+## SW1 H0 Bring-Up Modes
+
+The Arduino Nano RP2040 Connect sketch supports explicit compile-time bring-up
+modes:
+
+| Mode | Done means |
+|---|---|
+| `SW1_SYNTHETIC_USB` | host captures valid `STS`, `EVT`, `REF`, and `CNT` rows from USB serial and validates the run |
+| `SW1_GPIO_LOOPBACK` | `D7` output jumpered to `D10` produces live `EVT` rows on `CH0` with increasing sequence numbers and timestamps |
+| `SW1_GPS_PPS` | GPS PPS on `D14` produces `REF` rows on `CH1`; host cadence sanity is approximately 1 Hz |
+| `SW1_TCXO_OBSERVE` | conditioned/divided TCXO observation on `D8` / `GPIO20` / `GPIN0` produces `CNT` windows on `CH2`, and GPS PPS on `CH1` is captured when wired |
+
+The live interrupt path is a first SW1 bring-up mechanism. It emits canonical
+records with explicit provenance, including `TIMESTAMP_RECONSTRUCTED` where the
+timestamp comes from the RP2040 timer read in firmware rather than a PIO/DMA
+latch. Later SW1 work may replace this mechanism with the intended PIO-backed
+capture fabric without changing the CSV contracts.
+
+`SW1_TCXO_OBSERVE` is a count-observation mode. A 16 MHz TCXO must be divided,
+gated, or counted by an appropriate front-end/capture mechanism; firmware must
+not describe every TCXO edge as a raw event stream merely because the signal is
+present.
+
 ## Overflow Policy
 
 All timestamp domains must define:
