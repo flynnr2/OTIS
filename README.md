@@ -8,15 +8,18 @@ OTIS is not merely a GPSDO project. It is an instrumentation architecture in whi
 
 ## Current Status
 
-This repository is currently in **F0 / SW0 foundation** status, with the first **SW1** firmware landing zone now present:
+This repository has moved from **F0 / SW0 foundation** into the first
+**SW1 / H0 bring-up** path:
 
 - the architecture, terminology, and first data contracts are being made explicit;
-- the initial host-side tooling scaffold exists before clever firmware is added;
-- the active SW1 firmware landing zone is the Arduino Nano RP2040 Connect sketch;
+- the host-side tooling validates synthetic fixtures and header-only hardware run templates;
+- the active SW1 firmware supports explicit USB synthetic, GPIO loopback, GPS PPS, and TCXO observation modes;
 - the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
-The next milestone is **SW1**: Arduino Nano RP2040 Connect firmware that emits canonical records which host tooling can validate, replay, and report on.
+H0 hardware is assumed wired and ready for bench testing, but this repo does
+not claim real hardware validation until captured non-template run directories
+are added.
 
 ## Repository Map
 
@@ -33,7 +36,7 @@ The next milestone is **SW1**: Arduino Nano RP2040 Connect firmware that emits c
 
 ## SW1 Firmware Smoke Target
 
-The first firmware pass should stay deliberately small:
+The first firmware pass stays deliberately small:
 
 1. USB-only synthetic emitter producing valid `STS`, `EVT`, `REF`, and `CNT` rows.
 2. GPIO loopback edge capture on `CH0`.
@@ -42,6 +45,19 @@ The first firmware pass should stay deliberately small:
 5. Host validation and reporting for every captured run directory.
 
 Do not add DAC steering, GPSDO loops, or application-specific profile interpretation until this chain is boring and repeatable.
+
+## SW1 / H0 Bring-Up Order
+
+1. `SW1_SYNTHETIC_USB`: prove USB serial, record framing, parser, validation, and report tooling.
+2. `SW1_GPIO_LOOPBACK`: jumper `D7` to `D10` and prove live GPIO edge capture on `CH0`.
+3. `SW1_GPS_PPS`: connect GPS PPS to `D14` and prove `REF` cadence on `CH1`.
+4. `SW1_TCXO_OBSERVE`: feed the conditioned/divided TCXO observation path to `D8` / `GPIO20` / `GPIN0` and emit `CNT` windows on `CH2`.
+5. Combined real run: capture PPS plus TCXO observations using the H0 manifest template.
+
+The firmware emits raw/canonical observations in the RP2040 capture-domain
+model. Host tooling may check PPS cadence and count sanity, but oscillator
+quality, lock state, steering quality, and GPSDO discipline claims remain out of
+scope for SW1.
 
 ## Quick Host Scaffold Check
 
@@ -52,6 +68,15 @@ python3 -m pip install -e ".[dev]"
 python3 -m pytest
 python3 -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
 python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
+```
+
+Header-only hardware run templates are available under:
+
+```text
+examples/h0_usb_synthetic/
+examples/h0_gpio_loopback/
+examples/h0_gps_pps/
+examples/h0_pps_tcxo_real/
 ```
 
 ## License

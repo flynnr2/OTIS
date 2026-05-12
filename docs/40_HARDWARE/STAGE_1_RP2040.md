@@ -146,6 +146,25 @@ frameworks, telemetry protocols, or new runtime dependencies for this layer.
 
 ## Stage 1 Milestones
 
+### Practical H0 Bring-Up Sequence
+
+The current H0 bench path is:
+
+1. USB synthetic sanity with `SW1_SYNTHETIC_USB`.
+2. GPIO loopback with `SW1_GPIO_LOOPBACK`, `D7` jumpered to `D10` / `CH0`.
+3. GPS PPS capture with `SW1_GPS_PPS`, Adafruit Ultimate GPS PPS wired to `D14` / `CH1`.
+4. TCXO observation with `SW1_TCXO_OBSERVE`, conditioned/divided ECS-TXO-5032-160-TR output wired to `D8` / `GPIO20` / `GPIN0` / `CH2`.
+5. Combined PPS + TCXO real run using `examples/h0_pps_tcxo_real/` as the manifest template.
+
+Expected serial output is line-oriented CSV records using the existing `STS`,
+`EVT`, `REF`, and `CNT` families. Capture a run by piping `arduino-cli monitor`
+into `python3 -m host.otis_tools.capture_serial`, then validate with
+`python3 -m host.otis_tools.validate_run`.
+
+Done for this milestone means the host accepts a non-template run directory for
+each live mode. It does not mean the GPS reference is timing-grade, the TCXO is
+disciplined, or an oscillator control loop exists.
+
 ### Stage 1A — PPS Capture
 
 Capture GNSS PPS edges and emit raw records with monotonically increasing sequence numbers, captured ticks, channel identity, edge type, and capture flags.

@@ -127,6 +127,26 @@ This preserves:
 
 ---
 
+# SW1 Bring-Up Host Path
+
+For SW1/H0 bring-up, host tooling intentionally stays small:
+
+- `python3 -m host.otis_tools.capture_serial` reads firmware serial CSV from
+  stdin and splits `EVT`/`REF`, `CNT`, and `STS` rows into a run directory based
+  on a template manifest.
+- `python3 -m host.otis_tools.validate_run` checks manifest/profile consistency,
+  known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
+  required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO
+  count sanity.
+- `python3 -m host.otis_tools.report_run` renders a compact row-count and PPS
+  interval summary.
+
+These tools do not infer PPS quality, oscillator frequency error, lock state,
+discipline state, steering quality, Allan deviation, or other SW2/A-stage
+claims.
+
+---
+
 # Long-Term Direction
 
 Future OTIS hosts may eventually support:
