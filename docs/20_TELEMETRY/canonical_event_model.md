@@ -13,8 +13,8 @@ It should be:
 - lossless;
 - application-neutral.
 
-The RP2040 firmware should not interpret events as pendulum swings, oscillator
-phase measurements, or radio timing intervals.
+The Arduino Nano RP2040 Connect firmware should not interpret events as
+pendulum swings, oscillator phase measurements, or radio timing intervals.
 
 Firmware emits timestamped observations.
 Host software interprets them.
@@ -22,8 +22,8 @@ Host software interprets them.
 ## Architectural Principle
 
 ```text
-RP2040 firmware = deterministic timestamp appliance
-Host software   = interpretation + analysis engine
+Arduino Nano RP2040 Connect firmware = deterministic timestamp appliance
+Host software                         = interpretation + analysis engine
 ```
 
 ## Canonical Observation Records

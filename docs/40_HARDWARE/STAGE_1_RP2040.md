@@ -1,6 +1,9 @@
-# Stage 1 RP2040 Timing Core
+# Stage 1 Arduino Nano RP2040 Connect Timing Core
 
-The initial OTIS implementation is an open-loop RP2040 timing appliance. Its purpose is to prove the capture, telemetry, provenance, and replay architecture before adding oscillator steering or GPSDO control loops.
+The initial OTIS implementation is an open-loop Arduino Nano RP2040 Connect
+timing appliance using the Earle Philhower `arduino-pico` core. Its purpose is
+to prove the capture, telemetry, provenance, and replay architecture before
+adding oscillator steering or GPSDO control loops.
 
 Stage 1 is not primarily a GPSDO. It is a deterministic timestamp and reference observation platform.
 
@@ -58,6 +61,10 @@ the target for OTIS timing firmware.
 This choice preserves a simple Arduino sketch workflow for early smoke tests
 while keeping direct access to RP2040/Pico SDK facilities, `setup1()` /
 `loop1()` multicore structure, and PIO tooling for later capture steps.
+
+The standalone Pico SDK scaffold is deprecated and archived under
+`firmware/deprecated/rp2040_pico_sdk/` for reference only. New SW1 firmware work
+belongs in `firmware/arduino/otis_nano_rp2040_connect/`.
 
 ## Status Indication: RP2040 Built-in RGB LED
 
@@ -160,7 +167,7 @@ Record raw serial logs, parsed CSV, and a run manifest sufficient to reconstruct
 
 ## Non-Goals
 
-Initial RP2040 implementations are not expected to:
+Initial Arduino Nano RP2040 Connect implementations are not expected to:
 
 - close a GPSDO loop;
 - steer an OCXO or VCXO;
