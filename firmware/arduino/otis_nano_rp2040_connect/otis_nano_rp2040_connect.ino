@@ -42,6 +42,7 @@ void setup() {
                               OTIS_DOMAIN_RP2040_TIMER0, 16000000ull,
                               OTIS_EDGE_RISING, OTIS_DOMAIN_H0_TCXO_16MHZ,
                               OTIS_FLAG_NONE);
+  otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
 }
 
 void loop() { otis_status_led_poll(millis()); }

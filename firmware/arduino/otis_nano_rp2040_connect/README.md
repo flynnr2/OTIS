@@ -32,6 +32,8 @@ not live GPIO, PPS, or oscillator capture.
 Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
 does not require RGB LED, NINA, or WiFi LED libraries.
+When enabled, this smoke sketch emits a brief white boot flash, then leaves the
+RGB LED in the USB/config/debug state so LED wiring is easy to verify.
 
 RP2040 boot diagnostics are also compiled out by default. Build with
 `OTIS_ENABLE_RP2040_BOOT_DIAG=1` to emit one `BOOTDIAG,v=1` register snapshot
