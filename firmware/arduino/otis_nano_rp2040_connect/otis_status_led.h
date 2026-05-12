@@ -4,11 +4,11 @@
 #include <stdint.h>
 
 #ifndef OTIS_ENABLE_STATUS_LED
-#define OTIS_ENABLE_STATUS_LED 0
+#define OTIS_ENABLE_STATUS_LED 1
 #endif
 
 #ifndef OTIS_STATUS_LED_USE_NINA_RGB
-#define OTIS_STATUS_LED_USE_NINA_RGB 0
+#define OTIS_STATUS_LED_USE_NINA_RGB 1
 #endif
 
 typedef enum OtisSystemState {
