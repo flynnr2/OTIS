@@ -33,6 +33,12 @@ Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
 does not require RGB LED, NINA, or WiFi LED libraries.
 
+RP2040 boot diagnostics are also compiled out by default. Build with
+`OTIS_ENABLE_RP2040_BOOT_DIAG=1` to emit one `BOOTDIAG,v=1` register snapshot
+after USB serial startup and before normal OTIS records. See
+`docs/50_SOFTWARE/RP2040_BOOT_DIAGNOSTICS.md` for the field schema and reset
+forensics limits.
+
 ## Frozen SW1 channel pin convention
 
 The SW1 live-capture pass uses this Arduino pin convention:

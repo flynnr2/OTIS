@@ -34,6 +34,8 @@ Each step should leave behind a run directory with raw serial logs, parsed CSVs,
 
 - `CMakeLists.txt`: Pico SDK build skeleton.
 - `src/main.c`: minimal entry point and synthetic SW1 smoke emission.
+- `src/otis_boot_diag.c`: optional `OTIS_ENABLE_RP2040_BOOT_DIAG` early boot
+  register snapshot; see `docs/50_SOFTWARE/RP2040_BOOT_DIAGNOSTICS.md`.
 - `src/otis_protocol.h`: record tags, channel IDs, domains, and flag constants.
 - `src/otis_records.h`: narrow record emitter interfaces.
 - `src/otis_emit.c`: CSV emission helpers.
