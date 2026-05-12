@@ -1,4 +1,5 @@
 #include "otis_protocol.h"
+#include "otis_boot_diag.h"
 #include "otis_records.h"
 
 #include "pico/stdlib.h"
@@ -6,6 +7,10 @@
 int main(void) {
     stdio_init_all();
     sleep_ms(1500);
+
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+    otis_emit_rp2040_boot_diag();
+#endif
 
     otis_emit_csv_headers();
     otis_emit_health(1u, 1600000000ull, OTIS_DOMAIN_RP2040_TIMER0,

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "otis_board.h"
+#include "otis_boot_diag.h"
 #include "otis_protocol.h"
 #include "otis_records.h"
 #include "otis_status_led.h"
@@ -12,6 +13,10 @@ void setup() {
   delay(1500);
   otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
   otis_status_led_poll(millis());
+
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+  emitRp2040BootDiag(Serial);
+#endif
 
   otis_emit_csv_headers();
   otis_emit_health(1u, 1600000000ull, OTIS_DOMAIN_RP2040_TIMER0,
