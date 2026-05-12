@@ -39,6 +39,8 @@ It does not by itself assert that the oscillator is disciplined, accurate, locke
 
 ## H0 Use
 
-For the H0 prototype, `CH2` is the reference TCXO/XCXO observation role. The ECS-TXO-5032-160-TR 16 MHz TCXO may be observed through count windows rather than raw edge emission.
+For the H0 prototype, `CH2` is the reference TCXO/XCXO observation role on
+`D8` / `GPIO20` / `GPIN0`. The ECS-TXO-5032-160-TR 16 MHz TCXO may be
+observed through count windows rather than raw edge emission.
 
 Future GPSDO/XCXO designs may use the same contract for OCXO/VCXO observations, divided outputs, reciprocal counters, or PPS-to-PPS frequency estimates.
