@@ -28,7 +28,7 @@ This boundary keeps the H0 channel map simple:
 
 - `CH0` generic pulse/event input;
 - `CH1` PPS/reference input;
-- `CH2` oscillator count observation.
+- `CH2` oscillator count observation on `D8` / `GPIO20` / `GPIN0`.
 
 ## Why It Matters
 

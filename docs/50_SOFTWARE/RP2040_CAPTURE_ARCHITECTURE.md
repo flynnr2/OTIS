@@ -62,7 +62,19 @@ The SW1 Arduino Nano RP2040 Connect live-capture convention is:
 |---:|---|---:|
 | `CH0` | generic pulse/event input | `D10` |
 | `CH1` | PPS/reference input | `D14` |
-| `CH2` | divided/gated oscillator observation input | `D2` |
+| `CH2` | divided/gated oscillator observation input | `D8` / `GPIO20` / `GPIN0` |
+
+## Reserved Clock Pins
+
+The SW1 H0 pin convention keeps RP2040 clock-function pins explicit:
+
+| Arduino pin | RP2040 GPIO | Clock function | OTIS use |
+|---:|---:|---|---|
+| `D8` | `GPIO20` | `GPIN0` | external OCXO/reference input |
+| `D9` | `GPIO21` | `GPOUT0` | internal clock visibility, reserved output |
+| `D2` | `GPIO25` | `GPOUT3` | secondary diagnostic clock, reserved output |
+
+Do not reuse `D9` or `D2` as general capture inputs.
 
 ## Overflow Policy
 
