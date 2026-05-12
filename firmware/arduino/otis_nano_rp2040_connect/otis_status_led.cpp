@@ -4,7 +4,7 @@
 
 #include <Arduino.h>
 
-#if defined(LEDR) && defined(LEDG) && defined(LEDB)
+#if defined(ARDUINO_NANO_RP2040_CONNECT) && defined(NINA_PINS_AS_CLASS)
 #define OTIS_STATUS_LED_HAS_RGB 1
 #else
 #define OTIS_STATUS_LED_HAS_RGB 0
@@ -62,9 +62,9 @@ static uint8_t otis_status_led_priority(OtisSystemState state) {
 
 static void otis_status_led_write(OtisStatusLedColor color) {
 #if OTIS_STATUS_LED_HAS_RGB
-  digitalWrite(LEDR, color.red ? LOW : HIGH);
-  digitalWrite(LEDG, color.green ? LOW : HIGH);
-  digitalWrite(LEDB, color.blue ? LOW : HIGH);
+  digitalWrite(LEDR.get(), color.red ? LOW : HIGH);
+  digitalWrite(LEDG.get(), color.green ? LOW : HIGH);
+  digitalWrite(LEDB.get(), color.blue ? LOW : HIGH);
 #else
   (void)color;
 #endif
@@ -86,9 +86,9 @@ static void otis_status_led_set_base(OtisSystemState state,
 
 void otis_status_led_begin(void) {
 #if OTIS_STATUS_LED_HAS_RGB
-  pinMode(LEDR, OUTPUT);
-  pinMode(LEDG, OUTPUT);
-  pinMode(LEDB, OUTPUT);
+  pinMode(LEDR.get(), OUTPUT);
+  pinMode(LEDG.get(), OUTPUT);
+  pinMode(LEDB.get(), OUTPUT);
 #endif
   otis_status_led_write(otis_status_led_color(false, false, false));
 }
