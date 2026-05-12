@@ -10,27 +10,10 @@
 #define OTIS_STATUS_LED_HAS_BUILTIN_LED 0
 #endif
 
-#ifndef OTIS_STATUS_LED_USE_NINA_RGB
-#define OTIS_STATUS_LED_USE_NINA_RGB 0
-#endif
-
-#if OTIS_STATUS_LED_USE_NINA_RGB && defined(ARDUINO_ARCH_RP2040) && \
-    defined(ARDUINO_NANO_RP2040_CONNECT)
-#define OTIS_STATUS_LED_HAS_NINA_RGB 1
-#else
-#define OTIS_STATUS_LED_HAS_NINA_RGB 0
-#endif
-
-#if OTIS_STATUS_LED_USE_NINA_RGB && !OTIS_STATUS_LED_HAS_NINA_RGB
-#warning \
-    "OTIS_STATUS_LED_USE_NINA_RGB is only implemented for Nano RP2040 Connect under arduino-pico; falling back to LED_BUILTIN."
-#endif
-
-#if OTIS_STATUS_LED_HAS_NINA_RGB
-static const uint8_t OTIS_STATUS_LED_RGB_RED_PIN = 16u;
-static const uint8_t OTIS_STATUS_LED_RGB_GREEN_PIN = 17u;
-static const uint8_t OTIS_STATUS_LED_RGB_BLUE_PIN = 25u;
-#endif
+// The Nano RP2040 Connect RGB LED is part of the NINA WiFi module. There appear
+// to be compatibility issues between the Earle Philhower arduino-pico RP2040
+// core and WiFiNINA/Arduino_SpiNINA libraries, so OTIS intentionally uses only
+// the plain RP2040-accessible LED_BUILTIN status path for now.
 
 typedef enum OtisStatusLedPattern {
   OTIS_STATUS_LED_OFF = 0,
@@ -51,18 +34,13 @@ static OtisStatusLedPattern otis_status_led_pattern = OTIS_STATUS_LED_OFF;
 static OtisStatusLedColor otis_status_led_overlay_color = {false, false, false};
 static uint32_t otis_status_led_overlay_until_ms = 0u;
 static uint32_t otis_status_led_boot_flash_until_ms = 0u;
+static const uint16_t OTIS_STATUS_LED_BOOT_TEST_STEP_MS = 150u;
 
 static OtisStatusLedColor otis_status_led_color(bool red, bool green,
                                                 bool blue) {
   OtisStatusLedColor color = {red, green, blue};
   return color;
 }
-
-#if OTIS_STATUS_LED_HAS_NINA_RGB
-static void otis_status_led_write_active_low(uint8_t pin, bool enabled) {
-  digitalWrite(pin, enabled ? LOW : HIGH);
-}
-#endif
 
 static uint8_t otis_status_led_priority(OtisSystemState state) {
   switch (state) {
@@ -89,11 +67,7 @@ static uint8_t otis_status_led_priority(OtisSystemState state) {
 }
 
 static void otis_status_led_write(OtisStatusLedColor color) {
-#if OTIS_STATUS_LED_HAS_NINA_RGB
-  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_RED_PIN, color.red);
-  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_GREEN_PIN, color.green);
-  otis_status_led_write_active_low(OTIS_STATUS_LED_RGB_BLUE_PIN, color.blue);
-#elif OTIS_STATUS_LED_HAS_BUILTIN_LED
+#if OTIS_STATUS_LED_HAS_BUILTIN_LED
   digitalWrite(LED_BUILTIN, (color.red || color.green || color.blue) ? HIGH
                                                                      : LOW);
 #else
@@ -116,14 +90,30 @@ static void otis_status_led_set_base(OtisSystemState state,
 }
 
 void otis_status_led_begin(void) {
-#if OTIS_STATUS_LED_HAS_NINA_RGB
-  pinMode(OTIS_STATUS_LED_RGB_RED_PIN, OUTPUT);
-  pinMode(OTIS_STATUS_LED_RGB_GREEN_PIN, OUTPUT);
-  pinMode(OTIS_STATUS_LED_RGB_BLUE_PIN, OUTPUT);
-#elif OTIS_STATUS_LED_HAS_BUILTIN_LED
+#if OTIS_STATUS_LED_HAS_BUILTIN_LED
   pinMode(LED_BUILTIN, OUTPUT);
 #endif
   otis_status_led_write(otis_status_led_color(false, false, false));
+}
+
+void otis_status_led_boot_test(void) {
+#if OTIS_ENABLE_STATUS_LED_BOOT_TEST
+  otis_status_led_begin();
+  otis_status_led_write(otis_status_led_color(false, false, false));
+  delay(OTIS_STATUS_LED_BOOT_TEST_STEP_MS);
+
+#if OTIS_STATUS_LED_HAS_BUILTIN_LED
+  for (uint8_t i = 0u; i < 2u; ++i) {
+    otis_status_led_write(otis_status_led_color(true, true, true));
+    delay(OTIS_STATUS_LED_BOOT_TEST_STEP_MS);
+    otis_status_led_write(otis_status_led_color(false, false, false));
+    delay(OTIS_STATUS_LED_BOOT_TEST_STEP_MS);
+  }
+#endif
+
+  delay(OTIS_STATUS_LED_BOOT_TEST_STEP_MS);
+  otis_status_led_set(OTIS_SYSTEM_STATE_UNKNOWN);
+#endif
 }
 
 void otis_status_led_set(OtisSystemState state) {

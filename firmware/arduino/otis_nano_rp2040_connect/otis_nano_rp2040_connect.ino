@@ -11,6 +11,7 @@ void setup() {
 
   Serial.begin(115200);
   delay(1500);
+  otis_status_led_boot_test();
   otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
   otis_status_led_poll(millis());
 
