@@ -1,7 +1,8 @@
 # RP2040 Boot Diagnostics
 
-OTIS RP2040 firmware has an optional early boot diagnostics record for clock and
-reset forensics. It is disabled by default.
+The OTIS Arduino Nano RP2040 Connect firmware has an optional early boot
+diagnostics record for RP2040 clock and reset forensics. It is disabled by
+default.
 
 Enable it at compile time with:
 

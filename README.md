@@ -12,17 +12,19 @@ This repository is currently in **F0 / SW0 foundation** status, with the first *
 
 - the architecture, terminology, and first data contracts are being made explicit;
 - the initial host-side tooling scaffold exists before clever firmware is added;
-- the RP2040 firmware directory is a compile-oriented design scaffold, not a working capture implementation yet;
+- the active SW1 firmware landing zone is the Arduino Nano RP2040 Connect sketch;
+- the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
-The next milestone is **SW1**: RP2040 capture firmware that emits canonical records which host tooling can validate, replay, and report on.
+The next milestone is **SW1**: Arduino Nano RP2040 Connect firmware that emits canonical records which host tooling can validate, replay, and report on.
 
 ## Repository Map
 
 | Directory | Purpose |
 |---|---|
 | `data_contracts/` | normative schemas and semantic contracts |
-| `firmware/rp2040/` | RP2040 SW1 firmware scaffold and smoke-emitter skeleton |
+| `firmware/arduino/otis_nano_rp2040_connect/` | active Arduino Nano RP2040 Connect SW1 firmware |
+| `firmware/deprecated/rp2040_pico_sdk/` | archived Pico SDK scaffold for reference only |
 | `host/otis_tools/` | host-side validation/replay/report tooling scaffold |
 | `profiles/` | declarative experiment/profile mappings |
 | `schemas/` | placeholder for future machine-readable schema artifacts |
