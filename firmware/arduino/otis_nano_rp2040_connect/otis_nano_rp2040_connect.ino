@@ -44,6 +44,8 @@ BootPhase boot_phase = BootPhase::ResetEntry;
 bool boot_serial_ready = false;
 bool boot_summary_emitted = false;
 bool boot_serial_absent_warn_pending = false;
+bool boot_safe_mode_active = false;
+bool boot_safe_mode_warn_pending = false;
 
 void enter_boot_phase(BootPhase next_phase) {
   boot_phase = next_phase;
@@ -63,7 +65,57 @@ void emit_boot_records_if_serial_ready(void) {
     emitOtisBootWarnSerialAbsent(Serial, kOtisSerialWaitMs);
     boot_serial_absent_warn_pending = false;
   }
+  if (boot_safe_mode_warn_pending) {
+    emitOtisBootWarnSafeMode(Serial);
+    boot_safe_mode_warn_pending = false;
+  }
   boot_summary_emitted = true;
+}
+
+void wait_for_serial_or_timeout(void) {
+  uint32_t serial_wait_start_ms = millis();
+  while (!Serial &&
+         (uint32_t)(millis() - serial_wait_start_ms) < kOtisSerialWaitMs) {
+    delay(1);
+  }
+  boot_serial_ready = Serial;
+  boot_serial_absent_warn_pending = !boot_serial_ready;
+}
+
+void halt_boot(BootFatal fatal, BootPhase failed_phase) {
+  enter_boot_phase(BootPhase::Fatal);
+  otisBootBreadcrumbSetFatal(fatal);
+  otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
+
+  bool fatal_emitted = false;
+  if (Serial) {
+    emit_boot_records_if_serial_ready();
+    emitOtisBootFatal(Serial, fatal, failed_phase);
+    fatal_emitted = true;
+  }
+
+  while (true) {
+    if (Serial && !fatal_emitted) {
+      emit_boot_records_if_serial_ready();
+      emitOtisBootFatal(Serial, fatal, failed_phase);
+      fatal_emitted = true;
+    }
+    otis_status_led_poll(millis());
+    delay(10);
+  }
+}
+
+void enter_safe_mode(void) {
+  boot_safe_mode_active = true;
+  boot_safe_mode_warn_pending = true;
+  enter_boot_phase(BootPhase::Fatal);
+  otisBootBreadcrumbSetSafeModeFatal(BootFatal::RepeatedBootFailure);
+
+  otis_status_led_begin();
+  Serial.begin(kOtisSerialBaud);
+  wait_for_serial_or_timeout();
+  otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
+  emit_boot_records_if_serial_ready();
 }
 
 uint64_t capture_ticks_now(void) {
@@ -291,6 +343,9 @@ void boot_phase_early_init(void) {
 
 void boot_phase_clocks_init(void) {
   enter_boot_phase(BootPhase::ClocksInit);
+#if OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS
+  halt_boot(BootFatal::ForcedBeforeClocks, BootPhase::ClocksInit);
+#endif
   complete_boot_phase(BootPhase::ClocksInit);
 }
 
@@ -302,6 +357,9 @@ void boot_phase_gpio_init(void) {
 
 void boot_phase_capture_init(void) {
   enter_boot_phase(BootPhase::CaptureInit);
+#if OTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE
+  halt_boot(BootFatal::ForcedBeforeCapture, BootPhase::CaptureInit);
+#endif
   complete_boot_phase(BootPhase::CaptureInit);
 }
 
@@ -323,14 +381,7 @@ void boot_phase_ring_buffers_init(void) {
 void boot_phase_serial_init(void) {
   enter_boot_phase(BootPhase::SerialInit);
   Serial.begin(kOtisSerialBaud);
-
-  uint32_t serial_wait_start_ms = millis();
-  while (!Serial &&
-         (uint32_t)(millis() - serial_wait_start_ms) < kOtisSerialWaitMs) {
-    delay(1);
-  }
-  boot_serial_ready = Serial;
-  boot_serial_absent_warn_pending = !boot_serial_ready;
+  wait_for_serial_or_timeout();
 
   otis_status_led_boot_test();
   otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
@@ -354,10 +405,13 @@ void boot_phase_protocol_banner(void) {
 
 void boot_phase_run_mode(void) {
   enter_boot_phase(BootPhase::RunMode);
+#if OTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE
+  halt_boot(BootFatal::ForcedBeforeRunMode, BootPhase::RunMode);
+#endif
   setup_mode();
   last_status_ms = millis();
   otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
-  complete_boot_phase(BootPhase::RunMode);
+  otisBootBreadcrumbMarkRunMode();
 }
 
 void service_loopback_output(void) {
@@ -423,6 +477,11 @@ void service_tcxo_gate(void) {
 
 void setup() {
   boot_phase_reset_entry();
+  if (otisBootSafeModeRequested()) {
+    enter_safe_mode();
+    return;
+  }
+
   boot_phase_early_init();
   boot_phase_clocks_init();
   boot_phase_gpio_init();
@@ -436,6 +495,12 @@ void setup() {
 }
 
 void loop() {
+  if (boot_safe_mode_active) {
+    emit_boot_records_if_serial_ready();
+    otis_status_led_poll(millis());
+    return;
+  }
+
   emit_boot_records_if_serial_ready();
   service_loopback_output();
   service_tcxo_gate();

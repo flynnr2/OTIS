@@ -64,6 +64,34 @@ Serial startup is bounded by `OTIS_SERIAL_WAIT_MS` and defaults to 250 ms after
 continues booting and capture setup is not held indefinitely waiting for USB
 enumeration.
 
+Safe mode is controlled by persistent boot breadcrumbs. A successful boot is
+defined as reaching and completing `RunMode`; that clears the consecutive
+failure count. A boot that stops before `RunMode` records a fatal code and
+increments the count. Once the stored count reaches
+`OTIS_SAFE_MODE_FAILURE_THRESHOLD` on the next reset, firmware enters
+diagnostics-only safe mode instead of starting normal capture services.
+
+Boot-hardening test knobs are disabled by default:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS=1 \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE=1 \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE=1 \
+  firmware/arduino/otis_nano_rp2040_connect
+```
+
+For bench testing, upload one forced-failure build and reset the board repeatedly.
+The default threshold is 3 recorded failed boots. Upload a build with all forced
+failure knobs disabled to return to normal boot; the next successful `RunMode`
+boot clears the failure count.
+
 ## Frozen SW1 channel pin convention
 
 The SW1 live-capture pass uses this Arduino pin convention:
