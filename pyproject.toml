@@ -3,7 +3,7 @@ name = "otis"
 version = "0.0.0"
 description = "Open Timing Instrumentation System host tooling scaffold"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = ["pyserial>=3.5"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
