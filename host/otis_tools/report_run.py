@@ -10,7 +10,13 @@ import math
 import sys
 
 from .contracts import CsvValidationContext, validate_csv
-from .run_loader import SW1_LIMITATION_TEXT, RunManifest, inspect_run_state, load_manifest
+from .run_loader import (
+    SW1_5A_LIMITATION_TEXT,
+    SW1_LIMITATION_TEXT,
+    RunManifest,
+    inspect_run_state,
+    load_manifest,
+)
 from .validate_run import (
     _manifest_warnings,
     _run_state_warnings,
@@ -346,7 +352,10 @@ def _summarize_health(reads: list[CsvReadResult]) -> tuple[dict, list[str]]:
     severity_counts = dict(sorted(Counter(row.get("severity", "") for row in rows).items()))
     status_counts = dict(sorted(Counter(row.get("status_key", "") for row in rows).items()))
     status_values: dict[str, list[int]] = defaultdict(list)
+    latest_capture_status: dict[str, str] = {}
     for row in rows:
+        if row.get("component") == "capture":
+            latest_capture_status[str(row.get("status_key", ""))] = str(row.get("status_value", ""))
         value = _parse_int(row.get("status_value"))
         if value is not None:
             status_values[str(row.get("status_key", ""))].append(value)
@@ -365,6 +374,7 @@ def _summarize_health(reads: list[CsvReadResult]) -> tuple[dict, list[str]]:
             "severity_counts": severity_counts,
             "status_key_counts": status_counts,
             "counter_summaries": counter_summaries,
+            "latest_capture_status": latest_capture_status,
         },
         anomalies,
     )
@@ -547,7 +557,10 @@ def render_report(run_dir: Path) -> str:
     )
 
     lines.extend(["", "## SW1 Boundary"])
-    lines.append(f"- {SW1_LIMITATION_TEXT}")
+    if identity["capture_mode"] in ("pio_fifo", "pio_fifo_cpu_timestamped"):
+        lines.append(f"- {SW1_5A_LIMITATION_TEXT}")
+    else:
+        lines.append(f"- {SW1_LIMITATION_TEXT}")
     limitations = identity.get("known_limitations") or []
     if limitations:
         lines.extend(f"- manifest: {limitation}" for limitation in limitations)
@@ -638,6 +651,7 @@ def render_report(run_dir: Path) -> str:
                 "severity_counts": health["severity_counts"],
                 "status_key_counts": health["status_key_counts"],
                 "counter_summaries": health["counter_summaries"] or "not present",
+                "latest_capture_status": health["latest_capture_status"] or "not present",
             },
         )
     else:

@@ -7,7 +7,7 @@ import json
 import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
-from .run_loader import SW1_CAPTURE_MODE, inspect_run_state, load_manifest
+from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
 
 KNOWN_BRINGUP_MODES = {
     "SW1_SYNTHETIC_USB",
@@ -69,7 +69,7 @@ def _validate_manifest(run_dir: Path, manifest) -> list[str]:
 
 def _manifest_warnings(manifest) -> list[str]:
     warnings: list[str] = []
-    allowed_capture_modes = {SW1_CAPTURE_MODE, "synthetic_usb"}
+    allowed_capture_modes = KNOWN_SW1_CAPTURE_MODES
     if manifest.stage == "SW1" and manifest.capture_mode not in allowed_capture_modes:
         warnings.append(
             f"{manifest.path.name}: SW1 capture_mode is {manifest.capture_mode!r}; expected one of {sorted(allowed_capture_modes)}"
