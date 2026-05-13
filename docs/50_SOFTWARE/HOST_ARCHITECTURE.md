@@ -138,8 +138,12 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
   known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
   required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO
   count sanity.
-- `python3 -m host.otis_tools.report_run` renders a compact row-count and PPS
-  interval summary.
+- `python3 -m host.otis_tools.report_run` renders a Markdown A0 replay report
+  covering artifact inventory, row counts, raw-event monotonicity, PPS/reference
+  interval sanity, count-observation frequency estimates when units are declared,
+  health/status counters, validation findings, anomalies, and fixture usefulness.
+  Use `--output` to write the Markdown report and `--json` to write the same
+  high-level summary as machine-readable JSON.
 
 These tools do not infer PPS quality, oscillator frequency error, lock state,
 discipline state, steering quality, Allan deviation, or other SW2/A-stage

@@ -40,3 +40,37 @@ python3 -m host.otis_tools.init_run --stage h0_sw1 --capture-type gps_pps --run-
 ```
 
 Then capture raw serial output, parse it into `csv/`, run validation and reporting, and commit only the representative data that is useful for future development.
+
+## A0 Replay and Report Workflow
+
+For a flat example run, keep the current manifest paths:
+
+```bash
+python3 -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
+python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
+```
+
+For an H0/SW1 run directory, the normal host loop is:
+
+```bash
+python3 -m host.otis_tools.capture_serial --template runs/h0_sw1/gps_pps/_template --run-dir runs/h0_sw1/gps_pps/run_001 --run-id run_001 < serial_raw.log
+python3 -m host.otis_tools.validate_run runs/h0_sw1/gps_pps/run_001
+python3 -m host.otis_tools.report_run runs/h0_sw1/gps_pps/run_001 --output runs/h0_sw1/gps_pps/run_001/reports/summary.md --json runs/h0_sw1/gps_pps/run_001/reports/summary.json
+```
+
+Usually commit:
+
+- `manifest.json` or `run_manifest.json`
+- `notes.md` or `README.md`
+- parsed CSV artifacts listed by the manifest
+- validation and report summaries
+- small representative raw logs when they are diagnostically useful
+
+Usually leave disposable or regenerate:
+
+- plots
+- caches and replay scratch files
+- huge raw serial logs
+- temporary stdout dumps
+
+The report tool is intentionally conservative. It computes timing and frequency metrics only when manifest domains declare clear nominal units; otherwise it still reports row counts, headers, structural checks, validation findings, and a note explaining which fields or domains were ambiguous.
