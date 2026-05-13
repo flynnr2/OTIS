@@ -20,7 +20,7 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 | `SW0`  | Host scaffold/contracts       | validation, replay, examples, schema fixtures                                                   | active          |
 | `SW1`  | First capture firmware        | emit `EVT`, `REF`, `CNT`, and `STS` from Arduino Nano RP2040 Connect via Arduino-Pico            | next            |
 | `A0`   | Basic replay/report           | validate runs and derive simple intervals/frequency estimates                                   | next            |
-| `H1`   | Steerable oscillator hardware | higher-grade GNSS, XCXO, DAC steering path                                                      | future          |
+| `H1`   | Steerable oscillator prep     | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware                | future          |
 | `SW2`  | Control-loop firmware         | explicit GPSDO/discipline-loop telemetry and control                                            | future          |
 
 ## Immediate Next Milestone
@@ -41,3 +41,8 @@ facilities needed by the timing-fabric stages.
 The standalone Pico SDK scaffold is deprecated and archived under
 `firmware/deprecated/rp2040_pico_sdk/` for reference only. New SW1 firmware work
 belongs in `firmware/arduino/otis_nano_rp2040_connect/`.
+
+H1 remains a hardware-prep and open-loop characterization stage. Its preparation
+package lives in `docs/40_HARDWARE/H1_STEERABLE_OSCILLATOR_PREP.md`; SW2 should
+not begin until the oscillator output, manual DAC command path, and open-loop
+tuning sensitivity have been characterized from real hardware.
