@@ -1,19 +1,18 @@
 # RP2040 Boot Diagnostics
 
 The OTIS Arduino Nano RP2040 Connect firmware has an optional early boot
-diagnostics record for RP2040 clock and reset forensics. It is disabled by
-default.
+diagnostics record for RP2040 clock and reset forensics.
 
-Enable it at compile time with:
+Control it at compile time with:
 
 ```text
 OTIS_ENABLE_RP2040_BOOT_DIAG=1
 ```
 
-When disabled, no boot diagnostic code is called and the `BOOTDIAG` record is
-not emitted. When enabled, firmware emits exactly one `BOOTDIAG` record during
-startup after USB/serial logging is initialized and before normal OTIS telemetry
-headers, status, capture, reference, or count records.
+When disabled, the raw `BOOTDIAG` register snapshot is not emitted. Compact
+`BOOT` breadcrumbs are separate from `BOOTDIAG` and remain part of normal boot
+so reset history survives soft and watchdog resets where the RP2040 scratch
+registers are retained.
 
 The output prefix and schema version are:
 
@@ -22,6 +21,17 @@ BOOTDIAG,v=1
 ```
 
 All register values are emitted as fixed-width 32-bit hexadecimal fields.
+
+The compact boot telemetry prefixes are:
+
+```text
+BOOT,v=1
+BOOT_WARN,v=1
+BOOT_FATAL,v=1
+```
+
+`BOOT_FATAL` is reserved for a later safe-mode pass. This pass defines fatal
+codes and persistent storage but does not add safe-mode behavior.
 
 ## Fields
 
@@ -50,35 +60,28 @@ All register values are emitted as fixed-width 32-bit hexadecimal fields.
 
 ## Breadcrumbs
 
-When diagnostics are enabled, firmware also exposes explicit breadcrumb helpers:
-
-```c
-void otis_boot_diag_set_breadcrumb(uint32_t code, uint32_t arg0, uint32_t arg1);
-void otis_boot_diag_clear_breadcrumb(void);
-```
-
-The Arduino-Pico sketch exposes the same functions using Arduino naming:
-
-```cpp
-void otisBootDiagSetBreadcrumb(uint32_t code, uint32_t arg0, uint32_t arg1);
-void otisBootDiagClearBreadcrumb();
-```
+OTIS uses watchdog scratch registers 0 through 3 for persistent boot
+breadcrumbs. Scratch registers 4 through 7 are left untouched by OTIS because
+the Pico SDK uses them for watchdog reboot vectors and watchdog-enable reboot
+classification.
 
 The scratch register convention is:
 
 | Scratch register | Purpose |
 |---|---|
-| `scratch[0]` | magic: `0x4f544953` (`OTIS`) |
-| `scratch[1]` | breadcrumb schema version |
-| `scratch[2]` | code/state |
-| `scratch[3]` | `arg0` |
-| `scratch[4]` | `arg1` |
-| `scratch[5]` | reserved for a boot counter or sequence if one is added later |
-| `scratch[6]` | reserved |
-| `scratch[7]` | simple xor check value |
+| `scratch[0]` | magic: `0x4f544253` (`OTBS`) |
+| `scratch[1]` | boot counter |
+| `scratch[2]` | last completed `BootPhase` numeric code |
+| `scratch[3]` | packed status: fatal code in bits 0-7, reset reason in bits 8-15, watchdog flags in bits 16-17 |
 
-The diagnostic dump never overwrites scratch registers. Code that wants
-breadcrumbs must update or clear them explicitly after the dump if appropriate.
+At reset entry, firmware snapshots the previous scratch contents, increments
+the boot counter, records the current RP2040 watchdog reason bits, clears the
+current fatal code to `None`, and writes `ResetEntry` as the current phase.
+Each successfully completed boot phase then updates `scratch[2]`.
+
+The raw diagnostic dump reads scratch registers after the current boot has
+started updating them. The compact `BOOT` record is the preferred decoded view
+for normal review.
 
 ## Interpretation Limits
 

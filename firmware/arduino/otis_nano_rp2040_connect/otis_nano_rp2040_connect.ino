@@ -41,9 +41,29 @@ uint32_t last_tcxo_measure_ms = 0;
 uint32_t tcxo_gate_open_us = 0;
 bool loopback_state = false;
 BootPhase boot_phase = BootPhase::ResetEntry;
+bool boot_serial_ready = false;
+bool boot_summary_emitted = false;
+bool boot_serial_absent_warn_pending = false;
 
 void enter_boot_phase(BootPhase next_phase) {
   boot_phase = next_phase;
+}
+
+void complete_boot_phase(BootPhase completed_phase) {
+  otisBootBreadcrumbCompletePhase(completed_phase);
+}
+
+void emit_boot_records_if_serial_ready(void) {
+  if (boot_summary_emitted || !Serial) {
+    return;
+  }
+
+  emitOtisBootSummary(Serial, boot_phase);
+  if (boot_serial_absent_warn_pending) {
+    emitOtisBootWarnSerialAbsent(Serial, kOtisSerialWaitMs);
+    boot_serial_absent_warn_pending = false;
+  }
+  boot_summary_emitted = true;
 }
 
 uint64_t capture_ticks_now(void) {
@@ -259,49 +279,68 @@ void setup_mode(void) {
 
 void boot_phase_reset_entry(void) {
   enter_boot_phase(BootPhase::ResetEntry);
+  otisBootBreadcrumbBegin(BootPhase::ResetEntry);
   delay(kOtisBootInitialDelayMs);  // boring but useful during bring-up
+  complete_boot_phase(BootPhase::ResetEntry);
 }
 
 void boot_phase_early_init(void) {
   enter_boot_phase(BootPhase::EarlyInit);
+  complete_boot_phase(BootPhase::EarlyInit);
 }
 
 void boot_phase_clocks_init(void) {
   enter_boot_phase(BootPhase::ClocksInit);
+  complete_boot_phase(BootPhase::ClocksInit);
 }
 
 void boot_phase_gpio_init(void) {
   enter_boot_phase(BootPhase::GpioInit);
   otis_status_led_begin();
+  complete_boot_phase(BootPhase::GpioInit);
 }
 
 void boot_phase_capture_init(void) {
   enter_boot_phase(BootPhase::CaptureInit);
+  complete_boot_phase(BootPhase::CaptureInit);
 }
 
 void boot_phase_timer_init(void) {
   enter_boot_phase(BootPhase::TimerInit);
+  complete_boot_phase(BootPhase::TimerInit);
 }
 
 void boot_phase_pps_input_init(void) {
   enter_boot_phase(BootPhase::PpsInputInit);
+  complete_boot_phase(BootPhase::PpsInputInit);
 }
 
 void boot_phase_ring_buffers_init(void) {
   enter_boot_phase(BootPhase::RingBuffersInit);
+  complete_boot_phase(BootPhase::RingBuffersInit);
 }
 
 void boot_phase_serial_init(void) {
   enter_boot_phase(BootPhase::SerialInit);
   Serial.begin(kOtisSerialBaud);
-  delay(kOtisBootSerialSettleDelayMs);
+
+  uint32_t serial_wait_start_ms = millis();
+  while (!Serial &&
+         (uint32_t)(millis() - serial_wait_start_ms) < kOtisSerialWaitMs) {
+    delay(1);
+  }
+  boot_serial_ready = Serial;
+  boot_serial_absent_warn_pending = !boot_serial_ready;
+
   otis_status_led_boot_test();
   otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
   otis_status_led_poll(millis());
+  complete_boot_phase(BootPhase::SerialInit);
 }
 
 void boot_phase_protocol_banner(void) {
   enter_boot_phase(BootPhase::ProtocolBanner);
+  emit_boot_records_if_serial_ready();
 
 #if OTIS_ENABLE_RP2040_BOOT_DIAG
   emitRp2040BootDiag(Serial);
@@ -310,6 +349,7 @@ void boot_phase_protocol_banner(void) {
   otis_emit_csv_headers();
   emit_common_boot_status();
   emit_h0_pin_status();
+  complete_boot_phase(BootPhase::ProtocolBanner);
 }
 
 void boot_phase_run_mode(void) {
@@ -317,6 +357,7 @@ void boot_phase_run_mode(void) {
   setup_mode();
   last_status_ms = millis();
   otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
+  complete_boot_phase(BootPhase::RunMode);
 }
 
 void service_loopback_output(void) {
@@ -395,6 +436,7 @@ void setup() {
 }
 
 void loop() {
+  emit_boot_records_if_serial_ready();
   service_loopback_output();
   service_tcxo_gate();
   drain_capture_ring();
