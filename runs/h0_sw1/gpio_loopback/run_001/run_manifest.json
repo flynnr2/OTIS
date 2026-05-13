@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "run_id": "h0_sw1_gpio_loopback_run_001",
+  "created_utc": "2026-05-13T20:35:38Z",
+  "bringup_mode": "SW1_GPIO_LOOPBACK",
+  "template": false,
+  "profile": {
+    "name": "h0_reference",
+    "version": 1
+  },
+  "hardware": {
+    "capture_board": "Arduino Nano RP2040 Connect",
+    "reference": "not required for GPIO loopback",
+    "oscillator": "not required for GPIO loopback",
+    "front_end": "jumper D7 to D10"
+  },
+  "firmware": {
+    "name": "otis_nano_rp2040_connect",
+    "version": "SW1",
+    "mode": "SW1_GPIO_LOOPBACK"
+  },
+  "host": {
+    "tool": "otis_tools",
+    "version": "0"
+  },
+  "domains": [
+    {
+      "name": "rp2040_timer0",
+      "nominal_hz": 16000000
+    }
+  ],
+  "channels": [
+    {
+      "channel_id": 0,
+      "role": "generic_pulse",
+      "record_family": "raw_events_v1"
+    }
+  ],
+  "contracts": {
+    "raw_events_v1": 1,
+    "health_v1": 1,
+    "run_manifest_v1": 1
+  },
+  "files": [
+    {
+      "path": "raw_events.csv",
+      "contract": "raw_events_v1"
+    },
+    {
+      "path": "health.csv",
+      "contract": "health_v1"
+    }
+  ]
+}

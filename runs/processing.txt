@@ -1,0 +1,71 @@
+=================================================================================
+python3 -m host.otis_tools.capture_serial \
+  --template examples/h0_usb_synthetic \
+  --run-dir runs/h0_sw1/synthetic_usb/run_001 \
+  --run-id h0_sw1_synthetic_usb_run_001 \
+  < synthetic_usb.csv
+
+cp -p synthetic_usb.csv runs/h0_sw1/synthetic_usb/run_001/serial_raw.log
+
+python3 -m host.otis_tools.validate_run runs/h0_sw1/synthetic_usb/run_001
+
+mkdir -p runs/h0_sw1/synthetic_usb/run_001/reports
+
+python3 -m host.otis_tools.report_run \
+  runs/h0_sw1/synthetic_usb/run_001 \
+  > runs/h0_sw1/synthetic_usb/run_001/reports/summary.md
+=================================================================================
+
+=================================================================================
+  python3 -m host.otis_tools.capture_serial \
+  --template examples/h0_gpio_loopback \
+  --run-dir runs/h0_sw1/gpio_loopback/run_001 \
+  --run-id h0_sw1_gpio_loopback_run_001 \
+  < gpio_loopback.csv
+
+cp -p gpio_loopback.csv runs/h0_sw1/gpio_loopback/run_001/serial_raw.log
+
+python3 -m host.otis_tools.validate_run runs/h0_sw1/gpio_loopback/run_001
+
+mkdir -p runs/h0_sw1/gpio_loopback/run_001/reports
+
+python3 -m host.otis_tools.report_run \
+  runs/h0_sw1/gpio_loopback/run_001 \
+  > runs/h0_sw1/gpio_loopback/run_001/reports/summary.md
+=================================================================================
+
+=================================================================================
+  python3 -m host.otis_tools.capture_serial \
+  --template examples/h0_gps_pps \
+  --run-dir runs/h0_sw1/gps_pps/run_001 \
+  --run-id h0_sw1_gps_pps_run_001 \
+  < gps_pps.csv
+
+cp -p gps_pps.csv runs/h0_sw1/gps_pps/run_001/serial_raw.log
+
+python3 -m host.otis_tools.validate_run runs/h0_sw1/gps_pps/run_001
+
+mkdir -p runs/h0_sw1/gps_pps/run_001/reports
+
+python3 -m host.otis_tools.report_run \
+  runs/h0_sw1/gps_pps/run_001 \
+  > runs/h0_sw1/gps_pps/run_001/reports/summary.md
+=================================================================================
+
+=================================================================================
+  python3 -m host.otis_tools.capture_serial \
+  --template examples/h0_pps_tcxo_real \
+  --run-dir runs/h0_sw1/tcxo_observe/run_001 \
+  --run-id h0_sw1_tcxo_observe_run_001 \
+  < tcxo_observe.csv
+
+cp -p tcxo_observe.csv runs/h0_sw1/tcxo_observe/run_001/serial_raw.log
+
+python3 -m host.otis_tools.validate_run runs/h0_sw1/tcxo_observe/run_001
+
+mkdir -p runs/h0_sw1/tcxo_observe/run_001/reports
+
+python3 -m host.otis_tools.report_run \
+  runs/h0_sw1/tcxo_observe/run_001 \
+  > runs/h0_sw1/tcxo_observe/run_001/reports/summary.md
+=================================================================================
