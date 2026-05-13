@@ -25,8 +25,9 @@ arduino-cli board listall | grep -i "Nano RP2040"
 
 ## SW1 bring-up modes
 
-Select one bring-up mode at compile time with `OTIS_SW1_BRINGUP_MODE`.
-The default is `SW1_SYNTHETIC_USB`.
+Select one bring-up mode in `otis_config.h` with `OTIS_SW1_BRINGUP_MODE`.
+The default is `SW1_SYNTHETIC_USB`. The config header is the preferred workflow
+for Arduino IDE builds; CLI `-D` overrides still work for scripted builds.
 
 | Mode | Purpose | Records |
 |---|---|---|
@@ -42,15 +43,14 @@ frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
 GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
 backend is only for deliberately divided, interrupt-safe test signals.
 
-Status LED support is compiled out by default. Build with
-`OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
-does not require any additional LED libraries.
+Status LED support is compiled out by default. Set
+`OTIS_ENABLE_STATUS_LED` to `1` in `otis_config.h` only for local bring-up
+visibility; the disabled path does not require any additional LED libraries.
 When enabled, this smoke sketch uses the plain RP2040-accessible `LED_BUILTIN`
 for a brief boot indication and later USB/config/debug status indication.
 The startup self-test is enabled by default whenever status LED support is
-enabled. It blinks `LED_BUILTIN`. Build with
-`OTIS_ENABLE_STATUS_LED_BOOT_TEST=0` to skip the self-test while keeping later
-status LED behavior.
+enabled. It blinks `LED_BUILTIN`. Set `OTIS_ENABLE_STATUS_LED_BOOT_TEST` to `0`
+to skip the self-test while keeping later status LED behavior.
 
 RP2040 raw boot diagnostics are controlled by `OTIS_ENABLE_RP2040_BOOT_DIAG`.
 When enabled, firmware emits one `BOOTDIAG,v=1` register snapshot after USB
@@ -73,19 +73,9 @@ diagnostics-only safe mode instead of starting normal capture services.
 
 Boot-hardening test knobs are disabled by default:
 
-```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS=1 \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE=1 \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE=1 \
-  firmware/arduino/otis_nano_rp2040_connect
-```
+- `OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS`
+- `OTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE`
+- `OTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE`
 
 For bench testing, upload one forced-failure build and reset the board repeatedly.
 The default threshold is 3 recorded failed boots. Upload a build with all forced
@@ -119,7 +109,8 @@ Do not assign either pin to general live-capture inputs.
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect
 ```
 
-Explicit mode builds:
+For scripted builds, config values can be overridden without editing
+`otis_config.h`:
 
 ```bash
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \

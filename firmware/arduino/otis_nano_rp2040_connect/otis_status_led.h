@@ -3,13 +3,7 @@
 
 #include <stdint.h>
 
-#ifndef OTIS_ENABLE_STATUS_LED
-#define OTIS_ENABLE_STATUS_LED 0
-#endif
-
-#ifndef OTIS_ENABLE_STATUS_LED_BOOT_TEST
-#define OTIS_ENABLE_STATUS_LED_BOOT_TEST OTIS_ENABLE_STATUS_LED
-#endif
+#include "otis_config.h"
 
 typedef enum OtisSystemState {
   OTIS_SYSTEM_STATE_UNKNOWN = 0,
