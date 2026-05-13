@@ -52,11 +52,17 @@ enabled. It blinks `LED_BUILTIN`. Build with
 `OTIS_ENABLE_STATUS_LED_BOOT_TEST=0` to skip the self-test while keeping later
 status LED behavior.
 
-RP2040 boot diagnostics are also compiled out by default. Build with
-`OTIS_ENABLE_RP2040_BOOT_DIAG=1` to emit one `BOOTDIAG,v=1` register snapshot
-after USB serial startup and before normal OTIS records. See
+RP2040 raw boot diagnostics are controlled by `OTIS_ENABLE_RP2040_BOOT_DIAG`.
+When enabled, firmware emits one `BOOTDIAG,v=1` register snapshot after USB
+serial startup and before normal OTIS records. See
 `docs/50_SOFTWARE/RP2040_BOOT_DIAGNOSTICS.md` for the field schema and reset
 forensics limits.
+
+The boot path also emits compact `BOOT` telemetry when USB serial is available.
+Serial startup is bounded by `OTIS_SERIAL_WAIT_MS` and defaults to 250 ms after
+`Serial.begin(115200)`. If the host has not opened USB serial by then, firmware
+continues booting and capture setup is not held indefinitely waiting for USB
+enumeration.
 
 ## Frozen SW1 channel pin convention
 

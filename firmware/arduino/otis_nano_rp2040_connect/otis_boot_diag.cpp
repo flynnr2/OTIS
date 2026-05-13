@@ -1,7 +1,6 @@
 #include "otis_boot_diag.h"
 
-#if OTIS_ENABLE_RP2040_BOOT_DIAG
-
+#include "hardware/watchdog.h"
 #include "hardware/structs/clocks.h"
 #include "hardware/structs/pll.h"
 #include "hardware/structs/resets.h"
@@ -11,7 +10,88 @@
 #include "hardware/structs/watchdog.h"
 #include "hardware/structs/xosc.h"
 
-static void otisBootDiagPrintHex32(Stream &out, uint32_t value) {
+namespace {
+
+constexpr uint8_t kScratchMagic = 0u;
+constexpr uint8_t kScratchBootCount = 1u;
+constexpr uint8_t kScratchLastPhase = 2u;
+constexpr uint8_t kScratchPackedStatus = 3u;
+
+constexpr uint32_t kFatalMask = 0x000000ffu;
+constexpr uint32_t kResetReasonShift = 8u;
+constexpr uint32_t kResetReasonMask = 0x0000ff00u;
+constexpr uint32_t kWatchdogRebootBit = 1u << 16;
+constexpr uint32_t kWatchdogEnableRebootBit = 1u << 17;
+
+OtisBootBreadcrumbSnapshot boot_snapshot = {};
+
+uint32_t pack_boot_status(BootFatal fatal, uint32_t reset_reason,
+                          bool watchdog_reboot,
+                          bool watchdog_enable_reboot) {
+  uint32_t packed = otisBootFatalCode(fatal) & kFatalMask;
+  packed |= (reset_reason << kResetReasonShift) & kResetReasonMask;
+  if (watchdog_reboot) {
+    packed |= kWatchdogRebootBit;
+  }
+  if (watchdog_enable_reboot) {
+    packed |= kWatchdogEnableRebootBit;
+  }
+  return packed;
+}
+
+BootPhase unpack_phase(uint32_t value) {
+  switch ((uint8_t)value) {
+    case 0u:
+      return BootPhase::ResetEntry;
+    case 1u:
+      return BootPhase::EarlyInit;
+    case 2u:
+      return BootPhase::ClocksInit;
+    case 3u:
+      return BootPhase::GpioInit;
+    case 4u:
+      return BootPhase::CaptureInit;
+    case 5u:
+      return BootPhase::TimerInit;
+    case 6u:
+      return BootPhase::PpsInputInit;
+    case 7u:
+      return BootPhase::RingBuffersInit;
+    case 8u:
+      return BootPhase::SerialInit;
+    case 9u:
+      return BootPhase::ProtocolBanner;
+    case 10u:
+      return BootPhase::RunMode;
+    case 11u:
+      return BootPhase::Fatal;
+    default:
+      return BootPhase::Fatal;
+  }
+}
+
+BootFatal unpack_fatal(uint32_t packed) {
+  switch ((uint8_t)(packed & kFatalMask)) {
+    case 0u:
+      return BootFatal::None;
+    case 1u:
+      return BootFatal::UnsupportedBoard;
+    case 2u:
+      return BootFatal::InvalidBootConfig;
+    case 3u:
+      return BootFatal::SerialUnavailable;
+    case 4u:
+      return BootFatal::CaptureInitFailed;
+    case 5u:
+      return BootFatal::TimerInitFailed;
+    case 6u:
+      return BootFatal::PpsInputInitFailed;
+    default:
+      return BootFatal::InvalidBootConfig;
+  }
+}
+
+void print_hex32(Stream &out, uint32_t value) {
   static const char hex[] = "0123456789abcdef";
 
   out.print("0x");
@@ -20,18 +100,172 @@ static void otisBootDiagPrintHex32(Stream &out, uint32_t value) {
   }
 }
 
+void print_boot_field_hex(Stream &out, const char *name, uint32_t value) {
+  out.print(',');
+  out.print(name);
+  out.print('=');
+  print_hex32(out, value);
+}
+
+}  // namespace
+
+uint8_t otisBootPhaseCode(BootPhase phase) {
+  return (uint8_t)phase;
+}
+
+uint8_t otisBootFatalCode(BootFatal fatal) {
+  return (uint8_t)fatal;
+}
+
+const char *otisBootPhaseName(BootPhase phase) {
+  switch (phase) {
+    case BootPhase::ResetEntry:
+      return "ResetEntry";
+    case BootPhase::EarlyInit:
+      return "EarlyInit";
+    case BootPhase::ClocksInit:
+      return "ClocksInit";
+    case BootPhase::GpioInit:
+      return "GpioInit";
+    case BootPhase::CaptureInit:
+      return "CaptureInit";
+    case BootPhase::TimerInit:
+      return "TimerInit";
+    case BootPhase::PpsInputInit:
+      return "PpsInputInit";
+    case BootPhase::RingBuffersInit:
+      return "RingBuffersInit";
+    case BootPhase::SerialInit:
+      return "SerialInit";
+    case BootPhase::ProtocolBanner:
+      return "ProtocolBanner";
+    case BootPhase::RunMode:
+      return "RunMode";
+    case BootPhase::Fatal:
+      return "Fatal";
+    default:
+      return "Unknown";
+  }
+}
+
+const char *otisBootFatalName(BootFatal fatal) {
+  switch (fatal) {
+    case BootFatal::None:
+      return "None";
+    case BootFatal::UnsupportedBoard:
+      return "UnsupportedBoard";
+    case BootFatal::InvalidBootConfig:
+      return "InvalidBootConfig";
+    case BootFatal::SerialUnavailable:
+      return "SerialUnavailable";
+    case BootFatal::CaptureInitFailed:
+      return "CaptureInitFailed";
+    case BootFatal::TimerInitFailed:
+      return "TimerInitFailed";
+    case BootFatal::PpsInputInitFailed:
+      return "PpsInputInitFailed";
+    default:
+      return "Unknown";
+  }
+}
+
+void otisBootBreadcrumbBegin(BootPhase phase) {
+  uint32_t previous_packed = watchdog_hw->scratch[kScratchPackedStatus];
+  bool previous_valid =
+      watchdog_hw->scratch[kScratchMagic] == OTIS_BOOT_BREADCRUMB_MAGIC;
+
+  boot_snapshot.previous_valid = previous_valid;
+  boot_snapshot.boot_count =
+      previous_valid ? watchdog_hw->scratch[kScratchBootCount] + 1u : 1u;
+  boot_snapshot.previous_last_phase =
+      previous_valid ? unpack_phase(watchdog_hw->scratch[kScratchLastPhase])
+                     : BootPhase::ResetEntry;
+  boot_snapshot.previous_fatal =
+      previous_valid ? unpack_fatal(previous_packed) : BootFatal::None;
+  boot_snapshot.previous_reset_reason =
+      previous_valid ? ((previous_packed & kResetReasonMask) >> kResetReasonShift)
+                     : 0u;
+  boot_snapshot.previous_watchdog_reboot =
+      previous_valid && ((previous_packed & kWatchdogRebootBit) != 0u);
+  boot_snapshot.previous_watchdog_enable_reboot =
+      previous_valid && ((previous_packed & kWatchdogEnableRebootBit) != 0u);
+  boot_snapshot.current_reset_reason = watchdog_hw->reason;
+  boot_snapshot.current_watchdog_reboot = watchdog_caused_reboot();
+  boot_snapshot.current_watchdog_enable_reboot = watchdog_enable_caused_reboot();
+
+  watchdog_hw->scratch[kScratchMagic] = OTIS_BOOT_BREADCRUMB_MAGIC;
+  watchdog_hw->scratch[kScratchBootCount] = boot_snapshot.boot_count;
+  watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(phase);
+  watchdog_hw->scratch[kScratchPackedStatus] =
+      pack_boot_status(BootFatal::None, boot_snapshot.current_reset_reason,
+                       boot_snapshot.current_watchdog_reboot,
+                       boot_snapshot.current_watchdog_enable_reboot);
+}
+
+void otisBootBreadcrumbCompletePhase(BootPhase phase) {
+  watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(phase);
+}
+
+void otisBootBreadcrumbSetFatal(BootFatal fatal) {
+  watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(BootPhase::Fatal);
+  watchdog_hw->scratch[kScratchPackedStatus] =
+      pack_boot_status(fatal, boot_snapshot.current_reset_reason,
+                       boot_snapshot.current_watchdog_reboot,
+                       boot_snapshot.current_watchdog_enable_reboot);
+}
+
+const OtisBootBreadcrumbSnapshot &otisBootBreadcrumbSnapshot(void) {
+  return boot_snapshot;
+}
+
+void emitOtisBootSummary(Stream &out, BootPhase current_phase) {
+  out.print("BOOT,v=1");
+  out.print(",boot_count=");
+  out.print(boot_snapshot.boot_count);
+  out.print(",phase=");
+  out.print(otisBootPhaseName(current_phase));
+  out.print(",prev_valid=");
+  out.print(boot_snapshot.previous_valid ? 1 : 0);
+  out.print(",prev_phase=");
+  out.print(otisBootPhaseName(boot_snapshot.previous_last_phase));
+  out.print(",prev_fatal=");
+  out.print(otisBootFatalName(boot_snapshot.previous_fatal));
+  print_boot_field_hex(out, "reset_reason", boot_snapshot.current_reset_reason);
+  out.print(",watchdog=");
+  out.print(boot_snapshot.current_watchdog_reboot ? 1 : 0);
+  out.print(",watchdog_enable=");
+  out.print(boot_snapshot.current_watchdog_enable_reboot ? 1 : 0);
+  print_boot_field_hex(out, "prev_reset_reason",
+                       boot_snapshot.previous_reset_reason);
+  out.println();
+}
+
+void emitOtisBootWarnSerialAbsent(Stream &out, uint32_t wait_ms) {
+  out.print("BOOT_WARN,v=1,key=serial_absent,wait_ms=");
+  out.println(wait_ms);
+}
+
+void emitOtisBootFatal(Stream &out, BootFatal fatal, BootPhase phase) {
+  out.print("BOOT_FATAL,v=1,fatal=");
+  out.print(otisBootFatalName(fatal));
+  out.print(",phase=");
+  out.print(otisBootPhaseName(phase));
+  out.print(",boot_count=");
+  out.println(boot_snapshot.boot_count);
+}
+
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+
+static void otisBootDiagPrintHex32(Stream &out, uint32_t value) {
+  print_hex32(out, value);
+}
+
 static void otisBootDiagPrintField(Stream &out, const char *name,
                                    uint32_t value) {
   out.print(',');
   out.print(name);
   out.print('=');
   otisBootDiagPrintHex32(out, value);
-}
-
-static uint32_t otisBootDiagBreadcrumbCheck(uint32_t code, uint32_t arg0,
-                                            uint32_t arg1) {
-  return OTIS_BOOT_DIAG_BREADCRUMB_MAGIC ^ OTIS_BOOT_DIAG_BREADCRUMB_SCHEMA ^
-         code ^ arg0 ^ arg1;
 }
 
 void emitRp2040BootDiag(Stream &out) {
@@ -68,22 +302,6 @@ void emitRp2040BootDiag(Stream &out) {
   otisBootDiagPrintField(out, "gitref_rp2040", sysinfo_hw->gitref_rp2040);
 #endif
   out.println();
-}
-
-void otisBootDiagSetBreadcrumb(uint32_t code, uint32_t arg0, uint32_t arg1) {
-  watchdog_hw->scratch[0] = OTIS_BOOT_DIAG_BREADCRUMB_MAGIC;
-  watchdog_hw->scratch[1] = OTIS_BOOT_DIAG_BREADCRUMB_SCHEMA;
-  watchdog_hw->scratch[2] = code;
-  watchdog_hw->scratch[3] = arg0;
-  watchdog_hw->scratch[4] = arg1;
-  watchdog_hw->scratch[6] = 0u;
-  watchdog_hw->scratch[7] = otisBootDiagBreadcrumbCheck(code, arg0, arg1);
-}
-
-void otisBootDiagClearBreadcrumb(void) {
-  for (uint32_t i = 0u; i < 8u; ++i) {
-    watchdog_hw->scratch[i] = 0u;
-  }
 }
 
 #endif
