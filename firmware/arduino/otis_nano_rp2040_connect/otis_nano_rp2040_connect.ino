@@ -19,11 +19,12 @@ struct CapturedEdge {
   uint32_t flags;
 };
 
-constexpr uint8_t kCaptureRingSize = 32;
-constexpr uint32_t kStatusPeriodMs = 1000;
-constexpr uint32_t kLoopbackTogglePeriodMs = 250;
-constexpr uint32_t kTcxoGatePeriodUs = 1000000;
-constexpr uint32_t kTcxoMeasurePeriodMs = 1000;
+constexpr uint8_t kCaptureRingSize =
+    static_cast<uint8_t>(OTIS_CAPTURE_RING_SIZE);
+constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
+constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
+constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
+constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
 
 volatile CapturedEdge capture_ring[kCaptureRingSize];
 volatile uint8_t capture_head = 0;

@@ -5,10 +5,6 @@
 
 #include "OtisBootConfig.h"
 
-#ifndef OTIS_ENABLE_RP2040_BOOT_DIAG
-#define OTIS_ENABLE_RP2040_BOOT_DIAG 1
-#endif
-
 #include <Arduino.h>
 
 #define OTIS_BOOT_BREADCRUMB_MAGIC 0x4f544253u
