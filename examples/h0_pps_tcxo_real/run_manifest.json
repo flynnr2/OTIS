@@ -4,19 +4,42 @@
   "created_utc": null,
   "bringup_mode": "SW1_TCXO_OBSERVE",
   "template": true,
-  "profile": {"name": "h0_reference", "version": 1},
+  "profile": {
+    "name": "h0_reference",
+    "version": 1
+  },
   "hardware": {
     "capture_board": "Arduino Nano RP2040 Connect",
     "reference": "Adafruit Ultimate GPS breakout PPS",
     "oscillator": "ECS-TXO-5032-160-TR 16 MHz TCXO",
     "front_end": "SN74AHCT1G14 edge conditioning plus any required divider/gating"
   },
-  "firmware": {"name": "otis_nano_rp2040_connect", "version": "SW1", "mode": "SW1_TCXO_OBSERVE"},
-  "host": {"tool": "otis_tools", "version": "0"},
-  "domains": [{"name": "rp2040_timer0", "nominal_hz": 16000000}],
+  "firmware": {
+    "name": "otis_nano_rp2040_connect",
+    "version": "SW1",
+    "mode": "SW1_TCXO_OBSERVE"
+  },
+  "host": {
+    "tool": "otis_tools",
+    "version": "0"
+  },
+  "domains": [
+    {
+      "name": "rp2040_timer0",
+      "nominal_hz": 16000000
+    }
+  ],
   "channels": [
-    {"channel_id": 1, "role": "pps_reference", "record_family": "raw_events_v1"},
-    {"channel_id": 2, "role": "xcxo_observation", "record_family": "count_observations_v1"}
+    {
+      "channel_id": 1,
+      "role": "pps_reference",
+      "record_family": "raw_events_v1"
+    },
+    {
+      "channel_id": 2,
+      "role": "xcxo_observation",
+      "record_family": "count_observations_v1"
+    }
   ],
   "contracts": {
     "raw_events_v1": 1,
@@ -25,8 +48,42 @@
     "run_manifest_v1": 1
   },
   "files": [
-    {"path": "raw_events.csv", "contract": "raw_events_v1"},
-    {"path": "count_observations.csv", "contract": "count_observations_v1"},
-    {"path": "health.csv", "contract": "health_v1"}
+    {
+      "path": "raw_events.csv",
+      "contract": "raw_events_v1"
+    },
+    {
+      "path": "count_observations.csv",
+      "contract": "count_observations_v1"
+    },
+    {
+      "path": "health.csv",
+      "contract": "health_v1"
+    }
+  ],
+  "h_phase": "H0",
+  "stage": "SW1",
+  "capture_mode": "irq_reconstructed",
+  "board": "arduino_nano_rp2040_connect",
+  "firmware_git_commit": "",
+  "host_git_commit": "",
+  "firmware_version": "SW1",
+  "host_tool_version": "0",
+  "expected_artifacts": [
+    "raw_events.csv",
+    "count_observations.csv",
+    "health.csv"
+  ],
+  "nominal_frequencies_hz": {
+    "tcxo": 16000000,
+    "pps": 1
+  },
+  "pin_mapping": {
+    "ch0_generic_event": "D10",
+    "ch1_pps_reference": "D14",
+    "ch2_osc_observation": "D8_GPIO20_GPIN0"
+  },
+  "known_limitations": [
+    "SW1 timestamps may be IRQ/micros-derived rather than final PIO/DMA hardware timestamps."
   ]
 }

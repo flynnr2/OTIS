@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import csv
+import json
 import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
-from .run_loader import load_manifest
+from .run_loader import SW1_CAPTURE_MODE, inspect_run_state, load_manifest
 
 KNOWN_BRINGUP_MODES = {
     "SW1_SYNTHETIC_USB",
@@ -66,6 +67,31 @@ def _validate_manifest(run_dir: Path, manifest) -> list[str]:
     return failures
 
 
+def _manifest_warnings(manifest) -> list[str]:
+    warnings: list[str] = []
+    allowed_capture_modes = {SW1_CAPTURE_MODE, "synthetic_usb"}
+    if manifest.stage == "SW1" and manifest.capture_mode not in allowed_capture_modes:
+        warnings.append(
+            f"{manifest.path.name}: SW1 capture_mode is {manifest.capture_mode!r}; expected one of {sorted(allowed_capture_modes)}"
+        )
+    if manifest.stage == "SW1" and not manifest.known_limitations:
+        warnings.append(f"{manifest.path.name}: SW1 known_limitations is empty")
+    for key in ("firmware_version", "host_tool_version", "firmware_git_commit", "host_git_commit"):
+        if key in manifest.data and manifest.data.get(key) in (None, ""):
+            warnings.append(f"{manifest.path.name}: {key} is not populated")
+    return warnings
+
+
+def _run_state_warnings(run_dir: Path, manifest) -> list[str]:
+    state = inspect_run_state(run_dir)
+    warnings: list[str] = []
+    if state.capture_in_progress:
+        warnings.append(f"{run_dir.name}: {run_dir / 'capture_in_progress.flag'} exists; capture may be partial")
+    if not manifest.is_template and not state.complete:
+        warnings.append(f"{run_dir.name}: COMPLETE marker is missing; run may not be ready to commit as a fixture")
+    return warnings
+
+
 def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: dict[str, float], template: bool) -> list[str]:
     if template:
         return []
@@ -115,8 +141,14 @@ def _validate_count_sanity(count_rows: list[dict[str, str]], template: bool) -> 
 
 
 def validate_run(run_dir: Path) -> int:
-    manifest = load_manifest(run_dir)
+    try:
+        manifest = load_manifest(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR {run_dir}: {exc}", file=sys.stderr)
+        return 1
+
     failures: list[str] = _validate_manifest(run_dir, manifest)
+    warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(run_dir, manifest)
     files_by_contract: dict[str, Path] = {}
 
     for file_entry in manifest.files:
@@ -129,19 +161,31 @@ def validate_run(run_dir: Path) -> int:
             failures.append(f"{rel_path}: unsupported or missing contract {contract!r}")
             continue
 
+        path = run_dir / rel_path
+        optional = bool(file_entry.get("optional", False))
+        if optional and not path.exists():
+            warnings.append(f"{rel_path}: optional expected artifact is missing")
+            continue
+
         context = CsvValidationContext(
             contract=contract,
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
         )
-        result = validate_csv(run_dir / rel_path, context)
-        files_by_contract[contract] = run_dir / rel_path
+        result = validate_csv(path, context)
+        files_by_contract[contract] = path
         if result.ok:
             print(f"OK {rel_path}: {result.row_count} rows")
         else:
             for error in result.errors:
                 failures.append(f"{rel_path}: {error}")
+        for warning in result.warnings:
+            warnings.append(f"{rel_path}: {warning}")
+
+    for artifact in manifest.expected_artifacts:
+        if artifact and not (run_dir / artifact).exists():
+            warnings.append(f"{artifact}: expected artifact is missing")
 
     nominal_hz_by_domain = {
         str(domain["name"]): float(domain["nominal_hz"])
@@ -153,6 +197,8 @@ def validate_run(run_dir: Path) -> int:
     failures.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
     failures.extend(_validate_count_sanity(count_rows, manifest.is_template))
 
+    for warning in warnings:
+        print(f"WARN {warning}", file=sys.stderr)
     for failure in failures:
         print(f"ERROR {failure}", file=sys.stderr)
 
