@@ -43,6 +43,15 @@ frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
 GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
 backend is only for deliberately divided, interrupt-safe test signals.
 
+SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
+validation and protocol bring-up, not final PIO/DMA metrology.
+
+During the boot banner, firmware emits `STS` provenance rows for schema version,
+firmware name/version/git commit, board target, Arduino core, bring-up mode,
+capture mode, nominal reference frequencies, pin mapping, and compile-time
+feature flags. `OTIS_FIRMWARE_GIT_COMMIT` defaults to `unknown`; scripted builds
+may override it with `-DOTIS_FIRMWARE_GIT_COMMIT=\"<hash>\"`.
+
 Status LED support is compiled out by default. Set
 `OTIS_ENABLE_STATUS_LED` to `1` in `otis_config.h` only for local bring-up
 visibility; the disabled path does not require any additional LED libraries.
@@ -151,3 +160,6 @@ arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
 python3 -m host.otis_tools.validate_run runs/h0_gps_pps_001
 python3 -m host.otis_tools.report_run runs/h0_gps_pps_001
 ```
+
+For committed representative runs, generate the report, remove
+`capture_in_progress.flag` if present, and create `COMPLETE` after validation.

@@ -14,6 +14,36 @@
 #define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_TCXO_OBSERVE
 #endif
 
+// Firmware provenance. Scripted builds may override these with -D flags; keep
+// defaults stable so Arduino IDE builds remain deterministic.
+#ifndef OTIS_FIRMWARE_NAME
+#define OTIS_FIRMWARE_NAME "otis_nano_rp2040_connect"
+#endif
+
+#ifndef OTIS_FIRMWARE_VERSION
+#define OTIS_FIRMWARE_VERSION "SW1"
+#endif
+
+#ifndef OTIS_FIRMWARE_GIT_COMMIT
+#define OTIS_FIRMWARE_GIT_COMMIT "unknown"
+#endif
+
+#ifndef OTIS_CAPTURE_MODE
+#define OTIS_CAPTURE_MODE "irq_reconstructed"
+#endif
+
+#ifndef OTIS_NOMINAL_CAPTURE_CLOCK_HZ
+#define OTIS_NOMINAL_CAPTURE_CLOCK_HZ 16000000u
+#endif
+
+#ifndef OTIS_NOMINAL_TCXO_HZ
+#define OTIS_NOMINAL_TCXO_HZ 16000000u
+#endif
+
+#ifndef OTIS_NOMINAL_PPS_HZ
+#define OTIS_NOMINAL_PPS_HZ 1u
+#endif
+
 // TCXO observation backends.
 #define OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 1
 #define OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ 2

@@ -8,6 +8,7 @@ import shutil
 import sys
 
 from .contracts import CONTRACT_FIELDS
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 
 
 RECORD_CONTRACTS = {
@@ -19,7 +20,10 @@ RECORD_CONTRACTS = {
 
 
 def _load_template(template_dir: Path, run_id: str) -> dict:
-    with (template_dir / "run_manifest.json").open("r", encoding="utf-8") as handle:
+    manifest_path = find_manifest_path(template_dir)
+    if manifest_path is None:
+        raise FileNotFoundError(f"template manifest not found in {template_dir}")
+    with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
     manifest["run_id"] = run_id
     manifest["created_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -31,6 +35,8 @@ def capture_serial(run_dir: Path, template_dir: Path, run_id: str) -> int:
     if run_dir.exists():
         raise FileExistsError(f"run directory already exists: {run_dir}")
     run_dir.mkdir(parents=True)
+    in_progress = run_dir / CAPTURE_IN_PROGRESS_FLAG
+    in_progress.touch()
 
     manifest = _load_template(template_dir, run_id)
     if (template_dir / "README.md").exists():
@@ -63,6 +69,7 @@ def capture_serial(run_dir: Path, template_dir: Path, run_id: str) -> int:
         for handle in handles.values():
             handle.close()
 
+    in_progress.unlink(missing_ok=True)
     return 0
 
 

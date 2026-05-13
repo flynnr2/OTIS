@@ -10,8 +10,14 @@ import math
 import sys
 
 from .contracts import CsvValidationContext, validate_csv
-from .run_loader import RunManifest, load_manifest
-from .validate_run import _validate_count_sanity, _validate_manifest, _validate_pps_cadence
+from .run_loader import SW1_LIMITATION_TEXT, RunManifest, inspect_run_state, load_manifest
+from .validate_run import (
+    _manifest_warnings,
+    _run_state_warnings,
+    _validate_count_sanity,
+    _validate_manifest,
+    _validate_pps_cadence,
+)
 
 
 RAW_CONTRACT = "raw_events_v1"
@@ -23,6 +29,7 @@ HEALTH_CONTRACT = "health_v1"
 class CsvReadResult:
     path: Path
     contract: str
+    optional: bool
     fieldnames: tuple[str, ...]
     rows: tuple[dict[str, str], ...]
     malformed_rows: tuple[str, ...]
@@ -33,9 +40,9 @@ class CsvReadResult:
         return len(self.rows)
 
 
-def _read_csv(path: Path, contract: str) -> CsvReadResult:
+def _read_csv(path: Path, contract: str, optional: bool = False) -> CsvReadResult:
     if not path.exists():
-        return CsvReadResult(path=path, contract=contract, fieldnames=(), rows=(), malformed_rows=(), exists=False)
+        return CsvReadResult(path=path, contract=contract, optional=optional, fieldnames=(), rows=(), malformed_rows=(), exists=False)
 
     malformed_rows: list[str] = []
     rows: list[dict[str, str]] = []
@@ -50,6 +57,7 @@ def _read_csv(path: Path, contract: str) -> CsvReadResult:
     return CsvReadResult(
         path=path,
         contract=contract,
+        optional=optional,
         fieldnames=fieldnames,
         rows=tuple(rows),
         malformed_rows=tuple(malformed_rows),
@@ -124,9 +132,13 @@ def _validation_findings(
     manifest: RunManifest,
     reads: list[CsvReadResult],
     nominal_hz_by_domain: dict[str, float],
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     findings: list[str] = _validate_manifest(manifest.root, manifest)
+    warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(manifest.root, manifest)
     for read in reads:
+        if read.optional and not read.exists:
+            warnings.append(f"{read.path.relative_to(manifest.root)}: optional expected artifact is missing")
+            continue
         context = CsvValidationContext(
             contract=read.contract,
             known_channels=manifest.known_channels,
@@ -135,11 +147,15 @@ def _validation_findings(
         )
         result = validate_csv(read.path, context)
         findings.extend(f"{read.path.relative_to(manifest.root)}: {error}" for error in result.errors)
+        warnings.extend(f"{read.path.relative_to(manifest.root)}: {warning}" for warning in result.warnings)
     raw_rows = [row for read in reads if read.contract == RAW_CONTRACT for row in read.rows]
     count_rows = [row for read in reads if read.contract == COUNT_CONTRACT for row in read.rows]
     findings.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
     findings.extend(_validate_count_sanity(count_rows, manifest.is_template))
-    return findings
+    for artifact in manifest.expected_artifacts:
+        if artifact and not (manifest.root / artifact).exists():
+            warnings.append(f"{artifact}: expected artifact is missing")
+    return findings, warnings
 
 
 def _monotonic(values: list[int], strict: bool = False) -> bool:
@@ -355,20 +371,67 @@ def _summarize_health(reads: list[CsvReadResult]) -> tuple[dict, list[str]]:
 
 
 def build_summary(run_dir: Path) -> dict:
-    manifest = load_manifest(run_dir)
+    try:
+        manifest = load_manifest(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        state = inspect_run_state(run_dir)
+        return {
+            "run_identity": {
+                "run_id": run_dir.name,
+                "manifest_loaded": False,
+                "manifest_error": str(exc),
+                "stage": None,
+                "h_phase": None,
+                "capture_mode": None,
+                "bringup_mode": None,
+                "template": False,
+                "board": None,
+                "firmware_name": None,
+                "firmware_version": None,
+                "firmware_git_commit": None,
+                "host_tool_version": None,
+                "host_git_commit": None,
+                "profile": None,
+                "started_at_utc": None,
+                "ended_at_utc": None,
+                "domains": [],
+                "channels": [],
+                "known_limitations": [],
+            },
+            "run_state": {
+                "capture_in_progress": state.capture_in_progress,
+                "complete": state.complete,
+            },
+            "artifact_inventory": [],
+            "row_counts": {},
+            "raw_event_summary": {"row_count": 0},
+            "reference_pps_summary": {"edge_count": 0, "domains": {}},
+            "count_observation_summary": {"row_count": 0},
+            "health_status_summary": {"row_count": 0},
+            "validation_findings": [str(exc)],
+            "validation_warnings": [],
+            "anomalies": [],
+            "development_usefulness": {
+                "keep_as_fixture": False,
+                "reason": "not fixture-ready: manifest could not be loaded",
+            },
+        }
+
     nominal_hz_by_domain = _domain_hz(manifest)
+    state = inspect_run_state(run_dir)
     manifest_files = []
     reads: list[CsvReadResult] = []
     for entry in manifest.files:
         rel_path = str(entry.get("path", ""))
         contract = str(entry.get("contract", ""))
         path = run_dir / rel_path
-        read = _read_csv(path, contract)
+        read = _read_csv(path, contract, bool(entry.get("optional", False)))
         reads.append(read)
         manifest_files.append(
             {
                 "path": rel_path,
                 "contract": contract,
+                "optional": bool(entry.get("optional", False)),
                 "present": read.exists,
                 "row_count": read.row_count,
                 "headers": list(read.fieldnames),
@@ -379,7 +442,7 @@ def build_summary(run_dir: Path) -> dict:
     for read in reads:
         reads_by_contract[read.contract].append(read)
 
-    validation_findings = _validation_findings(manifest, reads, nominal_hz_by_domain)
+    validation_findings, validation_warnings = _validation_findings(manifest, reads, nominal_hz_by_domain)
     malformed = [message for read in reads for message in read.malformed_rows]
     raw_summary, raw_anomalies = _summarize_raw(reads_by_contract.get(RAW_CONTRACT, []), nominal_hz_by_domain)
     ref_summary, ref_anomalies = _summarize_reference(reads_by_contract.get(RAW_CONTRACT, []), nominal_hz_by_domain)
@@ -387,18 +450,34 @@ def build_summary(run_dir: Path) -> dict:
     health_summary, health_anomalies = _summarize_health(reads_by_contract.get(HEALTH_CONTRACT, []))
     anomalies = malformed + raw_anomalies + ref_anomalies + count_anomalies + health_anomalies
 
-    missing_files = [file_entry["path"] for file_entry in manifest_files if not file_entry["present"]]
+    missing_files = [file_entry["path"] for file_entry in manifest_files if not file_entry["present"] and not file_entry["optional"]]
     useful = not missing_files and not validation_findings and (raw_summary["row_count"] > 0 or manifest.is_template)
     return {
         "run_identity": {
             "run_id": manifest.run_id,
+            "manifest_loaded": True,
+            "manifest_path": str(manifest.path.relative_to(run_dir)),
+            "stage": manifest.stage,
+            "h_phase": manifest.h_phase,
+            "capture_mode": manifest.capture_mode,
             "bringup_mode": manifest.bringup_mode,
             "template": manifest.is_template,
+            "board": manifest.board,
+            "firmware_name": manifest.firmware_name,
+            "firmware_version": manifest.firmware_version,
+            "firmware_git_commit": manifest.firmware_git_commit,
+            "host_tool_version": manifest.host_tool_version,
+            "host_git_commit": manifest.host_git_commit,
             "profile": manifest.data.get("profile"),
             "started_at_utc": manifest.data.get("started_at_utc") or manifest.data.get("created_utc"),
             "ended_at_utc": manifest.data.get("ended_at_utc"),
             "domains": manifest.data.get("domains", []),
             "channels": manifest.data.get("channels", []),
+            "known_limitations": manifest.known_limitations,
+        },
+        "run_state": {
+            "capture_in_progress": state.capture_in_progress,
+            "complete": state.complete,
         },
         "artifact_inventory": manifest_files,
         "row_counts": {
@@ -410,6 +489,7 @@ def build_summary(run_dir: Path) -> dict:
         "count_observation_summary": count_summary,
         "health_status_summary": health_summary,
         "validation_findings": validation_findings,
+        "validation_warnings": validation_warnings,
         "anomalies": anomalies,
         "development_usefulness": {
             "keep_as_fixture": useful,
@@ -437,13 +517,40 @@ def render_report(run_dir: Path) -> str:
         lines,
         {
             "run_id": identity["run_id"],
+            "manifest_loaded": identity["manifest_loaded"],
+            "stage": identity["stage"],
+            "h_phase": identity["h_phase"],
+            "capture_mode": identity["capture_mode"],
             "bringup_mode": identity["bringup_mode"],
             "template": identity["template"],
+            "board": identity["board"],
+            "firmware_name": identity["firmware_name"],
+            "firmware_version": identity["firmware_version"],
+            "firmware_git_commit": identity["firmware_git_commit"],
+            "host_tool_version": identity["host_tool_version"],
+            "host_git_commit": identity["host_git_commit"],
             "profile": identity["profile"],
             "started_at_utc": identity["started_at_utc"],
             "ended_at_utc": identity["ended_at_utc"],
         },
     )
+    if not identity["manifest_loaded"]:
+        lines.append(f"- manifest_error: {identity['manifest_error']}")
+
+    lines.extend(["", "## Run State"])
+    _append_key_values(
+        lines,
+        {
+            "capture_in_progress.flag": summary["run_state"]["capture_in_progress"],
+            "COMPLETE": summary["run_state"]["complete"],
+        },
+    )
+
+    lines.extend(["", "## SW1 Boundary"])
+    lines.append(f"- {SW1_LIMITATION_TEXT}")
+    limitations = identity.get("known_limitations") or []
+    if limitations:
+        lines.extend(f"- manifest: {limitation}" for limitation in limitations)
 
     lines.extend(["", "## Artifact Inventory"])
     for file_entry in summary["artifact_inventory"]:
@@ -539,6 +646,12 @@ def render_report(run_dir: Path) -> str:
     lines.extend(["", "## Validation Findings"])
     if summary["validation_findings"]:
         lines.extend(f"- {finding}" for finding in summary["validation_findings"])
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Validation Warnings"])
+    if summary["validation_warnings"]:
+        lines.extend(f"- {warning}" for warning in summary["validation_warnings"])
     else:
         lines.append("- none")
 

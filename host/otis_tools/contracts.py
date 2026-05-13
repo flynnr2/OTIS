@@ -96,6 +96,7 @@ class CsvValidationResult:
     path: Path
     row_count: int
     errors: tuple[str, ...]
+    warnings: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -210,6 +211,7 @@ def _check_health(row: dict[str, str], row_number: int, errors: list[str]) -> No
 
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
+    warnings: list[str] = []
     row_count = 0
     previous_seq: int | None = None
     previous_timestamps: dict[str, int] = {}
@@ -252,7 +254,10 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
 
-    return CsvValidationResult(path=path, row_count=row_count, errors=tuple(errors))
+    if row_count == 0:
+        warnings.append("CSV has headers but no data rows")
+
+    return CsvValidationResult(path=path, row_count=row_count, errors=tuple(errors), warnings=tuple(warnings))
 
 
 def validate_csv_header(path: Path, expected_fields: list[str]) -> CsvValidationResult:

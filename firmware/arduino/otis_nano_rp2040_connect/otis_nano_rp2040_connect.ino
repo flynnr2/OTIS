@@ -135,6 +135,14 @@ const char *bringup_mode_name(void) {
 #endif
 }
 
+const char *tcxo_counter_backend_name(void) {
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
+  return "rp2040_fc0_gpin0";
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
+  return "gpio_irq_divided_only";
+#endif
+}
+
 void emit_status(const char *component, const char *key, const char *value,
                  const char *severity, uint32_t flags) {
   otis_emit_health(status_seq++, capture_ticks_now(), OTIS_DOMAIN_RP2040_TIMER0,
@@ -216,12 +224,41 @@ void drain_capture_ring(void) {
 void emit_common_boot_status(void) {
   emit_status("system", "boot", "true", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("protocol", "schema_version", OTIS_SCHEMA_VERSION_V1,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "name", OTIS_FIRMWARE_NAME, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "version", OTIS_FIRMWARE_VERSION, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "git_commit", OTIS_FIRMWARE_GIT_COMMIT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "mode", bringup_mode_name(), OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("capture", "mode", OTIS_CAPTURE_MODE, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("capture", "timestamp_latch", "irq_micros_reconstructed",
+              OTIS_SEVERITY_WARN, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status("capture", "limitation",
+              "bench_validation_not_final_pio_dma_metrology",
+              OTIS_SEVERITY_WARN, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("capture", "nominal_capture_clock_hz",
+                  OTIS_NOMINAL_CAPTURE_CLOCK_HZ, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("reference", "nominal_pps_hz", OTIS_NOMINAL_PPS_HZ,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("reference", "nominal_tcxo_hz", OTIS_NOMINAL_TCXO_HZ,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "arduino_core", OTIS_TARGET_ARDUINO_CORE,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_rp2040_boot_diag",
+                  OTIS_ENABLE_RP2040_BOOT_DIAG, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_status_led", OTIS_ENABLE_STATUS_LED,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "tcxo_counter_backend", tcxo_counter_backend_name(),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
 void emit_h0_pin_status(void) {

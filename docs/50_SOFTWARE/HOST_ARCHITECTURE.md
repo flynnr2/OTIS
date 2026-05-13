@@ -133,17 +133,23 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
 
 - `python3 -m host.otis_tools.capture_serial` reads firmware serial CSV from
   stdin and splits `EVT`/`REF`, `CNT`, and `STS` rows into a run directory based
-  on a template manifest.
+  on a template manifest. It creates `capture_in_progress.flag` while capture is
+  active and removes it after stdin closes cleanly.
 - `python3 -m host.otis_tools.validate_run` checks manifest/profile consistency,
   known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
   required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO
-  count sanity.
+  count sanity. It warns for in-progress captures, missing `COMPLETE` markers,
+  missing optional artifacts, empty CSVs, and unpopulated provenance fields.
 - `python3 -m host.otis_tools.report_run` renders a Markdown A0 replay report
-  covering artifact inventory, row counts, raw-event monotonicity, PPS/reference
-  interval sanity, count-observation frequency estimates when units are declared,
-  health/status counters, validation findings, anomalies, and fixture usefulness.
+  covering run identity, SW1 capture limitations, completion state, artifact
+  inventory, row counts, raw-event monotonicity, PPS/reference interval sanity,
+  count-observation frequency estimates when units are declared, health/status
+  counters, validation findings, warnings, anomalies, and fixture usefulness.
   Use `--output` to write the Markdown report and `--json` to write the same
   high-level summary as machine-readable JSON.
+
+SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
+validation and protocol bring-up, not final PIO/DMA metrology.
 
 These tools do not infer PPS quality, oscillator frequency error, lock state,
 discipline state, steering quality, Allan deviation, or other SW2/A-stage

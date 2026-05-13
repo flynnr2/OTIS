@@ -43,7 +43,7 @@
   "domains": [
     {
       "name": "rp2040_timer0",
-      "nominal_hz": 1000000
+      "nominal_hz": 16000000
     },
     {
       "name": "h0_tcxo_16mhz",
@@ -70,5 +70,20 @@
   ],
   "known_limitations": [
     "SW1 timestamps may be IRQ/micros-derived rather than final PIO/DMA hardware timestamps."
-  ]
+  ],
+  "expected_artifacts": [
+    "csv/evt.csv",
+    "csv/ref.csv",
+    "csv/cnt.csv",
+    "csv/sts.csv"
+  ],
+  "nominal_frequencies_hz": {
+    "tcxo": 16000000,
+    "pps": 1
+  },
+  "pin_mapping": {
+    "ch0_generic_event": "D10",
+    "ch1_pps_reference": "D14",
+    "ch2_osc_observation": "D8_GPIO20_GPIN0"
+  }
 }

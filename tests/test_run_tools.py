@@ -46,6 +46,10 @@ def test_load_manifest() -> None:
     assert manifest.run_id == "h0_pps_tcxo_synthetic_001"
     assert manifest.known_channels == frozenset({0, 1, 2})
     assert "rp2040_timer0" in manifest.known_domains
+    assert manifest.stage == "SW1"
+    assert manifest.h_phase == "H0"
+    assert manifest.capture_mode == "synthetic_usb"
+    assert manifest.firmware_version == "SW1"
 
 
 def test_validate_example_run() -> None:
@@ -109,6 +113,7 @@ def test_capture_serial_splits_records(tmp_path: Path, monkeypatch) -> None:
 
     assert capture_serial(run_dir, Path("examples/h0_gps_pps"), "captured_gps_pps") == 0
     assert validate_run(run_dir) == 0
+    assert not (run_dir / "capture_in_progress.flag").exists()
 
 
 def test_render_report_mentions_contracts() -> None:
@@ -117,7 +122,11 @@ def test_render_report_mentions_contracts() -> None:
     assert "count_observations_v1" in report
     assert "health_v1" in report
     assert "# OTIS Run Report" in report
+    assert "stage: SW1" in report
+    assert "capture_mode: synthetic_usb" in report
+    assert "SW1 capture mode: irq_reconstructed" in report
     assert "## Validation Findings" in report
+    assert "## Validation Warnings" in report
     assert "## Development Usefulness" in report
 
 
@@ -127,6 +136,75 @@ def test_render_report_handles_missing_optional_count_file() -> None:
     assert "## Count Observation Summary" in report
     assert "- not present" in report
     assert "keep_as_fixture: True" in report
+
+
+def test_validate_run_warns_for_in_progress_and_missing_complete(tmp_path: Path, capsys) -> None:
+    run_dir = _copy_example(tmp_path)
+    (run_dir / "capture_in_progress.flag").touch()
+
+    assert validate_run(run_dir) == 0
+    captured = capsys.readouterr()
+
+    assert "capture_in_progress.flag exists" in captured.err
+    assert "COMPLETE marker is missing" in captured.err
+
+
+def test_validate_run_accepts_complete_marker_without_warning(tmp_path: Path, capsys) -> None:
+    run_dir = _copy_example(tmp_path)
+    (run_dir / "COMPLETE").touch()
+
+    assert validate_run(run_dir) == 0
+    captured = capsys.readouterr()
+
+    assert "COMPLETE marker is missing" not in captured.err
+
+
+def test_validate_run_warns_for_missing_optional_artifact(tmp_path: Path, capsys) -> None:
+    run_dir = _copy_example(tmp_path)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    manifest["files"].append({"path": "reports/extra.json", "contract": "health_v1", "optional": True})
+    manifest["expected_artifacts"].append("reports/extra.json")
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert validate_run(run_dir) == 0
+    captured = capsys.readouterr()
+
+    assert "optional expected artifact is missing" in captured.err
+
+
+def test_validate_run_reports_missing_manifest(tmp_path: Path, capsys) -> None:
+    run_dir = tmp_path / "no_manifest"
+    run_dir.mkdir()
+
+    assert validate_run(run_dir) == 1
+    captured = capsys.readouterr()
+
+    assert "missing manifest" in captured.err
+
+
+def test_report_run_reports_malformed_manifest(tmp_path: Path) -> None:
+    run_dir = tmp_path / "bad_manifest"
+    run_dir.mkdir()
+    (run_dir / "run_manifest.json").write_text("{not json}\n", encoding="utf-8")
+
+    report = render_report(run_dir)
+
+    assert "manifest_loaded: False" in report
+    assert "manifest_error:" in report
+    assert "not fixture-ready: manifest could not be loaded" in report
+
+
+def test_validate_run_warns_for_empty_csv(tmp_path: Path, capsys) -> None:
+    run_dir = _copy_example(tmp_path)
+    (run_dir / "raw_events.csv").write_text(
+        "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags\n",
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+    captured = capsys.readouterr()
+
+    assert "CSV has headers but no data rows" in captured.err
 
 
 def test_render_report_summarizes_monotonicity_failure(tmp_path: Path) -> None:
