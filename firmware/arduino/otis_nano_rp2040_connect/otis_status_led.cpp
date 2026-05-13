@@ -10,10 +10,8 @@
 #define OTIS_STATUS_LED_HAS_BUILTIN_LED 0
 #endif
 
-// The Nano RP2040 Connect RGB LED is part of the NINA WiFi module. There appear
-// to be compatibility issues between the Earle Philhower arduino-pico RP2040
-// core and WiFiNINA/Arduino_SpiNINA libraries, so OTIS intentionally uses only
-// the plain RP2040-accessible LED_BUILTIN status path for now.
+// OTIS intentionally uses only the plain RP2040-accessible LED_BUILTIN status
+// path for now.
 
 typedef enum OtisStatusLedPattern {
   OTIS_STATUS_LED_OFF = 0,
@@ -60,7 +58,7 @@ static uint8_t otis_status_led_priority(OtisSystemState state) {
     case OTIS_SYSTEM_STATE_UNKNOWN:
     case OTIS_SYSTEM_STATE_BOOT_STARTING:
     case OTIS_SYSTEM_STATE_VALID_CAPTURE_HEARTBEAT:
-    case OTIS_SYSTEM_STATE_HOST_API_WIFI_ACTIVITY:
+    case OTIS_SYSTEM_STATE_HOST_API_ACTIVITY:
     default:
       return 0u;
   }
@@ -158,7 +156,7 @@ void otis_status_led_set(OtisSystemState state) {
       otis_status_led_set_base(state, otis_status_led_color(true, false, true),
                                OTIS_STATUS_LED_SOLID);
       break;
-    case OTIS_SYSTEM_STATE_HOST_API_WIFI_ACTIVITY:
+    case OTIS_SYSTEM_STATE_HOST_API_ACTIVITY:
       if (otis_status_led_activity_allowed()) {
         otis_status_led_overlay_color = otis_status_led_color(false, true, true);
         otis_status_led_overlay_until_ms = millis() + 80u;
