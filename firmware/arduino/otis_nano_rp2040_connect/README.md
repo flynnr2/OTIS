@@ -44,13 +44,9 @@ backend is only for deliberately divided, interrupt-safe test signals.
 
 Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
-does not require RGB LED, NINA, or WiFi LED libraries.
+does not require any additional LED libraries.
 When enabled, this smoke sketch uses the plain RP2040-accessible `LED_BUILTIN`
 for a brief boot indication and later USB/config/debug status indication.
-The Nano RP2040 Connect also has an RGB LED, but it is part of the NINA WiFi
-module. There appear to be compatibility issues between the Earle Philhower
-`arduino-pico` RP2040 core and the WiFiNINA/Arduino_SpiNINA libraries, so OTIS
-does not currently drive the NINA RGB LED.
 The startup self-test is enabled by default whenever status LED support is
 enabled. It blinks `LED_BUILTIN`. Build with
 `OTIS_ENABLE_STATUS_LED_BOOT_TEST=0` to skip the self-test while keeping later
@@ -129,12 +125,4 @@ arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
 
 python3 -m host.otis_tools.validate_run runs/h0_gps_pps_001
 python3 -m host.otis_tools.report_run runs/h0_gps_pps_001
-```
-
-To validate the RGB LED path, compile with both LED macros enabled:
-
-```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_STATUS_LED=1 -DOTIS_STATUS_LED_USE_NINA_RGB=1" \
-  firmware/arduino/otis_nano_rp2040_connect
 ```
