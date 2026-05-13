@@ -55,6 +55,11 @@ timing capture channels and slower contextual measurements.
 
 ## Stage 2 — Basic GPSDO / Controlled Oscillator
 
+This software stage depends on prior H1 hardware bring-up. H1 should first prove
+manual open-loop oscillator observation and DAC steering limits; Stage 2 should
+not be used as a reason to add DAC control-loop firmware before that evidence
+exists.
+
 Implement:
 - DAC steering;
 - discipline estimation;

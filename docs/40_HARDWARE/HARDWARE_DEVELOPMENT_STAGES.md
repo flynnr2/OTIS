@@ -61,6 +61,11 @@ Expected result:
 
 ## Stage 1 - First Steerable Oscillator / GPSDO Stage
 
+Current H/SW staging splits this into `H1` hardware preparation followed later
+by `SW2` control-loop firmware. See `H1_STEERABLE_OSCILLATOR_PREP.md` for the
+open-loop bring-up criteria that should be met before closed-loop steering work
+starts.
+
 Representative hardware:
 
 ```text
