@@ -33,12 +33,14 @@ The default is `SW1_SYNTHETIC_USB`.
 | `SW1_SYNTHETIC_USB` | USB serial, framing, parser, and validation sanity | synthetic `STS`, `EVT`, `REF`, `CNT` |
 | `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
 | `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
-| `SW1_TCXO_OBSERVE` | count a conditioned/divided TCXO observation input, with PPS capture if wired | gated `CNT` on `CH2`, `REF` on `CH1` |
+| `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1` |
 
 The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
 timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
-yet the later PIO/DMA hardware-latched path. The TCXO mode emits count windows
-instead of pretending that every 16 MHz edge is a host-useful raw event.
+yet the later PIO/DMA hardware-latched path. TCXO observe uses the RP2040
+frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
+GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
+backend is only for deliberately divided, interrupt-safe test signals.
 
 Status LED support is compiled out by default. Build with
 `OTIS_ENABLE_STATUS_LED=1` only for local bring-up visibility; the disabled path
