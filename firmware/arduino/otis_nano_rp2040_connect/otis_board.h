@@ -10,6 +10,8 @@
 #define OTIS_TARGET_ARDUINO_CORE "earlephilhower_arduino_pico"
 #define OTIS_TARGET_BOARD "arduino_nano_rp2040_connect"
 
+#define OTIS_GPIO_OSC_OBSERVATION 20u
+
 enum OtisNanoRp2040Pins : uint8_t {
   OTIS_PIN_GENERIC_EVENT = D10,
   OTIS_PIN_PPS_REFERENCE = D14,

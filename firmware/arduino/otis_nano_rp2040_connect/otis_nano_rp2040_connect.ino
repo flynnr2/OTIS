@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <hardware/clocks.h>
+#include <hardware/gpio.h>
 
 #include "otis_board.h"
 #include "otis_boot_diag.h"
@@ -20,6 +22,7 @@ constexpr uint8_t kCaptureRingSize = 32;
 constexpr uint32_t kStatusPeriodMs = 1000;
 constexpr uint32_t kLoopbackTogglePeriodMs = 250;
 constexpr uint32_t kTcxoGatePeriodUs = 1000000;
+constexpr uint32_t kTcxoMeasurePeriodMs = 1000;
 
 volatile CapturedEdge capture_ring[kCaptureRingSize];
 volatile uint8_t capture_head = 0;
@@ -33,6 +36,7 @@ uint32_t count_seq = 1;
 uint32_t emitted_event_count = 0;
 uint32_t last_status_ms = 0;
 uint32_t last_loopback_toggle_ms = 0;
+uint32_t last_tcxo_measure_ms = 0;
 uint32_t tcxo_gate_open_us = 0;
 bool loopback_state = false;
 
@@ -213,12 +217,21 @@ void setup_mode(void) {
                   handle_pps_reference_edge, RISING);
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
-  pinMode(OTIS_PIN_OSC_OBSERVATION, INPUT_PULLDOWN);
-  tcxo_gate_open_us = micros();
   attachInterrupt(digitalPinToInterrupt(OTIS_PIN_PPS_REFERENCE),
                   handle_pps_reference_edge, RISING);
+
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
+  gpio_set_function(OTIS_GPIO_OSC_OBSERVATION, GPIO_FUNC_GPCK);
+  emit_status("capture", "tcxo_counter_backend", "rp2040_fc0_gpin0",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
+  pinMode(OTIS_PIN_OSC_OBSERVATION, INPUT_PULLDOWN);
+  tcxo_gate_open_us = micros();
+  emit_status("capture", "tcxo_counter_backend", "gpio_irq_divided_only",
+              OTIS_SEVERITY_WARN, OTIS_FLAG_RATE_TOO_HIGH);
   attachInterrupt(digitalPinToInterrupt(OTIS_PIN_OSC_OBSERVATION),
                   handle_tcxo_observation_edge, RISING);
+#endif
 #endif
 }
 
@@ -235,6 +248,29 @@ void service_loopback_output(void) {
 
 void service_tcxo_gate(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
+  uint32_t now_ms = millis();
+  if ((uint32_t)(now_ms - last_tcxo_measure_ms) < kTcxoMeasurePeriodMs) {
+    return;
+  }
+  last_tcxo_measure_ms = now_ms;
+
+  uint64_t gate_open_ticks = capture_ticks_now();
+  uint32_t measured_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLKSRC_GPIN0);
+  uint64_t gate_close_ticks = capture_ticks_now();
+  uint64_t elapsed_us = (gate_close_ticks - gate_open_ticks) / 16ull;
+  uint64_t counted_edges = ((uint64_t)measured_khz * elapsed_us) / 1000ull;
+  uint32_t flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  if (measured_khz == 0u) {
+    flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+  }
+
+  otis_emit_count_observation(count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
+                              gate_open_ticks, gate_close_ticks,
+                              OTIS_DOMAIN_RP2040_TIMER0, counted_edges,
+                              OTIS_EDGE_RISING, OTIS_DOMAIN_H0_TCXO_16MHZ,
+                              flags);
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   uint32_t now_us = micros();
   if ((uint32_t)(now_us - tcxo_gate_open_us) < kTcxoGatePeriodUs) {
     return;
@@ -255,11 +291,13 @@ void service_tcxo_gate(void) {
                               OTIS_EDGE_RISING, OTIS_DOMAIN_H0_TCXO_16MHZ,
                               flags);
 #endif
+#endif
 }
 
 }  // namespace
 
 void setup() {
+  delay(1500);  // boring but useful during bring-up
   otis_status_led_begin();
 
   Serial.begin(115200);
