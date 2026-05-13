@@ -42,6 +42,8 @@ class RunManifest:
 
 def load_manifest(run_dir: Path) -> RunManifest:
     manifest_path = run_dir / "run_manifest.json"
+    if not manifest_path.exists():
+        manifest_path = run_dir / "manifest.json"
     with manifest_path.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
 

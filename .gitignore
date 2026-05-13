@@ -42,6 +42,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Runs keep selected bench artifacts and templates under version control.
+!runs/**/*.env
+!runs/**/*.log
+
 #######################################
 # Arduino / local build outputs
 # (only matters if you configure builds to land in the repo)
