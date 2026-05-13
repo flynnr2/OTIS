@@ -1,0 +1,1 @@
+Host and firmware git commit placeholder.
