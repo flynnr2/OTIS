@@ -5,10 +5,11 @@ import io
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 from host.otis_tools.capture_serial import capture_serial
-from host.otis_tools.report_run import render_report
+from host.otis_tools.report_run import build_summary, render_report
 from host.otis_tools.run_loader import load_manifest
 from host.otis_tools.validate_run import validate_run
 
@@ -115,6 +116,75 @@ def test_render_report_mentions_contracts() -> None:
     assert "raw_events_v1" in report
     assert "count_observations_v1" in report
     assert "health_v1" in report
+    assert "# OTIS Run Report" in report
+    assert "## Validation Findings" in report
+    assert "## Development Usefulness" in report
+
+
+def test_render_report_handles_missing_optional_count_file() -> None:
+    report = render_report(Path("examples/h0_gps_pps"))
+
+    assert "## Count Observation Summary" in report
+    assert "- not present" in report
+    assert "keep_as_fixture: True" in report
+
+
+def test_render_report_summarizes_monotonicity_failure(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    _rewrite_csv_cell(run_dir / "raw_events.csv", 1, "timestamp_ticks", "1")
+
+    summary = build_summary(run_dir)
+    report = render_report(run_dir)
+
+    assert summary["raw_event_summary"]["timestamp_monotonic"] is False
+    assert "timestamp_ticks are not monotonic" in report
+    assert "keep_as_fixture: False" in report
+
+
+def test_report_command_handles_malformed_csv_without_fatal_exit(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    with (run_dir / "raw_events.csv").open("a", encoding="utf-8") as handle:
+        handle.write("EVT,1,1004,0,R,1632000100,rp2040_timer0,0,extra\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "host.otis_tools.report_run", str(run_dir)],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "malformed row has too many columns" in result.stdout
+    assert "row 5 has too many columns" in result.stdout
+
+
+def test_report_command_writes_markdown_and_json(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    report_path = tmp_path / "summary.md"
+    json_path = tmp_path / "summary.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "host.otis_tools.report_run",
+            str(run_dir),
+            "--output",
+            str(report_path),
+            "--json",
+            str(json_path),
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "# OTIS Run Report" in report_path.read_text(encoding="utf-8")
+    summary = json.loads(json_path.read_text(encoding="utf-8"))
+    assert summary["row_counts"]["raw_events_v1"] == 4
 
 
 def test_validate_run_rejects_bad_channel(tmp_path: Path) -> None:
