@@ -125,6 +125,25 @@ This preserves:
 - observability;
 - analysis flexibility.
 
+For unattended hardware runs the host serial path has a single owner:
+
+```text
+USB serial device
+        ↓
+host.otis_tools.capture_device
+        ↓
+raw/serial.log
+        ↓
+manifest-driven CSV splitter
+        ↓
+validate_run / report_run
+```
+
+`capture_device` is the only process that opens `/dev/cu.usbmodem*`. Other host
+tools operate on the raw log, CSV files, manifest, and reports emitted into the
+run directory. This preserves forensic ordering and avoids competing serial
+readers.
+
 ---
 
 # SW1 Bring-Up Host Path
@@ -135,6 +154,11 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
   stdin and splits `EVT`/`REF`, `CNT`, and `STS` rows into a run directory based
   on a template manifest. It creates `capture_in_progress.flag` while capture is
   active and removes it after stdin closes cleanly.
+- `python3 -m host.otis_tools.capture_device` owns a USB serial device for
+  unattended runs, appends raw bytes and host reconnect markers to
+  `raw/serial.log`, frames complete lines, and feeds the same CSV splitter used
+  by `capture_serial`. It reconnects after USB/RP2040 resets with bounded
+  buffering and drops only incomplete lines with explicit forensic markers.
 - `python3 -m host.otis_tools.validate_run` checks manifest/profile consistency,
   known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
   required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO

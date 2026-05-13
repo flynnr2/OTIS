@@ -46,6 +46,64 @@ backend is only for deliberately divided, interrupt-safe test signals.
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.
 
+## SW1.5a PIO FIFO capture
+
+SW1.5a adds an opt-in PIO FIFO backend for the live edge-capture modes. IRQ
+capture remains the default rollback path:
+
+```cpp
+#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_IRQ
+```
+
+Enable the experimental PIO path with:
+
+```cpp
+#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_PIO_FIFO
+```
+
+or with a CLI override:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO" \
+  firmware/arduino/otis_nano_rp2040_connect
+```
+
+The SW1.5a PIO backend uses one PIO0 state machine and observes rising edges
+only. It pushes compact edge words into the PIO RX FIFO; firmware drains the
+FIFO in `loop()` and emits the same `EVT` or `REF` records used by the IRQ
+backend. The emitted timestamp is attached by firmware when the FIFO is drained,
+so metadata reports `capture_mode=pio_fifo_cpu_timestamped` and
+`timestamp_latch=pio_edge_detect_cpu_timestamped`. This is not final
+hardware-latched timestamping.
+
+PIO input selection follows the selected bring-up mode:
+
+| Mode | PIO input | Expected records |
+|---|---|---|
+| `SW1_GPIO_LOOPBACK` | `D10` / GPIO5 / `CH0` | rising-edge `EVT` rows |
+| `SW1_GPS_PPS` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows |
+| `SW1_TCXO_OBSERVE` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus existing `CNT` rows when TCXO counting is configured |
+
+The boot/status stream includes `capture_backend`, `pio_init`, `pio_gpio`,
+`pio_edge`, `pio_fifo_drained_event_count`, `pio_fifo_empty_count`,
+`pio_fifo_overflow_drop_count`, and `pio_fifo_max_drain_batch`. A nonzero
+overflow/drop count means the PIO RX FIFO was not drained fast enough; the count
+is a status indicator, not a precise missing-edge total.
+
+Suggested first bench sequence:
+
+1. GPIO loopback: jumper `D7` to `D10`, build `SW1_GPIO_LOOPBACK` with
+   `OTIS_CAPTURE_BACKEND_PIO_FIFO`, and confirm `EVT` rows and PIO counters.
+2. GPS PPS: wire conditioned GPS PPS to `D14`, build `SW1_GPS_PPS` with the PIO
+   backend, and confirm `REF` rows and host PPS cadence checks.
+3. TCXO/count observation: use `SW1_TCXO_OBSERVE` only for the existing
+   count-observation path; do not feed raw high-rate oscillator edges into the
+   SW1.5a PIO FIFO edge path.
+
+DMA, hardware-latched timestamp transfer, both-edge capture, and higher-rate
+capture fabric work are intentionally deferred to SW1.5b and later.
+
 During the boot banner, firmware emits `STS` provenance rows for schema version,
 firmware name/version/git commit, board target, Arduino core, bring-up mode,
 capture mode, nominal reference frequencies, pin mapping, and compile-time
@@ -159,6 +217,19 @@ arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
 
 python3 -m host.otis_tools.validate_run runs/h0_gps_pps_001
 python3 -m host.otis_tools.report_run runs/h0_gps_pps_001
+```
+
+For a SW1.5a PIO run directory, keep the same host pipeline and set the
+manifest capture mode to `pio_fifo_cpu_timestamped`, for example:
+
+```bash
+python3 -m host.otis_tools.capture_serial \
+  --template examples/h0_gps_pps \
+  --run-dir runs/h0_sw1_5a_pio/gps_pps/run_001 \
+  --run-id h0_sw1_5a_pio_gps_pps_run_001
+
+python3 -m host.otis_tools.validate_run runs/h0_sw1_5a_pio/gps_pps/run_001
+python3 -m host.otis_tools.report_run runs/h0_sw1_5a_pio/gps_pps/run_001
 ```
 
 For committed representative runs, generate the report, remove

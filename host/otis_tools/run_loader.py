@@ -9,9 +9,18 @@ MANIFEST_CANDIDATES = ("run_manifest.json", "manifest.json")
 CAPTURE_IN_PROGRESS_FLAG = "capture_in_progress.flag"
 COMPLETE_MARKER = "COMPLETE"
 SW1_CAPTURE_MODE = "irq_reconstructed"
+SW1_PIO_CAPTURE_MODE = "pio_fifo_cpu_timestamped"
+KNOWN_SW1_CAPTURE_MODES = frozenset(
+    {SW1_CAPTURE_MODE, SW1_PIO_CAPTURE_MODE, "pio_fifo", "synthetic_usb"}
+)
 SW1_LIMITATION_TEXT = (
     "SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench "
     "validation and protocol bring-up, not final PIO/DMA metrology."
+)
+SW1_5A_LIMITATION_TEXT = (
+    "SW1.5a capture mode: pio_fifo_cpu_timestamped. PIO detects rising edges, "
+    "but firmware still attaches timestamps when draining the FIFO; DMA and "
+    "hardware-latched timestamping are deferred."
 )
 
 

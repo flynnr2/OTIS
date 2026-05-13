@@ -85,6 +85,35 @@ inspect plots
 commit small representative runs
 ```
 
+For unattended macOS host-appliance runs, prefer the device-owning daemon:
+
+```bash
+python3 -m host.otis_tools.capture_device \
+  --device /dev/cu.usbmodem101 \
+  --baud 115200 \
+  --run-dir runs/2026-05-13_h0_pps_tcxo_001
+```
+
+It creates and uses this layout:
+
+```text
+runs/2026-05-13_h0_pps_tcxo_001/
+  raw/
+    serial.log
+  csv/
+    raw_events.csv
+    count_observations.csv
+    health.csv
+  reports/
+  run_manifest.json
+```
+
+During capture, no other process should open the serial device. Use
+`validate_run`, `report_run`, and any analysis scripts against files in the run
+directory. Reconnects, malformed UTF-8, dropped partial lines, byte counts, and
+shutdowns are logged explicitly; existing `raw/serial.log` content is never
+truncated.
+
 Use the helper when available:
 
 ```bash
