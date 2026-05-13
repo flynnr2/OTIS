@@ -22,21 +22,33 @@ constexpr uint32_t kResetReasonShift = 8u;
 constexpr uint32_t kResetReasonMask = 0x0000ff00u;
 constexpr uint32_t kWatchdogRebootBit = 1u << 16;
 constexpr uint32_t kWatchdogEnableRebootBit = 1u << 17;
+constexpr uint32_t kFailureCountShift = 18u;
+constexpr uint32_t kFailureCountMask = 0x03fc0000u;
+constexpr uint32_t kSafeModeRequestedBit = 1u << 26;
 
 OtisBootBreadcrumbSnapshot boot_snapshot = {};
 
 uint32_t pack_boot_status(BootFatal fatal, uint32_t reset_reason,
                           bool watchdog_reboot,
-                          bool watchdog_enable_reboot) {
+                          bool watchdog_enable_reboot, uint8_t failure_count,
+                          bool safe_mode_requested) {
   uint32_t packed = otisBootFatalCode(fatal) & kFatalMask;
   packed |= (reset_reason << kResetReasonShift) & kResetReasonMask;
+  packed |= ((uint32_t)failure_count << kFailureCountShift) & kFailureCountMask;
   if (watchdog_reboot) {
     packed |= kWatchdogRebootBit;
   }
   if (watchdog_enable_reboot) {
     packed |= kWatchdogEnableRebootBit;
   }
+  if (safe_mode_requested) {
+    packed |= kSafeModeRequestedBit;
+  }
   return packed;
+}
+
+uint8_t unpack_failure_count(uint32_t packed) {
+  return (uint8_t)((packed & kFailureCountMask) >> kFailureCountShift);
 }
 
 BootPhase unpack_phase(uint32_t value) {
@@ -86,6 +98,14 @@ BootFatal unpack_fatal(uint32_t packed) {
       return BootFatal::TimerInitFailed;
     case 6u:
       return BootFatal::PpsInputInitFailed;
+    case 7u:
+      return BootFatal::ForcedBeforeClocks;
+    case 8u:
+      return BootFatal::ForcedBeforeCapture;
+    case 9u:
+      return BootFatal::ForcedBeforeRunMode;
+    case 10u:
+      return BootFatal::RepeatedBootFailure;
     default:
       return BootFatal::InvalidBootConfig;
   }
@@ -164,6 +184,14 @@ const char *otisBootFatalName(BootFatal fatal) {
       return "TimerInitFailed";
     case BootFatal::PpsInputInitFailed:
       return "PpsInputInitFailed";
+    case BootFatal::ForcedBeforeClocks:
+      return "ForcedBeforeClocks";
+    case BootFatal::ForcedBeforeCapture:
+      return "ForcedBeforeCapture";
+    case BootFatal::ForcedBeforeRunMode:
+      return "ForcedBeforeRunMode";
+    case BootFatal::RepeatedBootFailure:
+      return "RepeatedBootFailure";
     default:
       return "Unknown";
   }
@@ -192,6 +220,11 @@ void otisBootBreadcrumbBegin(BootPhase phase) {
   boot_snapshot.current_reset_reason = watchdog_hw->reason;
   boot_snapshot.current_watchdog_reboot = watchdog_caused_reboot();
   boot_snapshot.current_watchdog_enable_reboot = watchdog_enable_caused_reboot();
+  boot_snapshot.previous_failure_count =
+      previous_valid ? unpack_failure_count(previous_packed) : 0u;
+  boot_snapshot.current_failure_count = boot_snapshot.previous_failure_count;
+  boot_snapshot.safe_mode_requested =
+      boot_snapshot.current_failure_count >= kOtisSafeModeFailureThreshold;
 
   watchdog_hw->scratch[kScratchMagic] = OTIS_BOOT_BREADCRUMB_MAGIC;
   watchdog_hw->scratch[kScratchBootCount] = boot_snapshot.boot_count;
@@ -199,7 +232,9 @@ void otisBootBreadcrumbBegin(BootPhase phase) {
   watchdog_hw->scratch[kScratchPackedStatus] =
       pack_boot_status(BootFatal::None, boot_snapshot.current_reset_reason,
                        boot_snapshot.current_watchdog_reboot,
-                       boot_snapshot.current_watchdog_enable_reboot);
+                       boot_snapshot.current_watchdog_enable_reboot,
+                       boot_snapshot.current_failure_count,
+                       boot_snapshot.safe_mode_requested);
 }
 
 void otisBootBreadcrumbCompletePhase(BootPhase phase) {
@@ -207,15 +242,50 @@ void otisBootBreadcrumbCompletePhase(BootPhase phase) {
 }
 
 void otisBootBreadcrumbSetFatal(BootFatal fatal) {
+  if (boot_snapshot.current_failure_count < 255u) {
+    boot_snapshot.current_failure_count++;
+  }
+  boot_snapshot.safe_mode_requested =
+      boot_snapshot.current_failure_count >= kOtisSafeModeFailureThreshold;
+
   watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(BootPhase::Fatal);
   watchdog_hw->scratch[kScratchPackedStatus] =
       pack_boot_status(fatal, boot_snapshot.current_reset_reason,
                        boot_snapshot.current_watchdog_reboot,
-                       boot_snapshot.current_watchdog_enable_reboot);
+                       boot_snapshot.current_watchdog_enable_reboot,
+                       boot_snapshot.current_failure_count,
+                       boot_snapshot.safe_mode_requested);
+}
+
+void otisBootBreadcrumbSetSafeModeFatal(BootFatal fatal) {
+  boot_snapshot.safe_mode_requested = true;
+  watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(BootPhase::Fatal);
+  watchdog_hw->scratch[kScratchPackedStatus] =
+      pack_boot_status(fatal, boot_snapshot.current_reset_reason,
+                       boot_snapshot.current_watchdog_reboot,
+                       boot_snapshot.current_watchdog_enable_reboot,
+                       boot_snapshot.current_failure_count,
+                       boot_snapshot.safe_mode_requested);
+}
+
+void otisBootBreadcrumbMarkRunMode(void) {
+  boot_snapshot.current_failure_count = 0u;
+  boot_snapshot.safe_mode_requested = false;
+  watchdog_hw->scratch[kScratchLastPhase] = otisBootPhaseCode(BootPhase::RunMode);
+  watchdog_hw->scratch[kScratchPackedStatus] =
+      pack_boot_status(BootFatal::None, boot_snapshot.current_reset_reason,
+                       boot_snapshot.current_watchdog_reboot,
+                       boot_snapshot.current_watchdog_enable_reboot,
+                       boot_snapshot.current_failure_count,
+                       boot_snapshot.safe_mode_requested);
 }
 
 const OtisBootBreadcrumbSnapshot &otisBootBreadcrumbSnapshot(void) {
   return boot_snapshot;
+}
+
+bool otisBootSafeModeRequested(void) {
+  return boot_snapshot.safe_mode_requested;
 }
 
 void emitOtisBootSummary(Stream &out, BootPhase current_phase) {
@@ -235,6 +305,10 @@ void emitOtisBootSummary(Stream &out, BootPhase current_phase) {
   out.print(boot_snapshot.current_watchdog_reboot ? 1 : 0);
   out.print(",watchdog_enable=");
   out.print(boot_snapshot.current_watchdog_enable_reboot ? 1 : 0);
+  out.print(",failure_count=");
+  out.print(boot_snapshot.current_failure_count);
+  out.print(",safe_mode=");
+  out.print(boot_snapshot.safe_mode_requested ? 1 : 0);
   print_boot_field_hex(out, "prev_reset_reason",
                        boot_snapshot.previous_reset_reason);
   out.println();
@@ -245,13 +319,27 @@ void emitOtisBootWarnSerialAbsent(Stream &out, uint32_t wait_ms) {
   out.println(wait_ms);
 }
 
+void emitOtisBootWarnSafeMode(Stream &out) {
+  out.print("BOOT_WARN,v=1,key=safe_mode,reason=repeated_boot_failure");
+  out.print(",failure_count=");
+  out.print(boot_snapshot.current_failure_count);
+  out.print(",threshold=");
+  out.print(kOtisSafeModeFailureThreshold);
+  out.print(",prev_phase=");
+  out.print(otisBootPhaseName(boot_snapshot.previous_last_phase));
+  out.print(",prev_fatal=");
+  out.println(otisBootFatalName(boot_snapshot.previous_fatal));
+}
+
 void emitOtisBootFatal(Stream &out, BootFatal fatal, BootPhase phase) {
   out.print("BOOT_FATAL,v=1,fatal=");
   out.print(otisBootFatalName(fatal));
   out.print(",phase=");
   out.print(otisBootPhaseName(phase));
   out.print(",boot_count=");
-  out.println(boot_snapshot.boot_count);
+  out.print(boot_snapshot.boot_count);
+  out.print(",failure_count=");
+  out.println(boot_snapshot.current_failure_count);
 }
 
 #if OTIS_ENABLE_RP2040_BOOT_DIAG

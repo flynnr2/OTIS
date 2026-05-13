@@ -30,8 +30,9 @@ BOOT_WARN,v=1
 BOOT_FATAL,v=1
 ```
 
-`BOOT_FATAL` is reserved for a later safe-mode pass. This pass defines fatal
-codes and persistent storage but does not add safe-mode behavior.
+`BOOT_FATAL` is emitted when a forced-failure test knob halts boot after USB
+serial is available. Earlier forced failures are still recorded in breadcrumbs,
+but may not have serial output because serial startup has not happened yet.
 
 ## Fields
 
@@ -72,12 +73,46 @@ The scratch register convention is:
 | `scratch[0]` | magic: `0x4f544253` (`OTBS`) |
 | `scratch[1]` | boot counter |
 | `scratch[2]` | last completed `BootPhase` numeric code |
-| `scratch[3]` | packed status: fatal code in bits 0-7, reset reason in bits 8-15, watchdog flags in bits 16-17 |
+| `scratch[3]` | packed status: fatal code in bits 0-7, reset reason in bits 8-15, watchdog flags in bits 16-17, failure count in bits 18-25, safe-mode flag in bit 26 |
 
 At reset entry, firmware snapshots the previous scratch contents, increments
 the boot counter, records the current RP2040 watchdog reason bits, clears the
 current fatal code to `None`, and writes `ResetEntry` as the current phase.
 Each successfully completed boot phase then updates `scratch[2]`.
+
+## Safe Mode Policy
+
+A boot is successful only after firmware reaches and completes `RunMode`.
+Successful `RunMode` completion clears the persistent consecutive failure count.
+
+A boot that is deliberately halted before `RunMode` records `BootPhase::Fatal`,
+stores a `BootFatal` reason, and increments the consecutive failure count. On
+the next reset, if the stored count is greater than or equal to
+`OTIS_SAFE_MODE_FAILURE_THRESHOLD`, firmware enters safe mode instead of normal
+capture setup.
+
+The initial safe mode is diagnostics-only:
+
+- bounded USB serial startup is allowed;
+- compact `BOOT` and `BOOT_WARN` diagnostics are allowed;
+- normal capture mode setup is not started;
+- optional services are not started;
+- no safe-mode retry scheduler is implemented.
+
+The forced-failure test knobs are disabled by default:
+
+```text
+OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS=1
+OTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE=1
+OTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE=1
+```
+
+Use exactly one forced-failure knob at a time. Repeated resets with a forced
+failure enabled should eventually produce:
+
+```text
+BOOT_WARN,v=1,key=safe_mode,reason=repeated_boot_failure
+```
 
 The raw diagnostic dump reads scratch registers after the current boot has
 started updating them. The compact `BOOT` record is the preferred decoded view

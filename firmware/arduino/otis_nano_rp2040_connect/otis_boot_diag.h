@@ -24,18 +24,25 @@ struct OtisBootBreadcrumbSnapshot {
   uint32_t current_reset_reason;
   bool current_watchdog_reboot;
   bool current_watchdog_enable_reboot;
+  uint8_t previous_failure_count;
+  uint8_t current_failure_count;
+  bool safe_mode_requested;
 };
 
 void otisBootBreadcrumbBegin(BootPhase phase);
 void otisBootBreadcrumbCompletePhase(BootPhase phase);
 void otisBootBreadcrumbSetFatal(BootFatal fatal);
+void otisBootBreadcrumbSetSafeModeFatal(BootFatal fatal);
+void otisBootBreadcrumbMarkRunMode(void);
 const OtisBootBreadcrumbSnapshot &otisBootBreadcrumbSnapshot(void);
+bool otisBootSafeModeRequested(void);
 const char *otisBootPhaseName(BootPhase phase);
 const char *otisBootFatalName(BootFatal fatal);
 uint8_t otisBootPhaseCode(BootPhase phase);
 uint8_t otisBootFatalCode(BootFatal fatal);
 void emitOtisBootSummary(Stream &out, BootPhase current_phase);
 void emitOtisBootWarnSerialAbsent(Stream &out, uint32_t wait_ms);
+void emitOtisBootWarnSafeMode(Stream &out);
 void emitOtisBootFatal(Stream &out, BootFatal fatal, BootPhase phase);
 
 #if OTIS_ENABLE_RP2040_BOOT_DIAG
