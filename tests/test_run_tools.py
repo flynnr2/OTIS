@@ -93,6 +93,55 @@ def test_validate_run_accepts_gps_pps_bringup_records(tmp_path: Path) -> None:
     assert validate_run(run_dir) == 0
 
 
+def test_validate_run_accepts_sw1_5a_pio_capture_mode(tmp_path: Path) -> None:
+    run_dir = tmp_path / "gps_pps_pio"
+    shutil.copytree(Path("examples/h0_gps_pps"), run_dir)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    manifest["run_id"] = "gps_pps_pio_test"
+    manifest["template"] = False
+    manifest["capture_mode"] = "pio_fifo_cpu_timestamped"
+    manifest["known_limitations"] = [
+        "PIO detects rising edges; firmware attaches timestamps while draining the FIFO.",
+        "DMA is intentionally deferred to SW1.5b.",
+    ]
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "raw_events.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
+                "REF,1,1001,1,R,32000000,rp2040_timer0,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "health.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
+                "STS,1,1,1,rp2040_timer0,capture,mode,pio_fifo_cpu_timestamped,INFO,32768",
+                "STS,1,2,2,rp2040_timer0,build,capture_backend,pio_fifo,INFO,32768",
+                "STS,1,3,3,rp2040_timer0,capture,pio_init,ok,INFO,32768",
+                "STS,1,4,4,rp2040_timer0,capture,pio_gpio,26,INFO,32768",
+                "STS,1,5,5,rp2040_timer0,capture,pio_fifo_drained_event_count,2,INFO,0",
+                "STS,1,6,6,rp2040_timer0,capture,pio_fifo_overflow_drop_count,0,INFO,0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+
+    summary = build_summary(run_dir)
+    report = render_report(run_dir)
+    assert summary["run_identity"]["capture_mode"] == "pio_fifo_cpu_timestamped"
+    assert summary["health_status_summary"]["latest_capture_status"]["pio_init"] == "ok"
+    assert "SW1.5a capture mode: pio_fifo_cpu_timestamped" in report
+    assert "latest_capture_status" in report
+
+
 def test_capture_serial_splits_records(tmp_path: Path, monkeypatch) -> None:
     run_dir = tmp_path / "captured"
     monkeypatch.setattr(
