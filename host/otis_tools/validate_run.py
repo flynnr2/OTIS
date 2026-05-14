@@ -38,18 +38,19 @@ def _validate_manifest(run_dir: Path, manifest) -> list[str]:
         failures.append(f"run_manifest.json: bringup_mode {mode!r} is not a known SW1 mode")
 
     profile = manifest.data.get("profile")
-    if not isinstance(profile, dict):
-        failures.append("run_manifest.json: profile must be an object")
-    else:
-        profile_name = str(profile.get("name", ""))
-        profile_version = profile.get("version")
-        repo_profile_path = REPO_ROOT / "profiles" / f"{profile_name}.yaml"
-        if not profile_name:
-            failures.append("run_manifest.json: profile.name must not be empty")
-        elif not repo_profile_path.exists():
-            failures.append(f"run_manifest.json: profile {profile_name!r} does not match a profile file")
-        if not isinstance(profile_version, int) or profile_version < 1:
-            failures.append("run_manifest.json: profile.version must be a positive integer")
+    if manifest.stage == "SW1" or manifest.h_phase == "H0" or profile is not None:
+        if not isinstance(profile, dict):
+            failures.append("run_manifest.json: profile must be an object")
+        else:
+            profile_name = str(profile.get("name", ""))
+            profile_version = profile.get("version")
+            repo_profile_path = REPO_ROOT / "profiles" / f"{profile_name}.yaml"
+            if not profile_name:
+                failures.append("run_manifest.json: profile.name must not be empty")
+            elif not repo_profile_path.exists():
+                failures.append(f"run_manifest.json: profile {profile_name!r} does not match a profile file")
+            if not isinstance(profile_version, int) or profile_version < 1:
+                failures.append("run_manifest.json: profile.version must be a positive integer")
 
     for channel in manifest.data.get("channels", []):
         try:
@@ -57,7 +58,7 @@ def _validate_manifest(run_dir: Path, manifest) -> list[str]:
         except (KeyError, TypeError, ValueError):
             failures.append("run_manifest.json: channel entry missing integer channel_id")
             continue
-        if channel_id not in KNOWN_H0_CHANNELS:
+        if manifest.h_phase == "H0" and channel_id not in KNOWN_H0_CHANNELS:
             failures.append(f"run_manifest.json: channel_id {channel_id} is not valid for H0")
         if not channel.get("role"):
             failures.append(f"run_manifest.json: channel_id {channel_id} missing role")
@@ -190,7 +191,7 @@ def validate_run(run_dir: Path) -> int:
     nominal_hz_by_domain = {
         str(domain["name"]): float(domain["nominal_hz"])
         for domain in manifest.data.get("domains", [])
-        if "name" in domain and "nominal_hz" in domain
+        if "name" in domain and domain.get("nominal_hz") is not None
     }
     raw_rows = _read_csv(files_by_contract.get("raw_events_v1", Path("__missing__")))
     count_rows = _read_csv(files_by_contract.get("count_observations_v1", Path("__missing__")))
