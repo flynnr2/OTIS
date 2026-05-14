@@ -27,6 +27,12 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
 
   state->tcxo.last_measure_ms = 0;
   state->tcxo.gate_open_us = 0;
+  state->tcxo.last_gate_open_ticks = 0;
+  state->tcxo.last_gate_close_ticks = 0;
+  state->tcxo.last_counted_edges = 0;
+  state->tcxo.last_elapsed_us = 0;
+  state->tcxo.last_measured_khz = 0;
+  state->tcxo.last_observation_valid = false;
 
   state->active_mode = OTIS_SW1_BRINGUP_MODE;
 }

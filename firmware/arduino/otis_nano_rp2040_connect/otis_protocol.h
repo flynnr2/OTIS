@@ -11,6 +11,7 @@
 
 #define OTIS_DOMAIN_RP2040_TIMER0 "rp2040_timer0"
 #define OTIS_DOMAIN_H0_TCXO_16MHZ "h0_tcxo_16mhz"
+#define OTIS_DOMAIN_H1_OCXO_OPEN_LOOP "h1_ocxo_open_loop"
 
 #define OTIS_EDGE_RISING "R"
 #define OTIS_EDGE_FALLING "F"

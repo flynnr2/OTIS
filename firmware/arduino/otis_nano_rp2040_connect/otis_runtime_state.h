@@ -36,6 +36,12 @@ struct OtisLoopbackRuntimeState {
 struct OtisTcxoRuntimeState {
   uint32_t last_measure_ms;
   uint32_t gate_open_us;
+  uint64_t last_gate_open_ticks;
+  uint64_t last_gate_close_ticks;
+  uint64_t last_counted_edges;
+  uint32_t last_elapsed_us;
+  uint32_t last_measured_khz;
+  bool last_observation_valid;
 };
 
 struct OtisRuntimeState {

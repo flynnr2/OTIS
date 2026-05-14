@@ -9,6 +9,7 @@
 #define OTIS_SW1_MODE_GPIO_LOOPBACK 2
 #define OTIS_SW1_MODE_GPS_PPS 3
 #define OTIS_SW1_MODE_TCXO_OBSERVE 4
+#define OTIS_SW1_MODE_H1_OCXO_OBSERVE 5
 
 #ifndef OTIS_SW1_BRINGUP_MODE
 #define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_TCXO_OBSERVE
@@ -56,6 +57,10 @@
 
 #ifndef OTIS_NOMINAL_TCXO_HZ
 #define OTIS_NOMINAL_TCXO_HZ 16000000u
+#endif
+
+#ifndef OTIS_NOMINAL_OCXO_HZ
+#define OTIS_NOMINAL_OCXO_HZ 10000000u
 #endif
 
 #ifndef OTIS_NOMINAL_PPS_HZ
@@ -124,6 +129,24 @@
 #define OTIS_TCXO_MEASURE_PERIOD_MS 1000u
 #endif
 
+// H1 open-loop lab instrument DAC support. This is deliberately opt-in and
+// manual-only; firmware never steers the oscillator from PPS/count telemetry.
+#ifndef OTIS_ENABLE_DAC_AD5693R
+#define OTIS_ENABLE_DAC_AD5693R 0
+#endif
+
+#ifndef OTIS_DAC_AD5693R_I2C_ADDRESS
+#define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
+#endif
+
+#ifndef OTIS_DAC_MIN_CODE
+#define OTIS_DAC_MIN_CODE 0x7000u
+#endif
+
+#ifndef OTIS_DAC_MAX_CODE
+#define OTIS_DAC_MAX_CODE 0x9000u
+#endif
+
 // Boot-hardening test injection. Leave disabled for normal firmware.
 #ifndef OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS
 #define OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS 0
@@ -150,8 +173,22 @@
 #if OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_SYNTHETIC_USB && \
     OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_GPIO_LOOPBACK && \
     OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_GPS_PPS && \
-    OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_TCXO_OBSERVE
+    OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_TCXO_OBSERVE && \
+    OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #error "OTIS_SW1_BRINGUP_MODE must be one of the OTIS_SW1_MODE_* constants."
+#endif
+
+#if OTIS_DAC_AD5693R_I2C_ADDRESS != 0x4Cu && \
+    OTIS_DAC_AD5693R_I2C_ADDRESS != 0x4Eu
+#error "OTIS_DAC_AD5693R_I2C_ADDRESS must be 0x4C or 0x4E."
+#endif
+
+#if OTIS_DAC_MIN_CODE > OTIS_DAC_MAX_CODE
+#error "OTIS_DAC_MIN_CODE must be <= OTIS_DAC_MAX_CODE."
+#endif
+
+#if OTIS_DAC_MAX_CODE > 0xFFFFu
+#error "OTIS_DAC_MAX_CODE must fit in 16 bits."
 #endif
 
 #if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u

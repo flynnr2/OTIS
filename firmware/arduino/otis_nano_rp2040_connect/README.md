@@ -35,6 +35,7 @@ for Arduino IDE builds; CLI `-D` overrides still work for scripted builds.
 | `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
 | `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
 | `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1` |
+| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1`, DAC `STS` telemetry |
 
 The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
 timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
@@ -42,6 +43,13 @@ yet the later PIO/DMA hardware-latched path. TCXO observe uses the RP2040
 frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
 GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
 backend is only for deliberately divided, interrupt-safe test signals.
+
+`H1_OCXO_OBSERVE_OPEN_LOOP` keeps the same architecture boundary: sparse PPS
+edges, if wired, use the normal edge-capture backend, while the raw OCXO input
+on `D8` / `GPIO20` / `GPIN0` uses the RP2040 FC0/gated-count path and emits
+`CNT` records. It is an open-loop lab instrument mode only. Firmware does not
+implement PPS-derived steering, GPSDO locking, holdover, PI/PID correction, or
+temperature compensation.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.
@@ -90,6 +98,7 @@ PIO input selection follows the selected bring-up mode:
 | `SW1_GPIO_LOOPBACK` | `D10` / GPIO5 / `CH0` | rising-edge `EVT` rows |
 | `SW1_GPS_PPS` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows |
 | `SW1_TCXO_OBSERVE` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus existing `CNT` rows when TCXO counting is configured |
+| `H1_OCXO_OBSERVE_OPEN_LOOP` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus FC0/gated-count `CNT` rows for raw OCXO observation |
 
 Sparse edges map to the PIO FIFO edge backend. Raw CXO on `GPIN0` maps to the
 FC0/gated-count backend and emits `CNT`, not one FIFO event per oscillator edge.
@@ -112,6 +121,69 @@ Suggested first bench sequence:
 
 DMA, hardware-latched timestamp transfer, both-edge capture, and higher-rate
 capture fabric work are intentionally deferred to SW1.5b and later.
+
+## H1 open-loop DAC and FC0 commands
+
+H1 DAC support is compile-time gated and disabled by default:
+
+```cpp
+#define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#define OTIS_ENABLE_DAC_AD5693R 1
+```
+
+The firmware uses a minimal direct I2C write path for AD5693R rather than adding
+an Arduino library dependency. The default I2C address is `0x4C`; `0x4E` is also
+accepted:
+
+```cpp
+#define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
+```
+
+The DAC output is bounded by compile-time clamps. Defaults are deliberately
+conservative and do not permit rail-to-rail sweeps:
+
+```cpp
+#define OTIS_DAC_MIN_CODE 0x7000u
+#define OTIS_DAC_MAX_CODE 0x9000u
+```
+
+Manual commands are read from the USB serial monitor. Terminate each command
+with newline or carriage return:
+
+```text
+HELP
+DAC?
+DAC LIMITS?
+DAC SET 0x8000
+DAC SET 32768
+DAC MID
+DAC ZERO
+FC0?
+```
+
+`DAC SET <code>` accepts decimal or hex raw 16-bit DAC codes. Values outside
+`OTIS_DAC_MIN_CODE` and `OTIS_DAC_MAX_CODE` are rejected and logged with `STS`
+warning rows; firmware does not silently move to a clamped value. `DAC ZERO`
+sets the configured minimum clamp, not electrical ground unless the clamp is
+explicitly configured that way. `DAC MID` sets the midpoint of the configured
+clamp window.
+
+The boot/status stream reports H1 open-loop mode, FC0 measurement period,
+nominal OCXO frequency assumption, DAC enable state, I2C address, clamp values,
+DAC init success/failure, and accepted/rejected DAC command telemetry. `FC0?`
+prints the latest gated-count summary as structured `STS` rows. The regular
+`CNT` records remain the primary FC0 observation output.
+
+Wiring summary for H1:
+
+| Signal | Arduino Nano RP2040 Connect pin |
+|---|---:|
+| sparse PPS/reference input, optional | `D14` / GPIO26 / `CH1` |
+| raw OCXO observation input | `D8` / GPIO20 / `GPIN0` / `CH2` |
+| AD5693R DAC I2C SDA/SCL | board I2C pins for `Wire` |
+
+Do not route the raw OCXO into the PIO FIFO edge path. Raw OCXO observation is
+FC0/gated-count only.
 
 During the boot banner, firmware emits `STS` provenance rows for schema version,
 firmware name/version/git commit, board target, Arduino core, bring-up mode,
@@ -203,6 +275,10 @@ arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
 
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
   --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE \
+  firmware/arduino/otis_nano_rp2040_connect
+
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_ENABLE_DAC_AD5693R=1" \
   firmware/arduino/otis_nano_rp2040_connect
 ```
 

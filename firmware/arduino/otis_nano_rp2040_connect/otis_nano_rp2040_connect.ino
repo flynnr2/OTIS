@@ -1,6 +1,10 @@
 #include <Arduino.h>
+#include <ctype.h>
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "otis_config.h"
 
@@ -10,6 +14,7 @@
 #include "otis_capture_backend.h"
 #include "otis_capture_irq.h"
 #include "otis_capture_ring.h"
+#include "otis_dac_ad5693r.h"
 #include "otis_emit.h"
 #include "otis_modes.h"
 #include "otis_protocol.h"
@@ -28,6 +33,8 @@ constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
 
 OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
+char serial_command_line[64];
+uint8_t serial_command_len = 0;
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -102,6 +109,7 @@ void enter_safe_mode(void) {
 }
 
 const char *edge_string(char edge);
+const char *osc_observation_domain(void);
 
 void emit_status(const char *component, const char *key, const char *value,
                  const char *severity, uint32_t flags) {
@@ -113,6 +121,22 @@ void emit_status_u32(const char *component, const char *key, uint32_t value,
                      const char *severity, uint32_t flags) {
   otis_status_emit_u32(&status_emit_context, component, key, value, severity,
                        flags);
+}
+
+void emit_status_u16_hex(const char *component, const char *key, uint16_t value,
+                         const char *severity, uint32_t flags) {
+  char buffer[7];
+  snprintf(buffer, sizeof(buffer), "0x%04X", value);
+  emit_status(component, key, buffer, severity, flags);
+}
+
+void emit_status_u64_decimal(const char *component, const char *key,
+                             uint64_t value, const char *severity,
+                             uint32_t flags) {
+  char buffer[21];
+  snprintf(buffer, sizeof(buffer), "%llu",
+           static_cast<unsigned long long>(value));
+  emit_status(component, key, buffer, severity, flags);
 }
 
 void emit_captured_edge(const OtisCapturedEdge &record) {
@@ -131,6 +155,14 @@ const char *edge_string(char edge) {
     return OTIS_EDGE_FALLING;
   }
   return OTIS_EDGE_BOTH_OR_UNSPECIFIED;
+}
+
+const char *osc_observation_domain(void) {
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  return OTIS_DOMAIN_H1_OCXO_OPEN_LOOP;
+#else
+  return OTIS_DOMAIN_H0_TCXO_16MHZ;
+#endif
 }
 
 void drain_capture_ring(void) {
@@ -175,6 +207,10 @@ void emit_common_boot_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("reference", "nominal_tcxo_hz", OTIS_NOMINAL_TCXO_HZ,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("reference", "nominal_ocxo_hz", OTIS_NOMINAL_OCXO_HZ,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("capture", "fc0_measure_period_ms", kTcxoMeasurePeriodMs,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "arduino_core", OTIS_TARGET_ARDUINO_CORE,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
@@ -189,6 +225,14 @@ void emit_common_boot_status(void) {
   emit_status("build", "tcxo_counter_backend",
               otis_tcxo_counter_backend_name(),
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_dac_ad5693r", OTIS_ENABLE_DAC_AD5693R,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("dac", "i2c_address", OTIS_DAC_AD5693R_I2C_ADDRESS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
 void emit_h0_pin_status(void) {
@@ -366,6 +410,53 @@ void configure_tcxo_observe_mode(void) {
 #endif
 }
 
+void emit_dac_status(const char *component) {
+  OtisDacAd5693rStatus status;
+  otis_dac_ad5693r_get_status(&status);
+  emit_status(component, "enabled", status.enabled ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(component, "initialized", status.initialized ? "true" : "false",
+              status.initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              status.enabled ? OTIS_FLAG_NONE : OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(component, "last_write_ok", status.last_write_ok ? "true" : "false",
+              status.last_write_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_NONE);
+  emit_status_u32(component, "i2c_address", status.i2c_address,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex(component, "min_code", status.min_code,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex(component, "max_code", status.max_code,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex(component, "last_requested_code",
+                      status.last_requested_code, OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_NONE);
+  emit_status_u16_hex(component, "last_applied_code", status.last_applied_code,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(component, "gain_mode", status.gain_mode, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(component, "reference_mode", status.reference_mode,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+void configure_h1_ocxo_observe_mode(void) {
+  emit_status("system", "h1_open_loop", "true", OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("control", "gpsdo_steering", "not_implemented",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  configure_tcxo_observe_mode();
+
+#if OTIS_ENABLE_DAC_AD5693R
+  bool ok = otis_dac_ad5693r_begin();
+  emit_status("dac", "init", ok ? "ok" : "failed",
+              ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+              ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#else
+  emit_status("dac", "init", "disabled", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  emit_dac_status("dac");
+}
+
 void setup_mode(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_SYNTHETIC_USB
   configure_synthetic_usb_mode();
@@ -375,6 +466,8 @@ void setup_mode(void) {
   configure_gps_pps_mode();
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE
   configure_tcxo_observe_mode();
+#elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  configure_h1_ocxo_observe_mode();
 #endif
 }
 
@@ -477,7 +570,8 @@ void service_loopback_output(void) {
 }
 
 void service_tcxo_gate(void) {
-#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
   uint32_t now_ms = millis();
   if ((uint32_t)(now_ms - runtime_state.tcxo.last_measure_ms) <
@@ -496,11 +590,18 @@ void service_tcxo_gate(void) {
     flags |= OTIS_FLAG_INPUT_STUCK_LOW;
   }
 
+  runtime_state.tcxo.last_gate_open_ticks = gate_open_ticks;
+  runtime_state.tcxo.last_gate_close_ticks = gate_close_ticks;
+  runtime_state.tcxo.last_counted_edges = counted_edges;
+  runtime_state.tcxo.last_elapsed_us = (uint32_t)elapsed_us;
+  runtime_state.tcxo.last_measured_khz = measured_khz;
+  runtime_state.tcxo.last_observation_valid = true;
+
   otis_emit_count_observation(runtime_state.sequences.count_seq++,
                               OTIS_CHANNEL_OSC_OBSERVATION, gate_open_ticks,
                               gate_close_ticks, OTIS_DOMAIN_RP2040_TIMER0,
                               counted_edges, OTIS_EDGE_RISING,
-                              OTIS_DOMAIN_H0_TCXO_16MHZ, flags);
+                              osc_observation_domain(), flags);
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   uint32_t now_us = micros();
   if ((uint32_t)(now_us - runtime_state.tcxo.gate_open_us) <
@@ -515,13 +616,162 @@ void service_tcxo_gate(void) {
   interrupts();
 
   uint32_t flags = counted_edges == 0 ? OTIS_FLAG_INPUT_STUCK_LOW : OTIS_FLAG_NONE;
+  runtime_state.tcxo.last_gate_open_ticks = (uint64_t)gate_open_us * 16ull;
+  runtime_state.tcxo.last_gate_close_ticks = (uint64_t)now_us * 16ull;
+  runtime_state.tcxo.last_counted_edges = counted_edges;
+  runtime_state.tcxo.last_elapsed_us = now_us - gate_open_us;
+  runtime_state.tcxo.last_measured_khz = 0;
+  runtime_state.tcxo.last_observation_valid = true;
   otis_emit_count_observation(runtime_state.sequences.count_seq++,
                               OTIS_CHANNEL_OSC_OBSERVATION,
                               (uint64_t)gate_open_us * 16ull,
                               (uint64_t)now_us * 16ull, OTIS_DOMAIN_RP2040_TIMER0,
                               counted_edges, OTIS_EDGE_RISING,
-                              OTIS_DOMAIN_H0_TCXO_16MHZ, flags);
+                              osc_observation_domain(), flags);
 #endif
+#endif
+}
+
+char *trim_command(char *s) {
+  while (*s != '\0' && isspace((unsigned char)*s)) {
+    s++;
+  }
+  char *end = s + strlen(s);
+  while (end > s && isspace((unsigned char)*(end - 1))) {
+    --end;
+    *end = '\0';
+  }
+  return s;
+}
+
+bool parse_u16_code(const char *text, uint16_t *out) {
+  if (text == nullptr || out == nullptr || *text == '\0') {
+    return false;
+  }
+  char *end = nullptr;
+  unsigned long parsed = strtoul(text, &end, 0);
+  if (end == text || *trim_command(end) != '\0' || parsed > 0xFFFFul) {
+    return false;
+  }
+  *out = (uint16_t)parsed;
+  return true;
+}
+
+void emit_fc0_status(void) {
+  emit_status("fc0", "valid",
+              runtime_state.tcxo.last_observation_valid ? "true" : "false",
+              runtime_state.tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
+                                                        : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_NONE);
+  emit_status_u32("fc0", "measure_period_ms", kTcxoMeasurePeriodMs,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("fc0", "last_measured_khz",
+                  runtime_state.tcxo.last_measured_khz, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("fc0", "last_elapsed_us",
+                  runtime_state.tcxo.last_elapsed_us, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u64_decimal("fc0", "last_counted_edges",
+                          runtime_state.tcxo.last_counted_edges,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u64_decimal("fc0", "last_gate_open_ticks",
+                          runtime_state.tcxo.last_gate_open_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u64_decimal("fc0", "last_gate_close_ticks",
+                          runtime_state.tcxo.last_gate_close_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+}
+
+void handle_dac_set(uint16_t requested_code) {
+  emit_status_u16_hex("dac", "requested_code", requested_code,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  if (!otis_dac_ad5693r_is_enabled()) {
+    emit_status("dac", "set", "rejected_disabled", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    return;
+  }
+  if (!otis_dac_ad5693r_is_initialized()) {
+    emit_status("dac", "set", "rejected_not_initialized", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    return;
+  }
+  uint16_t clamped = otis_dac_ad5693r_clamp_code(requested_code);
+  if (clamped != requested_code) {
+    emit_status_u16_hex("dac", "rejected_code", requested_code,
+                        OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("dac", "set", "rejected_outside_clamps", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    return;
+  }
+  bool ok = otis_dac_ad5693r_set_raw(requested_code);
+  emit_status_u16_hex("dac", ok ? "accepted_code" : "failed_code",
+                      requested_code,
+                      ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+                      ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+}
+
+void handle_serial_command(char *line) {
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  char *command = trim_command(line);
+  for (char *p = command; *p != '\0'; ++p) {
+    *p = (char)toupper((unsigned char)*p);
+  }
+
+  if (strcmp(command, "HELP") == 0) {
+    emit_status("command", "h1_help",
+                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP",
+                OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  } else if (strcmp(command, "DAC?") == 0) {
+    emit_dac_status("dac");
+  } else if (strcmp(command, "DAC LIMITS?") == 0) {
+    emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
+                        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
+                        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (strcmp(command, "DAC MID") == 0) {
+    uint16_t mid = (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
+                              (uint32_t)OTIS_DAC_MAX_CODE) /
+                             2u);
+    handle_dac_set(mid);
+  } else if (strcmp(command, "DAC ZERO") == 0) {
+    handle_dac_set((uint16_t)OTIS_DAC_MIN_CODE);
+  } else if (strncmp(command, "DAC SET ", 8) == 0) {
+    uint16_t requested_code = 0;
+    if (parse_u16_code(command + 8, &requested_code)) {
+      handle_dac_set(requested_code);
+    } else {
+      emit_status("dac", "set", "rejected_parse_error", OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_NONE);
+    }
+  } else if (strcmp(command, "FC0?") == 0) {
+    emit_fc0_status();
+  } else if (*command != '\0') {
+    emit_status("command", "unknown", command, OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+  }
+#else
+  (void)line;
+#endif
+}
+
+void service_serial_commands(void) {
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c == '\r' || c == '\n') {
+      if (serial_command_len > 0u) {
+        serial_command_line[serial_command_len] = '\0';
+        handle_serial_command(serial_command_line);
+        serial_command_len = 0u;
+      }
+    } else if (serial_command_len < sizeof(serial_command_line) - 1u) {
+      serial_command_line[serial_command_len++] = c;
+    } else {
+      serial_command_len = 0u;
+      emit_status("command", "line", "rejected_too_long", OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_NONE);
+    }
+  }
 #endif
 }
 
@@ -560,6 +810,7 @@ void loop() {
   // status emission, then cap max records emitted per loop if host backpressure
   // becomes observable.
   emit_boot_records_if_serial_ready();
+  service_serial_commands();
   service_loopback_output();
   service_tcxo_gate();
   otis_capture_backend_service();

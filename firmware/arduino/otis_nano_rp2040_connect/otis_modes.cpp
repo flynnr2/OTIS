@@ -11,6 +11,8 @@ const char *otis_bringup_mode_name(void) {
   return "SW1_GPS_PPS";
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE
   return "SW1_TCXO_OBSERVE";
+#elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  return "H1_OCXO_OBSERVE_OPEN_LOOP";
 #endif
 }
 
