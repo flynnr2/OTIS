@@ -19,6 +19,8 @@ def _split_stage(stage: str) -> tuple[str, str]:
     normalized = stage.lower()
     if normalized.startswith("h0_"):
         return "H0", normalized.removeprefix("h0_").upper()
+    if normalized.startswith("h1_"):
+        return "H1", normalized.removeprefix("h1_").upper()
     return "", normalized.upper()
 
 
