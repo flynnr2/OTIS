@@ -28,5 +28,16 @@ void otis_emit_health(uint32_t status_seq,
                       const char *status_value,
                       const char *severity,
                       uint32_t flags);
+void otis_emit_dac_step(uint32_t seq,
+                        uint32_t elapsed_ms,
+                        int32_t step_index,
+                        uint16_t dac_code_requested,
+                        uint16_t dac_code_applied,
+                        bool dac_code_clamped,
+                        const char *dac_voltage_measured_v,
+                        const char *ocxo_tune_voltage_measured_v,
+                        uint32_t dwell_ms,
+                        const char *event,
+                        uint32_t flags);
 
 #endif

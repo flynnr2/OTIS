@@ -30,7 +30,8 @@ GPSDO steering firmware exists.
 - `h1_open_loop/ocxo_power_warmup`: oscillator power, current, and warm-up observation.
 - `h1_open_loop/dac_output_verify`: DAC I2C, reference, gain, and output-voltage checks.
 - `h1_open_loop/ocxo_free_run`: oscillator observed without automatic steering.
-- `h1_open_loop/dac_manual_sweep`: manual DAC increments with frequency-response notes.
+- `h1_open_loop/dac_manual_sweep`: scripted open-loop DAC sweeps with
+  `dac_steps_v1` telemetry and frequency-response notes.
 - `h1_open_loop/settling_thermal`: settling and thermal observations after fixed manual conditions.
 
 H1 runs remain open-loop artifacts. They should document oscillator identity,
@@ -38,6 +39,11 @@ pinout source, measured power rails, DAC part, DAC reference, I2C address,
 conditioning path, RP2040-safe logic level, safety limits, and any manual DAC
 command sequence. They should not imply that SW2 GPSDO control-loop firmware
 exists.
+
+Sweep-capable H1 captures should include `csv/dac_steps.csv` alongside count
+observations. During an active sweep, `DAC` records with `dwell_start`,
+`fc0_window`, and `dwell_complete` events are the attribution layer between
+the stable `CNT` records and the active DAC code.
 
 Suggested H1 manifest additions:
 

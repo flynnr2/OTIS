@@ -10,6 +10,7 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->sequences.event_seq = 1000;
   state->sequences.status_seq = 1;
   state->sequences.count_seq = 1;
+  state->sequences.dac_seq = 1;
 
   state->capture.emitted_event_count = 0;
 

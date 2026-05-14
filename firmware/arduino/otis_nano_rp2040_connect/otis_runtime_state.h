@@ -9,6 +9,7 @@ struct OtisSequenceState {
   uint32_t event_seq;
   uint32_t status_seq;
   uint32_t count_seq;
+  uint32_t dac_seq;
 };
 
 struct OtisCaptureRuntimeState {

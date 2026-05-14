@@ -43,28 +43,48 @@ HEALTH_FIELDS = [
     "flags",
 ]
 
+DAC_STEP_FIELDS = [
+    "record_type",
+    "schema_version",
+    "seq",
+    "elapsed_ms",
+    "step_index",
+    "dac_code_requested",
+    "dac_code_applied",
+    "dac_code_clamped",
+    "dac_voltage_measured_v",
+    "ocxo_tune_voltage_measured_v",
+    "dwell_ms",
+    "event",
+    "flags",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "health_v1": HEALTH_FIELDS,
+    "dac_steps_v1": DAC_STEP_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
     "health_v1": {"STS"},
+    "dac_steps_v1": {"DAC"},
 }
 
 SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
     "health_v1": "status_seq",
+    "dac_steps_v1": "seq",
 }
 
 TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "health_v1": ("timestamp_ticks",),
+    "dac_steps_v1": ("elapsed_ms",),
 }
 
 CHANNEL_FIELDS = {
@@ -76,6 +96,7 @@ DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
     "health_v1": ("status_domain",),
+    "dac_steps_v1": (),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -209,6 +230,27 @@ def _check_health(row: dict[str, str], row_number: int, errors: list[str]) -> No
             errors.append(f"row {row_number}: {field_name} must not be empty")
 
 
+def _check_dac_step(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    for field_name in (
+        "elapsed_ms",
+        "dac_code_requested",
+        "dac_code_applied",
+        "dac_code_clamped",
+        "dwell_ms",
+        "flags",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    step_index = row.get("step_index", "")
+    try:
+        int(step_index, 10)
+    except (TypeError, ValueError):
+        errors.append(f"row {row_number}: step_index is not an integer: {step_index!r}")
+    if row.get("dac_code_clamped") not in {"0", "1"}:
+        errors.append(f"row {row_number}: dac_code_clamped must be 0 or 1")
+    if not row.get("event"):
+        errors.append(f"row {row_number}: event must not be empty")
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -253,6 +295,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_count_observation(row, row_count, errors)
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
+            if context.contract == "dac_steps_v1":
+                _check_dac_step(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")
