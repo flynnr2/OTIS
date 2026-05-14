@@ -25,16 +25,25 @@ class CsvRecordSplitter:
     def __init__(
         self,
         file_by_contract: dict[str, Path],
+        file_by_record_type: dict[str, tuple[str, Path]] | None = None,
         append: bool = False,
         on_parser_error: Callable[[str], None] | None = None,
     ) -> None:
         self.file_by_contract = file_by_contract
+        self.file_by_record_type = file_by_record_type or {}
         self.append = append
         self.on_parser_error = on_parser_error
-        self.handles = {}
+        self.handles: dict[tuple[str, Path], object] = {}
+        self.handle_by_contract: dict[str, object] = {}
+        self.handle_by_record_type: dict[str, object] = {}
 
     def __enter__(self) -> "CsvRecordSplitter":
-        for contract, path in self.file_by_contract.items():
+        targets: list[tuple[str, Path]] = list(self.file_by_contract.items())
+        targets.extend((contract, path) for contract, path in self.file_by_record_type.values())
+        for contract, path in targets:
+            key = (contract, path)
+            if key in self.handles:
+                continue
             fields = CONTRACT_FIELDS[contract]
             path.parent.mkdir(parents=True, exist_ok=True)
             needs_header = not self.append or not path.exists() or path.stat().st_size == 0
@@ -42,7 +51,11 @@ class CsvRecordSplitter:
             if needs_header:
                 handle.write(",".join(fields) + "\n")
                 handle.flush()
-            self.handles[contract] = handle
+            self.handles[key] = handle
+        for contract, path in self.file_by_contract.items():
+            self.handle_by_contract[contract] = self.handles[(contract, path)]
+        for record_type, (contract, path) in self.file_by_record_type.items():
+            self.handle_by_record_type[record_type] = self.handles[(contract, path)]
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -65,7 +78,9 @@ class CsvRecordSplitter:
         contract = RECORD_CONTRACTS.get(record_type)
         if contract is None:
             return None
-        handle = self.handles.get(contract)
+        handle = self.handle_by_record_type.get(record_type)
+        if handle is None:
+            handle = self.handle_by_contract.get(contract)
         if handle is None:
             return None
         expected_columns = len(CONTRACT_FIELDS[contract])
@@ -88,6 +103,27 @@ def _load_template(template_dir: Path, run_id: str) -> dict:
     return manifest
 
 
+def _split_targets_from_manifest(manifest: dict, run_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[str, Path]]]:
+    file_by_contract: dict[str, Path] = {}
+    file_by_record_type: dict[str, tuple[str, Path]] = {}
+    raw_entries = [entry for entry in manifest["files"] if entry.get("contract") == "raw_events_v1"]
+
+    for entry in manifest["files"]:
+        contract = entry["contract"]
+        path = run_dir / entry["path"]
+        if contract == "raw_events_v1" and len(raw_entries) > 1:
+            name = path.name.lower()
+            if "evt" in name:
+                file_by_record_type["EVT"] = (contract, path)
+                continue
+            if "ref" in name:
+                file_by_record_type["REF"] = (contract, path)
+                continue
+        file_by_contract[contract] = path
+
+    return file_by_contract, file_by_record_type
+
+
 def capture_serial(run_dir: Path, template_dir: Path, run_id: str) -> int:
     if run_dir.exists():
         raise FileExistsError(f"run directory already exists: {run_dir}")
@@ -102,9 +138,9 @@ def capture_serial(run_dir: Path, template_dir: Path, run_id: str) -> int:
         json.dump(manifest, handle, indent=2)
         handle.write("\n")
 
-    file_by_contract = {entry["contract"]: run_dir / entry["path"] for entry in manifest["files"]}
+    file_by_contract, file_by_record_type = _split_targets_from_manifest(manifest, run_dir)
     try:
-        with CsvRecordSplitter(file_by_contract, append=False) as splitter:
+        with CsvRecordSplitter(file_by_contract, file_by_record_type, append=False) as splitter:
             for line in sys.stdin:
                 splitter.process_line(line)
     finally:

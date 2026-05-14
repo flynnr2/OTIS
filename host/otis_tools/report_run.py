@@ -157,7 +157,7 @@ def _validation_findings(
     raw_rows = [row for read in reads if read.contract == RAW_CONTRACT for row in read.rows]
     count_rows = [row for read in reads if read.contract == COUNT_CONTRACT for row in read.rows]
     findings.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
-    findings.extend(_validate_count_sanity(count_rows, manifest.is_template))
+    findings.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
     for artifact in manifest.expected_artifacts:
         if artifact and not (manifest.root / artifact).exists():
             warnings.append(f"{artifact}: expected artifact is missing")

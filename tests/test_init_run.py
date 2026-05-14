@@ -114,7 +114,7 @@ def test_h1_dac_manual_sweep_init_run(tmp_path: Path, monkeypatch) -> None:
     shutil.copytree(Path("runs/h1_open_loop"), runs_root / "h1_open_loop")
     monkeypatch.setattr("host.otis_tools.init_run.RUNS_ROOT", runs_root)
 
-    run_dir = init_run("h1_open_loop", "dac_manual_sweep", "run_001")
+    run_dir = init_run("h1_open_loop", "dac_manual_sweep", "run_pytest")
     manifest = load_manifest(run_dir)
 
     assert manifest.data["h_phase"] == "H1"
