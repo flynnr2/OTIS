@@ -38,6 +38,13 @@ Earle Philhower `arduino-pico` core, not Arduino Mbed OS Nano Boards. This keeps
 the Arduino entrypoint while preserving access to Pico SDK, multicore, and PIO
 facilities needed by the timing-fabric stages.
 
+Observation boundary for H0/SW1.5a:
+
+| Signal class | Backend |
+|---|---|
+| Sparse edges such as GPS PPS, slow GPIO loopback, and future low-rate events | PIO FIFO edge backend |
+| Raw CXO on `D8` / `GPIO20` / `GPIN0`, including 10 MHz / 16 MHz TCXO/OCXO/XCXO inputs | RP2040 FC0 / gated-count backend |
+
 The standalone Pico SDK scaffold is deprecated and archived under
 `firmware/deprecated/rp2040_pico_sdk/` for reference only. New SW1 firmware work
 belongs in `firmware/arduino/otis_nano_rp2040_connect/`.

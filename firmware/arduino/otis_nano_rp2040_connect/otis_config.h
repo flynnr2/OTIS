@@ -30,6 +30,11 @@
 
 // Edge capture backends. Keep IRQ as the default SW1 path; PIO FIFO is an
 // opt-in SW1.5a experiment and still uses CPU-attached timestamps.
+//
+// Guardrail: the PIO FIFO backend is only for sparse edge streams such as PPS,
+// slow GPIO loopback, or future low-rate event inputs. It must not be used to
+// enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on D8 / GPIO20 /
+// GPIN0 should use the RP2040 frequency-counter / FC0 / gated-count path.
 #define OTIS_CAPTURE_BACKEND_IRQ 1
 #define OTIS_CAPTURE_BACKEND_PIO_FIFO 2
 
@@ -57,7 +62,9 @@
 #define OTIS_NOMINAL_PPS_HZ 1u
 #endif
 
-// TCXO observation backends.
+// TCXO observation backends. FC0/GPIN0 is the intended abstraction for raw
+// CXO frequency observation; GPIO IRQ is only for deliberately divided,
+// interrupt-safe test signals.
 #define OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 1
 #define OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ 2
 

@@ -73,6 +73,12 @@ foreground service through `OtisCaptureEmitFn`. That keeps the SW1.5a PIO
 experiment narrow and avoids introducing a second software queue while the FIFO
 is still CPU-drained.
 
+Guardrail: this backend is for sparse edge observation only. Acceptable inputs
+are GPS PPS, slow GPIO loopback, and future low-rate event edges. It must not be
+used to enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on `D8` /
+`GPIO20` / `GPIN0` belongs on the RP2040 frequency-counter / FC0 /
+gated-count path and should be emitted as count observations.
+
 PIO status counters are owned by `otis_capture_pio.cpp`:
 
 - `pio_fifo_drained_event_count`
@@ -101,6 +107,11 @@ Specifically:
 
 Reports and future code must treat this as PIO-detected but CPU-timestamped.
 The PIO FIFO entry is an edge queue, not a timestamp queue.
+
+It is also not a raw MHz oscillator transport. Feeding a 10 MHz or 16 MHz CXO
+directly into this queue would measure foreground drain behavior, FIFO overflow,
+USB serial throughput, and host capture limits rather than useful oscillator
+timestamps.
 
 ## Future DMA-Backed Capture Path
 

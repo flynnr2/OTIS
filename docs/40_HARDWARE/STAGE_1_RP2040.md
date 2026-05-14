@@ -20,7 +20,10 @@ Stage 1 is not primarily a GPSDO. It is a deterministic timestamp and reference 
 
 The RP2040 board clock remains the implementation clock for firmware, USB, DMA, and PIO execution. Stage 1 does **not** require feeding a TCXO or OCXO into the RP2040 system clock input.
 
-Reference oscillators enter Stage 1 as conditioned GPIO signals observed by the PIO/DMA capture fabric.
+Reference oscillators enter Stage 1 as conditioned GPIO signals observed by the
+appropriate RP2040 counting/capture machinery. Sparse edges may use the PIO
+edge-capture path; raw 10 MHz / 16 MHz CXO input on GPIN0 must use
+FC0/gated-count style observation.
 
 ```text
 RP2040 board clock
@@ -28,8 +31,8 @@ RP2040 board clock
 
 TCXO / OCXO / oscillator under test
   -> buffer / level conditioning
-  -> RP2040 GPIO / PIO
-  -> observed as reference-signal evidence
+  -> D8 / GPIO20 / GPIN0
+  -> FC0 / gated count observation
 
 GNSS PPS
   -> RP2040 GPIO / PIO
@@ -40,7 +43,9 @@ See `docs/10_REFERENCE_ARCHITECTURE/REFERENCE_SIGNAL_MODEL.md`.
 
 ## Timing Fabric
 
-The RP2040 PIO subsystem is initially envisioned as the timing fabric.
+The RP2040 PIO subsystem is initially envisioned as part of the sparse-edge
+timing fabric. It is not the abstraction for representing every edge of a raw
+10 MHz / 16 MHz oscillator.
 
 PIO responsibilities may include:
 
@@ -157,7 +162,7 @@ The current H0 bench path is:
 1. USB synthetic sanity with `SW1_SYNTHETIC_USB`.
 2. GPIO loopback with `SW1_GPIO_LOOPBACK`, `D7` jumpered to `D10` / `CH0`.
 3. GPS PPS capture with `SW1_GPS_PPS`, Adafruit Ultimate GPS PPS wired to `D14` / `CH1`.
-4. TCXO observation with `SW1_TCXO_OBSERVE`, conditioned/divided ECS-TXO-5032-160-TR output wired to `D8` / `GPIO20` / `GPIN0` / `CH2`.
+4. TCXO observation with `SW1_TCXO_OBSERVE`, conditioned ECS-TXO-5032-160-TR output wired to `D8` / `GPIO20` / `GPIN0` / `CH2` and observed through FC0/gated-count style `CNT` windows.
 5. Combined PPS + TCXO real run using `examples/h0_pps_tcxo_real/` as the manifest template.
 
 Expected serial output is line-oriented CSV records using the existing `STS`,
@@ -175,7 +180,11 @@ Capture GNSS PPS edges and emit raw records with monotonically increasing sequen
 
 ### Stage 1B — TCXO / Reference Oscillator Observation
 
-Feed the available TCXO through the buffer into an RP2040 GPIO/PIO path. Count or capture the reference signal against PPS intervals so the host can estimate frequency error, jitter, missing counts, and interval stability.
+Feed the available TCXO through the buffer into `D8` / `GPIO20` / `GPIN0`.
+Count the reference signal against gated windows so the host can estimate
+frequency error, jitter, missing counts, and interval stability. Do not model a
+raw 10 MHz / 16 MHz oscillator as one PIO FIFO event per edge; PIO FIFO is for
+sparse event edges such as PPS and slow GPIO loopback.
 
 ### Stage 1C — Generic Event Capture
 
