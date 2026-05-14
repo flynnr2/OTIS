@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "template": true,
+  "run_id": "template",
+  "stage": "OPEN_LOOP",
+  "h_phase": "H1",
+  "capture_type": "dac_manual_sweep",
+  "capture_mode": "observation_only_open_loop",
+  "control_mode": "manual_open_loop",
+  "closed_loop_control": false,
+  "board": "arduino_nano_rp2040_connect",
+  "firmware_git_commit": "",
+  "host_git_commit": "",
+  "firmware_version": "",
+  "host_tool_version": "",
+  "started_at_utc": "",
+  "ended_at_utc": "",
+  "operator_notes": "",
+  "oscillator": {
+    "part": "",
+    "nominal_frequency_hz": null,
+    "output_type": "",
+    "supply_voltage_v": null,
+    "control_voltage_range_v": null,
+    "pinout_source": ""
+  },
+  "dac": {
+    "part": "AD5693R",
+    "resolution_bits": 16,
+    "interface": "i2c",
+    "i2c_address": "0x4C",
+    "reference_voltage_v": null,
+    "gain_mode": "",
+    "measured_output_min_v": null,
+    "measured_output_max_v": null
+  },
+  "control_path": {
+    "network": "",
+    "rc_filter": "",
+    "buffer": "",
+    "measured_control_voltage_v": null
+  },
+  "conditioning": {
+    "oscillator_output_conditioner": "",
+    "rp2040_pin": "D8/GPIO20/GPIN0",
+    "logic_voltage_v": null
+  },
+  "safety_limits": {
+    "dac_min_code": null,
+    "dac_max_code": null,
+    "control_voltage_min_v": null,
+    "control_voltage_max_v": null
+  },
+  "control_sequence": "",
+  "warmup_seconds_before_capture": null,
+  "measured_tuning_sensitivity_hz_per_v": null,
+  "measured_tuning_sensitivity_ppm_per_v": null,
+  "observation_domain": {
+    "name": "",
+    "nominal_hz": null,
+    "division_ratio": null
+  },
+  "channels": [
+    {"channel_id": 0, "role": "event_input", "record_family": "EVT"},
+    {"channel_id": 1, "role": "reference_pps", "record_family": "REF"},
+    {"channel_id": 2, "role": "ocxo_observation", "record_family": "CNT"}
+  ],
+  "domains": [
+    {"name": "rp2040_timer0", "nominal_hz": 16000000},
+    {"name": "h1_ocxo_observed", "nominal_hz": null}
+  ],
+  "files": [
+    {"path": "csv/evt.csv", "contract": "raw_events_v1"},
+    {"path": "csv/ref.csv", "contract": "raw_events_v1"},
+    {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
+    {"path": "csv/sts.csv", "contract": "health_v1"}
+  ],
+  "known_limitations": [
+    "H1 open-loop characterization only. No closed-loop GPSDO steering is implemented or implied.",
+    "Unknown oscillator and DAC fields are explicit nulls or empty strings until measured on the bench."
+  ],
+  "expected_artifacts": [
+    "csv/evt.csv",
+    "csv/ref.csv",
+    "csv/cnt.csv",
+    "csv/sts.csv",
+    "reports/summary.md",
+    "reports/validate_report.md",
+    "reports/anomalies.md"
+  ],
+  "pin_mapping": {
+    "ch0_generic_event": "",
+    "ch1_pps_reference": "",
+    "ch2_ocxo_observation": "D8_GPIO20_GPIN0"
+  }
+}

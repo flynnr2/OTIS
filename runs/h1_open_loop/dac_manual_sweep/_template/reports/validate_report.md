@@ -1,0 +1,3 @@
+# Validation Report
+
+Template placeholder.

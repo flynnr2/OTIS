@@ -21,17 +21,17 @@ Plots and derived files should be reproducible from the raw serial log, CSVs, ma
 
 The `h0_sw1_5a_pio/` and `h0_sw1_5b_dma/` trees reserve the same bench categories for later PIO and DMA timestamp work.
 
-## Future H1 Open-Loop Runs
+## H1 Open-Loop Runs
 
-H1 run templates should not be created until real steerable oscillator hardware
-exists, but the expected future run categories are:
+H1 run templates reserve open-loop OCXO/DAC bench characterization categories.
+They are documentation and host-run scaffolds only; they do not imply that SW2
+GPSDO steering firmware exists.
 
-- `h1_open_loop/free_run`: oscillator observed without DAC steps;
-- `h1_open_loop/dac_step`: manual DAC increments with frequency-response notes;
-- `h1_open_loop/warmup`: oscillator warm-up observation from a defined start
-  condition;
-- `h1_open_loop/holdover_observe`: observation of local oscillator behavior
-  without active disciplining.
+- `h1_open_loop/ocxo_power_warmup`: oscillator power, current, and warm-up observation.
+- `h1_open_loop/dac_output_verify`: DAC I2C, reference, gain, and output-voltage checks.
+- `h1_open_loop/ocxo_free_run`: oscillator observed without automatic steering.
+- `h1_open_loop/dac_manual_sweep`: manual DAC increments with frequency-response notes.
+- `h1_open_loop/settling_thermal`: settling and thermal observations after fixed manual conditions.
 
 H1 runs remain open-loop artifacts. They should document oscillator identity,
 pinout source, measured power rails, DAC part, DAC reference, I2C address,
@@ -44,25 +44,36 @@ Suggested H1 manifest additions:
 ```json
 {
   "h_phase": "H1",
-  "stage": "open_loop",
+  "stage": "OPEN_LOOP",
+  "capture_type": "",
   "oscillator": {
     "part": "",
-    "nominal_frequency_hz": 10000000,
+    "nominal_frequency_hz": null,
     "output_type": "",
     "supply_voltage_v": null,
     "control_voltage_range_v": null,
-    "known_pinout_source": ""
+    "pinout_source": ""
   },
   "dac": {
-    "part": "",
-    "resolution_bits": null,
+    "part": "AD5693R",
+    "resolution_bits": 16,
+    "interface": "i2c",
+    "i2c_address": "0x4C",
     "reference_voltage_v": null,
-    "i2c_address": ""
+    "gain_mode": "",
+    "measured_output_min_v": null,
+    "measured_output_max_v": null
+  },
+  "control_path": {
+    "network": "",
+    "rc_filter": "",
+    "buffer": "",
+    "measured_control_voltage_v": null
   },
   "conditioning": {
-    "buffer": "",
-    "logic_voltage_v": null,
-    "notes": ""
+    "oscillator_output_conditioner": "",
+    "rp2040_pin": "D8/GPIO20/GPIN0",
+    "logic_voltage_v": null
   },
   "safety_limits": {
     "dac_min_code": null,
