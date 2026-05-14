@@ -153,6 +153,49 @@ The script writes the intended `raw/`, `csv/`, and `reports/` artifacts under
 `firmware/arduino/validation/baselines/`. It reuses the existing
 `host.otis_tools` parser, validator, and reporter.
 
+## Wire-format regression validation
+
+Small committed wire-format fixtures live under
+`firmware/arduino/validation/golden/`. They are intentionally short excerpts,
+not full bench captures. Use them to catch accidental protocol changes before
+or after firmware refactors:
+
+```bash
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt \
+  --profile synthetic
+
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/gpio_loopback_sw1_excerpt.txt \
+  --profile gpio_loopback
+
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/gpin0_observe_sw1_excerpt.txt \
+  --profile gpin0_observe
+```
+
+The validator checks raw serial text directly. It validates known OTIS record
+tags, field names, field order, schema version, numeric parseability, monotonic
+sequence counters, expected boot/reset diagnostics, required boot/config/status
+fields, capture records for the selected profile, ring drop fields, and PIO
+overflow fields when a PIO capture mode is present.
+
+It emits Markdown by default and exits non-zero on hard failures. JSON output is
+available for CI or scripted checks:
+
+```bash
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt \
+  --profile synthetic \
+  --format json \
+  --output firmware/arduino/validation/reports/synthetic_wire_summary.json
+```
+
+For captures that begin after the protocol banner and CSV headers, use
+`--no-require-headers`. Older committed SW1 raw logs may still be useful as
+negative regression samples if they predate newer `firmware` and `protocol`
+status metadata.
+
 ## Validation checklist
 
 Before R1 begins, capture and validate all four modes above. Record the
@@ -176,4 +219,3 @@ Each representative run should show:
 - emitted field names and record tags match the current host contracts;
 - serial output remains parseable by `host.otis_tools.capture_serial`,
   `host.otis_tools.validate_run`, and `host.otis_tools.report_run`.
-
