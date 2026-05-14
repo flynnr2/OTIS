@@ -8,18 +8,34 @@ OTIS is not merely a GPSDO project. It is an instrumentation architecture in whi
 
 ## Current Status
 
-This repository has moved from **F0 / SW0 foundation** into the first
-**SW1 / H0 bring-up** path:
+This repository has completed enough **H0 / SW1** bring-up to move into **H1**
+open-loop OCXO/DAC characterization:
 
 - the architecture, terminology, and first data contracts are being made explicit;
-- the host-side tooling validates synthetic fixtures and header-only hardware run templates;
+- the host-side tooling validates synthetic fixtures and captured run directories;
 - the active SW1 firmware supports explicit USB synthetic, GPIO loopback, GPS PPS, and TCXO observation modes;
+- the non-PIO H0/SW1 validation path is healthy;
+- the SW1.5a PIO FIFO path is complete enough for sparse-edge observation;
 - the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
-H0 hardware is assumed wired and ready for bench testing, but this repo does
-not claim real hardware validation until captured non-template run directories
-are added.
+The current SW1.5a evidence run is
+`runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit
+`4cb0fc8088cbc36eeaa0e52e5c4661b86b738aca`. It validates with:
+
+```bash
+python3 -m host.otis_tools.validate_run runs/h0_sw1_5a_pio/tcxo_observe/run_001
+```
+
+Expected output:
+
+```text
+OK raw_events.csv: 141 rows
+OK count_observations.csv: 141 rows
+OK health.csv: 1128 rows
+```
+
+The `COMPLETE` marker is present.
 
 ## Repository Map
 
@@ -58,6 +74,25 @@ The firmware emits raw/canonical observations in the RP2040 capture-domain
 model. Host tooling may check PPS cadence and count sanity, but oscillator
 quality, lock state, steering quality, and GPSDO discipline claims remain out of
 scope for SW1.
+
+SW1.5a preserves this architecture boundary:
+
+```text
+Sparse event capture -> PIO FIFO path
+High-rate oscillator observation -> GPIN0/FC0 gated-count path
+```
+
+PIO FIFO is for sparse event observation only: PPS, GPIO loopback, and future
+low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
+FC0/gated-count style observation, not PIO FIFO edge logging.
+
+The next meaningful project phase is H1 OCXO/DAC characterization, not immediate
+SW2 control-loop firmware. H1 should verify OCXO power/current/warmup/output
+level, verify DAC I2C and output range, connect the conditioned OCXO output to
+`D8` / `GPIO20` / `GPIN0`, capture free-running FC0/GPIN0 count observations,
+step the DAC manually, measure frequency/count response versus DAC setting,
+estimate Hz/V and ppm/V, characterize settling and thermal behavior, and only
+then design SW2 discipline/control-loop firmware.
 
 ## Quick Host Scaffold Check
 
