@@ -4,6 +4,7 @@
 
 #include "otis_config.h"
 #include "otis_protocol.h"
+#include "otis_timebase.h"
 
 namespace {
 
@@ -14,10 +15,6 @@ volatile OtisCapturedEdge capture_ring[kCaptureRingSize];
 volatile uint8_t capture_head = 0;
 volatile uint8_t capture_tail = 0;
 volatile uint32_t capture_dropped_count = 0;
-
-uint64_t capture_ticks_now(void) {
-  return (uint64_t)micros() * 16ull;
-}
 
 }  // namespace
 
@@ -41,7 +38,7 @@ bool otis_capture_ring_push_from_isr(uint32_t channel_id,
   capture_ring[capture_head].channel_id = channel_id;
   capture_ring[capture_head].reference_record = reference_record;
   capture_ring[capture_head].edge = edge;
-  capture_ring[capture_head].timestamp_ticks = capture_ticks_now();
+  capture_ring[capture_head].timestamp_ticks = otis_capture_ticks_now();
   capture_ring[capture_head].flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
   capture_head = next_head;
   return true;

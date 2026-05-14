@@ -10,6 +10,7 @@
 
 #include "otis_capture_ring.h"
 #include "otis_protocol.h"
+#include "otis_timebase.h"
 
 namespace {
 
@@ -39,10 +40,6 @@ uint32_t pio_fifo_drained_event_count = 0;
 uint32_t pio_fifo_empty_count = 0;
 uint32_t pio_fifo_overflow_drop_count = 0;
 uint32_t pio_fifo_max_drain_batch = 0;
-
-uint64_t capture_ticks_now(void) {
-  return (uint64_t)micros() * 16ull;
-}
 
 void clear_pio_rxstall(void) {
   pio_capture->fdebug = 1u << pio_capture_sm;
@@ -108,7 +105,7 @@ void otis_capture_pio_service(void) {
         pio_capture_channel_id,
         pio_capture_reference_record,
         'R',
-        capture_ticks_now(),
+        otis_capture_ticks_now(),
         OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
     };
     if (pio_emit_record != nullptr) {
