@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import csv
+import json
 import sys
 
 from .capture_serial import capture_serial
-from .validate_run import validate_run
+from .contracts import CsvValidationContext, validate_csv
+from .run_loader import load_manifest
+from .validate_run import _validate_count_sanity, _validate_manifest
 
 
 DEFAULT_TEMPLATE = Path("runs/h1_open_loop/dac_manual_sweep/_template")
@@ -39,7 +42,11 @@ def _hex_code(value: int) -> str:
     return f"0x{value:04X}"
 
 
-def _verify_h1_telemetry(run_dir: Path, allow_dac_init_fail: bool) -> tuple[int, int, int]:
+def _verify_h1_telemetry(
+    run_dir: Path,
+    allow_dac_init_fail: bool,
+    skip_initial_pps_intervals: int,
+) -> tuple[int, int, int, list[int]]:
     sts = _read_csv(run_dir / "csv" / "sts.csv")
     cnt = _read_csv(run_dir / "csv" / "cnt.csv")
     ref = _read_csv(run_dir / "csv" / "ref.csv")
@@ -73,21 +80,24 @@ def _verify_h1_telemetry(run_dir: Path, allow_dac_init_fail: bool) -> tuple[int,
     if not any(row["source_domain"] == "h1_ocxo_open_loop" for row in cnt):
         raise ValueError("no H1 OCXO source_domain CNT rows found")
 
+    skipped_pps_intervals: list[int] = []
     if len(ref) >= 2:
         ticks = [
             int(row["timestamp_ticks"])
             for row in ref
             if row["record_type"] == "REF" and row["channel_id"] == "1"
         ]
+        intervals = [end - start for start, end in zip(ticks, ticks[1:])]
+        skipped_pps_intervals = intervals[:skip_initial_pps_intervals]
         bad = [
-            end - start
-            for start, end in zip(ticks, ticks[1:])
-            if not (12_800_000 <= end - start <= 19_200_000)
+            interval
+            for interval in intervals[skip_initial_pps_intervals:]
+            if not (12_800_000 <= interval <= 19_200_000)
         ]
         if bad:
             raise ValueError(f"PPS intervals outside 0.8-1.2 s at 16 MHz ticks: {bad[:5]}")
 
-    return len(sts), len(cnt), len(ref)
+    return len(sts), len(cnt), len(ref), skipped_pps_intervals
 
 
 def _verify_h1_commands(
@@ -135,6 +145,42 @@ def _verify_h1_commands(
         raise ValueError(f"failed command checks: {failed}")
 
 
+def _validate_h1_structure(run_dir: Path) -> int:
+    try:
+        manifest = load_manifest(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR {run_dir}: {exc}", file=sys.stderr)
+        return 1
+
+    failures = _validate_manifest(run_dir, manifest)
+    for file_entry in manifest.files:
+        contract = file_entry.get("contract")
+        rel_path = file_entry.get("path")
+        if not contract or not rel_path:
+            failures.append("manifest file entry missing contract or path")
+            continue
+        path = run_dir / rel_path
+        context = CsvValidationContext(
+            contract=contract,
+            known_channels=manifest.known_channels,
+            known_domains=manifest.known_domains,
+            template=manifest.is_template,
+        )
+        result = validate_csv(path, context)
+        if result.ok:
+            print(f"OK {rel_path}: {result.row_count} rows")
+        else:
+            failures.extend(f"{rel_path}: {error}" for error in result.errors)
+        for warning in result.warnings:
+            print(f"WARN {rel_path}: {warning}", file=sys.stderr)
+
+    count_rows = _read_csv(run_dir / "csv" / "cnt.csv")
+    failures.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
+    for failure in failures:
+        print(f"ERROR {failure}", file=sys.stderr)
+    return 1 if failures else 0
+
+
 class _StdinSwap:
     def __init__(self, replacement) -> None:
         self.replacement = replacement
@@ -156,6 +202,7 @@ def verify_h1_manual_log(
     expected_min_code: int,
     expected_max_code: int,
     allow_dac_init_fail: bool,
+    skip_initial_pps_intervals: int,
 ) -> int:
     if not raw_log.exists():
         print(f"ERROR raw log does not exist: {raw_log}", file=sys.stderr)
@@ -168,18 +215,24 @@ def verify_h1_manual_log(
         with _StdinSwap(handle):
             capture_serial(run_dir, template, run_id)
 
-    structural_status = validate_run(run_dir)
+    structural_status = _validate_h1_structure(run_dir)
     if structural_status != 0:
         return structural_status
 
     try:
-        sts_count, cnt_count, ref_count = _verify_h1_telemetry(run_dir, allow_dac_init_fail)
+        sts_count, cnt_count, ref_count, skipped_pps_intervals = _verify_h1_telemetry(
+            run_dir,
+            allow_dac_init_fail,
+            skip_initial_pps_intervals,
+        )
         _verify_h1_commands(run_dir, expected_min_code, expected_max_code, allow_dac_init_fail)
     except ValueError as exc:
         print(f"ERROR H1 verification: {exc}", file=sys.stderr)
         return 1
 
     print(f"OK H1 telemetry: {sts_count} STS rows, {cnt_count} CNT rows, {ref_count} REF rows")
+    if skipped_pps_intervals:
+        print(f"INFO skipped initial PPS intervals ticks: {skipped_pps_intervals}")
     print("OK H1 manual command checks")
     print(f"OK H1 run directory: {run_dir}")
     return 0
@@ -205,6 +258,12 @@ def main() -> None:
         action="store_true",
         help="Allow runs captured intentionally without the AD5693R present.",
     )
+    parser.add_argument(
+        "--skip-initial-pps-intervals",
+        type=int,
+        default=1,
+        help="Ignore this many initial PPS intervals before cadence validation; H1 defaults to 1.",
+    )
     args = parser.parse_args()
 
     raise SystemExit(
@@ -216,6 +275,7 @@ def main() -> None:
             args.expected_min_code,
             args.expected_max_code,
             args.allow_dac_init_fail,
+            args.skip_initial_pps_intervals,
         )
     )
 

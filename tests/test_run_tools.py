@@ -269,6 +269,58 @@ def test_verify_h1_manual_log_command(tmp_path: Path) -> None:
     assert "CNT,1,1,2" in (run_dir / "csv" / "cnt.csv").read_text(encoding="utf-8")
 
 
+def test_verify_h1_manual_log_skips_initial_two_second_pps(tmp_path: Path) -> None:
+    raw_log = tmp_path / "h1_first_pps_2s.log"
+    run_dir = tmp_path / "h1_first_pps_2s_run"
+    raw_log.write_text(
+        "\n".join(
+            [
+                "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
+                "STS,1,2,2,rp2040_timer0,system,h1_open_loop,true,WARN,32768",
+                "STS,1,3,3,rp2040_timer0,control,gpsdo_steering,not_implemented,INFO,32768",
+                "STS,1,4,4,rp2040_timer0,build,enable_dac_ad5693r,1,INFO,32768",
+                "STS,1,5,5,rp2040_timer0,dac,enabled,true,INFO,32768",
+                "STS,1,6,6,rp2040_timer0,dac,initialized,true,INFO,0",
+                "STS,1,7,7,rp2040_timer0,dac,init,ok,INFO,0",
+                "STS,1,8,8,rp2040_timer0,capture,tcxo_counter_backend,rp2040_fc0_gpin0,INFO,32768",
+                "STS,1,9,9,rp2040_timer0,command,h1_help,DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP,INFO,0",
+                "STS,1,10,10,rp2040_timer0,dac,min_code,0x7000,INFO,32768",
+                "STS,1,11,11,rp2040_timer0,dac,max_code,0x9000,INFO,32768",
+                "STS,1,12,12,rp2040_timer0,dac,accepted_code,0x8000,INFO,0",
+                "STS,1,13,13,rp2040_timer0,dac,accepted_code,0x7000,INFO,0",
+                "STS,1,14,14,rp2040_timer0,dac,rejected_code,0x0000,WARN,32768",
+                "STS,1,15,15,rp2040_timer0,dac,rejected_code,0xFFFF,WARN,32768",
+                "STS,1,16,16,rp2040_timer0,dac,set,rejected_outside_clamps,WARN,32768",
+                "STS,1,17,17,rp2040_timer0,fc0,valid,true,INFO,0",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
+                "REF,1,1001,1,R,48000000,rp2040_timer0,16",
+                "REF,1,1002,1,R,64000000,rp2040_timer0,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "host.otis_tools.verify_h1_manual_log",
+            str(raw_log),
+            "--run-dir",
+            str(run_dir),
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "INFO skipped initial PPS intervals ticks: [32000000]" in result.stdout
+
+
 def test_verify_h1_manual_log_allows_missing_dac(tmp_path: Path) -> None:
     raw_log = tmp_path / "h1_no_dac.log"
     run_dir = tmp_path / "h1_no_dac_run"
