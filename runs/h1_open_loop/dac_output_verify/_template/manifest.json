@@ -67,7 +67,7 @@
   ],
   "domains": [
     {"name": "rp2040_timer0", "nominal_hz": 16000000},
-    {"name": "h1_ocxo_observed", "nominal_hz": null}
+    {"name": "h1_ocxo_open_loop", "nominal_hz": null}
   ],
   "files": [
     {"path": "csv/evt.csv", "contract": "raw_events_v1"},

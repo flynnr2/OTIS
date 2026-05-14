@@ -83,7 +83,7 @@
       "nominal_hz": 16000000
     },
     {
-      "name": "h1_ocxo_observed",
+      "name": "h1_ocxo_open_loop",
       "nominal_hz": null
     }
   ],

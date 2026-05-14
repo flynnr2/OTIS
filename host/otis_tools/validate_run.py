@@ -17,6 +17,8 @@ KNOWN_BRINGUP_MODES = {
 }
 
 KNOWN_H0_CHANNELS = {0, 1, 2}
+KNOWN_H0_COUNT_SOURCE_DOMAINS = {"h0_tcxo_16mhz"}
+KNOWN_H1_COUNT_SOURCE_DOMAINS = {"h1_ocxo_open_loop"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -122,13 +124,27 @@ def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: 
     return failures
 
 
-def _validate_count_sanity(count_rows: list[dict[str, str]], template: bool) -> list[str]:
+def _validate_count_sanity(count_rows: list[dict[str, str]], manifest, template: bool) -> list[str]:
     if template:
         return []
     failures: list[str] = []
+    if manifest.h_phase == "H1":
+        allowed_source_domains = KNOWN_H1_COUNT_SOURCE_DOMAINS | {
+            str(domain["name"])
+            for domain in manifest.data.get("domains", [])
+            if str(domain.get("name", "")).startswith("h1_")
+        }
+        phase_label = "H1"
+    else:
+        allowed_source_domains = KNOWN_H0_COUNT_SOURCE_DOMAINS
+        phase_label = "H0"
+
     for index, row in enumerate(count_rows, start=1):
         if row.get("channel_id") != "2":
-            failures.append(f"count_observations.csv: row {index} uses channel_id {row.get('channel_id')!r}; H0 counts belong on CH2")
+            failures.append(
+                f"count_observations.csv: row {index} uses channel_id {row.get('channel_id')!r}; "
+                f"{phase_label} counts belong on CH2"
+            )
         try:
             counted_edges = _int(row["counted_edges"])
             flags = int(row.get("flags", "0"), 10)
@@ -136,8 +152,11 @@ def _validate_count_sanity(count_rows: list[dict[str, str]], template: bool) -> 
             continue
         if counted_edges == 0 and flags == 0:
             failures.append(f"count_observations.csv: row {index} has zero counted_edges without an explicit flag")
-        if row.get("source_domain") != "h0_tcxo_16mhz":
-            failures.append(f"count_observations.csv: row {index} source_domain must be 'h0_tcxo_16mhz'")
+        if row.get("source_domain") not in allowed_source_domains:
+            failures.append(
+                f"count_observations.csv: row {index} source_domain {row.get('source_domain')!r} "
+                f"must be one of {sorted(allowed_source_domains)}"
+            )
     return failures
 
 
@@ -196,7 +215,7 @@ def validate_run(run_dir: Path) -> int:
     raw_rows = _read_csv(files_by_contract.get("raw_events_v1", Path("__missing__")))
     count_rows = _read_csv(files_by_contract.get("count_observations_v1", Path("__missing__")))
     failures.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
-    failures.extend(_validate_count_sanity(count_rows, manifest.is_template))
+    failures.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
 
     for warning in warnings:
         print(f"WARN {warning}", file=sys.stderr)
