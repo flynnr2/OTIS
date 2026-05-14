@@ -12,31 +12,18 @@
 #include "OtisBootConfig.h"
 #include "otis_board.h"
 #include "otis_boot_diag.h"
+#include "otis_capture_ring.h"
 #include "otis_protocol.h"
 #include "otis_records.h"
 #include "otis_status_led.h"
 
 namespace {
 
-struct CapturedEdge {
-  uint32_t channel_id;
-  bool reference_record;
-  char edge;
-  uint64_t timestamp_ticks;
-  uint32_t flags;
-};
-
-constexpr uint8_t kCaptureRingSize =
-    static_cast<uint8_t>(OTIS_CAPTURE_RING_SIZE);
 constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
 
-volatile CapturedEdge capture_ring[kCaptureRingSize];
-volatile uint8_t capture_head = 0;
-volatile uint8_t capture_tail = 0;
-volatile uint32_t capture_dropped_count = 0;
 volatile uint32_t tcxo_edge_count = 0;
 
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
@@ -201,22 +188,7 @@ void emit_status_u32(const char *component, const char *key, uint32_t value,
   emit_status(component, key, buffer, severity, flags);
 }
 
-void push_capture(uint32_t channel_id, bool reference_record, char edge) {
-  uint8_t next_head = (uint8_t)((capture_head + 1u) % kCaptureRingSize);
-  if (next_head == capture_tail) {
-    capture_dropped_count++;
-    return;
-  }
-
-  capture_ring[capture_head].channel_id = channel_id;
-  capture_ring[capture_head].reference_record = reference_record;
-  capture_ring[capture_head].edge = edge;
-  capture_ring[capture_head].timestamp_ticks = capture_ticks_now();
-  capture_ring[capture_head].flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  capture_head = next_head;
-}
-
-void emit_captured_edge(const CapturedEdge &record) {
+void emit_captured_edge(const OtisCapturedEdge &record) {
   otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF : OTIS_RECORD_EVT,
                       event_seq++, record.channel_id, edge_string(record.edge),
                       record.timestamp_ticks, OTIS_DOMAIN_RP2040_TIMER0,
@@ -224,29 +196,13 @@ void emit_captured_edge(const CapturedEdge &record) {
   emitted_event_count++;
 }
 
-bool pop_capture(CapturedEdge *record) {
-  bool have_record = false;
-  noInterrupts();
-  if (capture_tail != capture_head) {
-    record->channel_id = capture_ring[capture_tail].channel_id;
-    record->reference_record = capture_ring[capture_tail].reference_record;
-    record->edge = capture_ring[capture_tail].edge;
-    record->timestamp_ticks = capture_ring[capture_tail].timestamp_ticks;
-    record->flags = capture_ring[capture_tail].flags;
-    capture_tail = (uint8_t)((capture_tail + 1u) % kCaptureRingSize);
-    have_record = true;
-  }
-  interrupts();
-  return have_record;
-}
-
 void handle_generic_event_edge(void) {
   char edge = digitalRead(OTIS_PIN_GENERIC_EVENT) ? 'R' : 'F';
-  push_capture(OTIS_CHANNEL_GENERIC_EVENT, false, edge);
+  otis_capture_ring_push_from_isr(OTIS_CHANNEL_GENERIC_EVENT, false, edge);
 }
 
 void handle_pps_reference_edge(void) {
-  push_capture(OTIS_CHANNEL_PPS_REFERENCE, true, 'R');
+  otis_capture_ring_push_from_isr(OTIS_CHANNEL_PPS_REFERENCE, true, 'R');
 }
 
 void handle_tcxo_observation_edge(void) {
@@ -264,8 +220,8 @@ const char *edge_string(char edge) {
 }
 
 void drain_capture_ring(void) {
-  CapturedEdge record;
-  while (pop_capture(&record)) {
+  OtisCapturedEdge record;
+  while (otis_capture_ring_pop(&record)) {
     emit_captured_edge(record);
   }
 }
@@ -281,7 +237,7 @@ void poll_pio_overflow(void) {
     return;
   }
   pio_fifo_overflow_drop_count++;
-  capture_dropped_count++;
+  otis_capture_ring_note_drop();
   clear_pio_rxstall();
 }
 
@@ -328,7 +284,7 @@ void drain_pio_fifo(void) {
   uint32_t batch = 0;
   while (!pio_sm_is_rx_fifo_empty(pio_capture, pio_capture_sm)) {
     (void)pio_sm_get(pio_capture, pio_capture_sm);
-    CapturedEdge record = {
+    OtisCapturedEdge record = {
         pio_capture_channel_id,
         pio_capture_reference_record,
         'R',
@@ -416,6 +372,7 @@ void emit_periodic_status(void) {
   }
   last_status_ms = now_ms;
 
+  uint32_t capture_dropped_count = otis_capture_ring_dropped_count();
   uint32_t drop_flag = OTIS_FLAG_NONE;
   if (capture_dropped_count) {
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
