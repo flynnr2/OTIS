@@ -10,12 +10,14 @@
 #include "otis_capture_backend.h"
 #include "otis_capture_irq.h"
 #include "otis_capture_ring.h"
+#include "otis_emit.h"
 #include "otis_modes.h"
 #include "otis_protocol.h"
-#include "otis_records.h"
 #include "otis_runtime_state.h"
+#include "otis_status_emit.h"
 #include "otis_status_led.h"
 #include "otis_timebase.h"
+#include "otis_transport_serial.h"
 
 namespace {
 
@@ -25,6 +27,7 @@ constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
 
 OtisRuntimeState runtime_state;
+OtisStatusEmitContext status_emit_context;
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -35,7 +38,7 @@ void complete_boot_phase(BootPhase completed_phase) {
 }
 
 void emit_boot_records_if_serial_ready(void) {
-  if (runtime_state.boot.summary_emitted || !Serial) {
+  if (runtime_state.boot.summary_emitted || !otis_transport_ready()) {
     return;
   }
 
@@ -53,11 +56,11 @@ void emit_boot_records_if_serial_ready(void) {
 
 void wait_for_serial_or_timeout(void) {
   uint32_t serial_wait_start_ms = millis();
-  while (!Serial &&
+  while (!otis_transport_ready() &&
          (uint32_t)(millis() - serial_wait_start_ms) < kOtisSerialWaitMs) {
     delay(1);
   }
-  runtime_state.boot.serial_ready = Serial;
+  runtime_state.boot.serial_ready = otis_transport_ready();
   runtime_state.boot.serial_absent_warn_pending =
       !runtime_state.boot.serial_ready;
 }
@@ -68,14 +71,14 @@ void halt_boot(BootFatal fatal, BootPhase failed_phase) {
   otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
 
   bool fatal_emitted = false;
-  if (Serial) {
+  if (otis_transport_ready()) {
     emit_boot_records_if_serial_ready();
     emitOtisBootFatal(Serial, fatal, failed_phase);
     fatal_emitted = true;
   }
 
   while (true) {
-    if (Serial && !fatal_emitted) {
+    if (otis_transport_ready() && !fatal_emitted) {
       emit_boot_records_if_serial_ready();
       emitOtisBootFatal(Serial, fatal, failed_phase);
       fatal_emitted = true;
@@ -92,7 +95,7 @@ void enter_safe_mode(void) {
   otisBootBreadcrumbSetSafeModeFatal(BootFatal::RepeatedBootFailure);
 
   otis_status_led_begin();
-  Serial.begin(kOtisSerialBaud);
+  otis_transport_begin(kOtisSerialBaud);
   wait_for_serial_or_timeout();
   otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
   emit_boot_records_if_serial_ready();
@@ -102,16 +105,14 @@ const char *edge_string(char edge);
 
 void emit_status(const char *component, const char *key, const char *value,
                  const char *severity, uint32_t flags) {
-  otis_emit_health(runtime_state.sequences.status_seq++,
-                   otis_capture_ticks_now(), OTIS_DOMAIN_RP2040_TIMER0,
-                   component, key, value, severity, flags);
+  otis_status_emit(&status_emit_context, component, key, value, severity,
+                   flags);
 }
 
 void emit_status_u32(const char *component, const char *key, uint32_t value,
                      const char *severity, uint32_t flags) {
-  char buffer[11];
-  snprintf(buffer, sizeof(buffer), "%lu", (unsigned long)value);
-  emit_status(component, key, buffer, severity, flags);
+  otis_status_emit_u32(&status_emit_context, component, key, value, severity,
+                       flags);
 }
 
 void emit_captured_edge(const OtisCapturedEdge &record) {
@@ -425,7 +426,7 @@ void boot_phase_ring_buffers_init(void) {
 
 void boot_phase_serial_init(void) {
   enter_boot_phase(BootPhase::SerialInit);
-  Serial.begin(kOtisSerialBaud);
+  otis_transport_begin(kOtisSerialBaud);
   wait_for_serial_or_timeout();
 
   otis_status_led_boot_test();
@@ -525,6 +526,8 @@ void service_tcxo_gate(void) {
 
 void setup() {
   otis_runtime_state_init(&runtime_state);
+  otis_status_emit_init(&status_emit_context,
+                        &runtime_state.sequences.status_seq);
   boot_phase_reset_entry();
   if (otisBootSafeModeRequested()) {
     enter_safe_mode();
@@ -550,6 +553,9 @@ void loop() {
     return;
   }
 
+  // Future output-budgeting hook: keep capture service/drain before periodic
+  // status emission, then cap max records emitted per loop if host backpressure
+  // becomes observable.
   emit_boot_records_if_serial_ready();
   service_loopback_output();
   service_tcxo_gate();
