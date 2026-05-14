@@ -5,6 +5,8 @@
 This document describes the intended H0/SW1 RP2040 capture architecture.
 
 It is intentionally a design note rather than a finalized implementation.
+The Arduino backend boundary and future PIO/DMA connection point are documented
+in `ARDUINO_CAPTURE_BACKENDS.md`.
 
 ## Design Principles
 
