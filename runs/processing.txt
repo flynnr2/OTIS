@@ -69,3 +69,99 @@ python3 -m host.otis_tools.report_run \
   runs/h0_sw1/tcxo_observe/run_001 \
   > runs/h0_sw1/tcxo_observe/run_001/reports/summary.md
 =================================================================================
+
+=================================================================================
+RAW_LOG=tmp/OTIS_SW1_MODE_H1_OCXO_OBSERVE.txt
+RUN_DIR=runs/h1_open_loop/dac_manual_sweep/run_001
+
+python3 -m host.otis_tools.capture_serial \
+  --template runs/h1_open_loop/dac_manual_sweep/_template \
+  --run-dir "$RUN_DIR" \
+  --run-id h1_dac_manual_001 < "$RAW_LOG"
+
+python3 -m host.otis_tools.validate_run "$RUN_DIR"
+
+python3 - <<'PY'
+import csv
+from pathlib import Path
+
+run = Path("runs/h1_open_loop/dac_manual_sweep/run_001")
+sts = list(csv.DictReader((run / "csv/sts.csv").open()))
+cnt = list(csv.DictReader((run / "csv/cnt.csv").open()))
+ref = list(csv.DictReader((run / "csv/ref.csv").open()))
+
+def has(component, key, value=None):
+    for r in sts:
+        if r["component"] == component and r["status_key"] == key:
+            if value is None or r["status_value"] == value:
+                return True
+    return False
+
+required = [
+    ("system", "mode", "H1_OCXO_OBSERVE_OPEN_LOOP"),
+    ("system", "h1_open_loop", "true"),
+    ("control", "gpsdo_steering", "not_implemented"),
+    ("build", "enable_dac_ad5693r", "1"),
+    ("dac", "enabled", "true"),
+    ("dac", "initialized", "true"),
+    ("dac", "init", "ok"),
+    ("capture", "tcxo_counter_backend", "rp2040_fc0_gpin0"),
+]
+
+missing = [item for item in required if not has(*item)]
+if missing:
+    raise SystemExit(f"missing required STS rows: {missing}")
+
+if not cnt:
+    raise SystemExit("no CNT rows found")
+if any(r["channel_id"] != "2" for r in cnt):
+    raise SystemExit("CNT rows are not on CH2")
+if any(int(r["counted_edges"]) == 0 and int(r["flags"]) == 0 for r in cnt):
+    raise SystemExit("zero counted_edges without diagnostic flag")
+if not any(r["source_domain"] == "h1_ocxo_open_loop" for r in cnt):
+    raise SystemExit("no H1 OCXO source_domain CNT rows found")
+
+if len(ref) >= 2:
+    ticks = [int(r["timestamp_ticks"]) for r in ref if r["record_type"] == "REF" and r["channel_id"] == "1"]
+    bad = [b - a for a, b in zip(ticks, ticks[1:]) if not (12_800_000 <= b - a <= 19_200_000)]
+    if bad:
+        raise SystemExit(f"PPS intervals outside 0.8-1.2 s at 16 MHz ticks: {bad[:5]}")
+
+print(f"OK H1 telemetry: {len(sts)} STS rows, {len(cnt)} CNT rows, {len(ref)} REF rows")
+PY
+
+python3 - <<'PY'
+import csv
+from pathlib import Path
+
+run = Path("runs/h1_open_loop/dac_manual_sweep/run_001")
+sts = list(csv.DictReader((run / "csv/sts.csv").open()))
+
+def values(component, key):
+    return [r["status_value"] for r in sts if r["component"] == component and r["status_key"] == key]
+
+accepted = values("dac", "accepted_code")
+rejected = values("dac", "rejected_code")
+set_status = values("dac", "set")
+
+checks = {
+    "HELP response": bool(values("command", "h1_help")),
+    "DAC limits min": "0x7000" in values("dac", "min_code"),
+    "DAC limits max": "0x9000" in values("dac", "max_code"),
+    "DAC SET/MID accepted": "0x8000" in accepted,
+    "DAC ZERO accepted": "0x7000" in accepted,
+    "low clamp rejected": "0x0000" in rejected,
+    "high clamp rejected": "0xFFFF" in rejected,
+    "outside clamps status": "rejected_outside_clamps" in set_status,
+    "FC0 query responded": bool(values("fc0", "valid")),
+}
+
+failed = [name for name, ok in checks.items() if not ok]
+if failed:
+    raise SystemExit(f"failed command checks: {failed}")
+
+print("OK H1 manual command checks")
+PY
+
+=================================================================================
+
