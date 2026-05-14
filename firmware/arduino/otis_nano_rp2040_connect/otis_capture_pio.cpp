@@ -14,6 +14,10 @@
 
 namespace {
 
+// Sparse edge observer only. This PIO program enqueues one FIFO word per rising
+// edge and firmware timestamps records when draining the FIFO. Do not route raw
+// 10 MHz / 16 MHz CXO input here; D8 / GPIO20 / GPIN0 oscillator observation
+// belongs on the FC0 / gated-count path.
 const uint16_t pio_edge_capture_instructions[] = {
     static_cast<uint16_t>(pio_encode_wait_pin(false, 0)),
     static_cast<uint16_t>(pio_encode_wait_pin(true, 0)),

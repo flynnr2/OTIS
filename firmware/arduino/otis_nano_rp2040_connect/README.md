@@ -77,6 +77,12 @@ so metadata reports `capture_mode=pio_fifo_cpu_timestamped` and
 `timestamp_latch=pio_edge_detect_cpu_timestamped`. This is not final
 hardware-latched timestamping.
 
+Guardrail: the PIO FIFO backend is only for sparse edge streams such as GPS PPS,
+slow GPIO loopback, or future low-rate event inputs. It must not be used to
+enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on `D8` / `GPIO20` /
+`GPIN0` should be observed with the RP2040 frequency-counter / FC0 /
+gated-count path instead.
+
 PIO input selection follows the selected bring-up mode:
 
 | Mode | PIO input | Expected records |
@@ -84,6 +90,9 @@ PIO input selection follows the selected bring-up mode:
 | `SW1_GPIO_LOOPBACK` | `D10` / GPIO5 / `CH0` | rising-edge `EVT` rows |
 | `SW1_GPS_PPS` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows |
 | `SW1_TCXO_OBSERVE` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus existing `CNT` rows when TCXO counting is configured |
+
+Sparse edges map to the PIO FIFO edge backend. Raw CXO on `GPIN0` maps to the
+FC0/gated-count backend and emits `CNT`, not one FIFO event per oscillator edge.
 
 The boot/status stream includes `capture_backend`, `pio_init`, `pio_gpio`,
 `pio_edge`, `pio_fifo_drained_event_count`, `pio_fifo_empty_count`,

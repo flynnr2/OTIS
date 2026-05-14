@@ -23,6 +23,11 @@ not as a replacement for the board clock.
 D8 / GPIO20 / GPIN0 is the preferred non-surgical reference-clock ingress for
 OTIS MVP hardware on the Nano RP2040 Connect.
 
+Firmware guardrail: raw 10 MHz / 16 MHz CXO input on GPIN0 should be observed
+with the RP2040 frequency-counter / FC0 / gated-count path. The PIO FIFO edge
+backend is for sparse event streams such as GPS PPS and slow GPIO loopback, not
+for enqueuing one event per oscillator edge.
+
 GPOUT0 and GPOUT3 expose RP2040 internal clocks for diagnostics, validation,
 and external measurement. They are not evidence that the external reference has
 become the RP2040 system clock.

@@ -337,6 +337,9 @@ void configure_gps_pps_mode(void) {
 
 void configure_tcxo_observe_mode(void) {
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+  // In TCXO observe mode the edge-capture backend, including PIO FIFO when
+  // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 / GPIN0
+  // must use the FC0/gated-count counter backend below, not FIFO edge records.
   bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
                                        OTIS_CHANNEL_PPS_REFERENCE, true,
                                        RISING);
