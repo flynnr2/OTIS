@@ -35,7 +35,7 @@ for Arduino IDE builds; CLI `-D` overrides still work for scripted builds.
 | `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
 | `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
 | `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1` |
-| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1`, DAC `STS` telemetry |
+| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands and explicit open-loop sweeps | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1`, DAC `STS`/`DAC` telemetry |
 
 The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
 timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
@@ -124,7 +124,7 @@ capture fabric work are intentionally deferred to SW1.5b and later.
 
 ## H1 open-loop DAC and FC0 commands
 
-H1 DAC support is compile-time gated and disabled by default:
+H1 DAC support is compile-time gated:
 
 ```cpp
 #define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_H1_OCXO_OBSERVE
@@ -159,6 +159,15 @@ DAC SET 32768
 DAC MID
 DAC ZERO
 FC0?
+SWEEP?
+SWEEP LOAD center_only
+SWEEP LOAD tiny_plus_minus_1
+SWEEP LOAD tiny_plus_minus_2
+SWEEP START
+SWEEP STOP
+SWEEP STEP
+SWEEP CLEAR
+SWEEP ADD 0x8000 5000
 ```
 
 `DAC SET <code>` accepts decimal or hex raw 16-bit DAC codes. Values outside
@@ -173,6 +182,15 @@ nominal OCXO frequency assumption, DAC enable state, I2C address, clamp values,
 DAC init success/failure, and accepted/rejected DAC command telemetry. `FC0?`
 prints the latest gated-count summary as structured `STS` rows. The regular
 `CNT` records remain the primary FC0 observation output.
+
+`OTIS_ENABLE_H1_DAC_SWEEP` adds deterministic open-loop sweep commands. Sweeps
+are never started on boot; `SWEEP START` is required. Built-in profiles are
+deliberately tiny and centered inside the configured DAC clamps. Requests that
+would cross clamps are rejected and logged as `DAC` rows with `safety_reject`.
+During an active sweep, firmware emits `DAC` rows for `dwell_start`,
+`fc0_window`, and `dwell_complete` so each nearby `CNT` observation can be
+attributed to the active step index and DAC code without changing the `CNT`
+schema.
 
 Wiring summary for H1:
 

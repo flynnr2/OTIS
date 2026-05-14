@@ -12,7 +12,7 @@
 #define OTIS_SW1_MODE_H1_OCXO_OBSERVE 5
 
 #ifndef OTIS_SW1_BRINGUP_MODE
-#define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_TCXO_OBSERVE
+#define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #endif
 
 // Firmware provenance. Scripted builds may override these with -D flags; keep
@@ -132,7 +132,7 @@
 // H1 open-loop lab instrument DAC support. This is deliberately opt-in and
 // manual-only; firmware never steers the oscillator from PPS/count telemetry.
 #ifndef OTIS_ENABLE_DAC_AD5693R
-#define OTIS_ENABLE_DAC_AD5693R 0
+#define OTIS_ENABLE_DAC_AD5693R 1
 #endif
 
 #ifndef OTIS_DAC_AD5693R_I2C_ADDRESS
@@ -145,6 +145,24 @@
 
 #ifndef OTIS_DAC_MAX_CODE
 #define OTIS_DAC_MAX_CODE 0x9000u
+#endif
+
+// Deterministic H1 open-loop DAC sweep support. This is lab automation only:
+// sweeps never start on boot and never steer from count/frequency telemetry.
+#ifndef OTIS_ENABLE_H1_DAC_SWEEP
+#define OTIS_ENABLE_H1_DAC_SWEEP 1
+#endif
+
+#ifndef OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS
+#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 5000u
+#endif
+
+#ifndef OTIS_H1_DAC_SWEEP_TINY_STEP_CODES
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 1u
+#endif
+
+#ifndef OTIS_H1_DAC_SWEEP_MAX_STEPS
+#define OTIS_H1_DAC_SWEEP_MAX_STEPS 16u
 #endif
 
 // Boot-hardening test injection. Leave disabled for normal firmware.
@@ -189,6 +207,14 @@
 
 #if OTIS_DAC_MAX_CODE > 0xFFFFu
 #error "OTIS_DAC_MAX_CODE must fit in 16 bits."
+#endif
+
+#if OTIS_H1_DAC_SWEEP_MAX_STEPS < 9u || OTIS_H1_DAC_SWEEP_MAX_STEPS > 32u
+#error "OTIS_H1_DAC_SWEEP_MAX_STEPS must be between 9 and 32."
+#endif
+
+#if OTIS_H1_DAC_SWEEP_TINY_STEP_CODES < 1u
+#error "OTIS_H1_DAC_SWEEP_TINY_STEP_CODES must be at least 1."
 #endif
 
 #if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u

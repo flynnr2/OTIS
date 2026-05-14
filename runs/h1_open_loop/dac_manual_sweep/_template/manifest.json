@@ -73,7 +73,8 @@
     {"path": "csv/evt.csv", "contract": "raw_events_v1"},
     {"path": "csv/ref.csv", "contract": "raw_events_v1"},
     {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
-    {"path": "csv/sts.csv", "contract": "health_v1"}
+    {"path": "csv/sts.csv", "contract": "health_v1"},
+    {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1"}
   ],
   "known_limitations": [
     "H1 open-loop characterization only. No closed-loop GPSDO steering is implemented or implied.",
@@ -84,6 +85,7 @@
     "csv/ref.csv",
     "csv/cnt.csv",
     "csv/sts.csv",
+    "csv/dac_steps.csv",
     "reports/summary.md",
     "reports/validate_report.md",
     "reports/anomalies.md"

@@ -64,11 +64,34 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
 ## 6. Manual DAC Sweep
 
 1. Use only the documented safe DAC code range.
-2. Step manually in small increments with a recorded dwell time.
-3. For each step, record DAC code, measured DAC output, measured control voltage,
+2. Compile sweep-capable firmware only when `OTIS_ENABLE_H1_DAC_SWEEP` is set,
+   and confirm `SWEEP?` reports the intended profile before starting.
+3. Prefer built-in conservative profiles first: `center_only`,
+   `tiny_plus_minus_1`, then `tiny_plus_minus_2`.
+4. Start sweeps explicitly with `SWEEP START`; firmware must not auto-start a
+   sweep on boot.
+5. Stop with `SWEEP STOP` immediately if the output disappears, clips, or
+   approaches a safety limit.
+6. For each step, record DAC code, measured DAC output, measured control voltage,
    timestamp, and observed frequency estimate.
-4. Stop the sweep immediately if the output disappears, clips, or approaches a
-   safety limit.
+
+Suggested run layout for scripted sweeps:
+
+```text
+runs/h1_open_loop/dac_manual_sweep/run_001/
+  raw/serial.log
+  csv/cnt.csv
+  csv/dac_steps.csv
+  csv/sts.csv
+  reports/summary.md
+  plots/
+  run_manifest.json
+  notes.md
+```
+
+Every `CNT` row captured during a sweep should be attributable through nearby
+`DAC` rows in `csv/dac_steps.csv`, especially `dwell_start`, `fc0_window`, and
+`dwell_complete` events.
 
 ## 7. ppm/V Derivation
 

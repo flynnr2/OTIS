@@ -227,6 +227,8 @@ void emit_common_boot_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_dac_ad5693r", OTIS_ENABLE_DAC_AD5693R,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_h1_dac_sweep", OTIS_ENABLE_H1_DAC_SWEEP,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("dac", "i2c_address", OTIS_DAC_AD5693R_I2C_ADDRESS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
@@ -438,6 +440,318 @@ void emit_dac_status(const char *component) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
+#if OTIS_ENABLE_H1_DAC_SWEEP
+struct H1DacSweepStep {
+  uint16_t code;
+  uint32_t dwell_ms;
+};
+
+struct H1DacSweepState {
+  H1DacSweepStep steps[OTIS_H1_DAC_SWEEP_MAX_STEPS];
+  uint8_t step_count;
+  uint8_t active_step;
+  bool running;
+  bool dwell_active;
+  uint32_t dwell_started_ms;
+  uint16_t last_requested_code;
+  uint16_t last_applied_code;
+  uint32_t last_dwell_ms;
+  const char *profile_name;
+};
+
+H1DacSweepState h1_dac_sweep = {
+    {},
+    0,
+    0,
+    false,
+    false,
+    0,
+    0,
+    0,
+    0,
+    "none",
+};
+
+uint16_t h1_dac_sweep_center_code(void) {
+  return (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
+                    (uint32_t)OTIS_DAC_MAX_CODE) /
+                   2u);
+}
+
+bool h1_dac_sweep_clamps_configured(void) {
+  return OTIS_DAC_MIN_CODE > 0u && OTIS_DAC_MAX_CODE < 0xFFFFu &&
+         OTIS_DAC_MIN_CODE <= OTIS_DAC_MAX_CODE;
+}
+
+void emit_sweep_record(int32_t step_index, uint16_t requested_code,
+                       uint16_t applied_code, bool clamped,
+                       uint32_t dwell_ms, const char *event,
+                       uint32_t flags) {
+  otis_emit_dac_step(runtime_state.sequences.dac_seq++, millis(), step_index,
+                     requested_code, applied_code, clamped, "", "", dwell_ms,
+                     event, flags);
+}
+
+void emit_sweep_status(void) {
+  emit_status("sweep", "enabled", "true", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("sweep", "running", h1_dac_sweep.running ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("sweep", "profile", h1_dac_sweep.profile_name,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("sweep", "step_count", h1_dac_sweep.step_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("sweep", "active_step", h1_dac_sweep.active_step,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("sweep", "clamps_configured",
+              h1_dac_sweep_clamps_configured() ? "true" : "false",
+              h1_dac_sweep_clamps_configured() ? OTIS_SEVERITY_INFO
+                                               : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+bool h1_dac_sweep_add_step(uint16_t code, uint32_t dwell_ms) {
+  if (!h1_dac_sweep_clamps_configured()) {
+    emit_status("sweep", "add", "rejected_clamps_not_configured",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_sweep_record(-1, code, otis_dac_ad5693r_clamp_code(code), true,
+                      dwell_ms, "safety_reject", OTIS_FLAG_PROFILE_ASSUMPTION);
+    return false;
+  }
+  if (h1_dac_sweep.step_count >= OTIS_H1_DAC_SWEEP_MAX_STEPS) {
+    emit_status("sweep", "add", "rejected_full", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    return false;
+  }
+  if (otis_dac_ad5693r_clamp_code(code) != code) {
+    emit_sweep_record(-1, code, otis_dac_ad5693r_clamp_code(code), true,
+                      dwell_ms, "safety_reject", OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("sweep", "add", "rejected_outside_clamps",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    return false;
+  }
+  h1_dac_sweep.steps[h1_dac_sweep.step_count++] = {code, dwell_ms};
+  h1_dac_sweep.profile_name = "custom";
+  emit_sweep_record((int32_t)(h1_dac_sweep.step_count - 1u), code, code, false,
+                    dwell_ms, "step_added", OTIS_FLAG_NONE);
+  return true;
+}
+
+void h1_dac_sweep_clear(void) {
+  h1_dac_sweep.running = false;
+  h1_dac_sweep.dwell_active = false;
+  h1_dac_sweep.active_step = 0;
+  h1_dac_sweep.step_count = 0;
+  h1_dac_sweep.profile_name = "none";
+  emit_sweep_record(-1, 0, 0, false, 0, "clear", OTIS_FLAG_NONE);
+}
+
+bool h1_dac_sweep_load_profile(const char *profile_name) {
+  if (!h1_dac_sweep_clamps_configured()) {
+    emit_status("sweep", "load", "rejected_clamps_not_configured",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_sweep_record(-1, 0, 0, false, 0, "safety_reject",
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
+    return false;
+  }
+
+  uint32_t candidate_codes[9];
+  uint8_t count = 0;
+  uint16_t center = h1_dac_sweep_center_code();
+  uint32_t step = (uint32_t)OTIS_H1_DAC_SWEEP_TINY_STEP_CODES;
+  const uint32_t dwell_ms = OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS;
+  const char *loaded_name = nullptr;
+
+  if (strcmp(profile_name, "CENTER_ONLY") == 0) {
+    candidate_codes[count++] = center;
+    loaded_name = "center_only";
+  } else if (strcmp(profile_name, "TINY_PLUS_MINUS_1") == 0) {
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center + step;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center - step;
+    candidate_codes[count++] = center;
+    loaded_name = "tiny_plus_minus_1";
+  } else if (strcmp(profile_name, "TINY_PLUS_MINUS_2") == 0) {
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center + step;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center - step;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center + (2u * step);
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = (uint32_t)center - (2u * step);
+    candidate_codes[count++] = center;
+    loaded_name = "tiny_plus_minus_2";
+  } else {
+    emit_status("sweep", "load", "rejected_unknown_profile",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
+    return false;
+  }
+
+  for (uint8_t index = 0; index < count; ++index) {
+    if (candidate_codes[index] > 0xFFFFu ||
+        otis_dac_ad5693r_clamp_code((uint16_t)candidate_codes[index]) !=
+            (uint16_t)candidate_codes[index]) {
+      uint16_t requested = candidate_codes[index] > 0xFFFFu
+                               ? 0xFFFFu
+                               : (uint16_t)candidate_codes[index];
+      emit_sweep_record(index, requested,
+                        otis_dac_ad5693r_clamp_code(requested), true,
+                        dwell_ms, "safety_reject",
+                        OTIS_FLAG_PROFILE_ASSUMPTION);
+      emit_status("sweep", "load", "rejected_profile_exceeds_clamps",
+                  OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+      return false;
+    }
+  }
+
+  h1_dac_sweep_clear();
+  for (uint8_t index = 0; index < count; ++index) {
+    h1_dac_sweep.steps[index] = {(uint16_t)candidate_codes[index], dwell_ms};
+  }
+  h1_dac_sweep.step_count = count;
+  h1_dac_sweep.profile_name = loaded_name;
+  emit_status("sweep", "load", "ok", OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("sweep", "profile", loaded_name, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_NONE);
+  emit_sweep_record(-1, center, center, false, dwell_ms, "profile_loaded",
+                    OTIS_FLAG_NONE);
+  return true;
+}
+
+bool h1_dac_sweep_apply_active_step(const char *event_name) {
+  if (h1_dac_sweep.active_step >= h1_dac_sweep.step_count) {
+    emit_status("sweep", "step", "rejected_no_step", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+    return false;
+  }
+  H1DacSweepStep step = h1_dac_sweep.steps[h1_dac_sweep.active_step];
+  uint16_t clamped = otis_dac_ad5693r_clamp_code(step.code);
+  if (clamped != step.code) {
+    emit_sweep_record(h1_dac_sweep.active_step, step.code, clamped, true,
+                      step.dwell_ms, "safety_reject",
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("sweep", "step", "rejected_outside_clamps",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    h1_dac_sweep.running = false;
+    h1_dac_sweep.dwell_active = false;
+    return false;
+  }
+  if (!otis_dac_ad5693r_is_enabled()) {
+    emit_sweep_record(h1_dac_sweep.active_step, step.code, clamped, false,
+                      step.dwell_ms, "rejected_disabled",
+                      OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    return false;
+  }
+  if (!otis_dac_ad5693r_is_initialized()) {
+    emit_sweep_record(h1_dac_sweep.active_step, step.code, clamped, false,
+                      step.dwell_ms, "rejected_not_initialized",
+                      OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    return false;
+  }
+
+  bool ok = otis_dac_ad5693r_set_raw(step.code);
+  h1_dac_sweep.last_requested_code = step.code;
+  h1_dac_sweep.last_applied_code = ok ? clamped : h1_dac_sweep.last_applied_code;
+  h1_dac_sweep.last_dwell_ms = step.dwell_ms;
+  h1_dac_sweep.dwell_started_ms = millis();
+  h1_dac_sweep.dwell_active = ok;
+  emit_sweep_record(h1_dac_sweep.active_step, step.code, clamped, false,
+                    step.dwell_ms, ok ? event_name : "write_failed",
+                    ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  if (ok) {
+    emit_sweep_record(h1_dac_sweep.active_step, step.code, clamped, false,
+                      step.dwell_ms, "dwell_start", OTIS_FLAG_NONE);
+  }
+  return ok;
+}
+
+void h1_dac_sweep_start(void) {
+  if (h1_dac_sweep.step_count == 0u) {
+    emit_status("sweep", "start", "rejected_no_profile", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+    return;
+  }
+  h1_dac_sweep.running = true;
+  h1_dac_sweep.active_step = 0;
+  h1_dac_sweep.dwell_active = false;
+  emit_sweep_record(-1, 0, 0, false, 0, "start", OTIS_FLAG_NONE);
+  if (!h1_dac_sweep_apply_active_step("step_apply")) {
+    h1_dac_sweep.running = false;
+  }
+}
+
+void h1_dac_sweep_stop(const char *event_name) {
+  if (h1_dac_sweep.dwell_active) {
+    emit_sweep_record(h1_dac_sweep.active_step, h1_dac_sweep.last_requested_code,
+                      h1_dac_sweep.last_applied_code, false,
+                      h1_dac_sweep.last_dwell_ms, "dwell_complete",
+                      OTIS_FLAG_NONE);
+  }
+  h1_dac_sweep.running = false;
+  h1_dac_sweep.dwell_active = false;
+  emit_sweep_record(-1, h1_dac_sweep.last_requested_code,
+                    h1_dac_sweep.last_applied_code, false,
+                    h1_dac_sweep.last_dwell_ms, event_name, OTIS_FLAG_NONE);
+}
+
+void h1_dac_sweep_manual_step(void) {
+  if (h1_dac_sweep.step_count == 0u) {
+    emit_status("sweep", "step", "rejected_no_profile", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+    return;
+  }
+  if (h1_dac_sweep.dwell_active) {
+    emit_sweep_record(h1_dac_sweep.active_step, h1_dac_sweep.last_requested_code,
+                      h1_dac_sweep.last_applied_code, false,
+                      h1_dac_sweep.last_dwell_ms, "dwell_complete",
+                      OTIS_FLAG_NONE);
+    h1_dac_sweep.active_step++;
+    h1_dac_sweep.dwell_active = false;
+  }
+  if (h1_dac_sweep.active_step >= h1_dac_sweep.step_count) {
+    h1_dac_sweep.active_step = 0;
+  }
+  h1_dac_sweep_apply_active_step("manual_step");
+}
+
+void service_h1_dac_sweep(void) {
+  if (!h1_dac_sweep.running || !h1_dac_sweep.dwell_active) {
+    return;
+  }
+  uint32_t now_ms = millis();
+  if ((uint32_t)(now_ms - h1_dac_sweep.dwell_started_ms) <
+      h1_dac_sweep.last_dwell_ms) {
+    return;
+  }
+
+  emit_sweep_record(h1_dac_sweep.active_step, h1_dac_sweep.last_requested_code,
+                    h1_dac_sweep.last_applied_code, false,
+                    h1_dac_sweep.last_dwell_ms, "dwell_complete",
+                    OTIS_FLAG_NONE);
+  h1_dac_sweep.active_step++;
+  h1_dac_sweep.dwell_active = false;
+  if (h1_dac_sweep.active_step >= h1_dac_sweep.step_count) {
+    h1_dac_sweep_stop("complete");
+    return;
+  }
+  if (!h1_dac_sweep_apply_active_step("step_apply")) {
+    h1_dac_sweep.running = false;
+  }
+}
+
+void emit_h1_dac_sweep_fc0_window(void) {
+  if (!h1_dac_sweep.running && !h1_dac_sweep.dwell_active) {
+    return;
+  }
+  emit_sweep_record(h1_dac_sweep.active_step, h1_dac_sweep.last_requested_code,
+                    h1_dac_sweep.last_applied_code, false,
+                    h1_dac_sweep.last_dwell_ms, "fc0_window",
+                    OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+}
+#endif
+
 void configure_h1_ocxo_observe_mode(void) {
   emit_status("system", "h1_open_loop", "true", OTIS_SEVERITY_WARN,
               OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -455,6 +769,9 @@ void configure_h1_ocxo_observe_mode(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
   emit_dac_status("dac");
+#if OTIS_ENABLE_H1_DAC_SWEEP
+  emit_sweep_status();
+#endif
 }
 
 void setup_mode(void) {
@@ -602,6 +919,10 @@ void service_tcxo_gate(void) {
                               gate_close_ticks, OTIS_DOMAIN_RP2040_TIMER0,
                               counted_edges, OTIS_EDGE_RISING,
                               osc_observation_domain(), flags);
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  emit_h1_dac_sweep_fc0_window();
+#endif
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   uint32_t now_us = micros();
   if ((uint32_t)(now_us - runtime_state.tcxo.gate_open_us) <
@@ -628,6 +949,10 @@ void service_tcxo_gate(void) {
                               (uint64_t)now_us * 16ull, OTIS_DOMAIN_RP2040_TIMER0,
                               counted_edges, OTIS_EDGE_RISING,
                               osc_observation_domain(), flags);
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  emit_h1_dac_sweep_fc0_window();
+#endif
 #endif
 #endif
 }
@@ -654,6 +979,19 @@ bool parse_u16_code(const char *text, uint16_t *out) {
     return false;
   }
   *out = (uint16_t)parsed;
+  return true;
+}
+
+bool parse_u32_value(const char *text, uint32_t *out) {
+  if (text == nullptr || out == nullptr || *text == '\0') {
+    return false;
+  }
+  char *end = nullptr;
+  unsigned long parsed = strtoul(text, &end, 0);
+  if (end == text || *trim_command(end) != '\0') {
+    return false;
+  }
+  *out = (uint32_t)parsed;
   return true;
 }
 
@@ -710,6 +1048,33 @@ void handle_dac_set(uint16_t requested_code) {
                       ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 }
 
+#if OTIS_ENABLE_H1_DAC_SWEEP
+void handle_sweep_add(char *args) {
+  char *code_text = trim_command(args);
+  char *space = code_text;
+  while (*space != '\0' && !isspace((unsigned char)*space)) {
+    ++space;
+  }
+  if (*space == '\0') {
+    emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+    return;
+  }
+  *space = '\0';
+  char *dwell_text = trim_command(space + 1);
+
+  uint16_t code = 0;
+  uint32_t dwell_ms = 0;
+  if (!parse_u16_code(code_text, &code) ||
+      !parse_u32_value(dwell_text, &dwell_ms) || dwell_ms == 0u) {
+    emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+    return;
+  }
+  h1_dac_sweep_add_step(code, dwell_ms);
+}
+#endif
+
 void handle_serial_command(char *line) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   char *command = trim_command(line);
@@ -719,7 +1084,7 @@ void handle_serial_command(char *line) {
 
   if (strcmp(command, "HELP") == 0) {
     emit_status("command", "h1_help",
-                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP",
+                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (strcmp(command, "DAC?") == 0) {
     emit_dac_status("dac");
@@ -745,6 +1110,26 @@ void handle_serial_command(char *line) {
     }
   } else if (strcmp(command, "FC0?") == 0) {
     emit_fc0_status();
+#if OTIS_ENABLE_H1_DAC_SWEEP
+  } else if (strcmp(command, "SWEEP?") == 0) {
+    emit_sweep_status();
+  } else if (strncmp(command, "SWEEP LOAD ", 11) == 0) {
+    h1_dac_sweep_load_profile(trim_command(command + 11));
+  } else if (strcmp(command, "SWEEP START") == 0) {
+    h1_dac_sweep_start();
+  } else if (strcmp(command, "SWEEP STOP") == 0) {
+    h1_dac_sweep_stop("stop");
+  } else if (strcmp(command, "SWEEP STEP") == 0) {
+    h1_dac_sweep_manual_step();
+  } else if (strcmp(command, "SWEEP CLEAR") == 0) {
+    h1_dac_sweep_clear();
+  } else if (strncmp(command, "SWEEP ADD ", 10) == 0) {
+    handle_sweep_add(command + 10);
+#else
+  } else if (strncmp(command, "SWEEP", 5) == 0) {
+    emit_status("sweep", "command", "rejected_disabled", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
   } else if (*command != '\0') {
     emit_status("command", "unknown", command, OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
@@ -812,6 +1197,10 @@ void loop() {
   emit_boot_records_if_serial_ready();
   service_serial_commands();
   service_loopback_output();
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  service_h1_dac_sweep();
+#endif
   service_tcxo_gate();
   otis_capture_backend_service();
   drain_capture_ring();

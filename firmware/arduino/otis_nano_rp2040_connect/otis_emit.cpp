@@ -23,6 +23,15 @@ static void otis_emit_line_end(void) {
   otis_transport_write_cstr("\r\n");
 }
 
+static void otis_print_int32(int32_t value) {
+  if (value < 0) {
+    otis_transport_write_char('-');
+    otis_transport_write_uint32((uint32_t)(-value));
+    return;
+  }
+  otis_transport_write_uint32((uint32_t)value);
+}
+
 void otis_emit_csv_headers(void) {
   otis_transport_write_cstr(
       "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags");
@@ -32,6 +41,9 @@ void otis_emit_csv_headers(void) {
   otis_emit_line_end();
   otis_transport_write_cstr(
       "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags");
+  otis_emit_line_end();
+  otis_transport_write_cstr(
+      "record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags");
   otis_emit_line_end();
 }
 
@@ -52,6 +64,46 @@ void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
   otis_print_uint64(timestamp_ticks);
   otis_emit_comma();
   otis_transport_write_cstr(capture_domain);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
+}
+
+void otis_emit_dac_step(uint32_t seq, uint32_t elapsed_ms, int32_t step_index,
+                        uint16_t dac_code_requested,
+                        uint16_t dac_code_applied, bool dac_code_clamped,
+                        const char *dac_voltage_measured_v,
+                        const char *ocxo_tune_voltage_measured_v,
+                        uint32_t dwell_ms, const char *event,
+                        uint32_t flags) {
+  otis_transport_write_cstr(OTIS_RECORD_DAC);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(seq);
+  otis_emit_comma();
+  otis_transport_write_uint32(elapsed_ms);
+  otis_emit_comma();
+  otis_print_int32(step_index);
+  otis_emit_comma();
+  otis_transport_write_uint32(dac_code_requested);
+  otis_emit_comma();
+  otis_transport_write_uint32(dac_code_applied);
+  otis_emit_comma();
+  otis_transport_write_uint32(dac_code_clamped ? 1u : 0u);
+  otis_emit_comma();
+  otis_transport_write_cstr(dac_voltage_measured_v != nullptr
+                                ? dac_voltage_measured_v
+                                : "");
+  otis_emit_comma();
+  otis_transport_write_cstr(ocxo_tune_voltage_measured_v != nullptr
+                                ? ocxo_tune_voltage_measured_v
+                                : "");
+  otis_emit_comma();
+  otis_transport_write_uint32(dwell_ms);
+  otis_emit_comma();
+  otis_transport_write_cstr(event);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();

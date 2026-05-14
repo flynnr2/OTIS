@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import shutil
 import threading
 
 from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner, LineFramer
@@ -166,6 +167,36 @@ def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
         {"path": "csv/health.csv", "contract": "health_v1"},
     ]
     assert not (config.run_dir / "capture_in_progress.flag").exists()
+
+
+def test_capture_device_uses_h1_manifest_split_targets(tmp_path: Path) -> None:
+    stop_event = threading.Event()
+    run_dir = tmp_path / "h1_run"
+    shutil.copytree("runs/h1_open_loop/dac_manual_sweep/_template", run_dir)
+    config = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=config.device,
+        baud=config.baud,
+        run_dir=run_dir,
+        reconnect_initial_s=config.reconnect_initial_s,
+        reconnect_max_s=config.reconnect_max_s,
+        status_interval_s=config.status_interval_s,
+    )
+    serial = FakeSerial(
+        [
+            b"EVT,1,1000,0,R,16000000,rp2040_timer0,0\n",
+            b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+            b"DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0\n",
+        ],
+        stop_event=stop_event,
+    )
+    runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
+
+    assert runner.run() == 0
+    assert "EVT,1,1000" in (run_dir / "csv" / "evt.csv").read_text(encoding="utf-8")
+    assert "REF,1,1001" in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
+    assert "EVT,1,1000" not in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
+    assert "DAC,1,1,1000" in (run_dir / "csv" / "dac_steps.csv").read_text(encoding="utf-8")
 
 
 def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> None:

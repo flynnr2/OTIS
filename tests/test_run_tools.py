@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from host.otis_tools.capture_serial import capture_serial
+from host.otis_tools.h1_dac_sweep import build_builtin_profile, validate_step
 from host.otis_tools.report_run import build_summary, render_report
 from host.otis_tools.run_loader import load_manifest
 from host.otis_tools.validate_run import validate_run
@@ -86,6 +87,37 @@ def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
     )
 
     assert validate_run(run_dir) == 0
+
+
+def test_h1_dac_sweep_profiles_are_conservative() -> None:
+    steps = build_builtin_profile("tiny_plus_minus_2", 0x7000, 0x9000, step_codes=1, dwell_ms=5000)
+
+    assert [step.code for step in steps] == [
+        0x8000,
+        0x8001,
+        0x8000,
+        0x7FFF,
+        0x8000,
+        0x8002,
+        0x8000,
+        0x7FFE,
+        0x8000,
+    ]
+    assert all(0x7000 <= step.code <= 0x9000 for step in steps)
+    assert all(step.dwell_ms == 5000 for step in steps)
+
+
+def test_h1_dac_sweep_profile_rejects_missing_or_narrow_clamps() -> None:
+    for min_code, max_code in ((0x0000, 0xFFFF), (0x8000, 0x8001)):
+        try:
+            build_builtin_profile("tiny_plus_minus_2", min_code, max_code, step_codes=1)
+        except ValueError as exc:
+            assert "clamps" in str(exc)
+        else:
+            raise AssertionError("unsafe H1 DAC sweep profile was accepted")
+
+    assert validate_step(0x8000, 0x7000, 0x9000)
+    assert not validate_step(0x6FFF, 0x7000, 0x9000)
 
 
 def test_validate_run_accepts_gps_pps_bringup_records(tmp_path: Path) -> None:
@@ -204,6 +236,8 @@ def test_capture_serial_splits_h1_evt_and_ref_files(tmp_path: Path, monkeypatch)
                     "REF,1,1001,1,R,32000000,rp2040_timer0,16",
                     "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
                     "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
+                    "DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0",
+                    "DAC,1,2,2000,0,32768,32768,0,,,5000,fc0_window,16",
                     "",
                 ]
             )
@@ -214,6 +248,32 @@ def test_capture_serial_splits_h1_evt_and_ref_files(tmp_path: Path, monkeypatch)
     assert "EVT,1,1000" in (run_dir / "csv" / "evt.csv").read_text(encoding="utf-8")
     assert "REF,1,1001" in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
     assert "EVT,1,1000" not in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
+    dac_steps = (run_dir / "csv" / "dac_steps.csv").read_text(encoding="utf-8")
+    assert "DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0" in dac_steps
+    assert "DAC,1,2,2000,0,32768,32768,0,,,5000,fc0_window,16" in dac_steps
+    assert validate_run(run_dir) == 0
+
+
+def test_validate_run_accepts_h1_dac_safety_rejection(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_sweep_reject"
+    shutil.copytree(H1_TEMPLATE, run_dir)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["run_id"] = "h1_sweep_reject"
+    manifest["template"] = False
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "manifest.json").unlink()
+    (run_dir / "csv" / "dac_steps.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags",
+                "DAC,1,1,1000,-1,65535,36864,1,,,5000,safety_reject,32768",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
 
 
 def test_verify_h1_manual_log_command(tmp_path: Path) -> None:

@@ -14,11 +14,13 @@ Record the verified DAC code range, control-voltage range, and any current or th
 
 ## Capture Command
 
-Record the exact host command used for capture and the manual DAC command source.
+Record the exact host command used for capture and the sweep command sequence,
+including `SWEEP LOAD`, `SWEEP START`, and any `SWEEP STOP` or manual
+`SWEEP STEP` actions.
 
 ## Observations
 
-Record each DAC code, measured DAC output, measured control voltage, dwell time, frequency estimate, and settling behavior.
+Record each DAC code, measured DAC output, measured control voltage, dwell time, frequency estimate, and settling behavior. Cross-check `csv/dac_steps.csv` for `dwell_start`, `fc0_window`, and `dwell_complete` attribution.
 
 ## Anomalies
 

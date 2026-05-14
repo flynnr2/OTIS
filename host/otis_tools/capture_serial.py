@@ -18,6 +18,7 @@ RECORD_CONTRACTS = {
     "REF": "raw_events_v1",
     "CNT": "count_observations_v1",
     "STS": "health_v1",
+    "DAC": "dac_steps_v1",
 }
 
 

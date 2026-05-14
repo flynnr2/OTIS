@@ -12,7 +12,7 @@ import time
 import threading
 from typing import Callable
 
-from .capture_serial import CsvRecordSplitter
+from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 from .run_paths import default_csv_files, ensure_run_layout
 
@@ -118,19 +118,13 @@ def _create_manifest_if_missing(run_dir: Path, device: str, baud: int) -> None:
         handle.write("\n")
 
 
-def _file_by_contract(run_dir: Path) -> dict[str, Path]:
+def _split_targets(run_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[str, Path]]]:
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is None:
-        return {entry["contract"]: run_dir / entry["path"] for entry in default_csv_files()}
+        return {entry["contract"]: run_dir / entry["path"] for entry in default_csv_files()}, {}
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
-    result = {}
-    for entry in manifest.get("files", []):
-        contract = entry.get("contract")
-        rel_path = entry.get("path")
-        if contract and rel_path:
-            result[str(contract)] = run_dir / str(rel_path)
-    return result
+    return _split_targets_from_manifest(manifest, run_dir)
 
 
 class LineFramer:
@@ -241,7 +235,7 @@ class CaptureDeviceRunner:
     def run(self) -> int:
         paths = ensure_run_layout(self.config.run_dir)
         _create_manifest_if_missing(self.config.run_dir, self.config.device, self.config.baud)
-        file_by_contract = _file_by_contract(self.config.run_dir)
+        file_by_contract, file_by_record_type = _split_targets(self.config.run_dir)
         in_progress = self.config.run_dir / CAPTURE_IN_PROGRESS_FLAG
         in_progress.touch(exist_ok=True)
         backoff = self.config.reconnect_initial_s
@@ -249,6 +243,7 @@ class CaptureDeviceRunner:
 
         with paths.raw_serial_log.open("a+b") as raw_handle, CsvRecordSplitter(
             file_by_contract,
+            file_by_record_type,
             append=True,
             on_parser_error=self._parser_error,
         ) as splitter:
