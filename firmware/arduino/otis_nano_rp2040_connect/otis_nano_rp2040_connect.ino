@@ -4,14 +4,11 @@
 
 #include "otis_config.h"
 
-#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-#include <hardware/pio.h>
-#include <hardware/pio_instructions.h>
-#endif
-
 #include "OtisBootConfig.h"
 #include "otis_board.h"
 #include "otis_boot_diag.h"
+#include "otis_capture_backend.h"
+#include "otis_capture_irq.h"
 #include "otis_capture_ring.h"
 #include "otis_protocol.h"
 #include "otis_records.h"
@@ -23,36 +20,6 @@ constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
-
-volatile uint32_t tcxo_edge_count = 0;
-
-#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-const uint16_t pio_edge_capture_instructions[] = {
-    static_cast<uint16_t>(pio_encode_wait_pin(false, 0)),
-    static_cast<uint16_t>(pio_encode_wait_pin(true, 0)),
-    static_cast<uint16_t>(pio_encode_set(pio_x, 1)),
-    static_cast<uint16_t>(pio_encode_in(pio_x, 32)),
-    static_cast<uint16_t>(pio_encode_push(false, false)),
-};
-
-const pio_program_t pio_edge_capture_program = {
-    .instructions = pio_edge_capture_instructions,
-    .length = 5,
-    .origin = -1,
-};
-
-PIO pio_capture = pio0;
-constexpr uint pio_capture_sm = 0;
-int pio_capture_program_offset = -1;
-uint32_t pio_capture_gpio = 0;
-uint32_t pio_capture_channel_id = 0;
-bool pio_capture_reference_record = false;
-bool pio_capture_initialized = false;
-uint32_t pio_fifo_drained_event_count = 0;
-uint32_t pio_fifo_empty_count = 0;
-uint32_t pio_fifo_overflow_drop_count = 0;
-uint32_t pio_fifo_max_drain_batch = 0;
-#endif
 
 uint32_t event_seq = 1000;
 uint32_t status_seq = 1;
@@ -196,19 +163,6 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
   emitted_event_count++;
 }
 
-void handle_generic_event_edge(void) {
-  char edge = digitalRead(OTIS_PIN_GENERIC_EVENT) ? 'R' : 'F';
-  otis_capture_ring_push_from_isr(OTIS_CHANNEL_GENERIC_EVENT, false, edge);
-}
-
-void handle_pps_reference_edge(void) {
-  otis_capture_ring_push_from_isr(OTIS_CHANNEL_PPS_REFERENCE, true, 'R');
-}
-
-void handle_tcxo_observation_edge(void) {
-  tcxo_edge_count++;
-}
-
 const char *edge_string(char edge) {
   if (edge == 'R') {
     return OTIS_EDGE_RISING;
@@ -225,86 +179,6 @@ void drain_capture_ring(void) {
     emit_captured_edge(record);
   }
 }
-
-#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-void clear_pio_rxstall(void) {
-  pio_capture->fdebug = 1u << pio_capture_sm;
-}
-
-void poll_pio_overflow(void) {
-  uint32_t rxstall = (pio_capture->fdebug >> pio_capture_sm) & 1u;
-  if (!rxstall) {
-    return;
-  }
-  pio_fifo_overflow_drop_count++;
-  otis_capture_ring_note_drop();
-  clear_pio_rxstall();
-}
-
-bool configure_pio_edge_capture(uint32_t gpio, uint32_t channel_id,
-                                bool reference_record) {
-  pio_capture_gpio = gpio;
-  pio_capture_channel_id = channel_id;
-  pio_capture_reference_record = reference_record;
-
-  pinMode(gpio, INPUT_PULLDOWN);
-  if (!pio_can_add_program(pio_capture, &pio_edge_capture_program)) {
-    return false;
-  }
-
-  pio_capture_program_offset =
-      pio_add_program(pio_capture, &pio_edge_capture_program);
-  pio_sm_config config = pio_get_default_sm_config();
-  sm_config_set_in_pins(&config, gpio);
-  sm_config_set_wrap(&config, pio_capture_program_offset,
-                     pio_capture_program_offset +
-                         pio_edge_capture_program.length - 1u);
-  sm_config_set_in_shift(&config, true, false, 32);
-  sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_RX);
-
-  pio_gpio_init(pio_capture, gpio);
-  gpio_pull_down(gpio);
-  pio_sm_set_consecutive_pindirs(pio_capture, pio_capture_sm, gpio, 1, false);
-  pio_sm_clear_fifos(pio_capture, pio_capture_sm);
-  clear_pio_rxstall();
-  pio_sm_init(pio_capture, pio_capture_sm,
-              static_cast<uint>(pio_capture_program_offset), &config);
-  pio_sm_set_enabled(pio_capture, pio_capture_sm, true);
-  pio_capture_initialized = true;
-  return true;
-}
-
-void drain_pio_fifo(void) {
-  if (!pio_capture_initialized) {
-    return;
-  }
-
-  poll_pio_overflow();
-
-  uint32_t batch = 0;
-  while (!pio_sm_is_rx_fifo_empty(pio_capture, pio_capture_sm)) {
-    (void)pio_sm_get(pio_capture, pio_capture_sm);
-    OtisCapturedEdge record = {
-        pio_capture_channel_id,
-        pio_capture_reference_record,
-        'R',
-        capture_ticks_now(),
-        OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
-    };
-    emit_captured_edge(record);
-    pio_fifo_drained_event_count++;
-    batch++;
-  }
-
-  if (batch == 0) {
-    pio_fifo_empty_count++;
-  } else if (batch > pio_fifo_max_drain_batch) {
-    pio_fifo_max_drain_batch = batch;
-  }
-
-  poll_pio_overflow();
-}
-#endif
 
 void emit_common_boot_status(void) {
   emit_status("system", "boot", "true", OTIS_SEVERITY_INFO,
@@ -393,20 +267,41 @@ void emit_periodic_status(void) {
                   capture_dropped_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
                   drop_flag);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
+  OtisCaptureBackendStats backend_stats;
+  otis_capture_backend_get_stats(&backend_stats);
   emit_status_u32("capture", "pio_fifo_drained_event_count",
-                  pio_fifo_drained_event_count, OTIS_SEVERITY_INFO,
+                  backend_stats.pio_edges, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
-  emit_status_u32("capture", "pio_fifo_empty_count", pio_fifo_empty_count,
+  emit_status_u32("capture", "pio_fifo_empty_count",
+                  backend_stats.pio_fifo_empty_count,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("capture", "pio_fifo_overflow_drop_count",
-                  pio_fifo_overflow_drop_count,
-                  pio_fifo_overflow_drop_count ? OTIS_SEVERITY_WARN
-                                               : OTIS_SEVERITY_INFO,
-                  pio_fifo_overflow_drop_count ? OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY
-                                               : OTIS_FLAG_NONE);
+                  backend_stats.backend_overflows,
+                  backend_stats.backend_overflows ? OTIS_SEVERITY_WARN
+                                                  : OTIS_SEVERITY_INFO,
+                  backend_stats.backend_overflows
+                      ? OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY
+                      : OTIS_FLAG_NONE);
   emit_status_u32("capture", "pio_fifo_max_drain_batch",
-                  pio_fifo_max_drain_batch, OTIS_SEVERITY_INFO,
+                  backend_stats.pio_fifo_max_drain_batch, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
+#endif
+}
+
+bool begin_edge_capture_backend(uint32_t gpio, uint32_t channel_id,
+                                bool reference_record, int interrupt_mode) {
+  OtisCaptureBackendConfig config = {
+      gpio,
+      channel_id,
+      reference_record,
+      interrupt_mode,
+      emit_captured_edge,
+  };
+#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
+  return otis_capture_backend_begin(OtisCaptureBackendKind::PioEdgeQueue,
+                                    config);
+#else
+  return otis_capture_backend_begin(OtisCaptureBackendKind::GpioIrq, config);
 #endif
 }
 
@@ -443,9 +338,10 @@ void configure_gpio_loopback_mode(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("wiring", "gpio_loopback", "D7_to_D10", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  bool ok = begin_edge_capture_backend(OTIS_PIN_GENERIC_EVENT,
+                                       OTIS_CHANNEL_GENERIC_EVENT, false,
+                                       CHANGE);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-  bool ok = configure_pio_edge_capture(OTIS_PIN_GENERIC_EVENT,
-                                       OTIS_CHANNEL_GENERIC_EVENT, false);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -453,17 +349,15 @@ void configure_gpio_loopback_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
-#else
-  attachInterrupt(digitalPinToInterrupt(OTIS_PIN_GENERIC_EVENT),
-                  handle_generic_event_edge, CHANGE);
 #endif
 }
 
 void configure_gps_pps_mode(void) {
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+  bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
+                                       OTIS_CHANNEL_PPS_REFERENCE, true,
+                                       RISING);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-  bool ok = configure_pio_edge_capture(OTIS_PIN_PPS_REFERENCE,
-                                       OTIS_CHANNEL_PPS_REFERENCE, true);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -471,17 +365,15 @@ void configure_gps_pps_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
-#else
-  attachInterrupt(digitalPinToInterrupt(OTIS_PIN_PPS_REFERENCE),
-                  handle_pps_reference_edge, RISING);
 #endif
 }
 
 void configure_tcxo_observe_mode(void) {
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+  bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
+                                       OTIS_CHANNEL_PPS_REFERENCE, true,
+                                       RISING);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-  bool ok = configure_pio_edge_capture(OTIS_PIN_PPS_REFERENCE,
-                                       OTIS_CHANNEL_PPS_REFERENCE, true);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -489,9 +381,6 @@ void configure_tcxo_observe_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
-#else
-  attachInterrupt(digitalPinToInterrupt(OTIS_PIN_PPS_REFERENCE),
-                  handle_pps_reference_edge, RISING);
 #endif
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
@@ -503,8 +392,7 @@ void configure_tcxo_observe_mode(void) {
   tcxo_gate_open_us = micros();
   emit_status("capture", "tcxo_counter_backend", "gpio_irq_divided_only",
               OTIS_SEVERITY_WARN, OTIS_FLAG_RATE_TOO_HIGH);
-  attachInterrupt(digitalPinToInterrupt(OTIS_PIN_OSC_OBSERVATION),
-                  handle_tcxo_observation_edge, RISING);
+  otis_capture_irq_begin_tcxo_counter(OTIS_PIN_OSC_OBSERVATION);
 #endif
 }
 
@@ -647,8 +535,7 @@ void service_tcxo_gate(void) {
   }
 
   noInterrupts();
-  uint32_t counted_edges = tcxo_edge_count;
-  tcxo_edge_count = 0;
+  uint32_t counted_edges = otis_capture_irq_read_and_reset_tcxo_count();
   uint32_t gate_open_us = tcxo_gate_open_us;
   tcxo_gate_open_us = now_us;
   interrupts();
@@ -695,9 +582,7 @@ void loop() {
   emit_boot_records_if_serial_ready();
   service_loopback_output();
   service_tcxo_gate();
-#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-  drain_pio_fifo();
-#endif
+  otis_capture_backend_service();
   drain_capture_ring();
   emit_periodic_status();
   otis_status_led_poll(millis());
