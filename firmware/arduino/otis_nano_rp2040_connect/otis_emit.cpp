@@ -1,7 +1,6 @@
-#include <Arduino.h>
-
+#include "otis_emit.h"
 #include "otis_protocol.h"
-#include "otis_records.h"
+#include "otis_transport_serial.h"
 
 static void otis_print_uint64(uint64_t value) {
   char buffer[21];
@@ -13,37 +12,50 @@ static void otis_print_uint64(uint64_t value) {
     value /= 10u;
   } while (value != 0u);
 
-  Serial.print(cursor);
+  otis_transport_write_cstr(cursor);
+}
+
+static void otis_emit_comma(void) {
+  otis_transport_write_char(',');
+}
+
+static void otis_emit_line_end(void) {
+  otis_transport_write_cstr("\r\n");
 }
 
 void otis_emit_csv_headers(void) {
-  Serial.println(
+  otis_transport_write_cstr(
       "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags");
-  Serial.println(
+  otis_emit_line_end();
+  otis_transport_write_cstr(
       "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags");
-  Serial.println(
+  otis_emit_line_end();
+  otis_transport_write_cstr(
       "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags");
+  otis_emit_line_end();
 }
 
 void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
                          uint32_t channel_id, const char *edge,
                          uint64_t timestamp_ticks, const char *capture_domain,
                          uint32_t flags) {
-  Serial.print(record_type);
-  Serial.print(',');
-  Serial.print(OTIS_SCHEMA_VERSION_V1);
-  Serial.print(',');
-  Serial.print(event_seq);
-  Serial.print(',');
-  Serial.print(channel_id);
-  Serial.print(',');
-  Serial.print(edge);
-  Serial.print(',');
+  otis_transport_write_cstr(record_type);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(event_seq);
+  otis_emit_comma();
+  otis_transport_write_uint32(channel_id);
+  otis_emit_comma();
+  otis_transport_write_cstr(edge);
+  otis_emit_comma();
   otis_print_uint64(timestamp_ticks);
-  Serial.print(',');
-  Serial.print(capture_domain);
-  Serial.print(',');
-  Serial.println(flags);
+  otis_emit_comma();
+  otis_transport_write_cstr(capture_domain);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
 }
 
 void otis_emit_count_observation(uint32_t count_seq, uint32_t channel_id,
@@ -53,50 +65,54 @@ void otis_emit_count_observation(uint32_t count_seq, uint32_t channel_id,
                                  uint64_t counted_edges,
                                  const char *source_edge,
                                  const char *source_domain, uint32_t flags) {
-  Serial.print(OTIS_RECORD_CNT);
-  Serial.print(',');
-  Serial.print(OTIS_SCHEMA_VERSION_V1);
-  Serial.print(',');
-  Serial.print(count_seq);
-  Serial.print(',');
-  Serial.print(channel_id);
-  Serial.print(',');
+  otis_transport_write_cstr(OTIS_RECORD_CNT);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(count_seq);
+  otis_emit_comma();
+  otis_transport_write_uint32(channel_id);
+  otis_emit_comma();
   otis_print_uint64(gate_open_ticks);
-  Serial.print(',');
+  otis_emit_comma();
   otis_print_uint64(gate_close_ticks);
-  Serial.print(',');
-  Serial.print(gate_domain);
-  Serial.print(',');
+  otis_emit_comma();
+  otis_transport_write_cstr(gate_domain);
+  otis_emit_comma();
   otis_print_uint64(counted_edges);
-  Serial.print(',');
-  Serial.print(source_edge);
-  Serial.print(',');
-  Serial.print(source_domain);
-  Serial.print(',');
-  Serial.println(flags);
+  otis_emit_comma();
+  otis_transport_write_cstr(source_edge);
+  otis_emit_comma();
+  otis_transport_write_cstr(source_domain);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
 }
 
 void otis_emit_health(uint32_t status_seq, uint64_t timestamp_ticks,
                       const char *status_domain, const char *component,
                       const char *status_key, const char *status_value,
                       const char *severity, uint32_t flags) {
-  Serial.print(OTIS_RECORD_STS);
-  Serial.print(',');
-  Serial.print(OTIS_SCHEMA_VERSION_V1);
-  Serial.print(',');
-  Serial.print(status_seq);
-  Serial.print(',');
+  otis_transport_write_cstr(OTIS_RECORD_STS);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(status_seq);
+  otis_emit_comma();
   otis_print_uint64(timestamp_ticks);
-  Serial.print(',');
-  Serial.print(status_domain);
-  Serial.print(',');
-  Serial.print(component);
-  Serial.print(',');
-  Serial.print(status_key);
-  Serial.print(',');
-  Serial.print(status_value);
-  Serial.print(',');
-  Serial.print(severity);
-  Serial.print(',');
-  Serial.println(flags);
+  otis_emit_comma();
+  otis_transport_write_cstr(status_domain);
+  otis_emit_comma();
+  otis_transport_write_cstr(component);
+  otis_emit_comma();
+  otis_transport_write_cstr(status_key);
+  otis_emit_comma();
+  otis_transport_write_cstr(status_value);
+  otis_emit_comma();
+  otis_transport_write_cstr(severity);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
 }
