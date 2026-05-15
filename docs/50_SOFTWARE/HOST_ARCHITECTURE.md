@@ -144,6 +144,69 @@ tools operate on the raw log, CSV files, manifest, and reports emitted into the
 run directory. This preserves forensic ordering and avoids competing serial
 readers.
 
+## Aperiodic Serial Commands
+
+Some H1 characterization workflows need occasional host commands while a run is
+being captured, for example `DAC MID`, `DAC SET <code>`, `SWEEP START`, or
+`SWEEP STOP`. These commands should still preserve single serial ownership:
+`capture_device` remains the only process that opens the USB serial device.
+
+The preferred shape is a small command ingress owned by `capture_device`, with a
+separate one-shot helper writing validated commands into that ingress:
+
+```text
+one-shot host command helper
+        ↓
+run-local command FIFO or socket
+        ↓
+host.otis_tools.capture_device
+        ↓
+USB serial device
+```
+
+The v0.1 host interface is:
+
+```bash
+python3 -m host.otis_tools.capture_device \
+  --device /dev/cu.usbmodem101 \
+  --run-dir runs/.../run_001 \
+  --command-fifo runs/.../run_001/control/commands.fifo
+
+python3 -m host.otis_tools.send_command \
+  --fifo runs/.../run_001/control/commands.fifo \
+  "DAC MID"
+```
+
+This command path is intentionally not a general serial terminal. It should only
+accept known atomic commands whose effects are represented by firmware telemetry:
+
+- `HELP`
+- `DAC?`
+- `DAC LIMITS?`
+- `DAC MID`
+- `DAC ZERO`
+- `DAC SET <decimal-or-0xhex-code>`
+- `FC0?`
+- `SWEEP?`
+- `SWEEP LOAD <known-profile>`
+- `SWEEP START`
+- `SWEEP STOP`
+- `SWEEP STEP`
+- `SWEEP CLEAR`
+
+Open-ended command construction, such as arbitrary `SWEEP ADD` sequences, should
+not be part of this path unless a later runbook defines a bounded, auditable use
+case. Prefer firmware-builtin sweep profiles for repeatable characterization.
+
+Every command decision must be auditable in `raw/serial.log` through
+`# OTIS_HOST` markers. At minimum, rejected commands should record the rejection
+reason, and accepted commands should record the normalized command before serial
+write and the write result afterward. The command bytes themselves should not be
+inserted into the raw device byte stream because that would pollute replay and
+CSV parsing. Firmware `STS`/`DAC` records remain the command acknowledgement
+source; `capture_device` should not block capture waiting for synchronous
+responses.
+
 ---
 
 # SW1 Bring-Up Host Path
