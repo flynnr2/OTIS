@@ -25,7 +25,7 @@ def build_builtin_profile(
     min_code: int,
     max_code: int,
     *,
-    step_codes: int = 1,
+    step_codes: int = 0x0400,
     dwell_ms: int = 5000,
 ) -> list[DacSweepStep]:
     if profile_name not in BUILTIN_PROFILES:

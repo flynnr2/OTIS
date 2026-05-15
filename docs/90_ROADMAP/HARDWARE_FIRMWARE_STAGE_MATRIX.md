@@ -21,7 +21,7 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 | `SW1`  | First capture firmware        | emit `EVT`, `REF`, `CNT`, and `STS` from Arduino Nano RP2040 Connect via Arduino-Pico           | complete        |
 | `SW1.5a` | PIO sparse-edge validation  | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough |
 | `A0`   | Basic replay/report           | validate runs and derive simple intervals/frequency estimates                                   | active/usable   |
-| `H1`   | Steerable oscillator prep     | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware               | unblocked       |
+| `H1`   | Steerable oscillator prep     | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware               | active/open-loop characterization |
 | `SW2`  | Control-loop firmware         | explicit GPSDO/discipline-loop telemetry and control                                            | not started; appropriately deferred |
 
 ## Validated H0/SW1 State
@@ -68,16 +68,20 @@ belongs in `firmware/arduino/otis_nano_rp2040_connect/`.
 H1 remains a hardware-prep and open-loop characterization stage. Its preparation
 package lives in `docs/40_HARDWARE/H1_STEERABLE_OSCILLATOR_PREP.md`; SW2 should
 not begin until the oscillator output, manual DAC command path, and open-loop
-tuning sensitivity have been characterized from real hardware.
+tuning sensitivity have been characterized from real hardware. The DAC command
+path and scripted open-loop sweep path are now complete enough for bench use:
+the firmware emits `dac_steps_v1` records for profile load, start, step apply,
+dwell windows, completion, stop, and safety rejection; host tooling parses and
+validates those records alongside FC0/GPIN0 `CNT` observations.
 
 The intended H1 sequence is:
 
 1. Verify OCXO power, current, warmup, and output level.
-2. Verify DAC I2C communication and output voltage range.
+2. Verify DAC I2C communication and output voltage range. **Complete enough.**
 3. Connect OCXO output to `D8` / `GPIO20` / `GPIN0` through the appropriate conditioning path.
 4. Capture free-running OCXO count observations via FC0/GPIN0.
-5. Manually step DAC output.
-6. Measure frequency/count response versus DAC setting.
+5. Manually step DAC output. **Complete enough for unloaded DAC output.**
+6. Measure frequency/count response versus DAC setting. **Next: host characterization analysis.**
 7. Estimate Hz/V and ppm/V.
 8. Characterize settling time and thermal behavior.
 9. Only then design SW2 discipline/control-loop firmware.

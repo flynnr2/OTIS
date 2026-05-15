@@ -145,7 +145,11 @@ conservative and do not permit rail-to-rail sweeps:
 ```cpp
 #define OTIS_DAC_MIN_CODE 0x7000u
 #define OTIS_DAC_MAX_CODE 0x9000u
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
 ```
+
+The built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` profiles use small
+bench-visible steps around the clamp midpoint, not 1-LSB metrology steps.
 
 Manual commands are read from the USB serial monitor. Terminate each command
 with newline or carriage return:
