@@ -17,12 +17,12 @@
   "ended_at_utc": "",
   "operator_notes": "",
   "oscillator": {
-    "part": "",
-    "nominal_frequency_hz": null,
-    "output_type": "",
+    "part": "CX317 VCOCXO",
+    "nominal_frequency_hz": 10000000,
+    "output_type": "10 MHz VCOCXO output",
     "supply_voltage_v": null,
-    "control_voltage_range_v": null,
-    "pinout_source": ""
+    "control_voltage_range_v": "0.0..3.3",
+    "pinout_source": "bench notes: CX317 pin 4 Vc"
   },
   "dac": {
     "part": "AD5693R",
@@ -30,12 +30,14 @@
     "interface": "i2c",
     "i2c_address": "0x4C",
     "reference_voltage_v": null,
-    "gain_mode": "",
-    "measured_output_min_v": null,
-    "measured_output_max_v": null
+    "gain_mode": "1x",
+    "nominal_code": 32768,
+    "measured_output_min_v": 1.093,
+    "measured_output_mid_v": 1.249,
+    "measured_output_max_v": 1.405
   },
   "control_path": {
-    "network": "",
+    "network": "DAC output disconnected from VCOCXO tune input for this verification run",
     "rc_filter": "",
     "buffer": "",
     "measured_control_voltage_v": null
@@ -46,18 +48,18 @@
     "logic_voltage_v": null
   },
   "safety_limits": {
-    "dac_min_code": null,
-    "dac_max_code": null,
-    "control_voltage_min_v": null,
-    "control_voltage_max_v": null
+    "dac_min_code": 28672,
+    "dac_max_code": 36864,
+    "control_voltage_min_v": 1.093,
+    "control_voltage_max_v": 1.405
   },
-  "control_sequence": "",
+  "control_sequence": "manual DAC MID/ZERO/SET voltage verification; DAC disconnected from VCOCXO tune input",
   "warmup_seconds_before_capture": null,
   "measured_tuning_sensitivity_hz_per_v": null,
   "measured_tuning_sensitivity_ppm_per_v": null,
   "observation_domain": {
-    "name": "",
-    "nominal_hz": null,
+    "name": "h1_ocxo_open_loop",
+    "nominal_hz": 10000000,
     "division_ratio": null
   },
   "channels": [
@@ -84,7 +86,7 @@
     },
     {
       "name": "h1_ocxo_open_loop",
-      "nominal_hz": null
+      "nominal_hz": 10000000
     }
   ],
   "files": [

@@ -102,7 +102,7 @@
 
 ## SW2 Readiness
 - open_loop_slope_known: false
-- safe_voltage_window_known: false
+- safe_voltage_window_known: true
 - settling_time_characterized: false
 - warmup_characterized: true
 - recommended_next_action: capture a DAC sweep with repeated count windows at two or more DAC codes
