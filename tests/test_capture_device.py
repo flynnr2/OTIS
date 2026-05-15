@@ -15,6 +15,7 @@ class FakeSerial:
         self.stop_event = stop_event
         self.fail_after = fail_after
         self.closed = False
+        self.writes: list[bytes] = []
 
     def read(self, _size: int) -> bytes:
         if self.chunks:
@@ -27,6 +28,13 @@ class FakeSerial:
 
     def close(self) -> None:
         self.closed = True
+
+    def write(self, data: bytes) -> int:
+        self.writes.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        return None
 
 
 def _config(tmp_path: Path) -> CaptureDeviceConfig:
@@ -211,3 +219,39 @@ def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> Non
     assert b"STS,1,partial" in raw
     assert b"partial_line_dropped" in raw
     assert "partial" not in RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
+
+
+def test_capture_device_sends_audited_atomic_command_without_polluting_raw_stream(tmp_path: Path) -> None:
+    stop_event = threading.Event()
+    config = _config(tmp_path)
+    serial = FakeSerial([], stop_event=stop_event)
+    runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
+
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+    with paths.raw_serial_log.open("a+b") as raw_handle:
+        runner._send_command("dac mid", serial, raw_handle)
+
+    raw = paths.raw_serial_log.read_bytes()
+    assert serial.writes == [b"DAC MID\n"]
+    assert b"host_command_accepted" in raw
+    assert b"host_command_sent" in raw
+    assert b"\nDAC MID\n" not in raw
+    assert runner.commands_sent == 1
+
+
+def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
+    stop_event = threading.Event()
+    config = _config(tmp_path)
+    serial = FakeSerial([], stop_event=stop_event)
+    runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
+
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+    with paths.raw_serial_log.open("a+b") as raw_handle:
+        runner._send_command("SWEEP ADD 0x8000 5000", serial, raw_handle)
+
+    raw = paths.raw_serial_log.read_bytes()
+    assert serial.writes == []
+    assert b"host_command_rejected" in raw
+    assert runner.commands_rejected == 1

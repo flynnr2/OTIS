@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import argparse
+from contextlib import nullcontext
 import glob
 import json
 import logging
@@ -15,6 +16,7 @@ from typing import Callable
 from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 from .run_paths import default_csv_files, ensure_run_layout
+from .serial_commands import CommandFifo, parse_serial_command
 
 
 LOGGER = logging.getLogger("otis.capture_device")
@@ -26,6 +28,7 @@ class CaptureDeviceConfig:
     device: str
     baud: int
     run_dir: Path
+    command_fifo: Path | None = None
     read_size: int = 4096
     read_timeout_s: float = 1.0
     reconnect_initial_s: float = 1.0
@@ -174,6 +177,8 @@ class CaptureDeviceRunner:
         self.malformed_utf8 = 0
         self.parser_errors = 0
         self.reconnect_count = 0
+        self.commands_sent = 0
+        self.commands_rejected = 0
         self.framer = LineFramer(config.max_line_bytes)
 
     def request_stop(self, signum: int | None = None) -> None:
@@ -220,6 +225,32 @@ class CaptureDeviceRunner:
         for line in lines:
             self._process_line(line, splitter, raw_handle)
 
+    def _send_command(self, raw_command: str, serial_handle, raw_handle) -> None:
+        try:
+            command = parse_serial_command(raw_command)
+        except ValueError as exc:
+            self.commands_rejected += 1
+            _log_event(logging.WARNING, "host_command_rejected", command=raw_command, reason=str(exc))
+            _write_marker(raw_handle, "host_command_rejected", command=raw_command, reason=str(exc))
+            return
+
+        payload = (command.normalized + "\n").encode("ascii")
+        _log_event(logging.INFO, "host_command_accepted", command=command.normalized)
+        _write_marker(raw_handle, "host_command_accepted", command=command.normalized)
+        bytes_written = serial_handle.write(payload)
+        flush = getattr(serial_handle, "flush", None)
+        if flush is not None:
+            flush()
+        self.commands_sent += 1
+        _log_event(logging.INFO, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
+        _write_marker(raw_handle, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
+
+    def _poll_commands(self, command_fifo: CommandFifo | None, serial_handle, raw_handle) -> None:
+        if command_fifo is None:
+            return
+        for raw_command in command_fifo.poll():
+            self._send_command(raw_command, serial_handle, raw_handle)
+
     def _emit_status(self) -> None:
         _log_event(
             logging.INFO,
@@ -230,6 +261,8 @@ class CaptureDeviceRunner:
             malformed_utf8=self.malformed_utf8,
             parser_errors=self.parser_errors,
             reconnect_count=self.reconnect_count,
+            commands_sent=self.commands_sent,
+            commands_rejected=self.commands_rejected,
         )
 
     def run(self) -> int:
@@ -241,13 +274,18 @@ class CaptureDeviceRunner:
         backoff = self.config.reconnect_initial_s
         next_status = time.monotonic() + self.config.status_interval_s
 
+        command_fifo_context = (
+            CommandFifo(self.config.command_fifo) if self.config.command_fifo is not None else nullcontext(None)
+        )
         with paths.raw_serial_log.open("a+b") as raw_handle, CsvRecordSplitter(
             file_by_contract,
             file_by_record_type,
             append=True,
             on_parser_error=self._parser_error,
-        ) as splitter:
+        ) as splitter, command_fifo_context as command_fifo:
             _write_marker(raw_handle, "capture_started", device=self.config.device, baud=self.config.baud)
+            if self.config.command_fifo is not None:
+                _write_marker(raw_handle, "command_ingress_opened", path=str(self.config.command_fifo))
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
@@ -264,6 +302,7 @@ class CaptureDeviceRunner:
                             data = serial_handle.read(self.config.read_size)
                             if data:
                                 self._process_bytes(data, splitter, raw_handle)
+                            self._poll_commands(command_fifo, serial_handle, raw_handle)
                             now = time.monotonic()
                             if now >= next_status:
                                 self._emit_status()
@@ -311,6 +350,8 @@ class CaptureDeviceRunner:
                     malformed_utf8=self.malformed_utf8,
                     parser_errors=self.parser_errors,
                     reconnect_count=self.reconnect_count,
+                    commands_sent=self.commands_sent,
+                    commands_rejected=self.commands_rejected,
                 )
                 in_progress.unlink(missing_ok=True)
                 self._emit_status()
@@ -327,6 +368,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status-interval", type=float, default=60.0, help="Seconds between health log lines.")
     parser.add_argument("--read-size", type=int, default=4096, help="Bytes per serial read.")
     parser.add_argument("--max-line-bytes", type=int, default=65536, help="Maximum buffered partial line size.")
+    parser.add_argument("--command-fifo", type=Path, help="Optional run-local FIFO for validated atomic host commands.")
     return parser
 
 
@@ -339,6 +381,7 @@ def main() -> None:
         device=device,
         baud=args.baud,
         run_dir=args.run_dir,
+        command_fifo=args.command_fifo,
         read_size=args.read_size,
         status_interval_s=args.status_interval,
         max_line_bytes=args.max_line_bytes,
