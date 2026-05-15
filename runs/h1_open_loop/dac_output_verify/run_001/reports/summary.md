@@ -63,11 +63,11 @@
 - min_observed_frequency_hz: 10000000.000
 - max_observed_frequency_hz: 10000999.001
 - stddev_observed_frequency_hz: 139.748
-- ppm_error_vs_nominal: not computed
+- ppm_error_vs_nominal: 1.996 ppm
 - mean_window_seconds: 0.0010017
 - min_window_seconds: 0.001001
 - max_window_seconds: 0.001005
-- frequency_note: source nominal not computed: source_domain values ['h1_ocxo_open_loop'] not declared with nominal_hz
+- frequency_note: nominal source frequency from h1_ocxo_open_loop
 
 ## Health / Status Summary
 - row_count: 1037

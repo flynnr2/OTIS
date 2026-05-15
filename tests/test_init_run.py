@@ -99,7 +99,7 @@ def test_h1_templates_initialize_and_validate(tmp_path: Path, monkeypatch) -> No
     assert manifest.data["stage"] == "OPEN_LOOP"
     assert manifest.data["capture_type"] == "ocxo_free_run"
     assert manifest.data["closed_loop_control"] is False
-    assert manifest.data["oscillator"]["nominal_frequency_hz"] is None
+    assert manifest.data["oscillator"]["nominal_frequency_hz"] == 10000000
     assert manifest.data["dac"]["part"] == "AD5693R"
     assert manifest.data["conditioning"]["rp2040_pin"] == "D8/GPIO20/GPIN0"
 
