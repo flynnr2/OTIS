@@ -45,8 +45,8 @@ Understand the plant before designing the controller.
 
 1. Verify OCXO power/current/warmup
 2. Verify DAC I²C + output voltage
-3. Manually sweep DAC
-4. Measure FC0 counts vs DAC setting
+3. Manually sweep DAC — complete enough for unloaded DAC output and scripted capture
+4. Measure FC0 counts vs DAC setting — next host analysis step
 5. Derive Hz/V and ppm/V
 6. Characterize settling time and thermal behavior
 7. Only then design the control loop
@@ -75,6 +75,17 @@ notes.md
 reports/summary.md
 plots/
 ```
+
+Current H1 DAC sweep status:
+
+- AD5693R I2C initialization and manual `DAC SET` movement have been verified.
+- Conservative clamps are configured at `0x7000..0x9000`.
+- Built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` sweeps now use
+  bench-visible `0x0400` code steps around midpoint.
+- Host parsing extracts `dac_steps_v1` rows, including profile load, dwell
+  windows, FC0 attribution, completion, stop, and safety rejection.
+- The next prompt/work item is `04_h1_host_characterization_analysis`: correlate
+  DAC step telemetry with FC0 count observations and bench voltage notes.
 
 ---
 
@@ -117,6 +128,8 @@ Verify:
 - actual voltage output range
 - predictable operation
 
+Status: complete enough for the AD5693R breakout in unloaded bench testing.
+
 ---
 
 # Phase 3 — Safe DAC-to-OCXO Tune Integration
@@ -147,6 +160,11 @@ Suggested dwell:
 - 2–5 minutes per point
 
 Remain close to nominal tune voltage initially.
+
+Status: built-in scripted sweeps and manual DAC steps are complete enough for
+unloaded DAC output verification. The remaining work is host-side analysis of
+frequency/count response versus DAC setting once the oscillator tune path is
+connected under the documented safety limits.
 
 ---
 

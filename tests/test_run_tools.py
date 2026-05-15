@@ -90,17 +90,17 @@ def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
 
 
 def test_h1_dac_sweep_profiles_are_conservative() -> None:
-    steps = build_builtin_profile("tiny_plus_minus_2", 0x7000, 0x9000, step_codes=1, dwell_ms=5000)
+    steps = build_builtin_profile("tiny_plus_minus_2", 0x7000, 0x9000, dwell_ms=5000)
 
     assert [step.code for step in steps] == [
         0x8000,
-        0x8001,
+        0x8400,
         0x8000,
-        0x7FFF,
+        0x7C00,
         0x8000,
-        0x8002,
+        0x8800,
         0x8000,
-        0x7FFE,
+        0x7800,
         0x8000,
     ]
     assert all(0x7000 <= step.code <= 0x9000 for step in steps)
@@ -110,7 +110,7 @@ def test_h1_dac_sweep_profiles_are_conservative() -> None:
 def test_h1_dac_sweep_profile_rejects_missing_or_narrow_clamps() -> None:
     for min_code, max_code in ((0x0000, 0xFFFF), (0x8000, 0x8001)):
         try:
-            build_builtin_profile("tiny_plus_minus_2", min_code, max_code, step_codes=1)
+            build_builtin_profile("tiny_plus_minus_2", min_code, max_code)
         except ValueError as exc:
             assert "clamps" in str(exc)
         else:
