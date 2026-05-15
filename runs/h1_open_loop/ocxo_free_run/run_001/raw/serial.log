@@ -1,0 +1,2 @@
+# OTIS_HOST {"baud": 115200, "device": "/dev/cu.usbmodem14401", "event": "capture_started", "utc": "2026-05-15T14:20:54Z"}
+# OTIS_HOST {"baud": 115200, "device": "/dev/cu.usbmodem14401", "event": "serial_opened", "utc": "2026-05-15T14:20:54Z"}
