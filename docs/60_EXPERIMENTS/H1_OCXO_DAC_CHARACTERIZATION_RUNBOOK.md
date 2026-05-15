@@ -113,6 +113,36 @@ Every `CNT` row captured during a sweep should be attributable through nearby
 3. Keep the run open-loop: frequency is observed and documented, not corrected
    automatically.
 
+## Current CX317 / AD5693R Bench Status
+
+The first connected CX317 VCOCXO and AD5693R H1 runs are preserved under:
+
+```text
+runs/h1_open_loop/dac_output_verify/run_001
+runs/h1_open_loop/dac_manual_sweep/run_006
+```
+
+Observed unloaded and connected control-voltage measurements at the CX317 pin 4
+`Vc` node are consistent with the configured DAC clamp range:
+
+| DAC code | Connected CX317 `Vc` |
+|---:|---:|
+| `0x7000` | 1.091 V |
+| `0x8000` | 1.246 V |
+| `0x9000` | 1.401 V |
+
+These values are inside the CX317 operating control-voltage range of 0.0 V to
+3.3 V. The connected `Vc` node tracked DAC commands repeatably, and `CNT`,
+`REF`, `STS`, and `DAC` telemetry remained present during sweep operation.
+
+The current FC0 observation path uses short gate windows and is adequate for
+bring-up, continuity, and safety checks, but it did not resolve the expected
+small CX317 tuning response across the conservative clamp window. Do not claim
+ppm/V or settling-time readiness from these runs alone. The first PPS interval
+after startup may appear as an approximately 32M-tick interval; for these H1
+bench captures it is treated as a startup artifact when subsequent PPS intervals
+return to approximately 16M ticks.
+
 ## Closeout
 
 - Commit representative run artifacts only after validation and summary reports
