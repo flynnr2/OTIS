@@ -121,3 +121,26 @@ def test_h1_characterize_writes_report_csv_and_supported_plots(tmp_path: Path) -
     assert run_dir / "plots" / "dac_code_vs_hz.png" in plots
     assert run_dir / "plots" / "dac_voltage_vs_ppm.png" in plots
     assert (run_dir / "plots" / "dac_code_vs_hz.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_h1_characterize_uses_final_segment_and_skips_flagged_zero_counts(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_long"
+    _write_synthetic_run(run_dir, include_second_step=False)
+    wrap = (1 << 32) * 16
+    rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+        "CNT,1,10,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,2,2,32000000,48000000,rp2040_timer0,0,R,h1_ocxo_open_loop,32784",
+        f"CNT,1,3,2,{wrap - 16_000_000},{wrap},rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,4,2,0,16000000,rp2040_timer0,10000010,R,h1_ocxo_open_loop,16",
+    ]
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir)
+
+    assert len(analysis.count_windows) == 3
+    assert analysis.count_windows[0].seq == 1
+    assert analysis.count_windows[-1].elapsed_s > analysis.count_windows[0].elapsed_s
+    assert any("flagged zero-count" in warning for warning in analysis.warnings)
+    assert any("using the final segment" in warning for warning in analysis.warnings)
