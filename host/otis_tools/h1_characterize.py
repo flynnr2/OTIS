@@ -10,6 +10,7 @@ import sys
 import zlib
 
 from .run_loader import RunManifest, load_manifest
+from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
 
 
 COUNT_CONTRACT = "count_observations_v1"
@@ -281,30 +282,59 @@ def _load_counts(
     warnings: list[str],
 ) -> tuple[CountWindow, ...]:
     rows = _read_csv(_manifest_file(manifest, COUNT_CONTRACT, "csv/cnt.csv"))
-    windows: list[CountWindow] = []
+    segments: list[list[CountWindow]] = [[]]
     first_open_s: float | None = None
+    previous_open_raw: int | None = None
+    previous_seq: int | None = None
+    tick_offset_by_domain: dict[str, int] = {}
+    skipped_flagged_zero_count = 0
     for index, row in enumerate(rows, start=1):
         gate_open = _parse_int(row.get("gate_open_ticks"))
         gate_close = _parse_int(row.get("gate_close_ticks"))
         counted = _parse_int(row.get("counted_edges"))
+        flags = _parse_int(row.get("flags")) or 0
+        seq = _parse_int(row.get("count_seq")) or index
         gate_domain = str(row.get("gate_domain", ""))
         gate_hz = gate_hz_by_domain.get(gate_domain)
         if gate_open is None or gate_close is None or counted is None or not gate_hz:
             warnings.append(f"cnt.csv row {index}: skipped because count/window fields or gate domain nominal_hz are unavailable")
             continue
-        gate_seconds = (gate_close - gate_open) / gate_hz
+        if counted == 0 and flags:
+            skipped_flagged_zero_count += 1
+            continue
+        if (
+            previous_open_raw is not None
+            and gate_domain == "rp2040_timer0"
+            and gate_open < previous_open_raw
+            and previous_open_raw - gate_open > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+        ):
+            tick_offset_by_domain[gate_domain] = tick_offset_by_domain.get(gate_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
+        offset = tick_offset_by_domain.get(gate_domain, 0)
+        gate_open_unwrapped = gate_open + offset
+        gate_close_unwrapped = gate_close + offset
+        if previous_seq is not None and seq <= previous_seq:
+            warnings.append(f"cnt.csv row {index}: detected count_seq reset; starting a new analysis segment")
+            segments.append([])
+            first_open_s = None
+            tick_offset_by_domain = {}
+            offset = 0
+            gate_open_unwrapped = gate_open
+            gate_close_unwrapped = gate_close
+        previous_open_raw = gate_open
+        previous_seq = seq
+        gate_seconds = (gate_close_unwrapped - gate_open_unwrapped) / gate_hz
         if gate_seconds <= 0:
             warnings.append(f"cnt.csv row {index}: skipped because gate window is non-positive")
             continue
-        midpoint_s = ((gate_open + gate_close) / 2.0) / gate_hz
+        midpoint_s = ((gate_open_unwrapped + gate_close_unwrapped) / 2.0) / gate_hz
         if first_open_s is None:
-            first_open_s = gate_open / gate_hz
+            first_open_s = gate_open_unwrapped / gate_hz
         elapsed_s = midpoint_s
         measured_hz = counted / gate_seconds
         ppm = 1_000_000.0 * (measured_hz - nominal_hz) / nominal_hz if nominal_hz else None
-        windows.append(
+        segments[-1].append(
             CountWindow(
-                seq=_parse_int(row.get("count_seq")) or index,
+                seq=seq,
                 elapsed_s=elapsed_s,
                 gate_seconds=gate_seconds,
                 counted_edges=counted,
@@ -312,7 +342,12 @@ def _load_counts(
                 ppm=ppm,
             )
         )
-    return tuple(windows)
+    populated = [segment for segment in segments if segment]
+    if skipped_flagged_zero_count:
+        warnings.append(f"cnt.csv: skipped {skipped_flagged_zero_count} flagged zero-count observation(s)")
+    if len(populated) > 1:
+        warnings.append("cnt.csv: multiple capture segments detected; using the final segment for H1 characterization")
+    return tuple(populated[-1] if populated else [])
 
 
 def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:

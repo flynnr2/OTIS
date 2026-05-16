@@ -89,6 +89,43 @@ def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
     assert validate_run(run_dir) == 0
 
 
+def test_validate_run_accepts_h1_rp2040_timer_wrap(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_wrap"
+    shutil.copytree(H1_TEMPLATE, run_dir)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["run_id"] = "h1_wrap_test"
+    manifest["template"] = False
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "manifest.json").unlink()
+    wrap = (1 << 32) * 16
+    (run_dir / "csv" / "ref.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+                f"REF,1,1000,1,R,{wrap - 16_000_000},rp2040_timer0,16",
+                "REF,1,1001,1,R,0,rp2040_timer0,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "csv" / "cnt.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+                f"CNT,1,1,2,{wrap - 2_000_000},{wrap - 1_000_000},rp2040_timer0,625000,R,h1_ocxo_open_loop,16",
+                "CNT,1,2,2,1000000,2000000,rp2040_timer0,625000,R,h1_ocxo_open_loop,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+    summary = build_summary(run_dir)
+    assert summary["reference_pps_summary"]["domains"]["rp2040_timer0"]["timestamp_wrap_count"] == 1
+
+
 def test_h1_dac_sweep_profiles_are_conservative() -> None:
     steps = build_builtin_profile("tiny_plus_minus_2", 0x7000, 0x9000, dwell_ms=5000)
 

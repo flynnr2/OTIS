@@ -24,11 +24,13 @@ from .validate_run import (
     _validate_manifest,
     _validate_pps_cadence,
 )
+from .timebase import unwrap_ticks
 
 
 RAW_CONTRACT = "raw_events_v1"
 COUNT_CONTRACT = "count_observations_v1"
 HEALTH_CONTRACT = "health_v1"
+COUNT_INVALID_FLAG_MASK = (1 << 5) | (1 << 9) | (1 << 10) | (1 << 12) | (1 << 13)
 
 
 @dataclass(frozen=True)
@@ -150,6 +152,7 @@ def _validation_findings(
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
+            allow_rp2040_timer0_wrap=manifest.h_phase == "H1",
         )
         result = validate_csv(read.path, context)
         findings.extend(f"{read.path.relative_to(manifest.root)}: {error}" for error in result.errors)
@@ -191,6 +194,12 @@ def _interval_stats(values: list[int]) -> dict[str, float | int | None]:
     }
 
 
+def _unwrap_domain_ticks(domain: str, ticks: list[int]) -> tuple[list[int], int]:
+    if domain == "rp2040_timer0":
+        return unwrap_ticks(ticks)
+    return ticks, 0
+
+
 def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, float]) -> tuple[dict, list[str]]:
     rows = [row for read in reads for row in read.rows]
     anomalies: list[str] = []
@@ -213,24 +222,38 @@ def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, f
 
     interval_by_channel: dict[str, dict] = {}
     ticks_by_channel: dict[str, list[int]] = defaultdict(list)
+    domains_by_channel: dict[str, set[str]] = defaultdict(set)
     for row in rows:
         timestamp = _parse_int(row.get("timestamp_ticks"))
         if timestamp is not None:
-            ticks_by_channel[str(row.get("channel_id", "?"))].append(timestamp)
+            channel = str(row.get("channel_id", "?"))
+            ticks_by_channel[channel].append(timestamp)
+            domains_by_channel[channel].add(str(row.get("capture_domain", "")))
     for channel, ticks in sorted(ticks_by_channel.items()):
-        interval_by_channel[channel] = _interval_stats(ticks)
+        domains = domains_by_channel.get(channel, set())
+        if len(domains) == 1:
+            domain = next(iter(domains))
+            unwrapped, wraps = _unwrap_domain_ticks(domain, ticks)
+            interval_by_channel[channel] = _interval_stats(unwrapped)
+            interval_by_channel[channel]["wrap_count"] = wraps
+        else:
+            interval_by_channel[channel] = _interval_stats(ticks)
+            interval_by_channel[channel]["wrap_count"] = 0
 
     duration_ticks = None
     duration_seconds = None
     domain_note = "not computed: no rows"
+    wrap_count = 0
     if timestamps_int:
-        duration_ticks = max(timestamps_int) - min(timestamps_int)
         domains = {str(row.get("capture_domain", "")) for row in rows if row.get("capture_domain")}
         if len(domains) == 1:
             domain = next(iter(domains))
+            duration_series, wrap_count = _unwrap_domain_ticks(domain, timestamps_int)
+            duration_ticks = max(duration_series) - min(duration_series)
             duration_seconds = _ticks_to_seconds(duration_ticks, domain, nominal_hz_by_domain)
             domain_note = f"using {domain} nominal_hz" if duration_seconds is not None else f"not computed: no nominal_hz for {domain}"
         else:
+            duration_ticks = max(timestamps_int) - min(timestamps_int)
             domain_note = f"not computed: mixed or ambiguous capture_domain values {sorted(domains)}"
 
     return (
@@ -243,6 +266,7 @@ def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, f
             "duration_ticks": duration_ticks,
             "duration_seconds": duration_seconds,
             "duration_note": domain_note,
+            "timestamp_wrap_count": wrap_count,
             "timestamp_monotonic": _monotonic(timestamps_int),
             "duplicate_timestamp_count": duplicate_timestamps,
             "event_seq_monotonic": _monotonic(event_seq_int, strict=True),
@@ -264,7 +288,8 @@ def _summarize_reference(reads: list[CsvReadResult], nominal_hz_by_domain: dict[
 
     domains: dict[str, dict] = {}
     for domain, ticks in sorted(by_domain.items()):
-        intervals = [end - start for start, end in zip(ticks, ticks[1:])]
+        cadence_ticks, wrap_count = _unwrap_domain_ticks(domain, ticks)
+        intervals = [end - start for start, end in zip(cadence_ticks, cadence_ticks[1:])]
         seconds = [_ticks_to_seconds(interval, domain, nominal_hz_by_domain) for interval in intervals]
         seconds_float = [value for value in seconds if value is not None]
         mean_seconds = _mean(seconds_float)
@@ -278,6 +303,7 @@ def _summarize_reference(reads: list[CsvReadResult], nominal_hz_by_domain: dict[
         domains[domain] = {
             "edge_count": len(ticks),
             "interval_count": len(intervals),
+            "timestamp_wrap_count": wrap_count,
             "mean_interval_ticks": _mean([float(value) for value in intervals]),
             "min_interval_ticks": min(intervals) if intervals else None,
             "max_interval_ticks": max(intervals) if intervals else None,
@@ -296,7 +322,10 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
     rows = [row for read in reads for row in read.rows]
     anomalies: list[str] = []
     frequencies: list[float] = []
+    unflagged_frequencies: list[float] = []
     windows_seconds: list[float] = []
+    zero_count_rows = 0
+    flagged_zero_count_rows = 0
     source_domains = sorted({str(row.get("source_domain", "")) for row in rows if row.get("source_domain")})
 
     for index, row in enumerate(rows, start=1):
@@ -307,6 +336,11 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
         if gate_open is None or gate_close is None or counted_edges is None:
             anomalies.append(f"count_observations_v1: row {index} has missing or non-integer count/window fields")
             continue
+        flags = _parse_int(row.get("flags")) or 0
+        if counted_edges == 0:
+            zero_count_rows += 1
+            if flags:
+                flagged_zero_count_rows += 1
         window_ticks = gate_close - gate_open
         if window_ticks <= 0:
             anomalies.append(f"count_observations_v1: row {index} has non-positive gate window")
@@ -315,7 +349,10 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
         if window_seconds is None:
             continue
         windows_seconds.append(window_seconds)
-        frequencies.append(counted_edges / window_seconds)
+        frequency = counted_edges / window_seconds
+        frequencies.append(frequency)
+        if counted_edges > 0 and not (flags & COUNT_INVALID_FLAG_MASK):
+            unflagged_frequencies.append(frequency)
 
     nominal_source_hz = None
     if len(source_domains) == 1:
@@ -332,6 +369,11 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
             "min_observed_frequency_hz": min(frequencies) if frequencies else None,
             "max_observed_frequency_hz": max(frequencies) if frequencies else None,
             "stddev_observed_frequency_hz": _stddev(frequencies),
+            "unflagged_nonzero_row_count": len(unflagged_frequencies),
+            "mean_unflagged_nonzero_frequency_hz": _mean(unflagged_frequencies),
+            "stddev_unflagged_nonzero_frequency_hz": _stddev(unflagged_frequencies),
+            "zero_count_rows": zero_count_rows,
+            "flagged_zero_count_rows": flagged_zero_count_rows,
             "ppm_error_vs_nominal": ppm_error,
             "mean_window_seconds": _mean(windows_seconds),
             "min_window_seconds": min(windows_seconds) if windows_seconds else None,
@@ -592,6 +634,7 @@ def render_report(run_dir: Path) -> str:
                 "duration_ticks": raw["duration_ticks"],
                 "duration_seconds": _fmt_number(raw["duration_seconds"]),
                 "duration_note": raw["duration_note"],
+                "timestamp_wrap_count": raw["timestamp_wrap_count"],
                 "timestamp_monotonic": raw["timestamp_monotonic"],
                 "duplicate_timestamp_count": raw["duplicate_timestamp_count"],
                 "event_seq_monotonic": raw["event_seq_monotonic"],
@@ -602,6 +645,7 @@ def render_report(run_dir: Path) -> str:
             lines.append(
                 f"- CH{channel} intervals ticks: count={stats['count']}, min={_fmt_number(stats['min'])}, "
                 f"max={_fmt_number(stats['max'])}, mean={_fmt_number(stats['mean'])}, stddev={_fmt_number(stats['stddev'])}"
+                f", wrap_count={stats.get('wrap_count', 0)}"
             )
     else:
         lines.append("- not present")
@@ -615,7 +659,8 @@ def render_report(run_dir: Path) -> str:
                 f"- {domain}: intervals={stats['interval_count']}, mean={_fmt_number(stats['mean_interval_ticks'])} ticks / "
                 f"{_fmt_number(stats['mean_interval_seconds'])} s, min={_fmt_number(stats['min_interval_seconds'])} s, "
                 f"max={_fmt_number(stats['max_interval_seconds'])} s, stddev={_fmt_number(stats['stddev_interval_seconds'])} s, "
-                f"ppm_error_vs_1s={_fmt_ppm(stats['ppm_error_vs_1s'])}; {stats['timing_note']}"
+                f"ppm_error_vs_1s={_fmt_ppm(stats['ppm_error_vs_1s'])}, wrap_count={stats['timestamp_wrap_count']}; "
+                f"{stats['timing_note']}"
             )
     else:
         lines.append("- not present")
@@ -631,6 +676,11 @@ def render_report(run_dir: Path) -> str:
                 "min_observed_frequency_hz": _fmt_number(count["min_observed_frequency_hz"]),
                 "max_observed_frequency_hz": _fmt_number(count["max_observed_frequency_hz"]),
                 "stddev_observed_frequency_hz": _fmt_number(count["stddev_observed_frequency_hz"]),
+                "unflagged_nonzero_row_count": count["unflagged_nonzero_row_count"],
+                "mean_unflagged_nonzero_frequency_hz": _fmt_number(count["mean_unflagged_nonzero_frequency_hz"]),
+                "stddev_unflagged_nonzero_frequency_hz": _fmt_number(count["stddev_unflagged_nonzero_frequency_hz"]),
+                "zero_count_rows": count["zero_count_rows"],
+                "flagged_zero_count_rows": count["flagged_zero_count_rows"],
                 "ppm_error_vs_nominal": _fmt_ppm(count["ppm_error_vs_nominal"]),
                 "mean_window_seconds": _fmt_number(count["mean_window_seconds"]),
                 "min_window_seconds": _fmt_number(count["min_window_seconds"]),

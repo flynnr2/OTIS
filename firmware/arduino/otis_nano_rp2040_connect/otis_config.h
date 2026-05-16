@@ -125,6 +125,9 @@
 #define OTIS_TCXO_GATE_PERIOD_US 1000000u
 #endif
 
+// FC0/GPIN0 publishes one CNT observation per gate period. The FC0 hardware
+// helper itself is sampled at OTIS_TCXO_MEASURE_PERIOD_MS inside that span, so
+// H1 long-gate captures should use a gate much longer than the sample cadence.
 #ifndef OTIS_TCXO_MEASURE_PERIOD_MS
 #define OTIS_TCXO_MEASURE_PERIOD_MS 1000u
 #endif

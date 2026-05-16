@@ -8,6 +8,7 @@ import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
 from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
+from .timebase import unwrap_ticks
 
 KNOWN_BRINGUP_MODES = {
     "SW1_SYNTHETIC_USB",
@@ -115,7 +116,8 @@ def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: 
             failures.append(f"raw_events.csv: PPS cadence cannot be checked because domain {domain!r} has no nominal_hz")
             continue
         expected = nominal_hz
-        for index, (start, end) in enumerate(zip(ticks, ticks[1:]), start=1):
+        cadence_ticks, _wrap_count = unwrap_ticks(ticks) if domain == "rp2040_timer0" else (ticks, 0)
+        for index, (start, end) in enumerate(zip(cadence_ticks, cadence_ticks[1:]), start=1):
             interval = end - start
             if not (0.8 * expected <= interval <= 1.2 * expected):
                 failures.append(
@@ -192,6 +194,7 @@ def validate_run(run_dir: Path) -> int:
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
+            allow_rp2040_timer0_wrap=manifest.h_phase == "H1",
         )
         result = validate_csv(path, context)
         files_by_contract[contract] = path
