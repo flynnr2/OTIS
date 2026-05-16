@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import csv
 
+from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
+
 
 RAW_EVENT_FIELDS = [
     "record_type",
@@ -110,6 +112,7 @@ class CsvValidationContext:
     known_channels: frozenset[int]
     known_domains: frozenset[str]
     template: bool = False
+    allow_rp2040_timer0_wrap: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,6 +180,8 @@ def _check_timestamp_monotonicity(
     row_number: int,
     previous_timestamps: dict[str, int],
     errors: list[str],
+    *,
+    allow_rp2040_timer0_wrap: bool,
 ) -> None:
     for field_name in TIMESTAMP_FIELDS[contract]:
         if field_name not in parsed_timestamps:
@@ -184,6 +189,9 @@ def _check_timestamp_monotonicity(
         previous = previous_timestamps.get(field_name)
         current = parsed_timestamps[field_name]
         if previous is not None and current < previous:
+            if allow_rp2040_timer0_wrap and previous - current > RP2040_TIMER0_MICROS_WRAP_TICKS // 2:
+                previous_timestamps[field_name] = current
+                continue
             errors.append(f"row {row_number}: {field_name} must be monotonic; previous={previous}, current={current}")
         previous_timestamps[field_name] = current
 
@@ -286,7 +294,14 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                     parsed_timestamps[field_name] = int(row.get(field_name, ""), 10)
                 except (TypeError, ValueError):
                     continue
-            _check_timestamp_monotonicity(context.contract, parsed_timestamps, row_count, previous_timestamps, errors)
+            _check_timestamp_monotonicity(
+                context.contract,
+                parsed_timestamps,
+                row_count,
+                previous_timestamps,
+                errors,
+                allow_rp2040_timer0_wrap=context.allow_rp2040_timer0_wrap,
+            )
             _check_channel(context, row, row_count, errors)
             _check_domains(context, row, row_count, errors)
             _check_flags(row, row_count, errors)

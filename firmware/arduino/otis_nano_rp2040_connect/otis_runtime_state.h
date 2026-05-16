@@ -37,11 +37,19 @@ struct OtisLoopbackRuntimeState {
 struct OtisTcxoRuntimeState {
   uint32_t last_measure_ms;
   uint32_t gate_open_us;
+  uint64_t fc0_accum_gate_open_ticks;
+  uint64_t fc0_accum_weighted_khz_us;
+  uint64_t fc0_accum_elapsed_us;
+  uint32_t fc0_accum_sample_count;
+  uint32_t fc0_accum_flags;
+  bool fc0_accum_active;
   uint64_t last_gate_open_ticks;
   uint64_t last_gate_close_ticks;
   uint64_t last_counted_edges;
   uint32_t last_elapsed_us;
   uint32_t last_measured_khz;
+  uint32_t last_sampled_elapsed_us;
+  uint32_t last_sample_count;
   bool last_observation_valid;
 };
 

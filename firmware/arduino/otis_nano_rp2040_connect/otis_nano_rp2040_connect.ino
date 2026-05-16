@@ -30,6 +30,7 @@ constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
+constexpr uint64_t kRp2040Timer0MicrosWrapTicks = (1ull << 32) * 16ull;
 
 OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
@@ -901,24 +902,67 @@ void service_tcxo_gate(void) {
   uint32_t measured_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLKSRC_GPIN0);
   uint64_t gate_close_ticks = otis_capture_ticks_now();
   uint64_t elapsed_us = (gate_close_ticks - gate_open_ticks) / 16ull;
-  uint64_t counted_edges = ((uint64_t)measured_khz * elapsed_us) / 1000ull;
   uint32_t flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
   if (measured_khz == 0u) {
     flags |= OTIS_FLAG_INPUT_STUCK_LOW;
   }
 
-  runtime_state.tcxo.last_gate_open_ticks = gate_open_ticks;
-  runtime_state.tcxo.last_gate_close_ticks = gate_close_ticks;
-  runtime_state.tcxo.last_counted_edges = counted_edges;
-  runtime_state.tcxo.last_elapsed_us = (uint32_t)elapsed_us;
-  runtime_state.tcxo.last_measured_khz = measured_khz;
-  runtime_state.tcxo.last_observation_valid = true;
+  if (!runtime_state.tcxo.fc0_accum_active) {
+    runtime_state.tcxo.fc0_accum_gate_open_ticks = gate_open_ticks;
+    runtime_state.tcxo.fc0_accum_weighted_khz_us = 0;
+    runtime_state.tcxo.fc0_accum_elapsed_us = 0;
+    runtime_state.tcxo.fc0_accum_sample_count = 0;
+    runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+    runtime_state.tcxo.fc0_accum_active = true;
+  }
 
-  otis_emit_count_observation(runtime_state.sequences.count_seq++,
-                              OTIS_CHANNEL_OSC_OBSERVATION, gate_open_ticks,
-                              gate_close_ticks, OTIS_DOMAIN_RP2040_TIMER0,
-                              counted_edges, OTIS_EDGE_RISING,
-                              osc_observation_domain(), flags);
+  runtime_state.tcxo.fc0_accum_weighted_khz_us +=
+      (uint64_t)measured_khz * elapsed_us;
+  runtime_state.tcxo.fc0_accum_elapsed_us += elapsed_us;
+  runtime_state.tcxo.fc0_accum_sample_count += 1u;
+  runtime_state.tcxo.fc0_accum_flags |= flags;
+
+  uint64_t emitted_gate_close_ticks = gate_close_ticks;
+  if (emitted_gate_close_ticks < runtime_state.tcxo.fc0_accum_gate_open_ticks) {
+    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
+  }
+  uint64_t observation_span_us =
+      (emitted_gate_close_ticks - runtime_state.tcxo.fc0_accum_gate_open_ticks) / 16ull;
+  if (observation_span_us < kTcxoGatePeriodUs) {
+    return;
+  }
+
+  uint32_t averaged_khz = 0;
+  if (runtime_state.tcxo.fc0_accum_elapsed_us > 0) {
+    averaged_khz = (uint32_t)(runtime_state.tcxo.fc0_accum_weighted_khz_us /
+                              runtime_state.tcxo.fc0_accum_elapsed_us);
+  }
+  uint64_t counted_edges = ((uint64_t)averaged_khz * observation_span_us) / 1000ull;
+
+  runtime_state.tcxo.last_gate_open_ticks =
+      runtime_state.tcxo.fc0_accum_gate_open_ticks;
+  runtime_state.tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
+  runtime_state.tcxo.last_counted_edges = counted_edges;
+  runtime_state.tcxo.last_elapsed_us = (uint32_t)observation_span_us;
+  runtime_state.tcxo.last_measured_khz = averaged_khz;
+  runtime_state.tcxo.last_sampled_elapsed_us =
+      (uint32_t)runtime_state.tcxo.fc0_accum_elapsed_us;
+  runtime_state.tcxo.last_sample_count = runtime_state.tcxo.fc0_accum_sample_count;
+  runtime_state.tcxo.last_observation_valid =
+      runtime_state.tcxo.fc0_accum_sample_count > 0 &&
+      (runtime_state.tcxo.fc0_accum_flags & OTIS_FLAG_INPUT_STUCK_LOW) == 0;
+
+  otis_emit_count_observation(
+      runtime_state.sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
+      runtime_state.tcxo.last_gate_open_ticks, runtime_state.tcxo.last_gate_close_ticks,
+      OTIS_DOMAIN_RP2040_TIMER0, counted_edges, OTIS_EDGE_RISING,
+      osc_observation_domain(), runtime_state.tcxo.fc0_accum_flags);
+
+  runtime_state.tcxo.fc0_accum_active = false;
+  runtime_state.tcxo.fc0_accum_weighted_khz_us = 0;
+  runtime_state.tcxo.fc0_accum_elapsed_us = 0;
+  runtime_state.tcxo.fc0_accum_sample_count = 0;
+  runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_NONE;
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   emit_h1_dac_sweep_fc0_window();
@@ -1003,12 +1047,20 @@ void emit_fc0_status(void) {
               OTIS_FLAG_NONE);
   emit_status_u32("fc0", "measure_period_ms", kTcxoMeasurePeriodMs,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("fc0", "gate_period_us", kTcxoGatePeriodUs,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("fc0", "last_measured_khz",
                   runtime_state.tcxo.last_measured_khz, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
   emit_status_u32("fc0", "last_elapsed_us",
                   runtime_state.tcxo.last_elapsed_us, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("fc0", "last_sampled_elapsed_us",
+                  runtime_state.tcxo.last_sampled_elapsed_us, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("fc0", "last_sample_count",
+                  runtime_state.tcxo.last_sample_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
   emit_status_u64_decimal("fc0", "last_counted_edges",
                           runtime_state.tcxo.last_counted_edges,
                           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
