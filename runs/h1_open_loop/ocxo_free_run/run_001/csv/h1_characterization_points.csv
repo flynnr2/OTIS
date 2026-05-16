@@ -1,0 +1,2 @@
+group_id,step_index,dac_code,voltage_v,direction,discarded_count,sample_count,elapsed_start_s,elapsed_end_s,median_hz,mean_hz,stddev_hz,mad_hz,iqr_hz,median_ppm,mean_ppm,stddev_ppm,mad_ppm,iqr_ppm
+all_counts,,,,unknown,0,60000,0.5492055,4294.908952,10000000.0,9679321.192381062,1761328.349648333,0.0,0.0,0.0,-32067.880761832414,176132.83496474702,0.0,0.0
