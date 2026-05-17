@@ -140,6 +140,97 @@ void emit_status_u64_decimal(const char *component, const char *key,
   emit_status(component, key, buffer, severity, flags);
 }
 
+void reset_fc0_accum_window(void) {
+  runtime_state.tcxo.fc0_accum_active = false;
+  runtime_state.tcxo.fc0_accum_gate_open_ticks = 0;
+  runtime_state.tcxo.fc0_accum_weighted_khz_us = 0;
+  runtime_state.tcxo.fc0_accum_elapsed_us = 0;
+  runtime_state.tcxo.fc0_accum_sample_count = 0;
+  runtime_state.tcxo.fc0_accum_zero_sample_count = 0;
+  runtime_state.tcxo.fc0_accum_first_sample_khz = 0;
+  runtime_state.tcxo.fc0_accum_last_sample_khz = 0;
+  runtime_state.tcxo.fc0_accum_min_sample_khz = 0;
+  runtime_state.tcxo.fc0_accum_max_sample_khz = 0;
+  runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_NONE;
+}
+
+void start_fc0_accum_window(uint64_t gate_open_ticks) {
+  reset_fc0_accum_window();
+  runtime_state.tcxo.fc0_accum_gate_open_ticks = gate_open_ticks;
+  runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  runtime_state.tcxo.fc0_accum_active = true;
+}
+
+void record_fc0_sample(uint32_t measured_khz, uint64_t elapsed_us) {
+  runtime_state.tcxo.fc0_accum_weighted_khz_us +=
+      (uint64_t)measured_khz * elapsed_us;
+  runtime_state.tcxo.fc0_accum_elapsed_us += elapsed_us;
+  runtime_state.tcxo.fc0_accum_sample_count += 1u;
+  if (runtime_state.tcxo.fc0_accum_sample_count == 1u) {
+    runtime_state.tcxo.fc0_accum_first_sample_khz = measured_khz;
+    runtime_state.tcxo.fc0_accum_min_sample_khz = measured_khz;
+    runtime_state.tcxo.fc0_accum_max_sample_khz = measured_khz;
+  } else {
+    if (measured_khz < runtime_state.tcxo.fc0_accum_min_sample_khz) {
+      runtime_state.tcxo.fc0_accum_min_sample_khz = measured_khz;
+    }
+    if (measured_khz > runtime_state.tcxo.fc0_accum_max_sample_khz) {
+      runtime_state.tcxo.fc0_accum_max_sample_khz = measured_khz;
+    }
+  }
+  runtime_state.tcxo.fc0_accum_last_sample_khz = measured_khz;
+  if (measured_khz == 0u) {
+    runtime_state.tcxo.fc0_accum_zero_sample_count += 1u;
+  }
+}
+
+const char *fc0_window_invalid_reason(void) {
+  if (runtime_state.tcxo.last_sample_count == 0u) {
+    return "no_samples";
+  }
+  if (runtime_state.tcxo.last_zero_sample_count == 0u) {
+    return "none";
+  }
+  if (runtime_state.tcxo.last_zero_sample_count ==
+      runtime_state.tcxo.last_sample_count) {
+    return "all_zero_samples";
+  }
+  return "partial_zero_samples";
+}
+
+void emit_fc0_bad_window_diagnostics(void) {
+  uint32_t flags = runtime_state.tcxo.last_window_flags;
+  emit_status("fc0", "window_invalid_reason", fc0_window_invalid_reason(),
+              OTIS_SEVERITY_WARN, flags);
+  emit_status_u32("fc0", "window_sample_count",
+                  runtime_state.tcxo.last_sample_count, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_zero_sample_count",
+                  runtime_state.tcxo.last_zero_sample_count, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_valid_sample_count",
+                  runtime_state.tcxo.last_valid_sample_count, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_first_sample_khz",
+                  runtime_state.tcxo.last_first_sample_khz, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_last_sample_khz",
+                  runtime_state.tcxo.last_last_sample_khz, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_min_sample_khz",
+                  runtime_state.tcxo.last_min_sample_khz, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "window_max_sample_khz",
+                  runtime_state.tcxo.last_max_sample_khz, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32("fc0", "consecutive_bad_windows",
+                  runtime_state.tcxo.consecutive_bad_windows,
+                  OTIS_SEVERITY_WARN, flags);
+  emit_status_u32("fc0", "total_bad_windows",
+                  runtime_state.tcxo.total_bad_windows, OTIS_SEVERITY_WARN,
+                  flags);
+}
+
 void emit_captured_edge(const OtisCapturedEdge &record) {
   otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF : OTIS_RECORD_EVT,
                       runtime_state.sequences.event_seq++, record.channel_id,
@@ -902,25 +993,12 @@ void service_tcxo_gate(void) {
   uint32_t measured_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLKSRC_GPIN0);
   uint64_t gate_close_ticks = otis_capture_ticks_now();
   uint64_t elapsed_us = (gate_close_ticks - gate_open_ticks) / 16ull;
-  uint32_t flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  if (measured_khz == 0u) {
-    flags |= OTIS_FLAG_INPUT_STUCK_LOW;
-  }
 
   if (!runtime_state.tcxo.fc0_accum_active) {
-    runtime_state.tcxo.fc0_accum_gate_open_ticks = gate_open_ticks;
-    runtime_state.tcxo.fc0_accum_weighted_khz_us = 0;
-    runtime_state.tcxo.fc0_accum_elapsed_us = 0;
-    runtime_state.tcxo.fc0_accum_sample_count = 0;
-    runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-    runtime_state.tcxo.fc0_accum_active = true;
+    start_fc0_accum_window(gate_open_ticks);
   }
 
-  runtime_state.tcxo.fc0_accum_weighted_khz_us +=
-      (uint64_t)measured_khz * elapsed_us;
-  runtime_state.tcxo.fc0_accum_elapsed_us += elapsed_us;
-  runtime_state.tcxo.fc0_accum_sample_count += 1u;
-  runtime_state.tcxo.fc0_accum_flags |= flags;
+  record_fc0_sample(measured_khz, elapsed_us);
 
   uint64_t emitted_gate_close_ticks = gate_close_ticks;
   if (emitted_gate_close_ticks < runtime_state.tcxo.fc0_accum_gate_open_ticks) {
@@ -938,6 +1016,15 @@ void service_tcxo_gate(void) {
                               runtime_state.tcxo.fc0_accum_elapsed_us);
   }
   uint64_t counted_edges = ((uint64_t)averaged_khz * observation_span_us) / 1000ull;
+  uint32_t window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  if (runtime_state.tcxo.fc0_accum_zero_sample_count > 0u) {
+    if (runtime_state.tcxo.fc0_accum_zero_sample_count ==
+        runtime_state.tcxo.fc0_accum_sample_count) {
+      window_flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+    } else {
+      window_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
+    }
+  }
 
   runtime_state.tcxo.last_gate_open_ticks =
       runtime_state.tcxo.fc0_accum_gate_open_ticks;
@@ -948,21 +1035,41 @@ void service_tcxo_gate(void) {
   runtime_state.tcxo.last_sampled_elapsed_us =
       (uint32_t)runtime_state.tcxo.fc0_accum_elapsed_us;
   runtime_state.tcxo.last_sample_count = runtime_state.tcxo.fc0_accum_sample_count;
+  runtime_state.tcxo.last_zero_sample_count =
+      runtime_state.tcxo.fc0_accum_zero_sample_count;
+  runtime_state.tcxo.last_valid_sample_count =
+      runtime_state.tcxo.fc0_accum_sample_count -
+      runtime_state.tcxo.fc0_accum_zero_sample_count;
+  runtime_state.tcxo.last_first_sample_khz =
+      runtime_state.tcxo.fc0_accum_first_sample_khz;
+  runtime_state.tcxo.last_last_sample_khz =
+      runtime_state.tcxo.fc0_accum_last_sample_khz;
+  runtime_state.tcxo.last_min_sample_khz =
+      runtime_state.tcxo.fc0_accum_min_sample_khz;
+  runtime_state.tcxo.last_max_sample_khz =
+      runtime_state.tcxo.fc0_accum_max_sample_khz;
+  runtime_state.tcxo.last_window_flags = window_flags;
   runtime_state.tcxo.last_observation_valid =
       runtime_state.tcxo.fc0_accum_sample_count > 0 &&
-      (runtime_state.tcxo.fc0_accum_flags & OTIS_FLAG_INPUT_STUCK_LOW) == 0;
+      runtime_state.tcxo.fc0_accum_zero_sample_count == 0u;
+  if (runtime_state.tcxo.last_observation_valid) {
+    runtime_state.tcxo.consecutive_bad_windows = 0;
+  } else {
+    runtime_state.tcxo.consecutive_bad_windows += 1u;
+    runtime_state.tcxo.total_bad_windows += 1u;
+  }
 
   otis_emit_count_observation(
       runtime_state.sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
       runtime_state.tcxo.last_gate_open_ticks, runtime_state.tcxo.last_gate_close_ticks,
       OTIS_DOMAIN_RP2040_TIMER0, counted_edges, OTIS_EDGE_RISING,
-      osc_observation_domain(), runtime_state.tcxo.fc0_accum_flags);
+      osc_observation_domain(), window_flags);
 
-  runtime_state.tcxo.fc0_accum_active = false;
-  runtime_state.tcxo.fc0_accum_weighted_khz_us = 0;
-  runtime_state.tcxo.fc0_accum_elapsed_us = 0;
-  runtime_state.tcxo.fc0_accum_sample_count = 0;
-  runtime_state.tcxo.fc0_accum_flags = OTIS_FLAG_NONE;
+  if (!runtime_state.tcxo.last_observation_valid) {
+    emit_fc0_bad_window_diagnostics();
+  }
+
+  reset_fc0_accum_window();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   emit_h1_dac_sweep_fc0_window();
@@ -1061,6 +1168,53 @@ void emit_fc0_status(void) {
   emit_status_u32("fc0", "last_sample_count",
                   runtime_state.tcxo.last_sample_count, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
+  emit_status_u32("fc0", "last_zero_sample_count",
+                  runtime_state.tcxo.last_zero_sample_count,
+                  runtime_state.tcxo.last_zero_sample_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_valid_sample_count",
+                  runtime_state.tcxo.last_valid_sample_count, OTIS_SEVERITY_INFO,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_first_sample_khz",
+                  runtime_state.tcxo.last_first_sample_khz, OTIS_SEVERITY_INFO,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_last_sample_khz",
+                  runtime_state.tcxo.last_last_sample_khz, OTIS_SEVERITY_INFO,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_min_sample_khz",
+                  runtime_state.tcxo.last_min_sample_khz,
+                  runtime_state.tcxo.last_zero_sample_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_max_sample_khz",
+                  runtime_state.tcxo.last_max_sample_khz, OTIS_SEVERITY_INFO,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "last_window_flags",
+                  runtime_state.tcxo.last_window_flags,
+                  runtime_state.tcxo.last_zero_sample_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status("fc0", "last_window_invalid_reason",
+              fc0_window_invalid_reason(),
+              runtime_state.tcxo.last_zero_sample_count == 0u
+                  ? OTIS_SEVERITY_INFO
+                  : OTIS_SEVERITY_WARN,
+              runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "consecutive_bad_windows",
+                  runtime_state.tcxo.consecutive_bad_windows,
+                  runtime_state.tcxo.consecutive_bad_windows == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  runtime_state.tcxo.last_window_flags);
+  emit_status_u32("fc0", "total_bad_windows",
+                  runtime_state.tcxo.total_bad_windows,
+                  runtime_state.tcxo.total_bad_windows == 0u ? OTIS_SEVERITY_INFO
+                                                             : OTIS_SEVERITY_WARN,
+                  runtime_state.tcxo.last_window_flags);
   emit_status_u64_decimal("fc0", "last_counted_edges",
                           runtime_state.tcxo.last_counted_edges,
                           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);

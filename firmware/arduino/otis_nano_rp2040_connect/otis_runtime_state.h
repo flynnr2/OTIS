@@ -41,6 +41,11 @@ struct OtisTcxoRuntimeState {
   uint64_t fc0_accum_weighted_khz_us;
   uint64_t fc0_accum_elapsed_us;
   uint32_t fc0_accum_sample_count;
+  uint32_t fc0_accum_zero_sample_count;
+  uint32_t fc0_accum_first_sample_khz;
+  uint32_t fc0_accum_last_sample_khz;
+  uint32_t fc0_accum_min_sample_khz;
+  uint32_t fc0_accum_max_sample_khz;
   uint32_t fc0_accum_flags;
   bool fc0_accum_active;
   uint64_t last_gate_open_ticks;
@@ -50,6 +55,15 @@ struct OtisTcxoRuntimeState {
   uint32_t last_measured_khz;
   uint32_t last_sampled_elapsed_us;
   uint32_t last_sample_count;
+  uint32_t last_zero_sample_count;
+  uint32_t last_valid_sample_count;
+  uint32_t last_first_sample_khz;
+  uint32_t last_last_sample_khz;
+  uint32_t last_min_sample_khz;
+  uint32_t last_max_sample_khz;
+  uint32_t last_window_flags;
+  uint32_t consecutive_bad_windows;
+  uint32_t total_bad_windows;
   bool last_observation_valid;
 };
 
