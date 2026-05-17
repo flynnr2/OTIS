@@ -122,7 +122,7 @@
 #endif
 
 #ifndef OTIS_TCXO_GATE_PERIOD_US
-#define OTIS_TCXO_GATE_PERIOD_US 1000000u
+#define OTIS_TCXO_GATE_PERIOD_US 10000000u
 #endif
 
 // FC0/GPIN0 publishes one CNT observation per gate period. The FC0 hardware
