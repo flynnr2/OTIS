@@ -32,6 +32,11 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.fc0_accum_weighted_khz_us = 0;
   state->tcxo.fc0_accum_elapsed_us = 0;
   state->tcxo.fc0_accum_sample_count = 0;
+  state->tcxo.fc0_accum_zero_sample_count = 0;
+  state->tcxo.fc0_accum_first_sample_khz = 0;
+  state->tcxo.fc0_accum_last_sample_khz = 0;
+  state->tcxo.fc0_accum_min_sample_khz = 0;
+  state->tcxo.fc0_accum_max_sample_khz = 0;
   state->tcxo.fc0_accum_flags = 0;
   state->tcxo.fc0_accum_active = false;
   state->tcxo.last_gate_open_ticks = 0;
@@ -41,6 +46,15 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.last_measured_khz = 0;
   state->tcxo.last_sampled_elapsed_us = 0;
   state->tcxo.last_sample_count = 0;
+  state->tcxo.last_zero_sample_count = 0;
+  state->tcxo.last_valid_sample_count = 0;
+  state->tcxo.last_first_sample_khz = 0;
+  state->tcxo.last_last_sample_khz = 0;
+  state->tcxo.last_min_sample_khz = 0;
+  state->tcxo.last_max_sample_khz = 0;
+  state->tcxo.last_window_flags = 0;
+  state->tcxo.consecutive_bad_windows = 0;
+  state->tcxo.total_bad_windows = 0;
   state->tcxo.last_observation_valid = false;
 
   state->active_mode = OTIS_SW1_BRINGUP_MODE;
