@@ -1,3 +1,0 @@
-# Validation Report
-
-Template placeholder.
