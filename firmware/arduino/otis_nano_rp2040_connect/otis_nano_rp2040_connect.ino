@@ -2,6 +2,8 @@
 #include <ctype.h>
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
+#include <hardware/pio.h>
+#include <hardware/pio_instructions.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,17 +30,35 @@ namespace {
 
 constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+constexpr uint32_t kTcxoGatePeriodUs = OTIS_H1_LONG_GATE_PERIOD_US;
+#else
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
+#endif
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
 constexpr uint32_t kFc0StartupInhibitMs = OTIS_FC0_STARTUP_INHIBIT_MS;
 constexpr uint32_t kFc0ControlReadyCleanWindows =
     OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS;
 constexpr uint64_t kRp2040Timer0MicrosWrapTicks = (1ull << 32) * 16ull;
+constexpr uint32_t kH1PioCounterInitialX = 0xffffffffu;
 
 OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
 char serial_command_line[64];
 uint8_t serial_command_len = 0;
+
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+struct H1PioLongGateCounter {
+  PIO pio;
+  uint sm;
+  uint offset;
+  bool initialized;
+  bool active;
+  uint64_t gate_open_ticks;
+};
+
+H1PioLongGateCounter h1_pio_long_gate = {pio0, 0, 0, false, false, 0};
+#endif
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -142,6 +162,73 @@ void emit_status_u64_decimal(const char *component, const char *key,
            static_cast<unsigned long long>(value));
   emit_status(component, key, buffer, severity, flags);
 }
+
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+bool begin_h1_pio_long_gate_counter(void) {
+  uint16_t instructions[] = {
+      (uint16_t)pio_encode_pull(false, true),
+      (uint16_t)pio_encode_mov(pio_x, pio_osr),
+      (uint16_t)pio_encode_wait_pin(true, 0),
+      (uint16_t)pio_encode_wait_pin(false, 0),
+      (uint16_t)pio_encode_jmp_x_dec(2),
+  };
+  pio_program program = {
+      instructions,
+      5,
+      -1,
+  };
+
+  h1_pio_long_gate.pio = pio0;
+  h1_pio_long_gate.sm = pio_claim_unused_sm(h1_pio_long_gate.pio, true);
+  h1_pio_long_gate.offset = pio_add_program(h1_pio_long_gate.pio, &program);
+
+  pio_gpio_init(h1_pio_long_gate.pio, OTIS_GPIO_OSC_OBSERVATION);
+  gpio_pull_down(OTIS_GPIO_OSC_OBSERVATION);
+
+  pio_sm_config config = pio_get_default_sm_config();
+  sm_config_set_in_pins(&config, OTIS_GPIO_OSC_OBSERVATION);
+  sm_config_set_wrap(&config, h1_pio_long_gate.offset + 2,
+                     h1_pio_long_gate.offset + 4);
+  sm_config_set_clkdiv(&config, 1.0f);
+  pio_sm_init(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+              h1_pio_long_gate.offset, &config);
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
+  h1_pio_long_gate.initialized = true;
+  h1_pio_long_gate.active = false;
+  h1_pio_long_gate.gate_open_ticks = 0;
+  return true;
+}
+
+void start_h1_pio_long_gate_counter(uint64_t gate_open_ticks) {
+  if (!h1_pio_long_gate.initialized) {
+    return;
+  }
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
+  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_clkdiv_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_put_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+                      kH1PioCounterInitialX);
+  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+                            pio_encode_jmp(h1_pio_long_gate.offset));
+  h1_pio_long_gate.gate_open_ticks = gate_open_ticks;
+  h1_pio_long_gate.active = true;
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, true);
+}
+
+uint32_t stop_h1_pio_long_gate_counter(void) {
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
+  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+                            pio_encode_mov(pio_isr, pio_x));
+  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+                            pio_encode_push(false, false));
+  uint32_t remaining = pio_sm_get_blocking(h1_pio_long_gate.pio,
+                                           h1_pio_long_gate.sm);
+  h1_pio_long_gate.active = false;
+  return remaining;
+}
+#endif
 
 void reset_fc0_accum_window(void) {
   runtime_state.tcxo.fc0_accum_active = false;
@@ -306,6 +393,15 @@ void emit_common_boot_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("capture", "fc0_measure_period_ms", kTcxoMeasurePeriodMs,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("capture", "counter_gate_period_us", kTcxoGatePeriodUs,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+  emit_status("capture", "measurement_mode", "raw_edge_long_gate",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
+  emit_status("capture", "measurement_mode", "short_frequency_gate",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
   emit_status("system", "arduino_core", OTIS_TARGET_ARDUINO_CORE,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
@@ -323,6 +419,8 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_dac_ad5693r", OTIS_ENABLE_DAC_AD5693R,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_h1_dac_sweep", OTIS_ENABLE_H1_DAC_SWEEP,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("sweep", "slope_dwell_ms", OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("dac", "i2c_address", OTIS_DAC_AD5693R_I2C_ADDRESS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -485,8 +583,8 @@ void configure_tcxo_observe_mode(void) {
 
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
   // In TCXO observe mode the edge-capture backend, including PIO FIFO when
-  // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 / GPIN0
-  // must use the FC0/gated-count counter backend below, not FIFO edge records.
+  // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 is
+  // handled by the selected count-observation backend below, not FIFO records.
   bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
                                        OTIS_CHANNEL_PPS_REFERENCE, true,
                                        RISING);
@@ -504,6 +602,18 @@ void configure_tcxo_observe_mode(void) {
   gpio_set_function(OTIS_GPIO_OSC_OBSERVATION, GPIO_FUNC_GPCK);
   emit_status("capture", "tcxo_counter_backend", "rp2040_fc0_gpin0",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+  bool counter_ok = begin_h1_pio_long_gate_counter();
+  emit_status("capture", "tcxo_counter_backend", "pio_long_gate_gpio20",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("capture", "pio_long_gate_init", counter_ok ? "ok" : "failed",
+              counter_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+              counter_ok ? OTIS_FLAG_PROFILE_ASSUMPTION
+                         : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("capture", "pio_long_gate_gpio", OTIS_GPIO_OSC_OBSERVATION,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("capture", "pio_long_gate_period_us", kTcxoGatePeriodUs,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   pinMode(OTIS_PIN_OSC_OBSERVATION, INPUT_PULLDOWN);
   runtime_state.tcxo.gate_open_us = micros();
@@ -552,6 +662,7 @@ struct H1DacSweepState {
   uint8_t step_count;
   uint8_t active_step;
   bool running;
+  bool pending_start;
   bool dwell_active;
   uint32_t dwell_started_ms;
   uint16_t last_requested_code;
@@ -564,6 +675,7 @@ H1DacSweepState h1_dac_sweep = {
     {},
     0,
     0,
+    false,
     false,
     false,
     0,
@@ -598,6 +710,11 @@ void emit_sweep_status(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("sweep", "running", h1_dac_sweep.running ? "true" : "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("sweep", "pending_start",
+              h1_dac_sweep.pending_start ? "true" : "false",
+              h1_dac_sweep.pending_start ? OTIS_SEVERITY_WARN
+                                         : OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("sweep", "profile", h1_dac_sweep.profile_name,
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("sweep", "step_count", h1_dac_sweep.step_count,
@@ -640,6 +757,7 @@ bool h1_dac_sweep_add_step(uint16_t code, uint32_t dwell_ms) {
 
 void h1_dac_sweep_clear(void) {
   h1_dac_sweep.running = false;
+  h1_dac_sweep.pending_start = false;
   h1_dac_sweep.dwell_active = false;
   h1_dac_sweep.active_step = 0;
   h1_dac_sweep.step_count = 0;
@@ -661,6 +779,7 @@ bool h1_dac_sweep_load_profile(const char *profile_name) {
   uint16_t center = h1_dac_sweep_center_code();
   uint32_t step = (uint32_t)OTIS_H1_DAC_SWEEP_TINY_STEP_CODES;
   const uint32_t dwell_ms = OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS;
+  uint32_t profile_dwell_ms = dwell_ms;
   const char *loaded_name = nullptr;
 
   if (strcmp(profile_name, "CENTER_ONLY") == 0) {
@@ -684,6 +803,30 @@ bool h1_dac_sweep_load_profile(const char *profile_name) {
     candidate_codes[count++] = (uint32_t)center - (2u * step);
     candidate_codes[count++] = center;
     loaded_name = "tiny_plus_minus_2";
+  } else if (strcmp(profile_name, "SLOPE_CENTER_EDGE_300S") == 0) {
+    profile_dwell_ms = OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = OTIS_DAC_MAX_CODE;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = OTIS_DAC_MIN_CODE;
+    candidate_codes[count++] = center;
+    loaded_name = "slope_center_edge_300s";
+  } else if (strcmp(profile_name, "SLOPE_REPEAT_300S") == 0) {
+    profile_dwell_ms = OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS;
+    uint32_t half_high = (uint32_t)center + ((uint32_t)OTIS_DAC_MAX_CODE -
+                                            (uint32_t)center) / 2u;
+    uint32_t half_low = (uint32_t)center - ((uint32_t)center -
+                                           (uint32_t)OTIS_DAC_MIN_CODE) / 2u;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = half_high;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = half_low;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = OTIS_DAC_MAX_CODE;
+    candidate_codes[count++] = center;
+    candidate_codes[count++] = OTIS_DAC_MIN_CODE;
+    candidate_codes[count++] = center;
+    loaded_name = "slope_repeat_300s";
   } else {
     emit_status("sweep", "load", "rejected_unknown_profile",
                 OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
@@ -699,7 +842,7 @@ bool h1_dac_sweep_load_profile(const char *profile_name) {
                                : (uint16_t)candidate_codes[index];
       emit_sweep_record(index, requested,
                         otis_dac_ad5693r_clamp_code(requested), true,
-                        dwell_ms, "safety_reject",
+                        profile_dwell_ms, "safety_reject",
                         OTIS_FLAG_PROFILE_ASSUMPTION);
       emit_status("sweep", "load", "rejected_profile_exceeds_clamps",
                   OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -709,15 +852,16 @@ bool h1_dac_sweep_load_profile(const char *profile_name) {
 
   h1_dac_sweep_clear();
   for (uint8_t index = 0; index < count; ++index) {
-    h1_dac_sweep.steps[index] = {(uint16_t)candidate_codes[index], dwell_ms};
+    h1_dac_sweep.steps[index] = {(uint16_t)candidate_codes[index],
+                                 profile_dwell_ms};
   }
   h1_dac_sweep.step_count = count;
   h1_dac_sweep.profile_name = loaded_name;
   emit_status("sweep", "load", "ok", OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status("sweep", "profile", loaded_name, OTIS_SEVERITY_INFO,
               OTIS_FLAG_NONE);
-  emit_sweep_record(-1, center, center, false, dwell_ms, "profile_loaded",
-                    OTIS_FLAG_NONE);
+  emit_sweep_record(-1, center, center, false, profile_dwell_ms,
+                    "profile_loaded", OTIS_FLAG_NONE);
   return true;
 }
 
@@ -774,6 +918,18 @@ void h1_dac_sweep_start(void) {
                 OTIS_FLAG_NONE);
     return;
   }
+  if (!runtime_state.tcxo.valid_for_control) {
+    h1_dac_sweep.pending_start = true;
+    h1_dac_sweep.running = false;
+    h1_dac_sweep.dwell_active = false;
+    h1_dac_sweep.active_step = 0;
+    emit_sweep_record(-1, 0, 0, false, 0, "pending_fc0_valid_for_control",
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("sweep", "start", "pending_fc0_valid_for_control",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+    return;
+  }
+  h1_dac_sweep.pending_start = false;
   h1_dac_sweep.running = true;
   h1_dac_sweep.active_step = 0;
   h1_dac_sweep.dwell_active = false;
@@ -791,6 +947,7 @@ void h1_dac_sweep_stop(const char *event_name) {
                       OTIS_FLAG_NONE);
   }
   h1_dac_sweep.running = false;
+  h1_dac_sweep.pending_start = false;
   h1_dac_sweep.dwell_active = false;
   emit_sweep_record(-1, h1_dac_sweep.last_requested_code,
                     h1_dac_sweep.last_applied_code, false,
@@ -818,6 +975,18 @@ void h1_dac_sweep_manual_step(void) {
 }
 
 void service_h1_dac_sweep(void) {
+  if (h1_dac_sweep.pending_start && runtime_state.tcxo.valid_for_control) {
+    h1_dac_sweep.pending_start = false;
+    h1_dac_sweep.running = true;
+    h1_dac_sweep.active_step = 0;
+    h1_dac_sweep.dwell_active = false;
+    emit_sweep_record(-1, 0, 0, false, 0, "start_after_fc0_ready",
+                      OTIS_FLAG_NONE);
+    if (!h1_dac_sweep_apply_active_step("step_apply")) {
+      h1_dac_sweep.running = false;
+    }
+    return;
+  }
   if (!h1_dac_sweep.running || !h1_dac_sweep.dwell_active) {
     return;
   }
@@ -1117,6 +1286,79 @@ void service_tcxo_gate(void) {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   emit_h1_dac_sweep_fc0_window();
 #endif
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+  if (!h1_pio_long_gate.initialized) {
+    return;
+  }
+
+  uint32_t now_ms = millis();
+  uint64_t now_ticks = otis_capture_ticks_now();
+  if (!h1_pio_long_gate.active) {
+    start_h1_pio_long_gate_counter(now_ticks);
+    return;
+  }
+
+  uint64_t emitted_gate_close_ticks = now_ticks;
+  if (emitted_gate_close_ticks < h1_pio_long_gate.gate_open_ticks) {
+    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
+  }
+  uint64_t observation_span_us =
+      (emitted_gate_close_ticks - h1_pio_long_gate.gate_open_ticks) / 16ull;
+  if (observation_span_us < kTcxoGatePeriodUs) {
+    return;
+  }
+
+  uint32_t remaining = stop_h1_pio_long_gate_counter();
+  uint64_t counted_edges =
+      (uint64_t)kH1PioCounterInitialX - (uint64_t)remaining;
+  uint32_t measured_khz = 0;
+  if (observation_span_us > 0) {
+    measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
+  }
+  uint32_t window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  bool window_valid = counted_edges > 0ull;
+  if (!window_valid) {
+    window_flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+  }
+
+  runtime_state.tcxo.last_gate_open_ticks = h1_pio_long_gate.gate_open_ticks;
+  runtime_state.tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
+  runtime_state.tcxo.last_counted_edges = counted_edges;
+  runtime_state.tcxo.last_elapsed_us = (uint32_t)observation_span_us;
+  runtime_state.tcxo.last_measured_khz = measured_khz;
+  runtime_state.tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
+  runtime_state.tcxo.last_sample_count = 1u;
+  runtime_state.tcxo.last_zero_sample_count = window_valid ? 0u : 1u;
+  runtime_state.tcxo.last_valid_sample_count = window_valid ? 1u : 0u;
+  runtime_state.tcxo.last_first_sample_khz = measured_khz;
+  runtime_state.tcxo.last_last_sample_khz = measured_khz;
+  runtime_state.tcxo.last_min_sample_khz = measured_khz;
+  runtime_state.tcxo.last_max_sample_khz = measured_khz;
+  runtime_state.tcxo.last_window_flags = window_flags;
+  runtime_state.tcxo.last_observation_valid = window_valid;
+  update_fc0_control_gate(window_valid, now_ms);
+  if (window_valid) {
+    runtime_state.tcxo.consecutive_bad_windows = 0;
+  } else {
+    runtime_state.tcxo.consecutive_bad_windows += 1u;
+    runtime_state.tcxo.total_bad_windows += 1u;
+  }
+
+  otis_emit_count_observation(
+      runtime_state.sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
+      runtime_state.tcxo.last_gate_open_ticks, runtime_state.tcxo.last_gate_close_ticks,
+      OTIS_DOMAIN_RP2040_TIMER0, counted_edges, OTIS_EDGE_RISING,
+      osc_observation_domain(), window_flags);
+
+  if (!window_valid) {
+    emit_fc0_bad_window_diagnostics();
+  }
+
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  emit_h1_dac_sweep_fc0_window();
+#endif
+  start_h1_pio_long_gate_counter(otis_capture_ticks_now());
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   uint32_t now_us = micros();
   if ((uint32_t)(now_us - runtime_state.tcxo.gate_open_us) <
@@ -1200,6 +1442,13 @@ void emit_fc0_status(void) {
               runtime_state.tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
                                                         : OTIS_SEVERITY_WARN,
               OTIS_FLAG_NONE);
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+  emit_status("fc0", "measurement_mode", "raw_edge_long_gate",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
+  emit_status("fc0", "measurement_mode", "short_frequency_gate",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
   emit_status_u32("fc0", "measure_period_ms", kTcxoMeasurePeriodMs,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("fc0", "gate_period_us", kTcxoGatePeriodUs,
@@ -1363,7 +1612,7 @@ void handle_serial_command(char *line) {
 
   if (strcmp(command, "HELP") == 0) {
     emit_status("command", "h1_help",
-                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_HELP",
+                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (strcmp(command, "DAC?") == 0) {
     emit_dac_status("dac");

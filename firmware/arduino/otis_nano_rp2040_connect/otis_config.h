@@ -67,14 +67,20 @@
 #define OTIS_NOMINAL_PPS_HZ 1u
 #endif
 
-// TCXO observation backends. FC0/GPIN0 is the intended abstraction for raw
-// CXO frequency observation; GPIO IRQ is only for deliberately divided,
-// interrupt-safe test signals.
+// TCXO observation backends. FC0/GPIN0 is the simple RP2040 clock-counter path;
+// H1 long-gate PIO is the raw-edge metrology path for resolving sub-Hz VCOCXO
+// DAC response; GPIO IRQ is only for deliberately divided, interrupt-safe test
+// signals.
 #define OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 1
 #define OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ 2
+#define OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE 3
 
 #ifndef OTIS_TCXO_COUNTER_BACKEND
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+#else
 #define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
+#endif
 #endif
 
 // Boot and serial behavior.
@@ -132,6 +138,12 @@
 #define OTIS_TCXO_MEASURE_PERIOD_MS 1000u
 #endif
 
+// H1 slope-metrology long gate. A 300 s raw-edge gate gives about 0.0033 Hz
+// edge quantization at 10 MHz and still stays below a 32-bit PIO edge counter.
+#ifndef OTIS_H1_LONG_GATE_PERIOD_US
+#define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
+#endif
+
 // SW2 architectural guardrail: FC0 observations remain visible during startup,
 // but they are not eligible for future control/acquire logic until this inhibit
 // window has elapsed and enough clean windows have followed it.
@@ -171,6 +183,10 @@
 #define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 120000u
 #endif
 
+#ifndef OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS
+#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
+#endif
+
 #ifndef OTIS_H1_DAC_SWEEP_TINY_STEP_CODES
 #define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
 #endif
@@ -193,8 +209,9 @@
 #endif
 
 #if OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 && \
-    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
-#error "OTIS_TCXO_COUNTER_BACKEND must be FC0_GPIN0 or GPIO_IRQ."
+    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ && \
+    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+#error "OTIS_TCXO_COUNTER_BACKEND must be FC0_GPIN0, GPIO_IRQ, or PIO_LONG_GATE."
 #endif
 
 #if OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ && \
@@ -229,6 +246,15 @@
 
 #if OTIS_H1_DAC_SWEEP_TINY_STEP_CODES < 1u
 #error "OTIS_H1_DAC_SWEEP_TINY_STEP_CODES must be at least 1."
+#endif
+
+#if OTIS_H1_LONG_GATE_PERIOD_US < 1000000u || \
+    OTIS_H1_LONG_GATE_PERIOD_US > 400000000u
+#error "OTIS_H1_LONG_GATE_PERIOD_US must be between 1 s and 400 s."
+#endif
+
+#if OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS < 2u * (OTIS_H1_LONG_GATE_PERIOD_US / 1000u)
+#error "OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS must allow at least two long gates per dwell."
 #endif
 
 #if OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS < 1u

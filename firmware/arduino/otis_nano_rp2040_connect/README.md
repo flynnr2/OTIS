@@ -146,10 +146,15 @@ conservative and do not permit rail-to-rail sweeps:
 #define OTIS_DAC_MIN_CODE 0x7000u
 #define OTIS_DAC_MAX_CODE 0x9000u
 #define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
+#define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
+#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
 ```
 
 The built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` profiles use small
 bench-visible steps around the clamp midpoint, not 1-LSB metrology steps.
+The `slope_center_edge_300s` and `slope_repeat_300s` profiles are autonomous
+VCOCXO slope-metrology runs. They use 300 s raw-edge count gates and 900 s DAC
+dwell so each DAC code gets three independent long-gate `CNT` observations.
 
 Manual commands are read from the USB serial monitor. Terminate each command
 with newline or carriage return:
@@ -167,6 +172,8 @@ SWEEP?
 SWEEP LOAD center_only
 SWEEP LOAD tiny_plus_minus_1
 SWEEP LOAD tiny_plus_minus_2
+SWEEP LOAD slope_center_edge_300s
+SWEEP LOAD slope_repeat_300s
 SWEEP START
 SWEEP STOP
 SWEEP STEP
@@ -181,16 +188,22 @@ sets the configured minimum clamp, not electrical ground unless the clamp is
 explicitly configured that way. `DAC MID` sets the midpoint of the configured
 clamp window.
 
-The boot/status stream reports H1 open-loop mode, FC0 measurement period,
-nominal OCXO frequency assumption, DAC enable state, I2C address, clamp values,
-DAC init success/failure, and accepted/rejected DAC command telemetry. `FC0?`
-prints the latest gated-count summary as structured `STS` rows. The regular
-`CNT` records remain the primary FC0 observation output.
+The boot/status stream reports H1 open-loop mode, counter measurement mode,
+gate period, nominal OCXO frequency assumption, DAC enable state, I2C address,
+clamp values, DAC init success/failure, and accepted/rejected DAC command
+telemetry. `FC0?` prints the latest gated-count summary as structured `STS`
+rows. The regular `CNT` records remain the primary oscillator observation
+output.
 
 `OTIS_ENABLE_H1_DAC_SWEEP` adds deterministic open-loop sweep commands. Sweeps
 are never started on boot; `SWEEP START` is required. Built-in profiles are
-deliberately tiny and centered inside the configured DAC clamps. Requests that
-would cross clamps are rejected and logged as `DAC` rows with `safety_reject`.
+either deliberately tiny and centered inside the configured DAC clamps or
+bounded long-dwell slope profiles that only visit the configured min/mid/max
+codes. Requests that would cross clamps are rejected and logged as `DAC` rows
+with `safety_reject`.
+If `SWEEP START` is sent before `fc0_valid_for_control=true`, the sweep enters
+`pending_start` and begins automatically after the startup inhibit has expired
+and enough clean long-gate windows have been observed.
 During an active sweep, firmware emits `DAC` rows for `dwell_start`,
 `fc0_window`, and `dwell_complete` so each nearby `CNT` observation can be
 attributed to the active step index and DAC code without changing the `CNT`
