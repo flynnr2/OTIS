@@ -55,6 +55,12 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.last_window_flags = 0;
   state->tcxo.consecutive_bad_windows = 0;
   state->tcxo.total_bad_windows = 0;
+  state->tcxo.startup_inhibit_start_ms = 0;
+  state->tcxo.startup_inhibit_elapsed_s = 0;
+  state->tcxo.control_clean_window_count = 0;
+  state->tcxo.startup_inhibit_active = true;
+  state->tcxo.valid_for_control = false;
+  state->tcxo.fault_after_startup = false;
   state->tcxo.last_observation_valid = false;
 
   state->active_mode = OTIS_SW1_BRINGUP_MODE;

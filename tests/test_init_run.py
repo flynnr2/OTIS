@@ -90,10 +90,10 @@ def test_h1_templates_initialize_and_validate(tmp_path: Path, monkeypatch) -> No
 
         assert validate_run(template_dir) == 0
 
-    run_dir = init_run("h1_open_loop", "ocxo_free_run", "run_001")
+    run_dir = init_run("h1_open_loop", "ocxo_free_run", "run_pytest")
     manifest = load_manifest(run_dir)
 
-    assert manifest.run_id == "run_001"
+    assert manifest.run_id == "run_pytest"
     assert manifest.data["template"] is False
     assert manifest.data["h_phase"] == "H1"
     assert manifest.data["stage"] == "OPEN_LOOP"
@@ -105,7 +105,7 @@ def test_h1_templates_initialize_and_validate(tmp_path: Path, monkeypatch) -> No
 
     config = (run_dir / "config.env").read_text(encoding="utf-8")
     assert "OTIS_CAPTURE_TYPE=ocxo_free_run" in config
-    assert "OTIS_RUN_ID=run_001" in config
+    assert "OTIS_RUN_ID=run_pytest" in config
     assert validate_run(run_dir) == 0
 
 

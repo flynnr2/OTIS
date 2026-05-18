@@ -132,6 +132,17 @@
 #define OTIS_TCXO_MEASURE_PERIOD_MS 1000u
 #endif
 
+// SW2 architectural guardrail: FC0 observations remain visible during startup,
+// but they are not eligible for future control/acquire logic until this inhibit
+// window has elapsed and enough clean windows have followed it.
+#ifndef OTIS_FC0_STARTUP_INHIBIT_MS
+#define OTIS_FC0_STARTUP_INHIBIT_MS 600000u
+#endif
+
+#ifndef OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS
+#define OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS 3u
+#endif
+
 // H1 open-loop lab instrument DAC support. This is deliberately opt-in and
 // manual-only; firmware never steers the oscillator from PPS/count telemetry.
 #ifndef OTIS_ENABLE_DAC_AD5693R
@@ -218,6 +229,10 @@
 
 #if OTIS_H1_DAC_SWEEP_TINY_STEP_CODES < 1u
 #error "OTIS_H1_DAC_SWEEP_TINY_STEP_CODES must be at least 1."
+#endif
+
+#if OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS < 1u
+#error "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS must be at least 1."
 #endif
 
 #if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u

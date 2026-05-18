@@ -64,6 +64,12 @@ struct OtisTcxoRuntimeState {
   uint32_t last_window_flags;
   uint32_t consecutive_bad_windows;
   uint32_t total_bad_windows;
+  uint32_t startup_inhibit_start_ms;
+  uint32_t startup_inhibit_elapsed_s;
+  uint32_t control_clean_window_count;
+  bool startup_inhibit_active;
+  bool valid_for_control;
+  bool fault_after_startup;
   bool last_observation_valid;
 };
 

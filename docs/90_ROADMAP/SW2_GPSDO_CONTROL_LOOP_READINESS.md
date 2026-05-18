@@ -25,6 +25,9 @@ Primary artifacts:
 - `runs/h1_open_loop/dac_manual_sweep/run_006/csv/dac_steps.csv`
 - `runs/h1_open_loop/dac_manual_sweep/run_006/csv/cnt.csv`
 - `runs/h1_open_loop/dac_manual_sweep/run_006/csv/ref.csv`
+- `runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md`
+- `runs/h1_open_loop/ocxo_free_run/run_004/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md`
 
 Observed evidence:
 
@@ -51,6 +54,13 @@ Observed evidence:
   exceeds the run duration.
 - `dac_manual_sweep/run_006/notes.md` records that the frequency response is not
   resolved by the current short FC0 gate and that ppm/V should remain unclaimed.
+- `ocxo_free_run/run_004/reports/anomalies.md` reports 20 bad FC0 windows
+  confined to startup, with the first clean CNT window about 3.67 minutes after
+  the first CNT window and about 10.18 hours of clean observation afterward.
+- `ocxo_free_run/run_004/reports/h1_characterization_summary.md` treats the
+  current MID free-run data as FC0 control-eligible only after a startup inhibit
+  and clean-window requirement; this is an estimator/control gate, not a raw
+  capture filter.
 
 ## H1 Evidence Missing
 
@@ -99,6 +109,31 @@ Current measured model:
 
 Because Hz/V and ppm/V are unavailable, SW2 must not convert PPS or FC0 error
 into active DAC movement yet.
+
+## Startup FC0 Control Gate
+
+Run `ocxo_free_run/run_004` changes the SW2 architecture requirement: early FC0
+and PPS observations may be present and useful for diagnostics, but they are not
+eligible for acquire, lock, estimator seeding, or actuation.
+
+SW2 must distinguish these states:
+
+- `fc0_observed_valid`: raw FC0 telemetry exists and can be reported.
+- `fc0_valid_for_control`: the startup inhibit has expired and at least three
+  consecutive clean FC0 count windows have followed it.
+- `fc0_fault`: an invalid FC0 count window occurred after the startup inhibit.
+
+Initial gate defaults:
+
+- Startup inhibit: 600 s from FC0 observation-mode entry.
+- Clean-window requirement: 3 consecutive valid FC0 windows after inhibit.
+- Bad windows during inhibit: visible in CNT/STS telemetry, but not controller
+  faults.
+- Bad windows after inhibit: force `fc0_valid_for_control=false` and inhibit any
+  future acquire or discipline transition.
+
+This gate must be implemented as metadata/status around raw observations. Do not
+delete or suppress startup CNT/REF rows in capture artifacts.
 
 ## Safe Operating Envelope
 
@@ -245,6 +280,12 @@ SW2 firmware should emit these fields before active steering is allowed:
 - `saturation_state`
 - `warmup_elapsed_s`
 - `warmup_inhibit`
+- `startup_inhibit_active`
+- `startup_inhibit_elapsed_s`
+- `fc0_observed_valid`
+- `fc0_valid_for_control`
+- `fc0_clean_window_count`
+- `fc0_fault`
 - `slew_limited`
 - `bus_status`
 - `i2c_recovery_count`
@@ -265,11 +306,13 @@ SW2 safety gates:
   wider envelope.
 - Maximum slew per update: 0 codes for active control until plant gain is known;
   `0x0400` codes for manual/open-loop preview only.
-- Warmup inhibit: prevent steering before the startup holdoff expires.
+- Warmup/startup inhibit: prevent steering before the startup holdoff expires
+  and before FC0 has met the post-inhibit clean-window requirement.
 - PPS invalid inhibit: stop steering if PPS is missing, stale, nonmonotonic, or
   outside validity limits.
 - FC0 invalid inhibit: stop steering if FC0 count windows are missing, stale,
-  flagged, or outside expected gate behavior.
+  flagged, outside expected gate behavior, inside startup inhibit, or not yet
+  post-inhibit clean-window qualified.
 - Bus failure behavior: do not retry indefinitely while changing output; mark DAC
   write failure and enter fail-static/fault.
 - I2C recovery behavior: attempt bounded bus recovery, re-read/report status,

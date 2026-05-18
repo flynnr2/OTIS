@@ -30,6 +30,9 @@ constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_TCXO_GATE_PERIOD_US;
 constexpr uint32_t kTcxoMeasurePeriodMs = OTIS_TCXO_MEASURE_PERIOD_MS;
+constexpr uint32_t kFc0StartupInhibitMs = OTIS_FC0_STARTUP_INHIBIT_MS;
+constexpr uint32_t kFc0ControlReadyCleanWindows =
+    OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS;
 constexpr uint64_t kRp2040Timer0MicrosWrapTicks = (1ull << 32) * 16ull;
 
 OtisRuntimeState runtime_state;
@@ -474,6 +477,12 @@ void configure_gps_pps_mode(void) {
 }
 
 void configure_tcxo_observe_mode(void) {
+  runtime_state.tcxo.startup_inhibit_start_ms = millis();
+  runtime_state.tcxo.startup_inhibit_active = true;
+  runtime_state.tcxo.valid_for_control = false;
+  runtime_state.tcxo.control_clean_window_count = 0;
+  runtime_state.tcxo.fault_after_startup = false;
+
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
   // In TCXO observe mode the edge-capture backend, including PIO FIFO when
   // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 / GPIN0
@@ -866,6 +875,39 @@ void configure_h1_ocxo_observe_mode(void) {
 #endif
 }
 
+void update_fc0_control_gate(bool window_valid, uint32_t now_ms) {
+  runtime_state.tcxo.startup_inhibit_elapsed_s =
+      (uint32_t)((now_ms - runtime_state.tcxo.startup_inhibit_start_ms) / 1000u);
+  runtime_state.tcxo.startup_inhibit_active =
+      (uint32_t)(now_ms - runtime_state.tcxo.startup_inhibit_start_ms) <
+      kFc0StartupInhibitMs;
+
+  if (!window_valid) {
+    runtime_state.tcxo.control_clean_window_count = 0;
+    runtime_state.tcxo.valid_for_control = false;
+    if (!runtime_state.tcxo.startup_inhibit_active) {
+      runtime_state.tcxo.fault_after_startup = true;
+    }
+    return;
+  }
+
+  if (runtime_state.tcxo.startup_inhibit_active) {
+    runtime_state.tcxo.control_clean_window_count = 0;
+    runtime_state.tcxo.valid_for_control = false;
+    return;
+  }
+
+  if (runtime_state.tcxo.control_clean_window_count < UINT32_MAX) {
+    runtime_state.tcxo.control_clean_window_count += 1u;
+  }
+  runtime_state.tcxo.valid_for_control =
+      runtime_state.tcxo.control_clean_window_count >=
+      kFc0ControlReadyCleanWindows;
+  if (runtime_state.tcxo.valid_for_control) {
+    runtime_state.tcxo.fault_after_startup = false;
+  }
+}
+
 void setup_mode(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_SYNTHETIC_USB
   configure_synthetic_usb_mode();
@@ -1052,6 +1094,7 @@ void service_tcxo_gate(void) {
   runtime_state.tcxo.last_observation_valid =
       runtime_state.tcxo.fc0_accum_sample_count > 0 &&
       runtime_state.tcxo.fc0_accum_zero_sample_count == 0u;
+  update_fc0_control_gate(runtime_state.tcxo.last_observation_valid, now_ms);
   if (runtime_state.tcxo.last_observation_valid) {
     runtime_state.tcxo.consecutive_bad_windows = 0;
   } else {
@@ -1152,6 +1195,11 @@ void emit_fc0_status(void) {
               runtime_state.tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
                                                         : OTIS_SEVERITY_WARN,
               OTIS_FLAG_NONE);
+  emit_status("fc0", "fc0_observed_valid",
+              runtime_state.tcxo.last_observation_valid ? "true" : "false",
+              runtime_state.tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
+                                                        : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_NONE);
   emit_status_u32("fc0", "measure_period_ms", kTcxoMeasurePeriodMs,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("fc0", "gate_period_us", kTcxoGatePeriodUs,
@@ -1215,6 +1263,31 @@ void emit_fc0_status(void) {
                   runtime_state.tcxo.total_bad_windows == 0u ? OTIS_SEVERITY_INFO
                                                              : OTIS_SEVERITY_WARN,
                   runtime_state.tcxo.last_window_flags);
+  emit_status("fc0", "startup_inhibit_active",
+              runtime_state.tcxo.startup_inhibit_active ? "true" : "false",
+              runtime_state.tcxo.startup_inhibit_active ? OTIS_SEVERITY_WARN
+                                                        : OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("fc0", "startup_inhibit_elapsed_s",
+                  runtime_state.tcxo.startup_inhibit_elapsed_s,
+                  runtime_state.tcxo.startup_inhibit_active ? OTIS_SEVERITY_WARN
+                                                            : OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("fc0", "fc0_valid_for_control",
+              runtime_state.tcxo.valid_for_control ? "true" : "false",
+              runtime_state.tcxo.valid_for_control ? OTIS_SEVERITY_INFO
+                                                   : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("fc0", "fc0_clean_window_count",
+                  runtime_state.tcxo.control_clean_window_count,
+                  runtime_state.tcxo.valid_for_control ? OTIS_SEVERITY_INFO
+                                                       : OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("fc0", "fc0_fault",
+              runtime_state.tcxo.fault_after_startup ? "true" : "false",
+              runtime_state.tcxo.fault_after_startup ? OTIS_SEVERITY_WARN
+                                                     : OTIS_SEVERITY_INFO,
+              runtime_state.tcxo.last_window_flags);
   emit_status_u64_decimal("fc0", "last_counted_edges",
                           runtime_state.tcxo.last_counted_edges,
                           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
