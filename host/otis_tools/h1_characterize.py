@@ -18,6 +18,14 @@ DAC_CONTRACT = "dac_steps_v1"
 DEFAULT_SETTLING_DISCARD_SECONDS = 0.0
 DEFAULT_WARMUP_SECONDS = 1800.0
 DEFAULT_STABILITY_PPM = 0.1
+DEFAULT_STARTUP_INHIBIT_SECONDS = 600.0
+DEFAULT_STARTUP_READY_CLEAN_WINDOWS = 3
+FLAG_SOURCE_HEALTH_SUSPECT = 1 << 5
+FLAG_INPUT_STUCK_LOW = 1 << 9
+FLAG_INPUT_STUCK_HIGH = 1 << 10
+INVALID_COUNT_FLAGS = (
+    FLAG_SOURCE_HEALTH_SUSPECT | FLAG_INPUT_STUCK_LOW | FLAG_INPUT_STUCK_HIGH
+)
 
 
 @dataclass(frozen=True)
@@ -104,6 +112,20 @@ class WarmupEstimate:
 
 
 @dataclass(frozen=True)
+class StartupControlEstimate:
+    inhibit_s: float
+    required_clean_windows: int
+    raw_window_count: int
+    invalid_window_count: int
+    startup_discarded_window_count: int
+    clean_window_count_at_end: int
+    first_control_eligible_elapsed_s: float | None
+    first_post_inhibit_bad_elapsed_s: float | None
+    valid_for_control: bool
+    note: str
+
+
+@dataclass(frozen=True)
 class HysteresisEstimate:
     code: int
     up_median_hz: float | None
@@ -128,6 +150,7 @@ class H1Analysis:
     slopes: tuple[SlopePoint, ...]
     settling: tuple[SettlingEstimate, ...]
     warmup: WarmupEstimate
+    startup_control: StartupControlEstimate
     hysteresis: tuple[HysteresisEstimate, ...]
     warnings: tuple[str, ...]
 
@@ -163,6 +186,10 @@ def _manifest_file(manifest: RunManifest, contract: str, fallback: str) -> Path:
         if entry.get("contract") == contract:
             return manifest.root / str(entry.get("path", fallback))
     return manifest.root / fallback
+
+
+def _count_window_invalid(flags: int, counted_edges: int) -> bool:
+    return counted_edges == 0 or bool(flags & INVALID_COUNT_FLAGS)
 
 
 def _domain_hz(manifest: RunManifest) -> dict[str, float]:
@@ -287,7 +314,7 @@ def _load_counts(
     previous_open_raw: int | None = None
     previous_seq: int | None = None
     tick_offset_by_domain: dict[str, int] = {}
-    skipped_flagged_zero_count = 0
+    skipped_invalid_count = 0
     for index, row in enumerate(rows, start=1):
         gate_open = _parse_int(row.get("gate_open_ticks"))
         gate_close = _parse_int(row.get("gate_close_ticks"))
@@ -299,8 +326,8 @@ def _load_counts(
         if gate_open is None or gate_close is None or counted is None or not gate_hz:
             warnings.append(f"cnt.csv row {index}: skipped because count/window fields or gate domain nominal_hz are unavailable")
             continue
-        if counted == 0 and flags:
-            skipped_flagged_zero_count += 1
+        if _count_window_invalid(flags, counted):
+            skipped_invalid_count += 1
             continue
         if (
             previous_open_raw is not None
@@ -343,8 +370,8 @@ def _load_counts(
             )
         )
     populated = [segment for segment in segments if segment]
-    if skipped_flagged_zero_count:
-        warnings.append(f"cnt.csv: skipped {skipped_flagged_zero_count} flagged zero-count observation(s)")
+    if skipped_invalid_count:
+        warnings.append(f"cnt.csv: skipped {skipped_invalid_count} invalid or startup-suspect count observation(s)")
     if len(populated) > 1:
         warnings.append("cnt.csv: multiple capture segments detected; using the final segment for H1 characterization")
     return tuple(populated[-1] if populated else [])
@@ -374,6 +401,105 @@ def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:
             )
         )
     return tuple(sorted(events, key=lambda item: (item.elapsed_s, item.seq)))
+
+
+def _startup_control_estimate(
+    manifest: RunManifest,
+    gate_hz_by_domain: dict[str, float],
+    inhibit_s: float = DEFAULT_STARTUP_INHIBIT_SECONDS,
+    required_clean_windows: int = DEFAULT_STARTUP_READY_CLEAN_WINDOWS,
+) -> StartupControlEstimate:
+    rows = _read_csv(_manifest_file(manifest, COUNT_CONTRACT, "csv/cnt.csv"))
+    windows: list[tuple[float, bool]] = []
+    current_segment: list[tuple[float, bool]] = []
+    first_open_s: float | None = None
+    previous_open_raw: int | None = None
+    previous_seq: int | None = None
+    tick_offset_by_domain: dict[str, int] = {}
+
+    for index, row in enumerate(rows, start=1):
+        gate_open = _parse_int(row.get("gate_open_ticks"))
+        gate_close = _parse_int(row.get("gate_close_ticks"))
+        counted = _parse_int(row.get("counted_edges"))
+        flags = _parse_int(row.get("flags")) or 0
+        seq = _parse_int(row.get("count_seq")) or index
+        gate_domain = str(row.get("gate_domain", ""))
+        gate_hz = gate_hz_by_domain.get(gate_domain)
+        if gate_open is None or gate_close is None or counted is None or not gate_hz:
+            continue
+        if (
+            previous_open_raw is not None
+            and gate_domain == "rp2040_timer0"
+            and gate_open < previous_open_raw
+            and previous_open_raw - gate_open > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+        ):
+            tick_offset_by_domain[gate_domain] = tick_offset_by_domain.get(gate_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
+        if previous_seq is not None and seq <= previous_seq:
+            if current_segment:
+                windows = current_segment
+            current_segment = []
+            first_open_s = None
+            tick_offset_by_domain = {}
+        offset = tick_offset_by_domain.get(gate_domain, 0)
+        gate_open_unwrapped = gate_open + offset
+        gate_close_unwrapped = gate_close + offset
+        previous_open_raw = gate_open
+        previous_seq = seq
+        if gate_close_unwrapped <= gate_open_unwrapped:
+            continue
+        if first_open_s is None:
+            first_open_s = gate_open_unwrapped / gate_hz
+        midpoint_s = ((gate_open_unwrapped + gate_close_unwrapped) / 2.0) / gate_hz
+        current_segment.append(
+            (midpoint_s - first_open_s, _count_window_invalid(flags, counted))
+        )
+
+    if current_segment:
+        windows = current_segment
+
+    clean_streak = 0
+    invalid_count = 0
+    startup_discard_count = 0
+    first_eligible: float | None = None
+    first_post_inhibit_bad: float | None = None
+    for elapsed_s, invalid in windows:
+        if elapsed_s < inhibit_s:
+            startup_discard_count += 1
+            clean_streak = 0
+            if invalid:
+                invalid_count += 1
+            continue
+        if invalid:
+            invalid_count += 1
+            clean_streak = 0
+            if first_post_inhibit_bad is None:
+                first_post_inhibit_bad = elapsed_s
+            continue
+        clean_streak += 1
+        if clean_streak >= required_clean_windows and first_eligible is None:
+            first_eligible = elapsed_s
+
+    valid_for_control = first_eligible is not None and first_post_inhibit_bad is None
+    if not windows:
+        note = "insufficient data: startup control gate requires count windows"
+    elif first_eligible is None:
+        note = "not control-eligible: inhibit window did not expire with enough clean FC0 windows"
+    elif first_post_inhibit_bad is not None:
+        note = "not control-eligible: at least one invalid FC0 window occurred after startup inhibit"
+    else:
+        note = "control-eligible after startup inhibit and clean-window requirement"
+    return StartupControlEstimate(
+        inhibit_s=inhibit_s,
+        required_clean_windows=required_clean_windows,
+        raw_window_count=len(windows),
+        invalid_window_count=invalid_count,
+        startup_discarded_window_count=startup_discard_count,
+        clean_window_count_at_end=clean_streak,
+        first_control_eligible_elapsed_s=first_eligible,
+        first_post_inhibit_bad_elapsed_s=first_post_inhibit_bad,
+        valid_for_control=valid_for_control,
+        note=note,
+    )
 
 
 def _direction(previous_code: int | None, current_code: int | None) -> str:
@@ -677,6 +803,7 @@ def analyze_run(
         warnings.append("nominal_hz unavailable; ppm and ppm-derived slopes are unavailable")
     gate_hz_by_domain = _domain_hz(manifest)
     counts = _load_counts(manifest, gate_hz_by_domain, resolved_nominal_hz, warnings)
+    startup_control = _startup_control_estimate(manifest, gate_hz_by_domain)
     dac_events = _load_dac_events(manifest)
     if not dac_events:
         warnings.append("dac_steps.csv unavailable or empty; DAC-code grouping and voltage plots are limited")
@@ -695,6 +822,7 @@ def analyze_run(
         slopes=_build_slopes(points),
         settling=_settling(counts, dac_events),
         warmup=_warmup(counts, resolved_nominal_hz, warmup_s, stability_ppm),
+        startup_control=startup_control,
         hysteresis=_hysteresis(points),
         warnings=tuple(warnings),
     )
@@ -930,6 +1058,26 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         ]
     )
 
+    startup = analysis.startup_control
+    lines.extend(
+        [
+            "",
+            "## Startup Control Eligibility",
+            f"- startup_inhibit_s: {_format(startup.inhibit_s)}",
+            f"- required_clean_windows: {startup.required_clean_windows}",
+            f"- raw_count_windows: {startup.raw_window_count}",
+            f"- invalid_count_windows: {startup.invalid_window_count}",
+            f"- startup_discarded_windows: {startup.startup_discarded_window_count}",
+            f"- first_control_eligible_elapsed_s: {_format(startup.first_control_eligible_elapsed_s)}",
+            f"- first_post_inhibit_bad_elapsed_s: {_format(startup.first_post_inhibit_bad_elapsed_s)}",
+            f"- fc0_observed_valid: {str(startup.raw_window_count > 0).lower()}",
+            f"- fc0_valid_for_control: {str(startup.valid_for_control).lower()}",
+            f"- fc0_fault: {str(startup.first_post_inhibit_bad_elapsed_s is not None).lower()}",
+            f"- clean_window_count_at_end: {startup.clean_window_count_at_end}",
+            f"- note: {startup.note}",
+        ]
+    )
+
     lines.extend(["", "## Hysteresis / Sweep Direction"])
     if not analysis.hysteresis:
         lines.append("- unavailable: no repeated DAC-code summary points")
@@ -979,6 +1127,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- safe_voltage_window_known: {str(safe_voltage_window_known).lower()}",
             f"- settling_time_characterized: {str(settling_known).lower()}",
             f"- warmup_characterized: {str(warmup_known).lower()}",
+            f"- fc0_valid_for_control: {str(analysis.startup_control.valid_for_control).lower()}",
             f"- recommended_next_action: {action}",
         ]
     )

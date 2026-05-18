@@ -142,5 +142,82 @@ def test_h1_characterize_uses_final_segment_and_skips_flagged_zero_counts(tmp_pa
     assert len(analysis.count_windows) == 3
     assert analysis.count_windows[0].seq == 1
     assert analysis.count_windows[-1].elapsed_s > analysis.count_windows[0].elapsed_s
-    assert any("flagged zero-count" in warning for warning in analysis.warnings)
+    assert any("invalid or startup-suspect" in warning for warning in analysis.warnings)
     assert any("using the final segment" in warning for warning in analysis.warnings)
+
+
+def _write_startup_gate_run(run_dir: Path, rows: list[tuple[int, int, int]]) -> None:
+    _write_synthetic_run(run_dir, include_second_step=False)
+    count_rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+    ]
+    for seq, counted_edges, flags in rows:
+        open_ticks = (seq - 1) * 160_000_000
+        close_ticks = seq * 160_000_000
+        count_rows.append(
+            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,{counted_edges},R,h1_ocxo_open_loop,{flags}"
+        )
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
+
+
+def test_h1_startup_gate_accepts_startup_local_bad_windows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_startup_local"
+    rows = [(seq, 0, 528) for seq in range(1, 21)]
+    rows.extend((seq, 100_000_000, 16) for seq in range(21, 66))
+    _write_startup_gate_run(run_dir, rows)
+
+    analysis = analyze_run(run_dir)
+    report = render_report(analysis)
+
+    assert analysis.startup_control.invalid_window_count == 20
+    assert analysis.startup_control.first_control_eligible_elapsed_s == 625
+    assert analysis.startup_control.valid_for_control
+    assert "fc0_valid_for_control: true" in report
+    assert "startup_discarded_windows: 60" in report
+    assert len(analysis.count_windows) == 45
+
+
+def test_h1_startup_gate_flags_post_inhibit_bad_window(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_post_inhibit_bad"
+    rows = [(seq, 100_000_000, 16) for seq in range(1, 63)]
+    rows.append((63, 0, 528))
+    rows.extend((seq, 100_000_000, 16) for seq in range(64, 68))
+    _write_startup_gate_run(run_dir, rows)
+
+    analysis = analyze_run(run_dir)
+
+    assert analysis.startup_control.first_post_inhibit_bad_elapsed_s == 625
+    assert not analysis.startup_control.valid_for_control
+    assert analysis.startup_control.note.startswith("not control-eligible")
+
+
+def test_h1_startup_gate_requires_clean_windows_after_inhibit(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_no_clean_after_inhibit"
+    rows = [(seq, 100_000_000, 16) for seq in range(1, 62)]
+    _write_startup_gate_run(run_dir, rows)
+
+    analysis = analyze_run(run_dir)
+
+    assert analysis.startup_control.first_control_eligible_elapsed_s is None
+    assert not analysis.startup_control.valid_for_control
+
+
+def test_h1_startup_gate_allows_zero_startup_discard_for_long_clean_windows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_zero_startup_discard"
+    _write_synthetic_run(run_dir, include_second_step=False)
+    count_rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+    ]
+    for seq in range(1, 4):
+        open_ticks = (seq - 1) * 19_200_000_000
+        close_ticks = seq * 19_200_000_000
+        count_rows.append(
+            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,12000000000,R,h1_ocxo_open_loop,16"
+        )
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir)
+
+    assert analysis.startup_control.startup_discarded_window_count == 0
+    assert analysis.startup_control.first_control_eligible_elapsed_s == 3000
+    assert analysis.startup_control.valid_for_control
