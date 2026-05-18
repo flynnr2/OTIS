@@ -17,6 +17,8 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("fc0?", "FC0?"),
         ("sweep?", "SWEEP?"),
         ("sweep load tiny_plus_minus_1", "SWEEP LOAD TINY_PLUS_MINUS_1"),
+        ("sweep load slope_center_edge_300s", "SWEEP LOAD SLOPE_CENTER_EDGE_300S"),
+        ("sweep load slope_repeat_300s", "SWEEP LOAD SLOPE_REPEAT_300S"),
         ("sweep start", "SWEEP START"),
         ("sweep stop", "SWEEP STOP"),
         ("sweep step", "SWEEP STEP"),

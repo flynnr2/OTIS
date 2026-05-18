@@ -9,7 +9,15 @@ import re
 import stat
 
 
-KNOWN_SWEEP_PROFILES = frozenset({"CENTER_ONLY", "TINY_PLUS_MINUS_1", "TINY_PLUS_MINUS_2"})
+KNOWN_SWEEP_PROFILES = frozenset(
+    {
+        "CENTER_ONLY",
+        "TINY_PLUS_MINUS_1",
+        "TINY_PLUS_MINUS_2",
+        "SLOPE_CENTER_EDGE_300S",
+        "SLOPE_REPEAT_300S",
+    }
+)
 SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
