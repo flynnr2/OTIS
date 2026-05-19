@@ -177,7 +177,7 @@
 // SHT4x is the preferred near-VCOCXO temperature source; BMP280 is primarily
 // pressure context and secondary temperature.
 #ifndef OTIS_ENABLE_ENV_SENSORS
-#define OTIS_ENABLE_ENV_SENSORS 0
+#define OTIS_ENABLE_ENV_SENSORS 1
 #endif
 
 #ifndef OTIS_ENABLE_ENV_SHT4X
