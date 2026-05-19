@@ -1,5 +1,43 @@
 # OTIS Design Principles
 
+## OTIS North Star
+
+OTIS is a provenance-preserving timing instrument.
+
+Its primary purpose is not merely to generate accurate time or frequency, but to
+capture, discipline, reconstruct, and analyze timing behavior in a way that
+remains observable, auditable, replayable, and evolvable over time.
+
+OTIS should be understood as a sacred timestamp appliance with forensic-grade
+observability. It is not primarily trying to be the most accurate possible DIY
+GPSDO, a feature-rich timing appliance, a black-box autonomous controller, or a
+"Kalman everything" experiment.
+
+This framing has concrete design consequences:
+
+- timing capture paths are sacred and must not be contaminated by UI, logging,
+  WiFi, dashboards, storage, or other service work;
+- timing domains are explicit, named, and preserved across firmware, telemetry,
+  host tooling, and analysis;
+- canonical raw telemetry is captured before derived interpretation, and raw
+  records remain authoritative after later reconstruction;
+- hardware boundaries are modular enough that GPS/GNSS modules, DACs,
+  TCXO/OCXO/VCOCXO parts, buffers, level shifters, and related front-end
+  components can be upgraded or swapped without disturbing the core timing
+  architecture;
+- deterministic capture, replayability, and offline reconstruction are
+  first-class requirements, not debugging conveniences;
+- estimator, discipline, control-loop, and holdover outputs carry provenance
+  that identifies their source observations, assumptions, and methodology;
+- control evolves in stages: observe, characterize, replay, estimate,
+  discipline, then holdover;
+- hardware substitutions are treated as experiments: explicit, documented, and
+  comparable through telemetry, configuration, manifests, and analysis metadata;
+- host-side analysis may reinterpret historical runs as models improve, without
+  rewriting what the instrument originally observed;
+- engineering choices should be explicit over clever, especially where ambiguity
+  could weaken trust in captured timing evidence.
+
 ## 1. Reference-Centric Timing
 
 All timing events are measured against an explicit reference domain.

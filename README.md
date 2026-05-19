@@ -6,6 +6,11 @@ OTIS is an open timing instrumentation platform for deterministic, reference-cen
 
 OTIS is not merely a GPSDO project. It is an instrumentation architecture in which a timing reference and capture fabric create explicit, auditable records of events, references, oscillator observations, status, and derived timing products.
 
+The project north star is documented in
+[`docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md`](docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md):
+OTIS is a provenance-preserving timing instrument, not a black-box timing
+appliance.
+
 ## Current Status
 
 This repository has completed enough **H0 / SW1** bring-up to move into **H1**
