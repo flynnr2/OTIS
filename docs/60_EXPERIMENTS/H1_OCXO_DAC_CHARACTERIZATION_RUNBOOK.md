@@ -75,7 +75,10 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
 5. Stop with `SWEEP STOP` immediately if the output disappears, clips, or
    approaches a safety limit.
 6. For each step, record DAC code, measured DAC output, measured control voltage,
-   timestamp, and observed frequency estimate.
+   timestamp, observed frequency estimate, and near-VCOCXO temperature.
+7. If SHT4x environmental telemetry is enabled, mount it near the VCOCXO can or
+   control-node area and treat `source=sht4x, role=vcocxo_near` as the primary
+   thermal proxy. BMP280 temperature is secondary pressure-reference context.
 
 Suggested run layout for scripted sweeps:
 
@@ -84,6 +87,7 @@ runs/h1_open_loop/dac_manual_sweep/run_001/
   raw/serial.log
   csv/cnt.csv
   csv/dac_steps.csv
+  csv/environment.csv
   csv/sts.csv
   reports/summary.md
   plots/
@@ -94,6 +98,9 @@ runs/h1_open_loop/dac_manual_sweep/run_001/
 Every `CNT` row captured during a sweep should be attributable through nearby
 `DAC` rows in `csv/dac_steps.csv`, especially `dwell_start`, `fc0_window`, and
 `dwell_complete` events.
+When `csv/environment.csv` is present, H1 analysis correlates near-VCOCXO
+temperature with DAC dwell summaries and ppm/frequency observations, but does
+not apply automatic thermal correction.
 
 ## 7. ppm/V Derivation
 
@@ -110,7 +117,9 @@ Every `CNT` row captured during a sweep should be attributable through nearby
    deliberate thermal observations.
 2. Record ambient notes, airflow changes, enclosure state, power changes, and
    manual DAC events with timestamps.
-3. Keep the run open-loop: frequency is observed and documented, not corrected
+3. Prefer SHT4x near the VCOCXO for temperature correlation. Use BMP280 pressure
+   as bench/environment context and as a secondary temperature sanity check.
+4. Keep the run open-loop: frequency is observed and documented, not corrected
    automatically.
 
 ## Current CX317 / AD5693R Bench Status

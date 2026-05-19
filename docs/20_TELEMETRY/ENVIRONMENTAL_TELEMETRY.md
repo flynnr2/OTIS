@@ -43,27 +43,25 @@ Environmental data can explain or constrain later analysis of:
 
 The data is important, but its importance does not imply edge-capture semantics.
 
-## Future Contract Direction
+## Implemented Contract
 
-A future environmental or sampled-observation contract should describe basics
-such as:
+Low-rate environmental observations use `environment_v1.csv` / `ENV` rows:
 
-- source identity;
-- measurement kind;
-- value;
-- unit;
-- observation time or domain;
-- provenance and validity flags.
+```text
+record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags
+```
 
-Exact sensors, buses, sample rates, column names, and validation rules are left
-open until there is hardware and host tooling that need them.
+For H1 VCOCXO characterization, `source=sht4x` and `role=vcocxo_near`
+is the preferred temperature signal because the SHT4x family is a better
+temperature sensor than the BMP280. BMP280 rows are still useful as pressure
+context and a secondary temperature cross-check, typically with
+`role=pressure_reference`.
 
 ## Manifest Guidance
 
-Profiles and run manifests may eventually declare environmental sources by name
-and purpose, for example oscillator temperature or board temperature. Those
-declarations should remain descriptive until the project has a concrete sampled
-telemetry contract.
+Profiles and run manifests may declare environmental sources by name and
+purpose, for example oscillator temperature or board temperature. Those
+declarations describe sampled context and do not allocate capture channels.
 
 Do not allocate new numbered capture channels for environmental sensors unless a
 sensor output is intentionally connected to the timing fabric as an edge, gate,

@@ -107,6 +107,11 @@ temperature / thermal notes
 comments
 ```
 
+When I2C environmental telemetry is enabled, prefer SHT4x as the
+near-VCOCXO temperature source (`source=sht4x`, `role=vcocxo_near`). BMP280
+temperature should be treated as secondary context; its pressure reading remains
+useful for longer bench/environment correlation.
+
 ---
 
 # Phase 1 — OCXO Power / Current / Warmup

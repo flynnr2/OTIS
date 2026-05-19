@@ -45,6 +45,9 @@ void otis_emit_csv_headers(void) {
   otis_transport_write_cstr(
       "record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags");
   otis_emit_line_end();
+  otis_transport_write_cstr(
+      "record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags");
+  otis_emit_line_end();
 }
 
 void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
@@ -163,6 +166,41 @@ void otis_emit_health(uint32_t status_seq, uint64_t timestamp_ticks,
   otis_transport_write_cstr(status_value);
   otis_emit_comma();
   otis_transport_write_cstr(severity);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
+}
+
+void otis_emit_environment(uint32_t env_seq, uint64_t timestamp_ticks,
+                           const char *observation_domain,
+                           const char *source,
+                           const char *role,
+                           const char *temperature_c,
+                           const char *relative_humidity_pct,
+                           const char *pressure_pa,
+                           uint32_t flags) {
+  otis_transport_write_cstr(OTIS_RECORD_ENV);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(env_seq);
+  otis_emit_comma();
+  otis_print_uint64(timestamp_ticks);
+  otis_emit_comma();
+  otis_transport_write_cstr(observation_domain);
+  otis_emit_comma();
+  otis_transport_write_cstr(source);
+  otis_emit_comma();
+  otis_transport_write_cstr(role);
+  otis_emit_comma();
+  otis_transport_write_cstr(temperature_c != nullptr ? temperature_c : "");
+  otis_emit_comma();
+  otis_transport_write_cstr(relative_humidity_pct != nullptr
+                                ? relative_humidity_pct
+                                : "");
+  otis_emit_comma();
+  otis_transport_write_cstr(pressure_pa != nullptr ? pressure_pa : "");
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();

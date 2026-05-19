@@ -19,6 +19,7 @@ RECORD_CONTRACTS = {
     "CNT": "count_observations_v1",
     "STS": "health_v1",
     "DAC": "dac_steps_v1",
+    "ENV": "environment_v1",
 }
 
 

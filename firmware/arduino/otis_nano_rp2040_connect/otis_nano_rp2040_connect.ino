@@ -18,6 +18,7 @@
 #include "otis_capture_ring.h"
 #include "otis_dac_ad5693r.h"
 #include "otis_emit.h"
+#include "otis_env_sensors.h"
 #include "otis_modes.h"
 #include "otis_protocol.h"
 #include "otis_runtime_state.h"
@@ -420,6 +421,20 @@ void emit_common_boot_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_h1_dac_sweep", OTIS_ENABLE_H1_DAC_SWEEP,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_env_sensors", OTIS_ENABLE_ENV_SENSORS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_env_sht4x", OTIS_ENABLE_ENV_SHT4X,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_env_bmp280", OTIS_ENABLE_ENV_BMP280,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("environment", "sample_period_ms", OTIS_ENV_SAMPLE_PERIOD_MS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("environment", "sht4x_i2c_address",
+                  OTIS_ENV_SHT4X_I2C_ADDRESS, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("environment", "bmp280_i2c_address",
+                  OTIS_ENV_BMP280_I2C_ADDRESS, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("sweep", "slope_dwell_ms", OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("dac", "i2c_address", OTIS_DAC_AD5693R_I2C_ADDRESS,
@@ -428,6 +443,31 @@ void emit_common_boot_status(void) {
                       OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
                       OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+void emit_env_sensor_status(void) {
+  OtisEnvSensorStatus status;
+  otis_env_sensors_get_status(&status);
+  emit_status("environment", "sht4x_enabled",
+              status.sht4x_enabled ? "true" : "false", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("environment", "sht4x_initialized",
+              status.sht4x_initialized ? "true" : "false",
+              status.sht4x_initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              status.sht4x_initialized ? OTIS_FLAG_NONE
+                                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("environment", "bmp280_enabled",
+              status.bmp280_enabled ? "true" : "false", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("environment", "bmp280_initialized",
+              status.bmp280_initialized ? "true" : "false",
+              status.bmp280_initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              status.bmp280_initialized ? OTIS_FLAG_NONE
+                                        : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("environment", "primary_temperature_source", "sht4x",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("environment", "primary_temperature_role", "vcocxo_near",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
 void emit_h0_pin_status(void) {
@@ -1039,8 +1079,71 @@ void configure_h1_ocxo_observe_mode(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
   emit_dac_status("dac");
+#if OTIS_ENABLE_ENV_SENSORS
+  bool env_ok = otis_env_sensors_begin();
+  emit_status("environment", "init", env_ok ? "ok" : "failed",
+              env_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              env_ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#else
+  emit_status("environment", "init", "disabled", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  emit_env_sensor_status();
 #if OTIS_ENABLE_H1_DAC_SWEEP
   emit_sweep_status();
+#endif
+}
+
+void format_env_float(float value, char *buffer, size_t buffer_size) {
+  if (buffer == nullptr || buffer_size == 0) {
+    return;
+  }
+  snprintf(buffer, buffer_size, "%.3f", static_cast<double>(value));
+}
+
+void emit_env_sample(const OtisEnvSample &sample) {
+  if (!sample.valid) {
+    return;
+  }
+  char temperature[16];
+  char humidity[16];
+  char pressure[16];
+  format_env_float(sample.temperature_c, temperature, sizeof(temperature));
+  if (sample.has_humidity) {
+    format_env_float(sample.relative_humidity_pct, humidity, sizeof(humidity));
+  } else {
+    humidity[0] = '\0';
+  }
+  if (sample.has_pressure) {
+    format_env_float(sample.pressure_pa, pressure, sizeof(pressure));
+  } else {
+    pressure[0] = '\0';
+  }
+  otis_emit_environment(runtime_state.sequences.env_seq++,
+                        otis_capture_ticks_now(), OTIS_DOMAIN_RP2040_TIMER0,
+                        sample.source, sample.role, temperature, humidity,
+                        pressure, OTIS_FLAG_NONE);
+}
+
+void service_environment_sensors(void) {
+#if OTIS_ENABLE_ENV_SENSORS
+  uint32_t now_ms = millis();
+  if ((uint32_t)(now_ms - runtime_state.periodic.last_env_sample_ms) <
+      OTIS_ENV_SAMPLE_PERIOD_MS) {
+    return;
+  }
+  runtime_state.periodic.last_env_sample_ms = now_ms;
+  OtisEnvSample sample;
+#if OTIS_ENABLE_ENV_SHT4X
+  if (otis_env_sensors_read_sht4x(&sample)) {
+    emit_env_sample(sample);
+  }
+#endif
+#if OTIS_ENABLE_ENV_BMP280
+  if (otis_env_sensors_read_bmp280(&sample)) {
+    emit_env_sample(sample);
+  }
+#endif
 #endif
 }
 
@@ -1732,6 +1835,7 @@ void loop() {
   service_tcxo_gate();
   otis_capture_backend_service();
   drain_capture_ring();
+  service_environment_sensors();
   emit_periodic_status();
   otis_status_led_poll(millis());
 }

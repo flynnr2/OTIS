@@ -48,6 +48,19 @@ HEADER_FIELDS = {
         "severity",
         "flags",
     ],
+    "environment": [
+        "record_type",
+        "schema_version",
+        "env_seq",
+        "timestamp_ticks",
+        "observation_domain",
+        "source",
+        "role",
+        "temperature_c",
+        "relative_humidity_pct",
+        "pressure_pa",
+        "flags",
+    ],
 }
 
 FIELDS_BY_TAG = {
@@ -55,6 +68,7 @@ FIELDS_BY_TAG = {
     "REF": HEADER_FIELDS["raw_events"],
     "CNT": HEADER_FIELDS["count_observations"],
     "STS": HEADER_FIELDS["health"],
+    "ENV": HEADER_FIELDS["environment"],
 }
 
 NUMERIC_FIELDS = {
@@ -70,6 +84,7 @@ NUMERIC_FIELDS = {
         "flags",
     },
     "STS": {"schema_version", "status_seq", "timestamp_ticks", "flags"},
+    "ENV": {"schema_version", "env_seq", "timestamp_ticks", "flags"},
 }
 
 BOOT_TAGS = {"BOOT", "BOOT_WARN", "BOOT_FATAL", "BOOTDIAG"}
@@ -195,6 +210,13 @@ def _parse_record(tag: str, row: list[str], line_no: int, report: WireReport) ->
         if record["severity"] not in SEVERITIES:
             report.add("error", line_no, f"STS.severity is {record['severity']!r}, expected one of {sorted(SEVERITIES)}")
         report.sts_by_key.setdefault((record["component"], record["status_key"]), []).append(record["status_value"])
+    if tag == "ENV":
+        if record["source"] not in {"sht4x", "bmp280"}:
+            report.add("error", line_no, f"ENV.source is {record['source']!r}, expected 'bmp280' or 'sht4x'")
+        if record["role"] not in {"vcocxo_near", "ambient_board", "ambient", "pressure_reference"}:
+            report.add("error", line_no, f"ENV.role is {record['role']!r}, expected a known environmental role")
+        if not any(record[name] for name in ("temperature_c", "relative_humidity_pct", "pressure_pa")):
+            report.add("error", line_no, "ENV has no measurement value")
 
 
 def _consume_line(text: str, line_no: int, report: WireReport) -> None:
@@ -262,6 +284,8 @@ def _post_validate(report: WireReport, require_headers: bool, max_boot_records: 
 
     if require_headers:
         for header_name, count in report.header_counts.items():
+            if header_name == "environment" and report.tag_counts.get("ENV", 0) == 0:
+                continue
             if count == 0:
                 report.add("error", None, f"{header_name} header/schema record is missing")
             elif count > 1:
@@ -326,6 +350,7 @@ def _post_validate(report: WireReport, require_headers: bool, max_boot_records: 
     _monotonic_check(report, ("EVT", "REF"), "event_seq")
     _monotonic_check(report, ("CNT",), "count_seq")
     _monotonic_check(report, ("STS",), "status_seq")
+    _monotonic_check(report, ("ENV",), "env_seq")
 
 
 def validate_text(source: str, text: str, profile: str, require_headers: bool, max_boot_records: int) -> WireReport:

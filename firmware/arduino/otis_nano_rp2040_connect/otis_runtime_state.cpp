@@ -11,10 +11,12 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->sequences.status_seq = 1;
   state->sequences.count_seq = 1;
   state->sequences.dac_seq = 1;
+  state->sequences.env_seq = 1;
 
   state->capture.emitted_event_count = 0;
 
   state->periodic.last_status_ms = 0;
+  state->periodic.last_env_sample_ms = 0;
 
   state->boot.phase = BootPhase::ResetEntry;
   state->boot.serial_ready = false;
