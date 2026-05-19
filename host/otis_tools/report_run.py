@@ -208,10 +208,20 @@ def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, f
     event_seq = [_parse_int(row.get("event_seq")) for row in rows]
     event_seq_int = [value for value in event_seq if value is not None]
 
+    raw_timestamp_monotonic = _monotonic(timestamps_int)
+    effective_timestamps = timestamps_int
+    timestamp_wrap_count = 0
+    if timestamps_int:
+        domains = {str(row.get("capture_domain", "")) for row in rows if row.get("capture_domain")}
+        if len(domains) == 1:
+            domain = next(iter(domains))
+            effective_timestamps, timestamp_wrap_count = _unwrap_domain_ticks(domain, timestamps_int)
+    effective_timestamp_monotonic = _monotonic(effective_timestamps)
+
     if len(timestamps_int) != len(rows):
         anomalies.append("raw_events_v1: one or more timestamp_ticks values are missing or non-integer")
-    if not _monotonic(timestamps_int):
-        anomalies.append("raw_events_v1: timestamp_ticks are not monotonic in manifest file order")
+    if not effective_timestamp_monotonic:
+        anomalies.append("raw_events_v1: timestamp_ticks are not monotonic in manifest file order after timer-wrap unwrapping")
     if not _monotonic(event_seq_int, strict=True):
         anomalies.append("raw_events_v1: event_seq is not strictly increasing in manifest file order")
 
@@ -243,7 +253,7 @@ def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, f
     duration_ticks = None
     duration_seconds = None
     domain_note = "not computed: no rows"
-    wrap_count = 0
+    wrap_count = timestamp_wrap_count
     if timestamps_int:
         domains = {str(row.get("capture_domain", "")) for row in rows if row.get("capture_domain")}
         if len(domains) == 1:
@@ -261,13 +271,14 @@ def _summarize_raw(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, f
             "row_count": len(rows),
             "record_type_counts": dict(sorted(Counter(row.get("record_type", "") for row in rows).items())),
             "channel_type_counts": by_channel_type,
-            "first_timestamp_ticks": min(timestamps_int) if timestamps_int else None,
-            "last_timestamp_ticks": max(timestamps_int) if timestamps_int else None,
+            "first_timestamp_ticks": effective_timestamps[0] if effective_timestamps else None,
+            "last_timestamp_ticks": effective_timestamps[-1] if effective_timestamps else None,
             "duration_ticks": duration_ticks,
             "duration_seconds": duration_seconds,
             "duration_note": domain_note,
             "timestamp_wrap_count": wrap_count,
-            "timestamp_monotonic": _monotonic(timestamps_int),
+            "timestamp_monotonic": effective_timestamp_monotonic,
+            "timestamp_raw_monotonic": raw_timestamp_monotonic,
             "duplicate_timestamp_count": duplicate_timestamps,
             "event_seq_monotonic": _monotonic(event_seq_int, strict=True),
             "event_seq_gap_count": len(_sequence_gaps(event_seq_int)),
@@ -636,6 +647,7 @@ def render_report(run_dir: Path) -> str:
                 "duration_note": raw["duration_note"],
                 "timestamp_wrap_count": raw["timestamp_wrap_count"],
                 "timestamp_monotonic": raw["timestamp_monotonic"],
+                "timestamp_raw_monotonic": raw["timestamp_raw_monotonic"],
                 "duplicate_timestamp_count": raw["duplicate_timestamp_count"],
                 "event_seq_monotonic": raw["event_seq_monotonic"],
                 "event_seq_gap_count": raw["event_seq_gap_count"],
