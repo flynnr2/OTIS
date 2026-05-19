@@ -108,10 +108,15 @@ def _create_manifest_if_missing(run_dir: Path, device: str, baud: int) -> None:
             "raw_events_v1": 1,
             "count_observations_v1": 1,
             "health_v1": 1,
+            "environment_v1": 1,
             "run_manifest_v1": 1,
         },
         "files": default_csv_files(),
-        "expected_artifacts": [entry["path"] for entry in default_csv_files()],
+        "expected_artifacts": [entry["path"] for entry in default_csv_files() if not entry.get("optional")],
+        "environment_sources": [
+            {"source": "sht4x", "role": "vcocxo_near", "primary_temperature": True},
+            {"source": "bmp280", "role": "pressure_reference", "primary_temperature": False},
+        ],
         "known_limitations": [
             "Host serial ingest is archival only; RP2040-side hardware remains the timing authority.",
         ],

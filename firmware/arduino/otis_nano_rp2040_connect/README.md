@@ -216,9 +216,25 @@ Wiring summary for H1:
 | sparse PPS/reference input, optional | `D14` / GPIO26 / `CH1` |
 | raw OCXO observation input | `D8` / GPIO20 / `GPIN0` / `CH2` |
 | AD5693R DAC I2C SDA/SCL | board I2C pins for `Wire` |
+| SHT4x environmental sensor I2C SDA/SCL | board I2C pins for `Wire`, default address `0x44` |
+| BMP280 environmental sensor I2C SDA/SCL | board I2C pins for `Wire`, default address `0x77` |
 
 Do not route the raw OCXO into the PIO FIFO edge path. Raw OCXO observation is
 FC0/gated-count only.
+
+Environmental telemetry is optional and compile-time gated:
+
+```cpp
+#define OTIS_ENABLE_ENV_SENSORS 1
+#define OTIS_ENABLE_ENV_SHT4X 1
+#define OTIS_ENABLE_ENV_BMP280 1
+#define OTIS_ENV_SAMPLE_PERIOD_MS 1000u
+```
+
+The firmware emits `ENV` rows to `environment_v1.csv`. For VCOCXO
+characterization, mount the SHT4x near the VCOCXO can/control-node area and use
+`source=sht4x,role=vcocxo_near` as the primary temperature signal. BMP280
+temperature is secondary; BMP280 pressure is useful bench context.
 
 During the boot banner, firmware emits `STS` provenance rows for schema version,
 firmware name/version/git commit, board target, Arduino core, bring-up mode,

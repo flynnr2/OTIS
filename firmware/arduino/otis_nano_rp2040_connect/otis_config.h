@@ -173,6 +173,33 @@
 #define OTIS_DAC_MAX_CODE 0x9000u
 #endif
 
+// Optional low-rate environmental telemetry for oscillator characterization.
+// SHT4x is the preferred near-VCOCXO temperature source; BMP280 is primarily
+// pressure context and secondary temperature.
+#ifndef OTIS_ENABLE_ENV_SENSORS
+#define OTIS_ENABLE_ENV_SENSORS 0
+#endif
+
+#ifndef OTIS_ENABLE_ENV_SHT4X
+#define OTIS_ENABLE_ENV_SHT4X OTIS_ENABLE_ENV_SENSORS
+#endif
+
+#ifndef OTIS_ENABLE_ENV_BMP280
+#define OTIS_ENABLE_ENV_BMP280 OTIS_ENABLE_ENV_SENSORS
+#endif
+
+#ifndef OTIS_ENV_SAMPLE_PERIOD_MS
+#define OTIS_ENV_SAMPLE_PERIOD_MS 1000u
+#endif
+
+#ifndef OTIS_ENV_SHT4X_I2C_ADDRESS
+#define OTIS_ENV_SHT4X_I2C_ADDRESS 0x44u
+#endif
+
+#ifndef OTIS_ENV_BMP280_I2C_ADDRESS
+#define OTIS_ENV_BMP280_I2C_ADDRESS 0x77u
+#endif
+
 // Deterministic H1 open-loop DAC sweep support. This is lab automation only:
 // sweeps never start on boot and never steer from count/frequency telemetry.
 #ifndef OTIS_ENABLE_H1_DAC_SWEEP
@@ -230,6 +257,21 @@
 #if OTIS_DAC_AD5693R_I2C_ADDRESS != 0x4Cu && \
     OTIS_DAC_AD5693R_I2C_ADDRESS != 0x4Eu
 #error "OTIS_DAC_AD5693R_I2C_ADDRESS must be 0x4C or 0x4E."
+#endif
+
+#if OTIS_ENV_SHT4X_I2C_ADDRESS != 0x44u && \
+    OTIS_ENV_SHT4X_I2C_ADDRESS != 0x45u && \
+    OTIS_ENV_SHT4X_I2C_ADDRESS != 0x46u
+#error "OTIS_ENV_SHT4X_I2C_ADDRESS must be 0x44, 0x45, or 0x46."
+#endif
+
+#if OTIS_ENV_BMP280_I2C_ADDRESS != 0x76u && \
+    OTIS_ENV_BMP280_I2C_ADDRESS != 0x77u
+#error "OTIS_ENV_BMP280_I2C_ADDRESS must be 0x76 or 0x77."
+#endif
+
+#if OTIS_ENV_SAMPLE_PERIOD_MS < 100u
+#error "OTIS_ENV_SAMPLE_PERIOD_MS must be at least 100 ms."
 #endif
 
 #if OTIS_DAC_MIN_CODE > OTIS_DAC_MAX_CODE

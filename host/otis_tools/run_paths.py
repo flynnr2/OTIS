@@ -12,6 +12,7 @@ RAW_SERIAL_LOG = "serial.log"
 RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 HEALTH_CSV = "health.csv"
+ENVIRONMENT_CSV = "environment.csv"
 
 
 @dataclass(frozen=True)
@@ -50,12 +51,17 @@ class RunPaths:
     def health_csv(self) -> Path:
         return self.csv_dir / HEALTH_CSV
 
+    @property
+    def environment_csv(self) -> Path:
+        return self.csv_dir / ENVIRONMENT_CSV
+
 
 def default_csv_files() -> list[dict[str, str]]:
     return [
         {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},
+        {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
     ]
 
 

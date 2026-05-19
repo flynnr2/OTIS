@@ -10,6 +10,7 @@ struct OtisSequenceState {
   uint32_t status_seq;
   uint32_t count_seq;
   uint32_t dac_seq;
+  uint32_t env_seq;
 };
 
 struct OtisCaptureRuntimeState {
@@ -18,6 +19,7 @@ struct OtisCaptureRuntimeState {
 
 struct OtisPeriodicRuntimeState {
   uint32_t last_status_ms;
+  uint32_t last_env_sample_ms;
 };
 
 struct OtisBootRuntimeState {

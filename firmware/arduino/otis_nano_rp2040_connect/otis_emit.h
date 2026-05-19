@@ -39,5 +39,14 @@ void otis_emit_dac_step(uint32_t seq,
                         uint32_t dwell_ms,
                         const char *event,
                         uint32_t flags);
+void otis_emit_environment(uint32_t env_seq,
+                           uint64_t timestamp_ticks,
+                           const char *observation_domain,
+                           const char *source,
+                           const char *role,
+                           const char *temperature_c,
+                           const char *relative_humidity_pct,
+                           const char *pressure_pa,
+                           uint32_t flags);
 
 #endif

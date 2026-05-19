@@ -15,6 +15,7 @@ from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
 
 COUNT_CONTRACT = "count_observations_v1"
 DAC_CONTRACT = "dac_steps_v1"
+ENV_CONTRACT = "environment_v1"
 DEFAULT_SETTLING_DISCARD_SECONDS = 0.0
 DEFAULT_WARMUP_SECONDS = 1800.0
 DEFAULT_STABILITY_PPM = 0.1
@@ -50,6 +51,17 @@ class DacEvent:
 
 
 @dataclass(frozen=True)
+class EnvironmentSample:
+    seq: int
+    elapsed_s: float
+    source: str
+    role: str
+    temperature_c: float | None
+    relative_humidity_pct: float | None
+    pressure_pa: float | None
+
+
+@dataclass(frozen=True)
 class CharacterizationPoint:
     group_id: str
     step_index: int | None
@@ -70,6 +82,10 @@ class CharacterizationPoint:
     stddev_ppm: float | None
     mad_ppm: float | None
     iqr_ppm: float | None
+    env_temperature_min_c: float | None
+    env_temperature_max_c: float | None
+    env_temperature_delta_c: float | None
+    env_temperature_mean_c: float | None
 
 
 @dataclass(frozen=True)
@@ -82,6 +98,33 @@ class SlopePoint:
     ppm_per_v: float | None
     hz_per_code: float | None
     ppm_per_code: float | None
+
+
+@dataclass(frozen=True)
+class CenterBracketedSlope:
+    group_id: str
+    center_before_group_id: str
+    target_group_id: str
+    center_after_group_id: str
+    center_code: int
+    target_code: int
+    delta_code: int
+    center_before_hz: float
+    target_hz: float
+    center_after_hz: float
+    bracket_center_hz: float
+    target_delta_hz: float
+    center_drift_hz: float
+    hz_per_code: float
+    ppm_per_code: float | None
+    center_before_voltage_v: float | None
+    target_voltage_v: float | None
+    center_after_voltage_v: float | None
+    bracket_center_voltage_v: float | None
+    target_delta_voltage_v: float | None
+    hz_per_v: float | None
+    ppm_per_v: float | None
+    note: str
 
 
 @dataclass(frozen=True)
@@ -146,8 +189,10 @@ class H1Analysis:
     stability_ppm: float
     count_windows: tuple[CountWindow, ...]
     dac_events: tuple[DacEvent, ...]
+    environment_samples: tuple[EnvironmentSample, ...]
     points: tuple[CharacterizationPoint, ...]
     slopes: tuple[SlopePoint, ...]
+    center_bracketed_slopes: tuple[CenterBracketedSlope, ...]
     settling: tuple[SettlingEstimate, ...]
     warmup: WarmupEstimate
     startup_control: StartupControlEstimate
@@ -290,6 +335,29 @@ def _slope_xy(samples: list[tuple[float, float]]) -> float | None:
     return sum((x - x_mean) * (y - y_mean) for x, y in samples) / denominator
 
 
+def _unwrap_count_gate(
+    gate_domain: str,
+    gate_open: int,
+    gate_close: int,
+    previous_open_raw: int | None,
+    tick_offset_by_domain: dict[str, int],
+) -> tuple[int, int]:
+    if gate_domain != "rp2040_timer0":
+        return gate_open, gate_close
+
+    half_modulus = RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+    if previous_open_raw is not None and gate_open < previous_open_raw and previous_open_raw - gate_open > half_modulus:
+        tick_offset_by_domain[gate_domain] = tick_offset_by_domain.get(gate_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
+
+    offset = tick_offset_by_domain.get(gate_domain, 0)
+    gate_open_unwrapped = gate_open + offset
+    close_offset = offset
+    if gate_close < gate_open and gate_open - gate_close > half_modulus:
+        close_offset += RP2040_TIMER0_MICROS_WRAP_TICKS
+    gate_close_unwrapped = gate_close + close_offset
+    return gate_open_unwrapped, gate_close_unwrapped
+
+
 def _format(value: float | int | None, digits: int = 6) -> str:
     if value is None:
         return "unavailable"
@@ -329,22 +397,18 @@ def _load_counts(
         if _count_window_invalid(flags, counted):
             skipped_invalid_count += 1
             continue
-        if (
-            previous_open_raw is not None
-            and gate_domain == "rp2040_timer0"
-            and gate_open < previous_open_raw
-            and previous_open_raw - gate_open > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
-        ):
-            tick_offset_by_domain[gate_domain] = tick_offset_by_domain.get(gate_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
-        offset = tick_offset_by_domain.get(gate_domain, 0)
-        gate_open_unwrapped = gate_open + offset
-        gate_close_unwrapped = gate_close + offset
+        gate_open_unwrapped, gate_close_unwrapped = _unwrap_count_gate(
+            gate_domain,
+            gate_open,
+            gate_close,
+            previous_open_raw,
+            tick_offset_by_domain,
+        )
         if previous_seq is not None and seq <= previous_seq:
             warnings.append(f"cnt.csv row {index}: detected count_seq reset; starting a new analysis segment")
             segments.append([])
             first_open_s = None
             tick_offset_by_domain = {}
-            offset = 0
             gate_open_unwrapped = gate_open
             gate_close_unwrapped = gate_close
         previous_open_raw = gate_open
@@ -403,6 +467,31 @@ def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:
     return tuple(sorted(events, key=lambda item: (item.elapsed_s, item.seq)))
 
 
+def _load_environment_samples(manifest: RunManifest, gate_hz_by_domain: dict[str, float], warnings: list[str]) -> tuple[EnvironmentSample, ...]:
+    rows = _read_csv(_manifest_file(manifest, ENV_CONTRACT, "csv/environment.csv"))
+    samples: list[EnvironmentSample] = []
+    for index, row in enumerate(rows, start=1):
+        ticks = _parse_int(row.get("timestamp_ticks"))
+        domain = str(row.get("observation_domain", ""))
+        domain_hz = gate_hz_by_domain.get(domain)
+        if ticks is None or not domain_hz:
+            warnings.append(f"environment.csv row {index}: skipped because timestamp or observation_domain nominal_hz is unavailable")
+            continue
+        tick_s = ticks / domain_hz
+        samples.append(
+            EnvironmentSample(
+                seq=_parse_int(row.get("env_seq")) or index,
+                elapsed_s=tick_s,
+                source=str(row.get("source", "")),
+                role=str(row.get("role", "")),
+                temperature_c=_parse_float(row.get("temperature_c")),
+                relative_humidity_pct=_parse_float(row.get("relative_humidity_pct")),
+                pressure_pa=_parse_float(row.get("pressure_pa")),
+            )
+        )
+    return tuple(sorted(samples, key=lambda item: (item.elapsed_s, item.seq)))
+
+
 def _startup_control_estimate(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
@@ -427,22 +516,19 @@ def _startup_control_estimate(
         gate_hz = gate_hz_by_domain.get(gate_domain)
         if gate_open is None or gate_close is None or counted is None or not gate_hz:
             continue
-        if (
-            previous_open_raw is not None
-            and gate_domain == "rp2040_timer0"
-            and gate_open < previous_open_raw
-            and previous_open_raw - gate_open > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
-        ):
-            tick_offset_by_domain[gate_domain] = tick_offset_by_domain.get(gate_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
         if previous_seq is not None and seq <= previous_seq:
             if current_segment:
                 windows = current_segment
             current_segment = []
             first_open_s = None
             tick_offset_by_domain = {}
-        offset = tick_offset_by_domain.get(gate_domain, 0)
-        gate_open_unwrapped = gate_open + offset
-        gate_close_unwrapped = gate_close + offset
+        gate_open_unwrapped, gate_close_unwrapped = _unwrap_count_gate(
+            gate_domain,
+            gate_open,
+            gate_close,
+            previous_open_raw,
+            tick_offset_by_domain,
+        )
         previous_open_raw = gate_open
         previous_seq = seq
         if gate_close_unwrapped <= gate_open_unwrapped:
@@ -544,10 +630,14 @@ def _summarize_group(
     voltage: float | None,
     direction: str,
     samples: list[CountWindow],
+    env_samples: list[EnvironmentSample],
     discarded_count: int,
 ) -> CharacterizationPoint:
     hz_values = [sample.measured_hz for sample in samples]
     ppm_values = [sample.ppm for sample in samples if sample.ppm is not None]
+    temp_values = [sample.temperature_c for sample in env_samples if sample.temperature_c is not None]
+    temp_min = min(temp_values) if temp_values else None
+    temp_max = max(temp_values) if temp_values else None
     return CharacterizationPoint(
         group_id=group_id,
         step_index=step_index,
@@ -568,19 +658,28 @@ def _summarize_group(
         stddev_ppm=_stddev(ppm_values),
         mad_ppm=_mad(ppm_values),
         iqr_ppm=_iqr(ppm_values),
+        env_temperature_min_c=temp_min,
+        env_temperature_max_c=temp_max,
+        env_temperature_delta_c=temp_max - temp_min if temp_min is not None and temp_max is not None else None,
+        env_temperature_mean_c=_mean(temp_values),
     )
 
 
 def _build_points(
     counts: tuple[CountWindow, ...],
     events: tuple[DacEvent, ...],
+    env_samples: tuple[EnvironmentSample, ...],
     settling_discard_s: float,
 ) -> tuple[CharacterizationPoint, ...]:
     analysis_events = _analysis_dwell_events(events)
     assigned = _assigned_samples(counts, analysis_events)
+    primary_env_samples = [
+        sample for sample in env_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near" and sample.temperature_c is not None
+    ]
     if not analysis_events:
         return (
-            _summarize_group("all_counts", None, None, None, "unknown", [sample for _, sample in assigned], 0),
+            _summarize_group("all_counts", None, None, None, "unknown", [sample for _, sample in assigned], primary_env_samples, 0),
         )
 
     points: list[CharacterizationPoint] = []
@@ -594,6 +693,13 @@ def _build_points(
             if assigned_event == event and (end_s is None or sample.elapsed_s < end_s)
         ]
         kept = [sample for sample in all_samples if sample.elapsed_s >= event.elapsed_s + settling_discard_s]
+        group_env = [
+            sample
+            for sample in primary_env_samples
+            if sample.temperature_c is not None
+            and sample.elapsed_s >= event.elapsed_s
+            and (end_s is None or sample.elapsed_s < end_s)
+        ]
         points.append(
             _summarize_group(
                 group_id=f"step_{event.step_index}_{event.seq}",
@@ -602,6 +708,7 @@ def _build_points(
                 voltage=event.voltage_v,
                 direction=_direction(previous_code, event.code),
                 samples=kept,
+                env_samples=group_env,
                 discarded_count=len(all_samples) - len(kept),
             )
         )
@@ -636,6 +743,65 @@ def _build_slopes(points: tuple[CharacterizationPoint, ...]) -> tuple[SlopePoint
             )
         )
     return tuple(slopes)
+
+
+def _build_center_bracketed_slopes(points: tuple[CharacterizationPoint, ...]) -> tuple[CenterBracketedSlope, ...]:
+    usable = [point for point in points if point.sample_count and point.dac_code is not None and point.median_hz is not None]
+    estimates: list[CenterBracketedSlope] = []
+    for before, target, after in zip(usable, usable[1:], usable[2:]):
+        if before.dac_code is None or target.dac_code is None or after.dac_code is None:
+            continue
+        if before.median_hz is None or target.median_hz is None or after.median_hz is None:
+            continue
+        if before.dac_code != after.dac_code or target.dac_code == before.dac_code:
+            continue
+        delta_code = target.dac_code - before.dac_code
+        if delta_code == 0:
+            continue
+        bracket_center_hz = (before.median_hz + after.median_hz) / 2.0
+        target_delta_hz = target.median_hz - bracket_center_hz
+        target_delta_ppm = None
+        if before.median_ppm is not None and target.median_ppm is not None and after.median_ppm is not None:
+            target_delta_ppm = target.median_ppm - ((before.median_ppm + after.median_ppm) / 2.0)
+        bracket_center_voltage = None
+        target_delta_voltage = None
+        hz_per_v = None
+        ppm_per_v = None
+        if before.voltage_v is not None and target.voltage_v is not None and after.voltage_v is not None:
+            bracket_center_voltage = (before.voltage_v + after.voltage_v) / 2.0
+            target_delta_voltage = target.voltage_v - bracket_center_voltage
+            if target_delta_voltage != 0:
+                hz_per_v = target_delta_hz / target_delta_voltage
+                if target_delta_ppm is not None:
+                    ppm_per_v = target_delta_ppm / target_delta_voltage
+        estimates.append(
+            CenterBracketedSlope(
+                group_id=f"{before.group_id}__{target.group_id}__{after.group_id}",
+                center_before_group_id=before.group_id,
+                target_group_id=target.group_id,
+                center_after_group_id=after.group_id,
+                center_code=before.dac_code,
+                target_code=target.dac_code,
+                delta_code=delta_code,
+                center_before_hz=before.median_hz,
+                target_hz=target.median_hz,
+                center_after_hz=after.median_hz,
+                bracket_center_hz=bracket_center_hz,
+                target_delta_hz=target_delta_hz,
+                center_drift_hz=after.median_hz - before.median_hz,
+                hz_per_code=target_delta_hz / delta_code,
+                ppm_per_code=target_delta_ppm / delta_code if target_delta_ppm is not None else None,
+                center_before_voltage_v=before.voltage_v,
+                target_voltage_v=target.voltage_v,
+                center_after_voltage_v=after.voltage_v,
+                bracket_center_voltage_v=bracket_center_voltage,
+                target_delta_voltage_v=target_delta_voltage,
+                hz_per_v=hz_per_v,
+                ppm_per_v=ppm_per_v,
+                note="target step compared with average of same-code center dwells before and after",
+            )
+        )
+    return tuple(estimates)
 
 
 def _threshold_time(samples: list[CountWindow], baseline: float, final: float, fraction: float, step_time_s: float) -> float | None:
@@ -807,7 +973,14 @@ def analyze_run(
     dac_events = _load_dac_events(manifest)
     if not dac_events:
         warnings.append("dac_steps.csv unavailable or empty; DAC-code grouping and voltage plots are limited")
-    points = _build_points(counts, dac_events, settling_discard_s)
+    environment_samples = _load_environment_samples(manifest, gate_hz_by_domain, warnings)
+    primary_temp_samples = [
+        sample for sample in environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near" and sample.temperature_c is not None
+    ]
+    if environment_samples and not primary_temp_samples:
+        warnings.append("environment.csv present, but no source=sht4x role=vcocxo_near temperature samples were found")
+    points = _build_points(counts, dac_events, environment_samples, settling_discard_s)
     return H1Analysis(
         run_dir=run_dir,
         manifest=manifest,
@@ -818,8 +991,10 @@ def analyze_run(
         stability_ppm=stability_ppm,
         count_windows=counts,
         dac_events=dac_events,
+        environment_samples=environment_samples,
         points=points,
         slopes=_build_slopes(points),
+        center_bracketed_slopes=_build_center_bracketed_slopes(points),
         settling=_settling(counts, dac_events),
         warmup=_warmup(counts, resolved_nominal_hz, warmup_s, stability_ppm),
         startup_control=startup_control,
@@ -848,6 +1023,36 @@ POINT_FIELDS = [
     "stddev_ppm",
     "mad_ppm",
     "iqr_ppm",
+    "env_temperature_min_c",
+    "env_temperature_max_c",
+    "env_temperature_delta_c",
+    "env_temperature_mean_c",
+]
+
+BRACKETED_SLOPE_FIELDS = [
+    "group_id",
+    "center_before_group_id",
+    "target_group_id",
+    "center_after_group_id",
+    "center_code",
+    "target_code",
+    "delta_code",
+    "center_before_hz",
+    "target_hz",
+    "center_after_hz",
+    "bracket_center_hz",
+    "target_delta_hz",
+    "center_drift_hz",
+    "hz_per_code",
+    "ppm_per_code",
+    "center_before_voltage_v",
+    "target_voltage_v",
+    "center_after_voltage_v",
+    "bracket_center_voltage_v",
+    "target_delta_voltage_v",
+    "hz_per_v",
+    "ppm_per_v",
+    "note",
 ]
 
 
@@ -858,6 +1063,15 @@ def write_points_csv(analysis: H1Analysis, path: Path) -> None:
         writer.writeheader()
         for point in analysis.points:
             writer.writerow({field: getattr(point, field) for field in POINT_FIELDS})
+
+
+def write_center_bracketed_slopes_csv(analysis: H1Analysis, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=BRACKETED_SLOPE_FIELDS)
+        writer.writeheader()
+        for estimate in analysis.center_bracketed_slopes:
+            writer.writerow({field: getattr(estimate, field) for field in BRACKETED_SLOPE_FIELDS})
 
 
 def _png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -978,6 +1192,20 @@ def write_plots(analysis: H1Analysis, plots_dir: Path) -> list[Path]:
     warmup = [(sample.elapsed_s - analysis.count_windows[0].elapsed_s, sample.ppm if sample.ppm is not None else sample.measured_hz) for sample in analysis.count_windows] if analysis.count_windows else []
     if _plot_xy(plots_dir / "warmup_drift.png", warmup, connect=True):
         written.append(plots_dir / "warmup_drift.png")
+    primary_env = [
+        sample for sample in analysis.environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near" and sample.temperature_c is not None
+    ]
+    temp_elapsed = [(sample.elapsed_s, sample.temperature_c) for sample in primary_env if sample.temperature_c is not None]
+    if _plot_xy(plots_dir / "vcocxo_temperature_vs_elapsed.png", temp_elapsed, connect=True):
+        written.append(plots_dir / "vcocxo_temperature_vs_elapsed.png")
+    temp_ppm = [
+        (point.env_temperature_mean_c, point.median_ppm)
+        for point in analysis.points
+        if point.env_temperature_mean_c is not None and point.median_ppm is not None
+    ]
+    if _plot_xy(plots_dir / "vcocxo_temperature_vs_ppm.png", temp_ppm, connect=False):
+        written.append(plots_dir / "vcocxo_temperature_vs_ppm.png")
     return written
 
 
@@ -995,6 +1223,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         f"- stability_ppm: {_format(analysis.stability_ppm)}",
         f"- count_windows: {len(analysis.count_windows)}",
         f"- dac_events: {len(analysis.dac_events)}",
+        f"- environment_samples: {len(analysis.environment_samples)}",
         "",
         "## Formulas",
         "- measured_hz = counted_edges / gate_seconds",
@@ -1018,7 +1247,24 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"elapsed_s={_format(point.elapsed_start_s)}..{_format(point.elapsed_end_s)}, "
             f"median_hz={_format(point.median_hz)}, mean_hz={_format(point.mean_hz)}, "
             f"stddev_hz={_format(point.stddev_hz)}, MAD_hz={_format(point.mad_hz)}, IQR_hz={_format(point.iqr_hz)}, "
-            f"median_ppm={_format(point.median_ppm)}"
+            f"median_ppm={_format(point.median_ppm)}, "
+            f"vcocxo_temp_c={_format(point.env_temperature_min_c)}..{_format(point.env_temperature_max_c)}, "
+            f"temp_delta_c={_format(point.env_temperature_delta_c)}"
+        )
+
+    lines.extend(["", "## Near-VCOCXO Temperature"])
+    primary_env = [
+        sample for sample in analysis.environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near" and sample.temperature_c is not None
+    ]
+    if not primary_env:
+        lines.append("- unavailable: no SHT4x vcocxo_near temperature samples")
+    else:
+        temps = [sample.temperature_c for sample in primary_env if sample.temperature_c is not None]
+        lines.append(
+            f"- source=sht4x role=vcocxo_near samples={len(primary_env)}, "
+            f"temperature_c={_format(min(temps))}..{_format(max(temps))}, "
+            f"delta_c={_format(max(temps) - min(temps))}, mean_c={_format(_mean(temps))}"
         )
 
     lines.extend(["", "## Local Slopes"])
@@ -1030,6 +1276,18 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- {_format(slope.from_code)} -> {_format(slope.to_code)}: "
             f"Hz/V={_format(slope.hz_per_v)}, ppm/V={_format(slope.ppm_per_v)}, "
             f"Hz/code={_format(slope.hz_per_code)}, ppm/code={_format(slope.ppm_per_code)}"
+        )
+
+    lines.extend(["", "## Center-Bracketed Slopes"])
+    if not analysis.center_bracketed_slopes:
+        lines.append("- unavailable: need center-target-center dwell triples with populated count windows")
+    for estimate in analysis.center_bracketed_slopes:
+        lines.append(
+            f"- center {estimate.center_code} -> target {estimate.target_code} -> center {estimate.center_code}: "
+            f"delta_code={estimate.delta_code}, target_delta_hz={_format(estimate.target_delta_hz)}, "
+            f"center_drift_hz={_format(estimate.center_drift_hz)}, Hz/code={_format(estimate.hz_per_code)}, "
+            f"ppm/code={_format(estimate.ppm_per_code)}, Hz/V={_format(estimate.hz_per_v)}, "
+            f"ppm/V={_format(estimate.ppm_per_v)}; {estimate.note}"
         )
 
     lines.extend(["", "## Settling Behavior"])
@@ -1090,6 +1348,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
 
     lines.extend(["", "## Generated Artifacts"])
     lines.append("- csv/h1_characterization_points.csv")
+    lines.append("- csv/h1_center_bracketed_slopes.csv")
     if written_plots:
         lines.extend(f"- {path.relative_to(analysis.run_dir)}" for path in written_plots)
     else:
@@ -1099,7 +1358,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         (slope.hz_per_v is not None and abs(slope.hz_per_v) > 0.0)
         or (slope.hz_per_code is not None and abs(slope.hz_per_code) > 0.0)
         for slope in analysis.slopes
-    )
+    ) or any(abs(estimate.hz_per_code) > 0.0 for estimate in analysis.center_bracketed_slopes)
     safe_voltage_window_known = _parse_float(analysis.manifest.data.get("safety_limits", {}).get("control_voltage_min_v") if isinstance(analysis.manifest.data.get("safety_limits"), dict) else None) is not None and _parse_float(analysis.manifest.data.get("safety_limits", {}).get("control_voltage_max_v") if isinstance(analysis.manifest.data.get("safety_limits"), dict) else None) is not None
     settling_known = open_loop_slope_known and any(
         estimate.baseline_hz is not None
@@ -1136,8 +1395,10 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
 
 def write_outputs(analysis: H1Analysis) -> tuple[Path, Path, list[Path]]:
     points_path = analysis.run_dir / "csv" / "h1_characterization_points.csv"
+    bracketed_slopes_path = analysis.run_dir / "csv" / "h1_center_bracketed_slopes.csv"
     report_path = analysis.run_dir / "reports" / "h1_characterization_summary.md"
     write_points_csv(analysis, points_path)
+    write_center_bracketed_slopes_csv(analysis, bracketed_slopes_path)
     plots = write_plots(analysis, analysis.run_dir / "plots")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(analysis, plots), encoding="utf-8")

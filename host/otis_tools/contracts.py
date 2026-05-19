@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import csv
+import math
 
 from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
 
@@ -61,11 +62,26 @@ DAC_STEP_FIELDS = [
     "flags",
 ]
 
+ENVIRONMENT_FIELDS = [
+    "record_type",
+    "schema_version",
+    "env_seq",
+    "timestamp_ticks",
+    "observation_domain",
+    "source",
+    "role",
+    "temperature_c",
+    "relative_humidity_pct",
+    "pressure_pa",
+    "flags",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
+    "environment_v1": ENVIRONMENT_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -73,6 +89,7 @@ CONTRACT_RECORD_TYPES = {
     "count_observations_v1": {"CNT"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
+    "environment_v1": {"ENV"},
 }
 
 SEQUENCE_FIELDS = {
@@ -80,6 +97,7 @@ SEQUENCE_FIELDS = {
     "count_observations_v1": "count_seq",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
+    "environment_v1": "env_seq",
 }
 
 TIMESTAMP_FIELDS = {
@@ -87,6 +105,7 @@ TIMESTAMP_FIELDS = {
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
+    "environment_v1": ("timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -99,11 +118,14 @@ DOMAIN_FIELDS = {
     "count_observations_v1": ("gate_domain",),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
+    "environment_v1": ("observation_domain",),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}
 VALID_SEVERITIES = {"INFO", "WARN", "ERROR", "FATAL"}
+VALID_ENV_SOURCES = {"sht4x", "bmp280"}
+VALID_ENV_ROLES = {"vcocxo_near", "ambient_board", "ambient", "pressure_reference"}
 
 
 @dataclass(frozen=True)
@@ -259,6 +281,38 @@ def _check_dac_step(row: dict[str, str], row_number: int, errors: list[str]) -> 
         errors.append(f"row {row_number}: event must not be empty")
 
 
+def _parse_optional_float(value: str | None, field_name: str, row_number: int, errors: list[str]) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        errors.append(f"row {row_number}: {field_name} is not a float: {value!r}")
+        return None
+    if not math.isfinite(parsed):
+        errors.append(f"row {row_number}: {field_name} must be finite: {value!r}")
+        return None
+    return parsed
+
+
+def _check_environment(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    source = row.get("source", "")
+    role = row.get("role", "")
+    if source not in VALID_ENV_SOURCES:
+        errors.append(f"row {row_number}: source must be one of {sorted(VALID_ENV_SOURCES)}")
+    if role not in VALID_ENV_ROLES:
+        errors.append(f"row {row_number}: role must be one of {sorted(VALID_ENV_ROLES)}")
+    temperature = _parse_optional_float(row.get("temperature_c"), "temperature_c", row_number, errors)
+    humidity = _parse_optional_float(row.get("relative_humidity_pct"), "relative_humidity_pct", row_number, errors)
+    pressure = _parse_optional_float(row.get("pressure_pa"), "pressure_pa", row_number, errors)
+    if temperature is None and humidity is None and pressure is None:
+        errors.append(f"row {row_number}: at least one environmental measurement must be present")
+    if humidity is not None and not 0.0 <= humidity <= 100.0:
+        errors.append(f"row {row_number}: relative_humidity_pct must be between 0 and 100")
+    if pressure is not None and pressure <= 0.0:
+        errors.append(f"row {row_number}: pressure_pa must be positive")
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -312,6 +366,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_health(row, row_count, errors)
             if context.contract == "dac_steps_v1":
                 _check_dac_step(row, row_count, errors)
+            if context.contract == "environment_v1":
+                _check_environment(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")
