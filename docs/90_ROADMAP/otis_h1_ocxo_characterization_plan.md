@@ -176,6 +176,8 @@ connected under the documented safety limits.
 # Phase 6 — Derive Hz/V and ppm/V
 
 ```text
+rp2040_tick_rate_hz = mean(valid REF/PPS interval ticks)
+gate_seconds = FC0_gate_ticks / rp2040_tick_rate_hz
 measured_hz = FC0_count / gate_seconds
 ```
 
@@ -189,6 +191,12 @@ Compute local slopes:
 Hz/V  = ΔHz / ΔV
 ppm/V = Δppm / ΔV
 ```
+
+When REF/PPS rows are present, H1 analysis must use the PPS-calibrated
+`rp2040_timer0` rate for FC0 gate duration. The nominal 16 MHz RP2040 value is
+only a fallback for missing or unusable PPS evidence. The calibrated rate is a
+derived correction for legacy H1 count windows; it is not a license to treat the
+RP2040 board clock as the future event-stamping timebase.
 
 ---
 

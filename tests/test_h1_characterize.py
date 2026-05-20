@@ -12,6 +12,7 @@ def _write_synthetic_run(
     include_voltage: bool = True,
     include_second_step: bool = True,
     include_environment: bool = False,
+    include_ref: bool = False,
 ) -> None:
     (run_dir / "csv").mkdir(parents=True)
     (run_dir / "reports").mkdir()
@@ -36,6 +37,7 @@ def _write_synthetic_run(
         "files": [
             {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
             {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1"},
+            *([{"path": "csv/ref.csv", "contract": "raw_events_v1"}] if include_ref else []),
             *([{"path": "csv/environment.csv", "contract": "environment_v1"}] if include_environment else []),
         ],
     }
@@ -83,6 +85,16 @@ def _write_synthetic_run(
         ]
         (run_dir / "csv" / "environment.csv").write_text("\n".join(env_rows) + "\n", encoding="utf-8")
 
+    if include_ref:
+        ref_rows = [
+            "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+            "REF,1,1,1,R,0,rp2040_timer0,16",
+            "REF,1,2,1,R,15999920,rp2040_timer0,16",
+            "REF,1,3,1,R,31999840,rp2040_timer0,16",
+            "REF,1,4,1,R,47999760,rp2040_timer0,16",
+        ]
+        (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
+
 
 def test_h1_characterize_ppm_and_voltage_slope(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1"
@@ -106,6 +118,33 @@ def test_h1_characterize_missing_voltage_uses_code_slope(tmp_path: Path) -> None
     assert analysis.slopes[0].ppm_per_v is None
     assert analysis.slopes[0].hz_per_code == 0.175
     assert analysis.slopes[0].ppm_per_code == 0.0175
+
+
+def test_h1_characterize_missing_voltage_uses_manifest_voltage_model(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_manifest_voltage"
+    _write_synthetic_run(run_dir, include_voltage=False)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["dac"] = {
+        "nominal_code": 32768,
+        "measured_output_min_v": 0.9,
+        "measured_output_mid_v": 1.0,
+        "measured_output_max_v": 1.2,
+    }
+    manifest["safety_limits"].update(
+        {
+            "dac_min_code": 31768,
+            "dac_max_code": 33768,
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    analysis = analyze_run(run_dir)
+
+    assert analysis.points[0].voltage_v == 1.0
+    assert analysis.points[1].voltage_v == 1.2
+    assert round(analysis.slopes[0].hz_per_v or 0, 6) == 875.0
+    assert "used manifest measured DAC voltage model" in analysis.warnings[0]
 
 
 def test_h1_characterize_insufficient_settling_is_explicit(tmp_path: Path) -> None:
@@ -136,6 +175,28 @@ def test_h1_characterize_writes_report_csv_and_supported_plots(tmp_path: Path) -
     assert run_dir / "plots" / "dac_voltage_vs_ppm.png" in plots
     assert (run_dir / "plots" / "dac_code_vs_hz.png").read_bytes().startswith(b"\x89PNG")
     assert (run_dir / "csv" / "h1_center_bracketed_slopes.csv").exists()
+
+
+def test_h1_characterize_uses_pps_calibrated_gate_rate(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_pps_calibrated"
+    _write_synthetic_run(run_dir, include_second_step=False, include_ref=True)
+    count_rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+        "CNT,1,1,2,0,15999920,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,2,2,15999920,31999840,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+    ]
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
+
+    analysis, report_path, _, _ = characterize_run(run_dir)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert analysis.pps_clock is not None
+    assert analysis.pps_clock.tick_rate_hz == 15_999_920
+    assert analysis.count_windows[0].gate_seconds == 1
+    assert analysis.count_windows[0].measured_hz == 10_000_000
+    assert analysis.count_windows[0].ppm == 0
+    assert "PPS-Calibrated Clock" in report
+    assert "gate_ticks / pps_calibrated_tick_rate" in report
 
 
 def test_h1_characterize_reports_near_vcocxo_temperature(tmp_path: Path) -> None:

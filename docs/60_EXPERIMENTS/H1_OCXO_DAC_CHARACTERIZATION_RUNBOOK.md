@@ -152,6 +152,19 @@ after startup may appear as an approximately 32M-tick interval; for these H1
 bench captures it is treated as a startup artifact when subsequent PPS intervals
 return to approximately 16M ticks.
 
+For every H1 run with `csv/ref.csv`, the host characterization report should
+estimate the RP2040 `rp2040_timer0` tick rate from sane PPS intervals and use
+that calibrated rate when converting FC0 gate ticks to seconds. This corrects
+the measurement timebase without treating the RP2040 clock as timing truth.
+`run_009` showed the RP2040 timer about 4.65 ppm slow against PPS, with roughly
+1.6 us single-interval PPS scatter, so uncalibrated count-derived frequencies
+were biased high by the same order.
+
+During `run_009`, the rig was covered by a cardboard box with small cable gaps
+at the bottom. Treat that as an airflow shield, not a temperature chamber: it
+reduces direct drafts around the VCOCXO but does not remove thermal drift or
+bench-environment coupling.
+
 ## Closeout
 
 - Commit representative run artifacts only after validation and summary reports
