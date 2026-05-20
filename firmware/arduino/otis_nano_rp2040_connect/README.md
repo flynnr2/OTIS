@@ -143,8 +143,8 @@ The DAC output is bounded by compile-time clamps. Defaults are deliberately
 conservative and do not permit rail-to-rail sweeps:
 
 ```cpp
-#define OTIS_DAC_MIN_CODE 0x7000u
-#define OTIS_DAC_MAX_CODE 0x9000u
+#define OTIS_DAC_MIN_CODE 0x6000u
+#define OTIS_DAC_MAX_CODE 0xE000u
 #define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
 #define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
 #define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u

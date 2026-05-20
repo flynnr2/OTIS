@@ -166,11 +166,11 @@
 #endif
 
 #ifndef OTIS_DAC_MIN_CODE
-#define OTIS_DAC_MIN_CODE 0x7000u
+#define OTIS_DAC_MIN_CODE 0x6000u
 #endif
 
 #ifndef OTIS_DAC_MAX_CODE
-#define OTIS_DAC_MAX_CODE 0x9000u
+#define OTIS_DAC_MAX_CODE 0xE000u
 #endif
 
 // Optional low-rate environmental telemetry for oscillator characterization.
