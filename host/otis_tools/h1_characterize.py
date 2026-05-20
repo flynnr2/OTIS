@@ -10,12 +10,13 @@ import sys
 import zlib
 
 from .run_loader import RunManifest, load_manifest
-from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS, unwrap_ticks
 
 
 COUNT_CONTRACT = "count_observations_v1"
 DAC_CONTRACT = "dac_steps_v1"
 ENV_CONTRACT = "environment_v1"
+RAW_EVENTS_CONTRACT = "raw_events_v1"
 DEFAULT_SETTLING_DISCARD_SECONDS = 0.0
 DEFAULT_WARMUP_SECONDS = 1800.0
 DEFAULT_STABILITY_PPM = 0.1
@@ -37,6 +38,24 @@ class CountWindow:
     counted_edges: int
     measured_hz: float
     ppm: float | None
+
+
+@dataclass(frozen=True)
+class PpsClockEstimate:
+    domain: str
+    sample_count: int
+    interval_count: int
+    tick_rate_hz: float
+    median_tick_rate_hz: float | None
+    nominal_tick_rate_hz: float | None
+    mean_ppm_vs_nominal: float | None
+    median_ppm_vs_nominal: float | None
+    interval_stddev_ticks: float | None
+    interval_mad_ticks: float | None
+    interval_stddev_us: float | None
+    interval_mad_us: float | None
+    wrap_count: int
+    note: str
 
 
 @dataclass(frozen=True)
@@ -187,6 +206,7 @@ class H1Analysis:
     settling_discard_s: float
     warmup_s: float
     stability_ppm: float
+    pps_clock: PpsClockEstimate | None
     count_windows: tuple[CountWindow, ...]
     dac_events: tuple[DacEvent, ...]
     environment_samples: tuple[EnvironmentSample, ...]
@@ -231,6 +251,44 @@ def _manifest_file(manifest: RunManifest, contract: str, fallback: str) -> Path:
         if entry.get("contract") == contract:
             return manifest.root / str(entry.get("path", fallback))
     return manifest.root / fallback
+
+
+def _manifest_files(manifest: RunManifest, contract: str, fallback: str) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for entry in manifest.files:
+        if entry.get("contract") != contract:
+            continue
+        path = manifest.root / str(entry.get("path", fallback))
+        if path not in seen:
+            paths.append(path)
+            seen.add(path)
+    fallback_path = manifest.root / fallback
+    if not paths and fallback_path.exists():
+        paths.append(fallback_path)
+    return tuple(paths)
+
+
+def _dac_voltage_from_manifest(manifest: RunManifest, code: int) -> float | None:
+    dac = manifest.data.get("dac")
+    safety_limits = manifest.data.get("safety_limits")
+    if not isinstance(dac, dict) or not isinstance(safety_limits, dict):
+        return None
+
+    min_code = _parse_int(safety_limits.get("dac_min_code"))
+    max_code = _parse_int(safety_limits.get("dac_max_code"))
+    mid_code = _parse_int(dac.get("nominal_code"))
+    min_v = _parse_float(dac.get("measured_output_min_v"))
+    mid_v = _parse_float(dac.get("measured_output_mid_v"))
+    max_v = _parse_float(dac.get("measured_output_max_v"))
+    if None in (min_code, mid_code, max_code, min_v, mid_v, max_v):
+        return None
+    if min_code == mid_code or mid_code == max_code:
+        return None
+
+    if code <= mid_code:
+        return min_v + (code - min_code) * (mid_v - min_v) / (mid_code - min_code)
+    return mid_v + (code - mid_code) * (max_v - mid_v) / (max_code - mid_code)
 
 
 def _count_window_invalid(flags: int, counted_edges: int) -> bool:
@@ -358,6 +416,117 @@ def _unwrap_count_gate(
     return gate_open_unwrapped, gate_close_unwrapped
 
 
+def _ref_csv_paths(manifest: RunManifest) -> tuple[Path, ...]:
+    paths = [
+        path
+        for path in _manifest_files(manifest, RAW_EVENTS_CONTRACT, "csv/ref.csv")
+        if path.name == "ref.csv"
+    ]
+    fallback = manifest.root / "csv" / "ref.csv"
+    if fallback.exists() and fallback not in paths:
+        paths.append(fallback)
+    return tuple(paths)
+
+
+def _estimate_pps_clock(
+    manifest: RunManifest,
+    gate_hz_by_domain: dict[str, float],
+    warnings: list[str],
+) -> PpsClockEstimate | None:
+    rows: list[dict[str, str]] = []
+    for path in _ref_csv_paths(manifest):
+        rows.extend(_read_csv(path))
+    if not rows:
+        return None
+
+    segments: list[list[tuple[int, int, str]]] = [[]]
+    previous_seq: int | None = None
+    skipped = 0
+    for index, row in enumerate(rows, start=1):
+        record_type = str(row.get("record_type", "REF"))
+        if record_type and record_type != "REF":
+            continue
+        seq = _parse_int(row.get("event_seq")) or index
+        ticks = _parse_int(row.get("timestamp_ticks"))
+        domain = str(row.get("capture_domain", ""))
+        if ticks is None or not domain:
+            skipped += 1
+            continue
+        if previous_seq is not None and seq <= previous_seq:
+            segments.append([])
+        previous_seq = seq
+        segments[-1].append((seq, ticks, domain))
+
+    populated = [segment for segment in segments if len(segment) >= 2]
+    if skipped:
+        warnings.append(f"ref.csv: skipped {skipped} REF row(s) without timestamp_ticks or capture_domain")
+    if not populated:
+        return None
+    if len(populated) > 1:
+        warnings.append("ref.csv: multiple capture segments detected; using the final segment for PPS clock calibration")
+
+    segment = populated[-1]
+    domains = {domain for _, _, domain in segment}
+    if len(domains) != 1:
+        warnings.append("ref.csv: final REF segment spans multiple capture domains; PPS clock calibration unavailable")
+        return None
+    domain = next(iter(domains))
+    nominal_rate = gate_hz_by_domain.get(domain)
+    if not nominal_rate:
+        warnings.append(f"ref.csv: capture_domain={domain} has no nominal_hz; PPS clock calibration unavailable")
+        return None
+
+    unwrapped, wrap_count = unwrap_ticks([ticks for _, ticks, _ in segment])
+    intervals = [float(current - previous) for previous, current in zip(unwrapped, unwrapped[1:])]
+    valid_intervals = [
+        interval
+        for interval in intervals
+        if 0.8 <= interval / nominal_rate <= 1.2
+    ]
+    if len(valid_intervals) < 2:
+        warnings.append("ref.csv: insufficient sane PPS intervals for clock calibration")
+        return None
+    if len(valid_intervals) != len(intervals):
+        warnings.append(
+            f"ref.csv: ignored {len(intervals) - len(valid_intervals)} PPS interval(s) outside 0.8..1.2 nominal seconds"
+        )
+
+    tick_rate = _mean(valid_intervals)
+    median_rate = _median(valid_intervals)
+    if tick_rate is None:
+        return None
+    stddev_ticks = _stddev(valid_intervals)
+    mad_ticks = _mad(valid_intervals)
+    mean_ppm = 1_000_000.0 * (tick_rate - nominal_rate) / nominal_rate
+    median_ppm = 1_000_000.0 * (median_rate - nominal_rate) / nominal_rate if median_rate is not None else None
+    return PpsClockEstimate(
+        domain=domain,
+        sample_count=len(segment),
+        interval_count=len(valid_intervals),
+        tick_rate_hz=tick_rate,
+        median_tick_rate_hz=median_rate,
+        nominal_tick_rate_hz=nominal_rate,
+        mean_ppm_vs_nominal=mean_ppm,
+        median_ppm_vs_nominal=median_ppm,
+        interval_stddev_ticks=stddev_ticks,
+        interval_mad_ticks=mad_ticks,
+        interval_stddev_us=stddev_ticks / tick_rate * 1_000_000.0 if stddev_ticks is not None else None,
+        interval_mad_us=mad_ticks / tick_rate * 1_000_000.0 if mad_ticks is not None else None,
+        wrap_count=wrap_count,
+        note="estimated from the final REF/PPS segment; count gates in this domain use this rate instead of nominal_hz",
+    )
+
+
+def _effective_gate_hz(
+    gate_domain: str,
+    gate_hz_by_domain: dict[str, float],
+    pps_clock: PpsClockEstimate | None,
+) -> float | None:
+    if pps_clock is not None and gate_domain == pps_clock.domain:
+        return pps_clock.tick_rate_hz
+    return gate_hz_by_domain.get(gate_domain)
+
+
 def _format(value: float | int | None, digits: int = 6) -> str:
     if value is None:
         return "unavailable"
@@ -373,6 +542,7 @@ def _format(value: float | int | None, digits: int = 6) -> str:
 def _load_counts(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
+    pps_clock: PpsClockEstimate | None,
     nominal_hz: float | None,
     warnings: list[str],
 ) -> tuple[CountWindow, ...]:
@@ -390,7 +560,7 @@ def _load_counts(
         flags = _parse_int(row.get("flags")) or 0
         seq = _parse_int(row.get("count_seq")) or index
         gate_domain = str(row.get("gate_domain", ""))
-        gate_hz = gate_hz_by_domain.get(gate_domain)
+        gate_hz = _effective_gate_hz(gate_domain, gate_hz_by_domain, pps_clock)
         if gate_open is None or gate_close is None or counted is None or not gate_hz:
             warnings.append(f"cnt.csv row {index}: skipped because count/window fields or gate domain nominal_hz are unavailable")
             continue
@@ -441,9 +611,10 @@ def _load_counts(
     return tuple(populated[-1] if populated else [])
 
 
-def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:
+def _load_dac_events(manifest: RunManifest, warnings: list[str]) -> tuple[DacEvent, ...]:
     rows = _read_csv(_manifest_file(manifest, DAC_CONTRACT, "csv/dac_steps.csv"))
     events: list[DacEvent] = []
+    used_manifest_voltage = False
     for index, row in enumerate(rows, start=1):
         code = _parse_int(row.get("dac_code_applied"))
         elapsed_ms = _parse_float(row.get("elapsed_ms"))
@@ -452,6 +623,9 @@ def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:
         voltage = _parse_float(row.get("ocxo_tune_voltage_measured_v"))
         if voltage is None:
             voltage = _parse_float(row.get("dac_voltage_measured_v"))
+        if voltage is None:
+            voltage = _dac_voltage_from_manifest(manifest, code)
+            used_manifest_voltage = used_manifest_voltage or voltage is not None
         dwell_ms = _parse_float(row.get("dwell_ms"))
         events.append(
             DacEvent(
@@ -464,6 +638,8 @@ def _load_dac_events(manifest: RunManifest) -> tuple[DacEvent, ...]:
                 event=str(row.get("event", "")),
             )
         )
+    if used_manifest_voltage:
+        warnings.append("dac_steps.csv: voltage fields were empty for at least one row; used manifest measured DAC voltage model")
     return tuple(sorted(events, key=lambda item: (item.elapsed_s, item.seq)))
 
 
@@ -495,6 +671,7 @@ def _load_environment_samples(manifest: RunManifest, gate_hz_by_domain: dict[str
 def _startup_control_estimate(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
+    pps_clock: PpsClockEstimate | None,
     inhibit_s: float = DEFAULT_STARTUP_INHIBIT_SECONDS,
     required_clean_windows: int = DEFAULT_STARTUP_READY_CLEAN_WINDOWS,
 ) -> StartupControlEstimate:
@@ -513,7 +690,7 @@ def _startup_control_estimate(
         flags = _parse_int(row.get("flags")) or 0
         seq = _parse_int(row.get("count_seq")) or index
         gate_domain = str(row.get("gate_domain", ""))
-        gate_hz = gate_hz_by_domain.get(gate_domain)
+        gate_hz = _effective_gate_hz(gate_domain, gate_hz_by_domain, pps_clock)
         if gate_open is None or gate_close is None or counted is None or not gate_hz:
             continue
         if previous_seq is not None and seq <= previous_seq:
@@ -968,9 +1145,10 @@ def analyze_run(
     if resolved_nominal_hz is None:
         warnings.append("nominal_hz unavailable; ppm and ppm-derived slopes are unavailable")
     gate_hz_by_domain = _domain_hz(manifest)
-    counts = _load_counts(manifest, gate_hz_by_domain, resolved_nominal_hz, warnings)
-    startup_control = _startup_control_estimate(manifest, gate_hz_by_domain)
-    dac_events = _load_dac_events(manifest)
+    pps_clock = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
+    counts = _load_counts(manifest, gate_hz_by_domain, pps_clock, resolved_nominal_hz, warnings)
+    startup_control = _startup_control_estimate(manifest, gate_hz_by_domain, pps_clock)
+    dac_events = _load_dac_events(manifest, warnings)
     if not dac_events:
         warnings.append("dac_steps.csv unavailable or empty; DAC-code grouping and voltage plots are limited")
     environment_samples = _load_environment_samples(manifest, gate_hz_by_domain, warnings)
@@ -989,6 +1167,7 @@ def analyze_run(
         settling_discard_s=settling_discard_s,
         warmup_s=warmup_s,
         stability_ppm=stability_ppm,
+        pps_clock=pps_clock,
         count_windows=counts,
         dac_events=dac_events,
         environment_samples=environment_samples,
@@ -1226,6 +1405,8 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         f"- environment_samples: {len(analysis.environment_samples)}",
         "",
         "## Formulas",
+        "- gate_seconds = gate_ticks / pps_calibrated_tick_rate when a sane REF/PPS stream exists for the gate domain",
+        "- gate_seconds = gate_ticks / nominal_domain_hz when PPS calibration is unavailable",
         "- measured_hz = counted_edges / gate_seconds",
         "- ppm = 1e6 * (measured_hz - nominal_hz) / nominal_hz",
         "- Hz/V = delta Hz / delta V",
@@ -1236,6 +1417,30 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
     if analysis.warnings:
         lines.extend(["", "## Warnings"])
         lines.extend(f"- {warning}" for warning in analysis.warnings)
+
+    lines.extend(["", "## PPS-Calibrated Clock"])
+    if analysis.pps_clock is None:
+        lines.append("- unavailable: no sane REF/PPS segment for gate-domain calibration")
+    else:
+        pps = analysis.pps_clock
+        lines.extend(
+            [
+                f"- domain: {pps.domain}",
+                f"- ref_samples: {pps.sample_count}",
+                f"- valid_pps_intervals: {pps.interval_count}",
+                f"- calibrated_tick_rate_hz: {_format(pps.tick_rate_hz)}",
+                f"- median_tick_rate_hz: {_format(pps.median_tick_rate_hz)}",
+                f"- nominal_tick_rate_hz: {_format(pps.nominal_tick_rate_hz)}",
+                f"- mean_ppm_vs_nominal: {_format(pps.mean_ppm_vs_nominal)}",
+                f"- median_ppm_vs_nominal: {_format(pps.median_ppm_vs_nominal)}",
+                f"- interval_stddev_ticks: {_format(pps.interval_stddev_ticks)}",
+                f"- interval_mad_ticks: {_format(pps.interval_mad_ticks)}",
+                f"- interval_stddev_us: {_format(pps.interval_stddev_us)}",
+                f"- interval_mad_us: {_format(pps.interval_mad_us)}",
+                f"- wrap_count: {pps.wrap_count}",
+                f"- note: {pps.note}",
+            ]
+        )
 
     lines.extend(["", "## DAC Step Summaries"])
     if not analysis.points:

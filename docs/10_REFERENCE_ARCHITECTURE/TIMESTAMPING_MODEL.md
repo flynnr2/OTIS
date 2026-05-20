@@ -76,6 +76,24 @@ Host-side analysis may construct:
 
 Those transforms should remain explicit and replayable.
 
+## RP2040 Timebase Is Not Timing Truth
+
+The RP2040 timer domain is an implementation and transport timebase unless it is
+explicitly promoted by provenance. It may be useful for ordering records,
+measuring approximate intervals, detecting rollover, and deriving diagnostics
+from captured PPS rows, but it is not the metrological source for events of
+interest.
+
+For current H1 captures, host analysis should use REF/PPS observations to
+estimate the actual RP2040 tick rate before converting RP2040-gated count
+windows to seconds. Reports must preserve that as a derived calibration, not as
+raw timestamp truth.
+
+The intended GPSDO/VCOCXO architecture is a parallel timing fabric: pulses of
+interest should be stamped in a timer domain derived from the GPSDO'd VCOCXO.
+The RP2040 board clock should not be used as the event-stamping timebase for
+those pulses merely because it is convenient to read in firmware.
+
 ## Reference Signals
 
 OTIS treats PPS, TCXO, OCXO, GPSDO, and oscillator-under-test inputs as observable reference signals.
