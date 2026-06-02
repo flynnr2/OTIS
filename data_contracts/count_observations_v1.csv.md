@@ -35,7 +35,37 @@ A count observation says:
 
 > Between these two gate timestamps, this many edges of this source were counted.
 
-It does not by itself assert that the oscillator is disciplined, accurate, locked, or steerable. Those are higher-level derived or control states.
+It does not by itself assert that the oscillator is disciplined, accurate,
+locked, PPS-normalized, calibrated, or steerable. Those are higher-level derived
+or control states.
+
+`gate_open_ticks` and `gate_close_ticks` are raw gate boundary timestamps in
+`gate_domain`. `counted_edges` is the raw observed source-edge count for that
+gate. Frequency, ratio, ppm error, stability, and control eligibility are
+derived by host tooling from `CNT`, `REF`, `STS`, manifest domains, and run
+metadata.
+
+Invalid or startup-suspect windows are preserved when a bounded gate exists.
+Firmware marks the `CNT` row with `capture_flags_v1` bits and emits diagnostic
+`STS` rows. Host analysis may exclude flagged rows from derived frequency or
+control summaries, but it must not delete them from raw artifacts.
+
+If no honest close boundary exists, firmware should report the fault through
+`STS` rather than fabricating a clean `CNT` row.
+
+## Backend Semantics
+
+All current count-observation backends use the same schema:
+
+| Backend | Gate source | Count source | Notes |
+|---|---|---|---|
+| `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0` | firmware gate in `rp2040_timer0` | RP2040 FC0/GPIN0 | accumulated FC0 samples converted to counted edges over the emitted gate |
+| `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe test input | not valid for raw MHz oscillator input |
+| `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE` | firmware gate in `rp2040_timer0` | PIO oscillator edge counter | long raw-edge gate for H1 characterization |
+| `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` | accepted PPS rising edges | PIO oscillator edge counter | PPS remains visible as `REF`; ratio/frequency remain host-derived |
+
+See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
+backend contract.
 
 ## H0 Use
 
@@ -43,4 +73,5 @@ For the H0 prototype, `CH2` is the reference TCXO/XCXO observation role on
 `D8` / `GPIO20` / `GPIN0`. The ECS-TXO-5032-160-TR 16 MHz TCXO may be
 observed through count windows rather than raw edge emission.
 
-Future GPSDO/XCXO designs may use the same contract for OCXO/VCXO observations, divided outputs, reciprocal counters, or PPS-to-PPS frequency estimates.
+Future GPSDO/XCXO designs may use the same contract for OCXO/VCXO observations,
+divided outputs, reciprocal counters, or PPS-to-PPS count windows.

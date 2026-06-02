@@ -37,3 +37,45 @@ STS,1,9,1600200000,rp2040_timer0,system,restart_reason,brownout,WARN,32
 Status is not a fake capture channel.
 
 Do not encode operational telemetry as invented `EVT` rows. Keep health/state telemetry distinct from scientific timing observations.
+
+## Count-Observation Status
+
+Count backends emit health/status rows for backend selection, anomaly reasons,
+bad-window counters, startup inhibit, and control eligibility. These rows are
+ordinary `STS` records; they do not extend the CSV schema.
+
+Historical count-readiness keys use component `fc0` even when the active backend
+is not physically FC0. They are compatibility status surfaces:
+
+| Component | Key | Meaning |
+|---|---|---|
+| `fc0` | `fc0_observed_valid` | latest count observation was bounded and internally coherent |
+| `fc0` | `fc0_valid_for_control` | startup inhibit has expired and enough clean windows have followed it |
+| `fc0` | `fc0_fault` | a post-inhibit count window was invalid |
+| `fc0` | `last_window_invalid_reason` | latest count-window anomaly reason |
+| `fc0` | `consecutive_bad_windows` | consecutive invalid count windows |
+| `fc0` | `total_bad_windows` | invalid count windows observed in this boot |
+
+PPS-gated ratio runs add component `pps_gate`:
+
+| Component | Key | Meaning |
+|---|---|---|
+| `pps_gate` | `backend` | selected PPS-gated backend name |
+| `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
+| `pps_gate` | `valid` | latest bounded PPS-gated window validity |
+| `pps_gate` | `last_reason` | latest PPS-gate validity or fault reason |
+| `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
+| `pps_gate` | `last_interval_us` | latest bounded PPS gate interval in microseconds |
+| `pps_gate` | `missing_pps_count` | missing stop-PPS faults |
+| `pps_gate` | `pps_interval_anomaly_count` | PPS intervals outside configured validity limits |
+| `pps_gate` | `count_saturated_count` | oscillator counter saturation events |
+| `pps_gate` | `accepted_window_count` | accepted PPS-gated count windows |
+| `pps_gate` | `rejected_window_count` | rejected PPS-gated count windows |
+| `pps_gate` | `consecutive_bad_window_count` | consecutive invalid PPS-gated windows |
+| `pps_gate` | `total_bad_window_count` | invalid PPS-gated windows observed in this boot |
+| `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
+| `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
+
+`ratio_available` is a validity indicator, not a firmware-emitted numeric ratio.
+Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
+metadata.

@@ -24,7 +24,7 @@ must not pollute the semantics of raw event capture.
 
 ## Core Principle
 
-`EVENT_CAPTURE` and `REF_CAPTURE` are observations.
+`EVENT_CAPTURE`, `REF_CAPTURE`, and `COUNT_OBSERVATION` are observations.
 
 They describe what the timing fabric captured, not what the event means in an
 experiment.
@@ -66,6 +66,7 @@ contextualize, or derive from those facts.
 |--------------------|----------------|----------------------------------------------------------|
 | `EVENT_CAPTURE`    | observation    | External/user timing event captured by the timing fabric |
 | `REF_CAPTURE`      | observation    | Reference event captured by the timing fabric            |
+| `COUNT_OBSERVATION` | observation   | Gated/windowed count of a high-rate source               |
 | `DISCIPLINE_STATE` | state          | Discipline loop state, estimator status, lock confidence |
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
 | `ENVIRONMENT`      | context        | Temperature, pressure, humidity, voltage, board context  |
@@ -117,6 +118,31 @@ behind discipline-loop conclusions.
 
 Reference captures may later be used to derive phase error, frequency estimates,
 lock quality, and steering decisions.
+
+### `COUNT_OBSERVATION`
+
+A `COUNT_OBSERVATION` record describes a bounded count of a high-rate source,
+such as a TCXO, OCXO, VCXO, divided oscillator, or PPS-gated oscillator window.
+
+It should answer:
+
+```text
+Between gate boundary A and gate boundary B, source S produced N counted edges.
+```
+
+It should not answer:
+
+```text
+What is the calibrated oscillator frequency?
+Is the oscillator locked?
+Should the DAC move?
+Is the run fixture-ready?
+```
+
+Those are host-derived, profile, reporting, or control-readiness questions.
+
+The compact CSV representation in `count_observations_v1.csv` uses `CNT` as the
+wire tag for `COUNT_OBSERVATION`.
 
 ---
 
@@ -309,6 +335,7 @@ Compact encodings may use shorter wire tags when appropriate:
 ```text
 EVT = compact CSV tag for EVENT_CAPTURE
 REF = compact CSV tag for REF_CAPTURE
+CNT = compact CSV tag for COUNT_OBSERVATION
 ```
 
 When compact tags are used, the mapping to conceptual record types must be explicit

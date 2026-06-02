@@ -230,10 +230,10 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
 - `python3 -m host.otis_tools.report_run` renders a Markdown A0 replay report
   covering run identity, SW1 capture limitations, completion state, artifact
   inventory, row counts, raw-event monotonicity, PPS/reference interval sanity,
-  count-observation frequency estimates when units are declared, health/status
-  counters, validation findings, warnings, anomalies, and fixture usefulness.
-  Use `--output` to write the Markdown report and `--json` to write the same
-  high-level summary as machine-readable JSON.
+  host-derived count-observation frequency estimates when units are declared,
+  health/status counters, validation findings, warnings, anomalies, and fixture
+  usefulness. Use `--output` to write the Markdown report and `--json` to write
+  the same high-level summary as machine-readable JSON.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.
@@ -241,6 +241,11 @@ validation and protocol bring-up, not final PIO/DMA metrology.
 These tools do not infer PPS quality, oscillator frequency error, lock state,
 discipline state, steering quality, Allan deviation, or other SW2/A-stage
 claims.
+
+`report_run` fields such as `mean_observed_frequency_hz` are derived from raw
+`CNT` windows and manifest domain metadata. They are not firmware-emitted
+fields, and they should not be read as PPS-disciplined results unless the report
+also names the PPS/reference evidence and filtering assumptions used.
 
 ---
 

@@ -56,12 +56,13 @@ Preferred approaches:
 - divider chains;
 - hardware counters with explicit observation windows.
 
-The planned PPS-gated ratio backend follows this count-observation rule: PPS
+The PPS-gated ratio backend follows this count-observation rule: PPS
 edges on `CH1` define the gate, oscillator edges on `CH2` are counted during the
 gate, PPS edges remain visible as `REF` rows, and firmware emits the raw
 observation as a `CNT` row rather than a calibrated frequency. Host analysis may
 derive oscillator ratio, frequency, and ppm from the `REF` and `CNT` streams.
-See `PPS_GATED_RATIO_BACKEND_DESIGN.md`.
+See `PPS_GATED_RATIO_BACKEND_DESIGN.md` and
+`COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`.
 
 ## Frozen SW1 H0 Inputs
 
@@ -97,10 +98,10 @@ modes:
 | `SW1_GPS_PPS` | GPS PPS on `D14` produces `REF` rows on `CH1`; host cadence sanity is approximately 1 Hz |
 | `SW1_TCXO_OBSERVE` | TCXO observation on `D8` / `GPIO20` / `GPIN0` produces `CNT` rows on `CH2` through the RP2040 frequency counter by default, and GPS PPS on `CH1` is captured when wired |
 
-`SW1_TCXO_OBSERVE` and `H1_OCXO_OBSERVE_OPEN_LOOP` may later select the
-PPS-gated ratio count backend with
-`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. That selector changes how the
-`CNT` gate is formed; it does not change `CNT` into a derived frequency record.
+`SW1_TCXO_OBSERVE` and `H1_OCXO_OBSERVE_OPEN_LOOP` can select the PPS-gated
+ratio count backend with `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. That
+selector changes how the `CNT` gate is formed; it does not change `CNT` into a
+derived frequency record.
 
 The live interrupt path is a first SW1 bring-up mechanism. It emits canonical
 records with explicit provenance, including `TIMESTAMP_RECONSTRUCTED` where the
@@ -149,6 +150,8 @@ path and a clearer hardware timestamp strategy.
 
 `SW1_TCXO_OBSERVE` is a count-observation mode. The default SW1 backend uses
 the RP2040 clock frequency counter with `GPIO20` configured as `CLOCK GPIN0`.
+Alternate count-observation backends include GPIO IRQ divided-only counting,
+PIO long-gate raw-edge counting, and PPS-gated ratio counting.
 Do not attach a raw 16 MHz TCXO to a GPIO interrupt path; that will starve
 firmware and USB service. The GPIO interrupt counter backend is reserved for
 deliberately divided, interrupt-safe test signals.
