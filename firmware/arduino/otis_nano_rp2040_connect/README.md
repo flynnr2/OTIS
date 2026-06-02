@@ -51,9 +51,8 @@ on `D8` / `GPIO20` / `GPIN0` uses the RP2040 FC0/gated-count path and emits
 implement PPS-derived steering, GPSDO locking, holdover, PI/PID correction, or
 temperature compensation.
 
-The planned PPS-gated ratio count backend is documented in
-`../../../docs/50_SOFTWARE/PPS_GATED_RATIO_BACKEND_DESIGN.md`. Its proposed
-selector is:
+The PPS-gated ratio count backend is documented in
+`../../../docs/50_SOFTWARE/PPS_GATED_RATIO_BACKEND_DESIGN.md`. Select it with:
 
 ```cpp
 #define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
@@ -63,6 +62,13 @@ That backend would use PPS on `D14` / GPIO26 to define the count gate and the
 oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It must still
 emit raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
 frequency, ratio, and ppm. Selecting it must not enable DAC steering.
+
+The current implementation keeps PPS `REF` capture on the existing sparse edge
+backend and uses foreground PPS edge qualification to start/stop a PIO oscillator
+counter. Emitted PPS-gated `CNT` rows therefore carry reconstructed
+`rp2040_timer0` gate timestamps. Bench validation must still prove PPS edge
+ownership, counter start/stop latency, timeout behavior, and counter saturation
+handling before treating the backend as hardware-clean.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.

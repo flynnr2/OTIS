@@ -23,6 +23,8 @@ const char *otis_tcxo_counter_backend_name(void) {
   return "gpio_irq_divided_only";
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
   return "pio_long_gate_gpio20";
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  return "pps_gated_ratio";
 #endif
 }
 

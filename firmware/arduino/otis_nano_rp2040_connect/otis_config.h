@@ -70,10 +70,13 @@
 // TCXO observation backends. FC0/GPIN0 is the simple RP2040 clock-counter path;
 // H1 long-gate PIO is the raw-edge metrology path for resolving sub-Hz VCOCXO
 // DAC response; GPIO IRQ is only for deliberately divided, interrupt-safe test
-// signals.
+// signals. PPS-gated ratio is a raw count-observation backend that uses PPS
+// edges to bound the oscillator count window and leaves ratio/frequency
+// derivation to host tooling.
 #define OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 1
 #define OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ 2
 #define OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE 3
+#define OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO 4
 
 #ifndef OTIS_TCXO_COUNTER_BACKEND
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
@@ -142,6 +145,18 @@
 // edge quantization at 10 MHz and still stays below a 32-bit PIO edge counter.
 #ifndef OTIS_H1_LONG_GATE_PERIOD_US
 #define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
+#endif
+
+#ifndef OTIS_PPS_GATE_MIN_INTERVAL_US
+#define OTIS_PPS_GATE_MIN_INTERVAL_US 800000u
+#endif
+
+#ifndef OTIS_PPS_GATE_MAX_INTERVAL_US
+#define OTIS_PPS_GATE_MAX_INTERVAL_US 1200000u
+#endif
+
+#ifndef OTIS_PPS_GATE_MISSING_TIMEOUT_US
+#define OTIS_PPS_GATE_MISSING_TIMEOUT_US 2500000u
 #endif
 
 // SW2 architectural guardrail: FC0 observations remain visible during startup,
@@ -237,8 +252,9 @@
 
 #if OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0 && \
     OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ && \
-    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-#error "OTIS_TCXO_COUNTER_BACKEND must be FC0_GPIN0, GPIO_IRQ, or PIO_LONG_GATE."
+    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE && \
+    OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+#error "OTIS_TCXO_COUNTER_BACKEND must be FC0_GPIN0, GPIO_IRQ, PIO_LONG_GATE, or PPS_GATED_RATIO."
 #endif
 
 #if OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ && \
