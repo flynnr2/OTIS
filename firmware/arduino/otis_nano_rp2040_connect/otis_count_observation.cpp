@@ -18,6 +18,24 @@ namespace {
 
 constexpr uint64_t kRp2040Timer0MicrosWrapTicks = (1ull << 32) * 16ull;
 constexpr uint32_t kH1PioCounterInitialX = 0xffffffffu;
+constexpr uint32_t kImplausibleGateDurationMultiplier = 2u;
+
+const char kWindowReasonNone[] = "none";
+const char kWindowReasonNoSamples[] = "no_samples";
+const char kWindowReasonAllZeroSamples[] = "all_zero_samples";
+const char kWindowReasonPartialZeroSamples[] = "partial_zero_samples";
+const char kWindowReasonNonPositiveGateDuration[] =
+    "non_positive_gate_duration";
+const char kWindowReasonImplausibleGateDuration[] =
+    "implausible_gate_duration";
+const char kWindowReasonCountedEdgesZero[] = "counted_edges_zero";
+
+struct WindowAnomaly {
+  const char *reason;
+  bool valid;
+  bool post_startup_invalid;
+  uint32_t flags;
+};
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
 struct H1PioLongGateCounter {
@@ -156,11 +174,12 @@ void record_fc0_sample(OtisRuntimeState *runtime_state, uint32_t measured_khz,
 }
 
 void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
-                                 OtisStatusEmitContext *status_context) {
+                                 OtisStatusEmitContext *status_context,
+                                 const WindowAnomaly &anomaly) {
   uint32_t flags = runtime_state->tcxo.last_window_flags;
   emit_status(status_context, "fc0", "window_invalid_reason",
-              otis_count_observation_window_invalid_reason(runtime_state),
-              OTIS_SEVERITY_WARN, flags);
+              runtime_state->tcxo.last_window_invalid_reason, OTIS_SEVERITY_WARN,
+              flags);
   emit_status_u32(status_context, "fc0", "window_sample_count",
                   runtime_state->tcxo.last_sample_count, OTIS_SEVERITY_WARN,
                   flags);
@@ -182,6 +201,17 @@ void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
   emit_status_u32(status_context, "fc0", "window_max_sample_khz",
                   runtime_state->tcxo.last_max_sample_khz, OTIS_SEVERITY_WARN,
                   flags);
+  emit_status_u32(status_context, "fc0", "window_elapsed_us",
+                  runtime_state->tcxo.last_elapsed_us, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "fc0", "window_flags",
+                  runtime_state->tcxo.last_window_flags, OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status(status_context, "fc0", "post_startup_invalid_window",
+              anomaly.post_startup_invalid ? "true" : "false",
+              anomaly.post_startup_invalid ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+              flags);
   emit_status_u32(status_context, "fc0", "consecutive_bad_windows",
                   runtime_state->tcxo.consecutive_bad_windows,
                   OTIS_SEVERITY_WARN, flags);
@@ -190,22 +220,97 @@ void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
                   flags);
 }
 
-void update_control_gate(OtisRuntimeState *runtime_state,
-                         const OtisCountObservationConfig *config,
-                         bool window_valid, uint32_t now_ms) {
+bool gate_duration_implausible(uint32_t elapsed_us,
+                               const OtisCountObservationConfig *config) {
+  if (config->gate_period_us == 0u) {
+    return true;
+  }
+  uint64_t max_gate_us =
+      (uint64_t)config->gate_period_us * kImplausibleGateDurationMultiplier;
+  return (uint64_t)elapsed_us > max_gate_us;
+}
+
+void update_startup_inhibit(OtisRuntimeState *runtime_state,
+                            const OtisCountObservationConfig *config,
+                            uint32_t now_ms) {
   runtime_state->tcxo.startup_inhibit_elapsed_s =
       (uint32_t)((now_ms - runtime_state->tcxo.startup_inhibit_start_ms) /
                  1000u);
   runtime_state->tcxo.startup_inhibit_active =
       (uint32_t)(now_ms - runtime_state->tcxo.startup_inhibit_start_ms) <
       config->startup_inhibit_ms;
+}
 
-  if (!window_valid) {
+WindowAnomaly classify_window(OtisRuntimeState *runtime_state,
+                              const OtisCountObservationConfig *config,
+                              bool expect_samples,
+                              bool expect_counted_edges) {
+  WindowAnomaly anomaly = {
+      kWindowReasonNone,
+      true,
+      false,
+      runtime_state->tcxo.last_window_flags,
+  };
+
+  if (runtime_state->tcxo.last_elapsed_us == 0u) {
+    anomaly.reason = kWindowReasonNonPositiveGateDuration;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_GATE_INCOMPLETE;
+  } else if (gate_duration_implausible(runtime_state->tcxo.last_elapsed_us,
+                                       config)) {
+    anomaly.reason = kWindowReasonImplausibleGateDuration;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_GATE_INCOMPLETE;
+  } else if (expect_samples && runtime_state->tcxo.last_sample_count == 0u) {
+    anomaly.reason = kWindowReasonNoSamples;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_GATE_INCOMPLETE;
+  } else if (expect_samples &&
+             runtime_state->tcxo.last_zero_sample_count ==
+                 runtime_state->tcxo.last_sample_count) {
+    anomaly.reason = kWindowReasonAllZeroSamples;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+  } else if (expect_samples &&
+             runtime_state->tcxo.last_zero_sample_count > 0u) {
+    anomaly.reason = kWindowReasonPartialZeroSamples;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
+  } else if (expect_counted_edges &&
+             runtime_state->tcxo.last_counted_edges == 0ull) {
+    anomaly.reason = kWindowReasonCountedEdgesZero;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+  }
+
+  runtime_state->tcxo.last_window_flags = anomaly.flags;
+  runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
+  return anomaly;
+}
+
+void record_window_quality(OtisRuntimeState *runtime_state,
+                           const WindowAnomaly &anomaly) {
+  runtime_state->tcxo.last_observation_valid = anomaly.valid;
+  if (anomaly.valid) {
+    runtime_state->tcxo.consecutive_bad_windows = 0;
+  } else {
+    runtime_state->tcxo.consecutive_bad_windows += 1u;
+    runtime_state->tcxo.total_bad_windows += 1u;
+  }
+}
+
+void update_control_gate(OtisRuntimeState *runtime_state,
+                         const OtisCountObservationConfig *config,
+                         WindowAnomaly *anomaly, uint32_t now_ms) {
+  update_startup_inhibit(runtime_state, config, now_ms);
+
+  if (!anomaly->valid) {
     runtime_state->tcxo.control_clean_window_count = 0;
     runtime_state->tcxo.valid_for_control = false;
     if (!runtime_state->tcxo.startup_inhibit_active) {
       runtime_state->tcxo.fault_after_startup = true;
     }
+    anomaly->post_startup_invalid = !runtime_state->tcxo.startup_inhibit_active;
     return;
   }
 
@@ -223,16 +328,6 @@ void update_control_gate(OtisRuntimeState *runtime_state,
       config->control_ready_clean_windows;
   if (runtime_state->tcxo.valid_for_control) {
     runtime_state->tcxo.fault_after_startup = false;
-  }
-}
-
-void record_window_quality(OtisRuntimeState *runtime_state, bool window_valid) {
-  runtime_state->tcxo.last_observation_valid = window_valid;
-  if (window_valid) {
-    runtime_state->tcxo.consecutive_bad_windows = 0;
-  } else {
-    runtime_state->tcxo.consecutive_bad_windows += 1u;
-    runtime_state->tcxo.total_bad_windows += 1u;
   }
 }
 
@@ -363,15 +458,15 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.last_max_sample_khz =
       runtime_state->tcxo.fc0_accum_max_sample_khz;
   runtime_state->tcxo.last_window_flags = window_flags;
-  bool window_valid = runtime_state->tcxo.fc0_accum_sample_count > 0 &&
-                      runtime_state->tcxo.fc0_accum_zero_sample_count == 0u;
-  update_control_gate(runtime_state, config, window_valid, now_ms);
-  record_window_quality(runtime_state, window_valid);
+  WindowAnomaly anomaly = classify_window(runtime_state, config, true, true);
+  update_control_gate(runtime_state, config, &anomaly, now_ms);
+  record_window_quality(runtime_state, anomaly);
 
-  emit_count_observation(runtime_state, config, counted_edges, window_flags);
+  emit_count_observation(runtime_state, config, counted_edges,
+                         runtime_state->tcxo.last_window_flags);
 
-  if (!window_valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context);
+  if (!anomaly.valid) {
+    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
   }
 
   reset_fc0_accum_window(runtime_state);
@@ -406,10 +501,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
     measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
   }
   uint32_t window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  bool window_valid = counted_edges > 0ull;
-  if (!window_valid) {
-    window_flags |= OTIS_FLAG_INPUT_STUCK_LOW;
-  }
+  bool counted_edges_nonzero = counted_edges > 0ull;
 
   runtime_state->tcxo.last_gate_open_ticks = h1_pio_long_gate.gate_open_ticks;
   runtime_state->tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
@@ -418,20 +510,22 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.last_measured_khz = measured_khz;
   runtime_state->tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
   runtime_state->tcxo.last_sample_count = 1u;
-  runtime_state->tcxo.last_zero_sample_count = window_valid ? 0u : 1u;
-  runtime_state->tcxo.last_valid_sample_count = window_valid ? 1u : 0u;
+  runtime_state->tcxo.last_zero_sample_count = counted_edges_nonzero ? 0u : 1u;
+  runtime_state->tcxo.last_valid_sample_count = counted_edges_nonzero ? 1u : 0u;
   runtime_state->tcxo.last_first_sample_khz = measured_khz;
   runtime_state->tcxo.last_last_sample_khz = measured_khz;
   runtime_state->tcxo.last_min_sample_khz = measured_khz;
   runtime_state->tcxo.last_max_sample_khz = measured_khz;
   runtime_state->tcxo.last_window_flags = window_flags;
-  update_control_gate(runtime_state, config, window_valid, now_ms);
-  record_window_quality(runtime_state, window_valid);
+  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
+  update_control_gate(runtime_state, config, &anomaly, now_ms);
+  record_window_quality(runtime_state, anomaly);
 
-  emit_count_observation(runtime_state, config, counted_edges, window_flags);
+  emit_count_observation(runtime_state, config, counted_edges,
+                         runtime_state->tcxo.last_window_flags);
 
-  if (!window_valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context);
+  if (!anomaly.valid) {
+    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
   }
 
   start_h1_pio_long_gate_counter(otis_capture_ticks_now());
@@ -449,15 +543,30 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.gate_open_us = now_us;
   interrupts();
 
-  uint32_t flags =
-      counted_edges == 0 ? OTIS_FLAG_INPUT_STUCK_LOW : OTIS_FLAG_NONE;
+  uint32_t flags = OTIS_FLAG_NONE;
+  bool counted_edges_nonzero = counted_edges > 0u;
   runtime_state->tcxo.last_gate_open_ticks = (uint64_t)gate_open_us * 16ull;
   runtime_state->tcxo.last_gate_close_ticks = (uint64_t)now_us * 16ull;
   runtime_state->tcxo.last_counted_edges = counted_edges;
   runtime_state->tcxo.last_elapsed_us = now_us - gate_open_us;
   runtime_state->tcxo.last_measured_khz = 0;
-  runtime_state->tcxo.last_observation_valid = true;
-  emit_count_observation(runtime_state, config, counted_edges, flags);
+  runtime_state->tcxo.last_sampled_elapsed_us = runtime_state->tcxo.last_elapsed_us;
+  runtime_state->tcxo.last_sample_count = 1u;
+  runtime_state->tcxo.last_zero_sample_count = counted_edges_nonzero ? 0u : 1u;
+  runtime_state->tcxo.last_valid_sample_count = counted_edges_nonzero ? 1u : 0u;
+  runtime_state->tcxo.last_first_sample_khz = 0;
+  runtime_state->tcxo.last_last_sample_khz = 0;
+  runtime_state->tcxo.last_min_sample_khz = 0;
+  runtime_state->tcxo.last_max_sample_khz = 0;
+  runtime_state->tcxo.last_window_flags = flags;
+  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
+  update_control_gate(runtime_state, config, &anomaly, millis());
+  record_window_quality(runtime_state, anomaly);
+  emit_count_observation(runtime_state, config, counted_edges,
+                         runtime_state->tcxo.last_window_flags);
+  if (!anomaly.valid) {
+    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
+  }
   return true;
 #endif
 #else
@@ -478,15 +587,5 @@ const char *otis_count_observation_measurement_mode(void) {
 
 const char *otis_count_observation_window_invalid_reason(
     const OtisRuntimeState *runtime_state) {
-  if (runtime_state->tcxo.last_sample_count == 0u) {
-    return "no_samples";
-  }
-  if (runtime_state->tcxo.last_zero_sample_count == 0u) {
-    return "none";
-  }
-  if (runtime_state->tcxo.last_zero_sample_count ==
-      runtime_state->tcxo.last_sample_count) {
-    return "all_zero_samples";
-  }
-  return "partial_zero_samples";
+  return runtime_state->tcxo.last_window_invalid_reason;
 }
