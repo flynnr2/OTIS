@@ -44,7 +44,7 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
    voltage is measured inside the safe range.
 4. Record the control network and measured control voltage in the manifest.
 
-## 4. OCXO Output Conditioning Into GPIN0/FC0
+## 4. OCXO Output Conditioning Into Count Observation
 
 1. Do not connect raw sine, high-voltage logic, or unknown oscillator outputs to
    the RP2040.
@@ -53,6 +53,12 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
 3. Verify logic high/low levels before connecting `D8/GPIO20/GPIN0`.
 4. Record conditioner type, logic voltage, inversion, division ratio, and the
    observed domain name.
+5. Record the selected count-observation backend:
+   `FC0_GPIN0`, `GPIO_IRQ` divided-only, `PIO_LONG_GATE`, or
+   `PPS_GATED_RATIO`.
+
+Raw oscillator observation belongs in `CNT` rows. Do not feed raw OCXO edges
+into the sparse `EVT`/`REF` capture path.
 
 ## 5. Free-Run Capture
 
@@ -60,6 +66,22 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
 2. Keep the tune voltage fixed or disconnected, and record which state is used.
 3. Initialize an `ocxo_free_run` run and capture count/reference observations.
 4. Report frequency offset, missing reference data, dropouts, and anomalies.
+
+For PPS-gated ratio validation, also record:
+
+- PPS source and conditioning into `D14` / GPIO26 / `CH1`;
+- oscillator conditioner into `D8` / GPIO20 / `CH2`;
+- `pps_gate/backend`, `state`, `valid`, and `ratio_available` status;
+- `pps_gate/missing_pps_count`;
+- `pps_gate/pps_interval_anomaly_count`;
+- `pps_gate/count_saturated_count`;
+- whether every accepted PPS-gated `CNT` window has matching visible `REF`
+  evidence in the same run.
+
+Treat the first PPS-gated bench run as hardware validation, not as a calibration
+authority. It must prove PPS edge ownership, gate start/stop latency,
+missing-PPS timeout behavior, and counter saturation behavior before the backend
+is marked hardware-clean.
 
 ## 6. Manual DAC Sweep
 
@@ -97,7 +119,8 @@ runs/h1_open_loop/dac_manual_sweep/run_001/
 
 Every `CNT` row captured during a sweep should be attributable through nearby
 `DAC` rows in `csv/dac_steps.csv`, especially `dwell_start`, `fc0_window`, and
-`dwell_complete` events.
+`dwell_complete` events. The `fc0_window` event name is historical; it means a
+count-observation window, not necessarily the FC0/GPIN0 backend.
 When `csv/environment.csv` is present, H1 analysis correlates near-VCOCXO
 temperature with DAC dwell summaries and ppm/frequency observations, but does
 not apply automatic thermal correction.
@@ -146,10 +169,12 @@ These values are inside the CX317 operating control-voltage range of 0.0 V to
 
 The current FC0 observation path uses short gate windows and is adequate for
 bring-up, continuity, and safety checks, but it did not resolve the expected
-small CX317 tuning response across the conservative clamp window. Do not claim
-ppm/V or settling-time readiness from these runs alone. The first PPS interval
-after startup may appear as an approximately 32M-tick interval; for these H1
-bench captures it is treated as a startup artifact when subsequent PPS intervals
+small CX317 tuning response across the conservative clamp window. PIO long-gate
+and PPS-gated ratio backends provide different count-window formation, but they
+still emit raw `CNT` rows rather than calibrated frequency. Do not claim ppm/V
+or settling-time readiness from these runs alone. The first PPS interval after
+startup may appear as an approximately 32M-tick interval; for these H1 bench
+captures it is treated as a startup artifact when subsequent PPS intervals
 return to approximately 16M ticks.
 
 For every H1 run with `csv/ref.csv`, the host characterization report should
@@ -159,6 +184,11 @@ the measurement timebase without treating the RP2040 clock as timing truth.
 `run_009` showed the RP2040 timer about 4.65 ppm slow against PPS, with roughly
 1.6 us single-interval PPS scatter, so uncalibrated count-derived frequencies
 were biased high by the same order.
+
+For PPS-gated ratio runs, host analysis should derive ratio/frequency from the
+visible `REF` and `CNT` streams plus manifest metadata. Firmware status
+`pps_gate/ratio_available=true` means the latest bounded count window is valid
+and nonzero; it is not a numeric ratio field.
 
 During `run_009`, the rig was covered by a cardboard box with small cable gaps
 at the bottom. Treat that as an airflow shield, not a temperature chamber: it

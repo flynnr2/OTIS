@@ -34,8 +34,8 @@ for Arduino IDE builds; CLI `-D` overrides still work for scripted builds.
 | `SW1_SYNTHETIC_USB` | USB serial, framing, parser, and validation sanity | synthetic `STS`, `EVT`, `REF`, `CNT` |
 | `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
 | `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
-| `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1` |
-| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands and explicit open-loop sweeps | hardware frequency-counter `CNT` on `CH2`, `REF` on `CH1`, DAC `STS`/`DAC` telemetry |
+| `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | selected count-observation backend emits `CNT` on `CH2`, `REF` on `CH1` |
+| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands and explicit open-loop sweeps | selected count-observation backend emits `CNT` on `CH2`, `REF` on `CH1`, DAC `STS`/`DAC` telemetry |
 
 The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
 timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
@@ -46,10 +46,12 @@ backend is only for deliberately divided, interrupt-safe test signals.
 
 `H1_OCXO_OBSERVE_OPEN_LOOP` keeps the same architecture boundary: sparse PPS
 edges, if wired, use the normal edge-capture backend, while the raw OCXO input
-on `D8` / `GPIO20` / `GPIN0` uses the RP2040 FC0/gated-count path and emits
-`CNT` records. It is an open-loop lab instrument mode only. Firmware does not
-implement PPS-derived steering, GPSDO locking, holdover, PI/PID correction, or
-temperature compensation.
+on `D8` / `GPIO20` / `GPIN0` uses the selected count-observation backend and
+emits `CNT` records. The full backend contract is documented in
+`../../../docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`. H1 is an
+open-loop lab instrument mode only. Firmware does not implement PPS-derived
+steering, GPSDO locking, holdover, PI/PID correction, or temperature
+compensation.
 
 The PPS-gated ratio count backend is documented in
 `../../../docs/50_SOFTWARE/PPS_GATED_RATIO_BACKEND_DESIGN.md`. Select it with:
@@ -107,8 +109,7 @@ hardware-latched timestamping.
 Guardrail: the PIO FIFO backend is only for sparse edge streams such as GPS PPS,
 slow GPIO loopback, or future low-rate event inputs. It must not be used to
 enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on `D8` / `GPIO20` /
-`GPIN0` should be observed with the RP2040 frequency-counter / FC0 /
-gated-count path instead.
+`GPIN0` should be observed with a count-observation backend instead.
 
 PIO input selection follows the selected bring-up mode:
 
@@ -117,10 +118,11 @@ PIO input selection follows the selected bring-up mode:
 | `SW1_GPIO_LOOPBACK` | `D10` / GPIO5 / `CH0` | rising-edge `EVT` rows |
 | `SW1_GPS_PPS` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows |
 | `SW1_TCXO_OBSERVE` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus existing `CNT` rows when TCXO counting is configured |
-| `H1_OCXO_OBSERVE_OPEN_LOOP` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus FC0/gated-count `CNT` rows for raw OCXO observation |
+| `H1_OCXO_OBSERVE_OPEN_LOOP` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus selected count-observation `CNT` rows for raw OCXO observation |
 
-Sparse edges map to the PIO FIFO edge backend. Raw CXO on `GPIN0` maps to the
-FC0/gated-count backend and emits `CNT`, not one FIFO event per oscillator edge.
+Sparse edges map to the PIO FIFO edge backend. Raw CXO on `GPIN0` maps to a
+count-observation backend and emits `CNT`, not one FIFO event per oscillator
+edge.
 
 The boot/status stream includes `capture_backend`, `pio_init`, `pio_gpio`,
 `pio_edge`, `pio_fifo_drained_event_count`, `pio_fifo_empty_count`,
@@ -134,9 +136,9 @@ Suggested first bench sequence:
    `OTIS_CAPTURE_BACKEND_PIO_FIFO`, and confirm `EVT` rows and PIO counters.
 2. GPS PPS: wire conditioned GPS PPS to `D14`, build `SW1_GPS_PPS` with the PIO
    backend, and confirm `REF` rows and host PPS cadence checks.
-3. TCXO/count observation: use `SW1_TCXO_OBSERVE` only for the existing
-   count-observation path; do not feed raw high-rate oscillator edges into the
-   SW1.5a PIO FIFO edge path.
+3. TCXO/count observation: use `SW1_TCXO_OBSERVE` with the selected
+   count-observation backend; do not feed raw high-rate oscillator edges into
+   the SW1.5a PIO FIFO edge path.
 
 DMA, hardware-latched timestamp transfer, both-edge capture, and higher-rate
 capture fabric work are intentionally deferred to SW1.5b and later.
@@ -210,8 +212,8 @@ clamp window.
 The boot/status stream reports H1 open-loop mode, counter measurement mode,
 gate period, nominal OCXO frequency assumption, DAC enable state, I2C address,
 clamp values, DAC init success/failure, and accepted/rejected DAC command
-telemetry. `FC0?` prints the latest gated-count summary as structured `STS`
-rows. The regular `CNT` records remain the primary oscillator observation
+telemetry. `FC0?` prints the latest count-observation summary as structured
+`STS` rows. The regular `CNT` records remain the primary oscillator observation
 output.
 
 `OTIS_ENABLE_H1_DAC_SWEEP` adds deterministic open-loop sweep commands. Sweeps
@@ -239,7 +241,7 @@ Wiring summary for H1:
 | BMP280 environmental sensor I2C SDA/SCL | board I2C pins for `Wire`, default address `0x77` |
 
 Do not route the raw OCXO into the PIO FIFO edge path. Raw OCXO observation is
-FC0/gated-count only.
+count-observation only.
 
 Environmental telemetry is optional and compile-time gated:
 

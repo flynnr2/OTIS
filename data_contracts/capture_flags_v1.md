@@ -59,9 +59,20 @@ Count observations commonly use:
 - `COUNT_SATURATED`
 - `CAPTURE_OVERFLOW_NEARBY`
 - `RATE_TOO_HIGH`
+- `REFERENCE_VALIDITY_SUSPECT`
+- `TIMESTAMP_RECONSTRUCTED`
 - `SOURCE_HEALTH_SUSPECT`
+- `INPUT_STUCK_LOW`
 
 A count row with a nonzero flag is still scientifically useful if the failure mode is explicit.
+For example, a PPS-gated count with an implausible PPS interval should keep the
+bounded `CNT` row visible and mark it with `REFERENCE_VALIDITY_SUSPECT` and
+`GATE_INCOMPLETE`. A bounded zero-edge oscillator window should remain visible
+with `INPUT_STUCK_LOW` or `SOURCE_HEALTH_SUSPECT`.
+
+Startup inhibit is represented by `STS` control-eligibility telemetry. It is not
+itself a reason to add a count-quality flag to an otherwise bounded raw `CNT`
+row.
 
 ## Status Stream Flags
 

@@ -2,9 +2,10 @@
 
 ## Scope
 
-This document defines the firmware and reporting contract for a future
-PPS-gated ratio count-observation backend. It is a design note only; it does
-not implement firmware, host analysis, or active DAC steering.
+This document defines the firmware and reporting contract for the PPS-gated
+ratio count-observation backend. Firmware support exists behind
+`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`; host analysis and active DAC
+steering remain separate.
 
 The backend must preserve the existing OTIS rule:
 
@@ -30,7 +31,7 @@ not be routed into the sparse GPIO IRQ or current PIO FIFO edge-queue path.
 
 ## RP2040 Hardware Blocks
 
-The intended implementation uses:
+The current implementation uses:
 
 - one sparse edge-capture path for PPS `REF` rows on `CH1`;
 - one PIO-backed counter path that counts oscillator rising edges on `CH2`;
@@ -38,11 +39,12 @@ The intended implementation uses:
 - foreground firmware service for translating completed gate observations into
   `CNT` and `STS` rows.
 
-The count path should be PIO-backed rather than the current FC0 helper because
-the gate is defined by external PPS edges, not by a firmware-selected fixed gate
-duration. The implementation must prove that the selected PIO program can
-observe a PPS gate input and count the oscillator input without losing the gate
-boundary or saturating the counter.
+The count path is PIO-backed rather than the current FC0 helper because the gate
+is defined by external PPS edges, not by a firmware-selected fixed gate
+duration. The current firmware qualifies PPS rising edges in foreground while
+preserving the sparse PPS `REF` capture path. Bench validation must still prove
+PPS edge ownership, counter start/stop latency, missing-PPS timeout behavior,
+and counter saturation handling before the backend is hardware-clean.
 
 The current sparse PIO FIFO backend is not this backend. It queues low-rate
 edges and attaches CPU-drain timestamps; it must not be used as a raw MHz edge
@@ -119,16 +121,20 @@ Required status keys:
 | Component | Key | Meaning |
 |---|---|---|
 | `pps_gate` | `backend` | selected backend name, expected `pps_gated_ratio` |
-| `pps_gate` | `state` | `idle`, `armed`, `open`, `complete`, `fault`, or `inhibit` |
+| `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
+| `pps_gate` | `valid` | latest bounded PPS-gated window validity |
 | `pps_gate` | `last_reason` | most recent validity/fault reason |
-| `pps_gate` | `last_interval_ticks` | latest accepted or rejected PPS interval in `rp2040_timer0` ticks |
+| `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
+| `pps_gate` | `last_interval_us` | latest accepted or rejected PPS interval in microseconds |
 | `pps_gate` | `accepted_window_count` | total accepted PPS-gated windows |
 | `pps_gate` | `rejected_window_count` | total rejected PPS-gated windows |
 | `pps_gate` | `consecutive_bad_window_count` | consecutive invalid PPS-gated windows |
 | `pps_gate` | `total_bad_window_count` | lifetime invalid PPS-gated windows in this boot |
 | `pps_gate` | `missing_pps_count` | gates abandoned or withheld because no stop PPS arrived in time |
-| `pps_gate` | `pps_glitch_count` | PPS intervals rejected as implausibly short, long, or nonmonotonic |
+| `pps_gate` | `pps_interval_anomaly_count` | PPS intervals rejected as implausibly short, long, or nonmonotonic |
 | `pps_gate` | `count_saturated_count` | oscillator counter saturation or overflow events |
+| `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
+| `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
 | `fc0` | `fc0_observed_valid` | compatibility status for raw count-observation validity |
 | `fc0` | `fc0_valid_for_control` | compatibility status for post-inhibit clean-window qualification |
 | `fc0` | `fc0_fault` | compatibility status for post-inhibit invalid count windows |
@@ -145,8 +151,8 @@ be emitted, and with `STS` rows when no honest `CNT` row exists.
 
 | Condition | `CNT` behavior | `STS` behavior |
 |---|---|---|
-| missing stop PPS | do not emit a clean `CNT`; emit a flagged partial row only if a deterministic timeout close tick is part of the implementation contract | increment `missing_pps_count`, reject the gate, set `last_reason=missing_pps` |
-| PPS glitch or nonmonotonic PPS | emit affected bounded gate with `REFERENCE_VALIDITY_SUSPECT` and `GATE_INCOMPLETE` if both boundaries are known | increment `pps_glitch_count` and bad-window counters |
+| missing stop PPS | do not emit a clean `CNT`; current firmware reports `STS` only for the incomplete gate | increment `missing_pps_count`, reject the gate, set `last_reason=missing_pps` |
+| PPS interval anomaly | emit affected bounded gate with `REFERENCE_VALIDITY_SUSPECT` and `GATE_INCOMPLETE` if both boundaries are known | increment `pps_interval_anomaly_count` and bad-window counters |
 | count overflow or saturation | emit the row with `COUNT_SATURATED` and the best available saturated count value | increment `count_saturated_count`, reject for control |
 | zero counted edges | emit `CNT` with `SOURCE_HEALTH_SUSPECT` and, when the input appears stuck low, `INPUT_STUCK_LOW` | increment bad-window counters, set `last_reason=counted_edge_zero` |
 | startup inhibit active | emit `CNT` with normal raw validity flags; do not add fault flags solely because of startup | set `fc0_valid_for_control=0`, report inhibit state |
@@ -191,7 +197,7 @@ control-eligible.
 
 ## Compile-Time Selection
 
-The proposed selector is:
+The selector is:
 
 ```cpp
 #define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
@@ -206,23 +212,22 @@ This selector belongs beside the current count-observation backend choices:
 
 It applies to count-observation modes such as `SW1_TCXO_OBSERVE` and
 `H1_OCXO_OBSERVE_OPEN_LOOP`. It also requires a valid PPS input on `D14` /
-GPIO26. Builds that select this backend without a PPS-capable bring-up mode
-should fail at compile time or emit fatal boot status and avoid producing
-misleading `CNT` rows.
+GPIO26. Without PPS, firmware reports `pps_gate/missing_pps_count` and withholds
+clean PPS-gated `CNT` rows.
 
 ## Implementation Checklist
 
-- Add the backend selector and compile-time validation in `otis_config.h`.
-- Extend the count-observation module rather than moving logic back into the
-  `.ino` sketch.
-- Define the PIO program and prove it can gate on PPS while counting the
-  oscillator input at the target frequency.
-- Define counter width, rollover, saturation, and timeout behavior before
-  emitting any row.
+- Backend selector and compile-time validation exist in `otis_config.h`.
+- Count-observation logic lives in the extracted count-observation module, not
+  in the `.ino` sketch.
+- Current firmware uses a PIO oscillator counter and foreground PPS edge
+  qualification; bench validation still needs to prove hardware-clean timing.
+- Counter width, rollover, saturation, and timeout behavior are explicit in
+  firmware and status telemetry.
 - Keep PPS `REF` row ownership single and explicit; do not double-emit or race
   the existing capture backend.
 - Emit `CNT` rows only for bounded observations with honest gate boundaries.
-- Emit `STS` rows for missing PPS, PPS glitches, count saturation, startup
+- Emit `STS` rows for missing PPS, PPS interval anomalies, count saturation, startup
   inhibit, control qualification, and bad-window counters.
 - Preserve existing `CNT` column meanings and avoid adding calibrated frequency
   fields to firmware rows.
@@ -231,12 +236,12 @@ misleading `CNT` rows.
 - Capture a bench run with PPS wired and oscillator input wired before marking
   the backend hardware-clean.
 
-## Open Questions Before Implementation
+## Open Bench Questions
 
-- Which exact PIO program and pin mapping will meet the oscillator frequency,
-  PPS gate, and counter-width requirements on the Nano RP2040 Connect?
-- Should a missing stop PPS emit a flagged partial `CNT` with a timeout close
-  tick, or only `STS` fault telemetry?
+- Does foreground PPS edge qualification produce acceptable start/stop latency
+  for the intended PPS-gated ratio run, or is a hardware-latched PPS gate needed?
+- Should a later implementation emit a flagged partial `CNT` with a timeout
+  close tick, or keep the current `STS`-only missing-stop-PPS policy?
 - What PPS interval tolerances should be defaults for GPS PPS, and should they
   be compile-time constants or manifest-configured host expectations?
 - How should host reports name the backend-generic replacements for historical

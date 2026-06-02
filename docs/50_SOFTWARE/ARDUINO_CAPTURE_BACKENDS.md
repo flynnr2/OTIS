@@ -76,8 +76,8 @@ is still CPU-drained.
 Guardrail: this backend is for sparse edge observation only. Acceptable inputs
 are GPS PPS, slow GPIO loopback, and future low-rate event edges. It must not be
 used to enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on `D8` /
-`GPIO20` / `GPIN0` belongs on the RP2040 frequency-counter / FC0 /
-gated-count path and should be emitted as count observations.
+`GPIO20` / `GPIN0` belongs on a count-observation backend such as FC0/GPIN0,
+PIO long-gate, or PPS-gated ratio, and should be emitted as `CNT` observations.
 
 PIO status counters are owned by `otis_capture_pio.cpp`:
 
@@ -256,11 +256,16 @@ GPIN0/FC0 observation is therefore relevant to oscillator validation and wiring
 confidence, but it does not replace the future PIO/DMA per-edge timestamp
 backend.
 
+The full count-observation measurement contract across FC0/GPIN0, GPIO IRQ,
+PIO long-gate, and PPS-gated ratio backends is documented in
+`COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`.
+
 ## PPS-Gated Ratio Count Backend
 
-The planned PPS-gated ratio backend is a count-observation backend, not an
-`EVT` / `REF` edge-capture backend. Its design is documented in
-`PPS_GATED_RATIO_BACKEND_DESIGN.md`.
+The PPS-gated ratio backend is a count-observation backend, not an `EVT` /
+`REF` edge-capture backend. Its design is documented in
+`PPS_GATED_RATIO_BACKEND_DESIGN.md`, and its stable measurement contract is
+documented in `COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`.
 
 Expected boundary:
 
@@ -273,12 +278,10 @@ PPS-gated oscillator counter on CH2
   -> emits pps_gate / count-observation STS telemetry
 ```
 
-The backend selector should be added beside the existing
-`OTIS_TCXO_COUNTER_BACKEND_*` choices as
-`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. The Arduino sketch should keep the
-same high-level service-loop role; PPS gate state, oscillator count state,
-bad-window counters, and control-qualification bookkeeping belong inside the
-count-observation module.
+The backend selector is `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. The
+Arduino sketch keeps the same high-level service-loop role; PPS gate state,
+oscillator count state, bad-window counters, and control-qualification
+bookkeeping belong inside the count-observation module.
 
 The backend must keep `CNT` semantics stable:
 
@@ -288,11 +291,11 @@ The backend must keep `CNT` semantics stable:
 - `source_domain` identifies the oscillator source;
 - calibrated frequency, ratio, and ppm remain host-derived products.
 
-The implementation must also keep PPS `REF` row ownership explicit. If the
-PPS-gated PIO path consumes PPS edges directly, it must either share those edge
-observations with the existing REF emitter or clearly replace the REF capture
-owner for that build. It must not double-emit PPS rows or race two independent
-owners for the same physical input.
+The current implementation keeps PPS `REF` capture on the sparse edge-capture
+backend and uses foreground PPS edge qualification to start and stop the PIO
+oscillator counter. PPS-gated `CNT` rows therefore carry reconstructed
+`rp2040_timer0` gate timestamps until a later hardware-latched PPS gate
+implementation is proven.
 
 ## Non-Goals For This Stage
 
