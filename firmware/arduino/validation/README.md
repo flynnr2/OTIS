@@ -3,6 +3,10 @@
 This directory captures the pre-refactor SW1 behavior for
 `firmware/arduino/otis_nano_rp2040_connect`.
 
+For the current full bench checklist, including compile matrix, host capture,
+H1 characterization, anomaly telemetry, and PPS-gated ratio acceptance gates,
+see `END_TO_END_VALIDATION_PLAN.md`.
+
 Use this as the R0 baseline process before changing firmware internals. The
 goal is to preserve raw serial output and generated parser artifacts so later
 refactor commits can be compared against known-good SW1 behavior.
