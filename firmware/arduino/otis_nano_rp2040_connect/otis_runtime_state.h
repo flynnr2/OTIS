@@ -64,6 +64,7 @@ struct OtisTcxoRuntimeState {
   uint32_t last_min_sample_khz;
   uint32_t last_max_sample_khz;
   uint32_t last_window_flags;
+  const char *last_window_invalid_reason;
   uint32_t consecutive_bad_windows;
   uint32_t total_bad_windows;
   uint32_t startup_inhibit_start_ms;

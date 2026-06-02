@@ -55,6 +55,7 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.last_min_sample_khz = 0;
   state->tcxo.last_max_sample_khz = 0;
   state->tcxo.last_window_flags = 0;
+  state->tcxo.last_window_invalid_reason = "no_samples";
   state->tcxo.consecutive_bad_windows = 0;
   state->tcxo.total_bad_windows = 0;
   state->tcxo.startup_inhibit_start_ms = 0;

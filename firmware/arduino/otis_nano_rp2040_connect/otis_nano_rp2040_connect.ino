@@ -1177,13 +1177,13 @@ void emit_fc0_status(void) {
                   runtime_state.tcxo.last_window_flags);
   emit_status_u32("fc0", "last_window_flags",
                   runtime_state.tcxo.last_window_flags,
-                  runtime_state.tcxo.last_zero_sample_count == 0u
+                  runtime_state.tcxo.last_observation_valid
                       ? OTIS_SEVERITY_INFO
                       : OTIS_SEVERITY_WARN,
                   runtime_state.tcxo.last_window_flags);
   emit_status("fc0", "last_window_invalid_reason",
               otis_count_observation_window_invalid_reason(&runtime_state),
-              runtime_state.tcxo.last_zero_sample_count == 0u
+              runtime_state.tcxo.last_observation_valid
                   ? OTIS_SEVERITY_INFO
                   : OTIS_SEVERITY_WARN,
               runtime_state.tcxo.last_window_flags);
