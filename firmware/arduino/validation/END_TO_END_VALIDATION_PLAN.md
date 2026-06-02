@@ -1,0 +1,383 @@
+# OTIS End-to-End Validation Plan
+
+This plan validates the current Arduino Nano RP2040 Connect firmware and host
+tooling after the count-observation refactor and anomaly telemetry work. It is a
+bench execution checklist, not a firmware feature request.
+
+The validation owner should record the git commit, Arduino core version, board
+serial/device path, wiring, oscillator/reference source, capture duration, and
+all command output for every run. Raw serial logs are the behavioral source of
+truth; generated CSV and reports are derived evidence.
+
+## Pass/Fail Policy
+
+A validation leg passes only when all of these are true:
+
+- firmware compiles with the intended mode/backend flags;
+- `BOOT` appears and `BOOT_FATAL` does not appear;
+- serial output remains parseable as ordinary OTIS CSV/boot records;
+- expected `EVT`, `REF`, `CNT`, `STS`, `DAC`, or `ENV` families appear for the
+  selected mode;
+- `capture,dropped_count` is zero for representative runs;
+- PIO runs report `capture,pio_fifo_overflow_drop_count=0` when that status key
+  is present;
+- count-window anomalies are explicit in `CNT` flags and `STS` rows, never
+  hidden by suppressed `CNT` rows;
+- `python3 -m host.otis_tools.validate_run <run_dir>` exits zero;
+- `python3 -m host.otis_tools.report_run <run_dir>` produces a report with no
+  unexplained validation findings.
+
+Fail the run and preserve artifacts when any of these occur:
+
+- boot fatal, repeated reset loop, or serial framing loss;
+- malformed CSV rows or unknown record tags;
+- missing required record family for the mode;
+- unflagged zero `counted_edges`;
+- non-positive count gate windows;
+- PPS cadence outside host sanity bounds after the startup interval;
+- post-startup `fc0_fault=true` without an intentional anomaly test;
+- `capture,dropped_count` or PIO FIFO overflow is nonzero.
+
+## No-Hardware Dry Checks
+
+Run these before any bench time:
+
+```bash
+python3 -m pytest
+
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt \
+  --profile synthetic
+
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/gpio_loopback_sw1_excerpt.txt \
+  --profile gpio_loopback
+
+python3 tools/otis_wire_validate.py \
+  firmware/arduino/validation/golden/gpin0_observe_sw1_excerpt.txt \
+  --profile gpin0_observe
+
+python3 -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
+python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
+```
+
+Expected result: all commands exit zero. The report command writes Markdown to
+stdout and should include raw event, count observation, and health summaries.
+
+## Compile Matrix
+
+Compile every row before uploading any firmware. Keep the exact command in the
+run notes.
+
+| Leg | Purpose | Command | Pass criteria |
+| --- | --- | --- | --- |
+| Default | Current default H1 open-loop build | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| Synthetic USB | USB/parser sanity | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_SYNTHETIC_USB firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| GPIO loopback | Local CH0 capture | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| GPS PPS IRQ | CH1 PPS capture | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| GPS PPS PIO FIFO | Sparse-reference PIO path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| TCXO FC0 | Existing H0 count path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| H1 PIO long-gate | Raw OCXO long-gate path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_DAC_AD5693R=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| GPIO IRQ count backend | Divided oscillator test path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
+| PPS-gated ratio backend | PPS-gated count ratio path | Use the landed backend selector, expected to be named like `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. If no such selector exists in `firmware/arduino/otis_nano_rp2040_connect/otis_config.h`, mark this leg blocked, not passed. | Build exits zero and boot status reports the PPS-gated backend name. |
+
+## Run Directory and Capture Pattern
+
+For short validation captures, the existing monitor-to-splitter path is enough:
+
+```bash
+arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
+  | python3 -m host.otis_tools.capture_serial \
+      --template examples/h0_gps_pps \
+      --run-dir runs/validation/gps_pps_run_001 \
+      --run-id gps_pps_run_001
+```
+
+For longer H1 and anomaly runs, prefer `capture_device` so raw serial, CSV
+splitting, host status, reconnect markers, and optional command FIFO handling
+are captured in one place:
+
+```bash
+python3 -m host.otis_tools.capture_device \
+  --device /dev/cu.usbmodemXXXX \
+  --run-dir runs/validation/h1_long_gate_run_001 \
+  --command-fifo runs/validation/h1_long_gate_run_001/commands.fifo
+```
+
+After every run:
+
+```bash
+python3 -m host.otis_tools.validate_run runs/validation/<run_id>
+python3 -m host.otis_tools.report_run runs/validation/<run_id>
+```
+
+Pass criteria: validation exits zero; report generation completes; raw serial,
+CSV files, manifest, and report output are retained.
+
+## Bench Leg 1: Synthetic USB Sanity
+
+Purpose: prove USB serial, boot/status records, headers, parser compatibility,
+and deterministic synthetic `EVT`, `REF`, and `CNT` rows.
+
+Wiring: USB only.
+
+Duration: 10 to 20 seconds after boot.
+
+Firmware: compile/upload `OTIS_SW1_MODE_SYNTHETIC_USB`.
+
+Expected telemetry:
+
+- `system,mode=SW1_SYNTHETIC_USB`;
+- CSV header rows for raw events, count observations, health, DAC, and ENV when
+  enabled;
+- synthetic `EVT`, `REF`, and `CNT` rows;
+- no `BOOT_FATAL`;
+- no parser errors.
+
+Pass criteria: `tools/otis_wire_validate.py --profile synthetic` passes on the
+raw log and host run validation/report commands pass.
+
+## Bench Leg 2: GPIO Loopback
+
+Purpose: prove live local GPIO edge capture without external timing hardware.
+
+Wiring:
+
+- jumper `D7` to `D10`;
+- no oscillator input required;
+- USB connected.
+
+Duration: at least 60 seconds.
+
+Firmware: compile/upload `OTIS_SW1_MODE_GPIO_LOOPBACK`.
+
+Expected telemetry:
+
+- `system,mode=SW1_GPIO_LOOPBACK`;
+- live `EVT` rows on `CH0`;
+- monotonic `event_seq`;
+- `capture,dropped_count=0`;
+- if PIO FIFO is enabled, `capture,pio_fifo_overflow_drop_count=0`.
+
+Pass criteria: host validation/report pass; expected CH0 `EVT` rows are present.
+
+## Bench Leg 3: GPS PPS Reference Capture
+
+Purpose: prove reference capture on `CH1`.
+
+Wiring:
+
+- conditioned GPS PPS to `D14` / GPIO26 / `CH1`;
+- common ground between GPS/reference source and RP2040 board;
+- use a 3.3 V logic-safe PPS input.
+
+Duration: minimum 120 seconds after GPS has a stable PPS. Prefer 10 minutes for
+representative PPS cadence evidence.
+
+Firmware: compile/upload `OTIS_SW1_MODE_GPS_PPS`; run both IRQ and PIO FIFO
+variants if bench time permits.
+
+Expected telemetry:
+
+- `system,mode=SW1_GPS_PPS`;
+- rising-edge `REF` rows on `CH1`;
+- PPS intervals approximately one second in `rp2040_timer0` ticks;
+- no unexpected `EVT` or `CNT` requirement for this mode;
+- no capture drops or PIO overflow.
+
+Pass criteria: host PPS cadence validation passes after startup; report shows
+reference/PPS summary without unexplained anomalies.
+
+## Bench Leg 4: TCXO/OCXO Count Observation, Existing Backend
+
+Purpose: prove the current FC0/GPIN0 count-observation path and anomaly
+telemetry before testing PPS-gated ratio behavior.
+
+Wiring:
+
+- oscillator output conditioned to 3.3 V logic and connected to `D8` / GPIO20 /
+  GPIN0 / `CH2`;
+- optional GPS PPS on `D14` / `CH1`;
+- common ground across oscillator, conditioner, reference, and RP2040 board.
+
+Duration: minimum 15 minutes for startup-inhibit and clean-window evidence.
+Use at least 60 seconds for a quick smoke run.
+
+Firmware: compile/upload `OTIS_SW1_MODE_TCXO_OBSERVE` using the default
+FC0/GPIN0 backend.
+
+Expected telemetry:
+
+- `CNT` rows on `CH2`;
+- `source_domain=h0_tcxo_16mhz` for H0 TCXO runs;
+- `fc0,window_invalid_reason=none` on clean windows;
+- `fc0,fc0_observed_valid=true` once clean observations are present;
+- `fc0,fc0_valid_for_control=true` only after startup inhibit and clean-window
+  qualification;
+- `fc0,fc0_fault=false` after clean post-inhibit windows.
+
+Pass criteria: host validation/report pass, no unflagged zero counts, no
+post-startup `fc0_fault=true` in a nominal run.
+
+## Bench Leg 5: PIO Long-Gate H1 Mode
+
+Purpose: prove H1 raw-edge long-gate counting, PPS coexistence, DAC telemetry,
+and H1 characterization summary.
+
+Wiring:
+
+- H1 OCXO output conditioned to 3.3 V logic and connected to `D8` / GPIO20 /
+  GPIN0 / `CH2`;
+- GPS PPS or lab PPS to `D14` / `CH1`;
+- AD5693R DAC on I2C if DAC telemetry/sweep validation is in scope;
+- common ground across all equipment;
+- verify conditioning does not invert or divide unexpectedly, or document the
+  inversion/division ratio in run notes.
+
+Duration:
+
+- smoke: at least two H1 long gates, currently at least 10 minutes with the
+  default 300 s long gate;
+- characterization: at least the loaded sweep dwell plan plus warmup. Prefer
+  60 minutes or longer for stable slope/drift evidence.
+
+Firmware: compile/upload `OTIS_SW1_MODE_H1_OCXO_OBSERVE` with
+`OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`.
+
+Expected telemetry:
+
+- `capture,tcxo_counter_backend=pio_long_gate_gpio20`;
+- `CNT` rows on `CH2` with `source_domain=h1_ocxo_open_loop`;
+- `REF` rows on `CH1` when PPS is wired;
+- `STS` rows for `fc0,last_window_invalid_reason`,
+  `fc0,consecutive_bad_windows`, `fc0,total_bad_windows`, and `fc0,fc0_fault`;
+- DAC `STS`/`DAC` rows if DAC is enabled;
+- no post-startup invalid windows in a nominal run.
+
+Post-run commands:
+
+```bash
+python3 -m host.otis_tools.validate_run runs/validation/h1_long_gate_run_001
+python3 -m host.otis_tools.report_run runs/validation/h1_long_gate_run_001
+python3 -m host.otis_tools.h1_characterize runs/validation/h1_long_gate_run_001 --nominal-hz 10000000
+```
+
+Pass criteria: validation/report pass; H1 characterization writes its summary
+and points artifacts; the report identifies PPS-calibrated clock use when valid
+PPS rows exist.
+
+## Bench Leg 6: PPS-Gated Ratio Backend
+
+Purpose: prove the new PPS-gated count ratio backend is hardware-clean before
+using it as a metrology path.
+
+Prerequisite: `firmware/arduino/otis_nano_rp2040_connect/otis_config.h` must
+define a dedicated PPS-gated ratio backend selector and
+`otis_count_observation.cpp` must report a distinct backend name in `STS`.
+If the selector is absent in the current checkout, this leg is blocked.
+
+Wiring:
+
+- PPS/reference to `D14` / `CH1`;
+- oscillator-under-test conditioned to `D8` / GPIO20 / `CH2`;
+- common ground;
+- stable PPS source already locked before capture starts.
+
+Duration:
+
+- smoke: 120 seconds;
+- acceptance: 30 minutes minimum;
+- soak: 2 to 4 hours before relying on the backend for future design decisions.
+
+Expected telemetry:
+
+- backend-specific `STS` reports the PPS-gated ratio backend;
+- `REF` rows on `CH1` and `CNT` rows on `CH2`;
+- count windows align to valid PPS intervals by construction or are explicitly
+  flagged as invalid;
+- no unflagged zero `counted_edges`;
+- no non-positive or implausible gate duration findings;
+- `fc0,post_startup_invalid_window=false` in nominal operation.
+
+Pass criteria:
+
+- compile, host validation, report generation, and H1 characterization pass;
+- count-derived frequency agrees with the existing FC0 or PIO long-gate backend
+  within the expected bench tolerance recorded in the run notes;
+- anomaly counters remain zero after startup in a nominal run.
+
+Rollback criteria:
+
+- If PPS-gated runs show missing PPS, unstable PPS interval selection,
+  non-positive windows, unflagged zero counts, unexplained count discontinuity,
+  post-startup invalid windows, or disagreement with the existing backend beyond
+  bench tolerance, do not use the PPS-gated backend for characterization.
+- Rebuild with `OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0`
+  for H0 TCXO or `OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`
+  for H1 OCXO.
+- Preserve the failed PPS-gated raw log and report as a fault fixture candidate.
+
+## Bench Leg 7: Host Capture, Validation, and Reporting
+
+Purpose: prove the host pipeline can ingest, split, validate, and summarize all
+bench modes.
+
+For each run:
+
+```bash
+python3 -m host.otis_tools.validate_run runs/validation/<run_id>
+python3 -m host.otis_tools.report_run runs/validation/<run_id>
+```
+
+Expected output:
+
+- `OK ...` lines for each required CSV contract;
+- report includes raw event summary, reference/PPS summary, count observation
+  summary, health status summary, and anomalies section;
+- H1 runs include PPS-calibrated count/frequency context when usable PPS rows
+  exist.
+
+Pass criteria: both commands exit zero and any report anomaly is explained in
+the operator notes.
+
+## Bench Leg 8: Anomaly and Fault Reporting
+
+Purpose: prove invalid observations are emitted, flagged, and visible in host
+reports.
+
+Nominal anomaly injections:
+
+- no oscillator connected for one count window;
+- oscillator disconnected after startup inhibit has elapsed;
+- PPS disconnected during a PPS-gated ratio run;
+- deliberately invalid divided GPIO IRQ count source if using
+  `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`.
+
+Expected telemetry:
+
+- raw `CNT` rows are still emitted;
+- `flags` include the appropriate invalid bit such as
+  `SOURCE_HEALTH_SUSPECT`, `INPUT_STUCK_LOW`, or `GATE_INCOMPLETE`;
+- `fc0,window_invalid_reason` or `fc0,last_window_invalid_reason` names the
+  condition;
+- `fc0,consecutive_bad_windows` and `fc0,total_bad_windows` increase;
+- after startup inhibit, `fc0,post_startup_invalid_window=true` and
+  `fc0,fc0_fault=true` for invalid windows.
+
+Pass criteria: anomaly state is visible as ordinary `STS` rows and report
+findings match the injected fault. No invalid observation may disappear by
+suppressing `CNT`.
+
+## Recommended First Bench Run
+
+Start with the lowest-risk full pipeline:
+
+1. Compile and upload `OTIS_SW1_MODE_SYNTHETIC_USB`.
+2. Capture 10 to 20 seconds over USB only.
+3. Run `tools/otis_wire_validate.py --profile synthetic` on the raw log.
+4. Run `host.otis_tools.validate_run` and `host.otis_tools.report_run`.
+
+Only after that passes, run GPIO loopback for 60 seconds, then GPS PPS for 120
+seconds, then TCXO/OCXO count observation. Do not begin PPS-gated ratio
+acceptance until the existing FC0/PIO count backend is clean on the same bench
+wiring.
