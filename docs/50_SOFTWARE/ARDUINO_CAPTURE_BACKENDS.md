@@ -256,6 +256,44 @@ GPIN0/FC0 observation is therefore relevant to oscillator validation and wiring
 confidence, but it does not replace the future PIO/DMA per-edge timestamp
 backend.
 
+## PPS-Gated Ratio Count Backend
+
+The planned PPS-gated ratio backend is a count-observation backend, not an
+`EVT` / `REF` edge-capture backend. Its design is documented in
+`PPS_GATED_RATIO_BACKEND_DESIGN.md`.
+
+Expected boundary:
+
+```text
+PPS REF capture on CH1
+  -> remains visible as REF rows
+
+PPS-gated oscillator counter on CH2
+  -> emits bounded raw CNT rows
+  -> emits pps_gate / count-observation STS telemetry
+```
+
+The backend selector should be added beside the existing
+`OTIS_TCXO_COUNTER_BACKEND_*` choices as
+`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. The Arduino sketch should keep the
+same high-level service-loop role; PPS gate state, oscillator count state,
+bad-window counters, and control-qualification bookkeeping belong inside the
+count-observation module.
+
+The backend must keep `CNT` semantics stable:
+
+- `gate_open_ticks` and `gate_close_ticks` describe the accepted PPS gate
+  boundaries in the declared `gate_domain`;
+- `counted_edges` is the raw oscillator edge count during that gate;
+- `source_domain` identifies the oscillator source;
+- calibrated frequency, ratio, and ppm remain host-derived products.
+
+The implementation must also keep PPS `REF` row ownership explicit. If the
+PPS-gated PIO path consumes PPS edges directly, it must either share those edge
+observations with the existing REF emitter or clearly replace the REF capture
+owner for that build. It must not double-emit PPS rows or race two independent
+owners for the same physical input.
+
 ## Non-Goals For This Stage
 
 This stage does not implement:

@@ -56,6 +56,13 @@ Preferred approaches:
 - divider chains;
 - hardware counters with explicit observation windows.
 
+The planned PPS-gated ratio backend follows this count-observation rule: PPS
+edges on `CH1` define the gate, oscillator edges on `CH2` are counted during the
+gate, PPS edges remain visible as `REF` rows, and firmware emits the raw
+observation as a `CNT` row rather than a calibrated frequency. Host analysis may
+derive oscillator ratio, frequency, and ppm from the `REF` and `CNT` streams.
+See `PPS_GATED_RATIO_BACKEND_DESIGN.md`.
+
 ## Frozen SW1 H0 Inputs
 
 The SW1 Arduino Nano RP2040 Connect live-capture convention is:
@@ -89,6 +96,11 @@ modes:
 | `SW1_GPIO_LOOPBACK` | `D7` output jumpered to `D10` produces live `EVT` rows on `CH0` with increasing sequence numbers and timestamps |
 | `SW1_GPS_PPS` | GPS PPS on `D14` produces `REF` rows on `CH1`; host cadence sanity is approximately 1 Hz |
 | `SW1_TCXO_OBSERVE` | TCXO observation on `D8` / `GPIO20` / `GPIN0` produces `CNT` rows on `CH2` through the RP2040 frequency counter by default, and GPS PPS on `CH1` is captured when wired |
+
+`SW1_TCXO_OBSERVE` and `H1_OCXO_OBSERVE_OPEN_LOOP` may later select the
+PPS-gated ratio count backend with
+`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. That selector changes how the
+`CNT` gate is formed; it does not change `CNT` into a derived frequency record.
 
 The live interrupt path is a first SW1 bring-up mechanism. It emits canonical
 records with explicit provenance, including `TIMESTAMP_RECONSTRUCTED` where the

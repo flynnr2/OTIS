@@ -89,6 +89,14 @@ estimate the actual RP2040 tick rate before converting RP2040-gated count
 windows to seconds. Reports must preserve that as a derived calibration, not as
 raw timestamp truth.
 
+For the planned PPS-gated ratio backend, PPS edges define count-window
+boundaries but do not turn `rp2040_timer0` ticks into PPS-domain timestamps.
+Firmware should emit the raw oscillator count and the gate boundary ticks in the
+declared gate domain. Host analysis may then derive PPS-normalized ratio,
+frequency, and ppm from the visible `REF` and `CNT` streams. Those derived
+values must remain replayable products rather than replacements for raw `CNT`
+fields.
+
 The intended GPSDO/VCOCXO architecture is a parallel timing fabric: pulses of
 interest should be stamped in a timer domain derived from the GPSDO'd VCOCXO.
 The RP2040 board clock should not be used as the event-stamping timebase for

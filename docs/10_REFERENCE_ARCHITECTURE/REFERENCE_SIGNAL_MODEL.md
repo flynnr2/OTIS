@@ -34,6 +34,12 @@ GNSS PPS
   -> captured as a reference event
   -> used for epoching, interval comparison, and later discipline analysis
 
+GNSS PPS + TCXO / OCXO count input
+  -> PPS remains a REF observation
+  -> PPS edges may define a count gate
+  -> oscillator edges are counted inside the gate
+  -> firmware emits raw CNT evidence, host derives ratio/frequency
+
 External event inputs
   -> conditioning / comparator / buffer
   -> RP2040 GPIO / PIO
@@ -94,6 +100,12 @@ Later OTIS stages may add:
 
 Those stages should still preserve the raw reference observations that justified
 any estimator, lock-state, or DAC decision.
+
+The planned PPS-gated ratio backend follows the same rule. PPS can be used as a
+gate reference for oscillator counting, but the PPS evidence should still appear
+as `REF` rows and the oscillator observation should still appear as raw `CNT`
+rows. Firmware must not hide the PPS assumption by emitting only a calibrated
+frequency.
 
 A disciplined oscillator may become part of a future timing fabric, but that is a
 later architecture choice, not a Stage 1 assumption.

@@ -135,6 +135,29 @@ Initial gate defaults:
 This gate must be implemented as metadata/status around raw observations. Do not
 delete or suppress startup CNT/REF rows in capture artifacts.
 
+## PPS-Gated Ratio Backend Readiness
+
+The planned PPS-gated ratio backend may improve the raw evidence available to
+future SW2 design, but it does not make active GPSDO steering ready by itself.
+The backend should produce raw PPS-gated `CNT` observations and explicit
+`pps_gate` / count-observation `STS` telemetry. Host tools may derive
+frequency, ratio, and ppm from those observations.
+
+Control-readiness semantics must remain conservative:
+
+- a PPS-gated `CNT` row is not automatically control-eligible;
+- PPS/reference validity and oscillator-count validity are both required;
+- startup inhibit and clean-window qualification still apply;
+- a clean oscillator count with suspect PPS is invalid for control;
+- a clean PPS interval with zero, saturated, or missing oscillator count is
+  invalid for control.
+
+The existing `fc0_observed_valid`, `fc0_valid_for_control`, and `fc0_fault`
+telemetry names remain compatibility surfaces until host tooling migrates to
+backend-generic names. Internally, new PPS-gated implementation work should keep
+this logic in the count-observation module, not in the Arduino sketch or DAC
+state machine.
+
 ## Safe Operating Envelope
 
 The only envelope suitable for SW2 design discussion is:
