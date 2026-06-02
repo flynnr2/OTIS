@@ -4,6 +4,7 @@
 Data/
 tmp/
 runs/
+codex_prompts/
 
 #######################################
 # OS junk
