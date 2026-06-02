@@ -1,8 +1,9 @@
 # OTIS End-to-End Validation Plan
 
 This plan validates the current Arduino Nano RP2040 Connect firmware and host
-tooling after the count-observation refactor and anomaly telemetry work. It is a
-bench execution checklist, not a firmware feature request.
+tooling after the count-observation refactor, anomaly telemetry, host reporting,
+PPS-gated ratio backend implementation, and measurement-contract documentation.
+It is a bench execution checklist, not a firmware feature request.
 
 The validation owner should record the git commit, Arduino core version, board
 serial/device path, wiring, oscillator/reference source, capture duration, and
@@ -43,6 +44,12 @@ Fail the run and preserve artifacts when any of these occur:
 Run these before any bench time:
 
 ```bash
+python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
+```
+
+The script expands to:
+
+```bash
 python3 -m pytest
 
 python3 tools/otis_wire_validate.py \
@@ -63,11 +70,16 @@ python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
 
 Expected result: all commands exit zero. The report command writes Markdown to
 stdout and should include raw event, count observation, and health summaries.
+The example run may warn about intentionally unpopulated fixture provenance or a
+missing `COMPLETE` marker; those warnings are acceptable for this dry check.
 
 ## Compile Matrix
 
 Compile every row before uploading any firmware. Keep the exact command in the
 run notes.
+
+Run compile commands sequentially or provide distinct `--build-path`
+directories; parallel Arduino CLI builds can collide in the shared sketch cache.
 
 | Leg | Purpose | Command | Pass criteria |
 | --- | --- | --- | --- |
@@ -79,7 +91,7 @@ run notes.
 | TCXO FC0 | Existing H0 count path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
 | H1 PIO long-gate | Raw OCXO long-gate path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_DAC_AD5693R=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
 | GPIO IRQ count backend | Divided oscillator test path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| PPS-gated ratio backend | PPS-gated count ratio path | Use the landed backend selector, expected to be named like `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`. If no such selector exists in `firmware/arduino/otis_nano_rp2040_connect/otis_config.h`, mark this leg blocked, not passed. | Build exits zero and boot status reports the PPS-gated backend name. |
+| PPS-gated ratio backend | PPS-gated count ratio path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero and boot/status telemetry reports `capture,tcxo_counter_backend=pps_gated_ratio` plus `pps_gate,backend=pps_gated_ratio`. |
 
 ## Run Directory and Capture Pattern
 
@@ -271,10 +283,9 @@ PPS rows exist.
 Purpose: prove the new PPS-gated count ratio backend is hardware-clean before
 using it as a metrology path.
 
-Prerequisite: `firmware/arduino/otis_nano_rp2040_connect/otis_config.h` must
-define a dedicated PPS-gated ratio backend selector and
-`otis_count_observation.cpp` must report a distinct backend name in `STS`.
-If the selector is absent in the current checkout, this leg is blocked.
+Prerequisite: compile with
+`OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` and
+confirm boot/status telemetry names the PPS-gated backend.
 
 Wiring:
 
@@ -291,13 +302,22 @@ Duration:
 
 Expected telemetry:
 
-- backend-specific `STS` reports the PPS-gated ratio backend;
+- `capture,tcxo_counter_backend=pps_gated_ratio`;
+- `pps_gate,backend=pps_gated_ratio`;
+- `pps_gate,state` transitions through `armed` / `open` in nominal operation;
+- `pps_gate,valid=true` for bounded clean windows;
+- `pps_gate,ratio_available=true` for valid nonzero count windows;
+- `pps_gate,missing_pps_count=0` after startup in nominal operation;
+- `pps_gate,pps_interval_anomaly_count=0` after startup in nominal operation;
+- `pps_gate,count_saturated_count=0`;
+- `pps_gate,control_eligible=true` only after startup inhibit and clean-window
+  qualification;
 - `REF` rows on `CH1` and `CNT` rows on `CH2`;
 - count windows align to valid PPS intervals by construction or are explicitly
   flagged as invalid;
 - no unflagged zero `counted_edges`;
 - no non-positive or implausible gate duration findings;
-- `fc0,post_startup_invalid_window=false` in nominal operation.
+- `fc0,fc0_fault=false` in nominal operation.
 
 Pass criteria:
 
@@ -310,8 +330,9 @@ Rollback criteria:
 
 - If PPS-gated runs show missing PPS, unstable PPS interval selection,
   non-positive windows, unflagged zero counts, unexplained count discontinuity,
-  post-startup invalid windows, or disagreement with the existing backend beyond
-  bench tolerance, do not use the PPS-gated backend for characterization.
+  post-startup invalid windows, counter saturation, or disagreement with the
+  existing backend beyond bench tolerance, do not use the PPS-gated backend for
+  characterization.
 - Rebuild with `OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0`
   for H0 TCXO or `OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`
   for H1 OCXO.
@@ -355,7 +376,9 @@ Nominal anomaly injections:
 
 Expected telemetry:
 
-- raw `CNT` rows are still emitted;
+- raw `CNT` rows are still emitted for bounded invalid windows;
+- PPS missing-stop faults without an honest close boundary are reported through
+  `pps_gate` `STS` rows rather than a fabricated clean `CNT`;
 - `flags` include the appropriate invalid bit such as
   `SOURCE_HEALTH_SUSPECT`, `INPUT_STUCK_LOW`, or `GATE_INCOMPLETE`;
 - `fc0,window_invalid_reason` or `fc0,last_window_invalid_reason` names the
@@ -363,10 +386,12 @@ Expected telemetry:
 - `fc0,consecutive_bad_windows` and `fc0,total_bad_windows` increase;
 - after startup inhibit, `fc0,post_startup_invalid_window=true` and
   `fc0,fc0_fault=true` for invalid windows.
+- for PPS-gated missing-PPS injection, `pps_gate,missing_pps_count` increases
+  and `pps_gate,ratio_available=false`.
 
 Pass criteria: anomaly state is visible as ordinary `STS` rows and report
-findings match the injected fault. No invalid observation may disappear by
-suppressing `CNT`.
+findings match the injected fault. No bounded invalid observation may disappear
+by suppressing `CNT`.
 
 ## Recommended First Bench Run
 

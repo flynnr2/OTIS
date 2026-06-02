@@ -7,6 +7,15 @@ For the current full bench checklist, including compile matrix, host capture,
 H1 characterization, anomaly telemetry, and PPS-gated ratio acceptance gates,
 see `END_TO_END_VALIDATION_PLAN.md`.
 
+Before bench time, run the no-hardware validation script:
+
+```bash
+python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
+```
+
+It runs pytest, committed wire-format fixtures, and the example host
+validation/report path documented in the end-to-end plan.
+
 Use this as the R0 baseline process before changing firmware internals. The
 goal is to preserve raw serial output and generated parser artifacts so later
 refactor commits can be compared against known-good SW1 behavior.
