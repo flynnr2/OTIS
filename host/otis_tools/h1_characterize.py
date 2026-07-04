@@ -10,6 +10,8 @@ import sys
 import zlib
 
 from .run_loader import RunManifest, load_manifest
+from .pps_diagnostics import PpsIntervalClassification, classify_pps_interval
+from .sessions import RunSessionSummary, detect_run_sessions
 from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS, unwrap_ticks
 
 
@@ -17,7 +19,7 @@ COUNT_CONTRACT = "count_observations_v1"
 DAC_CONTRACT = "dac_steps_v1"
 ENV_CONTRACT = "environment_v1"
 RAW_EVENTS_CONTRACT = "raw_events_v1"
-DEFAULT_SETTLING_DISCARD_SECONDS = 0.0
+DEFAULT_SETTLING_DISCARD_SECONDS = 60.0
 DEFAULT_WARMUP_SECONDS = 1800.0
 DEFAULT_STABILITY_PPM = 0.1
 DEFAULT_STARTUP_INHIBIT_SECONDS = 600.0
@@ -38,6 +40,19 @@ class CountWindow:
     counted_edges: int
     measured_hz: float
     ppm: float | None
+
+
+@dataclass(frozen=True)
+class PpsAnomaly:
+    index: int
+    previous_event_seq: int
+    current_event_seq: int
+    domain: str
+    start_ticks: int
+    end_ticks: int
+    start_s: float | None
+    end_s: float | None
+    classification: PpsIntervalClassification
 
 
 @dataclass(frozen=True)
@@ -105,6 +120,8 @@ class CharacterizationPoint:
     env_temperature_max_c: float | None
     env_temperature_delta_c: float | None
     env_temperature_mean_c: float | None
+    pps_anomaly_count: int
+    quality: str
 
 
 @dataclass(frozen=True)
@@ -206,7 +223,9 @@ class H1Analysis:
     settling_discard_s: float
     warmup_s: float
     stability_ppm: float
+    session_summary: RunSessionSummary
     pps_clock: PpsClockEstimate | None
+    pps_anomalies: tuple[PpsAnomaly, ...]
     count_windows: tuple[CountWindow, ...]
     dac_events: tuple[DacEvent, ...]
     environment_samples: tuple[EnvironmentSample, ...]
@@ -432,12 +451,12 @@ def _estimate_pps_clock(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
     warnings: list[str],
-) -> PpsClockEstimate | None:
+) -> tuple[PpsClockEstimate | None, tuple[PpsAnomaly, ...]]:
     rows: list[dict[str, str]] = []
     for path in _ref_csv_paths(manifest):
         rows.extend(_read_csv(path))
     if not rows:
-        return None
+        return None, ()
 
     segments: list[list[tuple[int, int, str]]] = [[]]
     previous_seq: int | None = None
@@ -461,7 +480,7 @@ def _estimate_pps_clock(
     if skipped:
         warnings.append(f"ref.csv: skipped {skipped} REF row(s) without timestamp_ticks or capture_domain")
     if not populated:
-        return None
+        return None, ()
     if len(populated) > 1:
         warnings.append("ref.csv: multiple capture segments detected; using the final segment for PPS clock calibration")
 
@@ -469,23 +488,35 @@ def _estimate_pps_clock(
     domains = {domain for _, _, domain in segment}
     if len(domains) != 1:
         warnings.append("ref.csv: final REF segment spans multiple capture domains; PPS clock calibration unavailable")
-        return None
+        return None, ()
     domain = next(iter(domains))
     nominal_rate = gate_hz_by_domain.get(domain)
     if not nominal_rate:
         warnings.append(f"ref.csv: capture_domain={domain} has no nominal_hz; PPS clock calibration unavailable")
-        return None
+        return None, ()
 
     unwrapped, wrap_count = unwrap_ticks([ticks for _, ticks, _ in segment])
-    intervals = [float(current - previous) for previous, current in zip(unwrapped, unwrapped[1:])]
-    valid_intervals = [
-        interval
-        for interval in intervals
-        if 0.8 <= interval / nominal_rate <= 1.2
-    ]
+    intervals = [int(current - previous) for previous, current in zip(unwrapped, unwrapped[1:])]
+    classifications = [classify_pps_interval(interval, nominal_rate) for interval in intervals]
+    valid_intervals = [float(item.raw_interval_ticks) for item in classifications if item.usable_for_calibration]
+    anomalies = tuple(
+        PpsAnomaly(
+            index=index,
+            previous_event_seq=segment[index - 1][0],
+            current_event_seq=segment[index][0],
+            domain=domain,
+            start_ticks=unwrapped[index - 1],
+            end_ticks=unwrapped[index],
+            start_s=unwrapped[index - 1] / nominal_rate,
+            end_s=unwrapped[index] / nominal_rate,
+            classification=classification,
+        )
+        for index, classification in enumerate(classifications, start=1)
+        if not classification.usable_for_calibration
+    )
     if len(valid_intervals) < 2:
         warnings.append("ref.csv: insufficient sane PPS intervals for clock calibration")
-        return None
+        return None, anomalies
     if len(valid_intervals) != len(intervals):
         warnings.append(
             f"ref.csv: ignored {len(intervals) - len(valid_intervals)} PPS interval(s) outside 0.8..1.2 nominal seconds"
@@ -494,26 +525,29 @@ def _estimate_pps_clock(
     tick_rate = _mean(valid_intervals)
     median_rate = _median(valid_intervals)
     if tick_rate is None:
-        return None
+        return None, anomalies
     stddev_ticks = _stddev(valid_intervals)
     mad_ticks = _mad(valid_intervals)
     mean_ppm = 1_000_000.0 * (tick_rate - nominal_rate) / nominal_rate
     median_ppm = 1_000_000.0 * (median_rate - nominal_rate) / nominal_rate if median_rate is not None else None
-    return PpsClockEstimate(
-        domain=domain,
-        sample_count=len(segment),
-        interval_count=len(valid_intervals),
-        tick_rate_hz=tick_rate,
-        median_tick_rate_hz=median_rate,
-        nominal_tick_rate_hz=nominal_rate,
-        mean_ppm_vs_nominal=mean_ppm,
-        median_ppm_vs_nominal=median_ppm,
-        interval_stddev_ticks=stddev_ticks,
-        interval_mad_ticks=mad_ticks,
-        interval_stddev_us=stddev_ticks / tick_rate * 1_000_000.0 if stddev_ticks is not None else None,
-        interval_mad_us=mad_ticks / tick_rate * 1_000_000.0 if mad_ticks is not None else None,
-        wrap_count=wrap_count,
-        note="estimated from the final REF/PPS segment; count gates in this domain use this rate instead of nominal_hz",
+    return (
+        PpsClockEstimate(
+            domain=domain,
+            sample_count=len(segment),
+            interval_count=len(valid_intervals),
+            tick_rate_hz=tick_rate,
+            median_tick_rate_hz=median_rate,
+            nominal_tick_rate_hz=nominal_rate,
+            mean_ppm_vs_nominal=mean_ppm,
+            median_ppm_vs_nominal=median_ppm,
+            interval_stddev_ticks=stddev_ticks,
+            interval_mad_ticks=mad_ticks,
+            interval_stddev_us=stddev_ticks / tick_rate * 1_000_000.0 if stddev_ticks is not None else None,
+            interval_mad_us=mad_ticks / tick_rate * 1_000_000.0 if mad_ticks is not None else None,
+            wrap_count=wrap_count,
+            note="estimated from the final REF/PPS segment; count gates in this domain use this rate instead of nominal_hz",
+        ),
+        anomalies,
     )
 
 
@@ -809,6 +843,7 @@ def _summarize_group(
     samples: list[CountWindow],
     env_samples: list[EnvironmentSample],
     discarded_count: int,
+    pps_anomaly_count: int,
 ) -> CharacterizationPoint:
     hz_values = [sample.measured_hz for sample in samples]
     ppm_values = [sample.ppm for sample in samples if sample.ppm is not None]
@@ -839,6 +874,8 @@ def _summarize_group(
         env_temperature_max_c=temp_max,
         env_temperature_delta_c=temp_max - temp_min if temp_min is not None and temp_max is not None else None,
         env_temperature_mean_c=_mean(temp_values),
+        pps_anomaly_count=pps_anomaly_count,
+        quality="degraded" if pps_anomaly_count else "normal",
     )
 
 
@@ -847,6 +884,7 @@ def _build_points(
     events: tuple[DacEvent, ...],
     env_samples: tuple[EnvironmentSample, ...],
     settling_discard_s: float,
+    pps_anomalies: tuple[PpsAnomaly, ...],
 ) -> tuple[CharacterizationPoint, ...]:
     analysis_events = _analysis_dwell_events(events)
     assigned = _assigned_samples(counts, analysis_events)
@@ -856,7 +894,7 @@ def _build_points(
     ]
     if not analysis_events:
         return (
-            _summarize_group("all_counts", None, None, None, "unknown", [sample for _, sample in assigned], primary_env_samples, 0),
+            _summarize_group("all_counts", None, None, None, "unknown", [sample for _, sample in assigned], primary_env_samples, 0, len(pps_anomalies)),
         )
 
     points: list[CharacterizationPoint] = []
@@ -877,6 +915,14 @@ def _build_points(
             and sample.elapsed_s >= event.elapsed_s
             and (end_s is None or sample.elapsed_s < end_s)
         ]
+        step_anomalies = [
+            anomaly
+            for anomaly in pps_anomalies
+            if anomaly.start_s is not None
+            and anomaly.end_s is not None
+            and anomaly.end_s >= event.elapsed_s
+            and (end_s is None or anomaly.start_s < end_s)
+        ]
         points.append(
             _summarize_group(
                 group_id=f"step_{event.step_index}_{event.seq}",
@@ -887,6 +933,7 @@ def _build_points(
                 samples=kept,
                 env_samples=group_env,
                 discarded_count=len(all_samples) - len(kept),
+                pps_anomaly_count=len(step_anomalies),
             )
         )
         previous_code = event.code
@@ -894,7 +941,7 @@ def _build_points(
 
 
 def _build_slopes(points: tuple[CharacterizationPoint, ...]) -> tuple[SlopePoint, ...]:
-    usable = [point for point in points if point.sample_count and point.median_hz is not None]
+    usable = [point for point in points if point.sample_count and point.median_hz is not None and point.quality == "normal"]
     slopes: list[SlopePoint] = []
     for previous, current in zip(usable, usable[1:]):
         delta_hz = current.median_hz - previous.median_hz
@@ -923,7 +970,11 @@ def _build_slopes(points: tuple[CharacterizationPoint, ...]) -> tuple[SlopePoint
 
 
 def _build_center_bracketed_slopes(points: tuple[CharacterizationPoint, ...]) -> tuple[CenterBracketedSlope, ...]:
-    usable = [point for point in points if point.sample_count and point.dac_code is not None and point.median_hz is not None]
+    usable = [
+        point
+        for point in points
+        if point.sample_count and point.dac_code is not None and point.median_hz is not None and point.quality == "normal"
+    ]
     estimates: list[CenterBracketedSlope] = []
     for before, target, after in zip(usable, usable[1:], usable[2:]):
         if before.dac_code is None or target.dac_code is None or after.dac_code is None:
@@ -1139,13 +1190,18 @@ def analyze_run(
     warmup_s: float = DEFAULT_WARMUP_SECONDS,
     stability_ppm: float = DEFAULT_STABILITY_PPM,
 ) -> H1Analysis:
+    if settling_discard_s < 0:
+        raise ValueError("settling_discard_s must be >= 0")
     manifest = load_manifest(run_dir)
     warnings: list[str] = []
     resolved_nominal_hz = _nominal_hz(manifest, nominal_hz)
     if resolved_nominal_hz is None:
         warnings.append("nominal_hz unavailable; ppm and ppm-derived slopes are unavailable")
     gate_hz_by_domain = _domain_hz(manifest)
-    pps_clock = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
+    session_summary = detect_run_sessions(manifest)
+    if session_summary.session_count > 1:
+        warnings.append(f"run sessions: detected {session_summary.session_count} sessions; analysis uses final CSV segments where loaders support segmentation")
+    pps_clock, pps_anomalies = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
     counts = _load_counts(manifest, gate_hz_by_domain, pps_clock, resolved_nominal_hz, warnings)
     startup_control = _startup_control_estimate(manifest, gate_hz_by_domain, pps_clock)
     dac_events = _load_dac_events(manifest, warnings)
@@ -1158,7 +1214,7 @@ def analyze_run(
     ]
     if environment_samples and not primary_temp_samples:
         warnings.append("environment.csv present, but no source=sht4x role=vcocxo_near temperature samples were found")
-    points = _build_points(counts, dac_events, environment_samples, settling_discard_s)
+    points = _build_points(counts, dac_events, environment_samples, settling_discard_s, pps_anomalies)
     return H1Analysis(
         run_dir=run_dir,
         manifest=manifest,
@@ -1167,7 +1223,9 @@ def analyze_run(
         settling_discard_s=settling_discard_s,
         warmup_s=warmup_s,
         stability_ppm=stability_ppm,
+        session_summary=session_summary,
         pps_clock=pps_clock,
+        pps_anomalies=pps_anomalies,
         count_windows=counts,
         dac_events=dac_events,
         environment_samples=environment_samples,
@@ -1206,6 +1264,8 @@ POINT_FIELDS = [
     "env_temperature_max_c",
     "env_temperature_delta_c",
     "env_temperature_mean_c",
+    "pps_anomaly_count",
+    "quality",
 ]
 
 BRACKETED_SLOPE_FIELDS = [
@@ -1403,6 +1463,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         f"- count_windows: {len(analysis.count_windows)}",
         f"- dac_events: {len(analysis.dac_events)}",
         f"- environment_samples: {len(analysis.environment_samples)}",
+        f"- requested_measurement_windows: derived from count windows available per DAC dwell",
         "",
         "## Formulas",
         "- gate_seconds = gate_ticks / pps_calibrated_tick_rate when a sane REF/PPS stream exists for the gate domain",
@@ -1413,10 +1474,28 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         "- ppm/V = delta ppm / delta V",
         "- Hz/code and ppm/code are computed when voltage is unavailable.",
         "- settling_discard_s removes initial count windows in each DAC dwell before per-step summary statistics are computed.",
+        "- dwell duration comes from DAC dwell_ms when present; longer dwell and more count windows reduce noise but extend thermal exposure.",
     ]
     if analysis.warnings:
         lines.extend(["", "## Warnings"])
         lines.extend(f"- {warning}" for warning in analysis.warnings)
+
+    sessions = analysis.session_summary
+    lines.extend(
+        [
+            "",
+            "## Session Integrity",
+            f"- session_count: {sessions.session_count}",
+            f"- reconnect_events: {sessions.reconnect_event_count}",
+            f"- reboot_or_header_markers: {sessions.reboot_marker_count}",
+            f"- split_reasons: {', '.join(sessions.split_reasons) if sessions.split_reasons else 'none'}",
+        ]
+    )
+    for session in sessions.sessions:
+        location = f"{session.source}" + (f":{session.start_row}" if session.start_row is not None else "")
+        lines.append(
+            f"- {session.session_id}: start_reason={session.start_reason}, close_reason={session.close_reason or 'not recorded'}, source={location}"
+        )
 
     lines.extend(["", "## PPS-Calibrated Clock"])
     if analysis.pps_clock is None:
@@ -1442,6 +1521,28 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             ]
         )
 
+    lines.extend(["", "## PPS Anomalies"])
+    if not analysis.pps_anomalies:
+        lines.append("- none")
+    else:
+        counts_by_class: dict[str, int] = {}
+        for anomaly in analysis.pps_anomalies:
+            counts_by_class[anomaly.classification.classification] = counts_by_class.get(anomaly.classification.classification, 0) + 1
+        lines.append(f"- anomaly_count: {len(analysis.pps_anomalies)}")
+        lines.append(f"- by_class: {counts_by_class}")
+        lines.append("- current instrumentation cannot distinguish GPS receiver absence from GPIO, capture hardware, IRQ, FIFO, DMA, or firmware-path missed edges unless those counters are emitted by firmware.")
+        lines.append("")
+        lines.append("| index | event_seq | domain | interval_ticks | error_ticks | class | missed_pps | elapsed_s |")
+        lines.append("| --- | --- | --- | ---: | ---: | --- | ---: | --- |")
+        for anomaly in analysis.pps_anomalies:
+            classification = anomaly.classification
+            lines.append(
+                f"| {anomaly.index} | {anomaly.previous_event_seq}->{anomaly.current_event_seq} | {anomaly.domain} | "
+                f"{classification.raw_interval_ticks} | {_format(classification.interval_error_ticks)} | "
+                f"{classification.classification} | {_format(classification.missed_pulse_count)} | "
+                f"{_format(anomaly.start_s)}..{_format(anomaly.end_s)} |"
+            )
+
     lines.extend(["", "## DAC Step Summaries"])
     if not analysis.points:
         lines.append("- unavailable: no count windows")
@@ -1454,7 +1555,8 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"stddev_hz={_format(point.stddev_hz)}, MAD_hz={_format(point.mad_hz)}, IQR_hz={_format(point.iqr_hz)}, "
             f"median_ppm={_format(point.median_ppm)}, "
             f"vcocxo_temp_c={_format(point.env_temperature_min_c)}..{_format(point.env_temperature_max_c)}, "
-            f"temp_delta_c={_format(point.env_temperature_delta_c)}"
+            f"temp_delta_c={_format(point.env_temperature_delta_c)}, "
+            f"pps_anomalies={point.pps_anomaly_count}, quality={point.quality}"
         )
 
     lines.extend(["", "## Near-VCOCXO Temperature"])

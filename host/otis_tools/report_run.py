@@ -10,6 +10,7 @@ import math
 import sys
 
 from .contracts import CsvValidationContext, validate_csv
+from .pps_diagnostics import classify_pps_interval
 from .run_loader import (
     SW1_5A_LIMITATION_TEXT,
     SW1_LIMITATION_TEXT,
@@ -17,6 +18,7 @@ from .run_loader import (
     inspect_run_state,
     load_manifest,
 )
+from .sessions import detect_run_sessions
 from .validate_run import (
     _manifest_warnings,
     _run_state_warnings,
@@ -143,6 +145,11 @@ def _validation_findings(
 ) -> tuple[list[str], list[str]]:
     findings: list[str] = _validate_manifest(manifest.root, manifest)
     warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(manifest.root, manifest)
+    session_summary = detect_run_sessions(manifest)
+    if session_summary.session_count > 1:
+        warnings.append(
+            f"{manifest.root.name}: detected {session_summary.session_count} capture sessions; sequence/timestamp resets at the boundary are reported as segmented_capture warnings"
+        )
     for read in reads:
         if read.optional and not read.exists:
             warnings.append(f"{read.path.relative_to(manifest.root)}: optional expected artifact is missing")
@@ -155,7 +162,13 @@ def _validation_findings(
             allow_rp2040_timer0_wrap=manifest.h_phase == "H1",
         )
         result = validate_csv(read.path, context)
-        findings.extend(f"{read.path.relative_to(manifest.root)}: {error}" for error in result.errors)
+        for error in result.errors:
+            if session_summary.session_count > 1 and (
+                "must be strictly increasing" in error or "timestamp_ticks must be monotonic" in error
+            ):
+                warnings.append(f"{read.path.relative_to(manifest.root)}: segmented_capture: {error}")
+            else:
+                findings.append(f"{read.path.relative_to(manifest.root)}: {error}")
         warnings.extend(f"{read.path.relative_to(manifest.root)}: {warning}" for warning in result.warnings)
     raw_rows = [row for read in reads if read.contract == RAW_CONTRACT for row in read.rows]
     count_rows = [row for read in reads if read.contract == COUNT_CONTRACT for row in read.rows]
@@ -303,6 +316,23 @@ def _summarize_reference(reads: list[CsvReadResult], nominal_hz_by_domain: dict[
         intervals = [end - start for start, end in zip(cadence_ticks, cadence_ticks[1:])]
         seconds = [_ticks_to_seconds(interval, domain, nominal_hz_by_domain) for interval in intervals]
         seconds_float = [value for value in seconds if value is not None]
+        expected = nominal_hz_by_domain.get(domain)
+        classifications = [classify_pps_interval(int(interval), expected) for interval in intervals]
+        anomaly_table = [
+            {
+                "index": index,
+                "interval_ticks": item.raw_interval_ticks,
+                "expected_interval_ticks": item.expected_interval_ticks,
+                "interval_error_ticks": item.interval_error_ticks,
+                "classification": item.classification,
+                "missed_pulse_count": item.missed_pulse_count,
+            }
+            for index, item in enumerate(classifications, start=1)
+            if not item.usable_for_calibration
+        ]
+        anomaly_counts: dict[str, int] = defaultdict(int)
+        for item in anomaly_table:
+            anomaly_counts[str(item["classification"])] += 1
         mean_seconds = _mean(seconds_float)
         ppm_error = ((mean_seconds - 1.0) * 1_000_000) if mean_seconds is not None else None
         suspicious = 0
@@ -325,6 +355,9 @@ def _summarize_reference(reads: list[CsvReadResult], nominal_hz_by_domain: dict[
             "stddev_interval_seconds": _stddev(seconds_float),
             "ppm_error_vs_1s": ppm_error,
             "timing_note": "using manifest nominal_hz" if seconds_float else "not computed: units ambiguous or not enough edges",
+            "pps_anomaly_count": len(anomaly_table),
+            "pps_anomaly_counts_by_class": dict(sorted(anomaly_counts.items())),
+            "pps_anomalies": anomaly_table,
         }
     return {"edge_count": len(rows), "domains": domains}, anomalies
 
@@ -482,6 +515,7 @@ def build_summary(run_dir: Path) -> dict:
 
     nominal_hz_by_domain = _domain_hz(manifest)
     state = inspect_run_state(run_dir)
+    session_summary = detect_run_sessions(manifest)
     manifest_files = []
     reads: list[CsvReadResult] = []
     for entry in manifest.files:
@@ -541,6 +575,24 @@ def build_summary(run_dir: Path) -> dict:
         "run_state": {
             "capture_in_progress": state.capture_in_progress,
             "complete": state.complete,
+        },
+        "session_summary": {
+            "session_count": session_summary.session_count,
+            "reconnect_event_count": session_summary.reconnect_event_count,
+            "reboot_marker_count": session_summary.reboot_marker_count,
+            "split_reasons": list(session_summary.split_reasons),
+            "sessions": [
+                {
+                    "session_id": session.session_id,
+                    "start_reason": session.start_reason,
+                    "close_reason": session.close_reason,
+                    "source": session.source,
+                    "start_row": session.start_row,
+                    "end_row": session.end_row,
+                    "marker_utc": session.marker_utc,
+                }
+                for session in session_summary.sessions
+            ],
         },
         "artifact_inventory": manifest_files,
         "row_counts": {
@@ -609,6 +661,26 @@ def render_report(run_dir: Path) -> str:
         },
     )
 
+    session_summary = summary.get("session_summary", {})
+    lines.extend(["", "## Session Summary"])
+    _append_key_values(
+        lines,
+        {
+            "session_count": session_summary.get("session_count"),
+            "reconnect_event_count": session_summary.get("reconnect_event_count"),
+            "reboot_marker_count": session_summary.get("reboot_marker_count"),
+            "split_reasons": session_summary.get("split_reasons") or "none",
+        },
+    )
+    for session in session_summary.get("sessions", []):
+        source = str(session.get("source", "unknown"))
+        if session.get("start_row") is not None:
+            source = f"{source}:{session['start_row']}"
+        lines.append(
+            f"- {session.get('session_id')}: start_reason={session.get('start_reason')}, "
+            f"close_reason={session.get('close_reason') or 'not recorded'}, source={source}"
+        )
+
     lines.extend(["", "## SW1 Boundary"])
     if identity["capture_mode"] in ("pio_fifo", "pio_fifo_cpu_timestamped"):
         lines.append(f"- {SW1_5A_LIMITATION_TEXT}")
@@ -674,6 +746,15 @@ def render_report(run_dir: Path) -> str:
                 f"ppm_error_vs_1s={_fmt_ppm(stats['ppm_error_vs_1s'])}, wrap_count={stats['timestamp_wrap_count']}; "
                 f"{stats['timing_note']}"
             )
+            if stats.get("pps_anomaly_count"):
+                lines.append(f"- {domain} PPS anomalies by class: {stats.get('pps_anomaly_counts_by_class')}")
+                lines.append("| index | interval_ticks | class | missed_pps |")
+                lines.append("| --- | ---: | --- | ---: |")
+                for anomaly in stats.get("pps_anomalies", [])[:20]:
+                    lines.append(
+                        f"| {anomaly['index']} | {anomaly['interval_ticks']} | "
+                        f"{anomaly['classification']} | {_fmt_number(anomaly['missed_pulse_count'])} |"
+                    )
     else:
         lines.append("- not present")
 

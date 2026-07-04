@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from host.otis_tools.h1_characterize import analyze_run, characterize_run, render_report
+from host.otis_tools.pps_diagnostics import classify_pps_interval
 
 
 def _write_synthetic_run(
@@ -100,7 +101,7 @@ def test_h1_characterize_ppm_and_voltage_slope(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1"
     _write_synthetic_run(run_dir)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.points[0].median_hz == 10_000_005
     assert analysis.points[0].median_ppm == 0.5
@@ -112,7 +113,7 @@ def test_h1_characterize_missing_voltage_uses_code_slope(tmp_path: Path) -> None
     run_dir = tmp_path / "h1_missing_voltage"
     _write_synthetic_run(run_dir, include_voltage=False)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.slopes[0].hz_per_v is None
     assert analysis.slopes[0].ppm_per_v is None
@@ -139,7 +140,7 @@ def test_h1_characterize_missing_voltage_uses_manifest_voltage_model(tmp_path: P
     )
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.points[0].voltage_v == 1.0
     assert analysis.points[1].voltage_v == 1.2
@@ -151,7 +152,7 @@ def test_h1_characterize_insufficient_settling_is_explicit(tmp_path: Path) -> No
     run_dir = tmp_path / "h1_one_step"
     _write_synthetic_run(run_dir, include_second_step=False)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.settling[0].response_90_s is None
     assert "insufficient data" in analysis.settling[0].note
@@ -161,7 +162,7 @@ def test_h1_characterize_writes_report_csv_and_supported_plots(tmp_path: Path) -
     run_dir = tmp_path / "h1_outputs"
     _write_synthetic_run(run_dir)
 
-    analysis, report_path, points_path, plots = characterize_run(run_dir)
+    analysis, report_path, points_path, plots = characterize_run(run_dir, settling_discard_s=0)
     report = report_path.read_text(encoding="utf-8")
 
     assert report_path.exists()
@@ -187,7 +188,7 @@ def test_h1_characterize_uses_pps_calibrated_gate_rate(tmp_path: Path) -> None:
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
-    analysis, report_path, _, _ = characterize_run(run_dir)
+    analysis, report_path, _, _ = characterize_run(run_dir, settling_discard_s=0)
     report = report_path.read_text(encoding="utf-8")
 
     assert analysis.pps_clock is not None
@@ -203,7 +204,7 @@ def test_h1_characterize_reports_near_vcocxo_temperature(tmp_path: Path) -> None
     run_dir = tmp_path / "h1_environment"
     _write_synthetic_run(run_dir, include_environment=True)
 
-    analysis, report_path, points_path, plots = characterize_run(run_dir)
+    analysis, report_path, points_path, plots = characterize_run(run_dir, settling_discard_s=0)
     report = report_path.read_text(encoding="utf-8")
     points_csv = points_path.read_text(encoding="utf-8")
 
@@ -236,7 +237,7 @@ def test_h1_characterize_reports_center_bracketed_slope(tmp_path: Path) -> None:
     ]
     (run_dir / "csv" / "dac_steps.csv").write_text("\n".join(dac_rows) + "\n", encoding="utf-8")
 
-    analysis, report_path, _, _ = characterize_run(run_dir)
+    analysis, report_path, _, _ = characterize_run(run_dir, settling_discard_s=0)
     report = report_path.read_text(encoding="utf-8")
     csv_text = (run_dir / "csv" / "h1_center_bracketed_slopes.csv").read_text(encoding="utf-8")
 
@@ -266,7 +267,7 @@ def test_h1_characterize_uses_final_segment_and_skips_flagged_zero_counts(tmp_pa
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert len(analysis.count_windows) == 3
     assert analysis.count_windows[0].seq == 1
@@ -286,7 +287,7 @@ def test_h1_characterize_handles_count_window_crossing_timer_wrap(tmp_path: Path
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert len(analysis.count_windows) == 2
     assert analysis.count_windows[0].gate_seconds == 1
@@ -313,7 +314,7 @@ def test_h1_startup_gate_accepts_startup_local_bad_windows(tmp_path: Path) -> No
     rows.extend((seq, 100_000_000, 16) for seq in range(21, 66))
     _write_startup_gate_run(run_dir, rows)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
     report = render_report(analysis)
 
     assert analysis.startup_control.invalid_window_count == 20
@@ -331,7 +332,7 @@ def test_h1_startup_gate_flags_post_inhibit_bad_window(tmp_path: Path) -> None:
     rows.extend((seq, 100_000_000, 16) for seq in range(64, 68))
     _write_startup_gate_run(run_dir, rows)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.startup_control.first_post_inhibit_bad_elapsed_s == 625
     assert not analysis.startup_control.valid_for_control
@@ -343,7 +344,7 @@ def test_h1_startup_gate_requires_clean_windows_after_inhibit(tmp_path: Path) ->
     rows = [(seq, 100_000_000, 16) for seq in range(1, 62)]
     _write_startup_gate_run(run_dir, rows)
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.startup_control.first_control_eligible_elapsed_s is None
     assert not analysis.startup_control.valid_for_control
@@ -363,8 +364,65 @@ def test_h1_startup_gate_allows_zero_startup_discard_for_long_clean_windows(tmp_
         )
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
-    analysis = analyze_run(run_dir)
+    analysis = analyze_run(run_dir, settling_discard_s=0)
 
     assert analysis.startup_control.startup_discarded_window_count == 0
     assert analysis.startup_control.first_control_eligible_elapsed_s == 3000
     assert analysis.startup_control.valid_for_control
+
+
+def test_pps_interval_classifies_missed_pulses() -> None:
+    two_seconds = classify_pps_interval(32_000_000, 16_000_000)
+    five_seconds = classify_pps_interval(80_000_000, 16_000_000)
+
+    assert two_seconds.classification == "likely_missed_1_pps"
+    assert two_seconds.missed_pulse_count == 1
+    assert five_seconds.classification == "likely_missed_n_pps"
+    assert five_seconds.missed_pulse_count == 4
+
+
+def test_h1_default_settling_discard_excludes_early_measurements(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_default_settling"
+    _write_synthetic_run(run_dir, include_second_step=False)
+
+    analysis = analyze_run(run_dir)
+
+    assert analysis.settling_discard_s == 60
+    assert analysis.points[0].sample_count == 0
+    assert analysis.points[0].discarded_count == 7
+
+
+def test_h1_configurable_settling_discard_excludes_only_early_windows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_configurable_settling"
+    _write_synthetic_run(run_dir, include_second_step=False)
+
+    analysis = analyze_run(run_dir, settling_discard_s=3)
+
+    assert analysis.points[0].sample_count == 5
+    assert analysis.points[0].discarded_count == 2
+
+
+def test_h1_pps_anomaly_marks_overlapping_dac_step_degraded(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_degraded_pps_step"
+    _write_synthetic_run(run_dir, include_ref=True)
+    ref_rows = [
+        "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+        "REF,1,1,1,R,0,rp2040_timer0,16",
+        "REF,1,2,1,R,16000000,rp2040_timer0,16",
+        "REF,1,3,1,R,32000000,rp2040_timer0,16",
+        "REF,1,4,1,R,64000000,rp2040_timer0,16",
+        "REF,1,5,1,R,80000000,rp2040_timer0,16",
+        "REF,1,6,1,R,96000000,rp2040_timer0,16",
+    ]
+    (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
+
+    analysis, report_path, points_path, _ = characterize_run(run_dir, settling_discard_s=0)
+    report = report_path.read_text(encoding="utf-8")
+    points_csv = points_path.read_text(encoding="utf-8")
+
+    assert analysis.pps_anomalies[0].classification.classification == "likely_missed_1_pps"
+    assert analysis.points[0].quality == "degraded"
+    assert analysis.points[0].pps_anomaly_count == 1
+    assert "PPS Anomalies" in report
+    assert "likely_missed_1_pps" in report
+    assert "quality" in points_csv
