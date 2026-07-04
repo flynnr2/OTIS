@@ -7,7 +7,9 @@ import json
 import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
+from .pps_diagnostics import classify_pps_interval
 from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
+from .sessions import detect_run_sessions
 from .timebase import unwrap_ticks
 
 KNOWN_BRINGUP_MODES = {
@@ -100,28 +102,36 @@ def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: 
     if template:
         return []
     failures: list[str] = []
-    ticks_by_domain: dict[str, list[int]] = {}
+    refs_by_domain: dict[str, list[tuple[int | None, int]]] = {}
     for row in raw_rows:
         if row.get("record_type") == "REF" and row.get("channel_id") == "1" and row.get("edge") == "R":
             try:
-                ticks_by_domain.setdefault(row.get("capture_domain", ""), []).append(_int(row["timestamp_ticks"]))
+                seq = _int(row["event_seq"]) if row.get("event_seq") not in (None, "") else None
+                refs_by_domain.setdefault(row.get("capture_domain", ""), []).append((seq, _int(row["timestamp_ticks"])))
             except (KeyError, TypeError, ValueError):
                 continue
 
-    for domain, ticks in ticks_by_domain.items():
-        if len(ticks) < 2:
+    for domain, refs in refs_by_domain.items():
+        if len(refs) < 2:
             continue
         nominal_hz = nominal_hz_by_domain.get(domain)
         if not nominal_hz:
             failures.append(f"raw_events.csv: PPS cadence cannot be checked because domain {domain!r} has no nominal_hz")
             continue
         expected = nominal_hz
+        ticks = [ticks for _seq, ticks in refs]
         cadence_ticks, _wrap_count = unwrap_ticks(ticks) if domain == "rp2040_timer0" else (ticks, 0)
-        for index, (start, end) in enumerate(zip(cadence_ticks, cadence_ticks[1:]), start=1):
+        for index, ((previous_seq, _), (current_seq, _), start, end) in enumerate(
+            zip(refs, refs[1:], cadence_ticks, cadence_ticks[1:]),
+            start=1,
+        ):
             interval = end - start
             if not (0.8 * expected <= interval <= 1.2 * expected):
+                classification = classify_pps_interval(int(interval), expected)
                 failures.append(
-                    f"raw_events.csv: PPS interval {index} in {domain} is {interval} ticks; expected approximately {expected:.0f}"
+                    f"raw_events.csv: PPS interval {index} in {domain} is {interval} ticks "
+                    f"({classification.classification}, event_seq {previous_seq}->{current_seq}, timestamp_ticks {start}->{end}); "
+                    f"expected approximately {expected:.0f}"
                 )
     return failures
 
@@ -171,6 +181,11 @@ def validate_run(run_dir: Path) -> int:
 
     failures: list[str] = _validate_manifest(run_dir, manifest)
     warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(run_dir, manifest)
+    session_summary = detect_run_sessions(manifest)
+    if session_summary.session_count > 1:
+        warnings.append(
+            f"{run_dir.name}: detected {session_summary.session_count} capture sessions; sequence/timestamp resets at the boundary are reported as segmented_capture warnings"
+        )
     files_by_contract: dict[str, Path] = {}
 
     for file_entry in manifest.files:
@@ -202,7 +217,12 @@ def validate_run(run_dir: Path) -> int:
             print(f"OK {rel_path}: {result.row_count} rows")
         else:
             for error in result.errors:
-                failures.append(f"{rel_path}: {error}")
+                if session_summary.session_count > 1 and (
+                    "must be strictly increasing" in error or "timestamp_ticks must be monotonic" in error
+                ):
+                    warnings.append(f"{rel_path}: segmented_capture: {error}")
+                else:
+                    failures.append(f"{rel_path}: {error}")
         for warning in result.warnings:
             warnings.append(f"{rel_path}: {warning}")
 

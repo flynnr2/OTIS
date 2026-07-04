@@ -119,6 +119,23 @@ behind discipline-loop conclusions.
 Reference captures may later be used to derive phase error, frequency estimates,
 lock quality, and steering decisions.
 
+Host diagnostics may also derive PPS/reference interval anomaly classes from
+adjacent `REF` observations:
+
+| Class | Meaning |
+|----------------------|-------------------------------------------------|
+| `normal_interval`    | Interval is within the configured nominal band. |
+| `short_interval`     | Interval is shorter than the nominal band.      |
+| `long_interval`      | Interval is long but not integer-PPS-like.      |
+| `likely_missed_1_pps` | Interval is close to two PPS periods.          |
+| `likely_missed_n_pps` | Interval is close to N+1 PPS periods.          |
+| `impossible_interval` | Interval is zero or negative after unwrapping. |
+| `unknown`            | Required nominal timing metadata is unavailable. |
+
+These classes are derived analysis products. They do not prove whether the
+missing edge occurred in the receiver, GPIO input, capture hardware, IRQ/FIFO/
+DMA path, or firmware unless the corresponding raw status counters are emitted.
+
 ### `COUNT_OBSERVATION`
 
 A `COUNT_OBSERVATION` record describes a bounded count of a high-rate source,

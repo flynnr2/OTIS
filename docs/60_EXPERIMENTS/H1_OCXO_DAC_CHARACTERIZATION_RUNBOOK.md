@@ -106,16 +106,24 @@ Suggested run layout for scripted sweeps:
 
 ```text
 runs/h1_open_loop/dac_manual_sweep/run_001/
+  run_manifest.json
   raw/serial.log
   csv/cnt.csv
   csv/dac_steps.csv
   csv/environment.csv
   csv/sts.csv
   reports/summary.md
+  reports/h1_characterization_summary.md
   plots/
-  run_manifest.json
   notes.md
 ```
+
+Host tools preserve the legacy root-level files above. Session diagnostics are
+derived from `raw/serial.log` host markers, firmware BOOT/HDR markers, and CSV
+sequence restarts. A continuous capture reports one session. A USB reconnect,
+BOOT/HDR marker after data has started, or sequence rollback/restart creates a
+new session in reports so pre-reconnect fragments are not silently merged with
+the main run.
 
 Every `CNT` row captured during a sweep should be attributable through nearby
 `DAC` rows in `csv/dac_steps.csv`, especially `dwell_start`, `fc0_window`, and
@@ -124,6 +132,38 @@ count-observation window, not necessarily the FC0/GPIN0 backend.
 When `csv/environment.csv` is present, H1 analysis correlates near-VCOCXO
 temperature with DAC dwell summaries and ppm/frequency observations, but does
 not apply automatic thermal correction.
+
+H1 characterization uses `--settling-discard-s` to remove early count windows
+after each DAC dwell starts. The default is 60 s and the minimum is 0 s. Use
+0 s only for short bench smoke tests or fixtures where there are no long dwells.
+For real characterization, prefer longer dwell durations and multiple count
+windows per step: faster sweeps reduce bench time, but longer dwells reduce
+measurement noise and make thermal settling visible. Per-step reports include
+used/discarded windows, dwell timing when emitted by firmware, near-VCOCXO
+temperature span, and PPS anomaly overlap.
+
+If a PPS/reference anomaly overlaps a DAC step, the raw data is preserved and
+the step is marked `quality=degraded`. Degraded steps are not used as normal
+inputs for local or center-bracketed slope estimates.
+
+PPS interval classes used by host diagnostics are:
+
+| Class | Meaning |
+|---|---|
+| `normal_interval` | Interval is within the nominal 0.8..1.2 s acceptance band. |
+| `short_interval` | Interval is below the acceptance band. |
+| `long_interval` | Interval is above the acceptance band but not close to an integer number of PPS periods. |
+| `likely_missed_1_pps` | Interval is close to 2 nominal PPS periods. |
+| `likely_missed_n_pps` | Interval is close to N+1 nominal PPS periods. |
+| `impossible_interval` | Interval is zero or negative after unwrapping. |
+| `unknown` | The capture domain has no usable nominal rate. |
+
+Current telemetry cannot by itself distinguish a missing GNSS PPS edge from a
+GPIO, capture hardware, IRQ/FIFO/DMA, or firmware-path missed edge. When those
+counters exist, include raw PPS interval, expected interval, interval error,
+classification, ignored interval counts, consecutive ignored counts, sequence
+number, timestamp, lock state, ISR/capture latency metrics, overflow counters,
+FIFO/DMA status, and existing error counters in status or fault telemetry.
 
 ## 7. ppm/V Derivation
 
