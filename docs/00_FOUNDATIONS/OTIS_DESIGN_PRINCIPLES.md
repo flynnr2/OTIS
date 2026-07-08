@@ -124,3 +124,25 @@ Timing truth belongs to the timing fabric, not the host.
 
 Known limitations, assumptions, and unresolved questions should be documented
 explicitly.
+
+## 12. Future Abstraction From Experience
+
+OTIS is intentionally proceeding as a concrete, working modular GPSDO /
+timing-lab platform before attempting to extract a general timing framework. The
+project should remain focused on completing the current roadmap: hardware
+bring-up, characterization, control-loop implementation, long-run validation,
+and operational observability. Future abstraction is a design consideration, not
+a current deliverable.
+
+If, after OTIS has produced real hardware results and mature firmware/data
+pipelines, common timing primitives emerge, they may be extracted into a
+reusable timing core. At that point, OTIS, a Stratum-1 time-server application,
+oscillator characterization rigs, or other timing tools could become sibling
+applications built on top of that core. GNSSTimeServer is an illustrative future
+comparison point for this kind of sibling application model, not a dependency or
+committed integration target.
+
+Until then, the project should avoid premature generalization and should not
+disrupt the current roadmap in pursuit of framework design.
+
+Principle: design for future abstraction, but only abstract from experience.
