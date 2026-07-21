@@ -18,6 +18,7 @@ from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS, unwrap_ticks
 COUNT_CONTRACT = "count_observations_v1"
 DAC_CONTRACT = "dac_steps_v1"
 ENV_CONTRACT = "environment_v1"
+HEALTH_CONTRACT = "health_v1"
 RAW_EVENTS_CONTRACT = "raw_events_v1"
 DEFAULT_SETTLING_DISCARD_SECONDS = 60.0
 DEFAULT_WARMUP_SECONDS = 1800.0
@@ -205,6 +206,26 @@ class StartupControlEstimate:
 
 
 @dataclass(frozen=True)
+class Fc0BadWindowDiagnostic:
+    status_seq: int
+    timestamp_ticks: int | None
+    elapsed_s: float | None
+    reason: str
+    flags: int | None
+    post_startup_invalid: bool | None
+    sample_count: int | None
+    zero_sample_count: int | None
+    valid_sample_count: int | None
+    first_sample_khz: int | None
+    last_sample_khz: int | None
+    min_sample_khz: int | None
+    max_sample_khz: int | None
+    elapsed_us: int | None
+    consecutive_bad_windows: int | None
+    total_bad_windows: int | None
+
+
+@dataclass(frozen=True)
 class HysteresisEstimate:
     code: int
     up_median_hz: float | None
@@ -235,6 +256,7 @@ class H1Analysis:
     settling: tuple[SettlingEstimate, ...]
     warmup: WarmupEstimate
     startup_control: StartupControlEstimate
+    fc0_bad_windows: tuple[Fc0BadWindowDiagnostic, ...]
     hysteresis: tuple[HysteresisEstimate, ...]
     warnings: tuple[str, ...]
 
@@ -573,6 +595,41 @@ def _format(value: float | int | None, digits: int = 6) -> str:
     return f"{value:.{digits}g}"
 
 
+def _count_by(values: Iterable[object]) -> dict[object, int]:
+    counts: dict[object, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _format_counts(counts: dict[object, int]) -> str:
+    if not counts:
+        return "none"
+    return ", ".join(
+        f"{key}={count}"
+        for key, count in sorted(counts.items(), key=lambda item: str(item[0]))
+    )
+
+
+def _format_optional_bool(value: bool | None) -> str:
+    if value is None:
+        return "unavailable"
+    return str(value).lower()
+
+
+def _format_bad_window_example(window: Fc0BadWindowDiagnostic) -> str:
+    return (
+        f"seq={window.status_seq}, elapsed_s={_format(window.elapsed_s)}, reason={window.reason}, "
+        f"flags={_format(window.flags)}, post_startup_invalid={_format_optional_bool(window.post_startup_invalid)}, "
+        f"samples={_format(window.sample_count)}, zero_samples={_format(window.zero_sample_count)}, "
+        f"valid_samples={_format(window.valid_sample_count)}, first_khz={_format(window.first_sample_khz)}, "
+        f"last_khz={_format(window.last_sample_khz)}, min_khz={_format(window.min_sample_khz)}, "
+        f"max_khz={_format(window.max_sample_khz)}, window_elapsed_us={_format(window.elapsed_us)}, "
+        f"consecutive_bad_windows={_format(window.consecutive_bad_windows)}, "
+        f"total_bad_windows={_format(window.total_bad_windows)}"
+    )
+
+
 def _load_counts(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
@@ -700,6 +757,123 @@ def _load_environment_samples(manifest: RunManifest, gate_hz_by_domain: dict[str
             )
         )
     return tuple(sorted(samples, key=lambda item: (item.elapsed_s, item.seq)))
+
+
+FC0_BAD_WINDOW_KEYS = frozenset(
+    {
+        "window_invalid_reason",
+        "window_sample_count",
+        "window_zero_sample_count",
+        "window_valid_sample_count",
+        "window_first_sample_khz",
+        "window_last_sample_khz",
+        "window_min_sample_khz",
+        "window_max_sample_khz",
+        "window_elapsed_us",
+        "window_flags",
+        "post_startup_invalid_window",
+        "consecutive_bad_windows",
+        "total_bad_windows",
+    }
+)
+
+
+def _bool_value(value: str | None) -> bool | None:
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    return None
+
+
+def _fc0_bad_window_diagnostics(
+    manifest: RunManifest,
+    gate_hz_by_domain: dict[str, float],
+) -> tuple[Fc0BadWindowDiagnostic, ...]:
+    rows = _read_csv(_manifest_file(manifest, HEALTH_CONTRACT, "csv/sts.csv"))
+    diagnostics: list[Fc0BadWindowDiagnostic] = []
+    current: dict[str, object] | None = None
+    previous_raw_by_domain: dict[str, int] = {}
+    tick_offset_by_domain: dict[str, int] = {}
+    half_modulus = RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+
+    def current_int(key: str) -> int | None:
+        if current is None:
+            return None
+        value = current.get(key)
+        return value if isinstance(value, int) else None
+
+    def flush_current() -> None:
+        nonlocal current
+        if current is None:
+            return
+        status_domain = str(current.get("status_domain") or "")
+        timestamp_ticks = current_int("timestamp_ticks")
+        domain_hz = gate_hz_by_domain.get(status_domain)
+        diagnostics.append(
+            Fc0BadWindowDiagnostic(
+                status_seq=current_int("status_seq") or 0,
+                timestamp_ticks=timestamp_ticks,
+                elapsed_s=timestamp_ticks / domain_hz if timestamp_ticks is not None and domain_hz else None,
+                reason=str(current.get("window_invalid_reason") or "unknown"),
+                flags=current_int("window_flags"),
+                post_startup_invalid=_bool_value(
+                    current.get("post_startup_invalid_window")
+                    if isinstance(current.get("post_startup_invalid_window"), str)
+                    else None
+                ),
+                sample_count=current_int("window_sample_count"),
+                zero_sample_count=current_int("window_zero_sample_count"),
+                valid_sample_count=current_int("window_valid_sample_count"),
+                first_sample_khz=current_int("window_first_sample_khz"),
+                last_sample_khz=current_int("window_last_sample_khz"),
+                min_sample_khz=current_int("window_min_sample_khz"),
+                max_sample_khz=current_int("window_max_sample_khz"),
+                elapsed_us=current_int("window_elapsed_us"),
+                consecutive_bad_windows=current_int("consecutive_bad_windows"),
+                total_bad_windows=current_int("total_bad_windows"),
+            )
+        )
+        current = None
+
+    for row in rows:
+        if row.get("record_type") != "STS":
+            continue
+        status_domain = str(row.get("status_domain", ""))
+        timestamp_raw = _parse_int(row.get("timestamp_ticks"))
+        timestamp_unwrapped = timestamp_raw
+        if timestamp_raw is not None and status_domain:
+            previous_raw = previous_raw_by_domain.get(status_domain)
+            if previous_raw is not None and timestamp_raw < previous_raw and previous_raw - timestamp_raw > half_modulus:
+                tick_offset_by_domain[status_domain] = (
+                    tick_offset_by_domain.get(status_domain, 0) + RP2040_TIMER0_MICROS_WRAP_TICKS
+                )
+            previous_raw_by_domain[status_domain] = timestamp_raw
+            timestamp_unwrapped = timestamp_raw + tick_offset_by_domain.get(status_domain, 0)
+        if row.get("component") != "fc0":
+            continue
+        key = row.get("status_key", "")
+        if key not in FC0_BAD_WINDOW_KEYS:
+            if current is not None:
+                flush_current()
+            continue
+        if key == "window_invalid_reason":
+            if current is not None:
+                flush_current()
+            current = {
+                "status_seq": _parse_int(row.get("status_seq")) or 0,
+                "timestamp_ticks": timestamp_unwrapped,
+                "status_domain": status_domain,
+            }
+        if current is None:
+            continue
+        value = row.get("status_value", "")
+        if key in {"window_invalid_reason", "post_startup_invalid_window"}:
+            current[key] = value
+        else:
+            current[key] = _parse_int(value)
+    flush_current()
+    return tuple(diagnostics)
 
 
 def _startup_control_estimate(
@@ -1204,6 +1378,7 @@ def analyze_run(
     pps_clock, pps_anomalies = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
     counts = _load_counts(manifest, gate_hz_by_domain, pps_clock, resolved_nominal_hz, warnings)
     startup_control = _startup_control_estimate(manifest, gate_hz_by_domain, pps_clock)
+    fc0_bad_windows = _fc0_bad_window_diagnostics(manifest, gate_hz_by_domain)
     dac_events = _load_dac_events(manifest, warnings)
     if not dac_events:
         warnings.append("dac_steps.csv unavailable or empty; DAC-code grouping and voltage plots are limited")
@@ -1235,6 +1410,7 @@ def analyze_run(
         settling=_settling(counts, dac_events),
         warmup=_warmup(counts, resolved_nominal_hz, warmup_s, stability_ppm),
         startup_control=startup_control,
+        fc0_bad_windows=fc0_bad_windows,
         hysteresis=_hysteresis(points),
         warnings=tuple(warnings),
     )
@@ -1642,6 +1818,33 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- note: {startup.note}",
         ]
     )
+
+    bad_windows = analysis.fc0_bad_windows
+    lines.extend(["", "## FC0 Bad Window Diagnostics"])
+    if not bad_windows:
+        lines.append("- unavailable: no fc0 bad-window diagnostic STS rows found")
+    else:
+        max_consecutive = max(
+            (window.consecutive_bad_windows or 0 for window in bad_windows),
+            default=0,
+        )
+        max_total = max(
+            (window.total_bad_windows or 0 for window in bad_windows),
+            default=0,
+        )
+        lines.extend(
+            [
+                f"- diagnostic_windows: {len(bad_windows)}",
+                f"- by_reason: {_format_counts(_count_by(window.reason for window in bad_windows))}",
+                f"- by_flags: {_format_counts(_count_by(window.flags if window.flags is not None else 'unavailable' for window in bad_windows))}",
+                f"- post_startup_invalid: {_format_counts(_count_by(_format_optional_bool(window.post_startup_invalid) for window in bad_windows))}",
+                f"- first: {_format_bad_window_example(bad_windows[0])}",
+                f"- max_consecutive_bad_windows: {max_consecutive}",
+                f"- max_total_bad_windows_seen: {max_total}",
+            ]
+        )
+        if bad_windows[-1] != bad_windows[0]:
+            lines.append(f"- last: {_format_bad_window_example(bad_windows[-1])}")
 
     lines.extend(["", "## Hysteresis / Sweep Direction"])
     if not analysis.hysteresis:
