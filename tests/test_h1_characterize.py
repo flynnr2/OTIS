@@ -339,6 +339,50 @@ def test_h1_startup_gate_flags_post_inhibit_bad_window(tmp_path: Path) -> None:
     assert analysis.startup_control.note.startswith("not control-eligible")
 
 
+def test_h1_fc0_bad_window_diagnostics_are_reported(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_bad_window_diagnostics"
+    rows = [(seq, 100_000_000, 16) for seq in range(1, 68)]
+    _write_startup_gate_run(run_dir, rows)
+    sts_rows = [
+        "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
+        "STS,1,10,160000000,rp2040_timer0,fc0,window_invalid_reason,counted_edges_zero,WARN,528",
+        "STS,1,11,160000010,rp2040_timer0,fc0,window_sample_count,1,WARN,528",
+        "STS,1,12,160000020,rp2040_timer0,fc0,window_zero_sample_count,1,WARN,528",
+        "STS,1,13,160000030,rp2040_timer0,fc0,window_valid_sample_count,0,WARN,528",
+        "STS,1,14,160000040,rp2040_timer0,fc0,window_first_sample_khz,0,WARN,528",
+        "STS,1,15,160000050,rp2040_timer0,fc0,window_last_sample_khz,0,WARN,528",
+        "STS,1,16,160000060,rp2040_timer0,fc0,window_min_sample_khz,0,WARN,528",
+        "STS,1,17,160000070,rp2040_timer0,fc0,window_max_sample_khz,0,WARN,528",
+        "STS,1,18,160000080,rp2040_timer0,fc0,window_elapsed_us,300000003,WARN,528",
+        "STS,1,19,160000090,rp2040_timer0,fc0,window_flags,528,WARN,528",
+        "STS,1,20,160000100,rp2040_timer0,fc0,post_startup_invalid_window,true,WARN,528",
+        "STS,1,21,160000110,rp2040_timer0,fc0,consecutive_bad_windows,1,WARN,528",
+        "STS,1,22,160000120,rp2040_timer0,fc0,total_bad_windows,1,WARN,528",
+        "STS,1,30,320000000,rp2040_timer0,fc0,window_invalid_reason,partial_zero_samples,WARN,48",
+        "STS,1,31,320000010,rp2040_timer0,fc0,window_sample_count,2,WARN,48",
+        "STS,1,32,320000020,rp2040_timer0,fc0,window_zero_sample_count,1,WARN,48",
+        "STS,1,33,320000030,rp2040_timer0,fc0,window_valid_sample_count,1,WARN,48",
+        "STS,1,34,320000040,rp2040_timer0,fc0,window_flags,48,WARN,48",
+        "STS,1,35,320000050,rp2040_timer0,fc0,post_startup_invalid_window,false,WARN,48",
+        "STS,1,36,320000060,rp2040_timer0,fc0,consecutive_bad_windows,2,WARN,48",
+        "STS,1,37,320000070,rp2040_timer0,fc0,total_bad_windows,2,WARN,48",
+    ]
+    (run_dir / "csv" / "sts.csv").write_text("\n".join(sts_rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir, settling_discard_s=0)
+    report = render_report(analysis)
+
+    assert len(analysis.fc0_bad_windows) == 2
+    assert analysis.fc0_bad_windows[0].reason == "counted_edges_zero"
+    assert analysis.fc0_bad_windows[0].post_startup_invalid
+    assert analysis.fc0_bad_windows[1].sample_count == 2
+    assert "## FC0 Bad Window Diagnostics" in report
+    assert "diagnostic_windows: 2" in report
+    assert "counted_edges_zero=1" in report
+    assert "partial_zero_samples=1" in report
+    assert "post_startup_invalid: false=1, true=1" in report
+
+
 def test_h1_startup_gate_requires_clean_windows_after_inhibit(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1_no_clean_after_inhibit"
     rows = [(seq, 100_000_000, 16) for seq in range(1, 62)]
