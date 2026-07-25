@@ -13,16 +13,16 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 
 ## Current Matrix
 
-| Stage  | Name                          | Description                                                                                     | Status          |
-|--------|-------------------------------|-------------------------------------------------------------------------------------------------|-----------------|
-| `F0`   | Foundation                    | architecture, terminology, contracts, design principles                                         | active          |
-| `H0`   | Prototype capture hardware    | RP2040 + Adafruit Ultimate GPS PPS + ECS-TXO-5032-160-TR 16 MHz TCXO + conditioning experiments | complete enough |
-| `SW0`  | Host scaffold/contracts       | validation, replay, examples, schema fixtures                                                   | healthy         |
-| `SW1`  | First capture firmware        | emit `EVT`, `REF`, `CNT`, and `STS` from Arduino Nano RP2040 Connect via Arduino-Pico           | complete        |
-| `SW1.5a` | PIO sparse-edge validation  | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough |
-| `A0`   | Basic replay/report           | validate runs and derive simple intervals/frequency estimates                                   | active/usable   |
-| `H1`   | Steerable oscillator prep     | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware               | active/open-loop characterization |
-| `SW2`  | Control-loop firmware         | explicit GPSDO/discipline-loop telemetry and control                                            | not started; appropriately deferred |
+| Stage  | Name                          | Description                                                                                       | Status                              |
+|--------|-------------------------------|---------------------------------------------------------------------------------------------------|-------------------------------------|
+| `F0`   | Foundation                    | architecture, terminology, contracts, design principles                                           | active                              |
+| `H0`   | Prototype capture hardware    | RP2040 + Adafruit Ultimate GPS PPS + ECS-TXO-5032-160-TR 16 MHz TCXO + conditioning experiments   | complete enough                     |
+| `SW0`  | Host scaffold/contracts       | validation, replay, examples, schema fixtures                                                     | healthy                             |
+| `SW1`  | First capture firmware        | emit `EVT`, `REF`, `CNT`, and `STS` from Arduino Nano RP2040 Connect via Arduino-Pico             | complete                            |
+| `SW1.5a` | PIO sparse-edge validation  | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough                     |
+| `A0`   | Basic replay/report           | validate runs and derive simple intervals/frequency estimates                                     | active/usable                       |
+| `H1`   | Steerable oscillator prep     | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware                 | active/open-loop characterization   |
+| `SW2`  | Control-loop firmware         | explicit GPSDO/discipline-loop telemetry and control                                              | not started; appropriately deferred |
 
 ## Validated H0/SW1 State
 
