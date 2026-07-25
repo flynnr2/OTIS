@@ -116,11 +116,96 @@ The repository already anticipates a **PPS-gated ratio backend**. That should be
 
 The 300-second H1 path remains valuable as an independent metrology and validation channel.
 
-### 2.5 Do not begin SW2 by moving work across RP2040 cores
+### 2.5 Preserve a dual-core timing-plane/service-plane architecture
 
-The existing architecture documents distinguish timing capture from service work, but dual-core restructuring is not the current critical path. The blockers are measurement validity, plant evidence, control eligibility, and safe policy behaviour.
+SW2 should use the RP2040's two cores as an explicit architectural boundary:
 
-Core partitioning should change only when measurements show that foreground work, serial traffic, I²C, or estimator execution threatens capture correctness.
+```text
+Core 0 — protected timing and discipline plane
+Core 1 — service, I/O and application plane
+```
+
+This does not mean that SW2 should begin with a disruptive multicore rewrite before the H1 evidence gates are closed. It does mean that new SW2 interfaces, queues and ownership rules must be designed so the intended partition is clear and can be enforced incrementally.
+
+#### Core 0 responsibilities
+
+Core 0 should own work whose delay, ordering or jitter can affect measurement or discipline integrity:
+
+- PPS and oscillator capture completion;
+- monotonic timing and sequence ownership;
+- construction and validation of canonical raw timing observations;
+- reference-age and continuity tracking;
+- phase, frequency, drift and uncertainty estimation;
+- operating-state transitions;
+- controller evaluation and actuator-request generation;
+- timing-critical fault detection.
+
+Core 0 must not depend on timely servicing by Core 1 in order to continue capturing and estimating correctly.
+
+#### Core 1 responsibilities
+
+Core 1 should own work that may be delayed without corrupting timing:
+
+- USB serial transport and telemetry formatting;
+- command parsing and configuration servicing;
+- environmental sensor polling;
+- GNSS message parsing outside the PPS capture path;
+- status presentation and diagnostics;
+- host communications;
+- future ClockMesh/RSN, NTP/chrony and PTP adapters;
+- other application-layer services;
+- provisionally, physical DAC I²C transactions if their latency or blocking behaviour makes them unsuitable for Core 0.
+
+#### Actuator boundary
+
+The timing plane owns the control decision. The actuator layer owns whether and when a requested code is safely applied.
+
+If DAC I²C writes execute on Core 1, the contract must distinguish:
+
+- requested DAC code;
+- accepted DAC code;
+- applied DAC code;
+- request and application sequence numbers;
+- request and application timestamps;
+- clamping or slew limiting;
+- stale-request rejection;
+- I²C success or failure.
+
+The estimator and controller must use the confirmed applied code rather than assume that a request was applied.
+
+#### Cross-core communication
+
+Use bounded, fixed-size message channels and immutable records rather than shared mutable controller state.
+
+```text
+Core 0 -> Core 1:
+    observations for export
+    estimator snapshots
+    control decisions
+    events and faults
+    actuator requests
+
+Core 1 -> Core 0:
+    validated mode/configuration changes
+    actuator acknowledgements
+    qualified external/network observations
+    source-health updates
+```
+
+Timing observations, actuator acknowledgements and critical state changes must not be silently lost. Routine status and duplicate telemetry snapshots may be dropped under load, but every drop must be counted and reported.
+
+#### Isolation requirement
+
+A stalled or overloaded service plane must not corrupt the timing plane. SW2 testing should deliberately block USB output, delay non-critical I²C activity, overload telemetry and temporarily stall Core 1 while verifying that Core 0 continues to:
+
+- capture expected timing events;
+- maintain monotonic sequencing;
+- update the estimator and state machine;
+- avoid spurious control actions;
+- account for lost service-plane telemetry;
+- enter a defined fault or degraded state if a non-droppable cross-core channel cannot be serviced.
+
+The dual-core boundary is therefore part of the SW2 platform architecture, even though its implementation should be staged so that it does not obscure the immediate H1 measurement and plant-model blockers.
 
 ---
 
@@ -991,7 +1076,7 @@ Do not allow these to delay the first safe SW2 loop:
 - ageing self-calibration;
 - automatic persistent tuning profiles;
 - a web UI;
-- dual-core restructuring without measured need;
+- a disruptive all-at-once dual-core rewrite before the timing-plane/service-plane contracts and H1 evidence gates are ready;
 - final PCB abstractions;
 - absolute-time/UTC claims beyond the available evidence;
 - nanosecond performance claims.
@@ -1021,10 +1106,12 @@ Do not allow these to delay the first safe SW2 loop:
 - host estimator/state machine/preview;
 - deterministic replay.
 
-### M3 — Live observe-only parity
+### M3 — Live observe-only parity and core isolation
 
 - firmware emits equivalent preview decisions;
-- capture remains healthy;
+- the timing plane and service plane have explicit ownership and bounded cross-core contracts;
+- capture and estimator behaviour remain healthy while service-plane USB, telemetry and non-critical I²C work are deliberately stressed;
+- droppable and non-droppable queue policies are tested and observable;
 - no automatic actuation path exists.
 
 ### M4 — Live discipline measurement validated
@@ -1077,7 +1164,8 @@ SW2 should be considered complete when OTIS can:
 10. enter holdover and recover without abrupt steering;
 11. explain every requested and applied DAC change in telemetry;
 12. accept at least one alternative or simulated reference through a clean adapter;
-13. expose timing state to future applications without allowing those applications to bypass the timing fabric or safety gates.
+13. keep timing capture, estimation and control correct when the service/application core is stalled or overloaded;
+14. expose timing state to future applications without allowing those applications to bypass the timing fabric or safety gates.
 
 At that point OTIS is both a credible GPSDO and a credible foundation for broader timing applications. The platform proof is not that every protocol has been implemented; it is that adding a protocol or reference source no longer requires redesigning capture, estimation, control safety, or actuation.
 
