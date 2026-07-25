@@ -45,11 +45,12 @@ Understand the plant before designing the controller.
 
 1. Verify OCXO power/current/warmup
 2. Verify DAC I²C + output voltage
-3. Manually sweep DAC — complete enough for unloaded DAC output and scripted capture
-4. Measure FC0 counts vs DAC setting — next host analysis step
-5. Derive Hz/V and ppm/V
-6. Characterize settling time and thermal behavior
-7. Only then design the control loop
+3. Manually sweep DAC — complete enough for connected scripted capture
+4. Measure count observations vs DAC setting — analysis-useful with 300 s long gates
+5. Derive Hz/V and ppm/V — present in reports, not yet control-authorized
+6. Characterize settling time and thermal behavior — present in reports, not yet loop constants
+7. Restore clean post-inhibit count validity under the revised power/conditioning path
+8. Only then design any guarded control-loop actuation experiment
 
 ---
 
@@ -80,12 +81,22 @@ Current H1 DAC sweep status:
 
 - AD5693R I2C initialization and manual `DAC SET` movement have been verified.
 - Conservative clamps are configured at `0x7000..0x9000`.
-- Built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` sweeps now use
-  bench-visible `0x0400` code steps around midpoint.
+- Built-in tiny sweeps use bench-visible `0x0400` code steps around midpoint.
+- Long-gate slope profiles use 300 s raw-edge count windows and 900 s DAC
+  dwells for repeated center-bracketed analysis.
 - Host parsing extracts `dac_steps_v1` rows, including profile load, dwell
   windows, FC0 attribution, completion, stop, and safety rejection.
-- The next prompt/work item is `04_h1_host_characterization_analysis`: correlate
-  DAC step telemetry with FC0 count observations and bench voltage notes.
+- Host characterization now produces PPS-calibrated frequency estimates,
+  center-bracketed slopes, settling estimates, warmup drift, near-VCOCXO
+  temperature summaries, PPS anomaly tables, startup control eligibility, and
+  FC0 bad-window diagnostics.
+- `run_010` is analysis-useful after explicit session/anomaly classification,
+  but it is not fixture-ready.
+- `run_011`, `run_012`, and `run_013` show that post-inhibit zero-count faults
+  can occur under the current bench configuration.
+- The next bench decision is `run_014`: verify whether the dirty-to-clean
+  power-path change restores clean post-inhibit count windows and repeatable
+  open-loop DAC response.
 
 ---
 
@@ -167,9 +178,9 @@ Suggested dwell:
 Remain close to nominal tune voltage initially.
 
 Status: built-in scripted sweeps and manual DAC steps are complete enough for
-unloaded DAC output verification. The remaining work is host-side analysis of
-frequency/count response versus DAC setting once the oscillator tune path is
-connected under the documented safety limits.
+connected open-loop characterization. The remaining work is not basic host-side
+correlation; it is proving that the count-observation path remains clean after
+startup inhibit under the revised power/conditioning setup.
 
 ---
 
@@ -198,6 +209,11 @@ only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.
 
+Current status: slope estimates exist in `run_009` through `run_013`, including
+center-bracketed slope tables. They are analysis evidence, not SW2 control
+constants, until a clean count path is demonstrated with no post-inhibit
+zero-count faults over the intended eligibility window.
+
 ---
 
 # Phase 7 — Settling Time Characterization
@@ -209,6 +225,11 @@ Measure:
 - practical full settling
 - overshoot
 - slow thermal drift
+
+Current status: settling estimates exist in the H1 characterization summaries,
+but several runs include invalid count windows and pathological excursions.
+Treat those estimates as diagnostics until `run_014` or a later clean-path run
+confirms repeatable behavior.
 
 ---
 
@@ -223,6 +244,10 @@ Outputs:
 - stabilization time
 - post-warmup drift
 - frequency vs time
+
+Current status: environmental telemetry is present in recent H1 runs, with
+SHT4x near-VCOCXO samples preferred for thermal context. Longer clean-path runs
+are still needed before thermal behavior can influence any SW2 actuation plan.
 
 ---
 
