@@ -82,12 +82,19 @@ manual open-loop oscillator observation and DAC steering limits; Stage 2 should
 not be used as a reason to add DAC control-loop firmware before that evidence
 exists.
 
-H1 is now in open-loop characterization, while SW2 is not started and is
-appropriately deferred. Completed H1 bring-up evidence now includes AD5693R DAC
-I2C initialization, conservative `0x7000..0x9000` clamp enforcement, manual
-`DAC SET` voltage checks, scripted `SWEEP LOAD` / `SWEEP START` telemetry,
-parser extraction of `dac_steps_v1`, and bench-visible built-in sweep profiles
-using `0x0400` code steps.
+H1 is now in open-loop characterization, while SW2 active actuation is not
+started and remains appropriately deferred. Completed H1 bring-up evidence now
+includes AD5693R DAC I2C initialization, conservative `0x7000..0x9000` clamp
+enforcement, manual `DAC SET` voltage checks, scripted `SWEEP LOAD` /
+`SWEEP START` telemetry, parser extraction of `dac_steps_v1`, environmental
+telemetry, 300 s long-gate count observations, session-aware host reporting, and
+center-bracketed slope analysis.
+
+The latest H1 evidence does not yet authorize SW2 DAC actuation. `run_010` is
+analysis-useful after explicit segment classification but not fixture-ready.
+`run_011`, `run_012`, and `run_013` report post-startup zero-count faults, so the
+current bench focus is `run_014`: a dirty-to-clean power-path check intended to
+restore clean count validity before any control-loop experiment is planned.
 
 The intended H1 sequence is:
 
@@ -96,17 +103,19 @@ The intended H1 sequence is:
 3. Connect OCXO output to `D8` / `GPIO20` / `GPIN0` through the appropriate conditioning path.
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
-6. Measure frequency/count response versus DAC setting. **Next: host characterization analysis.**
-7. Estimate Hz/V and ppm/V.
-8. Characterize settling time and thermal behavior.
-9. Only then design SW2 discipline/control-loop firmware.
+6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
+7. Estimate Hz/V and ppm/V. **Present in reports, pending clean-path confirmation.**
+8. Characterize settling time and thermal behavior. **Present in reports, not yet loop constants.**
+9. Fix or confirm the count-observation power/conditioning path. **Current `run_014` focus.**
+10. Only then design any guarded SW2 actuation experiment.
 
-Implement:
-- DAC steering;
-- discipline estimation;
-- lock states;
-- holdover policy;
-- explicit control telemetry.
+Implement in order:
+
+- observe-only control telemetry;
+- manual nominal DAC restore, guarded by clamps;
+- discipline estimation without actuation;
+- lock-state and holdover labels that do not imply active steering;
+- guarded DAC steering only after the SW2 actuation gate reopens.
 
 Raw observations remain authoritative scientific artifacts even after discipline/control loops are introduced.
 

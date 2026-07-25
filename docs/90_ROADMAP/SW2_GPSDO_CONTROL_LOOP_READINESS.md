@@ -4,13 +4,19 @@
 
 SW2 active GPSDO steering is **not ready**.
 
-The repo now contains useful H1 evidence for DAC I2C operation, conservative DAC
-clamping, connected tune-voltage sanity checks, open-loop sweep telemetry, FC0
-count observations, PPS/reference telemetry, and warmup/drift reporting. It does
-not yet contain a resolved DAC-to-frequency plant model. The current H1 sweep
-therefore supports SW2 design work, telemetry contracts, safety gates, and
-observe-only firmware scaffolding, but it does not support automatic DAC
-actuation from PPS or FC0 error.
+The repo now contains useful H1 evidence for DAC I2C operation, DAC clamping,
+connected tune-voltage sanity checks, scripted long-gate open-loop sweeps,
+PPS/reference telemetry, environmental telemetry, session-aware host reporting,
+and startup/control-eligibility status. It also contains newer evidence that the
+count-observation path can produce post-startup zero-count faults under the
+current bench configuration.
+
+The current state supports SW2 design work, telemetry contracts, safety gates,
+manual nominal restore, and observe-only firmware scaffolding. It does **not**
+support automatic DAC actuation from PPS or count error. The next decision point
+is not dual-core firmware or a PI loop; it is confirming whether the revised H1
+power/conditioning path in `run_014` produces clean post-inhibit count windows
+and repeatable open-loop slope evidence.
 
 ## H1 Evidence Available
 
@@ -19,12 +25,14 @@ Primary artifacts:
 - `runs/h1_open_loop/dac_output_verify/run_001/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_output_verify/run_001/reports/summary.md`
 - `runs/h1_open_loop/dac_output_verify/run_001/notes.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/reports/h1_characterization_summary.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/reports/summary.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/notes.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/csv/dac_steps.csv`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/csv/cnt.csv`
-- `runs/h1_open_loop/dac_manual_sweep/run_006/csv/ref.csv`
+- `runs/h1_open_loop/dac_manual_sweep/run_009/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_010/reports/anomaly_classification.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_010/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_010/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_011/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_012/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_013/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_014/notes.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md`
@@ -44,16 +52,26 @@ Observed evidence:
   - repeated `0x8000` -> 1.246 V
 - Connected `Vc` remained inside the noted CX317 0.0 V to 3.3 V operating
   control-voltage range.
-- `dac_manual_sweep/run_006/reports/summary.md` reports 758 count windows, 725
-  reference events, 165 DAC events, and 3146 health rows.
-- `dac_manual_sweep/run_006/reports/summary.md` reports `fc0_measure_period_ms:
-  1000`, so the current raw observation cadence is one FC0 report per second.
-- `dac_manual_sweep/run_006/reports/h1_characterization_summary.md` reports a
-  requested warmup window of 1800 s, an actual span of 756.999 s, and a practical
-  stability time of 754.999 s, with a note that the requested warmup window
-  exceeds the run duration.
-- `dac_manual_sweep/run_006/notes.md` records that the frequency response is not
-  resolved by the current short FC0 gate and that ppm/V should remain unclaimed.
+- `dac_manual_sweep/run_009` through `run_013` use 300 s long-gate H1 count
+  windows and scripted DAC dwell attribution, replacing the earlier short-gate
+  `run_006` evidence as the main plant-characterization source.
+- `dac_manual_sweep/run_010/reports/anomaly_classification.md` classifies the
+  opening health/environment sequence reset as a host-appended pre-reconnect
+  fragment plus a fresh firmware boot; the main post-BOOT segment is
+  analysis-useful, but `run_010` is not fixture-ready.
+- `dac_manual_sweep/run_010/reports/h1_characterization_summary.md` reports 228
+  long-gate count windows, 464 DAC events, 136938 environment samples, and
+  session-aware analysis of the final segment.
+- `dac_manual_sweep/run_011` is complete, but its characterization reports 108
+  invalid/post-startup zero-count windows and `fc0_valid_for_control: false`.
+- `dac_manual_sweep/run_012` repeats the issue after connection changes, with
+  104 invalid/post-startup zero-count windows and `fc0_fault: true`.
+- `dac_manual_sweep/run_013` is a short buffer-bypass diagnostic. It reduces the
+  observed bad-window count to 3, but still reports a post-inhibit FC0 fault and
+  is not control-ready.
+- `dac_manual_sweep/run_014` is the current planned/in-progress dirty-to-clean
+  power-path experiment. Its purpose is to decide whether the supply/conditioning
+  path can restore clean count validity and repeatable DAC response.
 - `ocxo_free_run/run_004/reports/anomalies.md` reports 20 bad FC0 windows
   confined to startup, with the first clean CNT window about 3.67 minutes after
   the first CNT window and about 10.18 hours of clean observation afterward.
@@ -66,55 +84,57 @@ Observed evidence:
 
 Missing or insufficient evidence for active SW2 control:
 
-- No `runs/h1_open_loop/ocxo_free_run/run_001/reports/summary.md` artifact is
-  present.
 - No `runs/h1_open_loop/settling_thermal/run_001/reports/h1_characterization_summary.md`
   artifact is present.
-- The current run manifests leave several plant-critical fields unset, including
+- Several run manifests still leave plant-critical fields unset, including
   oscillator nominal frequency, oscillator control-voltage range, DAC reference
   voltage, manifest safety limits, and measured tuning sensitivity.
 - The connected sweep lacks populated per-step voltage columns in
-  `dac_steps.csv`; the bench voltages are documented in notes rather than bound
-  to each DAC dwell row.
-- `open_loop_slope_known` is `false` in both current H1 characterization
-  summaries.
-- `safe_voltage_window_known` is `false` in both current H1 characterization
-  summaries, even though bench notes document a conservative checked voltage
-  span.
-- `settling_time_characterized` is `false` in both current H1 characterization
-  summaries.
-- Hysteresis is only partially observable. The repeated center code reports 0 Hz
-  median span in the current analysis, but up/down comparison is unavailable for
-  most tested codes.
-- The run_006 summary includes a startup PPS/reference interval anomaly and is
-  not fixture-ready.
+  `dac_steps.csv`; most voltage evidence still comes from notes or the manifest
+  voltage model rather than measured dwell-row telemetry.
+- Later long-gate runs report `open_loop_slope_known: true`, but the slope data
+  is not yet control-authoritative because count validity faults and large
+  pathological frequency excursions are present in the same evidence chain.
+- Later long-gate runs report `settling_time_characterized: true`, but the
+  settling estimates are not yet loop constants. They are derived from noisy
+  open-loop sweeps with known invalid count windows and require confirmation
+  after the power/conditioning path is stable.
+- `run_011`, `run_012`, and `run_013` report `fc0_valid_for_control: false`
+  because zero-count windows occur after startup inhibit.
+- PPS/reference anomalies remain present in several H1 runs. Host tooling can
+  exclude bad PPS intervals from calibration, but SW2 must still treat those
+  windows as not control-eligible.
+- `run_014` has not yet produced a completed report proving clean post-inhibit
+  count windows under the revised power path.
 
 ## Measured Plant Model
 
 Current measured model:
 
-| Quantity | Current value | Source | Design implication |
-|---|---:|---|---|
-| Nominal DAC code | `0x8000` / 32768 | H1 notes and DAC sweep rows | Use as the only documented nominal restore point. |
-| Conservative checked DAC span | `0x7000..0x9000` / 28672..36864 | H1 notes and status summaries | Accept as a bench-verified voltage envelope, not yet as a control envelope. |
-| Connected tune-voltage span | 1.091 V..1.401 V | `dac_manual_sweep/run_006/notes.md` | Safe for observed CX317 `Vc` wiring in H1. |
-| Connected midpoint voltage | 1.246 V at `0x8000` | `dac_manual_sweep/run_006/notes.md` | Startup restore candidate. |
-| Approximate V/code from bench endpoints | `(1.401 - 1.091) / (0x9000 - 0x7000)` = 37.8 uV/code | Derived from run_006 notes | Useful only for telemetry voltage estimates. |
-| Local Hz/V | unavailable | H1 characterization summaries | Do not compute DAC corrections. |
-| Local ppm/V | unavailable | H1 characterization summaries | Do not compute DAC corrections. |
-| Local Hz/code | unresolved; summary reports 0 for tested steps | `dac_manual_sweep/run_006/reports/h1_characterization_summary.md` | Treat as measurement-resolution failure, not zero plant gain. |
-| Warmup observation | practical stability at 754.999 s within a 756.999 s run | run_006 characterization summary | At least 755 s of observe-only warmup is needed; the requested 1800 s window has not been satisfied. |
-| Settling time | not characterized | H1 characterization summaries | No closed-loop cadence may be finalized. |
-| Short-term FC0 floor | not cleanly established; medians quantize to 10 MHz and some means/stddev are dominated by artifacts | run_006 characterization summary | Improve gate/resolution before deriving loop constants. |
+| Quantity                                     | Current value                                              | Source                                  | Design implication                                                       |
+| -------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------ |
+| Nominal DAC code                             | `0x8000` / 32768                                           | H1 notes and DAC sweep rows             | Use as the documented manual restore point.                              |
+| Conservative checked DAC span                | `0x7000..0x9000` / 28672..36864                            | H1 notes and status summaries           | Best current SW2 clamp candidate.                                        |
+| Extended bench sweep span                    | `0x6000..0xE000` / 24576..57344                            | `run_010` notes and summaries           | Useful for characterization only; do not use as automatic steering span. |
+| Connected `0x7000..0x9000` tune-voltage span | 1.091 V..1.401 V                                           | `dac_manual_sweep/run_006/notes.md`     | Safe observed narrow envelope.                                           |
+| Extended estimated tune-voltage span         | about 0.936 V..2.176 V for `0x6000..0xE000`                | `run_010`/`run_011` voltage model notes | Characterization estimate, not a closed-loop safety envelope.            |
+| Approximate V/code from bench endpoints      | about 37.8 uV/code                                         | Derived from H1 notes                   | Useful only for telemetry estimates unless measured per dwell.           |
+| Local Hz/V and ppm/V                         | present in long-gate reports, but not control-authorized   | `run_009`..`run_013` summaries          | Use directionally for analysis; do not compute automatic corrections.    |
+| Settling estimates                           | present in long-gate reports, but noisy/fault-contaminated | `run_009`..`run_013` summaries          | Not yet suitable for loop cadence.                                       |
+| Startup/control gate                         | `run_011`..`run_013` report `fc0_valid_for_control=false`  | H1 characterization summaries           | Active SW2 must stay blocked until clean count validity is restored.     |
+| Current bench next step                      | `run_014` dirty-to-clean power-path check                  | `run_014/notes.md`                      | Confirm whether supply/conditioning fixes the zero-count fault.          |
 
-Because Hz/V and ppm/V are unavailable, SW2 must not convert PPS or FC0 error
-into active DAC movement yet.
+Because the plant slope is not yet cleanly repeatable under a control-eligible
+count path, SW2 must not convert PPS or count error into active DAC movement.
 
 ## Startup FC0 Control Gate
 
-Run `ocxo_free_run/run_004` changes the SW2 architecture requirement: early FC0
-and PPS observations may be present and useful for diagnostics, but they are not
-eligible for acquire, lock, estimator seeding, or actuation.
+Run `ocxo_free_run/run_004` established the SW2 architecture requirement: early
+FC0 and PPS observations may be present and useful for diagnostics, but they are
+not eligible for acquire, lock, estimator seeding, or actuation. Runs `run_011`
+through `run_013` add the current blocker: invalid zero-count windows can also
+occur after startup inhibit, so the control gate must remain active throughout a
+run, not only during warmup.
 
 SW2 must distinguish these states:
 
@@ -137,8 +157,8 @@ delete or suppress startup CNT/REF rows in capture artifacts.
 
 ## PPS-Gated Ratio Backend Readiness
 
-The planned PPS-gated ratio backend may improve the raw evidence available to
-future SW2 design, but it does not make active GPSDO steering ready by itself.
+The PPS-gated ratio backend may improve the raw evidence available to future
+SW2 design, but it does not make active GPSDO steering ready by itself.
 The backend should produce raw PPS-gated `CNT` observations and explicit
 `pps_gate` / count-observation `STS` telemetry. Host tools may derive
 frequency, ratio, and ppm from those observations.
@@ -160,7 +180,7 @@ state machine.
 
 ## Safe Operating Envelope
 
-The only envelope suitable for SW2 design discussion is:
+The only narrow envelope suitable for first SW2 design discussion is:
 
 - Restore/nominal DAC code: `0x8000`.
 - Firmware clamp candidates: `0x7000` minimum and `0x9000` maximum.
@@ -170,8 +190,8 @@ The only envelope suitable for SW2 design discussion is:
     reporting from the H1 bench model.
 - Manual preview step size: at most `0x0400` codes, matching the H1 small sweep
   step documented in `STAGED_BUILD_PLAN.md` and visible in run_006 sweep rows.
-- Extended manual preview step size: `0x0800` codes was observed inside the
-  checked `0x7000..0x9000` span, but it should not be used for automatic steering.
+- Extended bench characterization spans such as `0x6000..0xE000` are not SW2
+  actuation spans. They exist to reveal plant behavior and bench faults.
 
 This envelope is not enough to close the loop. It is enough to prevent future
 SW2 code from reaching outside the voltages already checked on the bench.
@@ -180,10 +200,11 @@ SW2 code from reaching outside the voltages already checked on the bench.
 
 For SW2 design now:
 
-- Emit observe-only control telemetry at the existing H1 FC0 cadence of 1 s.
+- Emit observe-only control telemetry at the selected count-observation cadence.
+  In current H1 long-gate metrology, `CNT` windows are 300 s.
 - Emit aggregated plant-model/reporting telemetry at 60 s or slower.
 - Do not actuate periodically until a real settling time and Hz/V or ppm/V slope
-  are measured.
+  are measured on a clean post-inhibit count path.
 
 For the first future actuation experiment after plant characterization:
 
@@ -199,7 +220,7 @@ constant.
 
 ## Recommended DAC Update Size
 
-Until the plant slope is measured:
+Until the plant slope is measured on a clean, control-eligible count path:
 
 - Active DAC update size: 0 codes.
 - Open-loop preview update size: clamp requested preview movement to `0x0400`
@@ -219,13 +240,12 @@ Current recommendation:
 - Set `0x8000` at startup only when explicitly running a manual nominal-restore
   mode.
 - Observe only for at least 1800 s before any future steering experiment.
-- If 1800 s is not practical during a bench run, require at least the measured
-  755 s practical stability time from run_006 and mark the run as not a full
-  warmup validation.
+- Require no post-inhibit invalid count windows during the whole eligibility
+  window. A clean startup followed by later zero-count faults is not
+  actuation-ready.
 
-The 1800 s holdoff comes from the H1 characterization warmup target, not from a
-completed 30 minute stable run. It remains a conservative placeholder until H1
-captures a full warmup/thermal run.
+The 1800 s holdoff remains a conservative placeholder until H1 captures a full
+warmup/thermal run under a clean count-observation path.
 
 ## Recommended Initial Controller Type
 
@@ -247,14 +267,14 @@ Design only:
 startup:
   set nominal DAC only in explicit nominal-restore mode
   otherwise leave DAC static
-  observe PPS, FC0, DAC state, and health
+  observe PPS, count windows, DAC state, and health
 
 warmup:
   no steering
   require startup holdoff and valid telemetry history
 
 acquire:
-  no steering until plant slope is known
+  no steering until plant slope is known on a clean count path
   future behavior: slow coarse correction with explicit preview telemetry first
 
 discipline:
@@ -365,11 +385,14 @@ exists before stage 5.
 
 ## Explicit Risks
 
-- Treating the unresolved run_006 slope as zero would produce a controller with
-  the wrong sign or infinite gain assumptions.
-- The current FC0 observation path appears too coarse for the small DAC steps
-  tested; longer gates or a better phase/frequency estimator may be required.
-- The current warmup data is shorter than the requested 1800 s warmup target.
+- Treating the older unresolved `run_006` slope as zero would produce a
+  controller with the wrong sign or infinite gain assumptions.
+- Treating noisy long-gate slopes from fault-contaminated runs as final plant
+  gain would produce unsafe sign or gain assumptions.
+- The current bench path has produced post-startup zero-count windows in
+  `run_011`, `run_012`, and `run_013`.
+- The current warmup and settling estimates are useful analysis products, not
+  loop constants.
 - Existing manifest safety fields are null, so future code must not rely only on
   manifests for clamp values until run metadata is backfilled.
 - PPS startup artifacts can poison acquire logic if the state machine accepts
@@ -393,6 +416,8 @@ Revisit guarded actuation only after a new H1 data set provides:
 - a full warmup or thermal run that meets or supersedes the 1800 s target;
 - short-term FC0 noise floor measured with the same estimator SW2 will use;
 - repeated up/down sweeps sufficient to bound hysteresis.
+- no post-inhibit zero-count windows or equivalent invalid count-observation
+  faults over the planned actuation eligibility window.
 
 Until then, SW2 work should stay in design, telemetry, manual restore, and
 observe-only preview stages.

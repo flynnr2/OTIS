@@ -5,11 +5,29 @@ state toward SW2 observe-only design. It is intentionally staged. Do not skip to
 dual-core firmware or active DAC control until the evidence gates below are
 satisfied.
 
+Current status note:
+
+- Stage 1 has been completed for `run_010`; see
+  `runs/h1_open_loop/dac_manual_sweep/run_010/reports/anomaly_classification.md`.
+- Stage 2-style host handling exists in current reports; `run_010` is
+  analysis-useful after explicit segmentation but is not fixture-ready.
+- Stage 3 readiness language is now captured in
+  `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`.
+- Stage 4's planned `run_011` is no longer the next run. `run_011`, `run_012`,
+  and `run_013` exist and show post-inhibit zero-count faults. The current bench
+  focus is `run_014`, the dirty-to-clean power-path experiment.
+- Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
+  actuation remains blocked.
+
 Current anchor evidence:
 
 - `runs/h1_open_loop/dac_manual_sweep/run_010/`
 - `runs/h1_open_loop/dac_manual_sweep/run_010/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_010/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_011/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_012/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_013/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_014/notes.md`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
 - `docs/90_ROADMAP/otis_h1_ocxo_characterization_plan.md`
@@ -256,4 +274,3 @@ Deliver:
 - a draft experiment plan under `docs/60_EXPERIMENTS/`;
 - no firmware actuation code yet unless explicitly requested afterward.
 ```
-
