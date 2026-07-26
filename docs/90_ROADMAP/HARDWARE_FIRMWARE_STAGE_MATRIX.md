@@ -78,9 +78,13 @@ reports.
 
 The current H1 state is analysis-useful but not SW2-actuation-ready. `run_010`
 has an explicit anomaly classification and usable post-BOOT analysis segment.
-`run_011`, `run_012`, and `run_013` report post-startup zero-count faults, so
-the immediate hardware question is whether the `run_014` dirty-to-clean
-power-path experiment restores clean count validity.
+`run_011`, `run_012`, and `run_013` report post-startup zero-count faults.
+`run_014` traced that failure class to a SN74LVC1G17 breakout solder short and
+then verified a clean repaired count path: 284 300 s `CNT` rows, no zero-count
+rows, all `CNT` rows flagged `16`, no host capture drops, and
+`fc0_valid_for_control: true`. The immediate hardware question has moved from
+count-path repair to PPS/reference anomaly review and conservative plant-model
+freeze.
 
 The intended H1 sequence is:
 
@@ -90,7 +94,8 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Present in reports, pending clean-path confirmation.**
-8. Characterize settling time and thermal behavior. **Present in reports, not yet loop constants.**
-9. Fix or confirm the count-observation power/conditioning path. **Current `run_014` focus.**
-10. Only then design any guarded SW2 actuation experiment.
+7. Estimate Hz/V and ppm/V. **Present from clean `run_014`, positive local slope but still noisy.**
+8. Characterize settling time and thermal behavior. **Present from clean `run_014`, not yet loop constants.**
+9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
+10. Review PPS/reference cadence anomalies and freeze a conservative H1 plant model.
+11. Only then design any guarded SW2 actuation experiment.

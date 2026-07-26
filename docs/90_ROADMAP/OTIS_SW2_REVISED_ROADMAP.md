@@ -2,7 +2,7 @@
 
 **Status:** proposed revision based on the repository snapshot supplied on 25 July 2026  
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding  
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_014` was still in progress in the supplied snapshot. Nothing in this roadmap assumes that it will complete successfully or remove the current control-readiness blocker.
+**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_014` has now completed as a clean count-path run after the G17 breakout repair. It removes the zero-count conditioning blocker, but it does not by itself authorize SW2 DAC actuation because PPS/reference cadence anomalies still require review and gating.
 
 ---
 
@@ -24,7 +24,7 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish or correctly classify H1 evidence, including `run_014`;
+1. finish H1 evidence reduction from `run_014` and classify the remaining PPS/reference anomaly;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
 4. derive and freeze a versioned plant model and safe automatic-control envelope;
@@ -212,46 +212,36 @@ The dual-core boundary is therefore part of the SW2 platform architecture, even 
 
 ## 3. Interpretation of `run_014` in this roadmap
 
-In the supplied snapshot:
+`run_014` is no longer unresolved. It should be treated as **Outcome B: count
+path clean, plant response useful, but not yet an actuation-authoritative model**.
 
-- `capture_in_progress.flag` is present;
-- the canonical live CSV files contain headers only;
-- the raw serial log is in progress;
-- a pre-G17-fix capture has been archived separately under `derived/`;
-- several manifest fields remain blank or null;
-- no completed report proves clean post-inhibit count behaviour.
+The pre-fix evidence showed real zero-count windows. The hardware isolation path
+found that the SN74LVC1G17 breakout had pin 2, the A input, shorted to pin 5,
+VCC. After cleaning and resoldering the G17, the bench confirmed direct
+ECS-TXO-to-D8 counting, ECS-TXO-through-G17 counting, and CX317-through-G17
+counting. The post-fix clean `run_014` completed with:
 
-Accordingly, `run_014` is an **unresolved evidence-producing experiment**, not a baseline and not permission to start actuation.
+- 284 300 s count windows;
+- zero zero-count rows;
+- all `CNT` rows flagged `16`;
+- no host dropped records, capture error flags, parser errors, or reconnects;
+- 18 completed DAC sweep passes and 90 dwell starts/completes;
+- `fc0_valid_for_control: true` after startup qualification;
+- positive local centre-bracketed slope evidence, with median slope about
+  4.30 Hz/V;
+- warmup and thermal evidence over a 24-hour-class capture.
 
-When it ends, it should be classified into one of four outcomes.
+The remaining caveat is not the repaired count path. It is the
+PPS/reference-cadence evidence: validation reports 2719 short REF/PPS intervals,
+mostly concentrated early in the run. Host characterization ignored out-of-band
+PPS intervals for tick-rate calibration, but current telemetry cannot assign
+root cause to the GPS/PPS source versus GPIO/capture/IRQ/FIFO/DMA/firmware
+handling.
 
-### Outcome A — clean and repeatable
-
-Requirements include:
-
-- no post-inhibit zero-count or equivalent invalid count windows over the intended eligibility period;
-- acceptable PPS continuity;
-- no unexplained drops or error flags;
-- repeatable DAC response sign and local slope;
-- sufficient dwell completion;
-- recorded power topology and measured supply values;
-- completed manifest, validation and characterisation reports.
-
-Consequence: reopen H1 plant-model completion, but **do not jump directly to PLL/PI implementation**.
-
-### Outcome B — count path clean, plant response not yet authoritative
-
-Consequence: perform focused slope, settling, hysteresis and thermal runs using the repaired topology.
-
-### Outcome C — improved but residual faults remain
-
-Consequence: keep automatic actuation blocked. Isolate supply, output conditioning, GPIN0/FC0 gate formation, wiring, and firmware measurement assumptions with separate diagnostic runs.
-
-### Outcome D — unsuccessful or interrupted
-
-Consequence: preserve it as negative evidence. Do not tune validation to make it look clean and do not derive controller constants from it.
-
-In all four cases, the roadmap remains valid; only the H1 exit date changes.
+Consequence: reopen H1 plant-model completion and preserve the pre-G17-fix
+capture as negative hardware evidence, but **do not jump directly to PLL/PI or
+even guarded I-only actuation**. The next roadmap step is to close or explicitly
+gate the PPS/reference anomaly, then freeze a conservative local plant model.
 
 ---
 
@@ -391,26 +381,27 @@ The repository’s “explicit over clever” principle should govern this decis
 
 **Purpose:** establish that the CX317 can be observed reliably under the revised power and conditioning topology.
 
-### Required work
+### Status
 
-1. Complete or terminate `run_014` honestly.
-2. Finalise its manifest with actual:
-   - firmware commit/version;
-   - dirty and clean supply topology;
-   - measured clean supply voltage;
-   - relevant current/ripple observations;
-   - output conditioner and logic level;
-   - warmup duration;
-   - exact control network.
-3. Generate validation, anomaly, summary and H1 characterisation reports.
-4. Classify all post-inhibit bad windows.
-5. Preserve the pre-G17-fix capture as a distinct session/evidence set; do not merge it into the post-fix plant fit.
+Passed for the count-observation path in the repaired topology. The G17 solder
+fault has been identified, repaired, and separated from the clean plant
+evidence.
+
+Remaining cleanup:
+
+1. Backfill any manifest/version fields that are still blank where the value can
+   be recovered from the bench or repository state.
+2. Keep the pre-G17-fix capture as a distinct session/evidence set; do not merge
+   it into the post-fix plant fit.
+3. Add PPS/reference anomaly fault telemetry or run a focused validation capture
+   that proves the reference path is clean.
 
 ### Exit gate
 
 H1-A passes only when the count-observation path has a documented period of control-eligible operation with no unexplained post-inhibit invalid windows.
 
-Passing H1-A does not establish plant gain or settling.
+`run_014` satisfies this gate for count observations. Passing H1-A does not
+establish an actuation-ready plant model or a reference-validity model.
 
 ---
 
@@ -951,9 +942,13 @@ State transitions, faults, source changes, model changes, arming/disarming and r
 
 Each task below is intentionally narrower than “implement SW2.”
 
-### Package 1 — Classify and close `run_014`
+### Package 1 — Close `run_014` follow-up
 
-Read the complete run after capture ends, preserve sessions separately, populate the manifest, run validation/report/characterisation, and update readiness language. Do not alter control firmware.
+Completed for the count path: the clean `run_014` reports are generated and the
+readiness language now treats the G17 solder fault as resolved hardware
+evidence. Remaining follow-up is to backfill recoverable manifest/version fields
+and close or explicitly gate the PPS/reference cadence anomaly. Do not alter
+control firmware.
 
 ### Package 2 — Separate DAC limit classes
 
@@ -1088,7 +1083,7 @@ Do not allow these to delay the first safe SW2 loop:
 
 ### M0 — H1 measurement path credible
 
-- `run_014` or a successor is complete and classified;
+- `run_014` is complete and classified for count-path validity;
 - no unexplained post-inhibit invalid count windows over the eligibility period;
 - fixed hardware topology documented.
 
@@ -1174,12 +1169,17 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Let `run_014` finish or terminate it based on the bench safety criteria already in its notes.
-2. Close and classify it without assuming success.
-3. If the count path is clean, perform focused H1-B runs rather than starting controller code.
-4. In parallel, undertake only non-actuating SW2 work:
+1. Close or explicitly gate the `run_014` PPS/reference cadence anomaly.
+2. Backfill recoverable manifest/version fields for `run_014` and keep the
+   pre-G17-fix capture separate from the clean plant evidence.
+3. Freeze a conservative H1 plant-model schema and populate it only from
+   reviewed clean-path evidence.
+4. Plan any focused H1-B runs needed to bound hysteresis, smaller step response,
+   and the count noise floor before controller code.
+5. In parallel, undertake only non-actuating SW2 work:
    - separate DAC limit classes;
    - define the plant-model schema;
    - define `EST` and `CTL` derived contracts;
    - build host replay and preview scaffolding.
-5. Keep active DAC steering blocked until the existing readiness gate is explicitly reopened with completed evidence.
+6. Keep active DAC steering blocked until the existing readiness gate is
+   explicitly reopened with completed evidence.

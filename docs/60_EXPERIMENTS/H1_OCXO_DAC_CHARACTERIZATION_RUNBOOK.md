@@ -56,6 +56,15 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
 5. Record the selected count-observation backend:
    `FC0_GPIN0`, `GPIO_IRQ` divided-only, `PIO_LONG_GATE`, or
    `PPS_GATED_RATIO`.
+6. For SN74LVC1G17 SOT-23-5 breakout wiring, verify the actual package pinout
+   before soldering or probing. The common pinout used in the H1 bench is
+   `1=NC`, `2=A input`, `3=GND`, `4=Y output`, `5=VCC`. With the board removed
+   and unpowered, check that pin 2 is not shorted to pin 5; the `run_014`
+   zero-count fault was traced to that exact solder short.
+7. Before trusting a CX317 count fault, perform a narrow count-path smoke test
+   with a known clock source: direct ECS-TXO-to-D8, then ECS-TXO-through-G17,
+   then CX317-through-G17. A clean 16 MHz ECS-TXO path should produce nonzero
+   `CNT` rows near the expected count for the selected gate.
 
 Raw oscillator observation belongs in `CNT` rows. Do not feed raw OCXO edges
 into the sparse `EVT`/`REF` capture path.
@@ -207,15 +216,30 @@ These values are inside the CX317 operating control-voltage range of 0.0 V to
 3.3 V. The connected `Vc` node tracked DAC commands repeatably, and `CNT`,
 `REF`, `STS`, and `DAC` telemetry remained present during sweep operation.
 
-The current FC0 observation path uses short gate windows and is adequate for
-bring-up, continuity, and safety checks, but it did not resolve the expected
-small CX317 tuning response across the conservative clamp window. PIO long-gate
-and PPS-gated ratio backends provide different count-window formation, but they
-still emit raw `CNT` rows rather than calibrated frequency. Do not claim ppm/V
-or settling-time readiness from these runs alone. The first PPS interval after
-startup may appear as an approximately 32M-tick interval; for these H1 bench
-captures it is treated as a startup artifact when subsequent PPS intervals
-return to approximately 16M ticks.
+The repaired `run_014` topology supersedes the earlier zero-count diagnostic
+state. The failed `run_011` through `run_013` count windows were real bench
+faults, but the immediate cause was a G17 breakout solder short, not host
+parsing or FC0 analysis. After G17 rework, `run_014` completed 284 300 s count
+windows with no zero-count rows, all `CNT` rows flagged `16`, no capture drops,
+and 18 completed DAC sweep passes. It provides clean repaired-path evidence for
+local slope, settling, warmup and thermal analysis.
+
+That evidence is still not permission for automatic steering. `run_014`
+validation reports 2719 short PPS/reference intervals, mostly early in the run.
+Host characterization ignores out-of-band PPS intervals when calibrating the
+RP2040 tick rate, but current telemetry cannot assign root cause to the
+reference source versus GPIO/capture/IRQ/FIFO/DMA/firmware handling. Treat
+affected reference intervals as not control-eligible until the reference path is
+validated or explicitly gated.
+
+PIO long-gate and PPS-gated ratio backends provide different count-window
+formation, but they still emit raw `CNT` rows rather than calibrated frequency.
+Do not claim ppm/V, settling-time, or control-readiness from a run unless count
+validity, reference validity, and DAC attribution are all separately clean or
+explicitly qualified. The first PPS interval after startup may appear as an
+approximately 32M-tick interval; for these H1 bench captures it is treated as a
+startup artifact when subsequent PPS intervals return to approximately 16M
+ticks.
 
 For every H1 run with `csv/ref.csv`, the host characterization report should
 estimate the RP2040 `rp2040_timer0` tick rate from sane PPS intervals and use

@@ -49,8 +49,9 @@ Understand the plant before designing the controller.
 4. Measure count observations vs DAC setting — analysis-useful with 300 s long gates
 5. Derive Hz/V and ppm/V — present in reports, not yet control-authorized
 6. Characterize settling time and thermal behavior — present in reports, not yet loop constants
-7. Restore clean post-inhibit count validity under the revised power/conditioning path
-8. Only then design any guarded control-loop actuation experiment
+7. Restore clean post-inhibit count validity under the revised power/conditioning path — complete in `run_014`
+8. Resolve or explicitly gate PPS/reference cadence anomalies
+9. Only then design any guarded control-loop actuation experiment
 
 ---
 
@@ -93,10 +94,17 @@ Current H1 DAC sweep status:
 - `run_010` is analysis-useful after explicit session/anomaly classification,
   but it is not fixture-ready.
 - `run_011`, `run_012`, and `run_013` show that post-inhibit zero-count faults
-  can occur under the current bench configuration.
-- The next bench decision is `run_014`: verify whether the dirty-to-clean
-  power-path change restores clean post-inhibit count windows and repeatable
-  open-loop DAC response.
+  can occur under the faulted bench configuration.
+- `run_014` isolated that fault to a SN74LVC1G17 breakout solder issue: pin 2
+  was shorted to pin 5. After rework, direct ECS-TXO, ECS-TXO-through-G17, and
+  CX317-through-G17 checks counted correctly.
+- The clean `run_014` capture completed with 284 300 s count windows, zero
+  zero-count rows, all `CNT` rows flagged `16`, no host capture drops, 18 sweep
+  passes, `fc0_valid_for_control: true`, and usable slope, settling, warmup and
+  thermal analysis.
+- The next bench decision is no longer count-path repair; it is PPS/reference
+  anomaly review and conservative plant-model freeze before any guarded SW2
+  actuation experiment.
 
 ---
 
@@ -209,10 +217,12 @@ only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.
 
-Current status: slope estimates exist in `run_009` through `run_013`, including
-center-bracketed slope tables. They are analysis evidence, not SW2 control
-constants, until a clean count path is demonstrated with no post-inhibit
-zero-count faults over the intended eligibility window.
+Current status: slope estimates exist in `run_009` through `run_014`, including
+center-bracketed slope tables. `run_014` provides the first clean repaired-path
+evidence: 35 center-bracketed slope rows with a positive median slope of about
+4.30 Hz/V. Treat this as plant-model input, not a firmware constant, until the
+valid voltage neighbourhood, uncertainty, noise floor, settling cadence, and
+PPS/reference validity policy are recorded in a versioned model.
 
 ---
 
@@ -226,10 +236,10 @@ Measure:
 - overshoot
 - slow thermal drift
 
-Current status: settling estimates exist in the H1 characterization summaries,
-but several runs include invalid count windows and pathological excursions.
-Treat those estimates as diagnostics until `run_014` or a later clean-path run
-confirms repeatable behavior.
+Current status: settling estimates exist in the H1 characterization summaries.
+Earlier runs include invalid count windows and pathological excursions; `run_014`
+provides clean repaired-path settling evidence, but it is still an analysis
+result rather than a selected SW2 loop cadence.
 
 ---
 
@@ -246,8 +256,11 @@ Outputs:
 - frequency vs time
 
 Current status: environmental telemetry is present in recent H1 runs, with
-SHT4x near-VCOCXO samples preferred for thermal context. Longer clean-path runs
-are still needed before thermal behavior can influence any SW2 actuation plan.
+SHT4x near-VCOCXO samples preferred for thermal context. `run_014` captured a
+24-hour-class repaired-path run with SHT4x near-VCOCXO temperature from about
+23.30 C to 27.83 C and post-warmup drift around -0.0417 ppm/hour. Thermal
+behavior should still influence SW2 only through an explicit model or gate, not
+ad hoc firmware constants.
 
 ---
 

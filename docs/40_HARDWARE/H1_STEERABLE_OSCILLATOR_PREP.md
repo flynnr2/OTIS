@@ -142,6 +142,15 @@ For early H1 bring-up, a divided or buffered oscillator output is acceptable if
 it makes observation safer and more repeatable. Record the observed domain name
 and nominal frequency in the manifest.
 
+For the SN74LVC1G17 SOT-23-5 breakout used in the H1 CX317 bench, verify the
+package pinout at the exact board footprint before relying on continuity or DC
+levels. The common pinout used here is `1=NC`, `2=A input`, `3=GND`, `4=Y
+output`, and `5=VCC`. The `run_014` zero-count investigation found pin 2 shorted
+to pin 5 on the breakout; after cleaning and resoldering the G17, ECS-TXO and
+CX317 count observations through the G17 were clean. Include a board-removed,
+unpowered continuity check that pin 2 is not shorted to pin 5 when building or
+debugging this path.
+
 ## Open-Loop Characterization Checklist
 
 - [ ] Verify power rails unloaded.
@@ -149,6 +158,7 @@ and nominal frequency in the manifest.
 - [ ] Verify DAC output range unloaded.
 - [ ] Verify DAC output range connected to oscillator control input, if safe.
 - [ ] Verify oscillator output amplitude and logic conditioning.
+- [ ] Verify buffer package pinout and confirm no input-to-supply solder shorts.
 - [ ] Verify RP2040 can observe oscillator output.
 - [ ] Capture free-running oscillator observation run.
 - [ ] Step DAC manually through small safe increments.
