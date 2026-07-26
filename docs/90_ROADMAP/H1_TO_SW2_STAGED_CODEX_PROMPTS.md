@@ -14,8 +14,10 @@ Current status note:
 - Stage 3 readiness language is now captured in
   `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`.
 - Stage 4's planned `run_011` is no longer the next run. `run_011`, `run_012`,
-  and `run_013` exist and show post-inhibit zero-count faults. The current bench
-  focus is `run_014`, the dirty-to-clean power-path experiment.
+  and `run_013` exist and show post-inhibit zero-count faults. `run_014`
+  isolated that class of failure to a G17 breakout solder short, verified clean
+  repaired-path CX317 counts, and left PPS/reference anomaly review as the main
+  remaining evidence gate.
 - Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
   actuation remains blocked.
 
@@ -28,6 +30,9 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_012/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_013/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_014/notes.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_014/reports/anomalies.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.md`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
 - `docs/90_ROADMAP/otis_h1_ocxo_characterization_plan.md`
