@@ -1508,9 +1508,98 @@ def _write_png(path: Path, width: int, height: int, pixels: list[tuple[int, int,
     path.write_bytes(data)
 
 
+FONT_5X7: dict[str, tuple[str, ...]] = {
+    " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
+    "!": ("00100", "00100", "00100", "00100", "00100", "00000", "00100"),
+    "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
+    "+": ("00000", "00100", "00100", "11111", "00100", "00100", "00000"),
+    ".": ("00000", "00000", "00000", "00000", "00000", "01100", "01100"),
+    ",": ("00000", "00000", "00000", "00000", "00000", "01100", "00100"),
+    "/": ("00001", "00010", "00100", "01000", "10000", "00000", "00000"),
+    ":": ("00000", "01100", "01100", "00000", "01100", "01100", "00000"),
+    "(": ("00010", "00100", "01000", "01000", "01000", "00100", "00010"),
+    ")": ("01000", "00100", "00010", "00010", "00010", "00100", "01000"),
+    "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+    "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "C": ("01110", "10001", "10000", "10000", "10000", "10001", "01110"),
+    "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "G": ("01110", "10001", "10000", "10111", "10001", "10001", "01111"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
+    "J": ("00111", "00010", "00010", "00010", "00010", "10010", "01100"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+    "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+}
+
+
+def _text_size(text: str, scale: int = 2) -> tuple[int, int]:
+    return (len(text) * 6 - 1) * scale, 7 * scale
+
+
 def _set_pixel(pixels: list[tuple[int, int, int]], width: int, height: int, x: int, y: int, color: tuple[int, int, int]) -> None:
     if 0 <= x < width and 0 <= y < height:
         pixels[y * width + x] = color
+
+
+def _draw_text(
+    pixels: list[tuple[int, int, int]],
+    width: int,
+    height: int,
+    x: int,
+    y: int,
+    text: str,
+    color: tuple[int, int, int],
+    *,
+    scale: int = 2,
+    vertical: bool = False,
+) -> None:
+    cursor_x = x
+    cursor_y = y
+    for char in text.upper():
+        glyph = FONT_5X7.get(char, FONT_5X7[" "])
+        for row_index, row in enumerate(glyph):
+            for col_index, bit in enumerate(row):
+                if bit == "1":
+                    for dx in range(scale):
+                        for dy in range(scale):
+                            _set_pixel(
+                                pixels,
+                                width,
+                                height,
+                                cursor_x + col_index * scale + dx,
+                                cursor_y + row_index * scale + dy,
+                                color,
+                            )
+        if vertical:
+            cursor_y += 8 * scale
+        else:
+            cursor_x += 6 * scale
 
 
 def _draw_line(
@@ -1541,17 +1630,58 @@ def _draw_line(
             y0 += sy
 
 
-def _plot_xy(path: Path, samples: list[tuple[float, float]], *, connect: bool = True) -> bool:
+def _draw_rect(
+    pixels: list[tuple[int, int, int]],
+    width: int,
+    height: int,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    color: tuple[int, int, int],
+) -> None:
+    _draw_line(pixels, width, height, x0, y0, x1, y0, color)
+    _draw_line(pixels, width, height, x1, y0, x1, y1, color)
+    _draw_line(pixels, width, height, x1, y1, x0, y1, color)
+    _draw_line(pixels, width, height, x0, y1, x0, y0, color)
+
+
+def _format_axis_tick(value: float) -> str:
+    if value == 0:
+        return "0"
+    abs_value = abs(value)
+    if abs_value < 0.001:
+        return f"{value:.2e}"
+    if abs_value >= 1000:
+        return f"{value:.0f}"
+    if abs_value >= 100:
+        return f"{value:.1f}"
+    if abs_value >= 10:
+        return f"{value:.2f}"
+    return f"{value:.3f}"
+
+
+def _plot_xy(
+    path: Path,
+    samples: list[tuple[float, float]],
+    *,
+    title: str,
+    x_label: str,
+    y_label: str,
+    series_label: str,
+    connect: bool = True,
+) -> bool:
     clean = [(x, y) for x, y in samples if math.isfinite(x) and math.isfinite(y)]
     if len(clean) < 2:
         return False
     width, height = 900, 540
-    margin_left, margin_right, margin_top, margin_bottom = 70, 30, 30, 60
+    margin_left, margin_right, margin_top, margin_bottom = 120, 40, 70, 95
     pixels = [(255, 255, 255)] * (width * height)
     axis = (45, 55, 72)
     grid = (224, 228, 236)
     ink = (19, 102, 196)
     point = (185, 38, 42)
+    label = (35, 43, 58)
     x_values = [item[0] for item in clean]
     y_values = [item[1] for item in clean]
     x_min, x_max = min(x_values), max(x_values)
@@ -1572,11 +1702,24 @@ def _plot_xy(path: Path, samples: list[tuple[float, float]], *, connect: bool = 
     def sy(value: float) -> int:
         return int(height - margin_bottom - (value - y_min) / (y_max - y_min) * (height - margin_top - margin_bottom))
 
+    title_width, _ = _text_size(title, scale=2)
+    _draw_text(pixels, width, height, max(8, (width - title_width) // 2), 18, title, label, scale=2)
+    x_label_width, _ = _text_size(x_label, scale=2)
+    _draw_text(pixels, width, height, margin_left + (width - margin_left - margin_right - x_label_width) // 2, height - 32, x_label, label, scale=2)
+    y_label_height = len(y_label) * 8 * 2
+    _draw_text(pixels, width, height, 18, margin_top + max(0, (height - margin_top - margin_bottom - y_label_height) // 2), y_label, label, scale=2, vertical=True)
+
     for fraction in (0.0, 0.25, 0.5, 0.75, 1.0):
         x = int(margin_left + fraction * (width - margin_left - margin_right))
         y = int(margin_top + fraction * (height - margin_top - margin_bottom))
         _draw_line(pixels, width, height, x, margin_top, x, height - margin_bottom, grid)
         _draw_line(pixels, width, height, margin_left, y, width - margin_right, y, grid)
+        x_tick = _format_axis_tick(x_min + fraction * (x_max - x_min))
+        x_tick_width, _ = _text_size(x_tick, scale=1)
+        _draw_text(pixels, width, height, x - x_tick_width // 2, height - margin_bottom + 12, x_tick, label, scale=1)
+        y_tick = _format_axis_tick(y_max - fraction * (y_max - y_min))
+        y_tick_width, _ = _text_size(y_tick, scale=1)
+        _draw_text(pixels, width, height, margin_left - y_tick_width - 10, y - 4, y_tick, label, scale=1)
     _draw_line(pixels, width, height, margin_left, margin_top, margin_left, height - margin_bottom, axis)
     _draw_line(pixels, width, height, margin_left, height - margin_bottom, width - margin_right, height - margin_bottom, axis)
 
@@ -1589,6 +1732,16 @@ def _plot_xy(path: Path, samples: list[tuple[float, float]], *, connect: bool = 
             for dy in range(-3, 4):
                 if dx * dx + dy * dy <= 9:
                     _set_pixel(pixels, width, height, x + dx, y + dy, point)
+    legend_width = max(180, _text_size(series_label, scale=1)[0] + 56)
+    legend_x = width - margin_right - legend_width
+    legend_y = margin_top + 12
+    _draw_rect(pixels, width, height, legend_x, legend_y, legend_x + legend_width, legend_y + 28, grid)
+    _draw_line(pixels, width, height, legend_x + 10, legend_y + 14, legend_x + 34, legend_y + 14, ink)
+    for dx in range(-3, 4):
+        for dy in range(-3, 4):
+            if dx * dx + dy * dy <= 9:
+                _set_pixel(pixels, width, height, legend_x + 22 + dx, legend_y + 14 + dy, point)
+    _draw_text(pixels, width, height, legend_x + 44, legend_y + 10, series_label, label, scale=1)
     _write_png(path, width, height, pixels)
     return True
 
@@ -1596,30 +1749,78 @@ def _plot_xy(path: Path, samples: list[tuple[float, float]], *, connect: bool = 
 def write_plots(analysis: H1Analysis, plots_dir: Path) -> list[Path]:
     written: list[Path] = []
     dac_hz = [(float(point.dac_code), point.median_hz) for point in analysis.points if point.dac_code is not None and point.median_hz is not None]
-    if _plot_xy(plots_dir / "dac_code_vs_hz.png", dac_hz, connect=False):
+    if _plot_xy(
+        plots_dir / "dac_code_vs_hz.png",
+        dac_hz,
+        title="DAC Code vs Frequency",
+        x_label="DAC code",
+        y_label="Frequency Hz",
+        series_label="Median frequency",
+        connect=False,
+    ):
         written.append(plots_dir / "dac_code_vs_hz.png")
     voltage_ppm = [(point.voltage_v, point.median_ppm) for point in analysis.points if point.voltage_v is not None and point.median_ppm is not None]
-    if _plot_xy(plots_dir / "dac_voltage_vs_ppm.png", voltage_ppm, connect=False):
+    if _plot_xy(
+        plots_dir / "dac_voltage_vs_ppm.png",
+        voltage_ppm,
+        title="DAC Voltage vs PPM",
+        x_label="DAC voltage V",
+        y_label="Frequency error ppm",
+        series_label="Median error",
+        connect=False,
+    ):
         written.append(plots_dir / "dac_voltage_vs_ppm.png")
     settling = [(sample.elapsed_s, sample.measured_hz) for sample in analysis.count_windows]
-    if analysis.dac_events and _plot_xy(plots_dir / "settling_response.png", settling, connect=True):
+    if analysis.dac_events and _plot_xy(
+        plots_dir / "settling_response.png",
+        settling,
+        title="Settling Response",
+        x_label="Elapsed seconds",
+        y_label="Frequency Hz",
+        series_label="Count windows",
+        connect=True,
+    ):
         written.append(plots_dir / "settling_response.png")
     warmup = [(sample.elapsed_s - analysis.count_windows[0].elapsed_s, sample.ppm if sample.ppm is not None else sample.measured_hz) for sample in analysis.count_windows] if analysis.count_windows else []
-    if _plot_xy(plots_dir / "warmup_drift.png", warmup, connect=True):
+    if _plot_xy(
+        plots_dir / "warmup_drift.png",
+        warmup,
+        title="Warmup Drift",
+        x_label="Elapsed seconds",
+        y_label="Frequency error ppm",
+        series_label="Count windows",
+        connect=True,
+    ):
         written.append(plots_dir / "warmup_drift.png")
     primary_env = [
         sample for sample in analysis.environment_samples
         if sample.source == "sht4x" and sample.role == "vcocxo_near" and sample.temperature_c is not None
     ]
     temp_elapsed = [(sample.elapsed_s, sample.temperature_c) for sample in primary_env if sample.temperature_c is not None]
-    if _plot_xy(plots_dir / "vcocxo_temperature_vs_elapsed.png", temp_elapsed, connect=True):
+    if _plot_xy(
+        plots_dir / "vcocxo_temperature_vs_elapsed.png",
+        temp_elapsed,
+        title="VCOCXO Temperature",
+        x_label="Elapsed seconds",
+        y_label="Temperature C",
+        series_label="SHT4x near VCOCXO",
+        connect=True,
+    ):
         written.append(plots_dir / "vcocxo_temperature_vs_elapsed.png")
     temp_ppm = [
         (point.env_temperature_mean_c, point.median_ppm)
         for point in analysis.points
         if point.env_temperature_mean_c is not None and point.median_ppm is not None
     ]
-    if _plot_xy(plots_dir / "vcocxo_temperature_vs_ppm.png", temp_ppm, connect=False):
+    if _plot_xy(
+        plots_dir / "vcocxo_temperature_vs_ppm.png",
+        temp_ppm,
+        title="Temperature vs PPM",
+        x_label="Temperature C",
+        y_label="Frequency error ppm",
+        series_label="Dwell medians",
+        connect=False,
+    ):
         written.append(plots_dir / "vcocxo_temperature_vs_ppm.png")
     return written
 

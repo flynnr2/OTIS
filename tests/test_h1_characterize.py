@@ -2,9 +2,58 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import struct
+import zlib
 
 from host.otis_tools.h1_characterize import analyze_run, characterize_run, render_report
 from host.otis_tools.pps_diagnostics import classify_pps_interval
+
+
+def _read_png_rgb(path: Path) -> tuple[int, int, list[tuple[int, int, int]]]:
+    data = path.read_bytes()
+    offset = 8
+    width = height = 0
+    compressed = bytearray()
+    while offset < len(data):
+        chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        chunk_data = data[offset + 8 : offset + 8 + chunk_length]
+        offset += 12 + chunk_length
+        if chunk_type == b"IHDR":
+            width, height = struct.unpack(">II", chunk_data[:8])
+        elif chunk_type == b"IDAT":
+            compressed.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+    raw = zlib.decompress(bytes(compressed))
+    pixels: list[tuple[int, int, int]] = []
+    stride = width * 3
+    cursor = 0
+    for _ in range(height):
+        assert raw[cursor] == 0
+        cursor += 1
+        row = raw[cursor : cursor + stride]
+        cursor += stride
+        for index in range(0, len(row), 3):
+            pixels.append((row[index], row[index + 1], row[index + 2]))
+    return width, height, pixels
+
+
+def _non_white_pixels(
+    pixels: list[tuple[int, int, int]],
+    width: int,
+    *,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+) -> int:
+    count = 0
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if pixels[y * width + x] != (255, 255, 255):
+                count += 1
+    return count
 
 
 def _write_synthetic_run(
@@ -176,6 +225,12 @@ def test_h1_characterize_writes_report_csv_and_supported_plots(tmp_path: Path) -
     assert run_dir / "plots" / "dac_voltage_vs_ppm.png" in plots
     assert (run_dir / "plots" / "dac_code_vs_hz.png").read_bytes().startswith(b"\x89PNG")
     assert (run_dir / "csv" / "h1_center_bracketed_slopes.csv").exists()
+    width, height, pixels = _read_png_rgb(run_dir / "plots" / "dac_code_vs_hz.png")
+    assert _non_white_pixels(pixels, width, x0=250, y0=10, x1=650, y1=55) > 50
+    assert _non_white_pixels(pixels, width, x0=360, y0=500, x1=540, y1=535) > 20
+    assert _non_white_pixels(pixels, width, x0=5, y0=120, x1=55, y1=420) > 50
+    assert _non_white_pixels(pixels, width, x0=650, y0=75, x1=870, y1=115) > 50
+    assert height == 540
 
 
 def test_h1_characterize_uses_pps_calibrated_gate_rate(tmp_path: Path) -> None:
