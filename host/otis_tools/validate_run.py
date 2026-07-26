@@ -36,6 +36,13 @@ def _int(value: str) -> int:
     return int(value, 10)
 
 
+def _optional_int(value: object) -> int | None:
+    try:
+        return int(str(value), 10)
+    except (TypeError, ValueError):
+        return None
+
+
 def _validate_manifest(run_dir: Path, manifest) -> list[str]:
     failures: list[str] = []
     mode = manifest.bringup_mode
@@ -85,6 +92,12 @@ def _manifest_warnings(manifest) -> list[str]:
     for key in ("firmware_version", "host_tool_version", "firmware_git_commit", "host_git_commit"):
         if key in manifest.data and manifest.data.get(key) in (None, ""):
             warnings.append(f"{manifest.path.name}: {key} is not populated")
+    for gate in _pps_cadence_gates(manifest):
+        warnings.append(
+            f"{manifest.path.name}: PPS cadence anomaly gate declared for "
+            f"{gate.get('domain', 'unknown domain')} ({gate.get('classification', 'unknown class')}, "
+            f"count={gate.get('count', 'unknown')}); gated intervals are diagnostic-only, not control-eligible"
+        )
     return warnings
 
 
@@ -98,7 +111,52 @@ def _run_state_warnings(run_dir: Path, manifest) -> list[str]:
     return warnings
 
 
-def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: dict[str, float], template: bool) -> list[str]:
+def _pps_anomaly_gate_matches(
+    gate: dict,
+    domain: str,
+    anomaly_rows: list[dict[str, object]],
+) -> bool:
+    if str(gate.get("domain", "")) != domain:
+        return False
+    if gate.get("control_eligibility") not in ("not_control_eligible", "diagnostic_only"):
+        return False
+    if str(gate.get("root_cause", "")) not in {"unresolved", "source_related", "capture_path_related", "startup_only"}:
+        return False
+    if _optional_int(gate.get("count")) != len(anomaly_rows):
+        return False
+    if not anomaly_rows:
+        return False
+    expected_class = gate.get("classification")
+    if expected_class and {row["classification"] for row in anomaly_rows} != {expected_class}:
+        return False
+    exact_fields = (
+        ("first_index", anomaly_rows[0]["index"]),
+        ("last_index", anomaly_rows[-1]["index"]),
+        ("first_event_seq", anomaly_rows[0]["previous_seq"]),
+        ("last_event_seq", anomaly_rows[-1]["current_seq"]),
+    )
+    for key, observed in exact_fields:
+        if key in gate and _optional_int(gate[key]) != observed:
+            return False
+    return True
+
+
+def _pps_cadence_gated(
+    gates: list[dict] | None,
+    domain: str,
+    anomaly_rows: list[dict[str, object]],
+) -> bool:
+    if not gates or not anomaly_rows:
+        return False
+    return any(_pps_anomaly_gate_matches(gate, domain, anomaly_rows) for gate in gates)
+
+
+def _validate_pps_cadence(
+    raw_rows: list[dict[str, str]],
+    nominal_hz_by_domain: dict[str, float],
+    template: bool,
+    gates: list[dict] | None = None,
+) -> list[str]:
     if template:
         return []
     failures: list[str] = []
@@ -121,6 +179,7 @@ def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: 
         expected = nominal_hz
         ticks = [ticks for _seq, ticks in refs]
         cadence_ticks, _wrap_count = unwrap_ticks(ticks) if domain == "rp2040_timer0" else (ticks, 0)
+        anomaly_rows: list[dict[str, object]] = []
         for index, ((previous_seq, _), (current_seq, _), start, end) in enumerate(
             zip(refs, refs[1:], cadence_ticks, cadence_ticks[1:]),
             start=1,
@@ -128,11 +187,26 @@ def _validate_pps_cadence(raw_rows: list[dict[str, str]], nominal_hz_by_domain: 
             interval = end - start
             if not (0.8 * expected <= interval <= 1.2 * expected):
                 classification = classify_pps_interval(int(interval), expected)
-                failures.append(
-                    f"raw_events.csv: PPS interval {index} in {domain} is {interval} ticks "
-                    f"({classification.classification}, event_seq {previous_seq}->{current_seq}, timestamp_ticks {start}->{end}); "
-                    f"expected approximately {expected:.0f}"
+                anomaly_rows.append(
+                    {
+                        "index": index,
+                        "previous_seq": previous_seq,
+                        "current_seq": current_seq,
+                        "start_ticks": start,
+                        "end_ticks": end,
+                        "interval": interval,
+                        "classification": classification.classification,
+                    }
                 )
+        if _pps_cadence_gated(gates, domain, anomaly_rows):
+            continue
+        for anomaly in anomaly_rows:
+            failures.append(
+                f"raw_events.csv: PPS interval {anomaly['index']} in {domain} is {anomaly['interval']} ticks "
+                f"({anomaly['classification']}, event_seq {anomaly['previous_seq']}->{anomaly['current_seq']}, "
+                f"timestamp_ticks {anomaly['start_ticks']}->{anomaly['end_ticks']}); "
+                f"expected approximately {expected:.0f}"
+            )
     return failures
 
 
@@ -170,6 +244,13 @@ def _validate_count_sanity(count_rows: list[dict[str, str]], manifest, template:
                 f"must be one of {sorted(allowed_source_domains)}"
             )
     return failures
+
+
+def _pps_cadence_gates(manifest) -> list[dict]:
+    gates = manifest.data.get("validation_gates", {}).get("pps_cadence") if isinstance(manifest.data.get("validation_gates"), dict) else None
+    if not isinstance(gates, list):
+        return []
+    return [gate for gate in gates if isinstance(gate, dict)]
 
 
 def validate_run(run_dir: Path) -> int:
@@ -237,7 +318,7 @@ def validate_run(run_dir: Path) -> int:
     }
     raw_rows = _read_csv(files_by_contract.get("raw_events_v1", Path("__missing__")))
     count_rows = _read_csv(files_by_contract.get("count_observations_v1", Path("__missing__")))
-    failures.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
+    failures.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template, _pps_cadence_gates(manifest)))
     failures.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
 
     for warning in warnings:

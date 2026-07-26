@@ -16,8 +16,8 @@ Current status note:
 - Stage 4's planned `run_011` is no longer the next run. `run_011`, `run_012`,
   and `run_013` exist and show post-inhibit zero-count faults. `run_014`
   isolated that class of failure to a G17 breakout solder short, verified clean
-  repaired-path CX317 counts, and left PPS/reference anomaly review as the main
-  remaining evidence gate.
+  repaired-path CX317 counts, and explicitly gated its PPS/reference anomaly as
+  diagnostic-only unresolved evidence.
 - Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
   actuation remains blocked.
 

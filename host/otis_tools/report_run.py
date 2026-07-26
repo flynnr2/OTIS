@@ -21,6 +21,7 @@ from .run_loader import (
 from .sessions import detect_run_sessions
 from .validate_run import (
     _manifest_warnings,
+    _pps_cadence_gates,
     _run_state_warnings,
     _validate_count_sanity,
     _validate_manifest,
@@ -172,7 +173,7 @@ def _validation_findings(
         warnings.extend(f"{read.path.relative_to(manifest.root)}: {warning}" for warning in result.warnings)
     raw_rows = [row for read in reads if read.contract == RAW_CONTRACT for row in read.rows]
     count_rows = [row for read in reads if read.contract == COUNT_CONTRACT for row in read.rows]
-    findings.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template))
+    findings.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template, _pps_cadence_gates(manifest)))
     findings.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
     for artifact in manifest.expected_artifacts:
         if artifact and not (manifest.root / artifact).exists():

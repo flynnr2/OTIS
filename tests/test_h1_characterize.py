@@ -504,6 +504,20 @@ def test_h1_configurable_settling_discard_excludes_only_early_windows(tmp_path: 
 def test_h1_pps_anomaly_marks_overlapping_dac_step_degraded(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1_degraded_pps_step"
     _write_synthetic_run(run_dir, include_ref=True)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["validation_gates"] = {
+        "pps_cadence": [
+            {
+                "domain": "rp2040_timer0",
+                "classification": "likely_missed_1_pps",
+                "count": 1,
+                "root_cause": "unresolved",
+                "control_eligibility": "not_control_eligible",
+            }
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     ref_rows = [
         "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
         "REF,1,1,1,R,0,rp2040_timer0,16",
@@ -524,4 +538,5 @@ def test_h1_pps_anomaly_marks_overlapping_dac_step_degraded(tmp_path: Path) -> N
     assert analysis.points[0].pps_anomaly_count == 1
     assert "PPS Anomalies" in report
     assert "likely_missed_1_pps" in report
+    assert "pps_cadence_anomaly_status: explicitly_gated" in report
     assert "quality" in points_csv

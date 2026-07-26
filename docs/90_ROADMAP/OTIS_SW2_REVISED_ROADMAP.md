@@ -2,7 +2,7 @@
 
 **Status:** proposed revision based on the repository snapshot supplied on 25 July 2026  
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding  
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_014` has now completed as a clean count-path run after the G17 breakout repair. It removes the zero-count conditioning blocker, but it does not by itself authorize SW2 DAC actuation because PPS/reference cadence anomalies still require review and gating.
+**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_014` has now completed as a clean count-path run after the G17 breakout repair. It removes the zero-count conditioning blocker, and its PPS/reference cadence anomalies are explicitly gated as diagnostic-only evidence, but it does not by itself authorize SW2 DAC actuation.
 
 ---
 
@@ -24,7 +24,7 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish H1 evidence reduction from `run_014` and classify the remaining PPS/reference anomaly;
+1. finish H1 evidence reduction from `run_014` and carry its explicit PPS/reference anomaly gate into SW2 reference-validity logic;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
 4. derive and freeze a versioned plant model and safe automatic-control envelope;
@@ -232,16 +232,17 @@ counting. The post-fix clean `run_014` completed with:
 - warmup and thermal evidence over a 24-hour-class capture.
 
 The remaining caveat is not the repaired count path. It is the
-PPS/reference-cadence evidence: validation reports 2719 short REF/PPS intervals,
-mostly concentrated early in the run. Host characterization ignored out-of-band
-PPS intervals for tick-rate calibration, but current telemetry cannot assign
-root cause to the GPS/PPS source versus GPIO/capture/IRQ/FIFO/DMA/firmware
-handling.
+PPS/reference-cadence evidence: the raw REF stream contains 2719 short REF/PPS
+intervals, mostly concentrated early in the run but not startup-only. Host
+characterization ignored out-of-band PPS intervals for tick-rate calibration,
+and `run_014/manifest.json` gates the matching anomaly set as diagnostic-only
+and not control-eligible. Current telemetry cannot assign root cause to the
+GPS/PPS source versus GPIO/capture/IRQ/FIFO/DMA/firmware handling.
 
 Consequence: reopen H1 plant-model completion and preserve the pre-G17-fix
 capture as negative hardware evidence, but **do not jump directly to PLL/PI or
-even guarded I-only actuation**. The next roadmap step is to close or explicitly
-gate the PPS/reference anomaly, then freeze a conservative local plant model.
+even guarded I-only actuation**. The next roadmap step is to freeze a
+conservative local plant model with explicit reference-validity gates.
 
 ---
 
@@ -394,7 +395,7 @@ Remaining cleanup:
 2. Keep the pre-G17-fix capture as a distinct session/evidence set; do not merge
    it into the post-fix plant fit.
 3. Add PPS/reference anomaly fault telemetry or run a focused validation capture
-   that proves the reference path is clean.
+   that proves the reference path is clean before any active actuation.
 
 ### Exit gate
 
@@ -944,11 +945,11 @@ Each task below is intentionally narrower than “implement SW2.”
 
 ### Package 1 — Close `run_014` follow-up
 
-Completed for the count path: the clean `run_014` reports are generated and the
-readiness language now treats the G17 solder fault as resolved hardware
-evidence. Remaining follow-up is to backfill recoverable manifest/version fields
-and close or explicitly gate the PPS/reference cadence anomaly. Do not alter
-control firmware.
+Completed: the clean `run_014` reports are generated, recoverable manifest
+fields are backfilled, the pre-G17-fix capture remains separate negative
+evidence, and the PPS/reference cadence anomaly is explicitly gated as
+diagnostic-only unresolved evidence. Do not alter control firmware or enable
+automatic DAC actuation.
 
 ### Package 2 — Separate DAC limit classes
 
@@ -1169,14 +1170,11 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Close or explicitly gate the `run_014` PPS/reference cadence anomaly.
-2. Backfill recoverable manifest/version fields for `run_014` and keep the
-   pre-G17-fix capture separate from the clean plant evidence.
-3. Freeze a conservative H1 plant-model schema and populate it only from
+1. Freeze a conservative H1 plant-model schema and populate it only from
    reviewed clean-path evidence.
-4. Plan any focused H1-B runs needed to bound hysteresis, smaller step response,
+2. Plan any focused H1-B runs needed to bound hysteresis, smaller step response,
    and the count noise floor before controller code.
-5. In parallel, undertake only non-actuating SW2 work:
+3. In parallel, undertake only non-actuating SW2 work:
    - separate DAC limit classes;
    - define the plant-model schema;
    - define `EST` and `CTL` derived contracts;
