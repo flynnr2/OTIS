@@ -121,15 +121,16 @@ The 300-second H1 path remains valuable as an independent metrology and validati
 SW2 should use the RP2040's two cores as an explicit architectural boundary:
 
 ```text
-Core 0 — protected timing and discipline plane
-Core 1 — service, I/O and application plane
+As per Earle Philhower's advices that  Core 0 handles USB and should generally perform Wi-Fi operations
+Core 0 — service, I/O and application plane
+Core 1 — protected timing and discipline plane
 ```
 
 This does not mean that SW2 should begin with a disruptive multicore rewrite before the H1 evidence gates are closed. It does mean that new SW2 interfaces, queues and ownership rules must be designed so the intended partition is clear and can be enforced incrementally.
 
-#### Core 0 responsibilities
+#### Core 1 responsibilities
 
-Core 0 should own work whose delay, ordering or jitter can affect measurement or discipline integrity:
+Core 1 should own work whose delay, ordering or jitter can affect measurement or discipline integrity:
 
 - PPS and oscillator capture completion;
 - monotonic timing and sequence ownership;
@@ -140,11 +141,11 @@ Core 0 should own work whose delay, ordering or jitter can affect measurement or
 - controller evaluation and actuator-request generation;
 - timing-critical fault detection.
 
-Core 0 must not depend on timely servicing by Core 1 in order to continue capturing and estimating correctly.
+Core 1 must not depend on timely servicing by Core 0 in order to continue capturing and estimating correctly.
 
-#### Core 1 responsibilities
+#### Core 0 responsibilities
 
-Core 1 should own work that may be delayed without corrupting timing:
+Core 0 should own work that may be delayed without corrupting timing:
 
 - USB serial transport and telemetry formatting;
 - command parsing and configuration servicing;
@@ -154,7 +155,7 @@ Core 1 should own work that may be delayed without corrupting timing:
 - host communications;
 - future ClockMesh/RSN, NTP/chrony and PTP adapters;
 - other application-layer services;
-- provisionally, physical DAC I²C transactions if their latency or blocking behaviour makes them unsuitable for Core 0.
+- provisionally, physical DAC I²C transactions if their latency or blocking behaviour makes them unsuitable for Core 1.
 
 #### Actuator boundary
 
@@ -178,14 +179,14 @@ The estimator and controller must use the confirmed applied code rather than ass
 Use bounded, fixed-size message channels and immutable records rather than shared mutable controller state.
 
 ```text
-Core 0 -> Core 1:
+Core 1 -> Core 0:
     observations for export
     estimator snapshots
     control decisions
     events and faults
     actuator requests
 
-Core 1 -> Core 0:
+Core 0 -> Core 1:
     validated mode/configuration changes
     actuator acknowledgements
     qualified external/network observations
