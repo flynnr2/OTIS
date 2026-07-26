@@ -497,20 +497,24 @@ Do not hide this model as constants scattered across firmware files.
 
 ### Repository work
 
-1. Add a document defining:
+1. Add or promote a draft first-class diagnostic contract with stable reason
+   codes, evidence references, persistence, diagnostic confidence, and explicit
+   control consequence. The current additive draft is
+   `data_contracts/diagnostics_draft_v0.csv.md`.
+2. Add a document defining:
    - discipline observation eligibility;
    - estimator outputs;
    - control decision records;
    - state transitions;
    - plant-model versioning;
    - raw-to-derived provenance.
-2. Add backend-generic names alongside current FC0 compatibility names, such as:
+3. Add backend-generic names alongside current FC0 compatibility names, such as:
    - `count_observed_valid`;
    - `count_valid_for_control`;
    - `count_fault`;
    - `reference_valid_for_control`.
-3. Retain `fc0_*` fields during migration so existing host tools and runs remain interpretable.
-4. Define unavailable values explicitly; unknown gain must never be encoded as zero.
+4. Retain `fc0_*` fields during migration so existing host tools and runs remain interpretable.
+5. Define unavailable values explicitly; unknown gain must never be encoded as zero.
 
 ### Deliverable
 
@@ -532,7 +536,11 @@ A normative data contract for a derived discipline-decision record, tentatively 
 
 ### Exit gate
 
-Host parser, validator and fixtures understand the new record while all existing tests and contracts remain valid.
+Host parser, validator and fixtures understand the new diagnostic and future
+discipline records while all existing tests and contracts remain valid.
+Reference/count-path and actuator diagnostic fixtures must demonstrate preserved
+raw evidence, control inhibition, clearing or latching behavior, and
+deterministic replay without hardware actuation.
 
 ---
 

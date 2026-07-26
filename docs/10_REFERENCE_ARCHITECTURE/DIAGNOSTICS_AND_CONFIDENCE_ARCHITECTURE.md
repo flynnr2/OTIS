@@ -132,6 +132,13 @@ canonical inputs. `EST` records contain numerical estimator results. `CTL`
 records contain control decisions. Diagnostic records explain quality,
 eligibility, and faults without replacing any of them.
 
+The first repository contract for this is
+`data_contracts/diagnostics_draft_v0.csv.md`. It is deliberately draft and
+additive: `health_v1` / `STS` remains the compatibility status surface, while
+`DIAG` records carry stable reason codes, persistence, evidence references,
+algorithm/config versions, diagnostic confidence, and control consequence for
+host replay and future firmware parity tests.
+
 ## Acceptance tests
 
 Diagnostics become first-class only when tests demonstrate that:
