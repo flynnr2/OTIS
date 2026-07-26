@@ -79,3 +79,10 @@ PPS-gated ratio runs add component `pps_gate`:
 `ratio_available` is a validity indicator, not a firmware-emitted numeric ratio.
 Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
 metadata.
+
+## Diagnostics Migration
+
+`health_v1` remains the compatibility status contract. First-class diagnostic
+findings are additive and are documented in `diagnostics_draft_v0.csv.md`. Host
+replay may derive `DIAG` rows from `STS`, `REF`, `CNT`, `DAC`, manifests, and
+reports, but must not remove or rewrite the original `STS` rows.
