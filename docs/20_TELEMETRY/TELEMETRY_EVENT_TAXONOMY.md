@@ -48,6 +48,7 @@ products.
 |--------------------|----------------------------------------------|-------------------|
 | observation         | Hardware-captured timing observation         | yes               |
 | state              | Device or loop state                         | no                |
+| diagnostic         | Evidence-backed health/quality conclusion    | no                |
 | control_action     | Deliberate steering or output action         | no                |
 | context            | Environmental or operating context           | no                |
 | provenance         | Configuration, schema, calibration, identity | no                |
@@ -67,7 +68,8 @@ contextualize, or derive from those facts.
 | `EVENT_CAPTURE`    | observation    | External/user timing event captured by the timing fabric |
 | `REF_CAPTURE`      | observation    | Reference event captured by the timing fabric            |
 | `COUNT_OBSERVATION` | observation   | Gated/windowed count of a high-rate source               |
-| `DISCIPLINE_STATE` | state          | Discipline loop state, estimator status, lock confidence |
+| `DISCIPLINE_STATE` | state          | Discipline loop state and estimator status                 |
+| `DIAGNOSTIC_EVENT` | diagnostic     | Health, quality, confidence, reason, and control effect    |
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
 | `ENVIRONMENT`      | context        | Temperature, pressure, humidity, voltage, board context  |
 | `DEVICE_STATE`     | provenance     | Boot, firmware, hardware, clock-source, runtime state    |
@@ -160,6 +162,29 @@ Those are host-derived, profile, reporting, or control-readiness questions.
 
 The compact CSV representation in `count_observations_v1.csv` uses `CNT` as the
 wire tag for `COUNT_OBSERVATION`.
+
+---
+
+## Diagnostic Records
+
+### `DIAGNOSTIC_EVENT`
+
+A `DIAGNOSTIC_EVENT` describes an evidence-backed conclusion about source
+quality, subsystem health, estimator qualification, model applicability, or
+control eligibility.
+
+It should identify a stable diagnostic/reason code, subsystem, severity, state,
+confidence in the diagnosis, first/last seen times, supporting observation or
+estimate ranges, algorithm version, and control consequence.
+
+Diagnostic records do not establish timing truth and do not replace `REF`, `CNT`,
+`EVT`, `EST`, or `CTL` records. They explain whether and why those records may be
+trusted or used for control. Important transitions should be explicit events;
+periodic snapshots may coexist for current-state reporting.
+
+Avoid a single ambiguous confidence field. Observation validity, source quality,
+estimate uncertainty, model applicability, control eligibility, and confidence
+in a diagnosis are distinct concepts.
 
 ---
 

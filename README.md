@@ -122,3 +122,12 @@ examples/h0_pps_tcxo_real/
 ## License
 
 MIT License.
+
+## Architecture note: diagnostics as a first-class subsystem
+
+OTIS separates measurement, metrology, diagnostics, control, and telemetry. See
+`docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md` and
+`docs/10_REFERENCE_ARCHITECTURE/DIAGNOSTICS_AND_CONFIDENCE_ARCHITECTURE.md` for
+the normative model. Every future control action is expected to be explainable
+from preserved observations, estimates, diagnostic gates, policy, and actuator
+acknowledgement.

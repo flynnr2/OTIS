@@ -125,6 +125,26 @@ Timing truth belongs to the timing fabric, not the host.
 Known limitations, assumptions, and unresolved questions should be documented
 explicitly.
 
+
+## Diagnostics and Metrology Are First-Class
+
+Measurement, metrology, diagnostics, and control are distinct architectural
+responsibilities. Raw observations establish facts; metrology derives numerical
+estimates; diagnostics assess quality, health, applicability, and confidence;
+control acts only through an explicit policy. Telemetry transports records from
+all four and must not blur their meanings.
+
+Diagnostics are not debugging exhaust. They must be versioned, replayable,
+evidence-backed, and capable of stating why control is permitted, degraded, or
+inhibited.
+
+## Explainable Control
+
+Every requested and applied control action must be reconstructable from preserved
+measurements, estimator outputs, diagnostic gates, plant-model provenance, policy
+version, and actuator acknowledgement. A DAC movement that cannot be explained
+from recorded evidence is an architectural failure.
+
 ## 12. Future Abstraction From Experience
 
 OTIS is intentionally proceeding as a concrete, working modular GPSDO /

@@ -1,35 +1,55 @@
 # Telemetry Philosophy
 
-OTIS telemetry is intended to function as a scientific record.
+OTIS telemetry is a versioned scientific record of what the instrument observed,
+what it inferred, what it diagnosed, and what it did.
 
-## Telemetry Goals
+Telemetry is transport and representation. It must preserve the distinction
+between measurement, metrology, diagnostics, state, control, context, provenance,
+and host operations.
 
-Telemetry should support:
-- replayability;
-- offline reconstruction;
-- long-run analysis;
-- provenance tracking;
-- reproducible experimentation.
+## Goals
 
-## Raw First
+Telemetry should support replayability, offline reconstruction, long-run
+analysis, provenance tracking, reproducible experimentation, fault isolation,
+uncertainty reporting, and explanation of every control action.
 
-Raw telemetry is preferred over aggressively processed summaries.
+## Raw first
 
-## Append-Only Philosophy
+Canonical observations are preserved before filtering or interpretation. Derived
+records may reject or annotate observations but must never overwrite or obscure
+them.
 
-Logs should be append-only wherever practical.
+## Explainability
 
-## Schema Versioning
+A complete run should permit reconstruction of:
 
-Schemas should evolve explicitly and conservatively.
+- accepted and rejected source observations;
+- frequency, phase, drift, and uncertainty estimates;
+- active diagnostic findings and reason codes;
+- control eligibility and inhibition;
+- requested and applied actuator changes;
+- configuration, policy, algorithm, and plant-model versions.
 
-Breaking changes must be versioned.
+## Append-only and transitions
 
-## Human and Machine Readability
+Logs should be append-only wherever practical. Important state changes, faults,
+source changes, arming/disarming, and recovery events should be explicit records,
+not inferred only from periodic snapshots.
 
-Telemetry should support:
-- automated tooling;
-- direct inspection;
-- long-term archival.
+## Schema versioning
 
-Both CSV and structured machine formats may coexist.
+Schemas evolve explicitly and conservatively. Breaking changes are versioned.
+Unknown fields remain unknown rather than being represented as plausible zeros.
+
+## Human and machine readability
+
+Telemetry should support automated tooling, direct inspection, and long-term
+archival. CSV and structured machine formats may coexist when their semantics are
+identical and documented.
+
+## Capacity and failure
+
+Timing observations, actuator acknowledgements, critical diagnostic transitions,
+and control actions must not be silently lost. Droppable routine snapshots must
+have explicit counters. Transport or host failure must not alter timing truth and
+must be visible in later replay.

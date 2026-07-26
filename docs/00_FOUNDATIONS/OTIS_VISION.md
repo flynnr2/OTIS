@@ -3,50 +3,65 @@
 OTIS exists to create a transparent, reproducible, scientifically serious timing
 instrumentation platform.
 
-The project is motivated by several observations:
+It is not enough for OTIS to produce a disciplined output. OTIS must preserve the
+evidence from which that output was derived, quantify what it believes, diagnose
+why that belief may be degraded, and explain every control action.
 
-- many precision timing systems are operationally opaque;
-- timing telemetry is often under-specified or unavailable;
-- timing provenance is frequently implicit rather than explicit;
-- observability and replayability are underdeveloped in existing systems;
-- many timing projects tightly couple architecture to implementation details.
+## Motivation
 
-OTIS seeks to address these shortcomings by defining a deterministic,
-reference-centric instrumentation architecture.
+Many precision timing systems are operationally opaque:
 
-## Initial Identity
+- timing telemetry is under-specified or unavailable;
+- provenance and clock-domain assumptions are implicit;
+- raw evidence is discarded after filtering;
+- lock is presented as a Boolean without uncertainty or reasons;
+- diagnostics are treated as debugging output rather than instrument behaviour;
+- capture, control, user interface, and networking are tightly coupled.
 
-OTIS initially targets a canonical timing instrument appliance:
-- disciplined timing reference;
-- deterministic event timestamping;
-- structured telemetry;
-- long-run observability.
+OTIS addresses these shortcomings with a deterministic, reference-centric,
+provenance-preserving architecture.
 
-The first implementation should be coherent, reproducible, and scientifically
-defensible.
+## Initial identity
 
-## Long-Term Direction
+OTIS initially targets a canonical timing instrument appliance with:
 
-Long-term, OTIS may evolve into a broader instrumentation ecosystem:
-- interchangeable timing fabrics;
-- FPGA timing engines;
-- distributed timing systems;
-- modular analysis layers;
-- advanced metrology tooling.
+- an observable, steerable local oscillator;
+- deterministic event and reference capture;
+- explicit measurement, metrology, diagnostics, and control layers;
+- structured, versioned telemetry;
+- offline replay and long-run analysis;
+- conservative frequency and phase discipline;
+- health, uncertainty, and control-eligibility reporting.
 
-However, modularity must not compromise semantic rigor.
+## Instrument promise
 
-## Intended Audience
+OTIS should be able to answer:
 
-Primary audiences include:
-- precision timing researchers;
-- Time-Nuts community members;
-- horological instrumentation researchers;
-- RF and oscillator experimenters;
-- scientific instrumentation engineers.
+- What did the hardware observe?
+- In which clock domain?
+- What estimates were derived, with what uncertainty?
+- Which evidence was rejected, and why?
+- What is healthy, degraded, stale, or unresolved?
+- Why was control permitted or inhibited?
+- Why did the DAC move, and was the requested movement applied?
 
-OTIS documentation aims for:
-- serious but readable scientific engineering;
-- explicit assumptions;
-- explicit limitations;
-- reproducible methodology.
+## Long-term direction
+
+OTIS may evolve into a broader instrumentation ecosystem with interchangeable
+timing fabrics, oscillator and reference adapters, distributed timing sources,
+advanced metrology, and multiple applications. Modularity must not compromise
+semantic rigor, raw provenance, or control safety.
+
+The immediate project remains a concrete, working GPSDO and timing-lab platform.
+Future abstractions should be extracted from demonstrated hardware and software
+experience rather than designed prematurely.
+
+## Intended audience
+
+Primary audiences include precision timing researchers, Time-Nuts community
+members, horological instrumentation researchers, RF and oscillator
+experimenters, and scientific instrumentation engineers.
+
+OTIS documentation aims for serious but readable scientific engineering,
+explicit assumptions and limitations, reproducible methodology, and honest
+statements of confidence.

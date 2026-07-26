@@ -6,6 +6,42 @@
 
 ---
 
+
+## Diagnostics-first architecture commitment
+
+SW2 treats four workstreams as co-equal and explicitly separated:
+
+1. **Measurement** preserves reference, count, event, actuator, environmental,
+   and low-level health observations.
+2. **Metrology** derives frequency, phase, drift, stability, plant response, and
+   uncertainty with provenance.
+3. **Diagnostics** evaluates source quality, path integrity, estimator
+   qualification, model applicability, subsystem health, and control eligibility
+   using stable reason codes and evidence references.
+4. **Control** consumes metrology and diagnostic gates under a versioned policy;
+   it never hides diagnostic inference inside the DAC driver.
+
+This is not an additional dashboard milestone. It changes acceptance criteria for
+all SW2 packages:
+
+- raw evidence is retained even when invalid for control;
+- every Boolean eligibility state includes reasons;
+- important diagnostic transitions are explicit and replayable;
+- live and host replay diagnostics should converge on common fixtures;
+- every requested/applied DAC change traces through estimate, diagnostic gate,
+  policy, request, limit handling, and acknowledgement;
+- reference, count-path, estimator, plant-model, actuator, and service-plane
+  health are independently visible;
+- control responds conservatively to diagnosed quality without diagnostics
+  directly actuating hardware.
+
+The normative architecture is defined in:
+
+- `docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md`;
+- `docs/10_REFERENCE_ARCHITECTURE/DIAGNOSTICS_AND_CONFIDENCE_ARCHITECTURE.md`;
+- `docs/30_ANALYSIS/PPS_REFERENCE_CHARACTERIZATION.md`.
+
+
 ## 1. Executive decision
 
 The earlier generic SW2 roadmap had the right long-term shape, but it treated OTIS too much like a greenfield firmware project. The repository already contains much of the necessary scaffolding:
