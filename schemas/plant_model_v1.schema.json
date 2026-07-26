@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/plant_model_v1.schema.json",
+  "title": "OTIS plant_model_v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model_id",
+    "model_version",
+    "status",
+    "oscillator",
+    "hardware_topology",
+    "dac",
+    "control_path",
+    "plant_response",
+    "source_evidence",
+    "invalidation_conditions",
+    "unresolved_fields"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "model_id": { "type": "string", "minLength": 1 },
+    "model_version": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control_ready", "actuation_enabled", "readiness"],
+      "properties": {
+        "control_ready": { "type": "boolean" },
+        "actuation_enabled": { "type": "boolean" },
+        "readiness": { "type": "string", "minLength": 1 }
+      }
+    },
+    "oscillator": { "$ref": "#/$defs/oscillator" },
+    "hardware_topology": { "$ref": "#/$defs/hardware_topology" },
+    "dac": { "$ref": "#/$defs/dac" },
+    "control_path": { "$ref": "#/$defs/control_path" },
+    "plant_response": { "$ref": "#/$defs/plant_response" },
+    "source_evidence": { "$ref": "#/$defs/source_evidence" },
+    "invalidation_conditions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "unresolved_fields": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "nullable_number": { "type": ["number", "null"] },
+    "nullable_string": { "type": ["string", "null"] },
+    "code_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 65535 }
+      }
+    },
+    "voltage_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_v", "max_v"],
+      "properties": {
+        "min_v": { "$ref": "#/$defs/nullable_number" },
+        "max_v": { "$ref": "#/$defs/nullable_number" }
+      }
+    },
+    "oscillator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part", "type", "nominal_frequency_hz", "supply_voltage_v", "control_voltage_range_v", "pinout_source"],
+      "properties": {
+        "part": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "nominal_frequency_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "supply_voltage_v": { "$ref": "#/$defs/nullable_number" },
+        "control_voltage_range_v": { "$ref": "#/$defs/voltage_range" },
+        "pinout_source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "hardware_topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topology_id", "board", "power_path", "conditioning"],
+      "properties": {
+        "topology_id": { "type": "string", "minLength": 1 },
+        "board": { "type": "string", "minLength": 1 },
+        "power_path": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "dirty_supply_source", "clean_supply_node", "filtering", "measured_dirty_voltage_v", "measured_clean_voltage_v", "measured_clean_ripple_mvpp"],
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "dirty_supply_source": { "$ref": "#/$defs/nullable_string" },
+            "clean_supply_node": { "$ref": "#/$defs/nullable_string" },
+            "filtering": { "$ref": "#/$defs/nullable_string" },
+            "measured_dirty_voltage_v": { "$ref": "#/$defs/nullable_number" },
+            "measured_clean_voltage_v": { "$ref": "#/$defs/nullable_number" },
+            "measured_clean_ripple_mvpp": { "$ref": "#/$defs/nullable_number" }
+          }
+        },
+        "conditioning": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["oscillator_output_conditioner", "rp2040_pin", "logic_voltage_v"],
+          "properties": {
+            "oscillator_output_conditioner": { "type": "string", "minLength": 1 },
+            "rp2040_pin": { "type": "string", "minLength": 1 },
+            "logic_voltage_v": { "$ref": "#/$defs/nullable_number" }
+          }
+        }
+      }
+    },
+    "dac": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part", "resolution_bits", "interface", "i2c_address", "reference_voltage_v", "gain_mode", "nominal_code", "manual_safe_range_codes", "automatic_control_range_codes", "manual_preview_max_step_codes"],
+      "properties": {
+        "part": { "type": "string", "minLength": 1 },
+        "resolution_bits": { "type": "integer", "const": 16 },
+        "interface": { "type": "string", "minLength": 1 },
+        "i2c_address": { "type": "string", "pattern": "^0x[0-9A-Fa-f]+$" },
+        "reference_voltage_v": { "$ref": "#/$defs/nullable_number" },
+        "gain_mode": { "type": "string", "minLength": 1 },
+        "nominal_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "manual_safe_range_codes": { "$ref": "#/$defs/code_range" },
+        "automatic_control_range_codes": { "$ref": "#/$defs/code_range" },
+        "manual_preview_max_step_codes": { "type": "integer", "minimum": 0, "maximum": 65535 }
+      }
+    },
+    "control_path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "measured_control_voltage_at_nominal_v", "measured_connected_voltage_span_v", "estimated_v_per_code", "voltage_model"],
+      "properties": {
+        "network": { "type": "string", "minLength": 1 },
+        "measured_control_voltage_at_nominal_v": { "$ref": "#/$defs/nullable_number" },
+        "measured_connected_voltage_span_v": { "$ref": "#/$defs/voltage_range" },
+        "estimated_v_per_code": { "$ref": "#/$defs/nullable_number" },
+        "voltage_model": { "type": "string", "minLength": 1 }
+      }
+    },
+    "plant_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_slope", "valid_neighborhood", "settling_evidence", "temperature_range_c", "warmup_drift"],
+      "properties": {
+        "local_slope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hz_per_v", "ppm_per_v", "hz_per_code", "ppm_per_code", "sign", "sample_count", "uncertainty"],
+          "properties": {
+            "hz_per_v": { "$ref": "#/$defs/nullable_number" },
+            "ppm_per_v": { "$ref": "#/$defs/nullable_number" },
+            "hz_per_code": { "$ref": "#/$defs/nullable_number" },
+            "ppm_per_code": { "$ref": "#/$defs/nullable_number" },
+            "sign": { "enum": ["positive", "negative", "unknown"] },
+            "sample_count": { "type": "integer", "minimum": 0 },
+            "uncertainty": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["method", "hz_per_v_stdev", "hz_per_v_iqr", "hz_per_v_min", "hz_per_v_max"],
+              "properties": {
+                "method": { "type": "string", "minLength": 1 },
+                "hz_per_v_stdev": { "$ref": "#/$defs/nullable_number" },
+                "hz_per_v_iqr": { "$ref": "#/$defs/nullable_number" },
+                "hz_per_v_min": { "$ref": "#/$defs/nullable_number" },
+                "hz_per_v_max": { "$ref": "#/$defs/nullable_number" }
+              }
+            }
+          }
+        },
+        "valid_neighborhood": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "center_code", "target_codes", "voltage_span_v"],
+          "properties": {
+            "basis": { "type": "string", "minLength": 1 },
+            "center_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "target_codes": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 65535 },
+              "minItems": 1
+            },
+            "voltage_span_v": { "$ref": "#/$defs/voltage_range" }
+          }
+        },
+        "settling_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["characterized", "method", "settling_discard_s", "t95_s_min", "t95_s_max", "selected_control_cadence_s"],
+          "properties": {
+            "characterized": { "type": "boolean" },
+            "method": { "type": "string", "minLength": 1 },
+            "settling_discard_s": { "$ref": "#/$defs/nullable_number" },
+            "t95_s_min": { "$ref": "#/$defs/nullable_number" },
+            "t95_s_max": { "$ref": "#/$defs/nullable_number" },
+            "selected_control_cadence_s": { "$ref": "#/$defs/nullable_number" }
+          }
+        },
+        "temperature_range_c": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_c", "max_c"],
+          "properties": {
+            "min_c": { "$ref": "#/$defs/nullable_number" },
+            "max_c": { "$ref": "#/$defs/nullable_number" }
+          }
+        },
+        "warmup_drift": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["warmup_s", "drift_after_warmup_ppm_per_hour"],
+          "properties": {
+            "warmup_s": { "$ref": "#/$defs/nullable_number" },
+            "drift_after_warmup_ppm_per_hour": { "$ref": "#/$defs/nullable_number" }
+          }
+        }
+      }
+    },
+    "source_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_run_ids", "source_artifacts", "source_commits", "source_versions"],
+      "properties": {
+        "source_run_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "source_artifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "source_commits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model_created_from_repo_commit", "run_manifest_host_git_commit", "run_manifest_firmware_git_commit"],
+          "properties": {
+            "model_created_from_repo_commit": { "$ref": "#/$defs/nullable_string" },
+            "run_manifest_host_git_commit": { "$ref": "#/$defs/nullable_string" },
+            "run_manifest_firmware_git_commit": { "$ref": "#/$defs/nullable_string" }
+          }
+        },
+        "source_versions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run_manifest_host_tool_version", "run_manifest_firmware_version"],
+          "properties": {
+            "run_manifest_host_tool_version": { "$ref": "#/$defs/nullable_string" },
+            "run_manifest_firmware_version": { "$ref": "#/$defs/nullable_string" }
+          }
+        }
+      }
+    }
+  }
+}
