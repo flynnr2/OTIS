@@ -181,11 +181,11 @@
 #endif
 
 #ifndef OTIS_DAC_MIN_CODE
-#define OTIS_DAC_MIN_CODE 0x6000u
+#define OTIS_DAC_MIN_CODE 0x7000u
 #endif
 
 #ifndef OTIS_DAC_MAX_CODE
-#define OTIS_DAC_MAX_CODE 0xE000u
+#define OTIS_DAC_MAX_CODE 0x9000u
 #endif
 
 // Optional low-rate environmental telemetry for oscillator characterization.
@@ -222,7 +222,7 @@
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS
-#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 120000u
+#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 900000u
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS
@@ -230,7 +230,7 @@
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_TINY_STEP_CODES
-#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0200u
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_MAX_STEPS
