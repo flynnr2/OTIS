@@ -83,8 +83,8 @@ has an explicit anomaly classification and usable post-BOOT analysis segment.
 then verified a clean repaired count path: 284 300 s `CNT` rows, no zero-count
 rows, all `CNT` rows flagged `16`, no host capture drops, and
 `fc0_valid_for_control: true`. The immediate hardware question has moved from
-count-path repair to PPS/reference anomaly review and conservative plant-model
-freeze.
+count-path repair to conservative plant-model freeze with an explicit
+PPS/reference anomaly gate carried into control eligibility.
 
 The intended H1 sequence is:
 

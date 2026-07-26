@@ -646,6 +646,59 @@ def test_validate_run_rejects_bad_pps_cadence(tmp_path: Path) -> None:
     assert validate_run(run_dir) == 1
 
 
+def test_validate_run_accepts_exact_pps_cadence_gate(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_gated_pps"
+    shutil.copytree(H1_TEMPLATE, run_dir)
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["run_id"] = "h1_gated_pps"
+    manifest["template"] = False
+    manifest["validation_gates"] = {
+        "pps_cadence": [
+            {
+                "domain": "rp2040_timer0",
+                "classification": "short_interval",
+                "count": 1,
+                "first_index": 1,
+                "last_index": 1,
+                "first_event_seq": 1,
+                "last_event_seq": 2,
+                "root_cause": "unresolved",
+                "control_eligibility": "not_control_eligible",
+            }
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "csv" / "ref.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+                "REF,1,1,1,R,0,rp2040_timer0,16",
+                "REF,1,2,1,R,100,rp2040_timer0,16",
+                "REF,1,3,1,R,16000100,rp2040_timer0,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "csv" / "cnt.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+                "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+
+    manifest["validation_gates"]["pps_cadence"][0]["count"] = 2
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert validate_run(run_dir) == 1
+
+
 def test_validate_run_rejects_zero_count_without_flag(tmp_path: Path) -> None:
     run_dir = _copy_example(tmp_path)
     _rewrite_csv_cell(run_dir / "count_observations.csv", 0, "counted_edges", "0")

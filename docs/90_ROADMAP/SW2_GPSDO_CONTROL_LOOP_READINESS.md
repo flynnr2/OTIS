@@ -17,10 +17,10 @@ firmware-counting artifact.
 The current state supports SW2 design work, telemetry contracts, safety gates,
 manual nominal restore, and observe-only firmware scaffolding. It does **not**
 support automatic DAC actuation from PPS or count error. The next decision point
-is not dual-core firmware or a PI loop; it is closing the remaining
-PPS/reference cadence anomaly review, producing a versioned conservative plant
-model from the clean H1 evidence, and then planning an intentionally guarded
-actuation experiment.
+is not dual-core firmware or a PI loop; it is producing a versioned
+conservative plant model from the clean H1 evidence, carrying the explicit
+REF/PPS anomaly gate into SW2 control eligibility, and then planning an
+intentionally guarded actuation experiment.
 
 ## H1 Evidence Available
 
@@ -85,10 +85,13 @@ Observed evidence:
   -0.0417 ppm/hour, and near-VCOCXO SHT4x temperature spanning about 23.30 C to
   27.83 C.
 - `dac_manual_sweep/run_014/reports/anomalies.md` records the remaining major
-  caveat: 2719 short PPS/reference intervals, concentrated early in the run.
-  Host characterization ignored out-of-band PPS intervals for tick-rate
-  calibration, but current telemetry cannot distinguish a true reference-source
-  issue from GPIO/capture/IRQ/FIFO/DMA/firmware-path extra or missed REF edges.
+  caveat as explicitly gated evidence: 2719 short PPS/reference intervals,
+  concentrated early in the run but not startup-only. Host characterization
+  ignored out-of-band PPS intervals for tick-rate calibration, and
+  `manifest.json` gates the matching anomaly set as diagnostic-only and not
+  control-eligible. Current telemetry still cannot distinguish a true
+  reference-source issue from GPIO/capture/IRQ/FIFO/DMA/firmware-path extra or
+  missed REF edges.
 - `ocxo_free_run/run_004/reports/anomalies.md` reports 20 bad FC0 windows
   confined to startup, with the first clean CNT window about 3.67 minutes after
   the first CNT window and about 10.18 hours of clean observation afterward.
@@ -118,10 +121,10 @@ Missing or insufficient evidence for active SW2 control:
   neighbourhood.
 - `run_011`, `run_012`, and `run_013` report `fc0_valid_for_control: false`
   because zero-count windows occur after startup inhibit.
-- PPS/reference anomalies remain present, including the completed `run_014`.
-  Host tooling can exclude bad PPS intervals from calibration, but SW2 must
-  still treat those windows as not control-eligible until the reference/capture
-  path has its own fault telemetry or a clean validation run.
+- PPS/reference anomalies remain present in the completed `run_014`, but they
+  are now explicitly gated rather than an unclassified validation failure. SW2
+  must still treat those windows as not control-eligible until the
+  reference/capture path has its own fault telemetry or a clean validation run.
 
 ## Measured Plant Model
 
@@ -138,11 +141,13 @@ Current measured model:
 | Local Hz/V and ppm/V                         | clean-path median center-bracketed slope about 4.30 Hz/V   | `run_014` characterization summary      | Positive local slope is now known, but should be frozen into a conservative plant model before actuation. |
 | Settling estimates                           | present from clean `run_014`, still noisy                  | `run_014` characterization summary      | Analysis evidence; choose loop cadence only after model review.          |
 | Startup/control gate                         | `run_014` reports `fc0_valid_for_control=true`, 282 clean windows at end | `run_014` characterization summary      | Count-path gate can reopen; reference/PPS anomaly gate remains.          |
-| Current bench next step                      | PPS/reference anomaly review and plant-model freeze        | `run_014` reports                       | Do not actuate until reference validity and model envelope are explicit. |
+| REF/PPS anomaly gate                         | 2719 short intervals explicitly gated as diagnostic-only and not control-eligible | `run_014` manifest and anomaly report   | Root cause remains unresolved; do not use anomalous REF/PPS windows for control. |
+| Current bench next step                      | Plant-model freeze with explicit reference-validity gates   | `run_014` reports                       | Do not actuate until reference validity and model envelope are explicit. |
 
 Because the clean `run_014` slope evidence has not yet been reduced into a
-versioned automatic-control model, and because PPS/reference validity remains
-unresolved, SW2 must not convert PPS or count error into active DAC movement.
+versioned automatic-control model, and because the PPS/reference anomaly is
+gated rather than root-caused, SW2 must not convert PPS or count error into
+active DAC movement.
 
 ## Startup FC0 Control Gate
 

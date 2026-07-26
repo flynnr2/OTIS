@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "template": false,
+  "run_id": "run_014",
+  "stage": "OPEN_LOOP",
+  "h_phase": "H1",
+  "capture_type": "dac_manual_sweep",
+  "capture_mode": "observation_only_open_loop",
+  "control_mode": "manual_open_loop",
+  "closed_loop_control": false,
+  "board": "arduino_nano_rp2040_connect",
+  "firmware_git_commit": "",
+  "host_git_commit": "897fcbe198cbce402b84fe47b3107ea6fb887426",
+  "firmware_version": "",
+  "host_tool_version": "0.0.0",
+  "started_at_utc": "2026-07-25T08:02:58Z",
+  "ended_at_utc": "2026-07-26T13:11:43Z",
+  "operator_notes": "H1 open-loop manual DAC sweep using the new dirty-to-clean power path for the CX317. Primary comparison is against run_013: CNT validity, PPS sanity, dropped records, DAC response repeatability, and any supply-induced warmup or noise behavior. No closed-loop steering.",
+  "oscillator": {
+    "part": "CX317 VCOCXO",
+    "nominal_frequency_hz": 10000000,
+    "output_type": "10 MHz VCOCXO output",
+    "supply_voltage_v": null,
+    "control_voltage_range_v": "0.0..3.3",
+    "pinout_source": "bench notes: CX317 pin 4 Vc"
+  },
+  "dac": {
+    "part": "AD5693R",
+    "resolution_bits": 16,
+    "interface": "i2c",
+    "i2c_address": "0x4C",
+    "reference_voltage_v": null,
+    "gain_mode": "1x",
+    "nominal_code": 32768,
+    "measured_output_min_v": 1.091,
+    "measured_output_mid_v": 1.246,
+    "measured_output_max_v": 1.401
+  },
+  "control_path": {
+    "network": "AD5693R output through existing series resistor to CX317 pin 4 Vc",
+    "rc_filter": "",
+    "buffer": "",
+    "measured_control_voltage_v": 1.246
+  },
+  "power_path": {
+    "oscillator": "CX317 VCOCXO",
+    "topology": "new dirty-to-clean supply path",
+    "dirty_supply_source": "",
+    "clean_supply_node": "",
+    "filtering": "",
+    "regulator_or_isolator": "",
+    "measured_dirty_voltage_v": null,
+    "measured_clean_voltage_v": null,
+    "measured_clean_ripple_mvpp": null,
+    "bench_notes": "Record exact dirty source, clean node, filter/regulator parts, grounding, startup behavior, and measurement bandwidth before capture."
+  },
+  "conditioning": {
+    "oscillator_output_conditioner": "CX317 powered through new dirty-to-clean path; record whether FC0 observation path remains as run_013 or changed for this run",
+    "rp2040_pin": "D8/GPIO20/GPIN0",
+    "logic_voltage_v": null
+  },
+  "safety_limits": {
+    "dac_min_code": 28672,
+    "dac_max_code": 36864,
+    "control_voltage_min_v": 1.091,
+    "control_voltage_max_v": 1.401
+  },
+  "control_sequence": "manual open-loop DAC sweep only; no PPS-derived or FC0-derived steering",
+  "warmup_seconds_before_capture": null,
+  "measured_tuning_sensitivity_hz_per_v": null,
+  "measured_tuning_sensitivity_ppm_per_v": null,
+  "observation_domain": {
+    "name": "h1_ocxo_open_loop",
+    "nominal_hz": 10000000,
+    "division_ratio": null
+  },
+  "channels": [
+    {
+      "channel_id": 0,
+      "role": "event_input",
+      "record_family": "EVT"
+    },
+    {
+      "channel_id": 1,
+      "role": "reference_pps",
+      "record_family": "REF"
+    },
+    {
+      "channel_id": 2,
+      "role": "ocxo_observation",
+      "record_family": "CNT"
+    }
+  ],
+  "domains": [
+    {
+      "name": "rp2040_timer0",
+      "nominal_hz": 16000000
+    },
+    {
+      "name": "h1_ocxo_open_loop",
+      "nominal_hz": 10000000
+    }
+  ],
+  "files": [
+    {
+      "path": "csv/evt.csv",
+      "contract": "raw_events_v1"
+    },
+    {
+      "path": "csv/ref.csv",
+      "contract": "raw_events_v1"
+    },
+    {
+      "path": "csv/cnt.csv",
+      "contract": "count_observations_v1"
+    },
+    {
+      "path": "csv/sts.csv",
+      "contract": "health_v1"
+    },
+    {
+      "path": "csv/dac_steps.csv",
+      "contract": "dac_steps_v1"
+    },
+    {
+      "path": "csv/environment.csv",
+      "contract": "environment_v1",
+      "optional": true
+    }
+  ],
+  "known_limitations": [
+    "H1 open-loop characterization only. No closed-loop GPSDO steering is implemented or implied.",
+    "Power-path fields are explicit nulls or empty strings until measured on the bench.",
+    "This run characterizes the new CX317 dirty-to-clean power path and should not be mixed with earlier power-path data without noting the topology change.",
+    "The pre-G17-fix capture is preserved under derived/pre_g17_fix_capture_2026-07-25/ as negative hardware evidence and is excluded from the clean post-fix plant fit.",
+    "REF/PPS cadence anomalies are explicitly gated as diagnostic-only unresolved reference/capture-path evidence; anomalous REF rows remain in csv/ref.csv and are not control-eligible."
+  ],
+  "validation_gates": {
+    "pps_cadence": [
+      {
+        "domain": "rp2040_timer0",
+        "classification": "short_interval",
+        "count": 2719,
+        "first_index": 54,
+        "last_index": 3823,
+        "first_event_seq": 1709,
+        "last_event_seq": 5479,
+        "first_elapsed_s": 744.811673,
+        "last_elapsed_s": 1916.804707,
+        "root_cause": "unresolved",
+        "control_eligibility": "not_control_eligible",
+        "evidence": "Short REF/PPS intervals occur in 16 clusters early in the capture, including a dense burst from about 1692.806 s to 1796.805 s elapsed. They are not startup-only because capture begins around firmware uptime 691 s and the last anomaly is around 1916.805 s elapsed. Capture transport counters stayed at zero drops/errors and the run has one host session, but current firmware does not emit source/capture-path counters sufficient to distinguish GPS/PPS source, GPIO, IRQ, FIFO, DMA, or firmware-path extra-edge causes."
+      }
+    ]
+  },
+  "expected_artifacts": [
+    "csv/evt.csv",
+    "csv/ref.csv",
+    "csv/cnt.csv",
+    "csv/sts.csv",
+    "csv/dac_steps.csv",
+    "reports/summary.md",
+    "reports/validate_report.md",
+    "reports/anomalies.md"
+  ],
+  "pin_mapping": {
+    "ch0_generic_event": "",
+    "ch1_pps_reference": "",
+    "ch2_ocxo_observation": "D8_GPIO20_GPIN0"
+  }
+}

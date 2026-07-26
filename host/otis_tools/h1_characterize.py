@@ -617,6 +617,14 @@ def _format_optional_bool(value: bool | None) -> str:
     return str(value).lower()
 
 
+def _has_pps_cadence_gate(manifest: RunManifest) -> bool:
+    validation_gates = manifest.data.get("validation_gates")
+    if not isinstance(validation_gates, dict):
+        return False
+    gates = validation_gates.get("pps_cadence")
+    return isinstance(gates, list) and any(isinstance(gate, dict) for gate in gates)
+
+
 def _format_bad_window_example(window: Fc0BadWindowDiagnostic) -> str:
     return (
         f"seq={window.status_seq}, elapsed_s={_format(window.elapsed_s)}, reason={window.reason}, "
@@ -2079,6 +2087,9 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         for estimate in analysis.settling
     )
     warmup_known = warmup.drift_after_warmup_hz_per_s is not None and warmup.total_elapsed_s is not None and warmup.total_elapsed_s >= 60.0
+    pps_anomalies_present = bool(analysis.pps_anomalies)
+    pps_cadence_gated = pps_anomalies_present and _has_pps_cadence_gate(analysis.manifest)
+    reference_valid_for_control = not pps_anomalies_present
     if not open_loop_slope_known:
         action = "capture a DAC sweep with repeated count windows at two or more DAC codes"
     elif not safe_voltage_window_known:
@@ -2087,8 +2098,12 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         action = "capture step-response dwell data long enough to estimate 90%/95% settling"
     elif not warmup_known:
         action = "capture a longer warmup/free-run dataset"
-    else:
+    elif pps_cadence_gated:
+        action = "freeze the clean count-path plant model, but keep REF/PPS-anomalous windows ineligible for control"
+    elif pps_anomalies_present:
         action = "review anomalies manually before planning SW2 closed-loop experiments"
+    else:
+        action = "review clean H1 evidence before planning SW2 closed-loop experiments"
     lines.extend(
         [
             "",
@@ -2098,6 +2113,8 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- settling_time_characterized: {str(settling_known).lower()}",
             f"- warmup_characterized: {str(warmup_known).lower()}",
             f"- fc0_valid_for_control: {str(analysis.startup_control.valid_for_control).lower()}",
+            f"- reference_valid_for_control: {str(reference_valid_for_control).lower()}",
+            f"- pps_cadence_anomaly_status: {'explicitly_gated' if pps_cadence_gated else 'unresolved' if pps_anomalies_present else 'none'}",
             f"- recommended_next_action: {action}",
         ]
     )
