@@ -255,6 +255,59 @@ def test_h1_characterize_uses_pps_calibrated_gate_rate(tmp_path: Path) -> None:
     assert "gate_ticks / pps_calibrated_tick_rate" in report
 
 
+def test_h1_characterize_local_pps_removes_injected_timer_rate_error(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_local_pps_drift"
+    _write_synthetic_run(run_dir, include_second_step=False, include_ref=True)
+    ref_rows = [
+        "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+        "REF,1,1,1,R,0,rp2040_timer0,16",
+        "REF,1,2,1,R,16000000,rp2040_timer0,16",
+        "REF,1,3,1,R,32000000,rp2040_timer0,16",
+        "REF,1,4,1,R,48001000,rp2040_timer0,16",
+    ]
+    (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
+    count_rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+        "CNT,1,1,2,0,32000000,rp2040_timer0,20000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,2,2,32000000,48001000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+    ]
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir, settling_discard_s=0)
+
+    assert analysis.count_windows[1].estimator_mode == "LOCAL_PPS_INTERPOLATED"
+    assert analysis.count_windows[1].estimator_valid
+    assert analysis.count_windows[1].local_pps_gate_seconds == 1
+    assert analysis.count_windows[1].measured_hz == 10_000_000
+    assert analysis.count_windows[1].legacy_frequency_hz != analysis.count_windows[1].local_pps_frequency_hz
+
+
+def test_h1_characterize_local_pps_does_not_interpolate_across_rejected_short_pps(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_local_pps_reject_short"
+    _write_synthetic_run(run_dir, include_second_step=False, include_ref=True)
+    ref_rows = [
+        "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+        "REF,1,1,1,R,0,rp2040_timer0,16",
+        "REF,1,2,1,R,16000000,rp2040_timer0,16",
+        "REF,1,3,1,R,30400000,rp2040_timer0,16",
+        "REF,1,4,1,R,32000000,rp2040_timer0,16",
+        "REF,1,5,1,R,48000000,rp2040_timer0,16",
+    ]
+    (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
+    count_rows = [
+        "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+        "CNT,1,1,2,16000000,48000000,rp2040_timer0,20000000,R,h1_ocxo_open_loop,16",
+    ]
+    (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir, settling_discard_s=0)
+
+    assert analysis.pps_anomalies
+    assert analysis.count_windows[0].estimator_mode == "RUN_WIDE_TICK_RATE"
+    assert not analysis.count_windows[0].estimator_valid
+    assert "gate_crosses_invalid_or_missing_pps_segment" in analysis.count_windows[0].estimator_quality_flags
+
+
 def test_h1_characterize_reports_near_vcocxo_temperature(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1_environment"
     _write_synthetic_run(run_dir, include_environment=True)

@@ -110,6 +110,21 @@ is marked hardware-clean.
 7. If SHT4x environmental telemetry is enabled, mount it near the VCOCXO can or
    control-node area and treat `source=sht4x, role=vcocxo_near` as the primary
    thermal proxy. BMP280 temperature is secondary pressure-reference context.
+8. For the next CX317 slope run, shield the CX317 and nearby steering components
+   from airflow. Put the SHT4x inside or immediately adjacent to the shielded
+   volume without thermally bonding it to the can, and keep switching regulators
+   or other changing heat sources outside that volume where practical.
+9. Prefer centre-bracketed `0x0800` and `0x1000` steps for plant-authority
+   evidence. `0x0200` and `0x0400` are near the present measurement floor and
+   should be treated as diagnostic rather than decisive unless repeatability
+   improves.
+10. Use locally PPS-calibrated H1 host estimates as the preferred report, with
+    the legacy run-wide estimate retained for comparison in
+    `csv/h1_count_frequency_estimates.csv`.
+11. Enable `OTIS_ENABLE_PPS_DUAL_OBSERVER=1` only for the temporary D10 PPS
+    witness experiment. Do not change DAC/CX317 control semantics and do not
+    switch to the PPS-gated-ratio backend in the same run unless explicitly
+    performing a separate backend A/B validation.
 
 Suggested run layout for scripted sweeps:
 
@@ -154,6 +169,13 @@ temperature span, and PPS anomaly overlap.
 If a PPS/reference anomaly overlaps a DAC step, the raw data is preserved and
 the step is marked `quality=degraded`. Degraded steps are not used as normal
 inputs for local or center-bracketed slope estimates.
+
+For sub-hertz plant work, host reports prefer `LOCAL_PPS_INTERPOLATED` count
+estimates when accepted REF/PPS observations bracket both gate boundaries. This
+is a derived analysis of existing `CNT` and `REF` evidence; raw count rows remain
+authoritative and are not overwritten. Nearby air-temperature regression is
+diagnostic only: low explanatory power does not prove airflow or internal CX317
+thermal state is irrelevant.
 
 PPS interval classes used by host diagnostics are:
 
@@ -242,12 +264,28 @@ startup artifact when subsequent PPS intervals return to approximately 16M
 ticks.
 
 For every H1 run with `csv/ref.csv`, the host characterization report should
-estimate the RP2040 `rp2040_timer0` tick rate from sane PPS intervals and use
-that calibrated rate when converting FC0 gate ticks to seconds. This corrects
-the measurement timebase without treating the RP2040 clock as timing truth.
+prefer local PPS interpolation when accepted PPS observations bracket both count
+gate boundaries. The retained run-wide RP2040 tick-rate estimate is a labelled
+fallback and diagnostic comparison, not the preferred sub-hertz H1 estimator.
 `run_009` showed the RP2040 timer about 4.65 ppm slow against PPS, with roughly
 1.6 us single-interval PPS scatter, so uncalibrated count-derived frequencies
 were biased high by the same order.
+
+The regenerated `run_016` report is the current H1 measurement-confidence
+baseline. It reports 153 count windows, 152 locally PPS-interpolated estimates,
+one startup-edge run-wide fallback, no PPS anomalies, and a local-versus-legacy
+frequency span of about 14.48 Hz. That span is far larger than the expected
+sub-hertz response of the smallest DAC steps, so do not use legacy run-wide
+calibration for plant-authority conclusions. The repeated centre span is about
+0.176 Hz, making `0x0800` and `0x1000` centre-bracketed steps the better next
+plant-characterisation emphasis; `0x0200` and `0x0400` remain near the current
+measurement floor.
+
+`run_016` environmental analysis is diagnostic only. Nearby SHT4x alignment is
+limited under the present host join, and simple air-temperature terms are
+confounded with elapsed time. Do not treat low simple-regression explanatory
+power as proof that airflow, thermal gradients, or CX317 internal oven state are
+irrelevant.
 
 For PPS-gated ratio runs, host analysis should derive ratio/frequency from the
 visible `REF` and `CNT` streams plus manifest metadata. Firmware status

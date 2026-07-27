@@ -2,7 +2,7 @@
 
 **Status:** proposed revision based on the repository snapshot supplied on 25 July 2026  
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding  
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_014` has now completed as a clean count-path run after the G17 breakout repair. It removes the zero-count conditioning blocker, and its PPS/reference cadence anomalies are explicitly gated as diagnostic-only evidence, but it does not by itself authorize SW2 DAC actuation.
+**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_016` has now been regenerated with the local-PPS H1 estimator. It materially improves sub-hertz DAC/CX317 measurement confidence compared with the legacy run-wide RP2040 tick-rate conversion, but it remains open-loop plant-characterisation evidence and does not by itself authorize SW2 DAC actuation.
 
 ---
 
@@ -60,7 +60,7 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish H1 evidence reduction from `run_014` and carry its explicit PPS/reference anomaly gate into SW2 reference-validity logic;
+1. finish H1 evidence reduction from `run_016`, preserving the local-PPS estimator diagnostics and the D10 PPS witness plan as measurement-confidence scaffolding;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
 4. derive and freeze a versioned plant model and safe automatic-control envelope;
@@ -246,7 +246,7 @@ The dual-core boundary is therefore part of the SW2 platform architecture, even 
 
 ---
 
-## 3. Interpretation of `run_014` in this roadmap
+## 3. Interpretation of `run_014` and `run_016` in this roadmap
 
 `run_014` is no longer unresolved. It should be treated as **Outcome B: count
 path clean, plant response useful, but not yet an actuation-authoritative model**.
@@ -279,6 +279,31 @@ Consequence: reopen H1 plant-model completion and preserve the pre-G17-fix
 capture as negative hardware evidence, but **do not jump directly to PLL/PI or
 even guarded I-only actuation**. The next roadmap step is to freeze a
 conservative local plant model with explicit reference-validity gates.
+
+`run_016` is the current measurement-confidence update. The regenerated H1
+report uses the host-side local PPS interpolator for existing count gates:
+
+- 153 count windows;
+- 152 `LOCAL_PPS_INTERPOLATED` estimates;
+- one startup-edge fallback to `RUN_WIDE_TICK_RATE`;
+- no PPS anomalies in the analysed REF stream;
+- `fc0_valid_for_control: true`;
+- retained legacy-vs-local comparison with median difference 0.007 Hz,
+  standard deviation 3.13 Hz, and span 14.48 Hz.
+
+This confirms that the former run-wide RP2040 tick-rate conversion could move
+sub-hertz conclusions by much more than the DAC/CX317 response being measured.
+For H1 plant-authority conclusions, use locally PPS-calibrated estimates when
+valid support exists and retain the run-wide estimate only as a labelled
+diagnostic comparison.
+
+The corrected `run_016` evidence makes centre-bracketed `0x0800` and `0x1000`
+steps useful for the next conservative plant-model fit. The `0x0200` and
+`0x0400` steps remain near the present measurement floor: they are useful for
+diagnosing repeatability, but not strong enough to drive actuation policy.
+Environmental regression remains diagnostic, not explanatory authority, because
+nearby air-temperature alignment is limited and simple terms are confounded with
+elapsed time.
 
 ---
 
