@@ -357,6 +357,31 @@ def test_h1_characterize_unwraps_environment_timer_for_temperature_plot(tmp_path
     assert (run_dir / "plots" / "vcocxo_temperature_vs_elapsed.png").read_bytes().startswith(b"\x89PNG")
 
 
+def test_h1_characterize_uses_final_environment_segment_after_reset(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_environment_reset"
+    _write_synthetic_run(run_dir, include_environment=True)
+    env_rows = [
+        "record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags",
+        "ENV,1,10,64000000,rp2040_timer0,sht4x,vcocxo_near,29.000,45.000,,0",
+        "ENV,1,11,80000000,rp2040_timer0,sht4x,vcocxo_near,29.100,45.100,,0",
+        "ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,25.000,46.000,,0",
+        "ENV,1,2,32000000,rp2040_timer0,sht4x,vcocxo_near,25.100,46.100,,0",
+        "ENV,1,3,48000000,rp2040_timer0,sht4x,vcocxo_near,25.200,46.200,,0",
+    ]
+    (run_dir / "csv" / "environment.csv").write_text("\n".join(env_rows) + "\n", encoding="utf-8")
+
+    analysis = analyze_run(run_dir, settling_discard_s=0)
+    sht = [
+        sample
+        for sample in analysis.environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near"
+    ]
+
+    assert [sample.seq for sample in sht] == [1, 2, 3]
+    assert [sample.temperature_c for sample in sht] == [25.0, 25.1, 25.2]
+    assert any("environment.csv: multiple capture segments detected" in warning for warning in analysis.warnings)
+
+
 def test_h1_characterize_reports_center_bracketed_slope(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1_center_bracketed"
     _write_synthetic_run(run_dir, include_second_step=False)

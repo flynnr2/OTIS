@@ -959,20 +959,44 @@ def _load_dac_events(manifest: RunManifest, warnings: list[str]) -> tuple[DacEve
 
 def _load_environment_samples(manifest: RunManifest, gate_hz_by_domain: dict[str, float], warnings: list[str]) -> tuple[EnvironmentSample, ...]:
     rows = _read_csv(_manifest_file(manifest, ENV_CONTRACT, "csv/environment.csv"))
-    rows_by_domain: dict[str, list[tuple[int, dict[str, str], int]]] = {}
+    rows_by_domain: dict[str, list[list[tuple[int, dict[str, str], int]]]] = {}
+    previous_seq_by_domain: dict[str, int] = {}
+    previous_ticks_by_domain: dict[str, int] = {}
+    half_modulus = RP2040_TIMER0_MICROS_WRAP_TICKS // 2
     skipped = 0
     for index, row in enumerate(rows, start=1):
         ticks = _parse_int(row.get("timestamp_ticks"))
         domain = str(row.get("observation_domain", ""))
+        seq = _parse_int(row.get("env_seq")) or index
         if ticks is None or not gate_hz_by_domain.get(domain):
             skipped += 1
             continue
-        rows_by_domain.setdefault(domain, []).append((index, row, ticks))
+        domain_segments = rows_by_domain.setdefault(domain, [[]])
+        previous_seq = previous_seq_by_domain.get(domain)
+        previous_ticks = previous_ticks_by_domain.get(domain)
+        seq_reset = previous_seq is not None and seq <= previous_seq
+        timestamp_reset = (
+            previous_ticks is not None
+            and ticks < previous_ticks
+            and (domain != "rp2040_timer0" or previous_ticks - ticks <= half_modulus)
+        )
+        if (seq_reset or timestamp_reset) and domain_segments[-1]:
+            domain_segments.append([])
+        domain_segments[-1].append((index, row, ticks))
+        previous_seq_by_domain[domain] = seq
+        previous_ticks_by_domain[domain] = ticks
     if skipped:
         warnings.append(f"environment.csv: skipped {skipped} row(s) because timestamp or observation_domain nominal_hz is unavailable")
 
     samples: list[EnvironmentSample] = []
-    for domain, domain_rows in rows_by_domain.items():
+    segmented_domains = {
+        domain: [segment for segment in segments if segment]
+        for domain, segments in rows_by_domain.items()
+    }
+    if any(len(segments) > 1 for segments in segmented_domains.values()):
+        warnings.append("environment.csv: multiple capture segments detected; using final segment per observation_domain")
+    for domain, domain_segments in segmented_domains.items():
+        domain_rows = domain_segments[-1]
         raw_ticks = [ticks for _, _, ticks in domain_rows]
         effective_ticks, _wrap_count = unwrap_ticks(raw_ticks) if domain == "rp2040_timer0" else (raw_ticks, 0)
         domain_hz = gate_hz_by_domain[domain]
