@@ -108,6 +108,29 @@
 #define OTIS_ENABLE_RP2040_BOOT_DIAG 1
 #endif
 
+// Temporary H1 diagnostic scaffolding: when enabled, D10 is tied to the same
+// physical PPS signal as D14 and observed as an independent rising-edge witness.
+// It must remain disabled for normal generic-event or loopback work.
+#ifndef OTIS_ENABLE_PPS_DUAL_OBSERVER
+#define OTIS_ENABLE_PPS_DUAL_OBSERVER 0
+#endif
+
+#ifndef OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS
+#define OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS 8000000ull
+#endif
+
+#ifndef OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS
+#define OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS 19200000ull
+#endif
+
+#ifndef OTIS_PPS_DUAL_OBSERVER_BURST_SHORT_THRESHOLD
+#define OTIS_PPS_DUAL_OBSERVER_BURST_SHORT_THRESHOLD 4u
+#endif
+
+#ifndef OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE
+#define OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE 16u
+#endif
+
 // Status LED.
 #ifndef OTIS_ENABLE_STATUS_LED
 #define OTIS_ENABLE_STATUS_LED 0

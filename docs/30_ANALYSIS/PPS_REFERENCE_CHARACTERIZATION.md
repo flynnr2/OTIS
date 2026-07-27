@@ -79,3 +79,25 @@ Reference characterization products are diagnostics/metrology inputs. A single
 unusual PPS interval must not directly command a DAC correction. Any influence on
 control must pass through versioned estimator, diagnostic, eligibility, and policy
 records.
+
+## Local PPS Calibration For H1 Count Gates
+
+For sub-hertz DAC/CX317 work, a many-hour run-wide RP2040 tick-rate estimate is
+not sufficient by itself. Slow local movement in the RP2040 timer can be
+misattributed to the oscillator under test when a 300 s count gate is converted
+with one average tick rate.
+
+The H1 host analysis preserves the legacy run-wide estimate but prefers
+`LOCAL_PPS_INTERPOLATED` when both count-gate boundaries are bracketed by
+accepted REF/PPS observations. The mapper is piecewise linear between adjacent
+accepted PPS observations in the same `rp2040_timer0` domain. Rejected PPS
+intervals remain diagnostic evidence and are not used for interpolation.
+
+Per-gate diagnostics are written to `csv/h1_count_frequency_estimates.csv` using
+`h1_count_frequency_estimates_v1.csv`. This is a host-side correction to
+existing count observations, not a replacement for raw counts or timestamps.
+
+This differs from the planned PPS-gated-ratio backend, where accepted PPS edges
+define the count gate at capture time. That backend remains the cleaner future
+measurement path and needs its own validation before it becomes the preferred
+live backend.

@@ -5,8 +5,21 @@
 
 #include "otis_capture_backend.h"
 
+struct OtisCaptureIrqReferenceStats {
+  uint32_t d14_raw_edge_count;
+  uint32_t d14_accepted_pps_count;
+  uint32_t d14_rejected_short_count;
+  uint32_t d14_rejected_long_count;
+  uint64_t d14_last_raw_timestamp;
+  uint64_t d14_last_raw_interval;
+  uint64_t d14_last_accepted_timestamp;
+  uint32_t d14_sampled_high_count;
+  uint32_t d14_sampled_low_count;
+};
+
 bool otis_capture_irq_begin(const OtisCaptureBackendConfig &config);
 uint32_t otis_capture_irq_edge_count(void);
+void otis_capture_irq_get_reference_stats(OtisCaptureIrqReferenceStats *out);
 void otis_capture_irq_begin_tcxo_counter(uint32_t gpio);
 uint32_t otis_capture_irq_read_and_reset_tcxo_count(void);
 

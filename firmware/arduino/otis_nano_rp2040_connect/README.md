@@ -315,6 +315,13 @@ The SW1 live-capture pass uses this Arduino pin convention:
 `SW1_GPIO_LOOPBACK` additionally drives `D7` as a local output. Jumper `D7` to
 `D10` for that mode only.
 
+For the temporary H1 PPS anomaly investigation, `OTIS_ENABLE_PPS_DUAL_OBSERVER`
+may be built as `1`. In that configuration `D14` remains the PPS reference path
+and `D10` is a diagnostic-only rising-edge PPS witness configured as `INPUT`
+with no internal pull. The build fails if this witness is combined with
+`SW1_GPIO_LOOPBACK` or the non-IRQ capture backend, because those configurations
+would make D10 or the D14 comparison path ambiguous.
+
 These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
 conditioning, voltage limits, and final bench wiring remain hardware
 responsibilities.

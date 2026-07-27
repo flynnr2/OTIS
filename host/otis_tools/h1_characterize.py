@@ -7,6 +7,7 @@ import csv
 import math
 import struct
 import sys
+from typing import Iterable
 import zlib
 
 from .run_loader import RunManifest, load_manifest
@@ -25,6 +26,7 @@ DEFAULT_WARMUP_SECONDS = 1800.0
 DEFAULT_STABILITY_PPM = 0.1
 DEFAULT_STARTUP_INHIBIT_SECONDS = 600.0
 DEFAULT_STARTUP_READY_CLEAN_WINDOWS = 3
+LOCAL_PPS_MAX_GAP_SECONDS = 2.5
 FLAG_SOURCE_HEALTH_SUSPECT = 1 << 5
 FLAG_INPUT_STUCK_LOW = 1 << 9
 FLAG_INPUT_STUCK_HIGH = 1 << 10
@@ -41,6 +43,28 @@ class CountWindow:
     counted_edges: int
     measured_hz: float
     ppm: float | None
+    gate_open_raw_timestamp: int
+    gate_close_raw_timestamp: int
+    gate_open_unwrapped_timestamp: int
+    gate_close_unwrapped_timestamp: int
+    raw_gate_ticks: int
+    legacy_gate_seconds: float | None
+    legacy_frequency_hz: float | None
+    legacy_ppm: float | None
+    local_pps_gate_seconds: float | None
+    local_pps_frequency_hz: float | None
+    local_pps_ppm: float | None
+    pps_time_open: float | None
+    pps_time_close: float | None
+    pps_before_open_timestamp: int | None
+    pps_after_open_timestamp: int | None
+    pps_before_close_timestamp: int | None
+    pps_after_close_timestamp: int | None
+    pps_support_count: int
+    max_pps_gap_seconds: float | None
+    estimator_mode: str
+    estimator_valid: bool
+    estimator_quality_flags: str
 
 
 @dataclass(frozen=True)
@@ -72,6 +96,115 @@ class PpsClockEstimate:
     interval_mad_us: float | None
     wrap_count: int
     note: str
+
+
+@dataclass(frozen=True)
+class PpsTimePoint:
+    tick: int
+    second: float
+
+
+@dataclass(frozen=True)
+class PpsTimeMapping:
+    second: float
+    before_tick: int
+    after_tick: int
+    segment_rate_ticks_per_s: float
+
+
+@dataclass(frozen=True)
+class LocalPpsGateEstimate:
+    mode: str
+    valid: bool
+    quality_flags: tuple[str, ...]
+    pps_time_open: float | None = None
+    pps_time_close: float | None = None
+    gate_seconds: float | None = None
+    frequency_hz: float | None = None
+    pps_before_open_timestamp: int | None = None
+    pps_after_open_timestamp: int | None = None
+    pps_before_close_timestamp: int | None = None
+    pps_after_close_timestamp: int | None = None
+    pps_support_count: int = 0
+    max_pps_gap_seconds: float | None = None
+
+
+class LocalPpsTimeMapper:
+    def __init__(self, segments: tuple[tuple[PpsTimePoint, ...], ...], max_gap_seconds: float = LOCAL_PPS_MAX_GAP_SECONDS):
+        self.segments = segments
+        self.max_gap_seconds = max_gap_seconds
+
+    def map_tick(self, tick: int) -> tuple[PpsTimeMapping | None, int | None]:
+        for segment_index, segment in enumerate(self.segments):
+            if len(segment) < 2 or tick < segment[0].tick or tick > segment[-1].tick:
+                continue
+            for before, after in zip(segment, segment[1:]):
+                if before.tick <= tick <= after.tick:
+                    tick_span = after.tick - before.tick
+                    second_span = after.second - before.second
+                    if tick_span <= 0 or second_span <= 0:
+                        return None, None
+                    second = before.second + (tick - before.tick) * second_span / tick_span
+                    return PpsTimeMapping(second, before.tick, after.tick, tick_span / second_span), segment_index
+        return None, None
+
+    def estimate_gate(self, gate_open: int, gate_close: int, counted_edges: int) -> LocalPpsGateEstimate:
+        open_mapping, open_segment = self.map_tick(gate_open)
+        close_mapping, close_segment = self.map_tick(gate_close)
+        flags: list[str] = []
+        if open_mapping is None:
+            flags.append("missing_pps_before_or_after_gate_open")
+        if close_mapping is None:
+            flags.append("missing_pps_before_or_after_gate_close")
+        if open_mapping is None or close_mapping is None:
+            return LocalPpsGateEstimate("UNAVAILABLE", False, tuple(flags))
+        if open_segment != close_segment:
+            flags.append("gate_crosses_invalid_or_missing_pps_segment")
+            return LocalPpsGateEstimate(
+                "UNAVAILABLE",
+                False,
+                tuple(flags),
+                pps_time_open=open_mapping.second,
+                pps_time_close=close_mapping.second,
+                pps_before_open_timestamp=open_mapping.before_tick,
+                pps_after_open_timestamp=open_mapping.after_tick,
+                pps_before_close_timestamp=close_mapping.before_tick,
+                pps_after_close_timestamp=close_mapping.after_tick,
+            )
+        gate_seconds = close_mapping.second - open_mapping.second
+        if gate_seconds <= 0:
+            flags.append("non_positive_local_pps_gate")
+            return LocalPpsGateEstimate("UNAVAILABLE", False, tuple(flags))
+        segment = self.segments[open_segment]
+        support_points = [
+            point
+            for point in segment
+            if open_mapping.before_tick <= point.tick <= close_mapping.after_tick
+        ]
+        adjacent_gaps = [
+            current.second - previous.second
+            for previous, current in zip(support_points, support_points[1:])
+            if current.second > previous.second
+        ]
+        max_gap = max(adjacent_gaps, default=None)
+        if max_gap is not None and max_gap > self.max_gap_seconds:
+            flags.append("long_pps_support_gap")
+        support_count = len(support_points)
+        return LocalPpsGateEstimate(
+            "LOCAL_PPS_INTERPOLATED",
+            not flags,
+            tuple(flags),
+            pps_time_open=open_mapping.second,
+            pps_time_close=close_mapping.second,
+            gate_seconds=gate_seconds,
+            frequency_hz=counted_edges / gate_seconds,
+            pps_before_open_timestamp=open_mapping.before_tick,
+            pps_after_open_timestamp=open_mapping.after_tick,
+            pps_before_close_timestamp=close_mapping.before_tick,
+            pps_after_close_timestamp=close_mapping.after_tick,
+            pps_support_count=support_count,
+            max_pps_gap_seconds=max_gap,
+        )
 
 
 @dataclass(frozen=True)
@@ -246,6 +379,7 @@ class H1Analysis:
     stability_ppm: float
     session_summary: RunSessionSummary
     pps_clock: PpsClockEstimate | None
+    local_pps_mapper: LocalPpsTimeMapper | None
     pps_anomalies: tuple[PpsAnomaly, ...]
     count_windows: tuple[CountWindow, ...]
     dac_events: tuple[DacEvent, ...]
@@ -434,6 +568,20 @@ def _slope_xy(samples: list[tuple[float, float]]) -> float | None:
     return sum((x - x_mean) * (y - y_mean) for x, y in samples) / denominator
 
 
+def _pearson(samples: list[tuple[float, float]]) -> float | None:
+    if len(samples) < 3:
+        return None
+    xs = [sample[0] for sample in samples]
+    ys = [sample[1] for sample in samples]
+    x_mean = sum(xs) / len(xs)
+    y_mean = sum(ys) / len(ys)
+    x_var = sum((x - x_mean) ** 2 for x in xs)
+    y_var = sum((y - y_mean) ** 2 for y in ys)
+    if x_var <= 0 or y_var <= 0:
+        return None
+    return sum((x - x_mean) * (y - y_mean) for x, y in samples) / math.sqrt(x_var * y_var)
+
+
 def _unwrap_count_gate(
     gate_domain: str,
     gate_open: int,
@@ -473,12 +621,12 @@ def _estimate_pps_clock(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
     warnings: list[str],
-) -> tuple[PpsClockEstimate | None, tuple[PpsAnomaly, ...]]:
+) -> tuple[PpsClockEstimate | None, LocalPpsTimeMapper | None, tuple[PpsAnomaly, ...]]:
     rows: list[dict[str, str]] = []
     for path in _ref_csv_paths(manifest):
         rows.extend(_read_csv(path))
     if not rows:
-        return None, ()
+        return None, None, ()
 
     segments: list[list[tuple[int, int, str]]] = [[]]
     previous_seq: int | None = None
@@ -502,7 +650,7 @@ def _estimate_pps_clock(
     if skipped:
         warnings.append(f"ref.csv: skipped {skipped} REF row(s) without timestamp_ticks or capture_domain")
     if not populated:
-        return None, ()
+        return None, None, ()
     if len(populated) > 1:
         warnings.append("ref.csv: multiple capture segments detected; using the final segment for PPS clock calibration")
 
@@ -510,12 +658,12 @@ def _estimate_pps_clock(
     domains = {domain for _, _, domain in segment}
     if len(domains) != 1:
         warnings.append("ref.csv: final REF segment spans multiple capture domains; PPS clock calibration unavailable")
-        return None, ()
+        return None, None, ()
     domain = next(iter(domains))
     nominal_rate = gate_hz_by_domain.get(domain)
     if not nominal_rate:
         warnings.append(f"ref.csv: capture_domain={domain} has no nominal_hz; PPS clock calibration unavailable")
-        return None, ()
+        return None, None, ()
 
     unwrapped, wrap_count = unwrap_ticks([ticks for _, ticks, _ in segment])
     intervals = [int(current - previous) for previous, current in zip(unwrapped, unwrapped[1:])]
@@ -538,7 +686,7 @@ def _estimate_pps_clock(
     )
     if len(valid_intervals) < 2:
         warnings.append("ref.csv: insufficient sane PPS intervals for clock calibration")
-        return None, anomalies
+        return None, None, anomalies
     if len(valid_intervals) != len(intervals):
         warnings.append(
             f"ref.csv: ignored {len(intervals) - len(valid_intervals)} PPS interval(s) outside 0.8..1.2 nominal seconds"
@@ -547,7 +695,24 @@ def _estimate_pps_clock(
     tick_rate = _mean(valid_intervals)
     median_rate = _median(valid_intervals)
     if tick_rate is None:
-        return None, anomalies
+        return None, None, anomalies
+    mapper_segments: list[tuple[PpsTimePoint, ...]] = []
+    current_points: list[PpsTimePoint] = []
+    current_second = 0.0
+    for index, classification in enumerate(classifications, start=1):
+        if not classification.usable_for_calibration:
+            if len(current_points) >= 2:
+                mapper_segments.append(tuple(current_points))
+            current_points = []
+            current_second += 1.0
+            continue
+        if not current_points:
+            current_points.append(PpsTimePoint(unwrapped[index - 1], current_second))
+        current_second += 1.0
+        current_points.append(PpsTimePoint(unwrapped[index], current_second))
+    if len(current_points) >= 2:
+        mapper_segments.append(tuple(current_points))
+    mapper = LocalPpsTimeMapper(tuple(mapper_segments)) if mapper_segments else None
     stddev_ticks = _stddev(valid_intervals)
     mad_ticks = _mad(valid_intervals)
     mean_ppm = 1_000_000.0 * (tick_rate - nominal_rate) / nominal_rate
@@ -567,8 +732,9 @@ def _estimate_pps_clock(
             interval_stddev_us=stddev_ticks / tick_rate * 1_000_000.0 if stddev_ticks is not None else None,
             interval_mad_us=mad_ticks / tick_rate * 1_000_000.0 if mad_ticks is not None else None,
             wrap_count=wrap_count,
-            note="estimated from the final REF/PPS segment; count gates in this domain use this rate instead of nominal_hz",
+            note="estimated from the final REF/PPS segment; retained as the legacy run-wide fallback beside local PPS interpolation",
         ),
+        mapper,
         anomalies,
     )
 
@@ -642,6 +808,7 @@ def _load_counts(
     manifest: RunManifest,
     gate_hz_by_domain: dict[str, float],
     pps_clock: PpsClockEstimate | None,
+    local_pps_mapper: LocalPpsTimeMapper | None,
     nominal_hz: float | None,
     warnings: list[str],
 ) -> tuple[CountWindow, ...]:
@@ -659,8 +826,9 @@ def _load_counts(
         flags = _parse_int(row.get("flags")) or 0
         seq = _parse_int(row.get("count_seq")) or index
         gate_domain = str(row.get("gate_domain", ""))
-        gate_hz = _effective_gate_hz(gate_domain, gate_hz_by_domain, pps_clock)
-        if gate_open is None or gate_close is None or counted is None or not gate_hz:
+        legacy_gate_hz = _effective_gate_hz(gate_domain, gate_hz_by_domain, pps_clock)
+        nominal_gate_hz = gate_hz_by_domain.get(gate_domain)
+        if gate_open is None or gate_close is None or counted is None or not nominal_gate_hz:
             warnings.append(f"cnt.csv row {index}: skipped because count/window fields or gate domain nominal_hz are unavailable")
             continue
         if _count_window_invalid(flags, counted):
@@ -682,16 +850,41 @@ def _load_counts(
             gate_close_unwrapped = gate_close
         previous_open_raw = gate_open
         previous_seq = seq
-        gate_seconds = (gate_close_unwrapped - gate_open_unwrapped) / gate_hz
-        if gate_seconds <= 0:
+        raw_gate_ticks = gate_close_unwrapped - gate_open_unwrapped
+        if raw_gate_ticks <= 0:
             warnings.append(f"cnt.csv row {index}: skipped because gate window is non-positive")
             continue
-        midpoint_s = ((gate_open_unwrapped + gate_close_unwrapped) / 2.0) / gate_hz
+        legacy_gate_seconds = raw_gate_ticks / legacy_gate_hz if legacy_gate_hz else None
+        legacy_frequency_hz = counted / legacy_gate_seconds if legacy_gate_seconds and legacy_gate_seconds > 0 else None
+        legacy_ppm = 1_000_000.0 * (legacy_frequency_hz - nominal_hz) / nominal_hz if legacy_frequency_hz is not None and nominal_hz else None
+        local_estimate = (
+            local_pps_mapper.estimate_gate(gate_open_unwrapped, gate_close_unwrapped, counted)
+            if local_pps_mapper is not None and pps_clock is not None and gate_domain == pps_clock.domain
+            else LocalPpsGateEstimate("UNAVAILABLE", False, ("no_local_pps_mapper_for_gate_domain",))
+        )
+        if local_estimate.valid and local_estimate.gate_seconds is not None and local_estimate.frequency_hz is not None:
+            gate_seconds = local_estimate.gate_seconds
+            measured_hz = local_estimate.frequency_hz
+            estimator_mode = local_estimate.mode
+            estimator_valid = True
+        elif legacy_frequency_hz is not None and legacy_gate_seconds is not None:
+            gate_seconds = legacy_gate_seconds
+            measured_hz = legacy_frequency_hz
+            estimator_mode = "RUN_WIDE_TICK_RATE" if pps_clock is not None and gate_domain == pps_clock.domain else "NOMINAL_TICK_RATE"
+            estimator_valid = False
+        else:
+            warnings.append(f"cnt.csv row {index}: skipped because no frequency estimator is available")
+            continue
+        midpoint_s = ((gate_open_unwrapped + gate_close_unwrapped) / 2.0) / nominal_gate_hz
         if first_open_s is None:
-            first_open_s = gate_open_unwrapped / gate_hz
+            first_open_s = gate_open_unwrapped / nominal_gate_hz
         elapsed_s = midpoint_s
-        measured_hz = counted / gate_seconds
         ppm = 1_000_000.0 * (measured_hz - nominal_hz) / nominal_hz if nominal_hz else None
+        local_ppm = (
+            1_000_000.0 * (local_estimate.frequency_hz - nominal_hz) / nominal_hz
+            if local_estimate.frequency_hz is not None and nominal_hz
+            else None
+        )
         segments[-1].append(
             CountWindow(
                 seq=seq,
@@ -700,6 +893,28 @@ def _load_counts(
                 counted_edges=counted,
                 measured_hz=measured_hz,
                 ppm=ppm,
+                gate_open_raw_timestamp=gate_open,
+                gate_close_raw_timestamp=gate_close,
+                gate_open_unwrapped_timestamp=gate_open_unwrapped,
+                gate_close_unwrapped_timestamp=gate_close_unwrapped,
+                raw_gate_ticks=raw_gate_ticks,
+                legacy_gate_seconds=legacy_gate_seconds,
+                legacy_frequency_hz=legacy_frequency_hz,
+                legacy_ppm=legacy_ppm,
+                local_pps_gate_seconds=local_estimate.gate_seconds,
+                local_pps_frequency_hz=local_estimate.frequency_hz,
+                local_pps_ppm=local_ppm,
+                pps_time_open=local_estimate.pps_time_open,
+                pps_time_close=local_estimate.pps_time_close,
+                pps_before_open_timestamp=local_estimate.pps_before_open_timestamp,
+                pps_after_open_timestamp=local_estimate.pps_after_open_timestamp,
+                pps_before_close_timestamp=local_estimate.pps_before_close_timestamp,
+                pps_after_close_timestamp=local_estimate.pps_after_close_timestamp,
+                pps_support_count=local_estimate.pps_support_count,
+                max_pps_gap_seconds=local_estimate.max_pps_gap_seconds,
+                estimator_mode=estimator_mode,
+                estimator_valid=estimator_valid,
+                estimator_quality_flags="|".join(local_estimate.quality_flags) if local_estimate.quality_flags else "none",
             )
         )
     populated = [segment for segment in segments if segment]
@@ -1005,6 +1220,101 @@ def _assigned_samples(
         event = events[event_index] if events[event_index].elapsed_s <= count.elapsed_s else None
         assigned.append((event, count))
     return assigned
+
+
+def _nearest_environment_sample(
+    samples: list[EnvironmentSample],
+    elapsed_s: float,
+    *,
+    max_delta_s: float = 5.0,
+) -> EnvironmentSample | None:
+    if not samples:
+        return None
+    nearest = min(samples, key=lambda sample: abs(sample.elapsed_s - elapsed_s))
+    return nearest if abs(nearest.elapsed_s - elapsed_s) <= max_delta_s else None
+
+
+def _temperature_rate(samples: list[EnvironmentSample], elapsed_s: float, *, window_s: float = 60.0) -> float | None:
+    before = [
+        sample for sample in samples
+        if sample.temperature_c is not None and elapsed_s - window_s <= sample.elapsed_s <= elapsed_s
+    ]
+    after = [
+        sample for sample in samples
+        if sample.temperature_c is not None and elapsed_s <= sample.elapsed_s <= elapsed_s + window_s
+    ]
+    if not before or not after:
+        return None
+    first = before[0]
+    last = after[-1]
+    if first.temperature_c is None or last.temperature_c is None or last.elapsed_s <= first.elapsed_s:
+        return None
+    return (last.temperature_c - first.temperature_c) / (last.elapsed_s - first.elapsed_s)
+
+
+def _environment_analysis_lines(analysis: H1Analysis) -> list[str]:
+    assigned = _assigned_samples(analysis.count_windows, _analysis_dwell_events(analysis.dac_events))
+    sht = [
+        sample for sample in analysis.environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near"
+    ]
+    bmp = [
+        sample for sample in analysis.environment_samples
+        if sample.source == "bmp280" and sample.role == "pressure_reference"
+    ]
+    rows: list[dict[str, float]] = []
+    for event, count in assigned:
+        temp_sample = _nearest_environment_sample(sht, count.elapsed_s)
+        pressure_sample = _nearest_environment_sample(bmp, count.elapsed_s)
+        row: dict[str, float] = {
+            "hz": count.measured_hz,
+            "elapsed_s": count.elapsed_s,
+        }
+        if event is not None:
+            row["dac_code"] = float(event.code)
+        if temp_sample is not None:
+            if temp_sample.temperature_c is not None:
+                row["temperature_c"] = temp_sample.temperature_c
+            if temp_sample.relative_humidity_pct is not None:
+                row["humidity_pct"] = temp_sample.relative_humidity_pct
+            rate = _temperature_rate(sht, count.elapsed_s)
+            if rate is not None:
+                row["temperature_rate_c_per_s"] = rate
+        if pressure_sample is not None and pressure_sample.pressure_pa is not None:
+            row["pressure_pa"] = pressure_sample.pressure_pa
+        rows.append(row)
+    hz_median = _median([row["hz"] for row in rows])
+    if hz_median is None:
+        return ["- unavailable: no count-window frequency estimates"]
+    for row in rows:
+        row["residual_hz"] = row["hz"] - hz_median
+
+    def metric_line(label: str, key: str) -> str:
+        pairs = [(row[key], row["residual_hz"]) for row in rows if key in row]
+        corr = _pearson(pairs)
+        slope = _slope_xy(pairs)
+        r2 = corr * corr if corr is not None else None
+        elapsed_corr = _pearson([(row[key], row["elapsed_s"]) for row in rows if key in row])
+        dac_corr = _pearson([(row[key], row["dac_code"]) for row in rows if key in row and "dac_code" in row])
+        return (
+            f"- {label}: samples={len(pairs)}, corr_residual={_format(corr)}, "
+            f"simple_r2={_format(r2)}, slope_hz_per_unit={_format(slope)}, "
+            f"corr_with_elapsed={_format(elapsed_corr)}, corr_with_dac_code={_format(dac_corr)}"
+        )
+
+    aligned_counts = sum(1 for row in rows if "temperature_c" in row)
+    lines = [
+        f"- aligned_count_windows_with_sht4x: {aligned_counts}/{len(rows)} using nearest sample within 5 s",
+        metric_line("SHT4x temperature_c", "temperature_c"),
+        metric_line("SHT4x humidity_pct", "humidity_pct"),
+        metric_line("BMP280 pressure_pa", "pressure_pa"),
+        metric_line("elapsed_s", "elapsed_s"),
+        metric_line("dac_code", "dac_code"),
+        metric_line("temperature_rate_c_per_s", "temperature_rate_c_per_s"),
+        "- interpretation: these are one-variable diagnostic fits against frequency residuals, not a thermal model.",
+        "- limitation: nearby air temperature may miss CX317 internal oven state, airflow across leads, thermal gradients, and lag through the control network.",
+    ]
+    return lines
 
 
 def _analysis_dwell_events(events: tuple[DacEvent, ...]) -> tuple[DacEvent, ...]:
@@ -1383,8 +1693,8 @@ def analyze_run(
     session_summary = detect_run_sessions(manifest)
     if session_summary.session_count > 1:
         warnings.append(f"run sessions: detected {session_summary.session_count} sessions; analysis uses final CSV segments where loaders support segmentation")
-    pps_clock, pps_anomalies = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
-    counts = _load_counts(manifest, gate_hz_by_domain, pps_clock, resolved_nominal_hz, warnings)
+    pps_clock, local_pps_mapper, pps_anomalies = _estimate_pps_clock(manifest, gate_hz_by_domain, warnings)
+    counts = _load_counts(manifest, gate_hz_by_domain, pps_clock, local_pps_mapper, resolved_nominal_hz, warnings)
     startup_control = _startup_control_estimate(manifest, gate_hz_by_domain, pps_clock)
     fc0_bad_windows = _fc0_bad_window_diagnostics(manifest, gate_hz_by_domain)
     dac_events = _load_dac_events(manifest, warnings)
@@ -1408,6 +1718,7 @@ def analyze_run(
         stability_ppm=stability_ppm,
         session_summary=session_summary,
         pps_clock=pps_clock,
+        local_pps_mapper=local_pps_mapper,
         pps_anomalies=pps_anomalies,
         count_windows=counts,
         dac_events=dac_events,
@@ -1478,6 +1789,36 @@ BRACKETED_SLOPE_FIELDS = [
     "note",
 ]
 
+COUNT_ESTIMATE_FIELDS = [
+    "count_seq",
+    "elapsed_s",
+    "gate_open_raw_timestamp",
+    "gate_close_raw_timestamp",
+    "gate_open_unwrapped_timestamp",
+    "gate_close_unwrapped_timestamp",
+    "raw_gate_ticks",
+    "counted_edges",
+    "legacy_gate_seconds",
+    "legacy_frequency_hz",
+    "legacy_ppm",
+    "local_pps_gate_seconds",
+    "local_pps_frequency_hz",
+    "local_pps_ppm",
+    "frequency_difference_hz",
+    "frequency_difference_fractional",
+    "pps_time_open",
+    "pps_time_close",
+    "pps_before_open_timestamp",
+    "pps_after_open_timestamp",
+    "pps_before_close_timestamp",
+    "pps_after_close_timestamp",
+    "pps_support_count",
+    "max_pps_gap_seconds",
+    "estimator_mode",
+    "estimator_valid",
+    "estimator_quality_flags",
+]
+
 
 def write_points_csv(analysis: H1Analysis, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1495,6 +1836,55 @@ def write_center_bracketed_slopes_csv(analysis: H1Analysis, path: Path) -> None:
         writer.writeheader()
         for estimate in analysis.center_bracketed_slopes:
             writer.writerow({field: getattr(estimate, field) for field in BRACKETED_SLOPE_FIELDS})
+
+
+def write_count_estimates_csv(analysis: H1Analysis, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=COUNT_ESTIMATE_FIELDS)
+        writer.writeheader()
+        for window in analysis.count_windows:
+            difference_hz = (
+                window.local_pps_frequency_hz - window.legacy_frequency_hz
+                if window.local_pps_frequency_hz is not None and window.legacy_frequency_hz is not None
+                else None
+            )
+            difference_fractional = (
+                difference_hz / window.legacy_frequency_hz
+                if difference_hz is not None and window.legacy_frequency_hz not in (None, 0)
+                else None
+            )
+            writer.writerow(
+                {
+                    "count_seq": window.seq,
+                    "elapsed_s": window.elapsed_s,
+                    "gate_open_raw_timestamp": window.gate_open_raw_timestamp,
+                    "gate_close_raw_timestamp": window.gate_close_raw_timestamp,
+                    "gate_open_unwrapped_timestamp": window.gate_open_unwrapped_timestamp,
+                    "gate_close_unwrapped_timestamp": window.gate_close_unwrapped_timestamp,
+                    "raw_gate_ticks": window.raw_gate_ticks,
+                    "counted_edges": window.counted_edges,
+                    "legacy_gate_seconds": window.legacy_gate_seconds,
+                    "legacy_frequency_hz": window.legacy_frequency_hz,
+                    "legacy_ppm": window.legacy_ppm,
+                    "local_pps_gate_seconds": window.local_pps_gate_seconds,
+                    "local_pps_frequency_hz": window.local_pps_frequency_hz,
+                    "local_pps_ppm": window.local_pps_ppm,
+                    "frequency_difference_hz": difference_hz,
+                    "frequency_difference_fractional": difference_fractional,
+                    "pps_time_open": window.pps_time_open,
+                    "pps_time_close": window.pps_time_close,
+                    "pps_before_open_timestamp": window.pps_before_open_timestamp,
+                    "pps_after_open_timestamp": window.pps_after_open_timestamp,
+                    "pps_before_close_timestamp": window.pps_before_close_timestamp,
+                    "pps_after_close_timestamp": window.pps_after_close_timestamp,
+                    "pps_support_count": window.pps_support_count,
+                    "max_pps_gap_seconds": window.max_pps_gap_seconds,
+                    "estimator_mode": window.estimator_mode,
+                    "estimator_valid": str(window.estimator_valid).lower(),
+                    "estimator_quality_flags": window.estimator_quality_flags,
+                }
+            )
 
 
 def _png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -1851,8 +2241,12 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         f"- requested_measurement_windows: derived from count windows available per DAC dwell",
         "",
         "## Formulas",
-        "- gate_seconds = gate_ticks / pps_calibrated_tick_rate when a sane REF/PPS stream exists for the gate domain",
-        "- gate_seconds = gate_ticks / nominal_domain_hz when PPS calibration is unavailable",
+        "- preferred estimator = LOCAL_PPS_INTERPOLATED when both count-gate boundaries are bracketed by accepted REF/PPS observations in one continuous PPS segment",
+        "- fallback estimator = RUN_WIDE_TICK_RATE when a sane REF/PPS stream exists but local bracketing is unavailable",
+        "- fallback estimator = NOMINAL_TICK_RATE when PPS calibration is unavailable",
+        "- local_pps_gate_seconds = pps_time(gate_close_ticks) - pps_time(gate_open_ticks)",
+        "- legacy_gate_seconds = gate_ticks / run_wide_pps_calibrated_tick_rate when available, otherwise gate_ticks / nominal_domain_hz",
+        "- legacy compatibility wording: gate_ticks / pps_calibrated_tick_rate describes the retained run-wide fallback estimate",
         "- measured_hz = counted_edges / gate_seconds",
         "- ppm = 1e6 * (measured_hz - nominal_hz) / nominal_hz",
         "- Hz/V = delta Hz / delta V",
@@ -1905,6 +2299,27 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
                 f"- note: {pps.note}",
             ]
         )
+    estimator_counts = _count_by(window.estimator_mode for window in analysis.count_windows)
+    valid_local = [window for window in analysis.count_windows if window.estimator_mode == "LOCAL_PPS_INTERPOLATED" and window.estimator_valid]
+    differences = [
+        window.local_pps_frequency_hz - window.legacy_frequency_hz
+        for window in valid_local
+        if window.local_pps_frequency_hz is not None and window.legacy_frequency_hz is not None
+    ]
+    lines.extend(
+        [
+            "",
+            "## Count Estimator Policy",
+            "- preferred_estimator: LOCAL_PPS_INTERPOLATED",
+            "- fallback_estimator: RUN_WIDE_TICK_RATE, then NOMINAL_TICK_RATE",
+            "- pps_validity_policy: existing REF/PPS interval classifier accepts only 0.8..1.2 nominal-second intervals for calibration",
+            "- interpolation_policy: piecewise linear between adjacent accepted PPS observations; no default extrapolation",
+            f"- estimator_modes: {_format_counts(estimator_counts)}",
+            f"- local_pps_valid_count: {len(valid_local)}",
+            f"- local_vs_legacy_difference_hz: median={_format(_median(differences))}, stddev={_format(_stddev(differences))}, span={_format(max(differences) - min(differences) if differences else None)}",
+            "- diagnostics_csv: csv/h1_count_frequency_estimates.csv",
+        ]
+    )
 
     lines.extend(["", "## PPS Anomalies"])
     if not analysis.pps_anomalies:
@@ -1958,6 +2373,9 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"temperature_c={_format(min(temps))}..{_format(max(temps))}, "
             f"delta_c={_format(max(temps) - min(temps))}, mean_c={_format(_mean(temps))}"
         )
+
+    lines.extend(["", "## Environmental Diagnostic Fit"])
+    lines.extend(_environment_analysis_lines(analysis))
 
     lines.extend(["", "## Local Slopes"])
     usable_slopes = [slope for slope in analysis.slopes if any(value is not None for value in (slope.hz_per_v, slope.hz_per_code))]
@@ -2068,6 +2486,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
     lines.extend(["", "## Generated Artifacts"])
     lines.append("- csv/h1_characterization_points.csv")
     lines.append("- csv/h1_center_bracketed_slopes.csv")
+    lines.append("- csv/h1_count_frequency_estimates.csv")
     if written_plots:
         lines.extend(f"- {path.relative_to(analysis.run_dir)}" for path in written_plots)
     else:
@@ -2124,9 +2543,11 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
 def write_outputs(analysis: H1Analysis) -> tuple[Path, Path, list[Path]]:
     points_path = analysis.run_dir / "csv" / "h1_characterization_points.csv"
     bracketed_slopes_path = analysis.run_dir / "csv" / "h1_center_bracketed_slopes.csv"
+    count_estimates_path = analysis.run_dir / "csv" / "h1_count_frequency_estimates.csv"
     report_path = analysis.run_dir / "reports" / "h1_characterization_summary.md"
     write_points_csv(analysis, points_path)
     write_center_bracketed_slopes_csv(analysis, bracketed_slopes_path)
+    write_count_estimates_csv(analysis, count_estimates_path)
     plots = write_plots(analysis, analysis.run_dir / "plots")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(analysis, plots), encoding="utf-8")

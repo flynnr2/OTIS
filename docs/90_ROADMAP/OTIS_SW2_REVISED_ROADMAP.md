@@ -300,6 +300,31 @@ but **do not jump directly to PLL/PI or even guarded I-only actuation**. The nex
 roadmap step is a higher-SNR H1-B plant run, still inside the justified safe
 envelope, before freezing a conservative local plant model.
 
+`run_016` is the current measurement-confidence update. The regenerated H1
+report uses the host-side local PPS interpolator for existing count gates:
+
+- 153 count windows;
+- 152 `LOCAL_PPS_INTERPOLATED` estimates;
+- one startup-edge fallback to `RUN_WIDE_TICK_RATE`;
+- no PPS anomalies in the analysed REF stream;
+- `fc0_valid_for_control: true`;
+- retained legacy-vs-local comparison with median difference 0.007 Hz,
+  standard deviation 3.13 Hz, and span 14.48 Hz.
+
+This confirms that the former run-wide RP2040 tick-rate conversion could move
+sub-hertz conclusions by much more than the DAC/CX317 response being measured.
+For H1 plant-authority conclusions, use locally PPS-calibrated estimates when
+valid support exists and retain the run-wide estimate only as a labelled
+diagnostic comparison.
+
+The corrected `run_016` evidence makes centre-bracketed `0x0800` and `0x1000`
+steps useful for the next conservative plant-model fit. The `0x0200` and
+`0x0400` steps remain near the present measurement floor: they are useful for
+diagnosing repeatability, but not strong enough to drive actuation policy.
+Environmental regression remains diagnostic, not explanatory authority, because
+nearby air-temperature alignment is limited and simple terms are confounded with
+elapsed time.
+
 ---
 
 ## 4. Target SW2 architecture in OTIS terms

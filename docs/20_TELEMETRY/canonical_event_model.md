@@ -136,3 +136,30 @@ Derived outputs may include:
 - timing residual analysis.
 
 These are not firmware responsibilities.
+
+## Temporary D10 PPS Witness Telemetry
+
+For the H1 PPS anomaly investigation, firmware can be built with
+`OTIS_ENABLE_PPS_DUAL_OBSERVER=1`. D14 remains the normal PPS reference path.
+D10 is configured as `INPUT`, rising-edge only, with no internal pull, and is
+temporarily tied to the same physical PPS signal as an independent diagnostic
+witness.
+
+Periodic `STS` records expose raw diagnostic accounting without changing REF
+acceptance, count gates, DAC behavior, or control eligibility:
+
+- `pps_d14.raw_edge_count`, `accepted_pps_count`, `rejected_short_count`,
+  `rejected_long_count`, `last_raw_timestamp`, `last_raw_interval`,
+  `last_accepted_timestamp`, `sampled_high_count`, `sampled_low_count`;
+- `pps_d10.raw_edge_count`, `last_edge_timestamp`, `last_interval`,
+  `short_interval_count`, `sampled_high_count`, `sampled_low_count`,
+  `buffer_overflow_count`;
+- `pps_dual_observer.d14_raw_minus_d10_raw`, `agreement_state`,
+  `burst_active`, and `burst_count`.
+
+Interpretation is diagnostic: both pins bursting suggests shared electrical or
+upstream PPS behavior; D14-only activity points toward the D14 capture/backend or
+downstream path; D10-only activity points toward D10-local wiring/configuration
+or threshold asymmetry; normal raw counters with anomalous emitted records points
+downstream of capture. Sampled pin level is evidence, but it cannot reconstruct
+electrical glitches shorter than ISR latency.
