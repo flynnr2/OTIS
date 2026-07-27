@@ -76,12 +76,34 @@ ENVIRONMENT_FIELDS = [
     "flags",
 ]
 
+DIAGNOSTICS_DRAFT_V0_FIELDS = [
+    "record_type",
+    "schema_version",
+    "diagnostic_seq",
+    "diagnostic_id",
+    "subsystem",
+    "severity",
+    "state",
+    "transition",
+    "diagnostic_confidence",
+    "reason_code",
+    "first_seen_ticks",
+    "last_seen_ticks",
+    "time_domain",
+    "evidence_refs",
+    "algorithm_version",
+    "config_version",
+    "control_effect",
+    "control_eligibility",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
+    "diagnostics_draft_v0": DIAGNOSTICS_DRAFT_V0_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -90,6 +112,16 @@ CONTRACT_RECORD_TYPES = {
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
+    "diagnostics_draft_v0": {"DIAG"},
+}
+
+CONTRACT_SCHEMA_VERSIONS = {
+    "raw_events_v1": 1,
+    "count_observations_v1": 1,
+    "health_v1": 1,
+    "dac_steps_v1": 1,
+    "environment_v1": 1,
+    "diagnostics_draft_v0": 0,
 }
 
 SEQUENCE_FIELDS = {
@@ -98,6 +130,7 @@ SEQUENCE_FIELDS = {
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
+    "diagnostics_draft_v0": "diagnostic_seq",
 }
 
 TIMESTAMP_FIELDS = {
@@ -106,6 +139,7 @@ TIMESTAMP_FIELDS = {
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
+    "diagnostics_draft_v0": ("first_seen_ticks", "last_seen_ticks"),
 }
 
 CHANNEL_FIELDS = {
@@ -119,11 +153,36 @@ DOMAIN_FIELDS = {
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
+    "diagnostics_draft_v0": ("time_domain",),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}
 VALID_SEVERITIES = {"INFO", "WARN", "ERROR", "FATAL"}
+VALID_DIAGNOSTIC_SEVERITIES = {"INFO", "DEGRADED", "WARN", "FAULT", "CRITICAL"}
+VALID_DIAGNOSTIC_SUBSYSTEMS = {
+    "reference",
+    "count_path",
+    "oscillator",
+    "actuator",
+    "estimator",
+    "control",
+    "environment",
+    "service_plane",
+    "storage",
+}
+VALID_DIAGNOSTIC_STATES = {"active", "cleared", "latched", "suppressed", "unknown"}
+VALID_DIAGNOSTIC_TRANSITIONS = {"raised", "updated", "cleared", "latched", "suppressed", "snapshot", "unknown"}
+VALID_CONTROL_EFFECTS = {
+    "none",
+    "reduce_trust",
+    "inhibit_acquisition",
+    "inhibit_actuation",
+    "enter_holdover",
+    "fail_static",
+    "unknown",
+}
+VALID_CONTROL_ELIGIBILITY = {"eligible", "not_eligible", "not_applicable", "unknown"}
 VALID_ENV_SOURCES = {"sht4x", "bmp280"}
 VALID_ENV_ROLES = {"vcocxo_near", "ambient_board", "ambient", "pressure_reference"}
 
@@ -161,10 +220,11 @@ def _parse_non_negative_int(value: str, field_name: str, row_number: int, errors
     return parsed
 
 
-def _check_schema_version(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+def _check_schema_version(contract: str, row: dict[str, str], row_number: int, errors: list[str]) -> None:
     version = _parse_non_negative_int(row.get("schema_version", ""), "schema_version", row_number, errors)
-    if version is not None and version != 1:
-        errors.append(f"row {row_number}: unsupported schema_version {version}; expected 1")
+    expected = CONTRACT_SCHEMA_VERSIONS[contract]
+    if version is not None and version != expected:
+        errors.append(f"row {row_number}: unsupported schema_version {version}; expected {expected}")
 
 
 def _check_record_type(contract: str, row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -313,6 +373,41 @@ def _check_environment(row: dict[str, str], row_number: int, errors: list[str]) 
         errors.append(f"row {row_number}: pressure_pa must be positive")
 
 
+def _check_diagnostics_draft_v0(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    if row.get("subsystem") not in VALID_DIAGNOSTIC_SUBSYSTEMS:
+        errors.append(f"row {row_number}: subsystem must be one of {sorted(VALID_DIAGNOSTIC_SUBSYSTEMS)}")
+    if row.get("severity") not in VALID_DIAGNOSTIC_SEVERITIES:
+        errors.append(f"row {row_number}: severity must be one of {sorted(VALID_DIAGNOSTIC_SEVERITIES)}")
+    if row.get("state") not in VALID_DIAGNOSTIC_STATES:
+        errors.append(f"row {row_number}: state must be one of {sorted(VALID_DIAGNOSTIC_STATES)}")
+    if row.get("transition") not in VALID_DIAGNOSTIC_TRANSITIONS:
+        errors.append(f"row {row_number}: transition must be one of {sorted(VALID_DIAGNOSTIC_TRANSITIONS)}")
+    if row.get("control_effect") not in VALID_CONTROL_EFFECTS:
+        errors.append(f"row {row_number}: control_effect must be one of {sorted(VALID_CONTROL_EFFECTS)}")
+    if row.get("control_eligibility") not in VALID_CONTROL_ELIGIBILITY:
+        errors.append(f"row {row_number}: control_eligibility must be one of {sorted(VALID_CONTROL_ELIGIBILITY)}")
+
+    confidence = row.get("diagnostic_confidence", "")
+    if confidence != "unknown":
+        parsed_confidence = _parse_optional_float(confidence, "diagnostic_confidence", row_number, errors)
+        if parsed_confidence is None or not 0.0 <= parsed_confidence <= 1.0:
+            errors.append(f"row {row_number}: diagnostic_confidence must be between 0.0 and 1.0 or 'unknown'")
+
+    first_seen = _parse_non_negative_int(row.get("first_seen_ticks", ""), "first_seen_ticks", row_number, errors)
+    last_seen = _parse_non_negative_int(row.get("last_seen_ticks", ""), "last_seen_ticks", row_number, errors)
+    if first_seen is not None and last_seen is not None and last_seen < first_seen:
+        errors.append(f"row {row_number}: last_seen_ticks must be greater than or equal to first_seen_ticks")
+
+    for field_name in ("diagnostic_id", "reason_code", "evidence_refs", "algorithm_version", "config_version"):
+        if not row.get(field_name):
+            errors.append(f"row {row_number}: {field_name} must not be empty")
+
+    if row.get("subsystem") == "service_plane" and row.get("control_effect") in {"enter_holdover", "fail_static"}:
+        errors.append(
+            f"row {row_number}: service-plane telemetry diagnostics must not directly enter holdover or fail static"
+        )
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -338,7 +433,7 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             for field_name in expected_fields:
                 if row.get(field_name) is None:
                     errors.append(f"row {row_count}: malformed row missing field {field_name}")
-            _check_schema_version(row, row_count, errors)
+            _check_schema_version(context.contract, row, row_count, errors)
             _check_record_type(context.contract, row, row_count, errors)
             previous_seq = _check_sequence(context.contract, row, row_count, previous_seq, errors)
             _check_timestamps(context.contract, row, row_count, errors)
@@ -358,7 +453,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             )
             _check_channel(context, row, row_count, errors)
             _check_domains(context, row, row_count, errors)
-            _check_flags(row, row_count, errors)
+            if "flags" in expected_fields:
+                _check_flags(row, row_count, errors)
             _check_edges(context.contract, row, row_count, errors)
             if context.contract == "count_observations_v1":
                 _check_count_observation(row, row_count, errors)
@@ -368,6 +464,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_dac_step(row, row_count, errors)
             if context.contract == "environment_v1":
                 _check_environment(row, row_count, errors)
+            if context.contract == "diagnostics_draft_v0":
+                _check_diagnostics_draft_v0(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")

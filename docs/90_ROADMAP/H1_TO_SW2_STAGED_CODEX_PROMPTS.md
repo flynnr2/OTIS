@@ -18,6 +18,10 @@ Current status note:
   isolated that class of failure to a G17 breakout solder short, verified clean
   repaired-path CX317 counts, and explicitly gated its PPS/reference anomaly as
   diagnostic-only unresolved evidence.
+- `run_016` is the completed H1-B retry in the corrected `0x7000..0x9000`
+  firmware envelope. It confirmed clean PPS/reference and count-path behavior,
+  but its `0x0200`/`0x0400` local DAC steps were too small relative to
+  center drift/noise and produced sign-inconsistent slopes.
 - Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
   actuation remains blocked.
 
@@ -33,6 +37,9 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/anomalies.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/anomalies.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/summary.md`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
 - `docs/90_ROADMAP/otis_h1_ocxo_characterization_plan.md`
@@ -249,7 +256,8 @@ Deliver:
 
 Gate to Active SW2 Actuation:
 
-- A clean confirmation sweep exists.
+- A clean higher-SNR H1-B plant sweep exists. `run_016` is clean for
+  PPS/reference and count capture, but not for plant-gain authority.
 - Hz/code or ppm/code is stable enough to choose a conservative update size.
 - Settling time is bounded with enough margin for actuation cadence.
 - Startup and fault gates are tested.

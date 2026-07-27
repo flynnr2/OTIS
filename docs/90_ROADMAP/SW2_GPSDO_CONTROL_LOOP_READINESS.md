@@ -13,7 +13,10 @@ G17 conditioning fault was repaired, and a corrected local-PPS analysis of
 count-observation path could produce post-startup zero-count faults under the
 faulted bench configuration; `run_014` now explains that failure as a hardware
 short on the SN74LVC1G17 breakout rather than a host analysis, logging, or
-firmware-counting artifact.
+firmware-counting artifact. `run_016` did not repeat the `run_014` PPS anomaly
+burst and provides clean reference/capture evidence for the repaired topology,
+but its small-step DAC response is not sign-stable enough to authorize an
+automatic-control plant model.
 
 The current state supports SW2 design work, telemetry contracts, safety gates,
 manual nominal restore, and observe-only firmware scaffolding. It does **not**
@@ -269,18 +272,17 @@ constant.
 
 ## Recommended DAC Update Size
 
-After `run_014`, the plant slope has been measured on a clean,
-control-eligible count path, but it has not yet been converted into a frozen
-automatic-control model:
+After `run_016`, the DAC command path and count/reference validity look clean,
+but the small-step plant slope is not authoritative:
 
 - Active DAC update size: 0 codes.
 - Open-loop preview update size: clamp requested preview movement to `0x0400`
   codes per manual step.
 - Automatic actuation update size for the first guarded I-only experiment:
-  undefined until the `run_014` slope, noise and settling evidence is reviewed
-  into a versioned plant model. The future value must be chosen so one update is
-  a small fraction of the observed short-term count noise floor and a small
-  fraction of the characterized capture range.
+  undefined until a higher-SNR H1-B slope, noise and settling data set is
+  reviewed into a versioned plant model. The future value must be chosen so one
+  update is a small fraction of the observed short-term count noise floor and a
+  small fraction of the characterized capture range.
 
 No PR should introduce PPS-derived or FC0-error-derived DAC changes before this
 undefined value is replaced by an H1-derived number.
@@ -297,9 +299,9 @@ Current recommendation:
   actuation-ready.
 
 The 1800 s holdoff remains a conservative placeholder. `run_014` gives a clean
-24-hour-class open-loop run, but the holdoff should be revisited only when the
-first SW2 plant model records the chosen estimator and reference-validity
-rules.
+24-hour-class open-loop count run and `run_016` gives a clean 12.75-hour H1-B
+reference/count retry, but the holdoff should be revisited only when the first
+SW2 plant model records the chosen estimator and reference-validity rules.
 
 ## Recommended Initial Controller Type
 
@@ -425,17 +427,19 @@ SW2 safety gates:
 
 Future SW2 PR sequence:
 
-1. Telemetry-only state skeleton.
-2. Manual nominal DAC restore to `0x8000`, guarded by the existing clamp logic.
-3. Observe-only plant-model telemetry with explicit unavailable fields.
-4. Open-loop correction preview, no actuation.
-5. Guarded I-only actuation after H1 supplies Hz/V or ppm/V, settling time, and
+1. Draft diagnostic contract, reason-code namespace, fixtures, and host replay
+   validator for non-actuating diagnostics.
+2. Telemetry-only state skeleton.
+3. Manual nominal DAC restore to `0x8000`, guarded by the existing clamp logic.
+4. Observe-only plant-model telemetry with explicit unavailable fields.
+5. Open-loop correction preview, no actuation, gated by explicit diagnostics.
+6. Guarded I-only actuation after H1 supplies Hz/V or ppm/V, settling time, and
    noise-floor evidence.
-6. Lock/holdover state machine.
-7. Reporting and long-run validation.
+7. Lock/holdover state machine.
+8. Reporting and long-run validation.
 
 Each stage should preserve the non-goal that no active PPS-derived DAC steering
-exists before stage 5.
+exists before the guarded actuation stage.
 
 ## Explicit Risks
 
@@ -452,7 +456,13 @@ exists before stage 5.
   manifests for clamp values until run metadata is backfilled.
 - PPS startup artifacts and the short-interval PPS/reference anomaly burst in
   `run_014` can poison acquire logic if the state machine accepts early or
-  anomalous reference intervals without filtering and fault accounting.
+  anomalous reference intervals without filtering and fault accounting. `run_016`
+  did not repeat this burst, so the PPS issue should be tracked in parallel
+  rather than blocking the next plant-focused H1 run.
+- `run_016` shows that `0x0200` and `0x0400` local DAC steps are too small for
+  confident plant gain estimation under the observed drift/noise conditions.
+  Freezing a plant model from those sign-inconsistent estimates would risk a
+  wrong-sign or overfit controller.
 - Manual voltage notes are not the same as continuous measured tune-voltage
   telemetry.
 - Hysteresis and thermal drift are not characterized enough for holdover or
@@ -462,8 +472,7 @@ exists before stage 5.
 
 ## Gate To Reopen SW2 Actuation
 
-Revisit guarded actuation only after the completed `run_014` evidence, or a
-newer H1 data set, is reduced into:
+Revisit guarded actuation only after a newer H1 data set is reduced into:
 
 - populated safe DAC code and tune-voltage limits in the run manifest;
 - connected tune-voltage measurements bound to DAC dwell points or equivalent
