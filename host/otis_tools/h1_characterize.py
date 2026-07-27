@@ -959,26 +959,35 @@ def _load_dac_events(manifest: RunManifest, warnings: list[str]) -> tuple[DacEve
 
 def _load_environment_samples(manifest: RunManifest, gate_hz_by_domain: dict[str, float], warnings: list[str]) -> tuple[EnvironmentSample, ...]:
     rows = _read_csv(_manifest_file(manifest, ENV_CONTRACT, "csv/environment.csv"))
-    samples: list[EnvironmentSample] = []
+    rows_by_domain: dict[str, list[tuple[int, dict[str, str], int]]] = {}
+    skipped = 0
     for index, row in enumerate(rows, start=1):
         ticks = _parse_int(row.get("timestamp_ticks"))
         domain = str(row.get("observation_domain", ""))
-        domain_hz = gate_hz_by_domain.get(domain)
-        if ticks is None or not domain_hz:
-            warnings.append(f"environment.csv row {index}: skipped because timestamp or observation_domain nominal_hz is unavailable")
+        if ticks is None or not gate_hz_by_domain.get(domain):
+            skipped += 1
             continue
-        tick_s = ticks / domain_hz
-        samples.append(
-            EnvironmentSample(
-                seq=_parse_int(row.get("env_seq")) or index,
-                elapsed_s=tick_s,
-                source=str(row.get("source", "")),
-                role=str(row.get("role", "")),
-                temperature_c=_parse_float(row.get("temperature_c")),
-                relative_humidity_pct=_parse_float(row.get("relative_humidity_pct")),
-                pressure_pa=_parse_float(row.get("pressure_pa")),
+        rows_by_domain.setdefault(domain, []).append((index, row, ticks))
+    if skipped:
+        warnings.append(f"environment.csv: skipped {skipped} row(s) because timestamp or observation_domain nominal_hz is unavailable")
+
+    samples: list[EnvironmentSample] = []
+    for domain, domain_rows in rows_by_domain.items():
+        raw_ticks = [ticks for _, _, ticks in domain_rows]
+        effective_ticks, _wrap_count = unwrap_ticks(raw_ticks) if domain == "rp2040_timer0" else (raw_ticks, 0)
+        domain_hz = gate_hz_by_domain[domain]
+        for (index, row, _ticks), ticks in zip(domain_rows, effective_ticks):
+            samples.append(
+                EnvironmentSample(
+                    seq=_parse_int(row.get("env_seq")) or index,
+                    elapsed_s=ticks / domain_hz,
+                    source=str(row.get("source", "")),
+                    role=str(row.get("role", "")),
+                    temperature_c=_parse_float(row.get("temperature_c")),
+                    relative_humidity_pct=_parse_float(row.get("relative_humidity_pct")),
+                    pressure_pa=_parse_float(row.get("pressure_pa")),
+                )
             )
-        )
     return tuple(sorted(samples, key=lambda item: (item.elapsed_s, item.seq)))
 
 

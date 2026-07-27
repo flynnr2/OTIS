@@ -325,6 +325,38 @@ def test_h1_characterize_reports_near_vcocxo_temperature(tmp_path: Path) -> None
     assert run_dir / "plots" / "vcocxo_temperature_vs_ppm.png" in plots
 
 
+def test_h1_characterize_unwraps_environment_timer_for_temperature_plot(tmp_path: Path) -> None:
+    run_dir = tmp_path / "h1_environment_wrap"
+    _write_synthetic_run(run_dir, include_environment=True)
+    wrap = (1 << 32) * 16
+    env_rows = [
+        "record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags",
+        f"ENV,1,1,{wrap - 32000000},rp2040_timer0,sht4x,vcocxo_near,25.000,45.000,,0",
+        f"ENV,1,2,{wrap - 16000000},rp2040_timer0,sht4x,vcocxo_near,25.100,45.100,,0",
+        "ENV,1,3,0,rp2040_timer0,sht4x,vcocxo_near,25.200,45.200,,0",
+        "ENV,1,4,16000000,rp2040_timer0,sht4x,vcocxo_near,25.300,45.300,,0",
+        "ENV,1,5,32000000,rp2040_timer0,sht4x,vcocxo_near,25.400,45.400,,0",
+    ]
+    (run_dir / "csv" / "environment.csv").write_text("\n".join(env_rows) + "\n", encoding="utf-8")
+
+    analysis, _, _, plots = characterize_run(run_dir, settling_discard_s=0)
+    sht = [
+        sample
+        for sample in analysis.environment_samples
+        if sample.source == "sht4x" and sample.role == "vcocxo_near"
+    ]
+
+    assert [sample.elapsed_s for sample in sht] == [
+        (wrap - 32000000) / 16_000_000,
+        (wrap - 16000000) / 16_000_000,
+        wrap / 16_000_000,
+        (wrap + 16000000) / 16_000_000,
+        (wrap + 32000000) / 16_000_000,
+    ]
+    assert run_dir / "plots" / "vcocxo_temperature_vs_elapsed.png" in plots
+    assert (run_dir / "plots" / "vcocxo_temperature_vs_elapsed.png").read_bytes().startswith(b"\x89PNG")
+
+
 def test_h1_characterize_reports_center_bracketed_slope(tmp_path: Path) -> None:
     run_dir = tmp_path / "h1_center_bracketed"
     _write_synthetic_run(run_dir, include_second_step=False)
