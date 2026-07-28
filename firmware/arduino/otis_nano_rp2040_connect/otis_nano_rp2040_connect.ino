@@ -20,6 +20,7 @@
 #include "otis_modes.h"
 #include "otis_pps_dual_observer.h"
 #include "otis_protocol.h"
+#include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
 #include "otis_status_emit.h"
 #include "otis_status_led.h"
@@ -54,6 +55,7 @@ OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
 char serial_command_line[64];
 uint8_t serial_command_len = 0;
+bool resource_ownership_status_emitted = false;
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -361,6 +363,89 @@ void emit_h0_pin_status(void) {
   emit_status("pins", "d10_pps_witness", "D10_input_rising_no_pull",
               OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
+}
+
+void emit_resource_ownership_status(void) {
+  if (resource_ownership_status_emitted || !otis_transport_ready()) {
+    return;
+  }
+
+  bool valid = otis_resource_registry_valid();
+  bool complete = otis_resource_registry_complete();
+  uint32_t registry_flags =
+      valid && complete ? OTIS_FLAG_PROFILE_ASSUMPTION
+                        : OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
+
+  emit_status("resource_registry", "version", "1", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("resource_registry", "valid", valid ? "true" : "false",
+              valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_FATAL,
+              registry_flags);
+  emit_status("resource_registry", "complete", complete ? "true" : "false",
+              complete ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              registry_flags);
+  emit_status_u32("resource_registry", "claim_count",
+                  otis_resource_registry_claim_count(), OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("resource_registry", "conflict_count",
+                  otis_resource_registry_conflict_count(),
+                  valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_FATAL,
+                  registry_flags);
+  emit_status_u32("resource_registry", "binding_failure_count",
+                  otis_resource_registry_binding_failure_count(),
+                  otis_resource_registry_binding_failure_count() == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_ERROR,
+                  registry_flags);
+  emit_status_u32(
+      "resource_registry", "gpio_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::Gpio),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "irq_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::GpioIrq),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "pio_sm_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::PioStateMachine),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "pio_imem_claim_count",
+      otis_resource_registry_claim_count(
+          OtisResourceType::PioInstructionMemory),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "dma_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::DmaChannel),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "timer_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::Timer),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "resource_registry", "clock_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::Clock),
+      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+
+  uint8_t claim_count = otis_resource_registry_claim_count();
+  for (uint8_t i = 0; i < claim_count; ++i) {
+    const OtisResourceClaim *claim = otis_resource_registry_claim_at(i);
+    if (claim == nullptr) {
+      continue;
+    }
+    char key[16];
+    char value[160];
+    snprintf(key, sizeof(key), "claim_%02u", i);
+    snprintf(value, sizeof(value), "%s:%u:%u:%u:%s:%s:%s",
+             otis_resource_type_name(claim->type), claim->instance,
+             claim->index, claim->span, claim->owner, claim->role,
+             claim->bound ? "bound" : "pending");
+    emit_status("resource_registry", key, value,
+                claim->bound ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+                claim->bound ? OTIS_FLAG_PROFILE_ASSUMPTION
+                             : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  }
+  resource_ownership_status_emitted = true;
 }
 
 void emit_protocol_banner_if_serial_ready(void) {
@@ -1250,6 +1335,10 @@ void boot_phase_run_mode(void) {
   halt_boot(BootFatal::ForcedBeforeRunMode, BootPhase::RunMode);
 #endif
   setup_mode();
+  emit_resource_ownership_status();
+  if (!otis_resource_registry_valid()) {
+    halt_boot(BootFatal::ResourceOwnershipConflict, BootPhase::RunMode);
+  }
   runtime_state.periodic.last_status_ms = millis();
   otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
   otisBootBreadcrumbMarkRunMode();
@@ -1580,6 +1669,9 @@ void setup() {
   otis_status_emit_init(&status_emit_context,
                         &runtime_state.sequences.status_seq);
   boot_phase_reset_entry();
+  if (!otis_resource_registry_begin()) {
+    halt_boot(BootFatal::ResourceOwnershipConflict, BootPhase::EarlyInit);
+  }
   if (otisBootSafeModeRequested()) {
     enter_safe_mode();
     return;
@@ -1608,6 +1700,7 @@ void loop() {
   // status emission, then cap max records emitted per loop if host backpressure
   // becomes observable.
   emit_protocol_banner_if_serial_ready();
+  emit_resource_ownership_status();
   service_serial_commands();
   service_loopback_output();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \

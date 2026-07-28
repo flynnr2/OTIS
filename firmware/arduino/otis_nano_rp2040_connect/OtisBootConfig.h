@@ -38,6 +38,7 @@ enum class BootFatal : uint8_t {
   ForcedBeforeCapture,
   ForcedBeforeRunMode,
   RepeatedBootFailure,
+  ResourceOwnershipConflict,
 };
 
 #endif

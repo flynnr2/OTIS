@@ -10,6 +10,7 @@
 
 #include "otis_capture_ring.h"
 #include "otis_protocol.h"
+#include "otis_resource_registry.h"
 #include "otis_timebase.h"
 
 namespace {
@@ -83,6 +84,16 @@ bool otis_capture_pio_begin(const OtisCaptureBackendConfig &config) {
 
   pio_capture_program_offset =
       pio_add_program(pio_capture, &pio_edge_capture_program);
+  bool ownership_bound =
+      otis_resource_registry_bind_pio_state_machine(
+          OTIS_OWNER_EDGE_CAPTURE, 0u, static_cast<uint8_t>(pio_capture_sm)) &&
+      otis_resource_registry_bind_pio_program(
+          OTIS_OWNER_EDGE_CAPTURE, 0u,
+          static_cast<uint8_t>(pio_capture_program_offset),
+          static_cast<uint8_t>(pio_edge_capture_program.length));
+  if (!ownership_bound) {
+    return false;
+  }
   pio_sm_config sm_config = pio_get_default_sm_config();
   sm_config_set_in_pins(&sm_config, config.gpio);
   sm_config_set_wrap(&sm_config, pio_capture_program_offset,

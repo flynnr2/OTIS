@@ -5,6 +5,8 @@
 #include <Wire.h>
 #endif
 
+#include "otis_i2c_bus.h"
+
 namespace {
 
 constexpr uint8_t kDacAddress = static_cast<uint8_t>(OTIS_DAC_AD5693R_I2C_ADDRESS);
@@ -37,7 +39,11 @@ void fill_status(OtisDacAd5693rStatus *out) {
 
 bool otis_dac_ad5693r_begin(void) {
 #if OTIS_ENABLE_DAC_AD5693R
-  Wire.begin();
+  if (!otis_i2c_bus_begin()) {
+    dac_initialized = false;
+    dac_last_write_ok = false;
+    return false;
+  }
   Wire.beginTransmission(kDacAddress);
   uint8_t result = Wire.endTransmission();
   dac_initialized = (result == 0u);
