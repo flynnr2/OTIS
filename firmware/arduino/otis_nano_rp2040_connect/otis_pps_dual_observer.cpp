@@ -53,12 +53,19 @@ void handle_d10_witness_edge(void) {
   int sampled_level = digitalRead(d10_gpio);
   uint64_t interval = 0;
   if (d10_last_edge_timestamp != 0u) {
-    interval = timestamp - d10_last_edge_timestamp;
+    interval = otis_timer0_interval_ticks(d10_last_edge_timestamp, timestamp);
     d10_last_interval = interval;
-    if (interval < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
-      d10_short_interval_count++;
-    } else if (interval > OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS) {
-      d10_long_interval_count++;
+    switch (otis_classify_pps_interval_ticks(
+        interval, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
+        OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
+      case OTIS_PPS_INTERVAL_SHORT:
+        d10_short_interval_count++;
+        break;
+      case OTIS_PPS_INTERVAL_LONG:
+        d10_long_interval_count++;
+        break;
+      case OTIS_PPS_INTERVAL_NORMAL:
+        break;
     }
   }
   d10_last_edge_timestamp = timestamp;

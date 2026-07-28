@@ -157,6 +157,15 @@ acceptance, count gates, DAC behavior, or control eligibility:
 - `pps_dual_observer.d14_raw_minus_d10_raw`, `agreement_state`,
   `burst_active`, and `burst_count`.
 
+The D14 and D10 interval diagnostics classify intervals with modular RP2040
+`micros()`-derived timer arithmetic. A normal PPS interval that crosses the
+32-bit timer rollover must remain a normal interval and must not increment
+`rejected_long_count` or the D10 long-interval diagnostic. Historical captures
+made before this correction can still contain rollover-contaminated D14
+`rejected_long_count` values; preserve those raw counts as evidence and qualify
+them with host-side unwrapped REF analysis before using them in readiness
+judgements.
+
 Interpretation is diagnostic: both pins bursting suggests shared electrical or
 upstream PPS behavior; D14-only activity points toward the D14 capture/backend or
 downstream path; D10-only activity points toward D10-local wiring/configuration
