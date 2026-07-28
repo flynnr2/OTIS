@@ -1,0 +1,1 @@
+record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags
