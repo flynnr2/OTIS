@@ -157,9 +157,9 @@ uint32_t stop_h1_pio_long_gate_counter(void) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 struct PpsGatedRatioBackend {
   PpsGateState state;
-  bool pps_level_high;
   uint64_t last_pps_ticks;
   uint64_t gate_open_ticks;
+  uint32_t gate_open_capture_flags;
   uint32_t accepted_window_count;
   uint32_t rejected_window_count;
   uint32_t missing_pps_count;
@@ -170,7 +170,7 @@ struct PpsGatedRatioBackend {
 
 PpsGatedRatioBackend pps_gated_ratio = {
     PpsGateState::Idle,
-    false,
+    0,
     0,
     0,
     0,
@@ -325,15 +325,6 @@ bool pps_interval_valid(uint64_t interval_us) {
          interval_us <= OTIS_PPS_GATE_MAX_INTERVAL_US;
 }
 
-bool pps_rising_edge(uint64_t *edge_ticks) {
-  bool level_high = digitalRead(OTIS_PIN_PPS_REFERENCE) == HIGH;
-  bool rising = level_high && !pps_gated_ratio.pps_level_high;
-  pps_gated_ratio.pps_level_high = level_high;
-  if (rising) {
-    *edge_ticks = otis_capture_ticks_now();
-  }
-  return rising;
-}
 #endif
 
 void reset_fc0_accum_window(OtisRuntimeState *runtime_state) {
@@ -591,12 +582,12 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
   // D14 remains configured and owned by the sparse edge-capture subsystem.
-  // This backend is a read-only client of that reference input.
+  // This backend consumes that subsystem's authoritative captured event.
   pps_gated_ratio.state = counter_ok ? PpsGateState::Armed
                                      : PpsGateState::Fault;
-  pps_gated_ratio.pps_level_high = digitalRead(OTIS_PIN_PPS_REFERENCE) == HIGH;
   pps_gated_ratio.last_pps_ticks = 0;
   pps_gated_ratio.gate_open_ticks = 0;
+  pps_gated_ratio.gate_open_capture_flags = OTIS_FLAG_NONE;
   pps_gated_ratio.accepted_window_count = 0;
   pps_gated_ratio.rejected_window_count = 0;
   pps_gated_ratio.missing_pps_count = 0;
@@ -646,6 +637,114 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
               "gpio_irq_divided_only", OTIS_SEVERITY_WARN,
               OTIS_FLAG_RATE_TOO_HIGH);
   otis_capture_irq_begin_tcxo_counter(OTIS_PIN_OSC_OBSERVATION);
+#endif
+}
+
+bool otis_count_observation_on_reference(
+    OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context,
+    const OtisCountObservationConfig *config,
+    uint64_t timestamp_ticks,
+    uint32_t capture_flags) {
+#if (OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE) && \
+    OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  if (!h1_pio_long_gate.initialized) {
+    return false;
+  }
+
+  uint32_t now_ms = millis();
+  update_startup_inhibit(runtime_state, config, now_ms);
+
+  if (pps_gated_ratio.state != PpsGateState::Open) {
+    start_h1_pio_long_gate_counter(timestamp_ticks);
+    pps_gated_ratio.state = PpsGateState::Open;
+    pps_gated_ratio.last_pps_ticks = timestamp_ticks;
+    pps_gated_ratio.gate_open_ticks = timestamp_ticks;
+    pps_gated_ratio.gate_open_capture_flags = capture_flags;
+    pps_gated_ratio.last_reason = kWindowReasonNone;
+    emit_pps_gate_status(status_context, OTIS_SEVERITY_INFO, capture_flags);
+    return false;
+  }
+
+  uint64_t emitted_gate_close_ticks = timestamp_ticks;
+  if (emitted_gate_close_ticks < pps_gated_ratio.gate_open_ticks) {
+    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
+  }
+  uint64_t observation_span_us =
+      (emitted_gate_close_ticks - pps_gated_ratio.gate_open_ticks) / 16ull;
+  uint32_t remaining = stop_h1_pio_long_gate_counter();
+  OtisPioCounterSample counter_sample =
+      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
+  uint64_t counted_edges = counter_sample.counted_edges;
+  uint32_t measured_khz = 0;
+  if (observation_span_us > 0ull) {
+    measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
+  }
+
+  runtime_state->tcxo.last_gate_open_ticks = pps_gated_ratio.gate_open_ticks;
+  runtime_state->tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
+  runtime_state->tcxo.last_counted_edges = counted_edges;
+  runtime_state->tcxo.last_elapsed_us = (uint32_t)observation_span_us;
+  runtime_state->tcxo.last_measured_khz = measured_khz;
+  runtime_state->tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
+  runtime_state->tcxo.last_sample_count = 1u;
+  runtime_state->tcxo.last_zero_sample_count = counted_edges > 0ull ? 0u : 1u;
+  runtime_state->tcxo.last_valid_sample_count = counted_edges > 0ull ? 1u : 0u;
+  runtime_state->tcxo.last_first_sample_khz = measured_khz;
+  runtime_state->tcxo.last_last_sample_khz = measured_khz;
+  runtime_state->tcxo.last_min_sample_khz = measured_khz;
+  runtime_state->tcxo.last_max_sample_khz = measured_khz;
+  runtime_state->tcxo.last_window_flags =
+      pps_gated_ratio.gate_open_capture_flags | capture_flags;
+
+  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
+  if (!pps_interval_valid(observation_span_us)) {
+    anomaly.reason = kWindowReasonPpsIntervalAnomaly;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
+                     OTIS_FLAG_GATE_INCOMPLETE;
+    pps_gated_ratio.pps_interval_anomaly_count += 1u;
+  }
+  if (counter_sample.saturated) {
+    anomaly.reason = kWindowReasonCounterSaturated;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;
+    pps_gated_ratio.count_saturated_count += 1u;
+  }
+  runtime_state->tcxo.last_window_flags = anomaly.flags;
+  runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
+
+  update_control_gate(runtime_state, config, &anomaly, now_ms);
+  record_window_quality(runtime_state, anomaly);
+  if (anomaly.valid) {
+    pps_gated_ratio.accepted_window_count += 1u;
+  } else {
+    pps_gated_ratio.rejected_window_count += 1u;
+  }
+  pps_gated_ratio.last_reason = anomaly.reason;
+
+  emit_count_observation(runtime_state, config, counted_edges,
+                         runtime_state->tcxo.last_window_flags);
+  emit_pps_gate_window_status(runtime_state, status_context, anomaly,
+                              anomaly.valid && counted_edges > 0ull);
+  if (!anomaly.valid) {
+    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
+  }
+
+  start_h1_pio_long_gate_counter(timestamp_ticks);
+  pps_gated_ratio.state = PpsGateState::Open;
+  pps_gated_ratio.last_pps_ticks = timestamp_ticks;
+  pps_gated_ratio.gate_open_ticks = timestamp_ticks;
+  pps_gated_ratio.gate_open_capture_flags = capture_flags;
+  return true;
+#else
+  (void)runtime_state;
+  (void)status_context;
+  (void)config;
+  (void)timestamp_ticks;
+  (void)capture_flags;
+  return false;
 #endif
 }
 
@@ -835,6 +934,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
       pps_gated_ratio.missing_pps_count += 1u;
       pps_gated_ratio.last_pps_ticks = 0;
       pps_gated_ratio.gate_open_ticks = 0;
+      pps_gated_ratio.gate_open_capture_flags = OTIS_FLAG_NONE;
       pps_gated_ratio.state = PpsGateState::Armed;
       runtime_state->tcxo.last_elapsed_us = (uint32_t)open_us;
       emit_pps_gate_fault(runtime_state, status_context, kWindowReasonMissingPps,
@@ -844,91 +944,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
     }
   }
 
-  uint64_t pps_ticks = 0;
-  if (!pps_rising_edge(&pps_ticks)) {
-    return false;
-  }
-
-  if (pps_gated_ratio.state != PpsGateState::Open) {
-    start_h1_pio_long_gate_counter(pps_ticks);
-    pps_gated_ratio.state = PpsGateState::Open;
-    pps_gated_ratio.last_pps_ticks = pps_ticks;
-    pps_gated_ratio.gate_open_ticks = pps_ticks;
-    pps_gated_ratio.last_reason = kWindowReasonNone;
-    emit_pps_gate_status(status_context, OTIS_SEVERITY_INFO,
-                         OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
-    return false;
-  }
-
-  uint64_t emitted_gate_close_ticks = pps_ticks;
-  if (emitted_gate_close_ticks < pps_gated_ratio.gate_open_ticks) {
-    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
-  }
-  uint64_t observation_span_us =
-      (emitted_gate_close_ticks - pps_gated_ratio.gate_open_ticks) / 16ull;
-  uint32_t remaining = stop_h1_pio_long_gate_counter();
-  OtisPioCounterSample counter_sample =
-      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
-  uint64_t counted_edges = counter_sample.counted_edges;
-  uint32_t measured_khz = 0;
-  if (observation_span_us > 0ull) {
-    measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
-  }
-
-  runtime_state->tcxo.last_gate_open_ticks = pps_gated_ratio.gate_open_ticks;
-  runtime_state->tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
-  runtime_state->tcxo.last_counted_edges = counted_edges;
-  runtime_state->tcxo.last_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_measured_khz = measured_khz;
-  runtime_state->tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_sample_count = 1u;
-  runtime_state->tcxo.last_zero_sample_count = counted_edges > 0ull ? 0u : 1u;
-  runtime_state->tcxo.last_valid_sample_count = counted_edges > 0ull ? 1u : 0u;
-  runtime_state->tcxo.last_first_sample_khz = measured_khz;
-  runtime_state->tcxo.last_last_sample_khz = measured_khz;
-  runtime_state->tcxo.last_min_sample_khz = measured_khz;
-  runtime_state->tcxo.last_max_sample_khz = measured_khz;
-  runtime_state->tcxo.last_window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-
-  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
-  if (!pps_interval_valid(observation_span_us)) {
-    anomaly.reason = kWindowReasonPpsIntervalAnomaly;
-    anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
-                     OTIS_FLAG_GATE_INCOMPLETE;
-    pps_gated_ratio.pps_interval_anomaly_count += 1u;
-  }
-  if (counter_sample.saturated) {
-    anomaly.reason = kWindowReasonCounterSaturated;
-    anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;
-    pps_gated_ratio.count_saturated_count += 1u;
-  }
-  runtime_state->tcxo.last_window_flags = anomaly.flags;
-  runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
-
-  update_control_gate(runtime_state, config, &anomaly, now_ms);
-  record_window_quality(runtime_state, anomaly);
-  if (anomaly.valid) {
-    pps_gated_ratio.accepted_window_count += 1u;
-  } else {
-    pps_gated_ratio.rejected_window_count += 1u;
-  }
-  pps_gated_ratio.last_reason = anomaly.reason;
-
-  emit_count_observation(runtime_state, config, counted_edges,
-                         runtime_state->tcxo.last_window_flags);
-  emit_pps_gate_window_status(runtime_state, status_context, anomaly,
-                              anomaly.valid && counted_edges > 0ull);
-  if (!anomaly.valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
-  }
-
-  start_h1_pio_long_gate_counter(pps_ticks);
-  pps_gated_ratio.state = PpsGateState::Open;
-  pps_gated_ratio.last_pps_ticks = pps_ticks;
-  pps_gated_ratio.gate_open_ticks = pps_ticks;
-  return true;
+  return false;
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   uint32_t now_us = micros();
   if ((uint32_t)(now_us - runtime_state->tcxo.gate_open_us) <

@@ -12,9 +12,7 @@ struct OtisCapturedEdge {
 };
 
 void otis_capture_ring_reset(void);
-bool otis_capture_ring_push_from_isr(uint32_t channel_id,
-                                     bool reference_record,
-                                     char edge);
+bool otis_capture_ring_push_from_isr(const OtisCapturedEdge &record);
 bool otis_capture_ring_pop(OtisCapturedEdge *record);
 void otis_capture_ring_note_drop(void);
 uint32_t otis_capture_ring_dropped_count(void);

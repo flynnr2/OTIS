@@ -4,6 +4,7 @@
 
 #include "otis_capture_ring.h"
 #include "otis_config.h"
+#include "otis_protocol.h"
 #include "otis_timebase.h"
 
 namespace {
@@ -26,6 +27,15 @@ volatile uint32_t d14_sampled_low_count = 0;
 void handle_capture_edge(void) {
   uint64_t timestamp = otis_capture_ticks_now();
   int sampled_level = digitalRead(capture_gpio);
+  char edge =
+      capture_reference_record ? 'R' : (sampled_level ? 'R' : 'F');
+  const OtisCapturedEdge captured_event = {
+      capture_channel_id,
+      capture_reference_record,
+      edge,
+      timestamp,
+      OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
+  };
   if (capture_reference_record) {
     d14_raw_edge_count++;
     if (sampled_level) {
@@ -52,10 +62,7 @@ void handle_capture_edge(void) {
     }
     d14_last_raw_timestamp = timestamp;
   }
-  char edge =
-      capture_reference_record ? 'R' : (sampled_level ? 'R' : 'F');
-  if (otis_capture_ring_push_from_isr(capture_channel_id,
-                                      capture_reference_record, edge)) {
+  if (otis_capture_ring_push_from_isr(captured_event)) {
     capture_irq_edge_count++;
     if (capture_reference_record) {
       d14_accepted_pps_count++;

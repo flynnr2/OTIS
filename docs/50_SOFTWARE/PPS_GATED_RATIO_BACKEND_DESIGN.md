@@ -41,10 +41,12 @@ The current implementation uses:
 
 The count path is PIO-backed rather than the current FC0 helper because the gate
 is defined by external PPS edges, not by a firmware-selected fixed gate
-duration. The current firmware qualifies PPS rising edges in foreground while
-preserving the sparse PPS `REF` capture path. Bench validation must still prove
-PPS edge ownership, counter start/stop latency, missing-PPS timeout behavior,
-and counter saturation handling before the backend is hardware-clean.
+duration. The sparse PPS capture path is the single PPS authority: the same
+captured event supplies the `REF` timestamp, PPS diagnostics, and count-gate
+boundary. The count backend does not poll D14 or timestamp PPS independently.
+See `PPS_OWNERSHIP_ARCHITECTURE.md`. Bench validation must still prove counter
+start/stop latency, missing-PPS timeout behavior, and counter saturation
+handling before the backend is hardware-clean.
 
 The current sparse PIO FIFO backend is not this backend. It queues low-rate
 edges and attaches CPU-drain timestamps; it must not be used as a raw MHz edge
@@ -220,12 +222,13 @@ clean PPS-gated `CNT` rows.
 - Backend selector and compile-time validation exist in `otis_config.h`.
 - Count-observation logic lives in the extracted count-observation module, not
   in the `.ino` sketch.
-- Current firmware uses a PIO oscillator counter and foreground PPS edge
-  qualification; bench validation still needs to prove hardware-clean timing.
+- Current firmware uses a PIO oscillator counter and consumes authoritative
+  foreground PPS capture events; bench validation still needs to prove
+  hardware-clean counter stop/start timing.
 - Counter width, rollover, saturation, and timeout behavior are explicit in
   firmware and status telemetry.
-- Keep PPS `REF` row ownership single and explicit; do not double-emit or race
-  the existing capture backend.
+- Keep the sparse capture event authoritative for PPS `REF`, diagnostics, and
+  gated counting; do not poll or timestamp D14 again in a consumer.
 - Emit `CNT` rows only for bounded observations with honest gate boundaries.
 - Emit `STS` rows for missing PPS, PPS interval anomalies, count saturation, startup
   inhibit, control qualification, and bad-window counters.
@@ -238,8 +241,9 @@ clean PPS-gated `CNT` rows.
 
 ## Open Bench Questions
 
-- Does foreground PPS edge qualification produce acceptable start/stop latency
-  for the intended PPS-gated ratio run, or is a hardware-latched PPS gate needed?
+- Does foreground processing of the captured PPS event produce acceptable
+  counter start/stop latency for the intended ratio run, or is a
+  hardware-latched PPS gate needed?
 - Should a later implementation emit a flagged partial `CNT` with a timeout
   close tick, or keep the current `STS`-only missing-stop-PPS policy?
 - What PPS interval tolerances should be defaults for GPS PPS, and should they

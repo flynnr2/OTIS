@@ -3,9 +3,6 @@
 #include <Arduino.h>
 
 #include "otis_config.h"
-#include "otis_protocol.h"
-#include "otis_timebase.h"
-
 namespace {
 
 constexpr uint8_t kCaptureRingSize =
@@ -26,20 +23,18 @@ void otis_capture_ring_reset(void) {
   interrupts();
 }
 
-bool otis_capture_ring_push_from_isr(uint32_t channel_id,
-                                     bool reference_record,
-                                     char edge) {
+bool otis_capture_ring_push_from_isr(const OtisCapturedEdge &record) {
   uint8_t next_head = (uint8_t)((capture_head + 1u) % kCaptureRingSize);
   if (next_head == capture_tail) {
     capture_dropped_count++;
     return false;
   }
 
-  capture_ring[capture_head].channel_id = channel_id;
-  capture_ring[capture_head].reference_record = reference_record;
-  capture_ring[capture_head].edge = edge;
-  capture_ring[capture_head].timestamp_ticks = otis_capture_ticks_now();
-  capture_ring[capture_head].flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  capture_ring[capture_head].channel_id = record.channel_id;
+  capture_ring[capture_head].reference_record = record.reference_record;
+  capture_ring[capture_head].edge = record.edge;
+  capture_ring[capture_head].timestamp_ticks = record.timestamp_ticks;
+  capture_ring[capture_head].flags = record.flags;
   capture_head = next_head;
   return true;
 }
