@@ -80,6 +80,20 @@ PPS-gated ratio runs add component `pps_gate`:
 Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
 metadata.
 
+## Hardware Resource Ownership Status
+
+Firmware resource ownership is reported with component `resource_registry`.
+`valid`, `complete`, `conflict_count`, and `binding_failure_count` expose the
+registry outcome. Per-class claim counts include GPIO, IRQ, PIO state machine,
+PIO instruction memory, DMA, timer, and clock resources. `claim_00`,
+`claim_01`, and subsequent deterministic keys preserve the physical identity,
+owner, role, and bound/pending state of each selected claim.
+
+These are additive status rows. They do not replace backend-specific
+initialization status or any raw timing observation. The normative ownership
+map is
+[`../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md`](../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md).
+
 ## Diagnostics Migration
 
 `health_v1` remains the compatibility status contract. First-class diagnostic

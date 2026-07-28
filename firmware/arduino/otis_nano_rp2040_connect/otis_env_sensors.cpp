@@ -5,6 +5,8 @@
 #include <Wire.h>
 #endif
 
+#include "otis_i2c_bus.h"
+
 namespace {
 
 constexpr uint8_t kSht4xAddress = static_cast<uint8_t>(OTIS_ENV_SHT4X_I2C_ADDRESS);
@@ -165,7 +167,9 @@ void fill_status(OtisEnvSensorStatus *out) {
 
 bool otis_env_sensors_begin(void) {
 #if OTIS_ENABLE_ENV_SENSORS
-  Wire.begin();
+  if (!otis_i2c_bus_begin()) {
+    return false;
+  }
 #if OTIS_ENABLE_ENV_SHT4X
   sht4x_initialized = i2c_probe(kSht4xAddress);
   sht4x_last_read_ok = sht4x_initialized;

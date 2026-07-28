@@ -84,6 +84,11 @@ The SW1 H0 pin convention keeps RP2040 clock-function pins explicit:
 | `D9` | `GPIO21` | `GPOUT0` | internal clock visibility, reserved output |
 | `D2` | `GPIO25` | `GPOUT3` | secondary diagnostic clock, reserved output |
 
+All active and reserved GPIO, IRQ, PIO, DMA, timer, and clock claims are
+validated before mode hardware setup. The authoritative ledger and emitted
+ownership diagnostics are defined in
+[`HARDWARE_RESOURCE_OWNERSHIP.md`](HARDWARE_RESOURCE_OWNERSHIP.md).
+
 Do not reuse `D9` or `D2` as general capture inputs.
 
 ## SW1 H0 Bring-Up Modes

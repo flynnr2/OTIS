@@ -13,6 +13,7 @@
 #include "otis_emit.h"
 #include "otis_pio_counter_math.h"
 #include "otis_protocol.h"
+#include "otis_resource_registry.h"
 #include "otis_timebase.h"
 
 namespace {
@@ -92,6 +93,17 @@ bool begin_h1_pio_long_gate_counter(void) {
   }
   h1_pio_long_gate.sm = static_cast<uint>(claimed_sm);
   h1_pio_long_gate.offset = pio_add_program(h1_pio_long_gate.pio, &program);
+  bool ownership_bound =
+      otis_resource_registry_bind_pio_state_machine(
+          OTIS_OWNER_COUNT_OBSERVATION, 0u,
+          static_cast<uint8_t>(h1_pio_long_gate.sm)) &&
+      otis_resource_registry_bind_pio_program(
+          OTIS_OWNER_COUNT_OBSERVATION, 0u,
+          static_cast<uint8_t>(h1_pio_long_gate.offset),
+          static_cast<uint8_t>(program.length));
+  if (!ownership_bound) {
+    return false;
+  }
 
   pio_gpio_init(h1_pio_long_gate.pio, OTIS_GPIO_OSC_OBSERVATION);
   gpio_pull_down(OTIS_GPIO_OSC_OBSERVATION);
@@ -578,7 +590,8 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
-  pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+  // D14 remains configured and owned by the sparse edge-capture subsystem.
+  // This backend is a read-only client of that reference input.
   pps_gated_ratio.state = counter_ok ? PpsGateState::Armed
                                      : PpsGateState::Fault;
   pps_gated_ratio.pps_level_high = digitalRead(OTIS_PIN_PPS_REFERENCE) == HIGH;

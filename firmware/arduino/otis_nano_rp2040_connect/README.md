@@ -17,6 +17,11 @@ OTIS targets the Philhower Arduino-Pico core because it exposes the RP2040/Pico
 SDK surface, supports `setup1()` / `loop1()` multicore sketches, and leaves a
 practical route to PIO-backed capture while retaining an Arduino entrypoint.
 
+GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
+enforced by `otis_resource_registry.*`. The normative ownership ledger,
+diagnostic keys, compatibility notes, and risk assessment are in
+[`../../../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md`](../../../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md).
+
 If the local Arduino CLI uses a different board identifier, confirm it with:
 
 ```bash

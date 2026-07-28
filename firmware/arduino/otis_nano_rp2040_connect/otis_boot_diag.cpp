@@ -138,6 +138,8 @@ BootFatal unpack_fatal(uint32_t packed) {
       return BootFatal::ForcedBeforeRunMode;
     case 10u:
       return BootFatal::RepeatedBootFailure;
+    case 11u:
+      return BootFatal::ResourceOwnershipConflict;
     default:
       return BootFatal::InvalidBootConfig;
   }
@@ -224,6 +226,8 @@ const char *otisBootFatalName(BootFatal fatal) {
       return "ForcedBeforeRunMode";
     case BootFatal::RepeatedBootFailure:
       return "RepeatedBootFailure";
+    case BootFatal::ResourceOwnershipConflict:
+      return "ResourceOwnershipConflict";
     default:
       return "Unknown";
   }
