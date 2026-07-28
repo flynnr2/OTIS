@@ -17,6 +17,12 @@ struct OtisCountObservationConfig {
 void otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config);
+bool otis_count_observation_on_reference(
+    OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context,
+    const OtisCountObservationConfig *config,
+    uint64_t timestamp_ticks,
+    uint32_t capture_flags);
 bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                     OtisStatusEmitContext *status_context,
                                     const OtisCountObservationConfig *config);

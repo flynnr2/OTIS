@@ -140,20 +140,59 @@ def test_i2c_controller_has_one_initializer() -> None:
     ).read_text(encoding="utf-8")
 
 
-def test_pps_gated_counter_is_a_read_only_client_of_d14() -> None:
-    source = (FIRMWARE / "otis_count_observation.cpp").read_text(encoding="utf-8")
-    pps_backend_start = source.index(
-        "#elif OTIS_TCXO_COUNTER_BACKEND == "
-        "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
+def test_pps_gated_counter_consumes_the_capture_authority() -> None:
+    count_source = (FIRMWARE / "otis_count_observation.cpp").read_text(
+        encoding="utf-8"
     )
-    pps_backend_end = source.index(
-        "#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ",
-        pps_backend_start,
+    sketch_source = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
     )
-    pps_backend = source[pps_backend_start:pps_backend_end]
 
-    assert "digitalRead(OTIS_PIN_PPS_REFERENCE)" in pps_backend
-    assert "pinMode(OTIS_PIN_PPS_REFERENCE" not in pps_backend
+    assert "digitalRead(OTIS_PIN_PPS_REFERENCE)" not in count_source
+    assert "pps_rising_edge" not in count_source
+    assert "otis_count_observation_on_reference(" in count_source
+
+    emit_start = sketch_source.index("void emit_captured_edge(")
+    emit_end = sketch_source.index("const char *edge_string(", emit_start)
+    emit_body = sketch_source[emit_start:emit_end]
+    assert "otis_emit_raw_event(" in emit_body
+    assert "otis_count_observation_on_reference(" in emit_body
+    assert emit_body.count("record.timestamp_ticks") == 2
+    assert "record.flags" in emit_body
+
+    loop_body = sketch_source[sketch_source.index("void loop()") :]
+    assert loop_body.index("otis_capture_backend_service()") < loop_body.index(
+        "service_tcxo_gate()"
+    )
+    assert loop_body.index("drain_capture_ring()") < loop_body.index(
+        "service_tcxo_gate()"
+    )
+
+    reference_handler_start = count_source.index(
+        "bool otis_count_observation_on_reference("
+    )
+    reference_handler_end = count_source.index(
+        "bool otis_count_observation_service(", reference_handler_start
+    )
+    reference_handler = count_source[reference_handler_start:reference_handler_end]
+    assert "gate_open_capture_flags | capture_flags" in reference_handler
+
+
+def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
+    irq_source = (FIRMWARE / "otis_capture_irq.cpp").read_text(encoding="utf-8")
+    ring_source = (FIRMWARE / "otis_capture_ring.cpp").read_text(encoding="utf-8")
+
+    handler_start = irq_source.index("void handle_capture_edge(void)")
+    handler_end = irq_source.index(
+        "void handle_tcxo_observation_edge(void)", handler_start
+    )
+    handler = irq_source[handler_start:handler_end]
+    assert handler.count("otis_capture_ticks_now()") == 1
+    assert "const OtisCapturedEdge captured_event" in handler
+    assert "otis_capture_ring_push_from_isr(captured_event)" in handler
+    assert "d14_last_raw_timestamp = timestamp" in handler
+    assert "d14_last_accepted_timestamp = timestamp" in handler
+    assert "otis_capture_ticks_now()" not in ring_source
 
 
 def test_all_requested_resource_classes_have_diagnostics() -> None:

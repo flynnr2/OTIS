@@ -132,6 +132,10 @@ void enter_safe_mode(void) {
 const char *edge_string(char edge);
 const char *osc_observation_domain(void);
 OtisCountObservationConfig count_observation_config(void);
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+void emit_h1_dac_sweep_fc0_window(void);
+#endif
 
 void emit_status(const char *component, const char *key, const char *value,
                  const char *severity, uint32_t flags) {
@@ -169,6 +173,21 @@ void emit_status_u64_decimal(const char *component, const char *key,
 }
 
 void emit_captured_edge(const OtisCapturedEdge &record) {
+  if (record.reference_record && record.edge == 'R') {
+    OtisCountObservationConfig count_config = count_observation_config();
+    bool window_completed = otis_count_observation_on_reference(
+        &runtime_state, &status_emit_context, &count_config,
+        record.timestamp_ticks, record.flags);
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+    if (window_completed) {
+      emit_h1_dac_sweep_fc0_window();
+    }
+#else
+    (void)window_completed;
+#endif
+  }
+
   otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF : OTIS_RECORD_EVT,
                       runtime_state.sequences.event_seq++, record.channel_id,
                       edge_string(record.edge), record.timestamp_ticks,
@@ -1707,10 +1726,10 @@ void loop() {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   service_h1_dac_sweep();
 #endif
-  service_tcxo_gate();
   otis_pps_dual_observer_service();
   otis_capture_backend_service();
   drain_capture_ring();
+  service_tcxo_gate();
   service_environment_sensors();
   emit_periodic_status();
   otis_status_led_poll(millis());

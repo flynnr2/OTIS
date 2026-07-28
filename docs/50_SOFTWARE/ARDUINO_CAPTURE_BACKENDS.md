@@ -35,13 +35,14 @@ The IRQ handler:
 
 - determines the edge as `R` for reference records, or by reading the GPIO for
   generic event records;
-- calls `otis_capture_ring_push_from_isr()`;
+- reads `otis_capture_ticks_now()` once and constructs the authoritative
+  `OtisCapturedEdge`;
+- updates reference diagnostics from that captured timestamp;
+- passes the complete event to `otis_capture_ring_push_from_isr()`;
 - increments `capture_irq_edge_count` only when the ring push succeeds.
 
-`otis_capture_ring_push_from_isr()` currently owns construction of
-`OtisCapturedEdge` for the IRQ path. It reads `otis_capture_ticks_now()`, stores
-the record in the software ring, and marks the timestamp with
-`OTIS_FLAG_TIMESTAMP_RECONSTRUCTED`.
+`otis_capture_ring_push_from_isr()` only transports the completed event. It
+must not read the clock or reconstruct a second timestamp.
 
 The foreground loop later calls `drain_capture_ring()`, pops records with
 interrupts masked briefly, and emits `EVT` or `REF` rows through
@@ -150,13 +151,17 @@ already-defined records and counters.
 `OtisCapturedEdge` is the firmware-internal handoff record for `EVT` and `REF`
 rows.
 
-Current ownership differs by backend:
+Construction ownership differs by backend:
 
 | Backend | Record construction owner | Handoff |
 |---|---|---|
-| GPIO IRQ | `otis_capture_ring_push_from_isr()` | software ring, then foreground drain |
+| GPIO IRQ | `handle_capture_edge()` | software ring, then foreground drain |
 | PIO edge queue | `otis_capture_pio_service()` | direct foreground emit callback |
 | Future PIO/DMA timestamp | DMA backend service | DMA buffer to foreground record drain |
+
+For PPS reference events, the completed `OtisCapturedEdge` is also the sole
+input to `REF` emission, reference diagnostics, and PPS-gated counting. See
+`PPS_OWNERSHIP_ARCHITECTURE.md`.
 
 The future DMA backend should own its raw DMA entry format privately. It should
 convert to `OtisCapturedEdge` only after it can attach the correct channel,
