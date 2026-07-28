@@ -231,6 +231,12 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
   required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO
   count sanity. It warns for in-progress captures, missing `COMPLETE` markers,
   missing optional artifacts, empty CSVs, and unpopulated provenance fields.
+- `python3 -m host.otis_tools.evidence RUN_DIR` seals a completed run with a
+  deterministic `evidence_manifest.json`. It snapshots the exact manifest,
+  configuration, selected profile, raw logs, and declared data artifacts using
+  byte lengths and SHA-256 digests. Validation then treats any mutation,
+  removal, or uncovered evidence-bearing addition as an error. Historical
+  unsealed runs remain valid with an explicit provenance warning.
 - `python3 -m host.otis_tools.report_run` renders a Markdown A0 replay report
   covering run identity, SW1 capture limitations, completion state, artifact
   inventory, row counts, raw-event monotonicity, PPS/reference interval sanity,
