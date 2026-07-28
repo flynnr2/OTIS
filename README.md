@@ -24,6 +24,17 @@ open-loop OCXO/DAC characterization:
 - the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
+Current H1 CX317/AD5693R evidence is preserved under
+`runs/h1_open_loop/dac_manual_sweep/run_017`. That run provides the current
+open-loop plant-model evidence: a clean D10 PPS witness, 242 300 s count
+windows, 241 locally PPS-interpolated frequency estimates, no host PPS
+anomalies after timestamp unwrapping, `fc0_valid_for_control=true`, and an
+observed 10 MHz output shift from about 9.999997327 MHz at DAC `0x7000` to
+about 9.999998711 MHz at DAC `0x9000`. The measured centre-bracketed CX317
+tuning slope is positive and within the datasheet-derived expectation, but SW2
+active DAC steering remains disabled pending an explicit guarded actuation
+experiment.
+
 The current SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit
 `4cb0fc8088cbc36eeaa0e52e5c4661b86b738aca`. It validates with:

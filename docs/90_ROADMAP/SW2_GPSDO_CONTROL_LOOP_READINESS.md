@@ -9,7 +9,9 @@ connected tune-voltage sanity checks, scripted long-gate open-loop sweeps,
 PPS/reference telemetry, environmental telemetry, session-aware host reporting,
 startup/control-eligibility status, a completed clean `run_014` after the
 G17 conditioning fault was repaired, and a corrected local-PPS analysis of
-`run_016`. Earlier evidence showed that the
+`run_016`. `run_017` is now the current clean CX317/AD5693R plant-evidence run,
+with the temporary D10 PPS witness enabled and timestamp rollover handled in
+host analysis. Earlier evidence showed that the
 count-observation path could produce post-startup zero-count faults under the
 faulted bench configuration; `run_014` now explains that failure as a hardware
 short on the SN74LVC1G17 breakout rather than a host analysis, logging, or
@@ -18,12 +20,13 @@ firmware-counting artifact.
 The current state supports SW2 design work, telemetry contracts, safety gates,
 manual nominal restore, and observe-only firmware scaffolding. It does **not**
 support automatic DAC actuation from PPS or count error. The corrected
-`run_016` analysis improves confidence in sub-hertz H1 measurements, but it is
-still plant-characterisation evidence rather than a control input. The next
-decision point is not dual-core firmware or a PI loop; it is freezing a
-versioned conservative plant model from the clean H1 evidence, carrying explicit
-reference-validity gates into SW2 control eligibility, and then planning an
-intentionally guarded actuation experiment.
+`run_016` analysis improved confidence in sub-hertz H1 measurements, and
+`run_017` adds the cleaner D10-witness confirmation sweep. This is still
+plant-characterisation evidence rather than a control input. The next decision
+point is not dual-core firmware or a PI loop; it is reviewing the versioned
+conservative plant model, carrying explicit reference-validity and rollover-safe
+diagnostic gates into SW2 control eligibility, and then planning an intentionally
+guarded actuation experiment.
 
 ## H1 Evidence Available
 
@@ -42,6 +45,11 @@ Primary artifacts:
 - `runs/h1_open_loop/dac_manual_sweep/run_014/notes.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_016/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_016/csv/h1_count_frequency_estimates.csv`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/anomalies.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_count_frequency_estimates.csv`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_center_bracketed_slopes.csv`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md`
@@ -114,6 +122,27 @@ Observed evidence:
   windows align with nearest SHT4x samples within 5 s under the present host
   alignment, and simple air-temperature terms are confounded with elapsed time.
   Do not conclude that airflow or CX317 internal thermal state is irrelevant.
+- `dac_manual_sweep/run_017` is the current H1 plant-evidence update. It reports
+  242 count windows, 241 `LOCAL_PPS_INTERPOLATED` estimates, one startup-edge
+  fallback to `RUN_WIDE_TICK_RATE`, no host-classified PPS anomalies after
+  unwrapping 16 RP2040 timer rollovers, no reconnects, no reboot/header markers,
+  and `fc0_valid_for_control: true`.
+- In `run_017`, the temporary D10 PPS witness matched D14 at the end of the run:
+  final D14 raw count 72970, final D10 raw count 72970, D14-D10 delta 0, no D10
+  short rows, no D10 buffer overflow rows, and no burst rows. D14
+  `rejected_long_count` ended at 16, matching the 16 timestamp rollovers; treat
+  that as a rollover-sensitive firmware diagnostic artifact unless/until the
+  diagnostic interval is computed on unwrapped timestamps.
+- `run_017` observed CX317 outputs over the tested range from about
+  9.999997327 MHz at DAC `0x7000` to about 9.999998711 MHz at DAC `0x9000`.
+  The full span is about 1.384 Hz. The centre-bracketed local slopes across
+  `0x0800` and `0x1000` steps are about 4.15..4.67 Hz/V, positive and
+  consistent with the CX317 datasheet-derived 10 MHz tuning expectation of
+  about 3.0..6.1 Hz/V over the full 0.0 V..3.3 V control range.
+- `run_017` near-VCOCXO SHT4x temperature spans about 25.43 C to 29.53 C, with
+  post-warmup drift about -0.00023 ppm/hour after the configured warmup window.
+  The run ended after an overnight static hold at `0x8000`; this is useful
+  stability evidence but is still open-loop.
 - `ocxo_free_run/run_004/reports/anomalies.md` reports 20 bad FC0 windows
   confined to startup, with the first clean CNT window about 3.67 minutes after
   the first CNT window and about 10.18 hours of clean observation afterward.
@@ -126,30 +155,29 @@ Observed evidence:
 
 Missing or insufficient evidence for active SW2 control:
 
-- No `runs/h1_open_loop/settling_thermal/run_001/reports/h1_characterization_summary.md`
-  artifact is present.
+- No separate `runs/h1_open_loop/settling_thermal/run_001/reports/h1_characterization_summary.md`
+  artifact is present, although `run_017` now provides long overnight static
+  hold evidence at the final `0x8000`.
 - Several run manifests still leave plant-critical fields unset, including
   oscillator nominal frequency, oscillator control-voltage range, DAC reference
   voltage, manifest safety limits, and measured tuning sensitivity.
 - The connected sweep lacks populated per-step voltage columns in
   `dac_steps.csv`; most voltage evidence still comes from notes or the manifest
   voltage model rather than measured dwell-row telemetry.
-- `run_016` reports `open_loop_slope_known: true` on a clean local-PPS
-  measurement path, but the slope should still be frozen as a conservative local
-  plant model with explicit uncertainty before it is used to calculate automatic
-  updates.
-- `run_016` reports `settling_time_characterized: true`, but the settling
-  estimates are still analysis products rather than loop constants until a
-  guarded model records the selected cadence, uncertainty, and valid operating
-  neighbourhood.
+- `run_017` reports `open_loop_slope_known: true` and
+  `settling_time_characterized: true` on a clean local-PPS measurement path, but
+  those estimates are still analysis products until the model review records the
+  selected cadence, update size, uncertainty, and valid operating neighbourhood
+  for a specific guarded actuation experiment.
 - `run_011`, `run_012`, and `run_013` report `fc0_valid_for_control: false`
   because zero-count windows occur after startup inhibit.
 - PPS/reference anomalies remain present in the completed `run_014`, but they
   are explicitly gated rather than an unclassified validation failure. `run_016`
-  does not repeat that anomaly in its analysed REF stream, but the prior burst
-  remains unresolved evidence. SW2 must still treat anomalous reference windows
-  as not control-eligible until the reference/capture path has its own fault
-  telemetry or a clean validation run with the D10 witness enabled.
+  and `run_017` do not repeat that anomaly in their analysed REF streams, and
+  `run_017` adds clean D10 witness agreement. SW2 must still treat anomalous
+  reference windows as not control-eligible and must fix or account for the
+  rollover-sensitive D14 long-reject diagnostic before relying on that counter
+  as a control gate.
 
 ## Measured Plant Model
 
@@ -163,16 +191,19 @@ Current measured model:
 | Connected `0x7000..0x9000` tune-voltage span | 1.091 V..1.401 V                                           | `dac_manual_sweep/run_006/notes.md`     | Safe observed narrow envelope.                                           |
 | Extended estimated tune-voltage span         | about 0.936 V..2.176 V for `0x6000..0xE000`                | `run_010`/`run_011` voltage model notes | Characterization estimate, not a closed-loop safety envelope.            |
 | Approximate V/code from bench endpoints      | about 37.8 uV/code                                         | Derived from H1 notes                   | Useful only for telemetry estimates unless measured per dwell.           |
-| Local Hz/V and ppm/V                         | corrected local-PPS median center-bracketed slope about 4.41 Hz/V overall; `0x0800`/`0x1000` evidence clusters around roughly 4.0..4.4 Hz/V median | `run_016` characterization summary      | Positive local slope is better resolved, but should be frozen into a conservative plant model before actuation. |
-| Settling estimates                           | present from corrected `run_016`, still analysis-only      | `run_016` characterization summary      | Analysis evidence; choose loop cadence only after model review.          |
-| Startup/control gate                         | `run_016` reports `fc0_valid_for_control=true` with 153 count windows and 152 local-PPS estimates | `run_016` characterization summary      | Count-path gate can reopen; reference/PPS anomaly handling remains required. |
+| Local Hz/V and ppm/V                         | centre-bracketed `run_017` slopes about 4.15..4.67 Hz/V, mean about 4.49 Hz/V / 0.449 ppm/V | `run_017` characterization summary      | Positive local slope is consistent with the CX317 datasheet and suitable for conservative model review, not automatic actuation by itself. |
+| Observed CX317 output range                  | about 9.999997327 MHz at `0x7000` to 9.999998711 MHz at `0x9000`; span about 1.384 Hz | `run_017` characterization summary      | Narrow tested range produced the expected small positive frequency movement. |
+| Settling estimates                           | `run_017` t95 estimates about 140 s..736 s across analysed transitions with 900 s settling discard | `run_017` characterization summary      | Analysis evidence; choose loop cadence only after model review.          |
+| Startup/control gate                         | `run_017` reports `fc0_valid_for_control=true` with 242 count windows and 241 local-PPS estimates | `run_017` characterization summary      | Count-path gate can reopen; reference/PPS anomaly handling remains required. |
 | REF/PPS anomaly gate                         | 2719 short intervals explicitly gated as diagnostic-only and not control-eligible | `run_014` manifest and anomaly report   | Root cause remains unresolved; do not use anomalous REF/PPS windows for control. |
-| Current bench next step                      | Plant-model freeze with local-PPS estimator diagnostics and explicit reference-validity gates | `run_016` reports                       | Do not actuate until reference validity and model envelope are explicit. |
+| D10 PPS witness                              | final D14 and D10 raw counts both 72970; no D10 short, overflow, or burst rows | `run_017` summary and status analysis   | Good evidence that the main run did not reproduce the earlier PPS burst. |
+| Rollover diagnostic caveat                   | D14 `rejected_long_count=16`, matching 16 raw timestamp rollovers | `run_017` summary and firmware review   | Treat as diagnostic artifact until the firmware counter uses unwrapped intervals. |
+| Current bench next step                      | Review the versioned plant model, define first guarded actuation cadence/update size, and fix rollover-sensitive diagnostics | `run_017` reports                       | Do not actuate until the model envelope and policy are explicit. |
 
-Because the corrected `run_016` slope evidence has not yet been reduced into a
-versioned automatic-control model, and because the earlier PPS/reference anomaly
-is gated rather than root-caused, SW2 must not convert PPS or count error into
-active DAC movement.
+Because the `run_017` slope and settling evidence has not yet been authorized
+for a specific guarded experiment, and because earlier PPS/reference anomalies
+and rollover-sensitive diagnostics must be explicitly gated, SW2 must not
+convert PPS or count error into active DAC movement.
 
 ## Startup FC0 Control Gate
 
@@ -237,8 +268,10 @@ The only narrow envelope suitable for first SW2 design discussion is:
   - `Vctl_est = 1.246 V + (dac_code - 32768) * 0.0000378 V/code`
   - Clamp the estimate to the measured connected span 1.091 V..1.401 V when
     reporting from the H1 bench model.
-- Manual preview step size: at most `0x0400` codes, matching the H1 small sweep
-  step documented in `STAGED_BUILD_PLAN.md` and visible in run_006 sweep rows.
+- Manual preview step size: at most `0x0400` codes for initial operator-driven
+  preview remains conservative. `run_017` showed that manual `0x0800` and
+  `0x1000` characterization steps stayed inside the checked envelope, but those
+  step sizes are not automatic-control defaults.
 - Extended bench characterization spans such as `0x6000..0xE000` are not SW2
   actuation spans. They exist to reveal plant behavior and bench faults.
 
@@ -252,8 +285,8 @@ For SW2 design now:
 - Emit observe-only control telemetry at the selected count-observation cadence.
   In current H1 long-gate metrology, `CNT` windows are 300 s.
 - Emit aggregated plant-model/reporting telemetry at 60 s or slower.
-- Do not actuate periodically until a real settling time and Hz/V or ppm/V slope
-  are measured on a clean post-inhibit count path.
+- Do not actuate periodically until the `run_017` settling time and Hz/V or
+  ppm/V slope are reviewed into an explicit guarded-experiment policy.
 
 For the first future actuation experiment after plant characterization:
 
@@ -269,18 +302,18 @@ constant.
 
 ## Recommended DAC Update Size
 
-After `run_014`, the plant slope has been measured on a clean,
-control-eligible count path, but it has not yet been converted into a frozen
-automatic-control model:
+After `run_017`, the plant slope has been measured on a clean,
+control-eligible count path with D10 PPS witness evidence, but it has not yet
+been authorized for automatic control:
 
 - Active DAC update size: 0 codes.
 - Open-loop preview update size: clamp requested preview movement to `0x0400`
   codes per manual step.
 - Automatic actuation update size for the first guarded I-only experiment:
-  undefined until the `run_014` slope, noise and settling evidence is reviewed
-  into a versioned plant model. The future value must be chosen so one update is
-  a small fraction of the observed short-term count noise floor and a small
-  fraction of the characterized capture range.
+  undefined until the `run_017` slope, noise and settling evidence is reviewed
+  into a versioned actuation policy. The future value must be chosen so one
+  update is a small fraction of the observed short-term count noise floor and a
+  small fraction of the characterized capture range.
 
 No PR should introduce PPS-derived or FC0-error-derived DAC changes before this
 undefined value is replaced by an H1-derived number.
@@ -296,10 +329,10 @@ Current recommendation:
   window. A clean startup followed by later zero-count faults is not
   actuation-ready.
 
-The 1800 s holdoff remains a conservative placeholder. `run_014` gives a clean
-24-hour-class open-loop run, but the holdoff should be revisited only when the
-first SW2 plant model records the chosen estimator and reference-validity
-rules.
+The 1800 s holdoff remains a conservative placeholder. `run_017` gives a clean
+overnight open-loop run with a long final `0x8000` hold, but the holdoff should
+be revisited only when the first SW2 actuation policy records the chosen
+estimator and reference-validity rules.
 
 ## Recommended Initial Controller Type
 
@@ -446,13 +479,14 @@ exists before stage 5.
 - The bench path produced post-startup zero-count windows in `run_011`,
   `run_012`, and `run_013`; `run_014` traced that class of failure to a G17
   solder fault and verified a clean repaired count path.
-- The current warmup and settling estimates are useful analysis products, not
-  loop constants.
+- The current `run_017` warmup and settling estimates are useful analysis
+  products, not loop constants.
 - Existing manifest safety fields are null, so future code must not rely only on
   manifests for clamp values until run metadata is backfilled.
-- PPS startup artifacts and the short-interval PPS/reference anomaly burst in
-  `run_014` can poison acquire logic if the state machine accepts early or
-  anomalous reference intervals without filtering and fault accounting.
+- PPS startup artifacts, the short-interval PPS/reference anomaly burst in
+  `run_014`, and rollover-sensitive diagnostic counters can poison acquire
+  logic if the state machine accepts early, anomalous, or miscomputed reference
+  diagnostics without filtering and fault accounting.
 - Manual voltage notes are not the same as continuous measured tune-voltage
   telemetry.
 - Hysteresis and thermal drift are not characterized enough for holdover or
@@ -462,7 +496,7 @@ exists before stage 5.
 
 ## Gate To Reopen SW2 Actuation
 
-Revisit guarded actuation only after the completed `run_014` evidence, or a
+Revisit guarded actuation only after the completed `run_017` evidence, or a
 newer H1 data set, is reduced into:
 
 - populated safe DAC code and tune-voltage limits in the run manifest;

@@ -2,7 +2,7 @@
 
 **Status:** proposed revision based on the repository snapshot supplied on 25 July 2026  
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding  
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_016` has now been regenerated with the local-PPS H1 estimator. It materially improves sub-hertz DAC/CX317 measurement confidence compared with the legacy run-wide RP2040 tick-rate conversion, but it remains open-loop plant-characterisation evidence and does not by itself authorize SW2 DAC actuation.
+**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_017` is now the current clean local-PPS CX317/AD5693R plant-evidence run. It adds a D10 PPS witness, handles 16 RP2040 timer rollovers in host analysis, and measures a positive CX317 tuning slope consistent with the datasheet, but it remains open-loop plant-characterisation evidence and does not by itself authorize SW2 DAC actuation.
 
 ---
 
@@ -60,7 +60,7 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish H1 evidence reduction from `run_016`, preserving the local-PPS estimator diagnostics and the D10 PPS witness plan as measurement-confidence scaffolding;
+1. finish H1 evidence reduction from `run_017`, preserving the local-PPS estimator diagnostics, D10 PPS witness result, and timestamp-rollover caveat as measurement-confidence scaffolding;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
 4. derive and freeze a versioned plant model and safe automatic-control envelope;
@@ -246,7 +246,7 @@ The dual-core boundary is therefore part of the SW2 platform architecture, even 
 
 ---
 
-## 3. Interpretation of `run_014` and `run_016` in this roadmap
+## 3. Interpretation of `run_014`, `run_016`, and `run_017` in this roadmap
 
 `run_014` is no longer unresolved. It should be treated as **Outcome B: count
 path clean, plant response useful, but not yet an actuation-authoritative model**.
@@ -280,8 +280,9 @@ capture as negative hardware evidence, but **do not jump directly to PLL/PI or
 even guarded I-only actuation**. The next roadmap step is to freeze a
 conservative local plant model with explicit reference-validity gates.
 
-`run_016` is the current measurement-confidence update. The regenerated H1
-report uses the host-side local PPS interpolator for existing count gates:
+`run_016` was the first measurement-confidence update after adding the local PPS
+interpolator. The regenerated H1 report uses the host-side local PPS
+interpolator for existing count gates:
 
 - 153 count windows;
 - 152 `LOCAL_PPS_INTERPOLATED` estimates;
@@ -297,13 +298,31 @@ For H1 plant-authority conclusions, use locally PPS-calibrated estimates when
 valid support exists and retain the run-wide estimate only as a labelled
 diagnostic comparison.
 
-The corrected `run_016` evidence makes centre-bracketed `0x0800` and `0x1000`
-steps useful for the next conservative plant-model fit. The `0x0200` and
-`0x0400` steps remain near the present measurement floor: they are useful for
-diagnosing repeatability, but not strong enough to drive actuation policy.
-Environmental regression remains diagnostic, not explanatory authority, because
-nearby air-temperature alignment is limited and simple terms are confounded with
-elapsed time.
+The corrected `run_016` evidence made centre-bracketed `0x0800` and `0x1000`
+steps useful for the next conservative plant-model fit. `run_017` is now the
+current measurement-confidence update:
+
+- 242 300 s count windows;
+- 241 `LOCAL_PPS_INTERPOLATED` estimates;
+- one startup-edge fallback to `RUN_WIDE_TICK_RATE`;
+- no host-classified PPS anomalies after unwrapping 16 RP2040 timer rollovers;
+- no reconnects or reboot/header markers;
+- `fc0_valid_for_control: true`;
+- D10 PPS witness agreement with D14: final raw counts both 72970, with no D10
+  short, overflow, or burst rows;
+- observed CX317 output from about 9.999997327 MHz at DAC `0x7000` to about
+  9.999998711 MHz at DAC `0x9000`;
+- centre-bracketed `0x0800`/`0x1000` slopes about 4.15..4.67 Hz/V, positive and
+  consistent with the CX317 datasheet-derived 10 MHz expectation of about
+  3.0..6.1 Hz/V over 0.0 V..3.3 V.
+
+The remaining `run_017` caveat is diagnostic, not a host-metrology failure: D14
+`rejected_long_count` ended at 16, matching the 16 raw timestamp rollovers. Treat
+that as a rollover-sensitive firmware diagnostic artifact unless the firmware
+counter is changed to compute intervals on unwrapped timestamps. Environmental
+regression remains diagnostic, not explanatory authority, because nearby
+air-temperature terms are confounded with elapsed time and the CX317 internal
+oven state is not directly measured.
 
 ---
 
@@ -462,7 +481,8 @@ Remaining cleanup:
 
 H1-A passes only when the count-observation path has a documented period of control-eligible operation with no unexplained post-inhibit invalid windows.
 
-`run_014` satisfies this gate for count observations. Passing H1-A does not
+`run_014` satisfies this gate for count observations, and `run_017` adds clean
+D10 PPS witness evidence for the later confirmation sweep. Passing H1-A does not
 establish an actuation-ready plant model or a reference-validity model.
 
 ---
@@ -473,8 +493,10 @@ establish an actuation-ready plant model or a reference-validity model.
 
 ### Required experiments
 
-- repeated centre-to-low-to-centre-to-high-to-centre sweeps;
-- at least two step sizes, including a substantially smaller step than the broad characterisation steps;
+- repeated centre-to-low-to-centre-to-high-to-centre sweeps; `run_017` supplies
+  the current `0x0800` and `0x1000` evidence;
+- at least two step sizes, with any future smaller step sized above the measured
+  noise floor rather than assumed from DAC resolution alone;
 - up/down repetitions to bound hysteresis;
 - sufficient dwell to estimate settling at each step;
 - fixed and documented power/conditioning topology;
@@ -487,7 +509,7 @@ establish an actuation-ready plant model or a reference-validity model.
 Add a versioned, machine-readable plant-model file, for example:
 
 ```text
-profiles/plant_models/cx317_h1_bench_v1.yaml
+profiles/plant_models/cx317_h1_bench_v1.json
 ```
 
 It should include:
@@ -1004,13 +1026,15 @@ State transitions, faults, source changes, model changes, arming/disarming and r
 
 Each task below is intentionally narrower than “implement SW2.”
 
-### Package 1 — Close `run_014` follow-up
+### Package 1 — Close H1 evidence follow-up
 
 Completed: the clean `run_014` reports are generated, recoverable manifest
 fields are backfilled, the pre-G17-fix capture remains separate negative
 evidence, and the PPS/reference cadence anomaly is explicitly gated as
-diagnostic-only unresolved evidence. Do not alter control firmware or enable
-automatic DAC actuation.
+diagnostic-only unresolved evidence. `run_017` adds the current D10-witness
+confirmation, locally PPS-interpolated plant response, timestamp-rollover
+handling, and rollover-sensitive D14 diagnostic caveat. Do not alter control
+firmware or enable automatic DAC actuation.
 
 ### Package 2 — Separate DAC limit classes
 
@@ -1146,6 +1170,8 @@ Do not allow these to delay the first safe SW2 loop:
 ### M0 — H1 measurement path credible
 
 - `run_014` is complete and classified for count-path validity;
+- `run_017` provides clean D10 PPS witness confirmation after timestamp
+  unwrapping;
 - no unexplained post-inhibit invalid count windows over the eligibility period;
 - fixed hardware topology documented.
 

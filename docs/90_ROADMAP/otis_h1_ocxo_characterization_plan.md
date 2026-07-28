@@ -50,8 +50,8 @@ Understand the plant before designing the controller.
 5. Derive Hz/V and ppm/V — present in reports, not yet control-authorized
 6. Characterize settling time and thermal behavior — present in reports, not yet loop constants
 7. Restore clean post-inhibit count validity under the revised power/conditioning path — complete in `run_014`
-8. Resolve or explicitly gate PPS/reference cadence anomalies
-9. Only then design any guarded control-loop actuation experiment
+8. Validate PPS/reference cadence handling with timestamp rollover awareness — clean in `run_017`, with one firmware diagnostic counter caveat
+9. Freeze a conservative plant model and only then design any guarded control-loop actuation experiment
 
 ---
 
@@ -102,9 +102,15 @@ Current H1 DAC sweep status:
   zero-count rows, all `CNT` rows flagged `16`, no host capture drops, 18 sweep
   passes, `fc0_valid_for_control: true`, and usable slope, settling, warmup and
   thermal analysis.
-- The next bench decision is no longer count-path repair; it is PPS/reference
-  anomaly review and conservative plant-model freeze before any guarded SW2
-  actuation experiment.
+- `run_017` is the current H1 measurement-confidence run. It completed with 242
+  300 s count windows, 241 locally PPS-interpolated estimates, no host PPS
+  anomalies after unwrapping 16 timestamp rollovers, no reconnects, no reboot
+  markers, clean D10 PPS witness agreement with D14, `fc0_valid_for_control:
+  true`, and observed CX317 outputs from about 9.999997327 MHz at DAC `0x7000`
+  to about 9.999998711 MHz at DAC `0x9000`.
+- The next bench decision is no longer count-path repair. It is conservative
+  plant-model freeze, explicit rollover-safe diagnostic cleanup, and then a
+  guarded SW2 actuation experiment plan.
 
 ---
 
@@ -217,12 +223,16 @@ only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.
 
-Current status: slope estimates exist in `run_009` through `run_014`, including
-center-bracketed slope tables. `run_014` provides the first clean repaired-path
-evidence: 35 center-bracketed slope rows with a positive median slope of about
-4.30 Hz/V. Treat this as plant-model input, not a firmware constant, until the
-valid voltage neighbourhood, uncertainty, noise floor, settling cadence, and
-PPS/reference validity policy are recorded in a versioned model.
+Current status: slope estimates exist in `run_009` through `run_017`, including
+center-bracketed slope tables. `run_017` is the current plant-model input: the
+`0x7000..0x9000` sweep moved the CX317 output from about 9.999997327 MHz to
+about 9.999998711 MHz, and the centre-bracketed `0x0800`/`0x1000` slopes were
+about 4.15..4.67 Hz/V with positive sign. This matches the CX317 datasheet
+expectation of roughly 3.0..6.1 Hz/V for a 10 MHz part with +/-0.5 ppm to
++/-1.0 ppm tuning over 0.0 V..3.3 V. Treat this as plant-model input, not a
+firmware constant, until the valid voltage neighbourhood, uncertainty, noise
+floor, settling cadence, and reference-validity policy are recorded in a
+versioned model.
 
 ---
 
@@ -237,9 +247,11 @@ Measure:
 - slow thermal drift
 
 Current status: settling estimates exist in the H1 characterization summaries.
-Earlier runs include invalid count windows and pathological excursions; `run_014`
-provides clean repaired-path settling evidence, but it is still an analysis
-result rather than a selected SW2 loop cadence.
+Earlier runs include invalid count windows and pathological excursions. `run_017`
+provides the current clean evidence, with 95 percent settling estimates across
+the analysed DAC transitions ranging from about 140 s to about 736 s after a
+900 s settling-discard analysis. These estimates remain analysis products rather
+than selected SW2 loop constants.
 
 ---
 
@@ -256,9 +268,9 @@ Outputs:
 - frequency vs time
 
 Current status: environmental telemetry is present in recent H1 runs, with
-SHT4x near-VCOCXO samples preferred for thermal context. `run_014` captured a
-24-hour-class repaired-path run with SHT4x near-VCOCXO temperature from about
-23.30 C to 27.83 C and post-warmup drift around -0.0417 ppm/hour. Thermal
+SHT4x near-VCOCXO samples preferred for thermal context. `run_017` captured
+SHT4x near-VCOCXO temperature from about 25.43 C to 29.53 C and post-warmup
+drift around -0.00023 ppm/hour after the configured warmup window. Thermal
 behavior should still influence SW2 only through an explicit model or gate, not
 ad hoc firmware constants.
 

@@ -61,10 +61,11 @@ def _write_log(log_path: Path | None, message: str) -> None:
             handle.write(line + "\n")
 
 
-def _latest_matching_dac_status(sts_csv: Path, code: int) -> bool:
+def _matching_dac_status_count(sts_csv: Path, code: int) -> int:
     if not sts_csv.exists():
-        return False
+        return 0
     expected = _format_code(code)
+    count = 0
     with sts_csv.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
@@ -73,16 +74,16 @@ def _latest_matching_dac_status(sts_csv: Path, code: int) -> bool:
                 and row.get("status_key") == "accepted_code"
                 and row.get("status_value") == expected
             ):
-                return True
-    return False
+                count += 1
+    return count
 
 
-def _wait_for_dac_ack(sts_csv: Path, code: int, timeout_s: float, dry_run: bool) -> None:
+def _wait_for_dac_ack(sts_csv: Path, code: int, previous_count: int, timeout_s: float, dry_run: bool) -> None:
     if dry_run:
         return
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if _latest_matching_dac_status(sts_csv, code):
+        if _matching_dac_status_count(sts_csv, code) > previous_count:
             return
         time.sleep(1.0)
     raise TimeoutError(f"timed out waiting for dac accepted_code={_format_code(code)} in {sts_csv}")
@@ -95,7 +96,10 @@ def _send_dac_set(fifo: Path, code: int, dry_run: bool, log_path: Path | None) -
         send_command_to_fifo(fifo, command)
 
 
-def _sleep_monotonic(dwell_s: float, stop_requested: callable, log_path: Path | None) -> None:
+def _sleep_monotonic(dwell_s: float, stop_requested: callable, log_path: Path | None, dry_run: bool) -> None:
+    if dry_run:
+        _write_log(log_path, f"dry_run_skip_sleep dwell_s={dwell_s:.0f}")
+        return
     deadline = time.monotonic() + dwell_s
     while True:
         if stop_requested():
@@ -151,10 +155,11 @@ def run_sequence(
             if stop_flag["requested"]:
                 raise KeyboardInterrupt
             _write_log(log_path, f"transition_start step={index} label={step.label} code={_format_code(step.code)}")
+            previous_ack_count = _matching_dac_status_count(sts_csv, step.code)
             _send_dac_set(fifo, step.code, dry_run, log_path)
-            _wait_for_dac_ack(sts_csv, step.code, ack_timeout_s, dry_run)
+            _wait_for_dac_ack(sts_csv, step.code, previous_ack_count, ack_timeout_s, dry_run)
             _write_log(log_path, f"transition_ack step={index} label={step.label} code={_format_code(step.code)}")
-            _sleep_monotonic(step.dwell_s, lambda: stop_flag["requested"], log_path)
+            _sleep_monotonic(step.dwell_s, lambda: stop_flag["requested"], log_path, dry_run)
             _write_log(log_path, f"dwell_complete step={index} label={step.label} code={_format_code(step.code)}")
     except KeyboardInterrupt:
         interrupted = True
@@ -163,8 +168,9 @@ def run_sequence(
         signal.signal(signal.SIGINT, previous_handlers[signal.SIGINT])
         signal.signal(signal.SIGTERM, previous_handlers[signal.SIGTERM])
         _write_log(log_path, f"restore_start code={_format_code(RUN_017_RESTORE_CODE)} interrupted={str(interrupted).lower()}")
+        previous_ack_count = _matching_dac_status_count(sts_csv, RUN_017_RESTORE_CODE)
         _send_dac_set(fifo, RUN_017_RESTORE_CODE, dry_run, log_path)
-        _wait_for_dac_ack(sts_csv, RUN_017_RESTORE_CODE, ack_timeout_s, dry_run)
+        _wait_for_dac_ack(sts_csv, RUN_017_RESTORE_CODE, previous_ack_count, ack_timeout_s, dry_run)
         _write_log(log_path, f"restore_ack code={_format_code(RUN_017_RESTORE_CODE)}")
 
 

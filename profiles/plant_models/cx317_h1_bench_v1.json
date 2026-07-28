@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "model_id": "cx317_h1_bench",
-  "model_version": 1,
+  "model_version": 2,
   "status": {
     "control_ready": false,
     "actuation_enabled": false,
-    "readiness": "analysis_useful_only_pps_reference_anomaly_unresolved"
+    "readiness": "plant_model_v2_run_017_analysis_useful_no_active_actuation"
   },
   "oscillator": {
     "part": "CX317 VCOCXO",
@@ -16,13 +16,22 @@
       "min_v": 0.0,
       "max_v": 3.3
     },
+    "datasheet_tuning_range_ppm": {
+      "min_abs_ppm": 0.5,
+      "max_abs_ppm": 1.0,
+      "control_voltage_min_v": 0.0,
+      "control_voltage_nominal_v": 1.65,
+      "control_voltage_max_v": 3.3,
+      "implied_hz_per_v_min": 3.0303030303030303,
+      "implied_hz_per_v_max": 6.0606060606060606
+    },
     "pinout_source": "bench notes: CX317 pin 4 Vc"
   },
   "hardware_topology": {
-    "topology_id": "h1_run_014_dirty_to_clean_power_path_g17_reworked",
+    "topology_id": "h1_run_017_g17_reworked_d10_pps_witness",
     "board": "arduino_nano_rp2040_connect",
     "power_path": {
-      "description": "CX317 VCOCXO through run_014 dirty-to-clean power path after SN74LVC1G17 breakout rework",
+      "description": "CX317 VCOCXO through repaired H1 power/conditioning path after SN74LVC1G17 breakout rework",
       "dirty_supply_source": null,
       "clean_supply_node": null,
       "filtering": null,
@@ -34,6 +43,16 @@
       "oscillator_output_conditioner": "SN74LVC1G17-reworked path into FC0/GPIN0 count observation",
       "rp2040_pin": "D8/GPIO20/GPIN0",
       "logic_voltage_v": null
+    },
+    "pps_witness": {
+      "primary_ref_pin": "D14/GPIO26/CH1",
+      "witness_pin": "D10",
+      "run_017_final_d14_raw_count": 72970,
+      "run_017_final_d10_raw_count": 72970,
+      "run_017_d14_minus_d10_delta": 0,
+      "d10_short_rows": 0,
+      "d10_buffer_overflow_rows": 0,
+      "d10_burst_rows": 0
     }
   },
   "dac": {
@@ -41,7 +60,7 @@
     "resolution_bits": 16,
     "interface": "i2c",
     "i2c_address": "0x4C",
-    "reference_voltage_v": null,
+    "reference_voltage_v": 2.5,
     "gain_mode": "1x",
     "nominal_code": 32768,
     "manual_safe_range_codes": {
@@ -65,64 +84,125 @@
     "voltage_model": "Vctl_est = 1.246 V + (dac_code - 32768) * 0.0000378 V/code; clamp reporting to 1.091..1.401 V for the narrow bench envelope"
   },
   "plant_response": {
+    "observed_frequency_range": {
+      "min_code": 28672,
+      "min_output_mhz": 9.999997327,
+      "max_code": 36864,
+      "max_output_mhz": 9.999998711,
+      "span_hz": 1.38427285
+    },
+    "run_017_settled_outputs_mhz": [
+      {
+        "dac_code_hex": "0x7000",
+        "dac_code": 28672,
+        "output_mhz": 9.999997327
+      },
+      {
+        "dac_code_hex": "0x7800",
+        "dac_code": 30720,
+        "output_mhz": 9.999997642
+      },
+      {
+        "dac_code_hex": "0x8000",
+        "dac_code": 32768,
+        "output_mhz": 9.99999798
+      },
+      {
+        "dac_code_hex": "0x8800",
+        "dac_code": 34816,
+        "output_mhz": 9.999998334
+      },
+      {
+        "dac_code_hex": "0x9000",
+        "dac_code": 36864,
+        "output_mhz": 9.999998711
+      }
+    ],
     "local_slope": {
-      "hz_per_v": 4.297009404868848,
-      "ppm_per_v": 0.42970094041177803,
-      "hz_per_code": 0.00016260655706901161,
-      "ppm_per_code": 0.000016260655704058985,
+      "hz_per_v": 4.492944352809456,
+      "ppm_per_v": 0.4492944352809456,
+      "hz_per_code": 0.00017002108756969392,
+      "ppm_per_code": 0.000017002108756969392,
       "sign": "positive",
-      "sample_count": 35,
+      "sample_count": 4,
       "uncertainty": {
-        "method": "run_014 center-bracketed slope distribution; reported as broad scatter, not a closed-loop-ready bound",
-        "hz_per_v_stdev": 2.87141152229703,
-        "hz_per_v_iqr": 4.572545878228641,
-        "hz_per_v_min": -1.9704130478203292,
-        "hz_per_v_max": 9.36014054102763
+        "method": "run_017 four center-bracketed excursions at +/-0x0800 and +/-0x1000 after 900 s settling discard; reported as narrow-range evidence, not a closed-loop-ready bound",
+        "hz_per_v_min": 4.153638945952538,
+        "hz_per_v_max": 4.67415366682314,
+        "hz_per_v_span": 0.520514720870602,
+        "positive_0x0800_hz_per_v": 4.617723341911063,
+        "negative_0x0800_hz_per_v": 4.526261456551083,
+        "positive_0x1000_hz_per_v": 4.67415366682314,
+        "negative_0x1000_hz_per_v": 4.153638945952538
       }
     },
     "valid_neighborhood": {
-      "basis": "run_014 broad sweep around code 40960; this is not direct evidence that the slope is identical throughout the 32768-centered automatic envelope",
-      "center_code": 40960,
-      "target_codes": [24576, 57344],
+      "basis": "run_017 centered sweep over 0x7000..0x9000 using direct DAC SET commands and reconstructed DAC dwell starts",
+      "center_code": 32768,
+      "target_codes": [28672, 30720, 32768, 34816, 36864],
       "voltage_span_v": {
-        "min_v": 0.936,
-        "max_v": 2.176
+        "min_v": 1.091,
+        "max_v": 1.401
       }
     },
     "settling_evidence": {
       "characterized": true,
-      "method": "run_014 report estimates t50/t90/t95 from median before-step baseline and last-half after-step final value; estimates are noisy analysis evidence",
-      "settling_discard_s": 60.0,
-      "t95_s_min": 59.9803,
-      "t95_s_max": 1494.433,
+      "method": "run_017 report estimates t50/t90/t95 from median before-step baseline and last-half after-step final value; estimates are analysis evidence",
+      "settling_discard_s": 900.0,
+      "t95_s_min": 140.023,
+      "t95_s_max": 736.027,
       "selected_control_cadence_s": null
     },
     "temperature_range_c": {
-      "min_c": 23.296,
-      "max_c": 27.825
+      "min_c": 25.427,
+      "max_c": 29.526
     },
     "warmup_drift": {
-      "warmup_s": 1800.0,
-      "drift_after_warmup_ppm_per_hour": -0.0417385
+      "warmup_s": 3600.0,
+      "drift_after_warmup_ppm_per_hour": -0.000228447
+    },
+    "reference_integrity": {
+      "ref_rows": 72410,
+      "ref_raw_duration_s": 72408.641,
+      "timestamp_wrap_count": 16,
+      "raw_timestamp_monotonic": false,
+      "unwrapped_timestamp_monotonic": true,
+      "host_pps_anomalies": 0,
+      "d14_rejected_long_count": 16,
+      "d14_rejected_long_count_interpretation": "matches timestamp_wrap_count; treat as rollover-sensitive diagnostic artifact"
+    },
+    "startup_control_eligibility": {
+      "fc0_valid_for_control": true,
+      "fc0_fault": false,
+      "count_windows": 242,
+      "invalid_count_windows": 0,
+      "first_control_eligible_elapsed_s": 1350.008
     }
   },
   "source_evidence": {
     "source_run_ids": [
       "dac_output_verify/run_001",
       "dac_manual_sweep/run_006",
-      "dac_manual_sweep/run_014"
+      "dac_manual_sweep/run_014",
+      "dac_manual_sweep/run_016",
+      "dac_manual_sweep/run_017"
     ],
     "source_artifacts": [
       "runs/h1_open_loop/dac_output_verify/run_001/notes.md",
       "runs/h1_open_loop/dac_manual_sweep/run_006/notes.md",
-      "runs/h1_open_loop/dac_manual_sweep/run_014/manifest.json",
-      "runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md",
       "runs/h1_open_loop/dac_manual_sweep/run_014/reports/anomalies.md",
-      "runs/h1_open_loop/dac_manual_sweep/run_014/csv/h1_center_bracketed_slopes.csv"
+      "runs/h1_open_loop/dac_manual_sweep/run_016/reports/h1_characterization_summary.md",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/manifest.json",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/reports/h1_characterization_summary.md",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/reports/anomalies.md",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_count_frequency_estimates.csv",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_center_bracketed_slopes.csv",
+      "runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_characterization_points.csv"
     ],
     "source_commits": {
-      "model_created_from_repo_commit": "55d4294da61388f04cbce2f99e60b720f7182601",
-      "run_manifest_host_git_commit": "897fcbe198cbce402b84fe47b3107ea6fb887426",
+      "model_updated_from_repo_commit": "0ebdae3266635bc98b9518a59fcfaa68751c4024",
+      "run_manifest_host_git_commit": null,
       "run_manifest_firmware_git_commit": null
     },
     "source_versions": {
@@ -131,17 +211,17 @@
     }
   },
   "invalidation_conditions": [
-    "Any change to oscillator, DAC, DAC reference or gain mode, DAC-to-Vc network, CX317 power path, output conditioner, RP2040 input pin, or count-observation backend",
+    "Any change to oscillator, DAC, DAC reference or gain mode, DAC-to-Vc network, CX317 power path, output conditioner, RP2040 input pin, PPS witness wiring, or count-observation backend",
     "Any connected Vc measurement outside the 1.091..1.401 V narrow manual-safe envelope for codes 0x7000..0x9000",
     "Any post-inhibit zero-count, saturated-count, missing-count, parser, host-drop, reconnect, or capture-error condition during model validation",
     "Any unresolved PPS/reference cadence anomaly in windows used for control decisions",
+    "Any active-control dependency on D14 rejected-long diagnostics before timestamp-rollover-safe firmware accounting is implemented or explicitly gated",
     "Any automatic-control range wider than 0x7000..0x9000",
-    "Any attempt to use run_014 as closed-loop-ready without a later readiness document authorizing actuation",
-    "Temperature or warmup conditions materially outside 23.296..27.825 C near the VCOCXO or before the 1800 s warmup basis"
+    "Any attempt to use run_017 as closed-loop-ready without a later readiness document authorizing a specific guarded actuation experiment",
+    "Temperature or warmup conditions materially outside 25.427..29.526 C near the VCOCXO or before the 3600 s warmup basis"
   ],
   "unresolved_fields": [
     "oscillator.supply_voltage_v",
-    "dac.reference_voltage_v",
     "hardware_topology.power_path.dirty_supply_source",
     "hardware_topology.power_path.clean_supply_node",
     "hardware_topology.power_path.filtering",
@@ -150,6 +230,7 @@
     "hardware_topology.power_path.measured_clean_ripple_mvpp",
     "hardware_topology.conditioning.logic_voltage_v",
     "plant_response.settling_evidence.selected_control_cadence_s",
+    "source_evidence.source_commits.run_manifest_host_git_commit",
     "source_evidence.source_commits.run_manifest_firmware_git_commit",
     "source_evidence.source_versions.run_manifest_host_tool_version",
     "source_evidence.source_versions.run_manifest_firmware_version"

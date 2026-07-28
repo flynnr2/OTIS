@@ -91,7 +91,8 @@ telemetry, 300 s long-gate count observations, session-aware host reporting, and
 center-bracketed slope analysis.
 
 The latest H1 evidence still does not authorize SW2 DAC actuation, but the
-`run_014` blocker is no longer the count-observation conditioning path.
+`run_014` blocker is no longer the count-observation conditioning path and
+`run_017` has now provided a cleaner local-PPS/D10-witness confirmation sweep.
 `run_010` remains analysis-useful after explicit segment classification but not
 fixture-ready. `run_011`, `run_012`, and `run_013` reported post-startup
 zero-count faults. The `run_014` investigation isolated the immediate hardware
@@ -102,10 +103,14 @@ The clean `run_014` capture then completed 284 300 s count windows with no
 zero-count rows, all `CNT` rows flagged `16`, no host capture drops, and no
 parser errors.
 
-`run_014` therefore reopens H1 plant-model completion, but it does not by
-itself reopen active SW2 control. The remaining pre-SW2 gate is to review and
-root-cause the PPS/reference cadence anomalies observed in `run_014`, then
-freeze a deliberately narrow plant model and actuation envelope.
+`run_014` therefore reopened H1 plant-model completion, and `run_017` gives the
+current plant-model evidence: 242 300 s count windows, no host PPS anomalies
+after timestamp unwrapping, D10 witness agreement with D14, observed CX317 output
+from about 9.999997327 MHz at `0x7000` to about 9.999998711 MHz at `0x9000`,
+and positive centre-bracketed slopes around 4.15..4.67 Hz/V. It does not by
+itself reopen active SW2 control. The remaining pre-SW2 gate is to freeze a
+deliberately narrow plant model and actuation envelope, while fixing or gating
+the rollover-sensitive D14 long-reject diagnostic.
 
 The intended H1 sequence is:
 
@@ -115,10 +120,10 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Present from clean `run_014`, positive local slope but still noisy.**
-8. Characterize settling time and thermal behavior. **Present from clean `run_014`, not yet loop constants.**
+7. Estimate Hz/V and ppm/V. **Present from clean `run_017`, positive local slope and datasheet-consistent.**
+8. Characterize settling time and thermal behavior. **Present from clean `run_017`, not yet loop constants.**
 9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
-10. Review PPS/reference cadence anomalies and freeze a conservative H1 plant model.
+10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model.
 11. Only then design any guarded SW2 actuation experiment.
 
 Implement in order:
