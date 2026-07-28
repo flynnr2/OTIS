@@ -288,13 +288,22 @@ baseline. It reports 242 count windows, 241 locally PPS-interpolated estimates,
 one startup-edge run-wide fallback, no host-classified PPS anomalies after
 timestamp unwrapping, no reconnects or reboot/header markers, and
 `fc0_valid_for_control=true`. The D10 PPS witness matched D14 one-for-one at
-the end of the run, with no D10 short, overflow, or burst rows.
+the end of the run, with no D10 short, overflow, or burst rows. The historical
+D14 `rejected_long_count=16` matched the 16 RP2040 timer rollovers and is a raw
+firmware diagnostic artefact, not a host-unwrapped PPS anomaly; firmware
+diagnostics now use modular timer interval arithmetic for future rollover
+crossings.
 
 `run_017` was a direct host-command DAC sequence, so `csv/dac_steps.csv` was
 reconstructed from captured DAC acknowledgement `STS` rows and the host
 sequence log after the raw capture completed. Raw `serial.log` was not modified.
 Future direct-command sweeps should emit explicit host DAC event rows during
 capture or retain the same reconstruction provenance.
+
+`csv/evt.csv` can be header-only for this H1 topology because CH0 generic event
+capture is unused. Do not read that file as proof of zero arbitrary events; PPS
+observations are in `csv/ref.csv`, and the temporary D10 witness is `STS`
+diagnostic telemetry.
 
 The observed settled CX317 outputs over the tested range were:
 

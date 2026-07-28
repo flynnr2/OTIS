@@ -134,8 +134,10 @@ Observed evidence:
   final D14 raw count 72970, final D10 raw count 72970, D14-D10 delta 0, no D10
   short rows, no D10 buffer overflow rows, and no burst rows. D14
   `rejected_long_count` ended at 16, matching the 16 timestamp rollovers; treat
-  that as a rollover-sensitive firmware diagnostic artifact unless/until the
-  diagnostic interval is computed on unwrapped timestamps.
+  that historical value as a rollover-sensitive firmware diagnostic artifact.
+  The firmware diagnostic classifier now uses modular RP2040 timer arithmetic so
+  future normal PPS intervals crossing rollover do not increment the long
+  rejection counter.
 - `run_017` observed CX317 outputs over the tested range from about
   9.999997327 MHz at DAC `0x7000` to about 9.999998711 MHz at DAC `0x9000`.
   The full span is about 1.384 Hz. The centre-bracketed local slopes across
@@ -200,7 +202,7 @@ Current measured model:
 | Startup/control gate                         | `run_017` reports `fc0_valid_for_control=true` with 242 count windows and 241 local-PPS estimates | `run_017` characterization summary      | Count-path gate can reopen; reference/PPS anomaly handling remains required. |
 | REF/PPS anomaly gate                         | 2719 short intervals explicitly gated as diagnostic-only and not control-eligible | `run_014` manifest and anomaly report   | Root cause remains unresolved; do not use anomalous REF/PPS windows for control. |
 | D10 PPS witness                              | final D14 and D10 raw counts both 72970; no D10 short, overflow, or burst rows | `run_017` summary and status analysis   | Good evidence that the main run did not reproduce the earlier PPS burst. |
-| Rollover diagnostic caveat                   | D14 `rejected_long_count=16`, matching 16 raw timestamp rollovers | `run_017` summary and firmware review   | Treat as diagnostic artifact until the firmware counter uses unwrapped intervals. |
+| Rollover diagnostic caveat                   | Historical `run_017` D14 `rejected_long_count=16`, matching 16 raw timestamp rollovers | `run_017` summary and firmware review   | Preserved raw artefact; firmware diagnostics now classify intervals with modular timer arithmetic, but historical counts remain qualified by host-unwrapped REF analysis. |
 | Current bench next step                      | Review the versioned plant model, define first guarded actuation cadence/update size, and fix rollover-sensitive diagnostics | `run_017` reports                       | Do not actuate until the model envelope and policy are explicit. |
 
 Because the `run_017` slope and settling evidence has not yet been authorized

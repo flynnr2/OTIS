@@ -34,12 +34,20 @@ void handle_capture_edge(void) {
       d14_sampled_low_count++;
     }
     if (d14_last_raw_timestamp != 0u) {
-      uint64_t interval = timestamp - d14_last_raw_timestamp;
+      uint64_t interval =
+          otis_timer0_interval_ticks(d14_last_raw_timestamp, timestamp);
       d14_last_raw_interval = interval;
-      if (interval < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
-        d14_rejected_short_count++;
-      } else if (interval > OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS) {
-        d14_rejected_long_count++;
+      switch (otis_classify_pps_interval_ticks(
+          interval, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
+          OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
+        case OTIS_PPS_INTERVAL_SHORT:
+          d14_rejected_short_count++;
+          break;
+        case OTIS_PPS_INTERVAL_LONG:
+          d14_rejected_long_count++;
+          break;
+        case OTIS_PPS_INTERVAL_NORMAL:
+          break;
       }
     }
     d14_last_raw_timestamp = timestamp;

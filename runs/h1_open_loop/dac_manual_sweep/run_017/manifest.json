@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "template": false,
+  "run_id": "run_017",
+  "programme": "H1 open-loop DAC/CX317 characterisation",
+  "predecessor": "run_016",
+  "stage": "OPEN_LOOP",
+  "h_phase": "H1",
+  "capture_type": "dac_manual_sweep",
+  "capture_mode": "observation_only_open_loop",
+  "control_mode": "manual_open_loop",
+  "closed_loop_control": false,
+  "planned_run": true,
+  "board": "arduino_nano_rp2040_connect",
+  "firmware_git_commit": "0ebdae3266635bc98b9518a59fcfaa68751c4024",
+  "host_git_commit": "0ebdae3266635bc98b9518a59fcfaa68751c4024",
+  "repository_branch_at_preparation": "codex/local-pps-d10-witness",
+  "repository_dirty_state_at_preparation": "dirty before run_017 preparation: host/otis_tools/h1_characterize.py and runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md already modified; run_017 preparation adds new files",
+  "firmware_version": "SW1",
+  "host_tool_version": "0.0.0",
+  "created_utc": "2026-07-27T00:00:00Z",
+  "started_at_utc": "2026-07-27T11:58:21Z",
+  "ended_at_utc": "2026-07-28T08:05:11Z",
+  "timezone": "Europe/London",
+  "operator_notes": "run_017 follows run_016. Plant-identification and measurement-validation run only; do not enable closed-loop control, discipline, PLL/FLL, automatic steering, or PPS-gated-ratio backend.",
+  "run_017_metadata": {
+    "centre_dac_code": "0x8000",
+    "verified_dac_range": "0x7000..0x9000",
+    "gate_duration": "300 s configured by OTIS_H1_LONG_GATE_PERIOD_US=300000000u",
+    "primary_estimator": "local PPS calibrated",
+    "comparison_estimator": "legacy run-wide tick-rate estimate",
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE count-gate CNT path; historical fc0 status keys retained",
+    "pps_reference_pin": "D14",
+    "pps_witness_pin": "D10",
+    "pps_dual_observer_enabled": true,
+    "airflow_shield": "whole-assembly upturned cardboard box",
+    "thermal_isolation": false,
+    "final_restore_code": "0x8000",
+    "elapsed_duration_s": 72410,
+    "completion_status": "complete",
+    "completion_basis": "host capture_stopped marker at 2026-07-28T08:05:11Z; no parser errors, malformed UTF-8, reconnects, or command rejects; run_017_sequence restore_ack returned DAC to 0x8000",
+    "evt_csv_interpretation": "csv/evt.csv is header-only because this H1 topology did not use the CH0 generic event input; PPS observations are in csv/ref.csv and the D10 witness is emitted as STS diagnostics, not EVT rows",
+    "unrecoverable_metadata": {
+      "boot_banner_rows": "unavailable: capture started after firmware startup rows already emitted",
+      "exact_firmware_build_identifier_from_banner": "unavailable from captured telemetry",
+      "mac_model_or_host_identifier": "unavailable from captured artifacts",
+      "gnss_lock_state": "unavailable from captured artifacts",
+      "box_dimensions": "unavailable from captured artifacts",
+      "cable_openings": "unavailable from captured artifacts",
+      "component_positions": "unavailable from captured artifacts",
+      "disturbances": "unavailable from captured artifacts"
+    }
+  },
+  "firmware_build_configuration": {
+    "fqbn": "rp2040:rp2040:arduino_nano_connect",
+    "sketch": "firmware/arduino/otis_nano_rp2040_connect",
+    "serial_baud": 115200,
+    "extra_flags": [
+      "-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+      "-DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ",
+      "-DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+      "-DOTIS_ENABLE_PPS_DUAL_OBSERVER=1",
+      "-DOTIS_ENABLE_DAC_AD5693R=1",
+      "-DOTIS_ENABLE_H1_DAC_SWEEP=1",
+      "-DOTIS_DAC_MIN_CODE=0x7000u",
+      "-DOTIS_DAC_MAX_CODE=0x9000u",
+      "-DOTIS_H1_LONG_GATE_PERIOD_US=300000000u",
+      "-DOTIS_ENABLE_ENV_SENSORS=1",
+      "-DOTIS_ENABLE_ENV_SHT4X=1",
+      "-DOTIS_ENABLE_ENV_BMP280=1"
+    ]
+  },
+  "structured_sequence": [
+    {"phase": "Warm-up / initial centre", "dac_code": "0x8000", "duration_min": 180, "primary_settling_min": 60},
+    {"phase": "Positive medium", "dac_code": "0x8800", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Centre B", "dac_code": "0x8000", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Negative medium", "dac_code": "0x7800", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Centre C", "dac_code": "0x8000", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Positive large", "dac_code": "0x9000", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Centre D", "dac_code": "0x8000", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Negative large", "dac_code": "0x7000", "duration_min": 45, "primary_settling_min": 15},
+    {"phase": "Final centre", "dac_code": "0x8000", "duration_min": 120, "minimum": true}
+  ],
+  "planned_duration": "10 h 15 min minimum; final 0x8000 dwell may be extended overnight without repeating excursions",
+  "oscillator": {
+    "part": "CX317 VCOCXO",
+    "nominal_frequency_hz": 10000000,
+    "output_type": "10 MHz VCOCXO output",
+    "supply_voltage_v": null,
+    "control_voltage_range_v": "0.0..3.3",
+    "pinout_source": "bench notes: CX317 pin 4 Vc"
+  },
+  "dac": {
+    "part": "AD5693R",
+    "resolution_bits": 16,
+    "interface": "i2c",
+    "i2c_address": "0x4C",
+    "reference_voltage_v": null,
+    "gain_mode": "1x",
+    "nominal_code": 32768,
+    "planned_min_code": 28672,
+    "planned_max_code": 36864,
+    "planned_step_codes": [2048, 4096],
+    "measured_output_min_v": 1.091,
+    "measured_output_mid_v": 1.246,
+    "measured_output_max_v": 1.401,
+    "voltage_model_note": "Use prior connected 0x7000/0x8000/0x9000 CX317 Vc measurements for planning only; record measured Vc at planned codes where practical before shielding."
+  },
+  "control_path": {
+    "network": "AD5693R output through existing series resistor to CX317 pin 4 Vc",
+    "measured_control_voltage_v": 1.246
+  },
+  "conditioning": {
+    "oscillator_output_conditioner": "repaired SN74LVC1G17 path from run_014 topology",
+    "rp2040_pin": "D8/GPIO20/GPIN0"
+  },
+  "safety_limits": {
+    "dac_min_code": 28672,
+    "dac_max_code": 36864,
+    "planned_run_min_code": 28672,
+    "planned_run_max_code": 36864,
+    "control_voltage_min_v": 1.091,
+    "control_voltage_max_v": 1.401
+  },
+  "pin_mapping": {
+    "ch1_pps_reference": "D14/GPIO26/CH1",
+    "d10_pps_witness": "D10/GPIO5/input rising IRQ",
+    "ch2_ocxo_observation": "D8/GPIO20/GPIN0"
+  },
+  "channels": [
+    {
+      "channel_id": 0,
+      "role": "event_input",
+      "record_family": "EVT"
+    },
+    {
+      "channel_id": 1,
+      "role": "reference_pps",
+      "record_family": "REF"
+    },
+    {
+      "channel_id": 2,
+      "role": "ocxo_observation",
+      "record_family": "CNT"
+    }
+  ],
+  "domains": [
+    {
+      "name": "rp2040_timer0",
+      "nominal_hz": 16000000
+    },
+    {
+      "name": "h1_ocxo_open_loop",
+      "nominal_hz": 10000000
+    }
+  ],
+  "data_contract_versions": {
+    "raw_events_v1": 1,
+    "count_observations_v1": 1,
+    "health_v1": 1,
+    "dac_steps_v1": 1,
+    "environment_v1": 1,
+    "h1_count_frequency_estimates_v1": 1
+  },
+  "files": [
+    {"path": "csv/evt.csv", "contract": "raw_events_v1"},
+    {"path": "csv/ref.csv", "contract": "raw_events_v1"},
+    {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
+    {"path": "csv/sts.csv", "contract": "health_v1"},
+    {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1"},
+    {"path": "csv/environment.csv", "contract": "environment_v1", "optional": true}
+  ],
+  "environment_sources": [
+    {"source": "sht4x", "role": "vcocxo_near", "primary_temperature": true},
+    {"source": "bmp280", "role": "pressure_reference", "primary_temperature": false}
+  ],
+  "physical_setup": {
+    "airflow_shield_description": "Whole-assembly cardboard airflow shield; not a thermally isolated CX317 enclosure.",
+    "box_requirements": [
+      "cover the full assembly",
+      "avoid touching bare conductors",
+      "avoid touching components that become warm",
+      "have no direct draught path across the CX317",
+      "not be tightly sealed or heavily insulated",
+      "remain undisturbed during the structured DAC sequence"
+    ]
+  },
+  "execution_placeholders": {
+    "serial_device": "fill at execution, for example /dev/cu.usbmodemXXXX",
+    "mac_model_or_host_identifier": "fill at execution",
+    "start_time_europe_london": "fill at execution",
+    "end_time_europe_london": "fill after run",
+    "gnss_lock_state": "fill before capture and before sequence",
+    "shielding_placement_time_europe_london": "fill at execution",
+    "box_dimensions": "fill at execution",
+    "cable_openings": "fill at execution",
+    "component_positions": "fill at execution",
+    "disturbances": "fill during run"
+  },
+  "expected_artifacts": [
+    "raw/serial.log",
+    "control/run_017_sequence.log",
+    "csv/evt.csv",
+    "csv/ref.csv",
+    "csv/cnt.csv",
+    "csv/sts.csv",
+    "csv/dac_steps.csv",
+    "csv/environment.csv",
+    "csv/h1_count_frequency_estimates.csv",
+    "csv/h1_characterization_points.csv",
+    "csv/h1_center_bracketed_slopes.csv",
+    "reports/summary.md",
+    "reports/summary.json",
+    "reports/validate_report.md",
+    "reports/h1_characterization_summary.md",
+    "plots/"
+  ],
+  "known_limitations": [
+    "Whole-assembly cardboard airflow shield is not a thermally isolated CX317 enclosure and includes nearby heat sources.",
+    "The sequence runner uses direct DAC SET commands and host-side timing; it does not emit firmware DAC dwell_start/fc0_window rows for each manual dwell.",
+    "DAC command acknowledgement is verified from STS dac/accepted_code rows captured by capture_device.",
+    "D10 witness diagnostics are temporary H1 diagnostics and must remain disabled for unrelated generic-event or loopback work.",
+    "run_017 is not a discipline-loop, PLL/FLL, holdover, or automatic-steering test.",
+    "Do not compare run_017 as a controlled CX317-only enclosure test; compare run_016 exposed bench assembly with run_017 whole-assembly cardboard airflow shield."
+  ]
+}

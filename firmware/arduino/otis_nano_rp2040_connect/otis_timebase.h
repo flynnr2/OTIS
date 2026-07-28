@@ -4,8 +4,10 @@
 #include <Arduino.h>
 #include <stdint.h>
 
+#include "otis_timebase_math.h"
+
 static inline uint64_t otis_capture_ticks_now(void) {
-  return (uint64_t)micros() * 16ull;
+  return (uint64_t)micros() * OTIS_RP2040_TIMER0_TICKS_PER_US;
 }
 
 #endif
