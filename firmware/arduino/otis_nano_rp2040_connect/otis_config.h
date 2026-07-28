@@ -194,7 +194,8 @@
 #endif
 
 // H1 open-loop lab instrument DAC support. This is deliberately opt-in and
-// manual-only; firmware never steers the oscillator from PPS/count telemetry.
+// operator-initiated; firmware never steers the oscillator from PPS/count
+// telemetry.
 #ifndef OTIS_ENABLE_DAC_AD5693R
 #define OTIS_ENABLE_DAC_AD5693R 1
 #endif
@@ -203,16 +204,18 @@
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 #endif
 
+// Hardware-valid H1 characterization envelope. With the AD5693R breakout in
+// its observed 1x configuration, the measured code/voltage fit predicts about
+// 0.015 V at 0x0100 and 2.479 V at 0xFF00. This stays inside the CX317 0..3.3 V
+// operating Vc range and avoids both exact DAC rails. These clamps bound manual
+// commands and explicitly started open-loop sweeps; they do not auto-start a
+// sweep, enable feedback steering, or authorize SW2 control.
 #ifndef OTIS_DAC_MIN_CODE
-#define OTIS_DAC_MIN_CODE 0x7000u
+#define OTIS_DAC_MIN_CODE 0x0100u
 #endif
 
 #ifndef OTIS_DAC_MAX_CODE
-// H1 run_018 manually probes above the previously verified automatic range to
-// bracket the 10 MHz crossing. This clamp bounds operator-issued DAC commands
-// and explicitly started open-loop sweep profiles; it does not auto-start a
-// sweep, enable feedback steering, or enable SW2.
-#define OTIS_DAC_MAX_CODE 0xAE00u
+#define OTIS_DAC_MAX_CODE 0xFF00u
 #endif
 
 // Optional low-rate environmental telemetry for oscillator characterization.

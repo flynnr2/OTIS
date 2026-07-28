@@ -171,22 +171,61 @@ accepted:
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 ```
 
-The DAC output is bounded by compile-time clamps. Defaults are deliberately
-conservative and do not permit rail-to-rail sweeps:
+The DAC output is bounded by compile-time clamps. The defaults expose a broad
+hardware-valid characterization envelope while avoiding the exact DAC rails:
 
 ```cpp
-#define OTIS_DAC_MIN_CODE 0x7000u
-#define OTIS_DAC_MAX_CODE 0xAE00u
+#define OTIS_DAC_MIN_CODE 0x0100u
+#define OTIS_DAC_MAX_CODE 0xFF00u
 #define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0200u
 #define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
 #define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
 ```
+
+The default clamp is an electrical characterization envelope, not a statement
+that every sweep should visit both endpoints. The AD5693R breakout is observed
+in 1x mode with an approximately 2.5 V full-scale output, while the CX317
+datasheet specifies a normal `Vc` operating range of 0.0 V to 3.3 V and a
+nominal point of 1.65 V. DMM readings from H1 `run_018` give:
+
+| DAC code | Measured CX317 `Vc` |
+| ---: | ---: |
+| `0x8000` | 1.247 V |
+| `0x9000` | 1.402 V |
+| `0x9800` | 1.480 V |
+| `0xA000` | 1.557 V |
+| `0xA800` | 1.635 V |
+| `0xAC00` | 1.674 V |
+| `0xAE00` | 1.693 V |
+
+A least-squares fit to those readings is:
+
+```text
+Vc ~= 0.005348 V + (37.8905 uV/code * DAC_code)
+R^2 ~= 0.999998
+```
+
+That fit predicts about 0.015 V at `0x0100` and 2.479 V at `0xFF00`.
+Those endpoint values are extrapolations, not direct DMM measurements, but they
+agree with the breakout's approximately 2.5 V 1x output span and remain inside
+the CX317 normal control-voltage range. The small endpoint margins also satisfy
+the firmware sweep guard, which treats exact `0x0000`/`0xFFFF` clamps as
+unconfigured sentinels.
+
+Automatic open-loop sweep execution is not automatic oscillator steering:
+sweeps must still be loaded and explicitly started, and no PPS/count feedback
+changes the DAC. These defaults do not enable or authorize SW2 closed-loop
+control.
 
 The built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` profiles use small
 bench-visible steps around the clamp midpoint, not 1-LSB metrology steps.
 The `slope_center_edge_300s` and `slope_repeat_300s` profiles are autonomous
 VCOCXO slope-metrology runs. They use 300 s raw-edge count gates and 900 s DAC
 dwell so each DAC code gets three independent long-gate `CNT` observations.
+For analysis that discards 900 s of settling and requires three complete
+post-settling gates that do not straddle a DAC transition, use at least a
+2100 s dwell (2400 s is a conservative choice) or synchronize changes
+to count-gate boundaries.
 
 Manual commands are read from the USB serial monitor. Terminate each command
 with newline or carriage return:
