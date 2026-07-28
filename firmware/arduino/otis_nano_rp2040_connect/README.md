@@ -26,8 +26,9 @@ arduino-cli board listall | grep -i "Nano RP2040"
 ## SW1 bring-up modes
 
 Select one bring-up mode in `otis_config.h` with `OTIS_SW1_BRINGUP_MODE`.
-The default is `SW1_SYNTHETIC_USB`. The config header is the preferred workflow
-for Arduino IDE builds; CLI `-D` overrides still work for scripted builds.
+The checked-in default is `H1_OCXO_OBSERVE_OPEN_LOOP`. The config header is the
+preferred workflow for Arduino IDE builds; CLI `-D` overrides still work for
+scripted builds.
 
 | Mode | Purpose | Records |
 |---|---|---|
@@ -60,9 +61,9 @@ The PPS-gated ratio count backend is documented in
 #define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 ```
 
-That backend would use PPS on `D14` / GPIO26 to define the count gate and the
-oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It must still
-emit raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
+That backend uses PPS on `D14` / GPIO26 to define the count gate and the
+oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It still
+emits raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
 frequency, ratio, and ppm. Selecting it must not enable DAC steering.
 
 The current implementation keeps PPS `REF` capture on the existing sparse edge
@@ -94,15 +95,17 @@ or with a CLI override:
 
 ```bash
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO" \
+  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" \
   firmware/arduino/otis_nano_rp2040_connect
 ```
 
-The SW1.5a PIO backend uses one PIO0 state machine and observes rising edges
-only. It pushes compact edge words into the PIO RX FIFO; firmware drains the
-FIFO in `loop()` and emits the same `EVT` or `REF` records used by the IRQ
-backend. The emitted timestamp is attached by firmware when the FIFO is drained,
-so metadata reports `capture_mode=pio_fifo_cpu_timestamped` and
+The SW1.5a PIO backend claims one unused PIO0 state machine and observes rising
+edges only. It does not assume ownership of SM0; this permits a selected
+PIO-backed count-observation backend to claim a different state machine in the
+same PIO block. It pushes compact edge words into the PIO RX FIFO; firmware
+drains the FIFO in `loop()` and emits the same `EVT` or `REF` records used by
+the IRQ backend. The emitted timestamp is attached by firmware when the FIFO is
+drained, so metadata reports `capture_mode=pio_fifo_cpu_timestamped` and
 `timestamp_latch=pio_edge_detect_cpu_timestamped`. This is not final
 hardware-latched timestamping.
 
@@ -125,17 +128,20 @@ count-observation backend and emits `CNT`, not one FIFO event per oscillator
 edge.
 
 The boot/status stream includes `capture_backend`, `pio_init`, `pio_gpio`,
-`pio_edge`, `pio_fifo_drained_event_count`, `pio_fifo_empty_count`,
-`pio_fifo_overflow_drop_count`, and `pio_fifo_max_drain_batch`. A nonzero
-overflow/drop count means the PIO RX FIFO was not drained fast enough; the count
-is a status indicator, not a precise missing-edge total.
+`pio_block`, `pio_sm`, `pio_edge`, `pio_fifo_drained_event_count`,
+`pio_fifo_empty_count`, `pio_fifo_overflow_drop_count`, and
+`pio_fifo_max_drain_batch`. A nonzero overflow/drop count means the PIO RX FIFO
+was not drained fast enough; the count is a status indicator, not a precise
+missing-edge total.
 
 Suggested first bench sequence:
 
 1. GPIO loopback: jumper `D7` to `D10`, build `SW1_GPIO_LOOPBACK` with
-   `OTIS_CAPTURE_BACKEND_PIO_FIFO`, and confirm `EVT` rows and PIO counters.
+   `OTIS_CAPTURE_BACKEND_PIO_FIFO` and `OTIS_ENABLE_PPS_DUAL_OBSERVER=0`, and
+   confirm `EVT` rows and PIO counters.
 2. GPS PPS: wire conditioned GPS PPS to `D14`, build `SW1_GPS_PPS` with the PIO
-   backend, and confirm `REF` rows and host PPS cadence checks.
+   backend and `OTIS_ENABLE_PPS_DUAL_OBSERVER=0`, and confirm `REF` rows and
+   host PPS cadence checks.
 3. TCXO/count observation: use `SW1_TCXO_OBSERVE` with the selected
    count-observation backend; do not feed raw high-rate oscillator edges into
    the SW1.5a PIO FIFO edge path.
@@ -164,9 +170,9 @@ The DAC output is bounded by compile-time clamps. Defaults are deliberately
 conservative and do not permit rail-to-rail sweeps:
 
 ```cpp
-#define OTIS_DAC_MIN_CODE 0x6000u
-#define OTIS_DAC_MAX_CODE 0xE000u
-#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0400u
+#define OTIS_DAC_MIN_CODE 0x7000u
+#define OTIS_DAC_MAX_CODE 0xAE00u
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0200u
 #define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
 #define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
 ```
@@ -273,8 +279,9 @@ enabled. It blinks `LED_BUILTIN`. Set `OTIS_ENABLE_STATUS_LED_BOOT_TEST` to `0`
 to skip the self-test while keeping later status LED behavior.
 
 RP2040 raw boot diagnostics are controlled by `OTIS_ENABLE_RP2040_BOOT_DIAG`.
-When enabled, firmware emits one `BOOTDIAG,v=1` register snapshot after USB
-serial startup and before normal OTIS records. See
+When enabled, firmware captures one `BOOTDIAG,v=1` register snapshot before it
+updates the boot breadcrumb scratch registers, then emits that preserved
+snapshot after USB serial is ready and before normal OTIS records. See
 `docs/50_SOFTWARE/RP2040_BOOT_DIAGNOSTICS.md` for the field schema and reset
 forensics limits.
 
@@ -282,7 +289,9 @@ The boot path also emits compact `BOOT` telemetry when USB serial is available.
 Serial startup is bounded by `OTIS_SERIAL_WAIT_MS` and defaults to 250 ms after
 `Serial.begin(115200)`. If the host has not opened USB serial by then, firmware
 continues booting and capture setup is not held indefinitely waiting for USB
-enumeration.
+enumeration. The one-shot `BOOTDIAG`, CSV headers, and provenance banner are
+deferred until USB serial becomes ready, so a late host still receives a
+complete record boundary and banner.
 
 Safe mode is controlled by persistent boot breadcrumbs. A successful boot is
 defined as reaching and completing `RunMode`; that clears the consecutive
@@ -315,12 +324,12 @@ The SW1 live-capture pass uses this Arduino pin convention:
 `SW1_GPIO_LOOPBACK` additionally drives `D7` as a local output. Jumper `D7` to
 `D10` for that mode only.
 
-For the temporary H1 PPS anomaly investigation, `OTIS_ENABLE_PPS_DUAL_OBSERVER`
-may be built as `1`. In that configuration `D14` remains the PPS reference path
-and `D10` is a diagnostic-only rising-edge PPS witness configured as `INPUT`
-with no internal pull. The build fails if this witness is combined with
-`SW1_GPIO_LOOPBACK` or the non-IRQ capture backend, because those configurations
-would make D10 or the D14 comparison path ambiguous.
+For the temporary H1 PPS anomaly investigation,
+`OTIS_ENABLE_PPS_DUAL_OBSERVER` is currently checked in as `1`. In that
+configuration `D14` remains the PPS reference path and `D10` is a
+diagnostic-only rising-edge PPS witness configured as `INPUT` with no internal
+pull. Set it to `0` for `SW1_GPIO_LOOPBACK` or any non-IRQ capture backend; the
+compile guards reject those ambiguous combinations.
 
 These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
 conditioning, voltage limits, and final bench wiring remain hardware
@@ -345,7 +354,7 @@ arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
   firmware/arduino/otis_nano_rp2040_connect
 
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK \
+  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" \
   firmware/arduino/otis_nano_rp2040_connect
 
 arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \

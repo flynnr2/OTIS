@@ -33,7 +33,7 @@ const pio_program_t pio_edge_capture_program = {
 };
 
 PIO pio_capture = pio0;
-constexpr uint pio_capture_sm = 0;
+uint pio_capture_sm = 0;
 int pio_capture_program_offset = -1;
 uint32_t pio_capture_gpio = 0;
 uint32_t pio_capture_channel_id = 0;
@@ -62,6 +62,10 @@ void poll_pio_overflow(void) {
 }  // namespace
 
 bool otis_capture_pio_begin(const OtisCaptureBackendConfig &config) {
+  if (pio_capture_initialized) {
+    return false;
+  }
+
   pio_capture_gpio = config.gpio;
   pio_capture_channel_id = config.channel_id;
   pio_capture_reference_record = config.reference_record;
@@ -71,6 +75,11 @@ bool otis_capture_pio_begin(const OtisCaptureBackendConfig &config) {
   if (!pio_can_add_program(pio_capture, &pio_edge_capture_program)) {
     return false;
   }
+  int claimed_sm = pio_claim_unused_sm(pio_capture, false);
+  if (claimed_sm < 0) {
+    return false;
+  }
+  pio_capture_sm = static_cast<uint>(claimed_sm);
 
   pio_capture_program_offset =
       pio_add_program(pio_capture, &pio_edge_capture_program);
@@ -139,6 +148,10 @@ void otis_capture_pio_get_stats(OtisCapturePioStats *out) {
   out->max_drain_batch = pio_fifo_max_drain_batch;
 }
 
+int32_t otis_capture_pio_state_machine(void) {
+  return pio_capture_initialized ? (int32_t)pio_capture_sm : -1;
+}
+
 #else
 
 bool otis_capture_pio_begin(const OtisCaptureBackendConfig &config) {
@@ -158,6 +171,10 @@ void otis_capture_pio_get_stats(OtisCapturePioStats *out) {
   out->empty_count = 0;
   out->overflow_drop_count = 0;
   out->max_drain_batch = 0;
+}
+
+int32_t otis_capture_pio_state_machine(void) {
+  return -1;
 }
 
 #endif

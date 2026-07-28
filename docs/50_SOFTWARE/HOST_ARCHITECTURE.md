@@ -213,15 +213,19 @@ responses.
 
 For SW1/H0 bring-up, host tooling intentionally stays small:
 
-- `python3 -m host.otis_tools.capture_serial` reads firmware serial CSV from
-  stdin and splits `EVT`/`REF`, `CNT`, and `STS` rows into a run directory based
-  on a template manifest. It creates `capture_in_progress.flag` while capture is
-  active and removes it after stdin closes cleanly.
+- `python3 -m host.otis_tools.capture_serial` reads firmware serial text from
+  stdin, preserves it in `raw/serial.log`, and splits only complete,
+  contract-width `EVT`/`REF`, `CNT`, `STS`, `DAC`, and `ENV` rows into a run
+  directory based on a template manifest. It creates
+  `capture_in_progress.flag` while capture is active and removes it after stdin
+  closes cleanly.
 - `python3 -m host.otis_tools.capture_device` owns a USB serial device for
   unattended runs, appends raw bytes and host reconnect markers to
   `raw/serial.log`, frames complete lines, and feeds the same CSV splitter used
   by `capture_serial`. It reconnects after USB/RP2040 resets with bounded
-  buffering and drops only incomplete lines with explicit forensic markers.
+  buffering and keeps incomplete, oversized, malformed-UTF-8, and
+  contract-width-invalid frames only in raw evidence, with explicit forensic
+  markers or parser diagnostics.
 - `python3 -m host.otis_tools.validate_run` checks manifest/profile consistency,
   known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
   required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO

@@ -28,6 +28,38 @@ constexpr uint32_t kSafeModeRequestedBit = 1u << 26;
 
 OtisBootBreadcrumbSnapshot boot_snapshot = {};
 
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+struct OtisRp2040BootDiagSnapshot {
+  bool captured;
+  uint32_t wd_reason;
+  uint32_t wd_scratch[8];
+  uint32_t resets_reset;
+  uint32_t resets_done;
+  uint32_t clk_ref_ctrl;
+  uint32_t clk_ref_div;
+  uint32_t clk_sys_ctrl;
+  uint32_t clk_sys_div;
+  uint32_t clk_peri_ctrl;
+  uint32_t clk_peri_div;
+  uint32_t xosc_status;
+  uint32_t rosc_status;
+  uint32_t rosc_ctrl;
+  uint32_t pll_sys_cs;
+  uint32_t pll_usb_cs;
+  uint32_t vreg;
+  uint32_t bod;
+  uint32_t chip_id;
+#ifdef SYSINFO_PLATFORM_OFFSET
+  uint32_t platform;
+#endif
+#ifdef SYSINFO_GITREF_RP2040_OFFSET
+  uint32_t gitref_rp2040;
+#endif
+};
+
+OtisRp2040BootDiagSnapshot rp2040_boot_diag_snapshot = {};
+#endif
+
 uint32_t pack_boot_status(BootFatal fatal, uint32_t reset_reason,
                           bool watchdog_reboot,
                           bool watchdog_enable_reboot, uint8_t failure_count,
@@ -356,38 +388,97 @@ static void otisBootDiagPrintField(Stream &out, const char *name,
   otisBootDiagPrintHex32(out, value);
 }
 
-void emitRp2040BootDiag(Stream &out) {
-  out.print("BOOTDIAG,v=1");
-  otisBootDiagPrintField(out, "wd_reason", watchdog_hw->reason);
-  otisBootDiagPrintField(out, "wd_s0", watchdog_hw->scratch[0]);
-  otisBootDiagPrintField(out, "wd_s1", watchdog_hw->scratch[1]);
-  otisBootDiagPrintField(out, "wd_s2", watchdog_hw->scratch[2]);
-  otisBootDiagPrintField(out, "wd_s3", watchdog_hw->scratch[3]);
-  otisBootDiagPrintField(out, "wd_s4", watchdog_hw->scratch[4]);
-  otisBootDiagPrintField(out, "wd_s5", watchdog_hw->scratch[5]);
-  otisBootDiagPrintField(out, "wd_s6", watchdog_hw->scratch[6]);
-  otisBootDiagPrintField(out, "wd_s7", watchdog_hw->scratch[7]);
-  otisBootDiagPrintField(out, "resets_reset", resets_hw->reset);
-  otisBootDiagPrintField(out, "resets_done", resets_hw->reset_done);
-  otisBootDiagPrintField(out, "clk_ref_ctrl", clocks_hw->clk[clk_ref].ctrl);
-  otisBootDiagPrintField(out, "clk_ref_div", clocks_hw->clk[clk_ref].div);
-  otisBootDiagPrintField(out, "clk_sys_ctrl", clocks_hw->clk[clk_sys].ctrl);
-  otisBootDiagPrintField(out, "clk_sys_div", clocks_hw->clk[clk_sys].div);
-  otisBootDiagPrintField(out, "clk_peri_ctrl", clocks_hw->clk[clk_peri].ctrl);
-  otisBootDiagPrintField(out, "clk_peri_div", clocks_hw->clk[clk_peri].div);
-  otisBootDiagPrintField(out, "xosc_status", xosc_hw->status);
-  otisBootDiagPrintField(out, "rosc_status", rosc_hw->status);
-  otisBootDiagPrintField(out, "rosc_ctrl", rosc_hw->ctrl);
-  otisBootDiagPrintField(out, "pll_sys_cs", pll_sys_hw->cs);
-  otisBootDiagPrintField(out, "pll_usb_cs", pll_usb_hw->cs);
-  otisBootDiagPrintField(out, "vreg", vreg_and_chip_reset_hw->vreg);
-  otisBootDiagPrintField(out, "bod", vreg_and_chip_reset_hw->bod);
-  otisBootDiagPrintField(out, "chip_id", sysinfo_hw->chip_id);
+void captureRp2040BootDiag(void) {
+  rp2040_boot_diag_snapshot.wd_reason = watchdog_hw->reason;
+  for (uint8_t index = 0; index < 8u; ++index) {
+    rp2040_boot_diag_snapshot.wd_scratch[index] =
+        watchdog_hw->scratch[index];
+  }
+  rp2040_boot_diag_snapshot.resets_reset = resets_hw->reset;
+  rp2040_boot_diag_snapshot.resets_done = resets_hw->reset_done;
+  rp2040_boot_diag_snapshot.clk_ref_ctrl = clocks_hw->clk[clk_ref].ctrl;
+  rp2040_boot_diag_snapshot.clk_ref_div = clocks_hw->clk[clk_ref].div;
+  rp2040_boot_diag_snapshot.clk_sys_ctrl = clocks_hw->clk[clk_sys].ctrl;
+  rp2040_boot_diag_snapshot.clk_sys_div = clocks_hw->clk[clk_sys].div;
+  rp2040_boot_diag_snapshot.clk_peri_ctrl = clocks_hw->clk[clk_peri].ctrl;
+  rp2040_boot_diag_snapshot.clk_peri_div = clocks_hw->clk[clk_peri].div;
+  rp2040_boot_diag_snapshot.xosc_status = xosc_hw->status;
+  rp2040_boot_diag_snapshot.rosc_status = rosc_hw->status;
+  rp2040_boot_diag_snapshot.rosc_ctrl = rosc_hw->ctrl;
+  rp2040_boot_diag_snapshot.pll_sys_cs = pll_sys_hw->cs;
+  rp2040_boot_diag_snapshot.pll_usb_cs = pll_usb_hw->cs;
+  rp2040_boot_diag_snapshot.vreg = vreg_and_chip_reset_hw->vreg;
+  rp2040_boot_diag_snapshot.bod = vreg_and_chip_reset_hw->bod;
+  rp2040_boot_diag_snapshot.chip_id = sysinfo_hw->chip_id;
 #ifdef SYSINFO_PLATFORM_OFFSET
-  otisBootDiagPrintField(out, "platform", sysinfo_hw->platform);
+  rp2040_boot_diag_snapshot.platform = sysinfo_hw->platform;
 #endif
 #ifdef SYSINFO_GITREF_RP2040_OFFSET
-  otisBootDiagPrintField(out, "gitref_rp2040", sysinfo_hw->gitref_rp2040);
+  rp2040_boot_diag_snapshot.gitref_rp2040 = sysinfo_hw->gitref_rp2040;
+#endif
+  rp2040_boot_diag_snapshot.captured = true;
+}
+
+void emitRp2040BootDiag(Stream &out) {
+  if (!rp2040_boot_diag_snapshot.captured) {
+    captureRp2040BootDiag();
+  }
+  out.print("BOOTDIAG,v=1");
+  otisBootDiagPrintField(out, "wd_reason",
+                         rp2040_boot_diag_snapshot.wd_reason);
+  otisBootDiagPrintField(out, "wd_s0",
+                         rp2040_boot_diag_snapshot.wd_scratch[0]);
+  otisBootDiagPrintField(out, "wd_s1",
+                         rp2040_boot_diag_snapshot.wd_scratch[1]);
+  otisBootDiagPrintField(out, "wd_s2",
+                         rp2040_boot_diag_snapshot.wd_scratch[2]);
+  otisBootDiagPrintField(out, "wd_s3",
+                         rp2040_boot_diag_snapshot.wd_scratch[3]);
+  otisBootDiagPrintField(out, "wd_s4",
+                         rp2040_boot_diag_snapshot.wd_scratch[4]);
+  otisBootDiagPrintField(out, "wd_s5",
+                         rp2040_boot_diag_snapshot.wd_scratch[5]);
+  otisBootDiagPrintField(out, "wd_s6",
+                         rp2040_boot_diag_snapshot.wd_scratch[6]);
+  otisBootDiagPrintField(out, "wd_s7",
+                         rp2040_boot_diag_snapshot.wd_scratch[7]);
+  otisBootDiagPrintField(out, "resets_reset",
+                         rp2040_boot_diag_snapshot.resets_reset);
+  otisBootDiagPrintField(out, "resets_done",
+                         rp2040_boot_diag_snapshot.resets_done);
+  otisBootDiagPrintField(out, "clk_ref_ctrl",
+                         rp2040_boot_diag_snapshot.clk_ref_ctrl);
+  otisBootDiagPrintField(out, "clk_ref_div",
+                         rp2040_boot_diag_snapshot.clk_ref_div);
+  otisBootDiagPrintField(out, "clk_sys_ctrl",
+                         rp2040_boot_diag_snapshot.clk_sys_ctrl);
+  otisBootDiagPrintField(out, "clk_sys_div",
+                         rp2040_boot_diag_snapshot.clk_sys_div);
+  otisBootDiagPrintField(out, "clk_peri_ctrl",
+                         rp2040_boot_diag_snapshot.clk_peri_ctrl);
+  otisBootDiagPrintField(out, "clk_peri_div",
+                         rp2040_boot_diag_snapshot.clk_peri_div);
+  otisBootDiagPrintField(out, "xosc_status",
+                         rp2040_boot_diag_snapshot.xosc_status);
+  otisBootDiagPrintField(out, "rosc_status",
+                         rp2040_boot_diag_snapshot.rosc_status);
+  otisBootDiagPrintField(out, "rosc_ctrl",
+                         rp2040_boot_diag_snapshot.rosc_ctrl);
+  otisBootDiagPrintField(out, "pll_sys_cs",
+                         rp2040_boot_diag_snapshot.pll_sys_cs);
+  otisBootDiagPrintField(out, "pll_usb_cs",
+                         rp2040_boot_diag_snapshot.pll_usb_cs);
+  otisBootDiagPrintField(out, "vreg", rp2040_boot_diag_snapshot.vreg);
+  otisBootDiagPrintField(out, "bod", rp2040_boot_diag_snapshot.bod);
+  otisBootDiagPrintField(out, "chip_id",
+                         rp2040_boot_diag_snapshot.chip_id);
+#ifdef SYSINFO_PLATFORM_OFFSET
+  otisBootDiagPrintField(out, "platform",
+                         rp2040_boot_diag_snapshot.platform);
+#endif
+#ifdef SYSINFO_GITREF_RP2040_OFFSET
+  otisBootDiagPrintField(out, "gitref_rp2040",
+                         rp2040_boot_diag_snapshot.gitref_rp2040);
 #endif
   out.println();
 }

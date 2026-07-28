@@ -209,8 +209,9 @@
 
 #ifndef OTIS_DAC_MAX_CODE
 // H1 run_018 manually probes above the previously verified automatic range to
-// bracket the 10 MHz crossing. This clamp only permits operator-issued DAC SET
-// commands in observe mode; it does not enable automatic steering or SW2.
+// bracket the 10 MHz crossing. This clamp bounds operator-issued DAC commands
+// and explicitly started open-loop sweep profiles; it does not auto-start a
+// sweep, enable feedback steering, or enable SW2.
 #define OTIS_DAC_MAX_CODE 0xAE00u
 #endif
 

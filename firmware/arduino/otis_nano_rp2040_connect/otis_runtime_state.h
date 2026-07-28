@@ -26,6 +26,7 @@ struct OtisBootRuntimeState {
   BootPhase phase;
   bool serial_ready;
   bool summary_emitted;
+  bool protocol_banner_emitted;
   bool serial_absent_warn_pending;
   bool safe_mode_active;
   bool safe_mode_warn_pending;

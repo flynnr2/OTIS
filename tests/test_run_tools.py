@@ -259,6 +259,19 @@ def test_capture_serial_splits_records(tmp_path: Path, monkeypatch) -> None:
     assert capture_serial(run_dir, Path("examples/h0_gps_pps"), "captured_gps_pps") == 0
     assert validate_run(run_dir) == 0
     assert not (run_dir / "capture_in_progress.flag").exists()
+    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16" in (
+        run_dir / "raw" / "serial.log"
+    ).read_text(encoding="utf-8")
+
+
+def test_capture_serial_keeps_malformed_frame_out_of_contract_csv(tmp_path: Path, monkeypatch) -> None:
+    run_dir = tmp_path / "captured_malformed"
+    malformed = "REF,1,1000,1,R,16000000,rp2040_timer0,16,extra"
+    monkeypatch.setattr(sys, "stdin", io.StringIO(malformed + "\n"))
+
+    assert capture_serial(run_dir, Path("examples/h0_gps_pps"), "captured_malformed") == 0
+    assert malformed in (run_dir / "raw" / "serial.log").read_text(encoding="utf-8")
+    assert malformed not in (run_dir / "raw_events.csv").read_text(encoding="utf-8")
 
 
 def test_capture_serial_splits_h1_evt_and_ref_files(tmp_path: Path, monkeypatch) -> None:

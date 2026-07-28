@@ -11,6 +11,7 @@
 #include "otis_boot_diag.h"
 #include "otis_capture_backend.h"
 #include "otis_capture_irq.h"
+#include "otis_capture_pio.h"
 #include "otis_capture_ring.h"
 #include "otis_count_observation.h"
 #include "otis_dac_ad5693r.h"
@@ -362,6 +363,27 @@ void emit_h0_pin_status(void) {
 #endif
 }
 
+void emit_protocol_banner_if_serial_ready(void) {
+  if (runtime_state.boot.protocol_banner_emitted ||
+      !otis_transport_ready()) {
+    return;
+  }
+
+  if (runtime_state.boot.serial_absent_warn_pending) {
+    // Establish a fresh record boundary in case the USB core retained any
+    // prefix from writes attempted before the late host opened the port.
+    otis_transport_write_cstr("\r\n");
+  }
+  emit_boot_records_if_serial_ready();
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+  emitRp2040BootDiag(Serial);
+#endif
+  otis_emit_csv_headers();
+  emit_common_boot_status();
+  emit_h0_pin_status();
+  runtime_state.boot.protocol_banner_emitted = true;
+}
+
 void emit_periodic_status(void) {
   uint32_t now_ms = millis();
   if ((uint32_t)(now_ms - runtime_state.periodic.last_status_ms) <
@@ -584,6 +606,13 @@ void configure_gpio_loopback_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  if (ok) {
+    emit_status_u32("capture", "pio_block", 0u, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("capture", "pio_sm",
+                    (uint32_t)otis_capture_pio_state_machine(),
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  }
 #endif
 }
 
@@ -601,6 +630,13 @@ void configure_gps_pps_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  if (ok) {
+    emit_status_u32("capture", "pio_block", 0u, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("capture", "pio_sm",
+                    (uint32_t)otis_capture_pio_state_machine(),
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  }
 #endif
 }
 
@@ -627,6 +663,13 @@ void configure_tcxo_observe_mode(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("capture", "pio_edge", "R", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  if (ok) {
+    emit_status_u32("capture", "pio_block", 0u, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("capture", "pio_sm",
+                    (uint32_t)otis_capture_pio_state_machine(),
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  }
 #endif
 
   OtisCountObservationConfig count_config = count_observation_config();
@@ -1134,6 +1177,9 @@ void setup_mode(void) {
 
 void boot_phase_reset_entry(void) {
   enter_boot_phase(BootPhase::ResetEntry);
+#if OTIS_ENABLE_RP2040_BOOT_DIAG
+  captureRp2040BootDiag();
+#endif
   otisBootBreadcrumbBegin(BootPhase::ResetEntry);
   delay(kOtisBootInitialDelayMs);  // boring but useful during bring-up
   complete_boot_phase(BootPhase::ResetEntry);
@@ -1194,15 +1240,7 @@ void boot_phase_serial_init(void) {
 
 void boot_phase_protocol_banner(void) {
   enter_boot_phase(BootPhase::ProtocolBanner);
-  emit_boot_records_if_serial_ready();
-
-#if OTIS_ENABLE_RP2040_BOOT_DIAG
-  emitRp2040BootDiag(Serial);
-#endif
-
-  otis_emit_csv_headers();
-  emit_common_boot_status();
-  emit_h0_pin_status();
+  emit_protocol_banner_if_serial_ready();
   complete_boot_phase(BootPhase::ProtocolBanner);
 }
 
@@ -1569,7 +1607,7 @@ void loop() {
   // Future output-budgeting hook: keep capture service/drain before periodic
   // status emission, then cap max records emitted per loop if host backpressure
   // becomes observable.
-  emit_boot_records_if_serial_ready();
+  emit_protocol_banner_if_serial_ready();
   service_serial_commands();
   service_loopback_output();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \

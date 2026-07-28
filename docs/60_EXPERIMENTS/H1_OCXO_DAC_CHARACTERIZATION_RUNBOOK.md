@@ -100,7 +100,7 @@ is marked hardware-clean.
 3. Prefer built-in conservative profiles first: `center_only`,
    `tiny_plus_minus_1`, then `tiny_plus_minus_2`.
    The built-in "tiny" profiles use small bench-visible code steps
-   (`0x0400` by default), not one raw DAC LSB.
+   (`0x0200` in the current checked-in firmware), not one raw DAC LSB.
 4. Start sweeps explicitly with `SWEEP START`; firmware must not auto-start a
    sweep on boot.
 5. Stop with `SWEEP STOP` immediately if the output disappears, clips, or

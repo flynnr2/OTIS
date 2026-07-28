@@ -68,7 +68,33 @@ def test_line_framer_drops_oversize_partial_line() -> None:
 
     assert lines == []
     assert events == ["oversize_partial_line_dropped bytes=6"]
+    assert framer.drop_partial() == 6
+
+
+def test_line_framer_discards_oversize_continuation_to_record_boundary() -> None:
+    framer = LineFramer(max_line_bytes=8)
+
+    lines, events = framer.feed(b"REF,1,10")
+    assert lines == []
+    assert events == []
+
+    lines, events = framer.feed(b"00,1,R")
+    assert lines == []
+    assert events == ["oversize_partial_line_dropped bytes=14"]
+
+    lines, events = framer.feed(b",16000000,rp2040_timer0,16\nSTS,1,ok\n")
+    assert lines == [b"STS,1,ok"]
+    assert events == []
     assert framer.drop_partial() == 0
+
+
+def test_line_framer_rejects_oversize_complete_line() -> None:
+    framer = LineFramer(max_line_bytes=4)
+
+    lines, events = framer.feed(b"abcdef\nok\n")
+
+    assert lines == [b"ok"]
+    assert events == ["oversize_line_dropped bytes=6"]
 
 
 def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
@@ -141,11 +167,12 @@ def test_capture_device_malformed_utf8_preserves_raw_bytes(tmp_path: Path) -> No
     paths = RunPaths(config.run_dir)
     assert bad_line in paths.raw_serial_log.read_bytes()
     assert b"malformed_utf8" in paths.raw_serial_log.read_bytes()
-    assert "\ufffd" in paths.health_csv.read_text(encoding="utf-8")
+    assert "\ufffd" not in paths.health_csv.read_text(encoding="utf-8")
     assert runner.malformed_utf8 == 1
+    assert runner.lines_parsed == 0
 
 
-def test_capture_device_logs_parser_errors_but_keeps_rows(tmp_path: Path) -> None:
+def test_capture_device_preserves_malformed_frame_only_in_raw_evidence(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)
     malformed_known_record = b"REF,1,1000,1,R,16000000,rp2040_timer0,16,extra\n"
@@ -156,8 +183,11 @@ def test_capture_device_logs_parser_errors_but_keeps_rows(tmp_path: Path) -> Non
 
     paths = RunPaths(config.run_dir)
     assert malformed_known_record in paths.raw_serial_log.read_bytes()
-    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16,extra" in paths.raw_events_csv.read_text(encoding="utf-8")
+    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16,extra" not in paths.raw_events_csv.read_text(
+        encoding="utf-8"
+    )
     assert runner.parser_errors == 1
+    assert runner.lines_parsed == 0
 
 
 def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
