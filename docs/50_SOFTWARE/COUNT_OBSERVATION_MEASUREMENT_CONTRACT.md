@@ -111,6 +111,11 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the
   bounded row with `COUNT_SATURATED`.
 
+For `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`, a counter that reaches its
+32-bit terminal value is likewise emitted with the best available raw count,
+flagged `COUNT_SATURATED`, rejected as an invalid observation, and reported by
+`capture/pio_long_gate_count_saturated_count`.
+
 The current firmware implementation qualifies PPS rising edges in foreground
 while preserving the existing sparse PPS `REF` capture path. PPS-gated `CNT`
 rows therefore carry reconstructed `rp2040_timer0` gate timestamps until a later

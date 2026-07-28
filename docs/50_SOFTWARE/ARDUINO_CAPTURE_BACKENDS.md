@@ -53,9 +53,11 @@ and protocol bring-up, not final timestamp metrology.
 ## Current PIO Edge-Queue Backend
 
 `OtisCaptureBackendKind::PioEdgeQueue` calls `otis_capture_pio_begin()`, which
-installs one PIO0 state machine for one selected GPIO. The current PIO program
-waits for a low state, waits for a high state, pushes a compact word into the RX
-FIFO, and then repeats. It observes rising edges only.
+claims one unused PIO0 state machine for one selected GPIO. It does not
+hard-code or silently occupy SM0, so a PIO count backend can claim another
+state machine without ownership collision. The current PIO program waits for a
+low state, waits for a high state, pushes a compact word into the RX FIFO, and
+then repeats. It observes rising edges only.
 
 The foreground service path is:
 
@@ -85,6 +87,10 @@ PIO status counters are owned by `otis_capture_pio.cpp`:
 - `pio_fifo_empty_count`
 - `pio_fifo_overflow_drop_count`
 - `pio_fifo_max_drain_batch`
+
+Initialization telemetry also reports `capture/pio_block` and
+`capture/pio_sm`. A build that combines this edge queue with a PIO count
+backend must report distinct state-machine numbers.
 
 `otis_capture_backend_get_stats()` aggregates these with IRQ and ring stats for
 periodic `STS` emission.

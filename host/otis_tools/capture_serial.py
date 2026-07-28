@@ -86,8 +86,10 @@ class CsvRecordSplitter:
         if handle is None:
             return None
         expected_columns = len(CONTRACT_FIELDS[contract])
-        if len(row) != expected_columns and self.on_parser_error is not None:
-            self.on_parser_error(f"{record_type} column count {len(row)} does not match {expected_columns}")
+        if len(row) != expected_columns:
+            if self.on_parser_error is not None:
+                self.on_parser_error(f"{record_type} column count {len(row)} does not match {expected_columns}")
+            return None
         handle.write(clean + "\n")
         handle.flush()
         return contract
@@ -141,9 +143,18 @@ def capture_serial(run_dir: Path, template_dir: Path, run_id: str) -> int:
         handle.write("\n")
 
     file_by_contract, file_by_record_type = _split_targets_from_manifest(manifest, run_dir)
+    raw_dir = run_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = raw_dir / "serial.log"
     try:
-        with CsvRecordSplitter(file_by_contract, file_by_record_type, append=False) as splitter:
+        with raw_path.open("x", encoding="utf-8", newline="") as raw_handle, CsvRecordSplitter(
+            file_by_contract,
+            file_by_record_type,
+            append=False,
+        ) as splitter:
             for line in sys.stdin:
+                raw_handle.write(line)
+                raw_handle.flush()
                 splitter.process_line(line)
     finally:
         in_progress.unlink(missing_ok=True)

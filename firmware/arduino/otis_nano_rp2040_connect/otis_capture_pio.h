@@ -15,5 +15,6 @@ struct OtisCapturePioStats {
 bool otis_capture_pio_begin(const OtisCaptureBackendConfig &config);
 void otis_capture_pio_service(void);
 void otis_capture_pio_get_stats(OtisCapturePioStats *out);
+int32_t otis_capture_pio_state_machine(void);
 
 #endif

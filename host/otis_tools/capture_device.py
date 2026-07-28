@@ -139,28 +139,49 @@ class LineFramer:
     def __init__(self, max_line_bytes: int) -> None:
         self.max_line_bytes = max_line_bytes
         self.buffer = bytearray()
+        self.discarding_oversize = False
+        self.discarded_oversize_bytes = 0
 
     def feed(self, data: bytes) -> tuple[list[bytes], list[str]]:
         lines: list[bytes] = []
         events: list[str] = []
         self.buffer.extend(data)
         while True:
+            if self.discarding_oversize:
+                try:
+                    newline_index = self.buffer.index(0x0A)
+                except ValueError:
+                    self.discarded_oversize_bytes += len(self.buffer)
+                    self.buffer.clear()
+                    break
+                self.discarded_oversize_bytes += newline_index
+                del self.buffer[: newline_index + 1]
+                self.discarding_oversize = False
+                self.discarded_oversize_bytes = 0
+                continue
             try:
                 newline_index = self.buffer.index(0x0A)
             except ValueError:
                 break
-            line = bytes(self.buffer[:newline_index]).rstrip(b"\r")
+            framed = bytes(self.buffer[:newline_index])
             del self.buffer[: newline_index + 1]
-            lines.append(line)
+            if len(framed) > self.max_line_bytes:
+                events.append(f"oversize_line_dropped bytes={len(framed)}")
+                continue
+            lines.append(framed.rstrip(b"\r"))
         if len(self.buffer) > self.max_line_bytes:
             dropped = len(self.buffer)
+            self.discarding_oversize = True
+            self.discarded_oversize_bytes = dropped
             self.buffer.clear()
             events.append(f"oversize_partial_line_dropped bytes={dropped}")
         return lines, events
 
     def drop_partial(self) -> int:
-        dropped = len(self.buffer)
+        dropped = self.discarded_oversize_bytes + len(self.buffer)
         self.buffer.clear()
+        self.discarding_oversize = False
+        self.discarded_oversize_bytes = 0
         return dropped
 
 
@@ -210,7 +231,7 @@ class CaptureDeviceRunner:
             self.malformed_utf8 += 1
             _log_event(logging.WARNING, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             _write_marker(raw_handle, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
-            text = line.decode("utf-8", errors="replace")
+            return
         contract = splitter.process_line(text)
         if contract is not None:
             self.lines_parsed += 1

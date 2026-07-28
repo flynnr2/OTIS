@@ -9,9 +9,11 @@ Control it at compile time with:
 OTIS_ENABLE_RP2040_BOOT_DIAG=1
 ```
 
-When disabled, the raw `BOOTDIAG` register snapshot is not emitted. Compact
-`BOOT` breadcrumbs are separate from `BOOTDIAG` and remain part of normal boot
-so reset history survives soft and watchdog resets where the RP2040 scratch
+When disabled, the raw `BOOTDIAG` register snapshot is not emitted. When
+enabled, the snapshot is copied into firmware-owned memory before OTIS updates
+watchdog scratch registers 0 through 3 for the current boot. Compact `BOOT`
+breadcrumbs are separate from `BOOTDIAG` and remain part of normal boot so
+reset history survives soft and watchdog resets where the RP2040 scratch
 registers are retained.
 
 The output prefix and schema version are:
@@ -80,6 +82,10 @@ the boot counter, records the current RP2040 watchdog reason bits, clears the
 current fatal code to `None`, and writes `ResetEntry` as the current phase.
 Each successfully completed boot phase then updates `scratch[2]`.
 
+`BOOTDIAG.wd_s0` through `wd_s7` are the preserved values captured before
+those breadcrumb writes. The decoded `BOOT` record is produced from the same
+previous-boot evidence plus current boot state.
+
 ## Safe Mode Policy
 
 A boot is successful only after firmware reaches and completes `RunMode`.
@@ -114,9 +120,11 @@ failure enabled should eventually produce:
 BOOT_WARN,v=1,key=safe_mode,reason=repeated_boot_failure
 ```
 
-The raw diagnostic dump reads scratch registers after the current boot has
-started updating them. The compact `BOOT` record is the preferred decoded view
-for normal review.
+If USB serial is not ready within `OTIS_SERIAL_WAIT_MS`, normal setup continues.
+The preserved `BOOTDIAG` snapshot, CSV headers, and provenance banner remain
+pending. When USB serial later becomes ready, firmware first emits a line
+terminator to close any prefix retained by the USB core, then emits the banner
+once from a fresh record boundary.
 
 ## Interpretation Limits
 

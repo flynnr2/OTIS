@@ -11,6 +11,7 @@
 #include "otis_capture_irq.h"
 #include "otis_config.h"
 #include "otis_emit.h"
+#include "otis_pio_counter_math.h"
 #include "otis_protocol.h"
 #include "otis_timebase.h"
 
@@ -56,9 +57,12 @@ struct H1PioLongGateCounter {
   bool initialized;
   bool active;
   uint64_t gate_open_ticks;
+  uint32_t saturation_count;
 };
 
-H1PioLongGateCounter h1_pio_long_gate = {pio0, 0, 0, false, false, 0};
+H1PioLongGateCounter h1_pio_long_gate = {
+    pio0, 0, 0, false, false, 0, 0,
+};
 
 bool begin_h1_pio_long_gate_counter(void) {
   uint16_t instructions[] = {
@@ -74,8 +78,19 @@ bool begin_h1_pio_long_gate_counter(void) {
       -1,
   };
 
+  if (h1_pio_long_gate.initialized) {
+    return false;
+  }
+
   h1_pio_long_gate.pio = pio0;
-  h1_pio_long_gate.sm = pio_claim_unused_sm(h1_pio_long_gate.pio, true);
+  if (!pio_can_add_program(h1_pio_long_gate.pio, &program)) {
+    return false;
+  }
+  int claimed_sm = pio_claim_unused_sm(h1_pio_long_gate.pio, false);
+  if (claimed_sm < 0) {
+    return false;
+  }
+  h1_pio_long_gate.sm = static_cast<uint>(claimed_sm);
   h1_pio_long_gate.offset = pio_add_program(h1_pio_long_gate.pio, &program);
 
   pio_gpio_init(h1_pio_long_gate.pio, OTIS_GPIO_OSC_OBSERVATION);
@@ -92,6 +107,7 @@ bool begin_h1_pio_long_gate_counter(void) {
   h1_pio_long_gate.initialized = true;
   h1_pio_long_gate.active = false;
   h1_pio_long_gate.gate_open_ticks = 0;
+  h1_pio_long_gate.saturation_count = 0;
   return true;
 }
 
@@ -461,7 +477,8 @@ WindowAnomaly classify_window(OtisRuntimeState *runtime_state,
              runtime_state->tcxo.last_counted_edges == 0ull) {
     anomaly.reason = kWindowReasonCountedEdgesZero;
     anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_INPUT_STUCK_LOW;
+    anomaly.flags |=
+        OTIS_FLAG_SOURCE_HEALTH_SUSPECT | OTIS_FLAG_INPUT_STUCK_LOW;
   }
 
   runtime_state->tcxo.last_window_flags = anomaly.flags;
@@ -551,6 +568,13 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
   emit_status_u32(status_context, "capture", "pio_long_gate_period_us",
                   config->gate_period_us, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  if (counter_ok) {
+    emit_status_u32(status_context, "capture", "pio_long_gate_pio", 0u,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32(status_context, "capture", "pio_long_gate_sm",
+                    h1_pio_long_gate.sm, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+  }
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
@@ -590,6 +614,13 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
   emit_status_u32(status_context, "pps_gate", "missing_timeout_us",
                   OTIS_PPS_GATE_MISSING_TIMEOUT_US, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  if (counter_ok) {
+    emit_status_u32(status_context, "pps_gate", "counter_pio", 0u,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32(status_context, "pps_gate", "counter_sm",
+                    h1_pio_long_gate.sm, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+  }
   emit_pps_gate_status(status_context,
                        counter_ok ? OTIS_SEVERITY_INFO
                                   : OTIS_SEVERITY_ERROR,
@@ -719,8 +750,9 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   }
 
   uint32_t remaining = stop_h1_pio_long_gate_counter();
-  uint64_t counted_edges =
-      (uint64_t)kH1PioCounterInitialX - (uint64_t)remaining;
+  OtisPioCounterSample counter_sample =
+      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
+  uint64_t counted_edges = counter_sample.counted_edges;
   uint32_t measured_khz = 0;
   if (observation_span_us > 0) {
     measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
@@ -743,6 +775,14 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.last_max_sample_khz = measured_khz;
   runtime_state->tcxo.last_window_flags = window_flags;
   WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
+  if (counter_sample.saturated) {
+    anomaly.reason = kWindowReasonCounterSaturated;
+    anomaly.valid = false;
+    anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;
+    h1_pio_long_gate.saturation_count += 1u;
+  }
+  runtime_state->tcxo.last_window_flags = anomaly.flags;
+  runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
   update_control_gate(runtime_state, config, &anomaly, now_ms);
   record_window_quality(runtime_state, anomaly);
 
@@ -752,6 +792,12 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   if (!anomaly.valid) {
     emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
   }
+  emit_status_u32(
+      status_context, "capture", "pio_long_gate_count_saturated_count",
+      h1_pio_long_gate.saturation_count,
+      h1_pio_long_gate.saturation_count == 0u ? OTIS_SEVERITY_INFO
+                                              : OTIS_SEVERITY_WARN,
+      runtime_state->tcxo.last_window_flags);
 
   start_h1_pio_long_gate_counter(otis_capture_ticks_now());
   return true;
@@ -808,9 +854,9 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   uint64_t observation_span_us =
       (emitted_gate_close_ticks - pps_gated_ratio.gate_open_ticks) / 16ull;
   uint32_t remaining = stop_h1_pio_long_gate_counter();
-  uint64_t counted_edges =
-      (uint64_t)kH1PioCounterInitialX - (uint64_t)remaining;
-  bool counter_saturated = remaining == 0u;
+  OtisPioCounterSample counter_sample =
+      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
+  uint64_t counted_edges = counter_sample.counted_edges;
   uint32_t measured_khz = 0;
   if (observation_span_us > 0ull) {
     measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
@@ -839,7 +885,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                      OTIS_FLAG_GATE_INCOMPLETE;
     pps_gated_ratio.pps_interval_anomaly_count += 1u;
   }
-  if (counter_saturated) {
+  if (counter_sample.saturated) {
     anomaly.reason = kWindowReasonCounterSaturated;
     anomaly.valid = false;
     anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;

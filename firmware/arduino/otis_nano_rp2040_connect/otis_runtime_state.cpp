@@ -21,6 +21,7 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->boot.phase = BootPhase::ResetEntry;
   state->boot.serial_ready = false;
   state->boot.summary_emitted = false;
+  state->boot.protocol_banner_emitted = false;
   state->boot.serial_absent_warn_pending = false;
   state->boot.safe_mode_active = false;
   state->boot.safe_mode_warn_pending = false;
