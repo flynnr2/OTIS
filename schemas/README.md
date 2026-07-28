@@ -10,3 +10,7 @@ ordinary `health_v1` / `STS` status. The authoritative notes live in
 `data_contracts/count_observations_v1.csv.md`,
 `data_contracts/health_v1.csv.md`, and
 `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`.
+
+`run_evidence_v1.schema.json` defines the immutable SHA-256 snapshot that binds
+a completed run to its manifest, configuration, selected profile, raw evidence,
+and manifest-declared artifacts. It is enforced by the host validator.

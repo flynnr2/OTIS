@@ -7,6 +7,7 @@ import json
 import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
+from .evidence import validate_evidence_snapshot
 from .pps_diagnostics import classify_pps_interval
 from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
 from .sessions import detect_run_sessions
@@ -262,6 +263,9 @@ def validate_run(run_dir: Path) -> int:
 
     failures: list[str] = _validate_manifest(run_dir, manifest)
     warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(run_dir, manifest)
+    evidence_failures, evidence_warnings = validate_evidence_snapshot(run_dir, manifest)
+    failures.extend(evidence_failures)
+    warnings.extend(evidence_warnings)
     session_summary = detect_run_sessions(manifest)
     if session_summary.session_count > 1:
         warnings.append(
