@@ -59,13 +59,13 @@
       "-DOTIS_ENABLE_DAC_AD5693R=1",
       "-DOTIS_ENABLE_H1_DAC_SWEEP=1",
       "-DOTIS_DAC_MIN_CODE=0x7000u",
-      "-DOTIS_DAC_MAX_CODE=0x9000u",
+      "-DOTIS_DAC_MAX_CODE=0xAE00u",
       "-DOTIS_H1_LONG_GATE_PERIOD_US=300000000u",
       "-DOTIS_ENABLE_ENV_SENSORS=1",
       "-DOTIS_ENABLE_ENV_SHT4X=1",
       "-DOTIS_ENABLE_ENV_BMP280=1"
     ],
-    "manual_range_extension_note": "The initial manual schedule includes codes above the previously verified automatic range. Do not widen firmware control limits for SW2 or automatic operation from this preparation alone."
+    "manual_range_extension_note": "The run_018 manual command clamp permits operator-issued DAC SET commands through 0xAE00. The verified automatic range remains 0x7000..0x9000; do not widen SW2 or automatic operation from this preparation alone."
   },
   "manual_dac_schedule": [
     {"step": 1, "dac_code": "0x8000", "label": "baseline"},

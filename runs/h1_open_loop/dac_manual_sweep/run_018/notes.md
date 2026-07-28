@@ -43,16 +43,18 @@ RUN_DIR=runs/h1_open_loop/dac_manual_sweep/run_018
 FQBN=rp2040:rp2040:arduino_nano_connect
 SKETCH=firmware/arduino/otis_nano_rp2040_connect
 FIRMWARE_GIT_COMMIT="$(git rev-parse --short=12 HEAD)"
-OTIS_H1_FLAGS="-DOTIS_FIRMWARE_GIT_COMMIT=\\\"${FIRMWARE_GIT_COMMIT}\\\" -DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_PPS_DUAL_OBSERVER=1 -DOTIS_ENABLE_DAC_AD5693R=1 -DOTIS_ENABLE_H1_DAC_SWEEP=1 -DOTIS_DAC_MIN_CODE=0x7000u -DOTIS_DAC_MAX_CODE=0x9000u -DOTIS_H1_LONG_GATE_PERIOD_US=300000000u -DOTIS_ENABLE_ENV_SENSORS=1 -DOTIS_ENABLE_ENV_SHT4X=1 -DOTIS_ENABLE_ENV_BMP280=1"
+OTIS_H1_FLAGS="-DOTIS_FIRMWARE_GIT_COMMIT=\\\"${FIRMWARE_GIT_COMMIT}\\\" -DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_PPS_DUAL_OBSERVER=1 -DOTIS_ENABLE_DAC_AD5693R=1 -DOTIS_ENABLE_H1_DAC_SWEEP=1 -DOTIS_DAC_MIN_CODE=0x7000u -DOTIS_DAC_MAX_CODE=0xAE00u -DOTIS_H1_LONG_GATE_PERIOD_US=300000000u -DOTIS_ENABLE_ENV_SENSORS=1 -DOTIS_ENABLE_ENV_SHT4X=1 -DOTIS_ENABLE_ENV_BMP280=1"
 
 arduino-cli compile --fqbn "$FQBN" \
   --build-property "compiler.cpp.extra_flags=${OTIS_H1_FLAGS}" \
   "$SKETCH"
 ```
 
-The currently verified automatic range is still `0x7000..0x9000`. The operator
-must not treat successful manual commands above `0x9000` as authorization for
-SW2 automatic actuation.
+Arduino IDE builds now use the same manual command clamp by default:
+`OTIS_DAC_MIN_CODE=0x7000u` and `OTIS_DAC_MAX_CODE=0xAE00u`. The currently
+verified automatic range is still `0x7000..0x9000`. The operator must not treat
+successful manual commands above `0x9000` as authorization for SW2 automatic
+actuation.
 
 ## Capture Procedure
 
@@ -179,4 +181,3 @@ Closeout notes must state:
 - recommended future automatic range, if any;
 - whether the plant model should be updated with the new evidence;
 - confirmation that `control_ready=false` and `actuation_enabled=false`.
-

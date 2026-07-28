@@ -208,7 +208,10 @@
 #endif
 
 #ifndef OTIS_DAC_MAX_CODE
-#define OTIS_DAC_MAX_CODE 0x9000u
+// H1 run_018 manually probes above the previously verified automatic range to
+// bracket the 10 MHz crossing. This clamp only permits operator-issued DAC SET
+// commands in observe mode; it does not enable automatic steering or SW2.
+#define OTIS_DAC_MAX_CODE 0xAE00u
 #endif
 
 // Optional low-rate environmental telemetry for oscillator characterization.
