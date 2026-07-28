@@ -186,6 +186,11 @@ Avoid a single ambiguous confidence field. Observation validity, source quality,
 estimate uncertainty, model applicability, control eligibility, and confidence
 in a diagnosis are distinct concepts.
 
+The additive draft CSV contract is documented in
+`data_contracts/diagnostics_draft_v0.csv.md`. Existing `health_v1` / `STS` rows
+remain valid low-level status and migration inputs; draft `DIAG` rows are the
+first-class diagnostic findings used by replay tests.
+
 ---
 
 ## State and Control Records

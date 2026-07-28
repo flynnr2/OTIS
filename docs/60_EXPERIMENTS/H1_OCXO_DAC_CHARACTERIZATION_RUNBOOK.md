@@ -251,8 +251,20 @@ validation reports 2719 short PPS/reference intervals, mostly early in the run.
 Host characterization ignores out-of-band PPS intervals when calibrating the
 RP2040 tick rate, but current telemetry cannot assign root cause to the
 reference source versus GPIO/capture/IRQ/FIFO/DMA/firmware handling. Treat
-affected reference intervals as not control-eligible until the reference path is
-validated or explicitly gated.
+affected reference intervals as not control-eligible.
+
+`run_016` is the H1-B retry under the corrected Arduino IDE defaults and the
+same FC0/PIO long-gate measurement path. It used DAC clamps `0x7000..0x9000`,
+900 s active dwells, and local `0x0200`/`0x0400` excursions around `0x8000`.
+The run completed about 12.75 hours with 153 300 s `CNT` windows, no zero-count
+rows, no capture drops or error flags, no PPS anomalies across 45,917 valid PPS
+intervals, and clean startup/control eligibility. That result validates the
+reference/capture path for this topology, but it does not validate the small
+local plant gain: repeated center points span about 11.6 Hz and the
+center-bracketed small-step slopes are mixed sign. Future plant-authority runs
+should use repeated center bracketing with larger safe local steps such as
+`0x0800` and `0x1000`, while preserving the same raw `CNT`, `REF`, `STS`, `DAC`,
+and environmental telemetry.
 
 PIO long-gate and PPS-gated ratio backends provide different count-window
 formation, but they still emit raw `CNT` rows rather than calibrated frequency.

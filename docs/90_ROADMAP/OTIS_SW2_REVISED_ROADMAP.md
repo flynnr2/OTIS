@@ -275,10 +275,30 @@ and `run_014/manifest.json` gates the matching anomaly set as diagnostic-only
 and not control-eligible. Current telemetry cannot assign root cause to the
 GPS/PPS source versus GPIO/capture/IRQ/FIFO/DMA/firmware handling.
 
-Consequence: reopen H1 plant-model completion and preserve the pre-G17-fix
-capture as negative hardware evidence, but **do not jump directly to PLL/PI or
-even guarded I-only actuation**. The next roadmap step is to freeze a
-conservative local plant model with explicit reference-validity gates.
+`run_016` then retried H1-B with the corrected firmware defaults and the
+pre-sweep PPS/reference qualification segment:
+
+- DAC clamps were `0x7000..0x9000`;
+- active DAC dwell was 900 s;
+- the local sweep exercised `0x7c00`, `0x7e00`, `0x8000`, `0x8200`, and
+  `0x8400`;
+- 153 300 s count windows were captured with no zero-count rows;
+- all expected DAC dwell starts and dwell completes were present;
+- capture drops and capture error flags remained zero;
+- `fc0_valid_for_control` and `reference_valid_for_control` were true;
+- the REF stream contained 45,917 valid PPS intervals and no PPS anomalies.
+
+The reference result is good: the `run_014` PPS anomaly burst did not recur in
+the H1-B retry. The plant result is not good enough for control authority:
+repeated center points span about 11.6 Hz, while the median target deltas at the
+smaller local steps are only about 0.1 Hz to 0.3 Hz and the center-bracketed
+Hz/V estimates are mixed sign.
+
+Consequence: preserve the pre-G17-fix capture as negative hardware evidence,
+carry PPS/reference validity gates forward as permanent control safety policy,
+but **do not jump directly to PLL/PI or even guarded I-only actuation**. The next
+roadmap step is a higher-SNR H1-B plant run, still inside the justified safe
+envelope, before freezing a conservative local plant model.
 
 `run_016` was the first measurement-confidence update after adding the local PPS
 interpolator. The regenerated H1 report uses the host-side local PPS
@@ -474,8 +494,9 @@ Remaining cleanup:
    be recovered from the bench or repository state.
 2. Keep the pre-G17-fix capture as a distinct session/evidence set; do not merge
    it into the post-fix plant fit.
-3. Add PPS/reference anomaly fault telemetry or run a focused validation capture
-   that proves the reference path is clean before any active actuation.
+3. Keep PPS/reference anomaly fault telemetry on the SW2 safety list, but do
+   not let it displace the next plant-focused H1-B run; `run_016` is clean
+   reference-path evidence for the current topology.
 
 ### Exit gate
 
@@ -536,6 +557,10 @@ Do not hide this model as constants scattered across firmware files.
 - automatic-control range is explicitly narrower than or equal to the bench-tested range;
 - the model is traceable to completed runs.
 
+`run_016` does not pass this exit gate. It confirms the command path, safe
+envelope, PPS/reference validity, and count capture health, but its local
+small-step slopes are sign-inconsistent and should not be used as the model.
+
 ---
 
 ## Stage SW2-0 — Freeze contracts and introduce discipline semantics
@@ -544,20 +569,24 @@ Do not hide this model as constants scattered across firmware files.
 
 ### Repository work
 
-1. Add a document defining:
+1. Add or promote a draft first-class diagnostic contract with stable reason
+   codes, evidence references, persistence, diagnostic confidence, and explicit
+   control consequence. The current additive draft is
+   `data_contracts/diagnostics_draft_v0.csv.md`.
+2. Add a document defining:
    - discipline observation eligibility;
    - estimator outputs;
    - control decision records;
    - state transitions;
    - plant-model versioning;
    - raw-to-derived provenance.
-2. Add backend-generic names alongside current FC0 compatibility names, such as:
+3. Add backend-generic names alongside current FC0 compatibility names, such as:
    - `count_observed_valid`;
    - `count_valid_for_control`;
    - `count_fault`;
    - `reference_valid_for_control`.
-3. Retain `fc0_*` fields during migration so existing host tools and runs remain interpretable.
-4. Define unavailable values explicitly; unknown gain must never be encoded as zero.
+4. Retain `fc0_*` fields during migration so existing host tools and runs remain interpretable.
+5. Define unavailable values explicitly; unknown gain must never be encoded as zero.
 
 ### Deliverable
 
@@ -579,7 +608,11 @@ A normative data contract for a derived discipline-decision record, tentatively 
 
 ### Exit gate
 
-Host parser, validator and fixtures understand the new record while all existing tests and contracts remain valid.
+Host parser, validator and fixtures understand the new diagnostic and future
+discipline records while all existing tests and contracts remain valid.
+Reference/count-path and actuator diagnostic fixtures must demonstrate preserved
+raw evidence, control inhibition, clearing or latching behavior, and
+deterministic replay without hardware actuation.
 
 ---
 
@@ -1257,10 +1290,12 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Freeze a conservative H1 plant-model schema and populate it only from
-   reviewed clean-path evidence.
-2. Plan any focused H1-B runs needed to bound hysteresis, smaller step response,
-   and the count noise floor before controller code.
+1. Plan the next H1-B plant run with larger safe local steps and repeated
+   center bracketing, because `run_016` proved the reference/count path but not
+   the small-step plant gain.
+2. Freeze a conservative H1 plant-model schema, but populate it only after a
+   higher-SNR completed run gives repeatable slope sign/magnitude, settling,
+   hysteresis, and noise-floor bounds.
 3. In parallel, undertake only non-actuating SW2 work:
    - separate DAC limit classes;
    - define the plant-model schema;

@@ -260,7 +260,8 @@ Deliver:
 
 Gate to Active SW2 Actuation:
 
-- A clean confirmation sweep exists.
+- A clean higher-SNR H1-B plant sweep exists. `run_016` is clean for
+  PPS/reference and count capture, but not for plant-gain authority.
 - Hz/code or ppm/code is stable enough to choose a conservative update size.
 - Settling time is bounded with enough margin for actuation cadence.
 - Startup and fault gates are tested.
