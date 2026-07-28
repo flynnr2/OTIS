@@ -18,10 +18,11 @@ Current status note:
   isolated that class of failure to a G17 breakout solder short, verified clean
   repaired-path CX317 counts, and explicitly gated its PPS/reference anomaly as
   diagnostic-only unresolved evidence.
-- `run_016` is the completed H1-B retry in the corrected `0x7000..0x9000`
-  firmware envelope. It confirmed clean PPS/reference and count-path behavior,
-  but its `0x0200`/`0x0400` local DAC steps were too small relative to
-  center drift/noise and produced sign-inconsistent slopes.
+- `run_017` is now the current model-review input. It adds a clean D10 PPS
+  witness, handles 16 RP2040 timer rollovers in host analysis, reports no host
+  PPS anomalies after unwrapping, and measures a positive CX317 slope consistent
+  with the datasheet. Active DAC actuation remains blocked until a guarded
+  experiment policy is explicitly authored.
 - Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
   actuation remains blocked.
 
@@ -37,9 +38,12 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/anomalies.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/anomalies.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/h1_characterization_summary.md`
-- `runs/h1_open_loop/dac_manual_sweep/run_016/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/anomalies.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_count_frequency_estimates.csv`
+- `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_center_bracketed_slopes.csv`
+- `profiles/plant_models/cx317_h1_bench_v1.json`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
 - `docs/90_ROADMAP/otis_h1_ocxo_characterization_plan.md`

@@ -82,12 +82,13 @@ has an explicit anomaly classification and usable post-BOOT analysis segment.
 `run_014` traced that failure class to a SN74LVC1G17 breakout solder short and
 then verified a clean repaired count path: 284 300 s `CNT` rows, no zero-count
 rows, all `CNT` rows flagged `16`, no host capture drops, and
-`fc0_valid_for_control: true`. `run_016` then confirmed the corrected H1-B
-profile with clean PPS/reference evidence, 153 300 s `CNT` rows, no zero-count
-rows, no capture drops, and no PPS anomalies. The immediate hardware question
-has moved from count-path or PPS-path repair to a higher-SNR local plant run;
-`run_016` small-step slopes are mixed sign and cannot be frozen as a control
-model.
+`fc0_valid_for_control: true`. `run_017` is the current confirmation sweep: 242
+300 s count windows, no host PPS anomalies after timestamp unwrapping, D10
+witness agreement with D14, observed CX317 output from about 9.999997327 MHz at
+`0x7000` to about 9.999998711 MHz at `0x9000`, and positive centre-bracketed
+slopes around 4.15..4.67 Hz/V. The immediate hardware question has moved from
+count-path repair to conservative plant-model freeze with explicit
+PPS/reference and timestamp-rollover gates carried into control eligibility.
 
 The intended H1 sequence is:
 
@@ -97,9 +98,8 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Broad/local evidence present from `run_014`; `run_016` tiny local steps are not sign-stable.**
-8. Characterize settling time and thermal behavior. **Present from clean runs, not yet loop constants.**
+7. Estimate Hz/V and ppm/V. **Present from clean `run_017`, positive local slope and datasheet-consistent.**
+8. Characterize settling time and thermal behavior. **Present from clean `run_017`, not yet loop constants.**
 9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
-10. Confirm PPS/reference eligibility. **Clean in `run_016`; keep permanent validity gates.**
-11. Run a higher-SNR H1-B plant sweep and freeze a conservative H1 plant model.
-12. Only then design any guarded SW2 actuation experiment.
+10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model.
+11. Only then design any guarded SW2 actuation experiment.

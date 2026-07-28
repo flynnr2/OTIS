@@ -112,7 +112,7 @@
 // physical PPS signal as D14 and observed as an independent rising-edge witness.
 // It must remain disabled for normal generic-event or loopback work.
 #ifndef OTIS_ENABLE_PPS_DUAL_OBSERVER
-#define OTIS_ENABLE_PPS_DUAL_OBSERVER 0
+#define OTIS_ENABLE_PPS_DUAL_OBSERVER 1
 #endif
 
 #ifndef OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS

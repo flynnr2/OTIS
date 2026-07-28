@@ -101,3 +101,13 @@ This differs from the planned PPS-gated-ratio backend, where accepted PPS edges
 define the count gate at capture time. That backend remains the cleaner future
 measurement path and needs its own validation before it becomes the preferred
 live backend.
+
+`dac_manual_sweep/run_017` is the current reference example for this rule. The
+raw REF timestamps span about 72408.641 s and include 16 RP2040 timer rollovers:
+raw timestamps are therefore not monotonic, but the unwrapped REF series is
+monotonic and has no host-classified PPS anomalies. The temporary D10 PPS
+witness matched D14 one-for-one at the end of the run, with no D10 short,
+overflow, or burst rows. The D14 `rejected_long_count` ended at 16, matching the
+number of raw timestamp rollovers; treat that counter as a rollover-sensitive
+diagnostic artifact unless firmware diagnostics are updated to compute the
+interval on unwrapped timestamps.

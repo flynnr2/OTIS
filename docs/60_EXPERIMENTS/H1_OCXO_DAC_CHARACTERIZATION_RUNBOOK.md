@@ -283,21 +283,43 @@ fallback and diagnostic comparison, not the preferred sub-hertz H1 estimator.
 1.6 us single-interval PPS scatter, so uncalibrated count-derived frequencies
 were biased high by the same order.
 
-The regenerated `run_016` report is the current H1 measurement-confidence
-baseline. It reports 153 count windows, 152 locally PPS-interpolated estimates,
-one startup-edge run-wide fallback, no PPS anomalies, and a local-versus-legacy
-frequency span of about 14.48 Hz. That span is far larger than the expected
-sub-hertz response of the smallest DAC steps, so do not use legacy run-wide
-calibration for plant-authority conclusions. The repeated centre span is about
-0.176 Hz, making `0x0800` and `0x1000` centre-bracketed steps the better next
-plant-characterisation emphasis; `0x0200` and `0x0400` remain near the current
-measurement floor.
+The regenerated `run_017` report is the current H1 measurement-confidence
+baseline. It reports 242 count windows, 241 locally PPS-interpolated estimates,
+one startup-edge run-wide fallback, no host-classified PPS anomalies after
+timestamp unwrapping, no reconnects or reboot/header markers, and
+`fc0_valid_for_control=true`. The D10 PPS witness matched D14 one-for-one at
+the end of the run, with no D10 short, overflow, or burst rows.
 
-`run_016` environmental analysis is diagnostic only. Nearby SHT4x alignment is
-limited under the present host join, and simple air-temperature terms are
-confounded with elapsed time. Do not treat low simple-regression explanatory
-power as proof that airflow, thermal gradients, or CX317 internal oven state are
-irrelevant.
+`run_017` was a direct host-command DAC sequence, so `csv/dac_steps.csv` was
+reconstructed from captured DAC acknowledgement `STS` rows and the host
+sequence log after the raw capture completed. Raw `serial.log` was not modified.
+Future direct-command sweeps should emit explicit host DAC event rows during
+capture or retain the same reconstruction provenance.
+
+The observed settled CX317 outputs over the tested range were:
+
+| DAC code | Observed output |
+|---:|---:|
+| `0x7000` | 9.999997327 MHz |
+| `0x7800` | 9.999997642 MHz |
+| `0x8000` | about 9.99999798 MHz |
+| `0x8800` | 9.999998334 MHz |
+| `0x9000` | 9.999998711 MHz |
+
+The full `0x7000..0x9000` span moved the CX317 by about 1.384 Hz. The
+centre-bracketed local slopes across `0x0800` and `0x1000` steps were about
+4.15..4.67 Hz/V, positive. For the CX317 10 MHz datasheet tuning range of
+roughly +/-0.5 ppm to +/-1.0 ppm over 0.0 V..3.3 V, the implied whole-range
+slope is about 3.0..6.1 Hz/V, so the observed narrow-range slope is consistent
+with the part. The tested `Vc` span of about 1.091 V..1.401 V remains below the
+1.65 V nominal control point and should be treated as lower-midrange evidence,
+not full-range linearity proof.
+
+`run_017` environmental analysis remains diagnostic. The SHT4x near-VCOCXO
+temperature spanned about 25.43 C to 29.53 C, and post-warmup drift was about
+-0.00023 ppm/hour after the configured warmup window. Do not treat low
+simple-regression explanatory power as proof that airflow, thermal gradients, or
+CX317 internal oven state are irrelevant.
 
 For PPS-gated ratio runs, host analysis should derive ratio/frequency from the
 visible `REF` and `CNT` streams plus manifest metadata. Firmware status
