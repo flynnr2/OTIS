@@ -238,6 +238,50 @@ These values are inside the CX317 operating control-voltage range of 0.0 V to
 3.3 V. The connected `Vc` node tracked DAC commands repeatably, and `CNT`,
 `REF`, `STS`, and `DAC` telemetry remained present during sweep operation.
 
+### `run_018` code-to-voltage extension
+
+The fragmented `run_018` capture is not fixture-ready and did not obtain a
+settled frequency observation at `0xAE00`, but its operator DMM readings extend
+the connected CX317 `Vc` evidence:
+
+| DAC code | Measured CX317 `Vc` |
+| ---: | ---: |
+| `0x8000` | 1.247 V |
+| `0x9000` | 1.402 V |
+| `0x9800` | 1.480 V |
+| `0xA000` | 1.557 V |
+| `0xA800` | 1.635 V |
+| `0xAC00` | 1.674 V |
+| `0xAE00` | 1.693 V |
+
+An unweighted least-squares fit to these seven measurements is:
+
+```text
+Vc ~= 0.005348 V + (37.8905 uV/code * DAC_code)
+R^2 ~= 0.999998
+```
+
+The measured slope is consistent with an approximately 2.5 V full-scale
+AD5693R output in 1x mode. It predicts:
+
+| Characterization clamp | Predicted CX317 `Vc` | Evidence status |
+| ---: | ---: | --- |
+| `0x0100` | 0.015 V | extrapolated |
+| `0xFF00` | 2.479 V | extrapolated |
+
+Both predictions remain inside the CX317 datasheet's normal 0.0 V to 3.3 V
+control-voltage range. The H1 firmware therefore uses `0x0100..0xFF00` as its
+default hardware-valid manual and explicitly-started open-loop sweep envelope.
+The exact `0x0000` and `0xFFFF` rails are excluded both to retain small endpoint
+margins and because the current sweep guard uses those values as unconfigured
+sentinels.
+
+This broad characterization envelope does not make every endpoint
+well-characterized, does not require every profile to visit both endpoints,
+and does not authorize SW2 feedback steering. Closed-loop control limits remain
+a separate future policy decision based on clean plant, settling, aging, and
+fault-response evidence.
+
 The repaired `run_014` topology supersedes the earlier zero-count diagnostic
 state. The failed `run_011` through `run_013` count windows were real bench
 faults, but the immediate cause was a G17 breakout solder short, not host
