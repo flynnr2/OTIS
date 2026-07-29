@@ -385,6 +385,35 @@ def test_stale_count_snapshot_faults_after_qualification(tmp_path: Path) -> None
     assert previews[-1]["preview_available"] == "false"
 
 
+def test_pps_reference_flag_on_count_does_not_collapse_count_validity(
+    tmp_path: Path,
+) -> None:
+    counts = [
+        (seq, seq, 10_000_000)
+        for seq in range(1, 4)
+    ]
+    counts.append(
+        (4, 4, 10_000_000, (1 << 3) | (1 << 12))
+    )
+    run_dir = _make_run(tmp_path, counts=counts)
+    result = replay_phase4(
+        run_dir, plant_model_path=MODEL, config=_config()
+    )
+    estimates = _rows(result.estimates_path)
+    affected = [
+        row for row in estimates if row["source_count_seq"] == "4"
+    ][0]
+    assert affected["reference_validity"] == "invalid"
+    assert affected["count_validity"] == "valid"
+    assert (
+        "reference_flagged_invalid"
+        in affected["observation_reason_codes"]
+    )
+    assert "count_flagged_invalid" not in affected[
+        "observation_reason_codes"
+    ]
+
+
 def test_replay_unwraps_rp2040_reference_and_count_gate_rollover(tmp_path: Path) -> None:
     run_dir = _make_run(tmp_path)
     manifest_path = run_dir / "manifest.json"

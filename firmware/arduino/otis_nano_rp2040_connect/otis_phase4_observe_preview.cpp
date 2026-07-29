@@ -8,6 +8,7 @@
 #include "otis_config.h"
 #include "otis_phase4_engine.h"
 #include "otis_protocol.h"
+#include "otis_timebase_math.h"
 #include "otis_transport_serial.h"
 
 // This translation unit intentionally has no DAC-driver dependency and exposes
@@ -21,12 +22,22 @@ constexpr uint32_t kReferenceInvalidFlags =
     OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY | OTIS_FLAG_CAPTURE_RING_OVERRUN |
     OTIS_FLAG_EDGE_ORDER_SUSPECT | OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
     OTIS_FLAG_SOURCE_HEALTH_SUSPECT | OTIS_FLAG_GATE_INCOMPLETE;
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+// PPS capture flags copied onto CNT describe the reference boundary. Preserve
+// them on the reference side rather than collapsing a clean oscillator count
+// into count-invalid. Joint observation eligibility still requires both.
+constexpr uint32_t kCountInvalidFlags =
+    OTIS_FLAG_SOURCE_HEALTH_SUSPECT | OTIS_FLAG_RATE_TOO_HIGH |
+    OTIS_FLAG_INPUT_STUCK_LOW | OTIS_FLAG_INPUT_STUCK_HIGH |
+    OTIS_FLAG_COUNT_SATURATED;
+#else
 constexpr uint32_t kCountInvalidFlags =
     OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY | OTIS_FLAG_CAPTURE_RING_OVERRUN |
     OTIS_FLAG_EDGE_ORDER_SUSPECT | OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
     OTIS_FLAG_SOURCE_HEALTH_SUSPECT | OTIS_FLAG_RATE_TOO_HIGH |
     OTIS_FLAG_INPUT_STUCK_LOW | OTIS_FLAG_INPUT_STUCK_HIGH |
     OTIS_FLAG_GATE_INCOMPLETE | OTIS_FLAG_COUNT_SATURATED;
+#endif
 constexpr char kPlantModelId[] = "cx317_h1_bench";
 constexpr char kPlantModelHash[] =
     "f515e8637e0b8d00e0c5ad7ef609e524d996481b46d41d08bb6d1ddbb24b5b17";
@@ -519,6 +530,7 @@ void otis_phase4_observe_preview_on_count(
   count_seen = true;
   count_stale_reported = false;
   uint32_t reasons = OTIS_PHASE4_REASON_NONE;
+  const uint32_t flags = runtime_state->tcxo.last_window_flags;
   OtisPhase4Validity reference_validity = OTIS_PHASE4_VALID;
   if (!reference_seen) {
     reference_validity = OTIS_PHASE4_UNAVAILABLE;
@@ -533,10 +545,13 @@ void otis_phase4_observe_preview_on_count(
   } else if (reference_window_reason_mask != OTIS_PHASE4_REASON_NONE) {
     reference_validity = OTIS_PHASE4_INVALID;
   }
+  if (flags & OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT) {
+    reference_validity = OTIS_PHASE4_INVALID;
+    reasons |= OTIS_PHASE4_REASON_REFERENCE_FLAGGED;
+  }
   reasons |= reference_window_reason_mask;
 
   OtisPhase4Validity count_validity = OTIS_PHASE4_VALID;
-  const uint32_t flags = runtime_state->tcxo.last_window_flags;
   if (runtime_state->tcxo.last_counted_edges == 0u) {
     count_validity = OTIS_PHASE4_INVALID;
     reasons |= OTIS_PHASE4_REASON_COUNT_ZERO;
@@ -556,9 +571,9 @@ void otis_phase4_observe_preview_on_count(
 
   bool frequency_available = false;
   double frequency_hz = 0.0;
-  const uint64_t gate_ticks =
-      runtime_state->tcxo.last_gate_close_ticks -
-      runtime_state->tcxo.last_gate_open_ticks;
+  const uint64_t gate_ticks = otis_timer0_interval_ticks(
+      runtime_state->tcxo.last_gate_open_ticks,
+      runtime_state->tcxo.last_gate_close_ticks);
   if (reference_validity == OTIS_PHASE4_VALID &&
       count_validity == OTIS_PHASE4_VALID && gate_ticks > 0u &&
       previous_reference_seq != 0u &&

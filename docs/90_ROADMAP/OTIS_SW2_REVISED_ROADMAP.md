@@ -1220,7 +1220,19 @@ Port the minimum estimator/state/policy needed for live preview and compare agai
 
 ### Package 8 — PPS-gated ratio backend validation
 
-Implement or complete the backend behind the count-observation contract; add status, host validation, fixtures and bench runbook. Do not enable control.
+Repository qualification preparation is complete: the ownership/measurement
+audit, independent reference/count validity telemetry, deterministic negative
+fixtures, explicit source/estimator typing, uncertainty hooks, qualification
+analyser, and bench runbook are present. Concrete rollover, boundary-flag,
+first-PPS-timeout, duplicate-typing, and unavailable-uncertainty defects found
+by the audit were corrected.
+
+**Current result: failed / not qualified because the Step B sealed bench
+candidate and simultaneous authorised independent-metrology evidence do not
+exist.** Passing synthetic tests and compile checks is not the exit gate.
+Execute
+`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md`, then promote
+only the reviewed compact conclusion. Do not enable control.
 
 ### Package 9 — First-actuation experiment plan
 

@@ -599,7 +599,14 @@ def _count_state(
         reasons.append("count_zero")
     if count.flags & (1 << 13):
         reasons.append("count_saturated")
-    if count.flags & COUNT_INVALID_FLAGS & ~(1 << 13):
+    count_quality_flags = count.flags & COUNT_INVALID_FLAGS & ~(1 << 13)
+    if count.flags & (1 << 3):
+        # PPS-gated CNT rows carry reference invalidity on the raw count row.
+        # Preserve it on the reference side instead of collapsing a clean
+        # oscillator count into count-invalid solely because the same row also
+        # carries GATE_INCOMPLETE.
+        count_quality_flags &= ~((1 << 3) | (1 << 12))
+    if count_quality_flags:
         reasons.append("count_flagged_invalid")
     if age_s > config.count_max_age_s:
         reasons.append("count_stale")
@@ -909,6 +916,14 @@ def replay_phase4(
             domain_hz,
             config,
         )
+        if (
+            latest_count is not None
+            and latest_count.flags & (1 << 3)
+            and reference_validity not in {"unavailable", "stale"}
+        ):
+            reference_validity = "invalid"
+            if "reference_flagged_invalid" not in reference_reasons:
+                reference_reasons.append("reference_flagged_invalid")
         if new_count and latest_count is not None:
             previous_distinct_count_seq = latest_count.seq
 

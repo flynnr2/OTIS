@@ -61,6 +61,8 @@ PPS acceptance requires:
 
 - monotonic PPS event order;
 - an interval inside configured validity limits around the expected PPS period;
+- a duplicate band distinct from other short intervals (currently
+  `<=100000 us`);
 - no capture overflow, edge-order fault, or debounce/glitch rejection near the
   boundary;
 - startup inhibit and clean-window bookkeeping preserved as telemetry rather
@@ -126,6 +128,10 @@ Required status keys:
 | `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
 | `pps_gate` | `valid` | latest bounded PPS-gated window validity |
 | `pps_gate` | `last_reason` | most recent validity/fault reason |
+| `pps_gate` | `reference_validity` | independent `valid`, `invalid`, or `unavailable` state for the authoritative PPS side |
+| `pps_gate` | `reference_reason` | typed reference reason such as `reference_valid`, `reference_pps_duplicate`, `reference_pps_short_interval`, `reference_pps_long_interval`, `reference_missing_pps`, `reference_capture_flagged`, or `reference_previous_boundary_invalid` |
+| `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` state for the oscillator-count side |
+| `pps_gate` | `count_reason` | typed count reason such as `count_valid`, `count_zero`, `count_saturated`, or `count_unavailable` |
 | `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
 | `pps_gate` | `last_interval_us` | latest accepted or rejected PPS interval in microseconds |
 | `pps_gate` | `accepted_window_count` | total accepted PPS-gated windows |
@@ -137,6 +143,9 @@ Required status keys:
 | `pps_gate` | `count_saturated_count` | oscillator counter saturation or overflow events |
 | `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
 | `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
+| `pps_gate` | `count_resolution_edges` | native integer count resolution; currently one edge |
+| `pps_gate` | `counter_aperture_uncertainty_ns` | evidence-backed counter start/stop aperture uncertainty, or `unavailable` |
+| `pps_gate` | `reference_frequency_uncertainty_ppb` | evidence-backed reference uncertainty, or `unavailable` |
 | `fc0` | `fc0_observed_valid` | compatibility status for raw count-observation validity |
 | `fc0` | `fc0_valid_for_control` | compatibility status for post-inhibit clean-window qualification |
 | `fc0` | `fc0_fault` | compatibility status for post-inhibit invalid count windows |
@@ -154,7 +163,9 @@ be emitted, and with `STS` rows when no honest `CNT` row exists.
 | Condition | `CNT` behavior | `STS` behavior |
 |---|---|---|
 | missing stop PPS | do not emit a clean `CNT`; current firmware reports `STS` only for the incomplete gate | increment `missing_pps_count`, reject the gate, set `last_reason=missing_pps` |
-| PPS interval anomaly | emit affected bounded gate with `REFERENCE_VALIDITY_SUSPECT` and `GATE_INCOMPLETE` if both boundaries are known | increment `pps_interval_anomaly_count` and bad-window counters |
+| duplicate/short/long PPS interval | emit affected bounded gate with `REFERENCE_VALIDITY_SUSPECT` and `GATE_INCOMPLETE` if both boundaries are known | increment `pps_interval_anomaly_count`, emit the typed `reference_reason`, and increment bad-window counters |
+| flagged PPS boundary | emit the bounded window when both boundaries exist, preserving the boundary flags and adding reference/gate invalidity | emit `reference_reason=reference_capture_flagged`; a flagged first boundary does not open a clean gate |
+| gate following a rejected boundary | preserve the bounded `CNT`, but keep the reference side invalid for one re-anchoring window | emit `reference_reason=reference_previous_boundary_invalid`; the current clean boundary may anchor the next gate |
 | count overflow or saturation | emit the row with `COUNT_SATURATED` and the best available saturated count value | increment `count_saturated_count`, reject for control |
 | zero counted edges | emit `CNT` with `SOURCE_HEALTH_SUSPECT` and, when the input appears stuck low, `INPUT_STUCK_LOW` | increment bad-window counters, set `last_reason=counted_edges_zero` |
 | startup inhibit active | emit `CNT` with normal raw validity flags; do not add fault flags solely because of startup | set `fc0_valid_for_control=0`, report inhibit state |
@@ -197,6 +208,10 @@ health. A clean count with a suspect PPS gate is not control-eligible. A clean
 PPS interval with zero, saturated, or missing oscillator count is not
 control-eligible.
 
+The independent `reference_validity` and `count_validity` fields are
+authoritative for this distinction. `pps_gate.valid` remains a compatibility
+summary and must not be used to erase either underlying conclusion.
+
 ## Compile-Time Selection
 
 The selector is:
@@ -225,8 +240,19 @@ clean PPS-gated `CNT` rows.
 - Current firmware uses a PIO oscillator counter and consumes authoritative
   foreground PPS capture events; bench validation still needs to prove
   hardware-clean counter stop/start timing.
+- The PIO counter restarts immediately after the bounded stop/read operation
+  and before arithmetic, diagnostics, or serial emission. This removes
+  variable service-plane reporting time from the inter-gate aperture; the
+  residual stop/read/restart aperture remains a bench uncertainty component.
 - Counter width, rollover, saturation, and timeout behavior are explicit in
   firmware and status telemetry.
+- A rollover-closing `CNT` preserves the raw authoritative `REF` timestamp as
+  its close boundary; modular arithmetic is used only to compute the interval.
+- A rejected duplicate/short/long/flagged boundary cannot silently become the
+  accepted opening boundary of a clean ratio window. The next bounded window
+  remains visible but reference-ineligible while the gate re-anchors.
+- Absence of the first PPS after backend start is subject to the same explicit
+  missing-PPS timeout as an incomplete open gate.
 - Keep the sparse capture event authoritative for PPS `REF`, diagnostics, and
   gated counting; do not poll or timestamp D14 again in a consumer.
 - Emit `CNT` rows only for bounded observations with honest gate boundaries.
@@ -238,6 +264,8 @@ clean PPS-gated `CNT` rows.
 - Compile the default backend and the PPS-gated backend selector.
 - Capture a bench run with PPS wired and oscillator input wired before marking
   the backend hardware-clean.
+- Populate aperture and reference uncertainty only from bench/calibration
+  evidence; until then the components remain `unavailable`.
 
 ## Open Bench Questions
 

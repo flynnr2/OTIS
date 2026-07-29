@@ -171,3 +171,17 @@ This change completes the implementation and deterministic-parity portion of
 roadmap Stage SW2-2. It does not pass the Stage SW2-2 long-live-run exit gate,
 qualify the PPS-gated measurement backend, or authorize any active-control
 milestone.
+
+## Phase 5 compatibility correction
+
+The Phase 5 PPS audit found two narrow cross-phase defects in the checked-in
+adapter semantics. Live frequency derivation now uses the shared modular
+`rp2040_timer0` interval helper when raw PPS-gated `CNT` boundaries cross
+rollover. Live and host replay also keep a `REFERENCE_VALIDITY_SUSPECT` count
+row on the reference side instead of marking an otherwise nonzero,
+unsaturated oscillator count invalid solely because the same row carries
+`GATE_INCOMPLETE`.
+
+Regression tests bind both behaviors. They do not change estimator state,
+preview policy, model applicability, or any actuation flag. The Phase 4 live
+bench exit gate therefore remains open exactly as stated above.

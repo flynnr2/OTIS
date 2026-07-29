@@ -284,6 +284,12 @@ PPS rows exist.
 Purpose: prove the new PPS-gated count ratio backend is hardware-clean before
 using it as a metrology path.
 
+The authoritative Phase 5 acceptance procedure, fixed thresholds, independent
+source typing, uncertainty requirements, sealing steps, and disposition rules
+are in
+`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md`. This leg is a
+smoke precursor and cannot by itself qualify the backend.
+
 Prerequisite: compile with
 `OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` and
 confirm boot/status telemetry names the PPS-gated backend.
@@ -307,6 +313,9 @@ Expected telemetry:
 - `pps_gate,backend=pps_gated_ratio`;
 - `pps_gate,state` transitions through `armed` / `open` in nominal operation;
 - `pps_gate,valid=true` for bounded clean windows;
+- `pps_gate,reference_validity=valid` and
+  `pps_gate,count_validity=valid` independently for clean windows;
+- typed `pps_gate,reference_reason` and `pps_gate,count_reason`;
 - `pps_gate,ratio_available=true` for valid nonzero count windows;
 - `pps_gate,missing_pps_count=0` after startup in nominal operation;
 - `pps_gate,pps_interval_anomaly_count=0` after startup in nominal operation;

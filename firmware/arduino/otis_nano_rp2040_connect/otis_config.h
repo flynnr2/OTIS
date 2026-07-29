@@ -194,12 +194,30 @@
 #define OTIS_PPS_GATE_MIN_INTERVAL_US 800000u
 #endif
 
+#ifndef OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US
+#define OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US 100000u
+#endif
+
 #ifndef OTIS_PPS_GATE_MAX_INTERVAL_US
 #define OTIS_PPS_GATE_MAX_INTERVAL_US 1200000u
 #endif
 
 #ifndef OTIS_PPS_GATE_MISSING_TIMEOUT_US
 #define OTIS_PPS_GATE_MISSING_TIMEOUT_US 2500000u
+#endif
+
+#if OTIS_PPS_GATE_MIN_INTERVAL_US == 0u || \
+    OTIS_PPS_GATE_MIN_INTERVAL_US > OTIS_PPS_GATE_MAX_INTERVAL_US
+#error "PPS gate interval limits must be nonzero and ordered."
+#endif
+
+#if OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US == 0u || \
+    OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US >= OTIS_PPS_GATE_MIN_INTERVAL_US
+#error "PPS duplicate threshold must be nonzero and below the minimum accepted interval."
+#endif
+
+#if OTIS_PPS_GATE_MISSING_TIMEOUT_US <= OTIS_PPS_GATE_MAX_INTERVAL_US
+#error "PPS missing timeout must exceed the maximum accepted interval."
 #endif
 
 // SW2 architectural guardrail: FC0 observations remain visible during startup,
