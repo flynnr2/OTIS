@@ -1,8 +1,10 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Status:** proposed revision based on the repository snapshot supplied on 25 July 2026  
-**Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding  
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_017` is now the current clean local-PPS CX317/AD5693R plant-evidence run. It adds a D10 PPS witness, handles 16 RP2040 timer rollovers in host analysis, and measures a positive CX317 tuning slope consistent with the datasheet, but it remains open-loop plant-characterisation evidence and does not by itself authorize SW2 DAC actuation.
+**Status:** revised against completed `run_019` evidence on 29 July 2026
+
+**Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding
+
+**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_019` is the current broad CX317/AD5693R plant-evidence run. Its clean 12.89 h capture validates broad monotonic response and locates the 10 MHz crossing near `0xAE00`, but the uploaded profile differed from the intended tight crossing manifest. It is analysis-useful, not a local actuation-authoritative model; `run_020` addresses that gap.
 
 ---
 
@@ -60,7 +62,7 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish H1 evidence reduction from `run_017`, preserving the local-PPS estimator diagnostics, D10 PPS witness result, and timestamp-rollover caveat as measurement-confidence scaffolding;
+1. finish local H1 crossing confirmation in `run_020`, using `run_019` as the broad-response and crossing-location reference;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
 4. derive and freeze a versioned plant model and safe automatic-control envelope;
@@ -114,7 +116,11 @@ The missing distinction is not “driver versus actuator”; it is:
 
 These must be represented separately.
 
-The snapshot contains a broad firmware clamp of `0x6000..0xE000`, while the readiness document identifies `0x7000..0x9000` as the only presently defensible first-control envelope. SW2 must not use one compile-time pair for both purposes.
+The checked-in `run_020` characterization clamp is `0x6000..0xFC00`.
+`run_019` shows that the historical `0x7000..0x9000` range does not reach the
+10 MHz crossing and is therefore not a defensible control envelope. No
+automatic-control range is selected yet. SW2 must represent hardware,
+characterization, and automatic-control limits separately.
 
 ### 2.3 The host is already a first-class part of the instrument
 
@@ -246,7 +252,7 @@ The dual-core boundary is therefore part of the SW2 platform architecture, even 
 
 ---
 
-## 3. Interpretation of `run_014`, `run_016`, and `run_017` in this roadmap
+## 3. Interpretation of `run_014`, `run_016`, `run_017`, and `run_019`
 
 `run_014` is no longer unresolved. It should be treated as **Outcome B: count
 path clean, plant response useful, but not yet an actuation-authoritative model**.
@@ -319,8 +325,8 @@ valid support exists and retain the run-wide estimate only as a labelled
 diagnostic comparison.
 
 The corrected `run_016` evidence made centre-bracketed `0x0800` and `0x1000`
-steps useful for the next conservative plant-model fit. `run_017` is now the
-current measurement-confidence update:
+steps useful for the next conservative plant-model fit. `run_017` then provided
+the following measurement-confidence update:
 
 - 242 300 s count windows;
 - 241 `LOCAL_PPS_INTERPOLATED` estimates;
@@ -343,6 +349,23 @@ counter is changed to compute intervals on unwrapped timestamps. Environmental
 regression remains diagnostic, not explanatory authority, because nearby
 air-temperature terms are confounded with elapsed time and the CX317 internal
 oven state is not directly measured.
+
+`run_019` supersedes `run_017` as the broad-response reference:
+
+- one continuous 12.89 h session;
+- 155 of 155 non-zero count windows and 46,394 of 46,394 PPS intervals valid;
+- no parser, reconnect, capture-drop, overflow, or saturation failures;
+- wide-fit gain `0.000169064 Hz/code`, `R²=0.999920`;
+- four drift-cancelled estimates equivalent to 4.38..4.50 Hz/V;
+- inferred 10 MHz crossing near `0xAE00`, approximately 1.692 V;
+- final 8.17 h `0x8000` hold with 0.043665 Hz standard deviation.
+
+Its actual Arduino IDE configuration was `0x0100..0xFF00`, centre `0x8000`,
+900 s dwell, and `0x0200` tiny steps, rather than the planned crossing-focused
+profile. Broad linearity and crossing location are supported; local crossing
+gain, hysteresis, and resolved settling are not. The absence of `COMPLETE`, an
+evidence manifest, pre-run Git snapshots, and operator DMM observations also
+keeps the run analysis-useful rather than sealed.
 
 ---
 
@@ -514,8 +537,8 @@ establish an actuation-ready plant model or a reference-validity model.
 
 ### Required experiments
 
-- repeated centre-to-low-to-centre-to-high-to-centre sweeps; `run_017` supplies
-  the current `0x0800` and `0x1000` evidence;
+- repeated centre-to-low-to-centre-to-high-to-centre sweeps around `0xAE00`;
+  `run_020` is the focused experiment;
 - at least two step sizes, with any future smaller step sized above the measured
   noise floor rather than assumed from DAC resolution alone;
 - up/down repetitions to bound hysteresis;
@@ -750,7 +773,8 @@ The backend has clean bench evidence and host validation. It does not itself aut
 ### Safety requirements
 
 - explicit operator-selected actuation build/profile;
-- automatic-control clamp initially no wider than `0x7000..0x9000`, and preferably narrower around the characterised operating point;
+- automatic-control clamp undefined until `run_020`; it must include the
+  characterised crossing near `0xAE00` and should be narrow around that point;
 - manual characterisation clamp represented separately;
 - update interval derived from measured settling, never merely copied from a roadmap placeholder;
 - maximum code delta derived from slope uncertainty and noise floor;
@@ -1064,9 +1088,10 @@ Each task below is intentionally narrower than “implement SW2.”
 Completed: the clean `run_014` reports are generated, recoverable manifest
 fields are backfilled, the pre-G17-fix capture remains separate negative
 evidence, and the PPS/reference cadence anomaly is explicitly gated as
-diagnostic-only unresolved evidence. `run_017` adds the current D10-witness
-confirmation, locally PPS-interpolated plant response, timestamp-rollover
-handling, and rollover-sensitive D14 diagnostic caveat. Do not alter control
+diagnostic-only unresolved evidence. `run_017` adds D10-witness confirmation
+and timestamp-rollover handling. `run_019` adds the current broad response,
+crossing location, and long hold, while explicitly leaving local crossing
+authority to `run_020`. Do not alter control
 firmware or enable automatic DAC actuation.
 
 ### Package 2 — Separate DAC limit classes
@@ -1203,8 +1228,7 @@ Do not allow these to delay the first safe SW2 loop:
 ### M0 — H1 measurement path credible
 
 - `run_014` is complete and classified for count-path validity;
-- `run_017` provides clean D10 PPS witness confirmation after timestamp
-  unwrapping;
+- `run_017` and `run_019` provide clean D10 PPS witness confirmation;
 - no unexplained post-inhibit invalid count windows over the eligibility period;
 - fixed hardware topology documented.
 
@@ -1290,11 +1314,10 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Plan the next H1-B plant run with larger safe local steps and repeated
-   center bracketing, because `run_016` proved the reference/count path but not
-   the small-step plant gain.
-2. Freeze a conservative H1 plant-model schema, but populate it only after a
-   higher-SNR completed run gives repeatable slope sign/magnitude, settling,
+1. Complete and analyse the focused `run_020` crossing-region profile, verifying
+   the uploaded header configuration before interpreting the result.
+2. Freeze a conservative H1 plant-model schema, but populate its local-control
+   fields only after `run_020` gives repeatable slope sign/magnitude, settling,
    hysteresis, and noise-floor bounds.
 3. In parallel, undertake only non-actuating SW2 work:
    - separate DAC limit classes;

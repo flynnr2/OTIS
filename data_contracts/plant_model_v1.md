@@ -47,13 +47,18 @@ profiles/plant_models/
 
 `dac.manual_safe_range_codes` records the manually checked bench range.
 `dac.automatic_control_range_codes` records the range a future controller may
-consider. For the first CX317 H1 bench model, host validation requires the
-automatic range to be no wider than `0x7000..0x9000`.
+consider. These ranges are deliberately independent. Run 019 showed that the
+legacy `0x7000..0x9000` automatic-range candidate does not reach the 10 MHz
+crossing near `0xAE00`; it is therefore invalid as a control envelope. The
+automatic range must remain unresolved and actuation disabled until Run 020
+supports a narrow, evidence-backed range around the crossing.
 
 `status.control_ready` means the model is sufficient for automatic control.
 `status.actuation_enabled` means software may apply DAC updates. The initial H1
-CX317 model must keep both false because the readiness documents do not
-authorize closed-loop actuation from `run_014`.
+CX317 model must keep both false because neither the broad Run 019 result nor
+the preceding evidence authorizes closed-loop actuation. The existing
+`cx317_h1_bench_v1.json` retains the earlier range as historical model evidence
+and must be superseded before any actuation-capable use.
 
 ## Unknown Values
 

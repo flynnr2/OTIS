@@ -84,15 +84,16 @@ exists.
 
 H1 is now in open-loop characterization, while SW2 active actuation is not
 started and remains appropriately deferred. Completed H1 bring-up evidence now
-includes AD5693R DAC I2C initialization, conservative `0x7000..0x9000` clamp
-enforcement, manual `DAC SET` voltage checks, scripted `SWEEP LOAD` /
+includes AD5693R DAC I2C initialization, configurable characterization clamps,
+manual `DAC SET` voltage checks, scripted `SWEEP LOAD` /
 `SWEEP START` telemetry, parser extraction of `dac_steps_v1`, environmental
 telemetry, 300 s long-gate count observations, session-aware host reporting, and
 center-bracketed slope analysis.
 
 The latest H1 evidence still does not authorize SW2 DAC actuation, but the
-`run_014` blocker is no longer the count-observation conditioning path and
-`run_017` has now provided a cleaner local-PPS/D10-witness confirmation sweep.
+`run_014` blocker is no longer the count-observation conditioning path,
+`run_017` provided a clean local-PPS/D10-witness confirmation, and `run_019`
+now supplies the broad-range response reference.
 `run_010` remains analysis-useful after explicit segment classification but not
 fixture-ready. `run_011`, `run_012`, and `run_013` reported post-startup
 zero-count faults. The `run_014` investigation isolated the immediate hardware
@@ -103,14 +104,16 @@ The clean `run_014` capture then completed 284 300 s count windows with no
 zero-count rows, all `CNT` rows flagged `16`, no host capture drops, and no
 parser errors.
 
-`run_014` therefore reopened H1 plant-model completion, and `run_017` gives the
-current plant-model evidence: 242 300 s count windows, no host PPS anomalies
-after timestamp unwrapping, D10 witness agreement with D14, observed CX317 output
-from about 9.999997327 MHz at `0x7000` to about 9.999998711 MHz at `0x9000`,
-and positive centre-bracketed slopes around 4.15..4.67 Hz/V. It does not by
-itself reopen active SW2 control. The remaining pre-SW2 gate is to freeze a
-deliberately narrow plant model and actuation envelope, while fixing or gating
-the rollover-sensitive D14 long-reject diagnostic.
+`run_019` gives the current broad plant evidence: one clean 12.89 h session,
+155 valid count windows, no host PPS anomalies, D10/D14 final agreement, a
+wide-fit slope of `0.000169064 Hz/code` (`R²=0.999920`), and a 10 MHz crossing
+near `0xAE00`. Its actual uploaded configuration was the historical
+`0x0100..0xFF00`, 900 s profile, not the intended tight crossing profile.
+Accordingly, it validates broad monotonic response but not a local control
+model. `run_020` is the focused crossing-region confirmation. The remaining
+pre-SW2 gate is to freeze a local plant model and actuation envelope from that
+evidence; the old `0x7000..0x9000` span is not viable because it does not reach
+the crossing.
 
 The intended H1 sequence is:
 
@@ -120,8 +123,8 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Present from clean `run_017`, positive local slope and datasheet-consistent.**
-8. Characterize settling time and thermal behavior. **Present from clean `run_017`, not yet loop constants.**
+7. Estimate Hz/V and ppm/V. **Broad estimate present from `run_019`; local crossing gain awaits `run_020`.**
+8. Characterize settling time and thermal behavior. **Broad 300 s-resolution bounds and an 8.17 h hold are present from `run_019`; not yet loop constants.**
 9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
 10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model.
 11. Only then design any guarded SW2 actuation experiment.

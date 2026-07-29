@@ -102,7 +102,8 @@ define the count gate at capture time. That backend remains the cleaner future
 measurement path and needs its own validation before it becomes the preferred
 live backend.
 
-`dac_manual_sweep/run_017` is the current reference example for this rule. The
+`dac_manual_sweep/run_017` remains the canonical rollover-specific example for
+this rule. The
 raw REF timestamps span about 72408.641 s and include 16 RP2040 timer rollovers:
 raw timestamps are therefore not monotonic, but the unwrapped REF series is
 monotonic and has no host-classified PPS anomalies. The temporary D10 PPS

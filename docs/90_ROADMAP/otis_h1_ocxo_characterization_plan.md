@@ -50,8 +50,9 @@ Understand the plant before designing the controller.
 5. Derive Hz/V and ppm/V — present in reports, not yet control-authorized
 6. Characterize settling time and thermal behavior — present in reports, not yet loop constants
 7. Restore clean post-inhibit count validity under the revised power/conditioning path — complete in `run_014`
-8. Validate PPS/reference cadence handling with timestamp rollover awareness — clean in `run_017`, with one firmware diagnostic counter caveat
-9. Freeze a conservative plant model and only then design any guarded control-loop actuation experiment
+8. Validate PPS/reference cadence handling with timestamp rollover awareness — clean in `run_017` and `run_019`
+9. Confirm the `run_019` crossing region locally in `run_020`, then freeze a conservative plant model
+10. Only then design any guarded control-loop actuation experiment
 
 ---
 
@@ -81,10 +82,11 @@ plots/
 Current H1 DAC sweep status:
 
 - AD5693R I2C initialization and manual `DAC SET` movement have been verified.
-- Conservative clamps are configured at `0x7000..0x9000`.
-- Built-in tiny sweeps use bench-visible `0x0400` code steps around midpoint.
-- Long-gate slope profiles use 300 s raw-edge count windows and 900 s DAC
-  dwells for repeated center-bracketed analysis.
+- The checked-in Arduino IDE configuration for `run_020` uses
+  `0x6000..0xFC00` characterization clamps, centre `0xAE00`, `0x0300` local
+  steps, 300 s raw-edge count windows, and 2400 s dwells. No compile-time
+  overrides are required.
+- These are characterization limits, not an automatic-control envelope.
 - Host parsing extracts `dac_steps_v1` rows, including profile load, dwell
   windows, FC0 attribution, completion, stop, and safety rejection.
 - Host characterization now produces PPS-calibrated frequency estimates,
@@ -102,15 +104,13 @@ Current H1 DAC sweep status:
   zero-count rows, all `CNT` rows flagged `16`, no host capture drops, 18 sweep
   passes, `fc0_valid_for_control: true`, and usable slope, settling, warmup and
   thermal analysis.
-- `run_017` is the current H1 measurement-confidence run. It completed with 242
-  300 s count windows, 241 locally PPS-interpolated estimates, no host PPS
-  anomalies after unwrapping 16 timestamp rollovers, no reconnects, no reboot
-  markers, clean D10 PPS witness agreement with D14, `fc0_valid_for_control:
-  true`, and observed CX317 outputs from about 9.999997327 MHz at DAC `0x7000`
-  to about 9.999998711 MHz at DAC `0x9000`.
-- The next bench decision is no longer count-path repair. It is conservative
-  plant-model freeze, explicit rollover-safe diagnostic cleanup, and then a
-  guarded SW2 actuation experiment plan.
+- `run_019` is the current broad-response run. Its 155 valid count windows and
+  46,394 valid PPS intervals give `0.000169064 Hz/code` (`R²=0.999920`),
+  4.38..4.50 Hz/V, and a crossing near `0xAE00`. The uploaded profile was the
+  broad `0x0100..0xFF00`, 900 s configuration rather than the intended local
+  crossing profile, so it is analysis-useful but not locally authoritative.
+- The next bench decision is local crossing confirmation in `run_020`, followed
+  by plant-model freeze. Active steering remains blocked.
 
 ---
 
@@ -223,16 +223,14 @@ only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.
 
-Current status: slope estimates exist in `run_009` through `run_017`, including
-center-bracketed slope tables. `run_017` is the current plant-model input: the
-`0x7000..0x9000` sweep moved the CX317 output from about 9.999997327 MHz to
-about 9.999998711 MHz, and the centre-bracketed `0x0800`/`0x1000` slopes were
-about 4.15..4.67 Hz/V with positive sign. This matches the CX317 datasheet
-expectation of roughly 3.0..6.1 Hz/V for a 10 MHz part with +/-0.5 ppm to
-+/-1.0 ppm tuning over 0.0 V..3.3 V. Treat this as plant-model input, not a
-firmware constant, until the valid voltage neighbourhood, uncertainty, noise
-floor, settling cadence, and reference-validity policy are recorded in a
-versioned model.
+Current status: `run_019` supersedes `run_017` as the broad plant-model input.
+Its wide fit is `0.000169064 Hz/code` (`R²=0.999920`), and four drift-cancelled
+estimates give 4.38..4.50 Hz/V using the `run_018` voltage fit. The inferred
+crossing is near `0xAE00` (about 1.692 V), but the nearest measured below/above
+points were only `0x8400` and `0xBF80`. Treat the broad gain as an applicability
+bound, not a firmware constant or local control gain. `run_020` must establish
+the valid crossing neighbourhood, uncertainty, hysteresis, noise floor, and
+settling cadence before the versioned model is frozen.
 
 ---
 
@@ -246,12 +244,12 @@ Measure:
 - overshoot
 - slow thermal drift
 
-Current status: settling estimates exist in the H1 characterization summaries.
-Earlier runs include invalid count windows and pathological excursions. `run_017`
-provides the current clean evidence, with 95 percent settling estimates across
-the analysed DAC transitions ranging from about 140 s to about 736 s after a
-900 s settling-discard analysis. These estimates remain analysis products rather
-than selected SW2 loop constants.
+Current status: `run_019` resolves settling only at its 300 s gate granularity.
+Most broad transitions appear settled at the first post-discard midpoint
+(about 150 s), while one return appears closer to 450 s. The strict 900 s
+discard leaves no settled windows and is preserved as such. These bounds are
+planning evidence, not selected SW2 loop constants; `run_020` targets the local
+crossing behaviour with longer dwells.
 
 ---
 
@@ -267,12 +265,12 @@ Outputs:
 - post-warmup drift
 - frequency vs time
 
-Current status: environmental telemetry is present in recent H1 runs, with
-SHT4x near-VCOCXO samples preferred for thermal context. `run_017` captured
-SHT4x near-VCOCXO temperature from about 25.43 C to 29.53 C and post-warmup
-drift around -0.00023 ppm/hour after the configured warmup window. Thermal
-behavior should still influence SW2 only through an explicit model or gate, not
-ad hoc firmware constants.
+Current status: `run_019` captured SHT4x near-VCOCXO temperature from 28.327 C
+to 29.566 C. Its final 8.17 h hold at `0x8000` had median
+9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift
++0.002104 Hz/h (+0.000210 ppm/h). Negligible simple residual correlation does
+not establish thermal independence. Thermal behavior should influence SW2 only
+through an explicit model or gate, not ad hoc firmware constants.
 
 ---
 

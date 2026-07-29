@@ -171,22 +171,27 @@ accepted:
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 ```
 
-The DAC output is bounded by compile-time clamps. The defaults expose a broad
-hardware-valid characterization envelope while avoiding the exact DAC rails:
+The DAC output is bounded by configuration-header clamps. The checked-in
+defaults are the focused `run_020` crossing profile and require no Arduino IDE
+compile-time flags:
 
 ```cpp
-#define OTIS_DAC_MIN_CODE 0x0100u
-#define OTIS_DAC_MAX_CODE 0xFF00u
-#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0200u
+#define OTIS_DAC_MIN_CODE 0x6000u
+#define OTIS_DAC_MAX_CODE 0xFC00u
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0300u
 #define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
-#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
+#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 2400000u
+#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 2400000u
 ```
 
-The default clamp is an electrical characterization envelope, not a statement
-that every sweep should visit both endpoints. The AD5693R breakout is observed
-in 1x mode with an approximately 2.5 V full-scale output, while the CX317
-datasheet specifies a normal `Vc` operating range of 0.0 V to 3.3 V and a
-nominal point of 1.65 V. DMM readings from H1 `run_018` give:
+This is a characterization envelope, not an authorized automatic-control
+envelope or a statement that every sweep visits both endpoints. `run_019`
+successfully exercised the historical `0x0100..0xFF00`, 900 s profile and
+located the 10 MHz crossing near `0xAE00`; its tiny-step work around `0x8000`
+was therefore not a local crossing measurement. The AD5693R breakout is
+observed in 1x mode with an approximately 2.5 V full-scale output, while the
+CX317 datasheet specifies a normal `Vc` operating range of 0.0 V to 3.3 V and
+a nominal point of 1.65 V. DMM readings from H1 `run_018` give:
 
 | DAC code | Measured CX317 `Vc` |
 | ---: | ---: |
