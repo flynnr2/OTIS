@@ -4,6 +4,20 @@
 primary evidence used to reproduce an OTIS run. Its machine-readable schema is
 `schemas/run_evidence_v1.schema.json`.
 
+## Repository storage policy
+
+Evidence snapshots normally live inside local `runs/` directories. The
+repository `.gitignore` is authoritative, `runs/` is intentionally ignored,
+and neither a snapshot nor its source run may be force-added to Git. Snapshot
+integrity and Git storage are separate concerns: sealing proves the retained
+local bytes, while the ignore policy keeps bulky evidence out of repository
+history.
+
+Tracked artifacts promoted from a run must be compact, reviewed products stored
+outside `runs/`, such as schemas, contracts, plant models, result summaries, or
+purpose-built fixtures. Documentation references to `runs/...` identify local
+provenance and need not resolve in a fresh clone.
+
 ## Scope
 
 The snapshot covers:

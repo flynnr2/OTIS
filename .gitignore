@@ -3,6 +3,9 @@
 #######################################
 Data/
 tmp/
+# Bench captures and generated run artifacts are local evidence. Do not
+# force-add files from this tree; promote only compact conclusions, models,
+# contracts, or purpose-built fixtures to tracked paths outside runs/.
 runs/
 codex_prompts/
 
@@ -44,10 +47,6 @@ Nano.Every/build
 __pycache__/
 *.py[cod]
 .pytest_cache/
-
-# Runs keep selected bench artifacts and templates under version control.
-!runs/**/*.env
-!runs/**/*.log
 
 #######################################
 # Arduino / local build outputs

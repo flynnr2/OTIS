@@ -11,6 +11,21 @@ The project north star is documented in
 OTIS is a provenance-preserving timing instrument, not a black-box timing
 appliance.
 
+## Local Run Evidence Policy
+
+The repository `.gitignore` is authoritative and must be respected at all
+times. In particular, `runs/` is intentionally ignored because it contains
+local bench captures, sealed evidence packages, generated reports, and other
+potentially large run artifacts. These files are valuable scientific evidence,
+but they are stored and retained locally rather than committed to Git.
+
+Do not bypass this policy with `git add -f`, alternate Git plumbing, or
+temporary ignore-rule changes. A path under `runs/` in the documentation
+identifies a local evidence location and is not a promise that the artifact is
+present in a fresh clone. Promote only compact, reviewed conclusions,
+machine-readable models, contracts, and purpose-built test fixtures to tracked
+directories outside `runs/`.
+
 ## Current Status
 
 This repository has completed enough **H0 / SW1** bring-up to move into **H1**
@@ -34,7 +49,7 @@ disabled candidate envelope `0xA800..0xAB00`. Both `control_ready` and
 `actuation_enabled` remain false. See
 `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`.
 
-The current SW1.5a evidence run is
+The current, locally retained SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit
 `4cb0fc8088cbc36eeaa0e52e5c4661b86b738aca`. It validates with:
 

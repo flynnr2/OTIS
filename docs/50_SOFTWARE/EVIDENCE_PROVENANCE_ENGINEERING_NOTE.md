@@ -13,6 +13,25 @@ Raw evidence remains untouched. If a run selects a repository profile, sealing
 copies its exact bytes to `selected_profile.yaml` before hashing so later
 repository profile edits cannot silently change replay context.
 
+## Storage boundary
+
+Sealing evidence does not make a run a Git artifact. The repository
+`.gitignore` remains authoritative at all times, and the complete `runs/` tree
+is intentionally ignored. Run directories are locally stored evidence and
+must not be force-added or otherwise smuggled past ignore rules. This keeps raw
+captures, generated reports, and sealed packages from bloating repository
+history.
+
+References to `runs/...` elsewhere in the documentation are local provenance
+references. They may resolve on the bench workstation that retains the
+evidence, but they are not expected to resolve in a fresh clone. The operator
+is responsible for retaining and backing up important run directories together
+with their snapshot digests.
+
+Promotion from a run means committing a compact, reviewed result outside
+`runs/`, such as a result note, plant model, schema, contract, or purpose-built
+small test fixture. It does not mean committing the source run directory.
+
 ## Determinism and evidence preservation
 
 - SHA-256 is computed over file bytes in bounded chunks.
@@ -53,7 +72,8 @@ Before using a run for plant-model promotion:
 2. populate known manifest provenance rather than inventing missing values;
 3. run `python3 -m host.otis_tools.evidence RUN_DIR`;
 4. run the normal validator and analysis;
-5. retain the run directory and snapshot digest together.
+5. retain and back up the local run directory and snapshot digest together;
+6. promote only reviewed, compact outputs to tracked paths outside `runs/`.
 
 This establishes byte-exact inputs for later plant-model reproduction without
 making any claim about calibration quality, reference authority, or control
