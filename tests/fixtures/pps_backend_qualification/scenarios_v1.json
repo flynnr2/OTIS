@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "nominal_traceable_pps_windows",
+      "expected": ["all_boundaries_traceable", "joint_eligibility"]
+    },
+    {
+      "id": "timer_rollover",
+      "expected": ["raw_ref_boundaries_preserved", "modular_interval_valid"]
+    },
+    {
+      "id": "duplicate_and_short_pps",
+      "expected": ["reference_pps_duplicate", "reference_pps_short_interval"]
+    },
+    {
+      "id": "long_and_missing_pps",
+      "expected": ["reference_pps_long_interval", "reference_missing_pps"]
+    },
+    {
+      "id": "zero_and_saturated_count",
+      "expected": ["count_zero", "count_saturated"]
+    },
+    {
+      "id": "startup_inhibit_and_recovery",
+      "expected": ["control_eligible=false", "clean_window_recovery"]
+    },
+    {
+      "id": "stale_timeout_and_count_unavailability",
+      "expected": ["reference_missing_pps", "count_unavailable"]
+    },
+    {
+      "id": "source_typing_mismatch",
+      "expected": ["source_typing_invalid"]
+    },
+    {
+      "id": "independent_metrology_bias",
+      "expected": ["bias_hz", "combined_uncertainty_hz"]
+    },
+    {
+      "id": "service_plane_load",
+      "expected": ["service_plane_mean_shift_hz"]
+    },
+    {
+      "id": "unavailable_uncertainty",
+      "expected": ["unavailable_components", "not_qualified"]
+    }
+  ]
+}

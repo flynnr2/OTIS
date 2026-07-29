@@ -85,8 +85,9 @@ For TCXO/OCXO observation, the count backend adds:
 | `PPS_GATED_RATIO` | one dynamically allocated PIO0 SM and five-word instruction range | `count_observation` |
 
 The PPS-gated ratio backend reads the already-owned D14 reference signal as a
-client. It does not become a second D14 owner. Establishing a stronger PPS gate
-boundary and ownership contract is the next handoff package.
+client. It does not become a second D14 owner. The authoritative boundary
+contract is frozen in `PPS_OWNERSHIP_ARCHITECTURE.md`; the remaining handoff is
+bench qualification of aperture and measurement behavior.
 
 ## PIO and DMA policy
 
@@ -174,11 +175,12 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 | I2C concurrency | One owner removes duplicate initialization. The current single-core foreground execution is serialized; no cross-core lock is added. | PPS ownership/multicore work must define bus access placement before moving any I2C client across cores. |
 | Hardware mux not exercised in host tests | Host tests cover collision semantics and ownership call paths; compile tests cover supported configurations. | Bench-check pin functions, IRQ activity, PIO allocations, and status evidence on the Nano RP2040 Connect. |
 
-## PPS ownership handoff
+## PPS qualification handoff
 
-This package is ready for PPS ownership work. The next package can start from
-one current D14 owner (`edge_capture`), one optional independent D10 witness
-owner, explicit IRQ/PIO allocations, and an identified timer-domain consumer.
-It must decide whether accepted PPS gate boundaries remain a client of
-`edge_capture` or receive an explicit ownership transfer. It must not add a
-second D14 owner, hide rejected PPS evidence, or authorize steering.
+PPS ownership work is complete: `edge_capture` remains the one D14 owner, the
+optional D10 input remains an independent witness, and the PPS-gated backend is
+a consumer of the authoritative captured event. Phase 5 qualification must
+measure the residual foreground counter aperture, verify raw boundary
+traceability and fault behavior, and retain these ownership assignments. It
+must not add a second D14 owner, hide rejected PPS evidence, or authorize
+steering.

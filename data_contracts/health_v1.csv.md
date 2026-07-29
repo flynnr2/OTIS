@@ -64,6 +64,10 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
 | `pps_gate` | `valid` | latest bounded PPS-gated window validity |
 | `pps_gate` | `last_reason` | latest PPS-gate validity or fault reason |
+| `pps_gate` | `reference_validity` | independent `valid`, `invalid`, or `unavailable` state for the authoritative PPS side |
+| `pps_gate` | `reference_reason` | typed reference conclusion, including duplicate/short/long/missing/flagged/recovery cases |
+| `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` oscillator-count state |
+| `pps_gate` | `count_reason` | typed count conclusion, including valid/zero/saturated/unavailable cases |
 | `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
 | `pps_gate` | `last_interval_us` | latest bounded PPS gate interval in microseconds |
 | `pps_gate` | `missing_pps_count` | missing stop-PPS faults |
@@ -75,10 +79,18 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `total_bad_window_count` | invalid PPS-gated windows observed in this boot |
 | `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
 | `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
+| `pps_gate` | `count_resolution_edges` | native integer count resolution, currently one edge |
+| `pps_gate` | `counter_aperture_uncertainty_ns` | evidence-backed aperture uncertainty or `unavailable` |
+| `pps_gate` | `reference_frequency_uncertainty_ppb` | evidence-backed reference uncertainty or `unavailable` |
 
 `ratio_available` is a validity indicator, not a firmware-emitted numeric ratio.
 Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
 metadata.
+
+`reference_validity` and `count_validity` are independent Phase 4-compatible
+eligibility inputs. A reference-only fault must not be rewritten as a bad
+oscillator count, or vice versa; both must be valid for `ratio_available` and
+control eligibility.
 
 ## Hardware Resource Ownership Status
 

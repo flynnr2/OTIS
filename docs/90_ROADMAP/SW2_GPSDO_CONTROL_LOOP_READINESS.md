@@ -74,6 +74,33 @@ run. PPS-gated metrology qualification, firmware active control, and every
 actuation gate remain incomplete. `status.control_ready=false` and
 `status.actuation_enabled=false` remain authoritative.
 
+## Phase 5 PPS-gated backend qualification readiness
+
+**Result: failed / not qualified because required bench evidence is
+unavailable.**
+
+Repository preparation now includes:
+
+- audited reuse of the one authoritative D14 `REF` capture;
+- raw PPS-gated `CNT` boundary traceability, including timer rollover;
+- independent `pps_gate/reference_validity` and
+  `pps_gate/count_validity`, with typed reasons;
+- startup missing-PPS detection, duplicate/short/long classification, count
+  zero/saturation handling, and recovery gates;
+- explicit unavailable aperture/reference uncertainty hooks;
+- deterministic synthetic/negative fixtures;
+- explicit candidate and independent estimator/backend/source typing;
+- a deterministic qualification report under the local run's `derived/`
+  directory;
+- an exact bench runbook and fixed v1 thresholds.
+
+No sealed local candidate run plus simultaneous authorised independent
+metrology run satisfies the v1 profile yet. Bias, jitter, aperture uncertainty,
+service-load shift, fault/recovery detection, and combined uncertainty are
+therefore unavailable. The backend remains implemented but not trusted
+metrology. `status.control_ready=false` and `status.actuation_enabled=false`
+remain authoritative.
+
 ## H1 Evidence Available
 
 Primary artifacts:

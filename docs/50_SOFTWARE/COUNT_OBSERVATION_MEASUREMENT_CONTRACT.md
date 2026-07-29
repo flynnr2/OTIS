@@ -104,12 +104,28 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
 - `counted_edges` is the oscillator rising-edge count between those PPS edges.
 - `ratio_available=true` means the bounded row is valid and has nonzero counted
   edges; the ratio itself is still host-derived.
+- `pps_gate/reference_validity` and `pps_gate/count_validity` preserve the two
+  independent validity conclusions. Both must be `valid` before a window is
+  measurement/control eligible.
+- A reference-only flag on a PPS-gated `CNT` does not by itself rewrite a
+  nonzero, unsaturated oscillator count as count-invalid. Joint eligibility
+  still fails because the reference side is invalid.
 - PPS interval anomalies are emitted as `pps_gate/pps_interval_anomaly_count`
-  and flagged with `REFERENCE_VALIDITY_SUSPECT` plus `GATE_INCOMPLETE`.
+  and flagged with `REFERENCE_VALIDITY_SUSPECT` plus `GATE_INCOMPLETE`;
+  `reference_reason` distinguishes duplicate, short, long, and flagged
+  boundaries.
 - Missing stop PPS increments `pps_gate/missing_pps_count` and withholds a clean
   `CNT` row for that gate.
+- Failure to receive the first PPS after backend start also produces an
+  explicit missing-PPS fault rather than remaining silently armed.
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the
   bounded row with `COUNT_SATURATED`.
+- Across `rp2040_timer0` rollover, emitted gate boundaries retain the exact raw
+  authoritative `REF` timestamp values; interval consumers apply the declared
+  modular timebase arithmetic.
+- After a rejected boundary, one explicit
+  `reference_previous_boundary_invalid` re-anchoring window prevents the
+  rejected edge from silently producing a clean ratio observation.
 
 For `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`, a counter that reaches its
 32-bit terminal value is likewise emitted with the best available raw count,
@@ -120,6 +136,11 @@ The current firmware implementation qualifies PPS rising edges in foreground
 while preserving the existing sparse PPS `REF` capture path. PPS-gated `CNT`
 rows therefore carry reconstructed `rp2040_timer0` gate timestamps until a later
 hardware-latched gate implementation proves a stronger timing contract.
+
+The native resolution is one oscillator edge per gate. Counter-aperture,
+reference-frequency, independent-instrument, and quantization-distribution
+uncertainty are separate host qualification components. Unknown components are
+reported as unavailable and prevent computation of a combined uncertainty.
 
 ## Compatibility Notes
 
