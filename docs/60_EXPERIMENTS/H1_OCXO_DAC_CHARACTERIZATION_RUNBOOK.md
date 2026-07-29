@@ -238,6 +238,10 @@ These values are inside the CX317 operating control-voltage range of 0.0 V to
 3.3 V. The connected `Vc` node tracked DAC commands repeatably, and `CNT`,
 `REF`, `STS`, and `DAC` telemetry remained present during sweep operation.
 
+The historical `0x7000..0x9000` range was safe to exercise, but `run_019`
+showed that it does not reach the 10 MHz crossing and therefore must not be
+promoted to an automatic-control envelope.
+
 ### `run_018` code-to-voltage extension
 
 The fragmented `run_018` capture is not fixture-ready and did not obtain a
@@ -327,8 +331,9 @@ fallback and diagnostic comparison, not the preferred sub-hertz H1 estimator.
 1.6 us single-interval PPS scatter, so uncalibrated count-derived frequencies
 were biased high by the same order.
 
-The regenerated `run_017` report is the current H1 measurement-confidence
-baseline. It reports 242 count windows, 241 locally PPS-interpolated estimates,
+The regenerated `run_017` report is the rollover-specific
+measurement-confidence baseline preceding `run_019`. It reports 242 count
+windows, 241 locally PPS-interpolated estimates,
 one startup-edge run-wide fallback, no host-classified PPS anomalies after
 timestamp unwrapping, no reconnects or reboot/header markers, and
 `fc0_valid_for_control=true`. The D10 PPS witness matched D14 one-for-one at
@@ -373,6 +378,38 @@ temperature spanned about 25.43 C to 29.53 C, and post-warmup drift was about
 -0.00023 ppm/hour after the configured warmup window. Do not treat low
 simple-regression explanatory power as proof that airflow, thermal gradients, or
 CX317 internal oven state are irrelevant.
+
+### `run_019` broad plant-model update
+
+`run_019` supersedes `run_017` as the broad DAC-response reference. It captured
+one continuous 12.89 h session with 155 valid non-zero 300 s count windows,
+46,394 valid PPS intervals, no host PPS anomalies, and no capture, parser,
+overflow, saturation, or reconnect failures. The D10 witness again matched D14
+at the end of the run.
+
+The Arduino IDE build actually uploaded for `run_019` used
+`0x0100..0xFF00`, centre `0x8000`, 900 s dwells, and `0x0200` tiny steps.
+That configuration differed from the planned crossing-focused manifest, so the
+run is broad-range evidence rather than the intended tight crossing profile.
+The first wide sweep fits `0.000169064 Hz/code` with `R²=0.999920`; four
+drift-cancelled estimates correspond to 4.38..4.50 Hz/V using the `run_018`
+voltage model. Broad response is positive, monotonic, and approximately linear.
+
+The inferred 10 MHz crossing is `0xADC3..0xAEF6`, with median `0xADDA` and
+global-fit estimate `0xAE1C`, approximately 1.692 V. No close measured bracket
+was captured: `0x8400` was the highest sampled code below 10 MHz and `0xBF80`
+the lowest above. The `0x8000` tiny-step sequence is consequently not a valid
+local crossing model.
+
+Settling is resolved only at the 300 s gate scale: most transitions appear
+settled by about 150 s and one return by about 450 s. These are planning bounds,
+not loop constants. The final 8.17 h `0x8000` hold had median
+9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift
++0.002104 Hz/h. See
+`RUN_019_PLANT_MODEL_RESULTS.md` for the evidence and applicability boundary.
+The checked-in `run_020` header configuration focuses on the crossing region
+with 2400 s dwells and `0x0300` local steps; it requires no compile-time
+overrides.
 
 For PPS-gated ratio runs, host analysis should derive ratio/frequency from the
 visible `REF` and `CNT` streams plus manifest metadata. Firmware status

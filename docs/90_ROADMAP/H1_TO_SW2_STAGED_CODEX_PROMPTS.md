@@ -18,11 +18,11 @@ Current status note:
   isolated that class of failure to a G17 breakout solder short, verified clean
   repaired-path CX317 counts, and explicitly gated its PPS/reference anomaly as
   diagnostic-only unresolved evidence.
-- `run_017` is now the current model-review input. It adds a clean D10 PPS
-  witness, handles 16 RP2040 timer rollovers in host analysis, reports no host
-  PPS anomalies after unwrapping, and measures a positive CX317 slope consistent
-  with the datasheet. Active DAC actuation remains blocked until a guarded
-  experiment policy is explicitly authored.
+- `run_019` is now the current broad model-review input. It provides a clean
+  12.89 h broad sweep, validates a positive approximately linear response, and
+  locates the 10 MHz crossing near `0xAE00`. Its uploaded profile differed from
+  the intended tight crossing manifest, so `run_020` remains necessary for the
+  local crossing model. Active DAC actuation remains blocked.
 - Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
   actuation remains blocked.
 
@@ -43,6 +43,10 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_count_frequency_estimates.csv`
 - `runs/h1_open_loop/dac_manual_sweep/run_017/csv/h1_center_bracketed_slopes.csv`
+- `runs/h1_open_loop/dac_manual_sweep/run_019/reports/h1_characterization_summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_019/csv/h1_count_frequency_estimates.csv`
+- `docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md`
 - `profiles/plant_models/cx317_h1_bench_v1.json`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
@@ -260,10 +264,11 @@ Deliver:
 
 Gate to Active SW2 Actuation:
 
-- A clean higher-SNR H1-B plant sweep exists. `run_016` is clean for
-  PPS/reference and count capture, but not for plant-gain authority.
-- Hz/code or ppm/code is stable enough to choose a conservative update size.
-- Settling time is bounded with enough margin for actuation cadence.
+- A clean broad H1-B plant sweep exists in `run_019`, but its local crossing
+  profile was not executed. `run_020` must close that applicability gap.
+- Local crossing Hz/code or ppm/code is stable enough to choose a conservative
+  update size.
+- Local settling time is bounded with enough margin for actuation cadence.
 - Startup and fault gates are tested.
 - The readiness doc explicitly authorizes a first guarded actuation experiment.
 

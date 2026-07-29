@@ -82,13 +82,15 @@ has an explicit anomaly classification and usable post-BOOT analysis segment.
 `run_014` traced that failure class to a SN74LVC1G17 breakout solder short and
 then verified a clean repaired count path: 284 300 s `CNT` rows, no zero-count
 rows, all `CNT` rows flagged `16`, no host capture drops, and
-`fc0_valid_for_control: true`. `run_017` is the current confirmation sweep: 242
-300 s count windows, no host PPS anomalies after timestamp unwrapping, D10
-witness agreement with D14, observed CX317 output from about 9.999997327 MHz at
-`0x7000` to about 9.999998711 MHz at `0x9000`, and positive centre-bracketed
-slopes around 4.15..4.67 Hz/V. The immediate hardware question has moved from
-count-path repair to conservative plant-model freeze with explicit
-PPS/reference and timestamp-rollover gates carried into control eligibility.
+`fc0_valid_for_control: true`. `run_017` supplied the clean confirmation sweep;
+`run_019` is now the broad-response reference. Its 12.89 h continuous session
+contains 155 valid count windows, 46,394 valid PPS intervals, D10/D14 final
+agreement, a wide-fit slope of `0.000169064 Hz/code` (`R²=0.999920`), and an
+inferred 10 MHz crossing near `0xAE00`. Because its uploaded Arduino IDE
+configuration was the broad historical profile rather than the intended tight
+crossing profile, local gain, hysteresis, and resolved settling remain for
+`run_020`. The immediate hardware question has moved from count-path repair to
+local plant-model freeze with explicit evidence and control-eligibility gates.
 
 The intended H1 sequence is:
 
@@ -98,8 +100,8 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Present from clean `run_017`, positive local slope and datasheet-consistent.**
-8. Characterize settling time and thermal behavior. **Present from clean `run_017`, not yet loop constants.**
+7. Estimate Hz/V and ppm/V. **Broad 4.38..4.50 Hz/V estimate present from `run_019`; local crossing gain awaits `run_020`.**
+8. Characterize settling time and thermal behavior. **Broad 300 s-resolution bounds and long-hold evidence present from `run_019`; not yet loop constants.**
 9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
 10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model.
 11. Only then design any guarded SW2 actuation experiment.
