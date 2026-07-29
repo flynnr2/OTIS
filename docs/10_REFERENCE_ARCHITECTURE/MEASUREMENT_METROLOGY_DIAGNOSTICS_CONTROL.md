@@ -153,3 +153,16 @@ replay, comparative analysis, plots, and retrospective reinterpretation.
 Neither placement changes the semantic boundaries above. Host and firmware
 implementations should converge on common contracts and replay fixtures rather
 than creating competing meanings.
+
+## 9. Phase 4 host-derived records
+
+The first normative host replay products are:
+
+- `data_contracts/estimates_v1.csv.md` for `EST` metrology snapshots;
+- `data_contracts/control_previews_v1.csv.md` for observe-only `CTL` decisions.
+
+`EST` keeps raw-observation validity, diagnostic health, estimator confidence,
+and preview eligibility distinct. `CTL` references its exact `EST`, model,
+policy, and configuration inputs and records model applicability and every
+limit result. Phase 4 `CTL` is structurally non-actuating:
+`preview_only=true`, `actuation_authorized=false`, and `actionable=false`.

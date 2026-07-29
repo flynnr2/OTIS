@@ -21,11 +21,33 @@ burst and provides clean reference/capture evidence for the repaired topology,
 but its small-step DAC response was not sign-stable enough by itself.
 
 The current state supports SW2 design work, telemetry contracts, safety gates,
-manual nominal restore, and observe-only firmware scaffolding. It does **not**
+manual nominal restore, observe-only firmware scaffolding, and now deterministic
+host `EST`/`CTL` replay with a model-v3 correction preview. It does **not**
 support automatic DAC actuation from PPS or count error. Phase 3 has frozen the
-local evidence, crossing band, applicability, and disabled candidate envelope.
-The next stage is replayable observe-only estimator and correction-preview
-work with the existing reference-validity and diagnostic gates.
+local evidence, crossing band, applicability, and disabled candidate envelope;
+Phase 4 host replay enforces those bounds and preserves source hashes. The next
+gate is firmware observe-only parity and live measurement/diagnostic
+qualification, not active steering.
+
+## Phase 4 host replay readiness
+
+The host-only M2 gate is passed:
+
+- normative `EST v1` and observe-only `CTL v1` contracts have strict host
+  validation;
+- replay consumes manifest-resolved `REF`, `CNT`, `STS`, and `DAC` evidence;
+- estimator qualification uses accepted reference cadence, count validity,
+  age, continuity, dispersion, and startup/recovery clean windows;
+- model-version-3 identity, applicability, excluded sequences, disabled
+  candidate range, and manual preview step are enforced;
+- repeated execution produces byte-identical derived records;
+- raw/source evidence hashes remain unchanged;
+- no firmware, serial command, DAC write, arming, PI/PID/Kalman, thermal, or
+  holdover-prediction path was added.
+
+This passes host replay only. Firmware observe-only parity, PPS-gated backend
+bench qualification, active-control policy approval, and guarded actuation are
+still incomplete.
 
 ## H1 Evidence Available
 
@@ -500,13 +522,17 @@ SW2 safety gates:
 
 Future SW2 PR sequence:
 
-1. Draft diagnostic contract, reason-code namespace, fixtures, and host replay
-   validator for non-actuating diagnostics.
-2. Telemetry-only state skeleton.
-3. Manual nominal DAC restore to `0x8000`, guarded by the existing clamp logic.
-4. Observe-only plant-model telemetry with explicit unavailable fields.
-5. Open-loop correction preview, no actuation, gated by explicit diagnostics.
-6. Guarded I-only actuation after H1 supplies Hz/V or ppm/V, settling time, and
+1. Completed: diagnostic foundations plus host EST/CTL replay validation and
+   non-actuating fault fixtures.
+2. Next: firmware telemetry-only state skeleton and host parity.
+3. Validate manual nominal DAC restore to `0x8000` remains isolated from
+   discipline policy and guarded by existing clamp logic.
+4. Add firmware observe-only plant-model telemetry with explicit unavailable
+   fields.
+5. Compare firmware open-loop correction preview with host replay; no
+   actuation.
+6. Guarded I-only actuation only after the separate policy gate supplies and
+   approves Hz/V or ppm/V, cadence, update size, abort rules, settling time, and
    noise-floor evidence.
 7. Lock/holdover state machine.
 8. Reporting and long-run validation.

@@ -49,6 +49,18 @@ disabled candidate envelope `0xA800..0xAB00`. Both `control_ready` and
 `actuation_enabled` remain false. See
 `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`.
 
+The Phase 4 host observe-only vertical slice is complete. Versioned `EST` and
+preview-only `CTL` records can be reproduced deterministically from canonical
+run evidence, the model, diagnostics, policy, and configuration with:
+
+```bash
+python3 -m host.otis_tools.phase4_replay /path/to/local/run
+```
+
+It writes only beneath the run's `derived/phase4_replay_v1/` directory, verifies
+that source-evidence hashes remain unchanged, and contains no firmware or DAC
+write path. Firmware parity and active actuation remain incomplete.
+
 The current, locally retained SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit
 `4cb0fc8088cbc36eeaa0e52e5c4661b86b738aca`. It validates with:
@@ -116,13 +128,11 @@ PIO FIFO is for sparse event observation only: PPS, GPIO loopback, and future
 low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
 FC0/gated-count style observation, not PIO FIFO edge logging.
 
-The next meaningful project phase is H1 OCXO/DAC characterization, not immediate
-SW2 control-loop firmware. H1 should verify OCXO power/current/warmup/output
-level, verify DAC I2C and output range, connect the conditioned OCXO output to
-`D8` / `GPIO20` / `GPIN0`, capture free-running FC0/GPIN0 count observations,
-step the DAC manually, measure frequency/count response versus DAC setting,
-estimate Hz/V and ppm/V, characterize settling and thermal behavior, and only
-then design SW2 discipline/control-loop firmware.
+H1 OCXO/DAC characterization and the Phase 4 host replay gate are complete.
+The next meaningful project work is firmware observe-only parity and
+PPS-gated-ratio measurement qualification, not active steering. PPS- or
+count-error-derived DAC writes remain prohibited until the later reviewed
+guarded-actuation gate.
 
 ## Quick Host Scaffold Check
 

@@ -1,7 +1,8 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Status:** revised against completed `run_020` evidence and the Phase 3
-observe-only plant model on 29 July 2026
+**Status:** revised against completed `run_020` evidence, the Phase 3
+observe-only plant model, and the completed Phase 4 host replay vertical slice
+on 29 July 2026
 
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding
 
@@ -702,6 +703,20 @@ deterministic replay without hardware actuation.
 
 **Purpose:** make the discipline logic testable before placing it in firmware.
 
+### Status
+
+Passed for host-only Phase 4 replay. The normative `EST v1` and observe-only
+`CTL v1` contracts, strict host validation, deterministic canonical-record
+adapter, simple frequency estimator, roadmap-aligned preview state machine,
+model-v3 applicability policy, bounded correction preview, replay CLI, and
+fault/repeatability fixtures are implemented. Derived products are confined to
+the supplied run's `derived/phase4_replay_v1/` directory and source evidence is
+content-hashed before and after.
+
+This status does not claim firmware parity, live PPS-gated measurement
+qualification, or active actuation. Every Phase 4 CTL remains preview-only,
+unauthorized, and non-actionable.
+
 ### Required components
 
 - adapter from canonical `REF`, `CNT`, `STS` and DAC records into discipline inputs;
@@ -1164,15 +1179,22 @@ Add a documented machine-readable plant-model schema and loader on the host. Pop
 
 ### Package 4 — Define `EST` and `CTL` contracts
 
-Add normative contracts, parsers, validators and fixtures. Do not change DAC output.
+Completed for Phase 4 host replay: normative contracts, strict validators, and
+focused fixtures are present. DAC output is unchanged.
 
 ### Package 5 — Host observe-only estimator
 
-Implement frequency estimation and quality gates from existing canonical records. Produce derived output in a run’s `derived/` directory. Preserve raw files.
+Completed: frequency estimation and distinct validity, diagnostic, confidence,
+and eligibility gates consume existing canonical records. Output is confined to
+a run's `derived/phase4_replay_v1/` directory and raw/source hashes are checked
+unchanged.
 
 ### Package 6 — Host preview controller
 
-Implement state machine plus I-only frequency preview. Require a valid plant model. Emit `CTL`; never write hardware.
+Completed as a static model-inversion correction preview, not an integrating
+controller: the state machine requires plant-model version 3 and emits bounded
+`CTL` proposals without a hardware write path. I-only accumulation remains a
+future guarded-actuation concern.
 
 ### Package 7 — Firmware observe-only parity
 
@@ -1311,6 +1333,9 @@ unresolved-condition bounds. It is not an active-control authority.
 - host estimator/state machine/preview;
 - deterministic replay.
 
+**Status:** passed for host replay. Firmware parity and every actuation gate
+remain open.
+
 ### M3 — Live observe-only parity and core isolation
 
 - firmware emits equivalent preview decisions;
@@ -1378,13 +1403,11 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Consume `profiles/plant_models/cx317_h1_bench_v2.json` in host
-   observe-only estimation and preview, enforcing its applicability and
-   invalidation conditions.
-2. Define the `EST` and `CTL` derived contracts and deterministic replay
-   fixtures without modifying raw evidence.
-3. Validate firmware observe-only parity and diagnostics under service-plane
-   load.
+1. Validate firmware observe-only parity against the normative host fixtures;
+   do not add a DAC write path.
+2. Validate diagnostics and timing-plane behaviour under service-plane load.
+3. Qualify the already-present PPS-gated ratio backend with bench evidence and
+   compare it against the host replay observables.
 4. Keep active DAC steering blocked until its separate policy, cadence,
    maximum-update, abort, and guarded-actuation gate is explicitly reviewed and
    reopened.

@@ -97,6 +97,83 @@ DIAGNOSTICS_DRAFT_V0_FIELDS = [
     "control_eligibility",
 ]
 
+ESTIMATE_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "estimate_seq",
+    "estimate_id",
+    "estimator_timestamp_ticks",
+    "time_domain",
+    "source_count_seq",
+    "source_count_ref",
+    "source_reference_first_seq",
+    "source_reference_last_seq",
+    "source_status_refs",
+    "source_dac_ref",
+    "manifest_ref",
+    "estimator_version",
+    "config_hash",
+    "observation_validity",
+    "observation_reason_codes",
+    "reference_validity",
+    "reference_age_s",
+    "reference_continuity",
+    "count_validity",
+    "count_age_s",
+    "count_continuity",
+    "diagnostic_health",
+    "diagnostic_reason_codes",
+    "frequency_observation_hz",
+    "accepted_sample_count",
+    "estimator_confidence",
+    "frequency_estimate_hz",
+    "frequency_error_hz",
+    "frequency_uncertainty_hz",
+    "dispersion_hz",
+    "drift_enabled",
+    "drift_hz_per_s",
+    "preview_eligibility",
+    "eligibility_reason_codes",
+]
+
+CONTROL_PREVIEW_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "control_seq",
+    "decision_id",
+    "decision_timestamp_ticks",
+    "time_domain",
+    "est_input_ref",
+    "plant_model_ref",
+    "plant_model_id",
+    "plant_model_version",
+    "plant_model_hash",
+    "policy_version",
+    "config_hash",
+    "control_state",
+    "previous_control_state",
+    "state_transition",
+    "transition_reason_code",
+    "preview_eligibility",
+    "eligibility_reason_codes",
+    "diagnostic_health",
+    "model_applicability",
+    "model_reason_codes",
+    "current_dac_code",
+    "frequency_error_hz",
+    "hz_per_code",
+    "raw_delta_codes",
+    "limited_delta_codes",
+    "proposed_dac_code",
+    "step_limited",
+    "range_clamped",
+    "preview_available",
+    "preview_only",
+    "actuation_authorized",
+    "actionable",
+    "decision_reason_code",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
@@ -104,6 +181,8 @@ CONTRACT_FIELDS = {
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
     "diagnostics_draft_v0": DIAGNOSTICS_DRAFT_V0_FIELDS,
+    "estimates_v1": ESTIMATE_V1_FIELDS,
+    "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -113,6 +192,8 @@ CONTRACT_RECORD_TYPES = {
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
     "diagnostics_draft_v0": {"DIAG"},
+    "estimates_v1": {"EST"},
+    "control_previews_v1": {"CTL"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -122,6 +203,8 @@ CONTRACT_SCHEMA_VERSIONS = {
     "dac_steps_v1": 1,
     "environment_v1": 1,
     "diagnostics_draft_v0": 0,
+    "estimates_v1": 1,
+    "control_previews_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -131,6 +214,8 @@ SEQUENCE_FIELDS = {
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
     "diagnostics_draft_v0": "diagnostic_seq",
+    "estimates_v1": "estimate_seq",
+    "control_previews_v1": "control_seq",
 }
 
 TIMESTAMP_FIELDS = {
@@ -140,6 +225,8 @@ TIMESTAMP_FIELDS = {
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
     "diagnostics_draft_v0": ("first_seen_ticks", "last_seen_ticks"),
+    "estimates_v1": ("estimator_timestamp_ticks",),
+    "control_previews_v1": ("decision_timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -154,6 +241,8 @@ DOMAIN_FIELDS = {
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
     "diagnostics_draft_v0": ("time_domain",),
+    "estimates_v1": ("time_domain",),
+    "control_previews_v1": ("time_domain",),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -185,6 +274,25 @@ VALID_CONTROL_EFFECTS = {
 VALID_CONTROL_ELIGIBILITY = {"eligible", "not_eligible", "not_applicable", "unknown"}
 VALID_ENV_SOURCES = {"sht4x", "bmp280"}
 VALID_ENV_ROLES = {"vcocxo_near", "ambient_board", "ambient", "pressure_reference"}
+VALID_BOOLEAN_TEXT = {"true", "false"}
+VALID_OBSERVATION_VALIDITY = {"valid", "invalid", "unavailable"}
+VALID_COMPONENT_VALIDITY = {"valid", "invalid", "stale", "unavailable"}
+VALID_DIAGNOSTIC_HEALTH = {"healthy", "degraded", "fault", "unknown"}
+VALID_ESTIMATOR_CONFIDENCE = {"unavailable", "low", "medium", "high"}
+VALID_MODEL_APPLICABILITY = {"applicable", "not_applicable", "unavailable", "invalid"}
+VALID_CONTROL_STATES = {
+    "BOOT",
+    "SAFE_OBSERVE",
+    "WARMUP_INHIBIT",
+    "QUALIFYING",
+    "ACQUIRE_PREVIEW",
+    "SETTLE_PREVIEW",
+    "LOCKED_PREVIEW",
+    "HOLDOVER_PREVIEW",
+    "RECOVER_PREVIEW",
+    "MANUAL_OPEN_LOOP",
+    "FAULT",
+}
 
 
 @dataclass(frozen=True)
@@ -220,6 +328,14 @@ def _parse_non_negative_int(value: str, field_name: str, row_number: int, errors
     return parsed
 
 
+def _parse_int(value: str, field_name: str, row_number: int, errors: list[str]) -> int | None:
+    try:
+        return int(value, 10)
+    except (TypeError, ValueError):
+        errors.append(f"row {row_number}: {field_name} is not an integer: {value!r}")
+        return None
+
+
 def _check_schema_version(contract: str, row: dict[str, str], row_number: int, errors: list[str]) -> None:
     version = _parse_non_negative_int(row.get("schema_version", ""), "schema_version", row_number, errors)
     expected = CONTRACT_SCHEMA_VERSIONS[contract]
@@ -242,7 +358,14 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     return current if current is not None else previous
 
 
-def _check_timestamps(contract: str, row: dict[str, str], row_number: int, errors: list[str]) -> None:
+def _check_timestamps(
+    contract: str,
+    row: dict[str, str],
+    row_number: int,
+    errors: list[str],
+    *,
+    allow_rp2040_timer0_wrap: bool,
+) -> None:
     parsed: dict[str, int] = {}
     for field_name in TIMESTAMP_FIELDS[contract]:
         value = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
@@ -250,10 +373,16 @@ def _check_timestamps(contract: str, row: dict[str, str], row_number: int, error
             parsed[field_name] = value
     if contract == "count_observations_v1" and {"gate_open_ticks", "gate_close_ticks"} <= parsed.keys():
         if parsed["gate_close_ticks"] <= parsed["gate_open_ticks"]:
-            errors.append(
-                f"row {row_number}: gate_close_ticks must be greater than gate_open_ticks; "
-                f"open={parsed['gate_open_ticks']}, close={parsed['gate_close_ticks']}"
+            crosses_wrap = (
+                allow_rp2040_timer0_wrap
+                and parsed["gate_open_ticks"] - parsed["gate_close_ticks"]
+                > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
             )
+            if not crosses_wrap:
+                errors.append(
+                    f"row {row_number}: gate_close_ticks must be greater than gate_open_ticks; "
+                    f"open={parsed['gate_open_ticks']}, close={parsed['gate_close_ticks']}"
+                )
 
 
 def _check_timestamp_monotonicity(
@@ -408,6 +537,155 @@ def _check_diagnostics_draft_v0(row: dict[str, str], row_number: int, errors: li
         )
 
 
+def _check_required_text(
+    row: dict[str, str], row_number: int, errors: list[str], field_names: tuple[str, ...]
+) -> None:
+    for field_name in field_names:
+        if not row.get(field_name):
+            errors.append(f"row {row_number}: {field_name} must not be empty")
+
+
+def _check_boolean_text(row: dict[str, str], field_name: str, row_number: int, errors: list[str]) -> None:
+    if row.get(field_name) not in VALID_BOOLEAN_TEXT:
+        errors.append(f"row {row_number}: {field_name} must be 'true' or 'false'")
+
+
+def _check_estimate_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "estimate_id",
+            "source_count_ref",
+            "source_status_refs",
+            "source_dac_ref",
+            "manifest_ref",
+            "estimator_version",
+            "config_hash",
+            "observation_reason_codes",
+            "diagnostic_reason_codes",
+            "eligibility_reason_codes",
+        ),
+    )
+    if row.get("observation_validity") not in VALID_OBSERVATION_VALIDITY:
+        errors.append(
+            f"row {row_number}: observation_validity must be one of {sorted(VALID_OBSERVATION_VALIDITY)}"
+        )
+    for field_name in ("reference_validity", "count_validity"):
+        if row.get(field_name) not in VALID_COMPONENT_VALIDITY:
+            errors.append(
+                f"row {row_number}: {field_name} must be one of {sorted(VALID_COMPONENT_VALIDITY)}"
+            )
+    if row.get("diagnostic_health") not in VALID_DIAGNOSTIC_HEALTH:
+        errors.append(
+            f"row {row_number}: diagnostic_health must be one of {sorted(VALID_DIAGNOSTIC_HEALTH)}"
+        )
+    if row.get("estimator_confidence") not in VALID_ESTIMATOR_CONFIDENCE:
+        errors.append(
+            f"row {row_number}: estimator_confidence must be one of {sorted(VALID_ESTIMATOR_CONFIDENCE)}"
+        )
+
+    for field_name in (
+        "reference_continuity",
+        "count_continuity",
+        "drift_enabled",
+        "preview_eligibility",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("drift_enabled") != "false":
+        errors.append(f"row {row_number}: drift_enabled must remain false in Phase 4 v1 replay")
+    if row.get("drift_hz_per_s"):
+        errors.append(f"row {row_number}: drift_hz_per_s must be unavailable when drift_enabled=false")
+
+    for field_name in (
+        "reference_age_s",
+        "count_age_s",
+        "frequency_observation_hz",
+        "frequency_estimate_hz",
+        "frequency_error_hz",
+        "frequency_uncertainty_hz",
+        "dispersion_hz",
+    ):
+        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+    _parse_non_negative_int(row.get("accepted_sample_count", ""), "accepted_sample_count", row_number, errors)
+    if row.get("source_count_seq"):
+        _parse_non_negative_int(row.get("source_count_seq", ""), "source_count_seq", row_number, errors)
+    for field_name in ("source_reference_first_seq", "source_reference_last_seq"):
+        if row.get(field_name):
+            _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+
+
+def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "decision_id",
+            "est_input_ref",
+            "plant_model_ref",
+            "policy_version",
+            "config_hash",
+            "control_state",
+            "previous_control_state",
+            "transition_reason_code",
+            "eligibility_reason_codes",
+            "model_reason_codes",
+            "decision_reason_code",
+        ),
+    )
+    if row.get("control_state") not in VALID_CONTROL_STATES:
+        errors.append(f"row {row_number}: control_state must be one of {sorted(VALID_CONTROL_STATES)}")
+    if row.get("previous_control_state") not in VALID_CONTROL_STATES:
+        errors.append(
+            f"row {row_number}: previous_control_state must be one of {sorted(VALID_CONTROL_STATES)}"
+        )
+    if row.get("model_applicability") not in VALID_MODEL_APPLICABILITY:
+        errors.append(
+            f"row {row_number}: model_applicability must be one of {sorted(VALID_MODEL_APPLICABILITY)}"
+        )
+    if row.get("diagnostic_health") not in VALID_DIAGNOSTIC_HEALTH:
+        errors.append(
+            f"row {row_number}: diagnostic_health must be one of {sorted(VALID_DIAGNOSTIC_HEALTH)}"
+        )
+
+    for field_name in (
+        "state_transition",
+        "preview_eligibility",
+        "step_limited",
+        "range_clamped",
+        "preview_available",
+        "preview_only",
+        "actuation_authorized",
+        "actionable",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("preview_only") != "true":
+        errors.append(f"row {row_number}: preview_only must remain true in Phase 4 v1")
+    if row.get("actuation_authorized") != "false":
+        errors.append(f"row {row_number}: actuation_authorized must remain false in Phase 4 v1")
+    if row.get("actionable") != "false":
+        errors.append(f"row {row_number}: actionable must remain false in Phase 4 v1")
+
+    for field_name in ("plant_model_version", "current_dac_code", "proposed_dac_code"):
+        if row.get(field_name):
+            _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    if row.get("limited_delta_codes"):
+        _parse_int(row.get("limited_delta_codes", ""), "limited_delta_codes", row_number, errors)
+    for field_name in ("frequency_error_hz", "hz_per_code", "raw_delta_codes"):
+        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+
+    preview_available = row.get("preview_available") == "true"
+    preview_eligible = row.get("preview_eligibility") == "true"
+    if preview_available and not preview_eligible:
+        errors.append(f"row {row_number}: preview_available requires preview_eligibility=true")
+    if preview_available and not row.get("proposed_dac_code"):
+        errors.append(f"row {row_number}: preview_available requires proposed_dac_code")
+    if not preview_available and row.get("proposed_dac_code"):
+        errors.append(f"row {row_number}: inhibited preview must not contain proposed_dac_code")
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -436,7 +714,13 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             _check_schema_version(context.contract, row, row_count, errors)
             _check_record_type(context.contract, row, row_count, errors)
             previous_seq = _check_sequence(context.contract, row, row_count, previous_seq, errors)
-            _check_timestamps(context.contract, row, row_count, errors)
+            _check_timestamps(
+                context.contract,
+                row,
+                row_count,
+                errors,
+                allow_rp2040_timer0_wrap=context.allow_rp2040_timer0_wrap,
+            )
             parsed_timestamps: dict[str, int] = {}
             for field_name in TIMESTAMP_FIELDS[context.contract]:
                 try:
@@ -466,6 +750,10 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_environment(row, row_count, errors)
             if context.contract == "diagnostics_draft_v0":
                 _check_diagnostics_draft_v0(row, row_count, errors)
+            if context.contract == "estimates_v1":
+                _check_estimate_v1(row, row_count, errors)
+            if context.contract == "control_previews_v1":
+                _check_control_preview_v1(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")
