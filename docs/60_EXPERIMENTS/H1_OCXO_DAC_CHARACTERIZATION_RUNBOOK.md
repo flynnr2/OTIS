@@ -411,6 +411,30 @@ The checked-in `run_020` header configuration focuses on the crossing region
 with 2400 s dwells and `0x0300` local steps; it requires no compile-time
 overrides.
 
+### `run_020` local plant-model update
+
+`run_020` executed that exact profile after a fail-closed preflight verified
+the complete uploaded header configuration. All 77 count windows and all
+23,250 PPS intervals were valid; D14 and D10 matched, capture and parser fault
+counters remained zero, and final restoration to `0x8000` was acknowledged.
+
+The direct settled bracket is 9,999,999.963233 Hz at `0xA800` and
+10,000,000.059011 Hz at `0xAB00`. Direct interpolation and code-plus-time
+regression place the crossing near `0xA950`, with a conservative within-run
+band `0xA840..0xAA00`. Four drift-cancelled slopes span
+`0.0001559..0.0001876 Hz/code`, approximately 4.11..4.95 Hz/V using the
+separate `run_018` DMM fit.
+
+Uncontaminated t95 estimates are no greater than about 653 s at the available
+300 s gate resolution, supporting the planned 900 s settling exclusion. Count
+sequence 77 straddles sweep completion and the immediate `0x8000` restore; it
+is preserved but excluded from settled final-centre interpretation.
+
+The current observe-only model is
+`../../profiles/plant_models/cx317_h1_bench_v2.json`. Its applicability range
+is `0xA800..0xB400`; its candidate automatic range `0xA800..0xAB00` remains
+disabled. See `RUN_020_PLANT_MODEL_RESULTS.md`.
+
 For PPS-gated ratio runs, host analysis should derive ratio/frequency from the
 visible `REF` and `CNT` streams plus manifest metadata. Firmware status
 `pps_gate/ratio_available=true` means the latest bounded count window is valid

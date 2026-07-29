@@ -51,8 +51,9 @@ Understand the plant before designing the controller.
 6. Characterize settling time and thermal behavior — present in reports, not yet loop constants
 7. Restore clean post-inhibit count validity under the revised power/conditioning path — complete in `run_014`
 8. Validate PPS/reference cadence handling with timestamp rollover awareness — clean in `run_017` and `run_019`
-9. Confirm the `run_019` crossing region locally in `run_020`, then freeze a conservative plant model
-10. Only then design any guarded control-loop actuation experiment
+9. Confirm the `run_019` crossing region locally in `run_020` — complete
+10. Freeze a conservative observe-only plant model — complete in model version 3
+11. Only then design any guarded control-loop actuation experiment
 
 ---
 
@@ -109,8 +110,11 @@ Current H1 DAC sweep status:
   4.38..4.50 Hz/V, and a crossing near `0xAE00`. The uploaded profile was the
   broad `0x0100..0xFF00`, 900 s configuration rather than the intended local
   crossing profile, so it is analysis-useful but not locally authoritative.
-- The next bench decision is local crossing confirmation in `run_020`, followed
-  by plant-model freeze. Active steering remains blocked.
+- `run_020` completed with a direct `0xA800`/`0xAB00` crossing bracket, local
+  gain `0.0001559..0.0001876 Hz/code`, and a supported 900 s settling
+  exclusion.
+- Model version 3 is frozen for observe-only use. Active steering remains
+  blocked.
 
 ---
 
@@ -223,14 +227,12 @@ only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.
 
-Current status: `run_019` supersedes `run_017` as the broad plant-model input.
-Its wide fit is `0.000169064 Hz/code` (`R²=0.999920`), and four drift-cancelled
-estimates give 4.38..4.50 Hz/V using the `run_018` voltage fit. The inferred
-crossing is near `0xAE00` (about 1.692 V), but the nearest measured below/above
-points were only `0x8400` and `0xBF80`. Treat the broad gain as an applicability
-bound, not a firmware constant or local control gain. `run_020` must establish
-the valid crossing neighbourhood, uncertainty, hysteresis, noise floor, and
-settling cadence before the versioned model is frozen.
+Current status: `run_019` supplies the broad model and `run_020` supplies the
+local authority. Run 020 brackets 10 MHz between `0xA800` and `0xAB00`, with
+crossing estimate near `0xA950` and within-run band `0xA840..0xAA00`. Its four
+drift-cancelled slopes span `0.0001559..0.0001876 Hz/code`, approximately
+4.11..4.95 Hz/V using the Run 018 voltage fit. These values are frozen in
+model version 3 for observe-only use, not as firmware constants.
 
 ---
 
@@ -244,12 +246,10 @@ Measure:
 - overshoot
 - slow thermal drift
 
-Current status: `run_019` resolves settling only at its 300 s gate granularity.
-Most broad transitions appear settled at the first post-discard midpoint
-(about 150 s), while one return appears closer to 450 s. The strict 900 s
-discard leaves no settled windows and is preserved as such. These bounds are
-planning evidence, not selected SW2 loop constants; `run_020` targets the local
-crossing behaviour with longer dwells.
+Current status: Run 020's seven uncontaminated local transitions have t95
+estimates no greater than about 653 s at 300 s gate resolution. This supports a
+900 s exclusion for observe-only model use. It is not a selected control-loop
+cadence or a finely resolved time constant.
 
 ---
 
@@ -265,12 +265,11 @@ Outputs:
 - post-warmup drift
 - frequency vs time
 
-Current status: `run_019` captured SHT4x near-VCOCXO temperature from 28.327 C
-to 29.566 C. Its final 8.17 h hold at `0x8000` had median
-9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift
-+0.002104 Hz/h (+0.000210 ppm/h). Negligible simple residual correlation does
-not establish thermal independence. Thermal behavior should influence SW2 only
-through an explicit model or gate, not ad hoc firmware constants.
+Current status: Run 019 supplies the long `0x8000` hold. Run 020 spans
+28.445..30.455 C near-VCOCXO air temperature during its stepped profile.
+Temperature is confounded with elapsed time, so model version 3 leaves the
+thermal model unresolved. Thermal behavior should influence SW2 only through
+an explicit future model or gate, not ad hoc firmware constants.
 
 ---
 

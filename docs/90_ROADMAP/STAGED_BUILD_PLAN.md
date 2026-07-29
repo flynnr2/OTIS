@@ -104,16 +104,17 @@ The clean `run_014` capture then completed 284 300 s count windows with no
 zero-count rows, all `CNT` rows flagged `16`, no host capture drops, and no
 parser errors.
 
-`run_019` gives the current broad plant evidence: one clean 12.89 h session,
+`run_019` gives the broad plant evidence: one clean 12.89 h session,
 155 valid count windows, no host PPS anomalies, D10/D14 final agreement, a
 wide-fit slope of `0.000169064 Hz/code` (`R²=0.999920`), and a 10 MHz crossing
 near `0xAE00`. Its actual uploaded configuration was the historical
 `0x0100..0xFF00`, 900 s profile, not the intended tight crossing profile.
 Accordingly, it validates broad monotonic response but not a local control
-model. `run_020` is the focused crossing-region confirmation. The remaining
-pre-SW2 gate is to freeze a local plant model and actuation envelope from that
-evidence; the old `0x7000..0x9000` span is not viable because it does not reach
-the crossing.
+model. `run_020` completed the focused confirmation and directly brackets
+10 MHz near `0xA950`. Phase 3 freezes model version 3 with observe-only
+applicability `0xA800..0xB400` and a disabled candidate range
+`0xA800..0xAB00`. The pre-SW2 observe-only plant-model gate is complete;
+active-control policy remains deliberately separate.
 
 The intended H1 sequence is:
 
@@ -123,10 +124,10 @@ The intended H1 sequence is:
 4. Capture free-running OCXO count observations via FC0/GPIN0.
 5. Manually step DAC output. **Complete enough for unloaded DAC output.**
 6. Measure frequency/count response versus DAC setting. **Analysis-useful, not control-authorized.**
-7. Estimate Hz/V and ppm/V. **Broad estimate present from `run_019`; local crossing gain awaits `run_020`.**
-8. Characterize settling time and thermal behavior. **Broad 300 s-resolution bounds and an 8.17 h hold are present from `run_019`; not yet loop constants.**
+7. Estimate Hz/V and ppm/V. **Complete for observe-only from Run 020 local gain.**
+8. Characterize settling time and thermal behavior. **A 900 s exclusion is supported; thermal modelling remains unresolved.**
 9. Fix or confirm the count-observation power/conditioning path. **Resolved by `run_014`; G17 solder fault found and repaired.**
-10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model.
+10. Review timestamp-rollover diagnostics and freeze a conservative H1 plant model. **Complete for observe-only in model version 3.**
 11. Only then design any guarded SW2 actuation experiment.
 
 Implement in order:

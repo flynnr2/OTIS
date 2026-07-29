@@ -24,18 +24,15 @@ open-loop OCXO/DAC characterization:
 - the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
-Current broad-range H1 CX317/AD5693R evidence is preserved under
-`runs/h1_open_loop/dac_manual_sweep/run_019`. Its continuous 12.89 h capture
-contains 155 valid 300 s count windows and 46,394 valid PPS intervals with no
-capture, parser, overflow, saturation, or count-validity faults. Across the
-actual uploaded `0x0100..0xFF00` profile, the fitted response is approximately
-`0.000169064 Hz/code` (`R²=0.99992`), or 4.38..4.50 Hz/V using the `run_018`
-voltage model. It locates the 10 MHz crossing near `0xAE00`; consequently the
-historical `0x7000..0x9000` range cannot serve as an automatic control
-envelope. The focused `run_020` experiment is intended to resolve the local
-crossing slope, hysteresis, and settling behaviour. SW2 active DAC steering
-remains disabled. See
-`docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md`.
+The current H1 CX317/AD5693R plant model is
+`profiles/plant_models/cx317_h1_bench_v2.json`. Run 019 supplies broad
+monotonicity and gain; Run 020 supplies the direct local crossing bracket,
+drift-cancelled gain, repeatability, and settling evidence. The observe-only
+model records a crossing near `0xA950`, local gain
+`0.0001559..0.0001876 Hz/code`, applicability over `0xA800..0xB400`, and a
+disabled candidate envelope `0xA800..0xAB00`. Both `control_ready` and
+`actuation_enabled` remain false. See
+`docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`.
 
 The current SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit

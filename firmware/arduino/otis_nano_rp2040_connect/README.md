@@ -185,10 +185,12 @@ compile-time flags:
 ```
 
 This is a characterization envelope, not an authorized automatic-control
-envelope or a statement that every sweep visits both endpoints. `run_019`
-successfully exercised the historical `0x0100..0xFF00`, 900 s profile and
-located the 10 MHz crossing near `0xAE00`; its tiny-step work around `0x8000`
-was therefore not a local crossing measurement. The AD5693R breakout is
+envelope or a statement that every sweep visits both endpoints. `run_020`
+completed the intended focused profile and located the 10 MHz crossing near
+`0xA950`, with a conservative within-run band `0xA840..0xAA00`. The versioned
+observe-only plant model records a disabled candidate automatic range
+`0xA800..0xAB00`; firmware clamps remain separate and do not authorize
+steering. The AD5693R breakout is
 observed in 1x mode with an approximately 2.5 V full-scale output, while the
 CX317 datasheet specifies a normal `Vc` operating range of 0.0 V to 3.3 V and
 a nominal point of 1.65 V. DMM readings from H1 `run_018` give:

@@ -33,7 +33,7 @@
     "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
     "pps_reference_pin": "D14",
     "pps_witness_pin": "D10",
-    "completion_status": "planned"
+    "completion_status": "complete"
   },
   "firmware_header_configuration": {
     "OTIS_FIRMWARE_CONFIG_ID": "run_020_crossing_v1",
