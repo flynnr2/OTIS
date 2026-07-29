@@ -21,6 +21,7 @@ KNOWN_SWEEP_PROFILES = frozenset(
 SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
+        "CONFIG?",
         "DAC?",
         "DAC LIMITS?",
         "DAC MID",

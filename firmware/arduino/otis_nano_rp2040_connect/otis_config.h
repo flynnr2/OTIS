@@ -25,6 +25,12 @@
 #define OTIS_FIRMWARE_VERSION "SW1"
 #endif
 
+// Literal experiment configuration identity for IDE-built firmware. Change
+// this whenever the header-defined run configuration changes.
+#ifndef OTIS_FIRMWARE_CONFIG_ID
+#define OTIS_FIRMWARE_CONFIG_ID "run_020_crossing_v1"
+#endif
+
 #ifndef OTIS_FIRMWARE_GIT_COMMIT
 #define OTIS_FIRMWARE_GIT_COMMIT "unknown"
 #endif
@@ -204,18 +210,20 @@
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 #endif
 
-// Hardware-valid H1 characterization envelope. With the AD5693R breakout in
-// its observed 1x configuration, the measured code/voltage fit predicts about
-// 0.015 V at 0x0100 and 2.479 V at 0xFF00. This stays inside the CX317 0..3.3 V
-// operating Vc range and avoids both exact DAC rails. These clamps bound manual
-// commands and explicitly started open-loop sweeps; they do not auto-start a
-// sweep, enable feedback steering, or authorize SW2 control.
+// run_020 IDE-native H1 crossing-characterization envelope. These values live
+// in this header deliberately: the Arduino IDE is the required compile/upload
+// path, and this run must not depend on command-line -D overrides. The midpoint
+// of 0x6000..0xFC00 is 0xAE00, the run_019 broad-fit crossing region. The prior
+// code/voltage fit predicts about 0.936..2.450 V across this envelope, within
+// the CX317 0..3.3 V operating Vc range. These clamps bound manual commands and
+// explicitly started open-loop sweeps; they do not auto-start a sweep, enable
+// feedback steering, or authorize SW2 control.
 #ifndef OTIS_DAC_MIN_CODE
-#define OTIS_DAC_MIN_CODE 0x0100u
+#define OTIS_DAC_MIN_CODE 0x6000u
 #endif
 
 #ifndef OTIS_DAC_MAX_CODE
-#define OTIS_DAC_MAX_CODE 0xFF00u
+#define OTIS_DAC_MAX_CODE 0xFC00u
 #endif
 
 // Optional low-rate environmental telemetry for oscillator characterization.
@@ -252,15 +260,15 @@
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS
-#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 900000u
+#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 2400000u
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS
-#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 900000u
+#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 2400000u
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_TINY_STEP_CODES
-#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0200u
+#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0300u
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_MAX_STEPS

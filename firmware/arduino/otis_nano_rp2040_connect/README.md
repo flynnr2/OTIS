@@ -232,6 +232,7 @@ with newline or carriage return:
 
 ```text
 HELP
+CONFIG?
 DAC?
 DAC LIMITS?
 DAC SET 0x8000
@@ -262,9 +263,10 @@ clamp window.
 The boot/status stream reports H1 open-loop mode, counter measurement mode,
 gate period, nominal OCXO frequency assumption, DAC enable state, I2C address,
 clamp values, DAC init success/failure, and accepted/rejected DAC command
-telemetry. `FC0?` prints the latest count-observation summary as structured
-`STS` rows. The regular `CNT` records remain the primary oscillator observation
-output.
+telemetry. `CONFIG?` repeats the run-critical build configuration on demand,
+including the sweep centre, dwell, and tiny-step values. `FC0?` prints the
+latest count-observation summary as structured `STS` rows. The regular `CNT`
+records remain the primary oscillator observation output.
 
 `OTIS_ENABLE_H1_DAC_SWEEP` adds deterministic open-loop sweep commands. Sweeps
 are never started on boot; `SWEEP START` is required. Built-in profiles are
@@ -278,7 +280,9 @@ and enough clean long-gate windows have been observed.
 During an active sweep, firmware emits `DAC` rows for `dwell_start`,
 `fc0_window`, and `dwell_complete` so each nearby `CNT` observation can be
 attributed to the active step index and DAC code without changing the `CNT`
-schema.
+schema. Loading a built-in profile also emits one non-actuating `profile_step`
+row per planned step, allowing the complete code and dwell sequence to be
+verified before `SWEEP START`.
 
 Wiring summary for H1:
 
