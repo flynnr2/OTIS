@@ -187,3 +187,8 @@ failing because `runs/` is absent.
 This change passes roadmap milestone M2, host observe-only discipline replay.
 It does not pass M3 firmware parity, M4 live discipline measurement, or any
 guarded-actuation milestone.
+
+Subsequent Phase 4 work implements and fixture-qualifies the live firmware
+engine; see `PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`. M3 still remains
+open pending target upload, deliberate service-plane load/reconnect testing,
+and the required long live observe-only run.

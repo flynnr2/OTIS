@@ -28,6 +28,8 @@
 #define OTIS_RECORD_STS "STS"
 #define OTIS_RECORD_DAC "DAC"
 #define OTIS_RECORD_ENV "ENV"
+#define OTIS_RECORD_EST "EST"
+#define OTIS_RECORD_CTL "CTL"
 
 typedef enum OtisFlagsV1 {
   OTIS_FLAG_NONE = 0u,

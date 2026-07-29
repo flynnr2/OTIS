@@ -2,10 +2,10 @@
 
 ## Status and scope
 
-Normative host-derived Phase 4 correction-preview contract. `CTL` v1 is
-observe-only: `preview_only=true`, `actuation_authorized=false`, and
-`actionable=false` are mandatory. No field in this contract is permission to
-write a DAC.
+Normative Phase 4 correction-preview contract for deterministic host replay and
+live observe-only firmware. `CTL` v1 is observe-only:
+`preview_only=true`, `actuation_authorized=false`, and `actionable=false` are
+mandatory. No field in this contract is permission to write a DAC.
 
 ## Schema
 
@@ -62,6 +62,10 @@ An ineligible decision has no proposed DAC code. An eligible decision may have
 a proposal, but it remains non-actionable because Phase 4 contains no write
 path and model status remains `control_ready=false` and
 `actuation_enabled=false`.
+
+The live firmware emits `EST` and `CTL` as one bounded telemetry pair. If the
+derived queue is full, the pair is dropped and counted without feeding the loss
+back into estimator state or changing raw capture/count truth.
 
 ## Stable initial reason codes
 

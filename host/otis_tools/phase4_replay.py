@@ -682,7 +682,22 @@ def _model_applicability(
         reasons.append("input_outside_model_applicability")
 
     excluded = set(model.data["plant_response"]["applicability"].get("excluded_count_sequences", []))
-    if count is not None and count.seq in excluded:
+    source_run_ids = model.data.get("source_evidence", {}).get(
+        "source_run_ids", []
+    )
+    source_identity: object = manifest.run_id
+    if isinstance(replay_identity, dict):
+        source_identity = replay_identity.get(
+            "source_evidence_run_id", manifest.run_id
+        )
+    source_identity_text = str(source_identity)
+    replaying_model_source = any(
+        source_identity_text == str(source_run_id)
+        or str(source_run_id).endswith(f"/{source_identity_text}")
+        or source_identity_text.endswith(f"/{source_run_id}")
+        for source_run_id in source_run_ids
+    )
+    if count is not None and replaying_model_source and count.seq in excluded:
         reasons.append("plant_model_excluded_count_sequence")
 
     slope = model.data["plant_response"]["local_slope"].get("hz_per_code")
@@ -859,7 +874,10 @@ def replay_phase4(
     fault_latched = False
     clean_windows = 0
     recovery_windows = 0
-    first_ticks = timeline[0]
+    # Startup age is measured from the earliest preserved run evidence, not
+    # from the first count close. This matches live firmware startup semantics
+    # for long gates and keeps early REF/STS provenance meaningful.
+    first_ticks = min(terminal_candidates)
     previous_distinct_count_seq: int | None = None
     latest_count: CountRecord | None = None
     count_index = 0

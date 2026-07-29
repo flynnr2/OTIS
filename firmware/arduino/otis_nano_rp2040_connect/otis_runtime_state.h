@@ -11,6 +11,8 @@ struct OtisSequenceState {
   uint32_t count_seq;
   uint32_t dac_seq;
   uint32_t env_seq;
+  uint32_t estimate_seq;
+  uint32_t control_seq;
 };
 
 struct OtisCaptureRuntimeState {
