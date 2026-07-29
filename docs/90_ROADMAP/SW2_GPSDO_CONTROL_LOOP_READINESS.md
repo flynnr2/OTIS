@@ -49,6 +49,31 @@ This passes host replay only. Firmware observe-only parity, PPS-gated backend
 bench qualification, active-control policy approval, and guarded actuation are
 still incomplete.
 
+## Phase 4 live observe-only parity readiness
+
+The firmware implementation and deterministic parity portion of M3 is
+complete:
+
+- the exact pure C++ engine used by firmware matches host replay state,
+  eligibility, numeric estimate, reason, and preview decisions for the focused
+  fixture matrix;
+- live firmware emits strict `EST v1` and `CTL v1` rows with plant-model,
+  policy, configuration, diagnostic, source, and DAC provenance;
+- model-version-3 topology/backend/applicability, disabled candidate range, and
+  maximum preview step are enforced;
+- the preview module has no DAC-driver include, callback, serial command, or
+  returned proposal path to the manual DAC owner;
+- bounded paired telemetry drops are accounted without changing estimator
+  state or raw capture/count truth;
+- default H1, explicit preview, PPS-gated, alternative capture, FC0, and GPIO
+  count selector builds compile.
+
+M3 is not passed because no target board was attached for upload, deliberate
+USB/telemetry load and reconnect tests, or the required long live observe-only
+run. PPS-gated metrology qualification, firmware active control, and every
+actuation gate remain incomplete. `status.control_ready=false` and
+`status.actuation_enabled=false` remain authoritative.
+
 ## H1 Evidence Available
 
 Primary artifacts:

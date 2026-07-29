@@ -157,8 +157,9 @@ def test_pps_gated_counter_consumes_the_capture_authority() -> None:
     emit_body = sketch_source[emit_start:emit_end]
     assert "otis_emit_raw_event(" in emit_body
     assert "otis_count_observation_on_reference(" in emit_body
-    assert emit_body.count("record.timestamp_ticks") == 2
+    assert emit_body.count("record.timestamp_ticks") >= 2
     assert "record.flags" in emit_body
+    assert "otis_capture_ticks_now()" not in emit_body
 
     loop_body = sketch_source[sketch_source.index("void loop()") :]
     assert loop_body.index("otis_capture_backend_service()") < loop_body.index(

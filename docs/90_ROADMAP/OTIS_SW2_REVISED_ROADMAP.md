@@ -761,6 +761,24 @@ The host can reproduce every decision deterministically from raw records, the pl
 
 **Purpose:** run the same state and policy logic live, with all actuation prohibited.
 
+### Status
+
+Implementation and deterministic parity are complete; the live exit gate is
+still open. The opt-in firmware build now runs the bounded mean estimator,
+eligibility gates, roadmap state subset, model-v3 applicability checks, and
+correction preview while exposing no DAC-write callback. Normative live
+`EST v1`/`CTL v1` rows pass strict host validation, and the exact C++ engine
+matches host replay across startup, reference loss/return, count fault, model
+mismatch/out-of-range, and clamp fixtures.
+
+The checked-in default keeps the preview disabled. All preview authorization
+and actionability fields remain false. The default, preview, PPS-gated,
+alternative sparse-capture, FC0, and divided-signal GPIO count builds compile.
+
+No target board was attached for upload, service-plane load/reconnect testing,
+or a long observe-only run. Therefore this stage does not yet pass its exit
+gate and no later actuation gate is affected.
+
 ### Operating states
 
 Use a small state set aligned with current readiness language:

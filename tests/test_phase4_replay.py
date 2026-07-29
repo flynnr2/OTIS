@@ -53,6 +53,7 @@ def _make_run(
     dac_rows: list[tuple[int, int, int]] | None = None,
     topology: str = TOPOLOGY,
     backend: str = BACKEND,
+    run_id: str = "phase4_fixture",
 ) -> Path:
     run_dir = root / "run"
     run_dir.mkdir(parents=True)
@@ -64,7 +65,7 @@ def _make_run(
 
     manifest = {
         "schema_version": 1,
-        "run_id": "phase4_fixture",
+        "run_id": run_id,
         "template": False,
         "h_phase": "H1",
         "stage": "SW2_PHASE4_HOST_REPLAY",
@@ -505,6 +506,7 @@ def test_model_identity_applicability_and_excluded_sequence_are_enforced(tmp_pat
         tmp_path / "excluded",
         reference_seconds=list(range(0, 79)),
         counts=[(seq, seq, 10_000_000) for seq in range(72, 78)],
+        run_id="run_020",
     )
     excluded_result = replay_phase4(excluded, plant_model_path=MODEL, config=_config())
     assert "plant_model_excluded_count_sequence" in _rows(excluded_result.previews_path)[-1]["model_reason_codes"]

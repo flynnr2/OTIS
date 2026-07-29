@@ -18,6 +18,7 @@
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
 #include "otis_modes.h"
+#include "otis_phase4_observe_preview.h"
 #include "otis_pps_dual_observer.h"
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
@@ -174,10 +175,24 @@ void emit_status_u64_decimal(const char *component, const char *key,
 
 void emit_captured_edge(const OtisCapturedEdge &record) {
   if (record.reference_record && record.edge == 'R') {
+    OtisDacAd5693rStatus dac_status;
+    otis_dac_ad5693r_get_status(&dac_status);
+    OtisPhase4LiveDacState phase4_dac = {
+        dac_status.last_write_ok &&
+            dac_status.last_requested_code == dac_status.last_applied_code,
+        dac_status.last_applied_code,
+    };
+    otis_phase4_observe_preview_on_reference(
+        runtime_state.sequences.event_seq, record.timestamp_ticks, record.flags,
+        &runtime_state, &phase4_dac);
     OtisCountObservationConfig count_config = count_observation_config();
     bool window_completed = otis_count_observation_on_reference(
         &runtime_state, &status_emit_context, &count_config,
         record.timestamp_ticks, record.flags);
+    if (window_completed) {
+      otis_phase4_observe_preview_on_count(
+          runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
+    }
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
     if (window_completed) {
@@ -295,6 +310,11 @@ void emit_common_boot_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_dac_ad5693r", OTIS_ENABLE_DAC_AD5693R,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_phase4_observe_preview",
+                  OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("phase4_preview", "actuation_authorized", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_h1_dac_sweep", OTIS_ENABLE_H1_DAC_SWEEP,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_env_sensors", OTIS_ENABLE_ENV_SENSORS,
@@ -497,6 +517,7 @@ void emit_protocol_banner_if_serial_ready(void) {
   emitRp2040BootDiag(Serial);
 #endif
   otis_emit_csv_headers();
+  otis_phase4_observe_preview_emit_headers();
   emit_common_boot_status();
   emit_h0_pin_status();
   runtime_state.boot.protocol_banner_emitted = true;
@@ -531,6 +552,7 @@ void emit_periodic_status(void) {
   emit_status_u32("capture", "error_flags", drop_flag,
                   capture_dropped_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
                   drop_flag);
+  otis_phase4_observe_preview_emit_status(&status_emit_context);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
   OtisCaptureIrqReferenceStats d14_stats;
   otis_capture_irq_get_reference_stats(&d14_stats);
@@ -1371,6 +1393,7 @@ void boot_phase_run_mode(void) {
   halt_boot(BootFatal::ForcedBeforeRunMode, BootPhase::RunMode);
 #endif
   setup_mode();
+  otis_phase4_observe_preview_begin(otis_capture_ticks_now());
   emit_resource_ownership_status();
   if (!otis_resource_registry_valid()) {
     halt_boot(BootFatal::ResourceOwnershipConflict, BootPhase::RunMode);
@@ -1399,6 +1422,15 @@ void service_tcxo_gate(void) {
   OtisCountObservationConfig count_config = count_observation_config();
   if (otis_count_observation_service(&runtime_state, &status_emit_context,
                                      &count_config)) {
+    OtisDacAd5693rStatus dac_status;
+    otis_dac_ad5693r_get_status(&dac_status);
+    OtisPhase4LiveDacState phase4_dac = {
+        dac_status.last_write_ok &&
+            dac_status.last_requested_code == dac_status.last_applied_code,
+        dac_status.last_applied_code,
+    };
+    otis_phase4_observe_preview_on_count(
+        runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
     emit_h1_dac_sweep_fc0_window();
@@ -1780,9 +1812,17 @@ void loop() {
     return;
   }
 
-  // Future output-budgeting hook: keep capture service/drain before periodic
-  // status emission, then cap max records emitted per loop if host backpressure
-  // becomes observable.
+  // Capture service always runs first. While a queued EST/CTL pair is being
+  // transmitted in bounded chunks, no other record producer may interleave
+  // bytes into that CSV frame; IRQ/PIO capture continues into its own ring.
+  otis_pps_dual_observer_service();
+  otis_capture_backend_service();
+  if (otis_phase4_observe_preview_transport_busy()) {
+    otis_phase4_observe_preview_service_transport();
+    otis_status_led_poll(millis());
+    return;
+  }
+
   emit_protocol_banner_if_serial_ready();
   emit_resource_ownership_status();
   service_serial_commands();
@@ -1791,11 +1831,20 @@ void loop() {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   service_h1_dac_sweep();
 #endif
-  otis_pps_dual_observer_service();
-  otis_capture_backend_service();
   drain_capture_ring();
   service_tcxo_gate();
+  OtisDacAd5693rStatus phase4_dac_status;
+  otis_dac_ad5693r_get_status(&phase4_dac_status);
+  OtisPhase4LiveDacState phase4_dac = {
+      phase4_dac_status.last_write_ok &&
+          phase4_dac_status.last_requested_code ==
+              phase4_dac_status.last_applied_code,
+      phase4_dac_status.last_applied_code,
+  };
+  otis_phase4_observe_preview_poll(otis_capture_ticks_now(), &runtime_state,
+                                   &phase4_dac);
   service_environment_sensors();
   emit_periodic_status();
+  otis_phase4_observe_preview_service_transport();
   otis_status_led_poll(millis());
 }

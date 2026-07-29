@@ -394,6 +394,40 @@ responsibilities.
 `D2` / `GPIO25` / `GPOUT3` is reserved for the secondary diagnostic clock.
 Do not assign either pin to general live-capture inputs.
 
+## Phase 4 observe-only preview
+
+The minimum live Phase 4 estimator and preview state machine is an opt-in build:
+
+```cpp
+#define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 1
+```
+
+It emits normative `EST v1` and `CTL v1` rows derived from canonical live
+`REF`, `CNT`, diagnostic, and evidence-backed DAC state. It is preview-only:
+`actuation_authorized=false` and `actionable=false` are compile/runtime
+invariants. The preview module has no DAC-driver dependency or write callback;
+manual DAC and explicitly started sweep commands remain separately owned by the
+H1 open-loop command path.
+
+`EST`/`CTL` rows are queued as fixed-capacity pairs and serviced only after
+capture. Queue drops are visible through `phase4_preview` status keys and do
+not feed back into the estimator. Model-version-3 identity, topology/backend
+applicability, gain, DAC range, disabled candidate range, and maximum preview
+step are recorded with every decision.
+
+The checked-in default remains disabled. Build the explicit preview variant
+with:
+
+```bash
+arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
+  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" \
+  firmware/arduino/otis_nano_rp2040_connect
+```
+
+See
+`../../../docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`
+for parity results, the selector matrix, and the still-open live bench gate.
+
 ## CLI compile and upload
 
 ```bash

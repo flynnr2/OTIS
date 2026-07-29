@@ -58,8 +58,13 @@ python3 -m host.otis_tools.phase4_replay /path/to/local/run
 ```
 
 It writes only beneath the run's `derived/phase4_replay_v1/` directory, verifies
-that source-evidence hashes remain unchanged, and contains no firmware or DAC
-write path. Firmware parity and active actuation remain incomplete.
+that source-evidence hashes remain unchanged, and contains no DAC write path.
+The opt-in live firmware engine now passes deterministic fixture parity and
+emits the same normative `EST`/`CTL` contracts without a callable actuation
+route. Target USB-load/reconnect testing and a long live observe-only run are
+still required, so the firmware-parity exit gate and all active actuation
+remain incomplete. See
+`docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`.
 
 The current, locally retained SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit
@@ -128,11 +133,11 @@ PIO FIFO is for sparse event observation only: PPS, GPIO loopback, and future
 low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
 FC0/gated-count style observation, not PIO FIFO edge logging.
 
-H1 OCXO/DAC characterization and the Phase 4 host replay gate are complete.
-The next meaningful project work is firmware observe-only parity and
-PPS-gated-ratio measurement qualification, not active steering. PPS- or
-count-error-derived DAC writes remain prohibited until the later reviewed
-guarded-actuation gate.
+H1 OCXO/DAC characterization, Phase 4 host replay, and deterministic
+host/firmware engine parity are complete. The next meaningful project work is
+the target-side long observe-only/load/reconnect run and PPS-gated-ratio
+measurement qualification, not active steering. PPS- or count-error-derived
+DAC writes remain prohibited until the later reviewed guarded-actuation gate.
 
 ## Quick Host Scaffold Check
 

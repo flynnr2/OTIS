@@ -2,9 +2,10 @@
 
 ## Status and scope
 
-Normative host-derived Phase 4 estimator contract. `EST` records are replayable
-metrology products. They do not replace `REF`, `CNT`, `STS`, `DAC`, manifests,
-or plant models, and they cannot authorize or perform actuation.
+Normative Phase 4 estimator contract for deterministic host replay and live
+observe-only firmware. `EST` records are replayable metrology products. They do
+not replace `REF`, `CNT`, `STS`, `DAC`, manifests, or plant models, and they
+cannot authorize or perform actuation.
 
 ## Schema
 
@@ -65,3 +66,9 @@ estimation is disabled.
 Every record cites the source count, reference range, status/DAC availability,
 manifest hash, estimator version, and configuration hash. `EST` has no
 hardware-write semantics.
+
+Live firmware uses the same field order and semantics. Its source references
+identify live canonical records or explicit unavailable evidence, and its
+compiled configuration/model hashes bind the decision to versioned repository
+inputs. Firmware telemetry loss does not change estimator state; it is reported
+separately in `STS`.

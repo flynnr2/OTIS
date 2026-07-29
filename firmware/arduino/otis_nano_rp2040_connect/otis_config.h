@@ -15,6 +15,12 @@
 #define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #endif
 
+// Declared before provenance so an explicit preview build names itself
+// accurately in boot/status and derived-record provenance.
+#ifndef OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 0
+#endif
+
 // Firmware provenance. Scripted builds may override these with -D flags; keep
 // defaults stable so Arduino IDE builds remain deterministic.
 #ifndef OTIS_FIRMWARE_NAME
@@ -22,13 +28,21 @@
 #endif
 
 #ifndef OTIS_FIRMWARE_VERSION
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#define OTIS_FIRMWARE_VERSION "SW2_PHASE4_OBSERVE_PREVIEW"
+#else
 #define OTIS_FIRMWARE_VERSION "SW1"
+#endif
 #endif
 
 // Literal experiment configuration identity for IDE-built firmware. Change
 // this whenever the header-defined run configuration changes.
 #ifndef OTIS_FIRMWARE_CONFIG_ID
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#define OTIS_FIRMWARE_CONFIG_ID "phase4_observe_preview_v1"
+#else
 #define OTIS_FIRMWARE_CONFIG_ID "run_020_crossing_v1"
+#endif
 #endif
 
 #ifndef OTIS_FIRMWARE_GIT_COMMIT
@@ -199,6 +213,38 @@
 #define OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS 3u
 #endif
 
+// Phase 4 live discipline is an explicitly selected observe-only build.  It
+// emits EST/CTL preview telemetry but has no actuation callback and never
+// includes the DAC driver.  Manual DAC/sweep ownership remains in the sketch's
+// command path.
+#ifndef OTIS_PHASE4_PREVIEW_QUEUE_DEPTH
+#define OTIS_PHASE4_PREVIEW_QUEUE_DEPTH 4u
+#endif
+
+#ifndef OTIS_PHASE4_ESTIMATOR_WINDOW
+#define OTIS_PHASE4_ESTIMATOR_WINDOW 5u
+#endif
+
+#ifndef OTIS_PHASE4_MINIMUM_ESTIMATOR_SAMPLES
+#define OTIS_PHASE4_MINIMUM_ESTIMATOR_SAMPLES 3u
+#endif
+
+#ifndef OTIS_PHASE4_RECOVERY_CLEAN_WINDOWS
+#define OTIS_PHASE4_RECOVERY_CLEAN_WINDOWS 3u
+#endif
+
+#ifndef OTIS_PHASE4_REFERENCE_MAX_AGE_US
+#define OTIS_PHASE4_REFERENCE_MAX_AGE_US 1500000u
+#endif
+
+#ifndef OTIS_PHASE4_COUNT_MAX_AGE_US
+#define OTIS_PHASE4_COUNT_MAX_AGE_US 450000000u
+#endif
+
+#ifndef OTIS_PHASE4_MAXIMUM_DISPERSION_HZ
+#define OTIS_PHASE4_MAXIMUM_DISPERSION_HZ 0.25
+#endif
+
 // H1 open-loop lab instrument DAC support. This is deliberately opt-in and
 // operator-initiated; firmware never steers the oscillator from PPS/count
 // telemetry.
@@ -355,6 +401,30 @@
 
 #if OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS < 1u
 #error "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS must be at least 1."
+#endif
+
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW != 0 && \
+    OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW != 1
+#error "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW must be 0 or 1."
+#endif
+
+#if OTIS_PHASE4_PREVIEW_QUEUE_DEPTH < 2u || \
+    OTIS_PHASE4_PREVIEW_QUEUE_DEPTH > 8u
+#error "OTIS_PHASE4_PREVIEW_QUEUE_DEPTH must be between 2 and 8."
+#endif
+
+#if OTIS_PHASE4_ESTIMATOR_WINDOW < 3u || \
+    OTIS_PHASE4_ESTIMATOR_WINDOW > 8u
+#error "OTIS_PHASE4_ESTIMATOR_WINDOW must be between 3 and 8."
+#endif
+
+#if OTIS_PHASE4_MINIMUM_ESTIMATOR_SAMPLES < 1u || \
+    OTIS_PHASE4_MINIMUM_ESTIMATOR_SAMPLES > OTIS_PHASE4_ESTIMATOR_WINDOW
+#error "OTIS_PHASE4_MINIMUM_ESTIMATOR_SAMPLES must fit the estimator window."
+#endif
+
+#if OTIS_PHASE4_RECOVERY_CLEAN_WINDOWS < 1u
+#error "OTIS_PHASE4_RECOVERY_CLEAN_WINDOWS must be at least 1."
 #endif
 
 #if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u
