@@ -41,12 +41,12 @@
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #define OTIS_FIRMWARE_CONFIG_ID "phase4_observe_preview_v1"
 #else
-#define OTIS_FIRMWARE_CONFIG_ID "run_020_crossing_v1"
+#define OTIS_FIRMWARE_CONFIG_ID "phase5_pps_gated_qualification_v1"
 #endif
 #endif
 
 #ifndef OTIS_FIRMWARE_GIT_COMMIT
-#define OTIS_FIRMWARE_GIT_COMMIT "unknown"
+#define OTIS_FIRMWARE_GIT_COMMIT "1095a16dc0c4e6f9ce875032fbe64209c2832b41"
 #endif
 
 // Edge capture backends. Keep IRQ as the default SW1 path; PIO FIFO is an
@@ -100,7 +100,7 @@
 
 #ifndef OTIS_TCXO_COUNTER_BACKEND
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-#define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+#define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 #else
 #define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
 #endif
@@ -267,7 +267,7 @@
 // operator-initiated; firmware never steers the oscillator from PPS/count
 // telemetry.
 #ifndef OTIS_ENABLE_DAC_AD5693R
-#define OTIS_ENABLE_DAC_AD5693R 1
+#define OTIS_ENABLE_DAC_AD5693R 0
 #endif
 
 #ifndef OTIS_DAC_AD5693R_I2C_ADDRESS
@@ -294,7 +294,7 @@
 // SHT4x is the preferred near-VCOCXO temperature source; BMP280 is primarily
 // pressure context and secondary temperature.
 #ifndef OTIS_ENABLE_ENV_SENSORS
-#define OTIS_ENABLE_ENV_SENSORS 1
+#define OTIS_ENABLE_ENV_SENSORS 0
 #endif
 
 #ifndef OTIS_ENABLE_ENV_SHT4X
@@ -320,7 +320,7 @@
 // Deterministic H1 open-loop DAC sweep support. This is lab automation only:
 // sweeps never start on boot and never steer from count/frequency telemetry.
 #ifndef OTIS_ENABLE_H1_DAC_SWEEP
-#define OTIS_ENABLE_H1_DAC_SWEEP 1
+#define OTIS_ENABLE_H1_DAC_SWEEP 0
 #endif
 
 #ifndef OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS
