@@ -219,6 +219,108 @@
             "warmup_s": { "$ref": "#/$defs/nullable_number" },
             "drift_after_warmup_ppm_per_hour": { "$ref": "#/$defs/nullable_number" }
           }
+        },
+        "crossing_estimate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_frequency_hz",
+            "code",
+            "code_min",
+            "code_max",
+            "estimated_voltage_v",
+            "estimated_voltage_min_v",
+            "estimated_voltage_max_v",
+            "method",
+            "uncertainty_scope",
+            "observed_bracket"
+          ],
+          "properties": {
+            "target_frequency_hz": { "type": "number", "exclusiveMinimum": 0 },
+            "code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "code_min": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "code_max": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "estimated_voltage_v": { "$ref": "#/$defs/nullable_number" },
+            "estimated_voltage_min_v": { "$ref": "#/$defs/nullable_number" },
+            "estimated_voltage_max_v": { "$ref": "#/$defs/nullable_number" },
+            "method": { "type": "string", "minLength": 1 },
+            "uncertainty_scope": { "type": "string", "minLength": 1 },
+            "observed_bracket": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["below_code", "below_frequency_hz", "above_code", "above_frequency_hz"],
+              "properties": {
+                "below_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+                "below_frequency_hz": { "type": "number" },
+                "above_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+                "above_frequency_hz": { "type": "number" }
+              }
+            }
+          }
+        },
+        "repeatability_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "center_code",
+            "clean_center_dwell_count",
+            "center_median_min_hz",
+            "center_median_max_hz",
+            "center_span_hz",
+            "center_stdev_hz",
+            "up_down_center_delta_hz",
+            "endpoint_bidirectional_hysteresis_measured"
+          ],
+          "properties": {
+            "center_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "clean_center_dwell_count": { "type": "integer", "minimum": 1 },
+            "center_median_min_hz": { "type": "number" },
+            "center_median_max_hz": { "type": "number" },
+            "center_span_hz": { "type": "number", "minimum": 0 },
+            "center_stdev_hz": { "type": "number", "minimum": 0 },
+            "up_down_center_delta_hz": { "type": "number" },
+            "endpoint_bidirectional_hysteresis_measured": { "type": "boolean" }
+          }
+        },
+        "applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "dac_code_range",
+            "measurement_backend",
+            "gate_duration_s",
+            "settling_exclusion_s",
+            "temperature_range_c",
+            "excluded_count_sequences",
+            "limitations"
+          ],
+          "properties": {
+            "mode": { "const": "observe_only" },
+            "dac_code_range": { "$ref": "#/$defs/code_range" },
+            "measurement_backend": { "type": "string", "minLength": 1 },
+            "gate_duration_s": { "type": "number", "exclusiveMinimum": 0 },
+            "settling_exclusion_s": { "type": "number", "minimum": 0 },
+            "temperature_range_c": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["min_c", "max_c"],
+              "properties": {
+                "min_c": { "type": "number" },
+                "max_c": { "type": "number" }
+              }
+            },
+            "excluded_count_sequences": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1 },
+              "uniqueItems": true
+            },
+            "limitations": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1
+            }
+          }
         }
       }
     },

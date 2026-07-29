@@ -1,10 +1,18 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Status:** revised against completed `run_019` evidence on 29 July 2026
+**Status:** revised against completed `run_020` evidence and the Phase 3
+observe-only plant model on 29 July 2026
 
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding
 
-**Current evidence caveat:** `runs/h1_open_loop/dac_manual_sweep/run_019` is the current broad CX317/AD5693R plant-evidence run. Its clean 12.89 h capture validates broad monotonic response and locates the 10 MHz crossing near `0xAE00`, but the uploaded profile differed from the intended tight crossing manifest. It is analysis-useful, not a local actuation-authoritative model; `run_020` addresses that gap.
+**Current evidence caveat:** `run_019` remains the broad CX317/AD5693R
+response reference. The completed and sealed `run_020` supplies the focused
+crossing-region evidence and supports the versioned observe-only model
+`profiles/plant_models/cx317_h1_bench_v2.json`. Its applicability is local to
+`0xA800..0xB400`; the narrower `0xA800..0xAB00` automatic range is a recorded
+candidate only. Endpoint hysteresis, a direct `run_020` DAC-voltage
+measurement, and an independently identifiable temperature model remain
+unresolved, so automatic actuation remains disabled.
 
 ---
 
@@ -62,14 +70,15 @@ SW2 should therefore **extend the existing observation-and-replay architecture**
 
 The recommended path is:
 
-1. finish local H1 crossing confirmation in `run_020`, using `run_019` as the broad-response and crossing-location reference;
+1. use the completed, versioned H1 plant model as an observe-only input;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
-4. derive and freeze a versioned plant model and safe automatic-control envelope;
-5. conduct a deliberately limited, very slow frequency-control experiment;
-6. add phase-aware hybrid behaviour only after frequency control is understood;
-7. add holdover and recovery;
-8. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic, or the DAC driver.
+4. validate live observe-only parity and model-applicability diagnostics;
+5. define and review a deliberately limited, very slow frequency-control experiment;
+6. conduct guarded actuation only after its separate policy and safety gate passes;
+7. add phase-aware hybrid behaviour only after frequency control is understood;
+8. add holdover and recovery;
+9. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic, or the DAC driver.
 
 The architectural objective remains larger than a GPSDO:
 
@@ -118,9 +127,17 @@ These must be represented separately.
 
 The checked-in `run_020` characterization clamp is `0x6000..0xFC00`.
 `run_019` shows that the historical `0x7000..0x9000` range does not reach the
-10 MHz crossing and is therefore not a defensible control envelope. No
-automatic-control range is selected yet. SW2 must represent hardware,
-characterization, and automatic-control limits separately.
+10 MHz crossing and is therefore not a defensible control envelope. The
+Phase 3 model records:
+
+- local model applicability `0xA800..0xB400`;
+- nominal crossing code `0xA950`;
+- a conservative automatic-control candidate `0xA800..0xAB00`;
+- maximum manual/open-loop preview step `0x0300`.
+
+The automatic range remains disabled and is not an actuation authorisation.
+SW2 must continue to represent hardware, characterization, and automatic-control
+limits separately.
 
 ### 2.3 The host is already a first-class part of the instrument
 
@@ -248,7 +265,9 @@ A stalled or overloaded service plane must not corrupt the timing plane. SW2 tes
 - account for lost service-plane telemetry;
 - enter a defined fault or degraded state if a non-droppable cross-core channel cannot be serviced.
 
-The dual-core boundary is therefore part of the SW2 platform architecture, even though its implementation should be staged so that it does not obscure the immediate H1 measurement and plant-model blockers.
+The dual-core boundary is therefore part of the SW2 platform architecture,
+even though its implementation should be staged so that it does not obscure
+the completed H1 evidence boundary or the next observe-only work.
 
 ---
 
@@ -300,11 +319,11 @@ repeated center points span about 11.6 Hz, while the median target deltas at the
 smaller local steps are only about 0.1 Hz to 0.3 Hz and the center-bracketed
 Hz/V estimates are mixed sign.
 
-Consequence: preserve the pre-G17-fix capture as negative hardware evidence,
-carry PPS/reference validity gates forward as permanent control safety policy,
-but **do not jump directly to PLL/PI or even guarded I-only actuation**. The next
-roadmap step is a higher-SNR H1-B plant run, still inside the justified safe
-envelope, before freezing a conservative local plant model.
+Consequence at that point: preserve the pre-G17-fix capture as negative
+hardware evidence, carry PPS/reference validity gates forward as permanent
+control safety policy, and **do not jump directly to PLL/PI or even guarded
+I-only actuation**. This led to the higher-SNR H1-B work now completed by
+`run_019` and `run_020`.
 
 `run_016` was the first measurement-confidence update after adding the local PPS
 interpolator. The regenerated H1 report uses the host-side local PPS
@@ -366,6 +385,36 @@ profile. Broad linearity and crossing location are supported; local crossing
 gain, hysteresis, and resolved settling are not. The absence of `COMPLETE`, an
 evidence manifest, pre-run Git snapshots, and operator DMM observations also
 keeps the run analysis-useful rather than sealed.
+
+`run_020` closes the focused crossing-region evidence gap for an observe-only
+plant model:
+
+- the preflight verified the intended Arduino IDE firmware configuration and
+  exact profile before the sweep began;
+- 77 of 77 count windows and 23,250 of 23,250 PPS intervals were valid;
+- there were no capture, parser, reconnect, drop, saturation, or overflow
+  failures;
+- `0xA800` was below 10 MHz by `0.036767 Hz`, while `0xAB00` was above by
+  `0.059011 Hz`;
+- direct interpolation gives crossing code `0xA927`; time-aware regressions
+  give `0xA94C..0xA964`; the model uses rounded nominal code `0xA950`;
+- the conservative within-run crossing band is `0xA840..0xAA00`;
+- four drift-cancelled local slopes are
+  `0.000155907..0.000187610 Hz/code`, with mean
+  `0.000167304 Hz/code`;
+- seven uncontaminated transitions had a maximum resolved `t95` of about
+  `653 s`, supporting the configured `900 s` exclusion;
+- the final count sequence straddled the immediate `0x8000` restore and is
+  preserved as raw evidence but excluded from the final-centre and settling
+  calculations.
+
+The result supports model applicability over `0xA800..0xB400` and a disabled
+automatic-envelope candidate of `0xA800..0xAB00`. Repeated centre observations
+still contain drift/thermal structure, endpoint bidirectional hysteresis was not
+measured, and the approximately `1.648 V` crossing voltage is inferred from the
+separate `run_018` DMM calibration rather than measured directly in `run_020`.
+Those limitations are explicit in the model and prevent an active-control
+claim.
 
 ---
 
@@ -531,17 +580,25 @@ establish an actuation-ready plant model or a reference-validity model.
 
 ---
 
-## Stage H1-B — Produce a control-authoritative local plant model
+## Stage H1-B — Produce a locally applicable observe-only plant model
 
-**Purpose:** replace directional or fault-contaminated slope evidence with a versioned model suitable for calculating tiny, bounded corrections.
+**Purpose:** replace directional or fault-contaminated slope evidence with a
+versioned model suitable for calculating deterministic, bounded previews. Live
+actuation requires a later, separate gate.
+
+### Status
+
+Passed for the Phase 3 observe-only handoff using `run_020`. The current model
+is `profiles/plant_models/cx317_h1_bench_v2.json` (model version 3).
 
 ### Required experiments
 
 - repeated centre-to-low-to-centre-to-high-to-centre sweeps around `0xAE00`;
-  `run_020` is the focused experiment;
+  completed by `run_020`;
 - at least two step sizes, with any future smaller step sized above the measured
   noise floor rather than assumed from DAC resolution alone;
-- up/down repetitions to bound hysteresis;
+- repeated centre returns to bound return-path repeatability; endpoint
+  bidirectional hysteresis remains a later guarded-actuation prerequisite;
 - sufficient dwell to estimate settling at each step;
 - fixed and documented power/conditioning topology;
 - per-dwell voltage measurements where practical, or a separately calibrated DAC-voltage model with stated uncertainty;
@@ -550,10 +607,10 @@ establish an actuation-ready plant model or a reference-validity model.
 
 ### Required model artefact
 
-Add a versioned, machine-readable plant-model file, for example:
+The versioned, machine-readable plant-model file is:
 
 ```text
-profiles/plant_models/cx317_h1_bench_v1.json
+profiles/plant_models/cx317_h1_bench_v2.json
 ```
 
 It should include:
@@ -580,9 +637,11 @@ Do not hide this model as constants scattered across firmware files.
 - automatic-control range is explicitly narrower than or equal to the bench-tested range;
 - the model is traceable to completed runs.
 
-`run_016` does not pass this exit gate. It confirms the command path, safe
-envelope, PPS/reference validity, and count capture health, but its local
-small-step slopes are sign-inconsistent and should not be used as the model.
+`run_016` did not pass this exit gate. `run_020` now passes it for observe-only
+use: it supplies a traceable positive local gain, a conservative crossing
+estimate and band, repeated-centre dispersion, and a settling bound. The
+model's explicit applicability and unresolved conditions must be enforced;
+this gate does not authorise DAC actuation.
 
 ---
 
@@ -773,8 +832,9 @@ The backend has clean bench evidence and host validation. It does not itself aut
 ### Safety requirements
 
 - explicit operator-selected actuation build/profile;
-- automatic-control clamp undefined until `run_020`; it must include the
-  characterised crossing near `0xAE00` and should be narrow around that point;
+- automatic-control candidate `0xA800..0xAB00`, which contains the model
+  crossing band and remains disabled until this stage is explicitly
+  authorised;
 - manual characterisation clamp represented separately;
 - update interval derived from measured settling, never merely copied from a roadmap placeholder;
 - maximum code delta derived from slope uncertainty and noise floor;
@@ -1089,10 +1149,10 @@ Completed: the clean `run_014` reports are generated, recoverable manifest
 fields are backfilled, the pre-G17-fix capture remains separate negative
 evidence, and the PPS/reference cadence anomaly is explicitly gated as
 diagnostic-only unresolved evidence. `run_017` adds D10-witness confirmation
-and timestamp-rollover handling. `run_019` adds the current broad response,
-crossing location, and long hold, while explicitly leaving local crossing
-authority to `run_020`. Do not alter control
-firmware or enable automatic DAC actuation.
+and timestamp-rollover handling. `run_019` adds the broad response, crossing
+location, and long hold. The sealed `run_020` adds focused local crossing,
+gain, repeated-centre, and settling evidence and is represented by plant-model
+version 3. Do not enable automatic DAC actuation.
 
 ### Package 2 — Separate DAC limit classes
 
@@ -1228,18 +1288,22 @@ Do not allow these to delay the first safe SW2 loop:
 ### M0 — H1 measurement path credible
 
 - `run_014` is complete and classified for count-path validity;
-- `run_017` and `run_019` provide clean D10 PPS witness confirmation;
+- `run_017`, `run_019`, and `run_020` provide clean D10 PPS witness
+  confirmation;
 - no unexplained post-inhibit invalid count windows over the eligibility period;
 - fixed hardware topology documented.
 
-### M1 — Plant model authoritative locally
+### M1 — Plant model validated for local observe-only use
 
 - slope sign/magnitude and uncertainty;
 - settling;
 - noise floor;
-- hysteresis bounds;
+- repeatability evidence and an explicit endpoint-hysteresis limitation;
 - temperature/warmup context;
 - versioned plant model.
+
+**Status:** passed for observe-only use with explicit applicability and
+unresolved-condition bounds. It is not an active-control authority.
 
 ### M2 — Observe-only discipline replay
 
@@ -1314,15 +1378,13 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Complete and analyse the focused `run_020` crossing-region profile, verifying
-   the uploaded header configuration before interpreting the result.
-2. Freeze a conservative H1 plant-model schema, but populate its local-control
-   fields only after `run_020` gives repeatable slope sign/magnitude, settling,
-   hysteresis, and noise-floor bounds.
-3. In parallel, undertake only non-actuating SW2 work:
-   - separate DAC limit classes;
-   - define the plant-model schema;
-   - define `EST` and `CTL` derived contracts;
-   - build host replay and preview scaffolding.
-6. Keep active DAC steering blocked until the existing readiness gate is
-   explicitly reopened with completed evidence.
+1. Consume `profiles/plant_models/cx317_h1_bench_v2.json` in host
+   observe-only estimation and preview, enforcing its applicability and
+   invalidation conditions.
+2. Define the `EST` and `CTL` derived contracts and deterministic replay
+   fixtures without modifying raw evidence.
+3. Validate firmware observe-only parity and diagnostics under service-plane
+   load.
+4. Keep active DAC steering blocked until its separate policy, cadence,
+   maximum-update, abort, and guarded-actuation gate is explicitly reviewed and
+   reopened.

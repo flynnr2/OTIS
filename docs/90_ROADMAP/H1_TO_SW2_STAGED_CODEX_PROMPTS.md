@@ -18,13 +18,13 @@ Current status note:
   isolated that class of failure to a G17 breakout solder short, verified clean
   repaired-path CX317 counts, and explicitly gated its PPS/reference anomaly as
   diagnostic-only unresolved evidence.
-- `run_019` is now the current broad model-review input. It provides a clean
-  12.89 h broad sweep, validates a positive approximately linear response, and
-  locates the 10 MHz crossing near `0xAE00`. Its uploaded profile differed from
-  the intended tight crossing manifest, so `run_020` remains necessary for the
-  local crossing model. Active DAC actuation remains blocked.
-- Stage 5 remains appropriate only as an observe-only skeleton. Active DAC
-  actuation remains blocked.
+- `run_020` completed the intended focused profile and is the current local
+  model-review input. It directly brackets 10 MHz, places the crossing near
+  `0xA950`, and confirms local gain `0.0001559..0.0001876 Hz/code`.
+- Phase 3 freezes this evidence in `cx317_h1_bench_v2.json`, model version 3,
+  with explicit observe-only applicability and disabled actuation.
+- Stage 5 is now the appropriate next stage. Active DAC actuation remains
+  blocked.
 
 Current anchor evidence:
 
@@ -47,7 +47,10 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_019/csv/h1_count_frequency_estimates.csv`
 - `docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md`
-- `profiles/plant_models/cx317_h1_bench_v1.json`
+- `runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md`
+- `runs/h1_open_loop/dac_manual_sweep/run_020/evidence_manifest.json`
+- `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`
+- `profiles/plant_models/cx317_h1_bench_v2.json`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
 - `docs/90_ROADMAP/otis_h1_ocxo_characterization_plan.md`
@@ -264,11 +267,11 @@ Deliver:
 
 Gate to Active SW2 Actuation:
 
-- A clean broad H1-B plant sweep exists in `run_019`, but its local crossing
-  profile was not executed. `run_020` must close that applicability gap.
-- Local crossing Hz/code or ppm/code is stable enough to choose a conservative
-  update size.
-- Local settling time is bounded with enough margin for actuation cadence.
+- The H1 plant-evidence gate is complete: `run_020` supplies the local crossing,
+  gain, repeatability, and settling bounds.
+- The versioned observe-only model passes its range and applicability tests.
+- A separate actuation policy defines and tests update size, cadence,
+  fail-static handling, saturation/anti-windup, and explicit arming.
 - Startup and fault gates are tested.
 - The readiness doc explicitly authorizes a first guarded actuation experiment.
 

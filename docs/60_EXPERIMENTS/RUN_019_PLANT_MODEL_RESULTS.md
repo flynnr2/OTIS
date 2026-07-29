@@ -119,5 +119,8 @@ Run 019 does not support:
 - resolved settling constants
 - direct DMM-traceable voltage claims
 
-Run 020 is the focused crossing-region experiment. Until it is analysed, the
-programme remains ready for observe-only work, not active control.
+Run 020 subsequently completed the focused crossing-region experiment. Its
+sealed evidence supplies the local crossing, gain, repeatability, and settling
+bounds represented by `profiles/plant_models/cx317_h1_bench_v2.json`. The
+programme is ready for observe-only estimator and correction-preview work, not
+active control.

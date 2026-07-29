@@ -7,10 +7,6 @@ import json
 from typing import Any
 
 
-MAX_FIRST_H1_AUTO_MIN_CODE = 0x7000
-MAX_FIRST_H1_AUTO_MAX_CODE = 0x9000
-
-
 @dataclass(frozen=True)
 class PlantModel:
     path: Path
@@ -27,6 +23,25 @@ class PlantModel:
     @property
     def automatic_control_range(self) -> tuple[int, int]:
         range_data = self.data["dac"]["automatic_control_range_codes"]
+        return int(range_data["min"]), int(range_data["max"])
+
+    @property
+    def nominal_code(self) -> int:
+        return int(self.data["dac"]["nominal_code"])
+
+    @property
+    def crossing_code(self) -> int | None:
+        crossing = self.data["plant_response"].get("crossing_estimate")
+        return int(crossing["code"]) if isinstance(crossing, dict) else None
+
+    @property
+    def applicability_range(self) -> tuple[int, int] | None:
+        applicability = self.data["plant_response"].get("applicability")
+        if not isinstance(applicability, dict):
+            return None
+        range_data = applicability.get("dac_code_range")
+        if not isinstance(range_data, dict):
+            return None
         return int(range_data["min"]), int(range_data["max"])
 
     @property
@@ -67,6 +82,7 @@ def validate_plant_model(data: dict[str, Any]) -> None:
     _validate_status(data["status"], errors)
     _validate_dac(data["dac"], errors)
     _validate_plant_response(data["plant_response"], errors)
+    _validate_model_envelopes(data, errors)
     _validate_source_evidence(data["source_evidence"], errors)
 
     for field_name in ("invalidation_conditions", "unresolved_fields"):
@@ -127,10 +143,6 @@ def _validate_dac(dac: dict[str, Any], errors: list[str]) -> None:
     if isinstance(auto_range, dict):
         min_code = auto_range.get("min")
         max_code = auto_range.get("max")
-        if isinstance(min_code, int) and min_code < MAX_FIRST_H1_AUTO_MIN_CODE:
-            errors.append("dac.automatic_control_range_codes.min is below 0x7000")
-        if isinstance(max_code, int) and max_code > MAX_FIRST_H1_AUTO_MAX_CODE:
-            errors.append("dac.automatic_control_range_codes.max is above 0x9000")
         if isinstance(manual_range, dict):
             manual_min = manual_range.get("min")
             manual_max = manual_range.get("max")
@@ -138,6 +150,11 @@ def _validate_dac(dac: dict[str, Any], errors: list[str]) -> None:
                 errors.append("dac.automatic_control_range_codes.min is below manual_safe_range_codes.min")
             if isinstance(max_code, int) and isinstance(manual_max, int) and max_code > manual_max:
                 errors.append("dac.automatic_control_range_codes.max is above manual_safe_range_codes.max")
+        nominal_code = dac.get("nominal_code")
+        if isinstance(nominal_code, int) and isinstance(min_code, int) and nominal_code < min_code:
+            errors.append("dac.nominal_code is below automatic_control_range_codes.min")
+        if isinstance(nominal_code, int) and isinstance(max_code, int) and nominal_code > max_code:
+            errors.append("dac.nominal_code is above automatic_control_range_codes.max")
 
 
 def _validate_plant_response(plant_response: dict[str, Any], errors: list[str]) -> None:
@@ -158,6 +175,91 @@ def _validate_plant_response(plant_response: dict[str, Any], errors: list[str]) 
         errors.append("positive local_slope.sign requires hz_per_v > 0")
     if hz_per_v is not None and sign == "negative" and hz_per_v >= 0:
         errors.append("negative local_slope.sign requires hz_per_v < 0")
+
+    crossing = plant_response.get("crossing_estimate")
+    if crossing is not None:
+        _validate_crossing_estimate(crossing, errors)
+
+    applicability = plant_response.get("applicability")
+    if applicability is not None:
+        _validate_applicability(applicability, errors)
+
+
+def _validate_crossing_estimate(crossing: Any, errors: list[str]) -> None:
+    if not isinstance(crossing, dict):
+        errors.append("plant_response.crossing_estimate must be an object")
+        return
+
+    for key in ("code", "code_min", "code_max"):
+        _check_code(crossing.get(key), f"plant_response.crossing_estimate.{key}", errors)
+
+    code = crossing.get("code")
+    code_min = crossing.get("code_min")
+    code_max = crossing.get("code_max")
+    if isinstance(code_min, int) and isinstance(code_max, int) and code_min > code_max:
+        errors.append("plant_response.crossing_estimate.code_min must be <= code_max")
+    if isinstance(code, int) and isinstance(code_min, int) and code < code_min:
+        errors.append("plant_response.crossing_estimate.code is below code_min")
+    if isinstance(code, int) and isinstance(code_max, int) and code > code_max:
+        errors.append("plant_response.crossing_estimate.code is above code_max")
+
+    target_hz = crossing.get("target_frequency_hz")
+    if not isinstance(target_hz, (int, float)) or target_hz <= 0:
+        errors.append("plant_response.crossing_estimate.target_frequency_hz must be positive")
+
+
+def _validate_applicability(applicability: Any, errors: list[str]) -> None:
+    if not isinstance(applicability, dict):
+        errors.append("plant_response.applicability must be an object")
+        return
+    if applicability.get("mode") != "observe_only":
+        errors.append("plant_response.applicability.mode must be observe_only for H1 plant models")
+    range_data = applicability.get("dac_code_range")
+    if not isinstance(range_data, dict):
+        errors.append("plant_response.applicability.dac_code_range must be an object")
+        return
+    _check_code(range_data.get("min"), "plant_response.applicability.dac_code_range.min", errors)
+    _check_code(range_data.get("max"), "plant_response.applicability.dac_code_range.max", errors)
+    if isinstance(range_data.get("min"), int) and isinstance(range_data.get("max"), int):
+        if range_data["min"] > range_data["max"]:
+            errors.append("plant_response.applicability.dac_code_range.min must be <= max")
+
+
+def _validate_model_envelopes(data: dict[str, Any], errors: list[str]) -> None:
+    dac = data["dac"]
+    plant_response = data["plant_response"]
+    auto_range = dac.get("automatic_control_range_codes")
+    manual_range = dac.get("manual_safe_range_codes")
+    crossing = plant_response.get("crossing_estimate")
+    applicability = plant_response.get("applicability")
+    if not isinstance(auto_range, dict) or not isinstance(manual_range, dict):
+        return
+
+    auto_min = auto_range.get("min")
+    auto_max = auto_range.get("max")
+    if isinstance(crossing, dict) and isinstance(auto_min, int) and isinstance(auto_max, int):
+        crossing_min = crossing.get("code_min")
+        crossing_max = crossing.get("code_max")
+        if isinstance(crossing_min, int) and auto_min > crossing_min:
+            errors.append("dac.automatic_control_range_codes.min does not contain crossing_estimate.code_min")
+        if isinstance(crossing_max, int) and auto_max < crossing_max:
+            errors.append("dac.automatic_control_range_codes.max does not contain crossing_estimate.code_max")
+
+    if isinstance(applicability, dict):
+        applicable_range = applicability.get("dac_code_range")
+        if isinstance(applicable_range, dict):
+            applicable_min = applicable_range.get("min")
+            applicable_max = applicable_range.get("max")
+            manual_min = manual_range.get("min")
+            manual_max = manual_range.get("max")
+            if isinstance(applicable_min, int) and isinstance(manual_min, int) and applicable_min < manual_min:
+                errors.append("plant_response.applicability.dac_code_range.min is below manual_safe_range_codes.min")
+            if isinstance(applicable_max, int) and isinstance(manual_max, int) and applicable_max > manual_max:
+                errors.append("plant_response.applicability.dac_code_range.max is above manual_safe_range_codes.max")
+            if isinstance(auto_min, int) and isinstance(applicable_min, int) and auto_min < applicable_min:
+                errors.append("dac.automatic_control_range_codes.min is below the model applicability range")
+            if isinstance(auto_max, int) and isinstance(applicable_max, int) and auto_max > applicable_max:
+                errors.append("dac.automatic_control_range_codes.max is above the model applicability range")
 
 
 def _validate_source_evidence(source_evidence: dict[str, Any], errors: list[str]) -> None:
@@ -192,8 +294,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     auto_min, auto_max = model.automatic_control_range
+    crossing = f"0x{model.crossing_code:04X}" if model.crossing_code is not None else "unavailable"
     print(
         f"OK {args.path}: {model.model_id} v{model.model_version}, "
+        f"nominal_code=0x{model.nominal_code:04X}, crossing_code={crossing}, "
         f"automatic_control_range=0x{auto_min:04X}..0x{auto_max:04X}, "
         f"actuation_enabled={str(model.actuation_enabled).lower()}"
     )
