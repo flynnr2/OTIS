@@ -1,1 +1,0 @@
-group_id,step_index,dac_code,voltage_v,direction,discarded_count,sample_count,elapsed_start_s,elapsed_end_s,median_hz,mean_hz,stddev_hz,mad_hz,iqr_hz,median_ppm,mean_ppm,stddev_ppm,mad_ppm,iqr_ppm,env_temperature_min_c,env_temperature_max_c,env_temperature_delta_c,env_temperature_mean_c,pps_anomaly_count,quality

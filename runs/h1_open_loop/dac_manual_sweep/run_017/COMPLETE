@@ -1,1 +1,0 @@
-Completed host capture stopped at 2026-07-28T08:05:11Z with parser_errors=0, malformed_utf8=0, reconnect_count=0, commands_rejected=0, 242 valid count windows, final D14/D10 count agreement, and DAC restored to 0x8000. Header-only csv/evt.csv is expected for unused CH0 generic event input in this H1 topology.
