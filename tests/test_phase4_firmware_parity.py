@@ -205,6 +205,9 @@ def phase4_live_adapter_harness(
         [
             "c++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
             "-DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1",
+            "-DOTIS_ENABLE_DAC_AD5693R=1",
+            "-DOTIS_TCXO_COUNTER_BACKEND="
+            "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
             "-DOTIS_FC0_STARTUP_INHIBIT_MS=0",
             str(LIVE_HARNESS), str(LIVE_ADAPTER), str(ENGINE),
             "-I", str(ROOT / "tests" / "cpp" / "stubs"),

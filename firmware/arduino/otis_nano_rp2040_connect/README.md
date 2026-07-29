@@ -31,9 +31,11 @@ arduino-cli board listall | grep -i "Nano RP2040"
 ## SW1 bring-up modes
 
 Select one bring-up mode in `otis_config.h` with `OTIS_SW1_BRINGUP_MODE`.
-The checked-in default is `H1_OCXO_OBSERVE_OPEN_LOOP`. The config header is the
-preferred workflow for Arduino IDE builds; CLI `-D` overrides still work for
-scripted builds.
+The checked-in default is the observe-only Phase 5 PPS-gated qualification
+candidate in `H1_OCXO_OBSERVE_OPEN_LOOP`. The DAC driver, DAC sweep,
+environmental sensors, and Phase 4 preview are disabled. The config header is
+the preferred workflow for Arduino IDE builds; CLI `-D` overrides still work
+for scripted builds.
 
 | Mode | Purpose | Records |
 |---|---|---|
@@ -171,9 +173,8 @@ accepted:
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 ```
 
-The DAC output is bounded by configuration-header clamps. The checked-in
-defaults are the focused `run_020` crossing profile and require no Arduino IDE
-compile-time flags:
+When DAC support and the sweep are explicitly re-enabled, the DAC output is
+bounded by the retained focused `run_020` crossing-profile constants:
 
 ```cpp
 #define OTIS_DAC_MIN_CODE 0x6000u
@@ -321,8 +322,9 @@ temperature is secondary; BMP280 pressure is useful bench context.
 During the boot banner, firmware emits `STS` provenance rows for schema version,
 firmware name/version/git commit, board target, Arduino core, bring-up mode,
 capture mode, nominal reference frequencies, pin mapping, and compile-time
-feature flags. `OTIS_FIRMWARE_GIT_COMMIT` defaults to `unknown`; scripted builds
-may override it with `-DOTIS_FIRMWARE_GIT_COMMIT=\"<hash>\"`.
+feature flags. The checked-in Phase 5 IDE profile carries its reviewed source
+commit explicitly; scripted builds may override it with
+`-DOTIS_FIRMWARE_GIT_COMMIT=\"<hash>\"`.
 
 Status LED support is compiled out by default. Set
 `OTIS_ENABLE_STATUS_LED` to `1` in `otis_config.h` only for local bring-up
