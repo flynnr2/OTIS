@@ -9,6 +9,7 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
     ("raw", "normalized"),
     [
         ("help", "HELP"),
+        ("config?", "CONFIG?"),
         ("dac?", "DAC?"),
         ("dac limits?", "DAC LIMITS?"),
         ("dac mid", "DAC MID"),

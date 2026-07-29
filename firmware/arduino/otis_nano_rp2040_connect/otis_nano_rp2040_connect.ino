@@ -239,6 +239,8 @@ void emit_common_boot_status(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("firmware", "version", OTIS_FIRMWARE_VERSION, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "config_id", OTIS_FIRMWARE_CONFIG_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("firmware", "git_commit", OTIS_FIRMWARE_GIT_COMMIT,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "mode", otis_bringup_mode_name(), OTIS_SEVERITY_INFO,
@@ -309,8 +311,20 @@ void emit_common_boot_status(void) {
   emit_status_u32("environment", "bmp280_i2c_address",
                   OTIS_ENV_BMP280_I2C_ADDRESS, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("sweep", "default_dwell_ms",
+                  OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("sweep", "slope_dwell_ms", OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex("sweep", "tiny_step_codes",
+                      OTIS_H1_DAC_SWEEP_TINY_STEP_CODES, OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex("sweep", "center_code",
+                      (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
+                                  (uint32_t)OTIS_DAC_MAX_CODE) /
+                                 2u),
+                      OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("dac", "i2c_address", OTIS_DAC_AD5693R_I2C_ADDRESS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
@@ -1012,6 +1026,9 @@ bool h1_dac_sweep_load_profile(const char *profile_name) {
   for (uint8_t index = 0; index < count; ++index) {
     h1_dac_sweep.steps[index] = {(uint16_t)candidate_codes[index],
                                  profile_dwell_ms};
+    emit_sweep_record(index, (uint16_t)candidate_codes[index],
+                      (uint16_t)candidate_codes[index], false,
+                      profile_dwell_ms, "profile_step", OTIS_FLAG_NONE);
   }
   h1_dac_sweep.step_count = count;
   h1_dac_sweep.profile_name = loaded_name;
@@ -1605,8 +1622,56 @@ void handle_serial_command(char *line) {
 
   if (strcmp(command, "HELP") == 0) {
     emit_status("command", "h1_help",
-                "DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
+                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  } else if (strcmp(command, "CONFIG?") == 0) {
+    emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
+                OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("firmware", "config_id", OTIS_FIRMWARE_CONFIG_ID,
+                OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("system", "mode", otis_bringup_mode_name(),
+                OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("build", "capture_backend", otis_capture_backend_name(),
+                OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("build", "tcxo_counter_backend",
+                otis_tcxo_counter_backend_name(), OTIS_SEVERITY_INFO,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("capture", "counter_gate_period_us", kTcxoGatePeriodUs,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_pps_dual_observer",
+                    OTIS_ENABLE_PPS_DUAL_OBSERVER, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_dac_ad5693r",
+                    OTIS_ENABLE_DAC_AD5693R, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_h1_dac_sweep",
+                    OTIS_ENABLE_H1_DAC_SWEEP, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_env_sensors", OTIS_ENABLE_ENV_SENSORS,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_env_sht4x", OTIS_ENABLE_ENV_SHT4X,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_env_bmp280", OTIS_ENABLE_ENV_BMP280,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("sweep", "default_dwell_ms",
+                    OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("sweep", "slope_dwell_ms",
+                    OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u16_hex("sweep", "tiny_step_codes",
+                        OTIS_H1_DAC_SWEEP_TINY_STEP_CODES,
+                        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u16_hex(
+        "sweep", "center_code",
+        (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
+                    (uint32_t)OTIS_DAC_MAX_CODE) /
+                   2u),
+        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
+                        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
+                        OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   } else if (strcmp(command, "DAC?") == 0) {
     emit_dac_status("dac");
   } else if (strcmp(command, "DAC LIMITS?") == 0) {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
@@ -59,3 +60,72 @@ def test_pio_edge_capture_claims_an_unused_state_machine() -> None:
 
     assert "pio_claim_unused_sm(pio_capture, false)" in source
     assert "constexpr uint pio_capture_sm" not in source
+
+
+def test_run_020_ide_configuration_and_focused_profile_are_exact() -> None:
+    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+
+    expected = {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_FIRMWARE_CONFIG_ID": '"run_020_crossing_v1"',
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_H1_LONG_GATE_PERIOD_US": "300000000u",
+        "OTIS_FC0_STARTUP_INHIBIT_MS": "600000u",
+        "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_DAC_AD5693R_I2C_ADDRESS": "0x4Cu",
+        "OTIS_DAC_MIN_CODE": "0x6000u",
+        "OTIS_DAC_MAX_CODE": "0xFC00u",
+        "OTIS_ENABLE_ENV_SENSORS": "1",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "1",
+        "OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS": "2400000u",
+        "OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS": "2400000u",
+        "OTIS_H1_DAC_SWEEP_TINY_STEP_CODES": "0x0300u",
+    }
+    for name, value in expected.items():
+        assert re.search(
+            rf"^#define {re.escape(name)} {re.escape(value)}$",
+            config,
+            flags=re.MULTILINE,
+        )
+
+    minimum = 0x6000
+    maximum = 0xFC00
+    center = (minimum + maximum) // 2
+    step = 0x0300
+    assert center == 0xAE00
+    assert [
+        center,
+        center + step,
+        center,
+        center - step,
+        center,
+        center + 2 * step,
+        center,
+        center - 2 * step,
+        center,
+    ] == [
+        0xAE00,
+        0xB100,
+        0xAE00,
+        0xAB00,
+        0xAE00,
+        0xB400,
+        0xAE00,
+        0xA800,
+        0xAE00,
+    ]
+
+
+def test_run_020_configuration_and_profile_plan_are_queryable_before_start() -> None:
+    source = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'strcmp(command, "CONFIG?") == 0' in source
+    assert '"config_id"' in source
+    assert '"default_dwell_ms"' in source
+    assert '"tiny_step_codes"' in source
+    assert '"center_code"' in source
+    assert '"profile_step"' in source
