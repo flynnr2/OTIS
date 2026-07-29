@@ -4,9 +4,15 @@ import importlib.util
 import inspect
 from pathlib import Path
 
+import pytest
+
 
 PREFLIGHT_PATH = Path(
     "runs/h1_open_loop/dac_manual_sweep/run_020/run_020_preflight.py"
+)
+pytestmark = pytest.mark.skipif(
+    not PREFLIGHT_PATH.exists(),
+    reason="Run 020 is locally retained evidence and is intentionally absent from a fresh clone",
 )
 
 

@@ -139,6 +139,13 @@ additive: `health_v1` / `STS` remains the compatibility status surface, while
 algorithm/config versions, diagnostic confidence, and control consequence for
 host replay and future firmware parity tests.
 
+Phase 4 host replay implements the corresponding normative `EST` and
+observe-only `CTL` contracts. Missing `STS` diagnostic context remains
+`unknown` and inhibits preview rather than being treated as healthy. A valid
+count alone therefore cannot collapse observation validity, diagnostic health,
+estimator confidence, model applicability, and preview eligibility into one
+control-ready claim.
+
 ## Acceptance tests
 
 Diagnostics become first-class only when tests demonstrate that:

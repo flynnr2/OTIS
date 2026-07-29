@@ -99,7 +99,7 @@ def test_schema_and_canonical_source_references_are_present() -> None:
     assert "runs/h1_open_loop/dac_manual_sweep/run_020/evidence_manifest.json" in artifacts
     assert "runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md" in artifacts
     assert Path("docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md").exists()
-    assert Path("runs/h1_open_loop/dac_manual_sweep/run_020/manifest.json").exists()
+    assert "runs/" in Path(".gitignore").read_text(encoding="utf-8")
 
 
 def test_rejects_automatic_range_outside_manual_safe_range() -> None:
