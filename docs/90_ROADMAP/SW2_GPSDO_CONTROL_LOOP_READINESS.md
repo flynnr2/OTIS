@@ -76,8 +76,8 @@ actuation gate remain incomplete. `status.control_ready=false` and
 
 ## Phase 5 PPS-gated backend qualification readiness
 
-**Result: failed / not qualified because required bench evidence is
-unavailable.**
+**Result: open / not yet qualified. Bench Run 001 passed all exercised
+post-reset candidate legs; remaining qualification gates are explicit.**
 
 Repository preparation now includes:
 
@@ -94,12 +94,20 @@ Repository preparation now includes:
   directory;
 - an exact bench runbook and fixed v1 thresholds.
 
-No sealed local candidate run plus simultaneous authorised independent
-metrology run satisfies the v1 profile yet. Bias, jitter, aperture uncertainty,
-service-load shift, fault/recovery detection, and combined uncertainty are
-therefore unavailable. The backend remains implemented but not trusted
-metrology. `status.control_ready=false` and `status.actuation_enabled=false`
-remain authoritative.
+Bench Run 001 captured an authoritative post-reset candidate session containing
+33111 consecutive one-second windows. Startup qualification, qualifying-size
+baseline and serial-status-load segments, missing-PPS inhibition, zero-count
+inhibition, and clean-window recovery passed. The disturbed serial session
+before the authoritative BOOT is preserved and documented separately from the
+declared comparison range.
+
+Session-scoped jitter and load-shift analysis, an authorised independent
+comparison, aperture/combined uncertainty, controlled duplicate/short/long PPS
+tests, reconnect evidence, and final sealing remain open. See
+`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
+The backend is therefore successful candidate bench evidence but not yet
+qualified metrology. `status.control_ready=false` and
+`status.actuation_enabled=false` remain authoritative.
 
 ## H1 Evidence Available
 

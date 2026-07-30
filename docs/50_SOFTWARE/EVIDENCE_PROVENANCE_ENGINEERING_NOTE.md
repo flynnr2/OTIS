@@ -13,6 +13,14 @@ Raw evidence remains untouched. If a run selects a repository profile, sealing
 copies its exact bytes to `selected_profile.yaml` before hashing so later
 repository profile edits cannot silently change replay context.
 
+Multi-session captures require the same preservation rule. A reset or reconnect
+may define a later authoritative session, but the original raw capture remains
+immutable. Any session-scoped derived product must identify the source run,
+source hashes, BOOT/session boundary, original sequence ranges, and selection
+rule. It must not rewrite, splice, renumber, or present a filtered derivative
+as the original capture. A disturbed pre-BOOT session may therefore coexist
+with a successful later engineering session without erasing either fact.
+
 ## Storage boundary
 
 Sealing evidence does not make a run a Git artifact. The repository

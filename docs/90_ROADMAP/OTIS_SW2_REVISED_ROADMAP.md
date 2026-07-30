@@ -1227,12 +1227,14 @@ analyser, and bench runbook are present. Concrete rollover, boundary-flag,
 first-PPS-timeout, duplicate-typing, and unavailable-uncertainty defects found
 by the audit were corrected.
 
-**Current result: failed / not qualified because the Step B sealed bench
-candidate and simultaneous authorised independent-metrology evidence do not
-exist.** Passing synthetic tests and compile checks is not the exit gate.
-Execute
-`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md`, then promote
-only the reviewed compact conclusion. Do not enable control.
+**Current result: open / not yet qualified.** Bench Run 001 passed the
+authoritative post-reset candidate legs for startup qualification, sustained
+observation, quiet/load operation, missing-PPS inhibition, zero-count
+inhibition, and recovery. Session-scoped jitter/load analysis, independent
+comparison, uncertainty, controlled duplicate/short/long PPS tests, reconnect
+evidence, and final sealing remain open. See
+`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
+Do not enable control.
 
 ### Package 9 — First-actuation experiment plan
 
@@ -1433,11 +1435,12 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Validate firmware observe-only parity against the normative host fixtures;
-   do not add a DAC write path.
-2. Validate diagnostics and timing-plane behaviour under service-plane load.
-3. Qualify the already-present PPS-gated ratio backend with bench evidence and
-   compare it against the host replay observables.
+1. Produce provenance-preserving, session-scoped jitter and service-load
+   analysis for Phase 5 Bench Run 001.
+2. Complete the authorised independent comparison, aperture uncertainty, and
+   controlled duplicate/short/long PPS fault legs.
+3. Perform the separate reconnect run, seal complete evidence, and execute the
+   deterministic PPS-gated qualification analyser.
 4. Keep active DAC steering blocked until its separate policy, cadence,
    maximum-update, abort, and guarded-actuation gate is explicitly reviewed and
    reopened.

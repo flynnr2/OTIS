@@ -2,14 +2,17 @@
 
 ## Decision
 
-**Qualification result: failed — exit gate not met because Step B bench
-evidence is unavailable.**
+**Qualification result: open / not yet qualified. The authoritative post-reset
+session of Bench Run 001 passed every exercised candidate leg; remaining exit
+gates are explicitly open.**
 
-This is an evidence-gate failure, not a finding that the backend's nominal
-hardware measurements are bad. Repository qualification preparation is
-complete enough to begin the documented bench procedure after the Phase 4
-contracts are merged. Synthetic tests and successful compilation cannot, by
-themselves, qualify metrology.
+Bench Run 001 now supplies physical candidate evidence for boot, startup
+inhibition, sustained observation, service-load operation, missing-PPS
+detection, zero-count detection, and recovery. Controlled duplicate/short/long
+PPS tests, session-scoped jitter and load-shift analysis, independent
+comparison, aperture uncertainty, reconnect testing, and sealed evidence
+remain open. The completed legs are successful; their existence does not by
+itself authorize the final `qualified_with_limits` label.
 
 The authoritative safety state is unchanged:
 
@@ -125,15 +128,26 @@ The Arduino CLI matrix also compiled successfully for:
 - divided GPIO IRQ count;
 - combined sparse-PIO capture plus PIO long-gate.
 
-These are repository/compile results only. No board was uploaded or booted and
-no Phase 5 bench capture was performed.
+Those repository/compile results were subsequently followed by the physical
+candidate session documented in
+`PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
 
 ## Bench evidence and applicability
 
-No local run under `runs/` currently contains a sealed PPS-gated candidate plus
-simultaneous authorised independent comparison satisfying the v1 profile.
-Therefore bias, jitter, service-load shift, aperture uncertainty, combined
-uncertainty, fault-detection completeness, and recovery are unavailable.
+Bench Run 001 contains a successful authoritative post-reset candidate session
+covering 33111 consecutive one-second windows, including qualifying-size
+baseline and service-load ranges. Missing-PPS and zero-count inhibition and
+clean-window recovery passed. The original local run also preserves a disturbed
+pre-test serial session caused by IDE port contention; that preamble is
+documented rather than silently removed.
+
+Independent bias, final candidate jitter, service-load mean shift, aperture
+uncertainty, combined uncertainty, and controlled duplicate/short/long fault
+completeness remain open. The boot-reported `1095a16...` firmware identifier
+must also be reconciled with the `0e35bbe...` checkout that committed the
+Arduino IDE candidate defaults before evidence sealing. See
+`PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md` for the scoped evidence
+decision and exact ranges.
 
 The backend must not yet be described as trusted metrology. The intended
 applicability envelope and exact acceptance procedure are frozen in
@@ -141,13 +155,16 @@ applicability envelope and exact acceptance procedure are frozen in
 
 ## Remaining exit-gate work
 
-1. Merge the Phase 4 contracts into the target integration branch.
-2. Execute the candidate and independent simultaneous bench capture.
-3. Exercise the documented safe faults and separate reconnect run.
+1. Produce session-scoped, provenance-preserving analysis of the authoritative
+   Bench Run 001 session.
+2. Complete or supply the authorised independent comparison.
+3. Exercise controlled duplicate, short, and long PPS faults plus the separate
+   reconnect run.
 4. Measure aperture behavior and populate only evidence-backed uncertainty.
-5. Seal both local runs and execute the deterministic qualification analyser.
+5. Seal complete candidate and independent evidence and execute the
+   deterministic qualification analyser.
 6. Review the compact result and update this decision to
    `qualified_with_limits` or retain `failed`.
 
-Until those steps pass, roadmap/readiness status remains **failed / not
+Until those steps pass, roadmap/readiness status remains **open / not
 qualified**, and active steering remains prohibited.

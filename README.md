@@ -134,10 +134,14 @@ low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
 FC0/gated-count style observation, not PIO FIFO edge logging.
 
 H1 OCXO/DAC characterization, Phase 4 host replay, and deterministic
-host/firmware engine parity are complete. The next meaningful project work is
-the target-side long observe-only/load/reconnect run and PPS-gated-ratio
-measurement qualification, not active steering. PPS- or count-error-derived
-DAC writes remain prohibited until the later reviewed guarded-actuation gate.
+host/firmware engine parity are complete. Phase 5 Bench Run 001 subsequently
+passed its authoritative post-reset candidate legs: startup qualification,
+33111 consecutive stable windows, qualifying-size quiet/load segments,
+missing-PPS inhibition, zero-count inhibition, and clean-window recovery.
+Session-scoped jitter/load analysis, independent comparison, aperture
+uncertainty, controlled duplicate/short/long PPS tests, and reconnect evidence
+remain open. PPS- or count-error-derived DAC writes remain prohibited until the
+later reviewed guarded-actuation gate.
 
 ## Quick Host Scaffold Check
 
