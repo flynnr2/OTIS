@@ -68,6 +68,19 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `reference_reason` | typed reference conclusion, including duplicate/short/long/missing/flagged/recovery cases |
 | `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` oscillator-count state |
 | `pps_gate` | `count_reason` | typed count conclusion, including valid/zero/saturated/unavailable cases |
+| `pps_gate` | `boundary_owner` | timing owner, currently `pps_gpio_irq` |
+| `pps_gate` | `aperture_backend` | physical implementation, currently `pps_isr_stop_sample_restart_v1` |
+| `pps_gate` | `backend_qualified` | explicit bench-qualification gate for control eligibility |
+| `pps_gate` | `boundary_sequence` | modulo-2^32 atomic boundary sequence |
+| `pps_gate` | `boundary_validity` | independent count-boundary capture conclusion |
+| `pps_gate` | `boundary_reason` | typed boundary capture reason |
+| `pps_gate` | `aperture_validity` | independent physical counter-window conclusion |
+| `pps_gate` | `aperture_reason` | typed snapshot/wrap/completeness reason |
+| `pps_gate` | `observation_pair_validity` | whether two atomic boundaries form a defensible pair |
+| `pps_gate` | `observation_pair_reason` | typed pair/sequence reason |
+| `pps_gate` | `fifo_continuity` | `continuous`, `duplicate`, `gap`, `overflow`, or `unavailable` |
+| `pps_gate` | `boundary_ring_depth` / `boundary_ring_capacity` | bounded ISR-to-foreground queue health |
+| `pps_gate` | `boundary_ring_dropped_count` | atomic observations lost because that queue was full |
 | `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
 | `pps_gate` | `last_interval_us` | latest bounded PPS gate interval in microseconds |
 | `pps_gate` | `missing_pps_count` | missing stop-PPS faults |
@@ -87,10 +100,16 @@ PPS-gated ratio runs add component `pps_gate`:
 Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
 metadata.
 
-`reference_validity` and `count_validity` are independent Phase 4-compatible
-eligibility inputs. A reference-only fault must not be rewritten as a bad
-oscillator count, or vice versa; both must be valid for `ratio_available` and
-control eligibility.
+Reference, count snapshot, boundary, physical aperture, pair, and FIFO
+continuity are independent eligibility inputs. A reference-only fault must not
+be rewritten as a bad oscillator count, or vice versa. Measurement validity
+requires every physical/provenance dimension; control eligibility additionally
+requires `backend_qualified=true` and the existing startup/recovery gates.
+
+Steady state emits aggregate health at a bounded ten-second default cadence.
+Detailed rows are emitted on a transition, anomaly, timeout, or explicit
+query. `command/config_snapshot=begin` and `end` delimit each bounded
+`CONFIG?` response.
 
 ## Hardware Resource Ownership Status
 

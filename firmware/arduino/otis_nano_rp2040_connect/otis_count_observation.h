@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "otis_pps_count_boundary.h"
 #include "otis_runtime_state.h"
 #include "otis_status_emit.h"
 
@@ -17,15 +18,17 @@ struct OtisCountObservationConfig {
 void otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config);
-bool otis_count_observation_on_reference(
+bool otis_count_observation_on_pps_boundary(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
-    uint64_t timestamp_ticks,
-    uint32_t capture_flags);
+    const OtisPpsCountBoundaryObservation *observation);
 bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                     OtisStatusEmitContext *status_context,
                                     const OtisCountObservationConfig *config);
+void otis_count_observation_emit_status(
+    OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context);
 const char *otis_count_observation_measurement_mode(void);
 const char *otis_count_observation_window_invalid_reason(
     const OtisRuntimeState *runtime_state);

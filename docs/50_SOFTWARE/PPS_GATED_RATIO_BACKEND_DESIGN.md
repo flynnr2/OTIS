@@ -1,280 +1,182 @@
 # PPS-Gated Ratio Backend Design
 
-## Scope
+## Scope and invariant
 
-This document defines the firmware and reporting contract for the PPS-gated
-ratio count-observation backend. Firmware support exists behind
-`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`; host analysis and active DAC
-steering remain separate.
+`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` counts oscillator rising edges on
+`D8` / GPIO20 between PPS events on `D14` / GPIO26. It emits raw `REF` and
+`CNT` evidence; frequency, ratio, ppm, estimation, and actuation remain outside
+this backend.
 
-The backend must preserve the existing OTIS rule:
+The governing invariant is:
+
+> Foreground execution never defines the physical count aperture. A reference
+> is usable only when its count boundary was captured by the same accepted PPS
+> event with explicit sequence and validity provenance.
+
+## Architecture decision
+
+The corrected backend uses the surgical PPS-ISR-owned implementation:
 
 ```text
-raw observations first, host-side interpretation second
+D14 rising GPIO IRQ
+  -> read one rp2040_timer0 timestamp
+  -> disable/sample/restart the PIO oscillator counter
+  -> publish one OtisPpsCountBoundaryObservation to a bounded SPSC ring
+
+foreground
+  -> pop that atomic observation
+  -> validate sequence, reference interval, counter window and pairing
+  -> emit the corresponding REF, bounded CNT, transition/anomaly STS
 ```
 
-It must not silently reinterpret existing `CNT` rows as calibrated frequency
-rows. A `CNT` row remains a raw counted-edge observation over an explicit gate.
+A continuous PIO counter with a PPS-triggered hardware latch remains the
+preferred future endpoint. The current five-instruction PIO counter has no
+direct cross-state-machine register snapshot path, and adding a routed
+multi-state-machine/DMA fabric would be disproportionate to this correction.
+The ISR backend removes the confirmed foreground aperture defect without
+changing the higher-level observation semantics.
 
-## Physical Inputs
+The ISR path uses only fixed register operations and one fixed-size ring push.
+It contains no allocation, formatting, serial output, floating point,
+estimator work, delay, blocking FIFO call, or other service-plane operation.
+The counter is restarted before the observation is published.
 
-The PPS-gated ratio backend uses the current SW1/H1 pin convention:
+## Atomic observation and bounded transfer
 
-| Signal | Arduino Nano RP2040 Connect pin | OTIS channel | Role |
-|---|---:|---:|---|
-| GNSS PPS/reference | `D14` / GPIO26 | `CH1` | reference edge and gate boundary |
-| oscillator observation | `D8` / GPIO20 / `GPIN0` | `CH2` | counted oscillator edges |
+`OtisPpsCountBoundaryObservation` contains:
 
-Both inputs must be conditioned to RP2040-safe 3.3 V logic and share a common
-ground with the Nano RP2040 Connect. Raw 10 MHz or 16 MHz oscillator edges must
-not be routed into the sparse GPIO IRQ or current PIO FIFO edge-queue path.
+- a modulo-\(2^{32}\) boundary sequence;
+- the PPS event's reconstructed `rp2040_timer0` timestamp;
+- the interval edge count captured at that event;
+- capture flags;
+- physical-aperture flags.
 
-## RP2040 Hardware Blocks
+The dedicated ISR-to-foreground ring has seven usable entries by default
+(`OTIS_PPS_COUNT_BOUNDARY_RING_SIZE=8`). Producer and consumer indices have one
+owner each. Compile-time checks require a power-of-two size and bounded
+8-bit indices. A full ring increments a saturating `uint32_t` drop counter;
+the next deliverable observation carries
+`OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW`. Its sequence gap prevents an
+opportunistic join to an older `REF`. A boundary observation is the only source
+for both its `REF` emission and count processing.
 
-The current implementation uses:
+For this backend, emitted `CNT.count_seq` equals the closing boundary sequence.
+The first boundary is sequence 0 and has no preceding window; the first clean
+`CNT` therefore normally has sequence 1. A dropped boundary produces an
+auditable `CNT` sequence gap rather than a newly packed foreground sequence.
 
-- one sparse edge-capture path for PPS `REF` rows on `CH1`;
-- one PIO-backed counter path that counts oscillator rising edges on `CH2`;
-- the RP2040 timer domain, `rp2040_timer0`, for gate boundary timestamps;
-- foreground firmware service for translating completed gate observations into
-  `CNT` and `STS` rows.
+Sequence continuity uses unsigned arithmetic, so `UINT32_MAX -> 0` is
+continuous. Duplicate and gap relations are explicit. The interval-count
+backend does not expose a cumulative counter wrap in normal one-second use.
+The shared boundary helper nevertheless defines single-wrap unsigned
+cumulative-snapshot subtraction for a future continuous backend; a delta above
+the implementation maximum is `counter_wrap_ambiguous`, not silently valid.
 
-The count path is PIO-backed rather than the current FC0 helper because the gate
-is defined by external PPS edges, not by a firmware-selected fixed gate
-duration. The sparse PPS capture path is the single PPS authority: the same
-captured event supplies the `REF` timestamp, PPS diagnostics, and count-gate
-boundary. The count backend does not poll D14 or timestamp PPS independently.
-See `PPS_OWNERSHIP_ARCHITECTURE.md`. Bench validation must still prove counter
-start/stop latency, missing-PPS timeout behavior, and counter saturation
-handling before the backend is hardware-clean.
+## Startup, missing PPS, and reacquisition
 
-The current sparse PIO FIFO backend is not this backend. It queues low-rate
-edges and attaches CPU-drain timestamps; it must not be used as a raw MHz edge
-transport.
+The first PPS starts the physical counter and publishes a boundary with
+`previous_boundary_unavailable` / `physical_aperture_incomplete`; it emits a
+`REF` but no fabricated `CNT`.
 
-## Gate Definition
+When PPS is missing, foreground may report the timeout, but it does not stop or
+restart the counter. Only a later PPS IRQ may close that aperture. The long
+bounded observation is rejected by reference validity, followed by one
+deterministic previous-boundary/reacquisition inhibit. Duplicate, short, long,
+flagged, sequence-gap, overflow, and unavailable-boundary cases similarly
+cannot become clean pairs.
 
-A gate starts on an accepted PPS rising edge and stops on the next accepted PPS
-rising edge. The stop edge may also become the start edge for the next gate.
+If a boundary sequence is missing, the delivered interval count cannot be
+honestly associated with the last foreground timestamp. Firmware preserves the
+current `REF` and fault status but withholds that `CNT`, then uses the current
+boundary as the next anchor.
 
-PPS acceptance requires:
+## Independent validity dimensions
 
-- monotonic PPS event order;
-- an interval inside configured validity limits around the expected PPS period;
-- a duplicate band distinct from other short intervals (currently
-  `<=100000 us`);
-- no capture overflow, edge-order fault, or debounce/glitch rejection near the
-  boundary;
-- startup inhibit and clean-window bookkeeping preserved as telemetry rather
-  than used to suppress raw rows.
+Foreground derives and reports these conclusions independently:
 
-If a PPS edge is missing, stale, nonmonotonic, or implausibly early/late,
-firmware must reject the affected gate for control eligibility and emit
-diagnostic `STS` rows. Firmware must not invent a clean gate close timestamp.
-
-## Native Domains
-
-The native count domain is the oscillator observation input on `CH2`. The raw
-count is the number of oscillator rising edges observed while the PPS gate is
-open.
-
-The native gate boundary timestamp domain is `rp2040_timer0` unless a future
-implementation explicitly introduces a different hardware-latched timer domain
-and updates the record contract. The PPS itself is the physical reference used
-to define the gate, but the emitted `gate_open_ticks` and `gate_close_ticks`
-remain ticks in the declared gate domain.
-
-The host may derive a PPS-normalized oscillator ratio or frequency from these
-rows. That derived value is not the raw firmware observation.
-
-## Raw Record Contract
-
-The backend reuses the existing `CNT` schema. No schema extension is required
-for the first implementation.
-
-For each completed PPS-to-PPS gate, firmware emits:
-
-| `CNT` field | Value |
+| Dimension | Required condition |
 |---|---|
-| `record_type` | `CNT` |
-| `channel_id` | `2` |
-| `gate_open_ticks` | accepted start PPS timestamp in `gate_domain` |
-| `gate_close_ticks` | accepted stop PPS timestamp in `gate_domain` |
-| `gate_domain` | `rp2040_timer0` unless revised by a later contract |
-| `counted_edges` | oscillator rising-edge count during the gate |
-| `source_edge` | `R` |
-| `source_domain` | existing oscillator source domain, such as `h0_tcxo_16mhz` or `h1_ocxo_open_loop` |
-| `flags` | raw validity/provenance flags for the count window |
+| reference interval | PPS interval and capture flags are acceptable |
+| count boundary | the current PPS event completed the bounded boundary action |
+| counter window | snapshot is available, aperture complete, wrap unambiguous, count nonsaturated and physically possible |
+| observation pair | a previous atomic boundary exists and sequence is continuous |
+| FIFO continuity | no sequence discontinuity or boundary-ring overflow |
+| backend qualification | `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1` |
 
-The same physical PPS edges must remain visible as `REF` rows on `CH1` whenever
-practical. Host analysis uses the `REF` stream to audit PPS cadence, gate
-quality, startup artifacts, and any RP2040 timer-domain calibration. The `CNT`
-row is not a replacement for the `REF` row.
+Measurement validity requires the first five dimensions. Control eligibility
+additionally requires backend qualification plus the existing startup,
+recovery, and clean-window gates. The checked-in qualification candidate sets
+`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; therefore it can produce bench
+evidence but cannot authorize control.
 
-Rows produced while startup inhibit is active are still emitted. They are raw
-observations with status saying they are not control-eligible.
+Typed reasons include:
 
-## Status Telemetry
+- `boundary_capture_unavailable`;
+- `boundary_sequence_gap`, `boundary_sequence_duplicate`;
+- `boundary_observation_overflow`;
+- `counter_snapshot_invalid`;
+- `counter_wrap_handled`, `counter_wrap_ambiguous`;
+- `physical_aperture_incomplete`;
+- `reference_missing_pps`, `reference_pps_duplicate`,
+  `reference_pps_short_interval`, `reference_pps_long_interval`;
+- `reference_previous_boundary_invalid`;
+- `count_zero`, `count_saturated`.
 
-The backend emits ordinary `STS` rows. New fields should use component
-`pps_gate` or the existing count-observation component, while retaining current
-compatibility fields where host tooling already expects them.
+`GATE_INCOMPLETE` marks a physical aperture or pairing failure.
+`REFERENCE_VALIDITY_SUSPECT` independently marks a reference failure.
+Host qualification treats `GATE_INCOMPLETE`, boundary overflow/order flags,
+zero, source-health faults, and saturation as count/aperture invalid. A
+nonzero, nonsaturated count cannot override those flags.
 
-Required status keys:
+## Telemetry policy
 
-| Component | Key | Meaning |
-|---|---|---|
-| `pps_gate` | `backend` | selected backend name, expected `pps_gated_ratio` |
-| `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
-| `pps_gate` | `valid` | latest bounded PPS-gated window validity |
-| `pps_gate` | `last_reason` | most recent validity/fault reason |
-| `pps_gate` | `reference_validity` | independent `valid`, `invalid`, or `unavailable` state for the authoritative PPS side |
-| `pps_gate` | `reference_reason` | typed reference reason such as `reference_valid`, `reference_pps_duplicate`, `reference_pps_short_interval`, `reference_pps_long_interval`, `reference_missing_pps`, `reference_capture_flagged`, or `reference_previous_boundary_invalid` |
-| `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` state for the oscillator-count side |
-| `pps_gate` | `count_reason` | typed count reason such as `count_valid`, `count_zero`, `count_saturated`, or `count_unavailable` |
-| `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
-| `pps_gate` | `last_interval_us` | latest accepted or rejected PPS interval in microseconds |
-| `pps_gate` | `accepted_window_count` | total accepted PPS-gated windows |
-| `pps_gate` | `rejected_window_count` | total rejected PPS-gated windows |
-| `pps_gate` | `consecutive_bad_window_count` | consecutive invalid PPS-gated windows |
-| `pps_gate` | `total_bad_window_count` | lifetime invalid PPS-gated windows in this boot |
-| `pps_gate` | `missing_pps_count` | gates abandoned or withheld because no stop PPS arrived in time |
-| `pps_gate` | `pps_interval_anomaly_count` | PPS intervals rejected as implausibly short, long, or nonmonotonic |
-| `pps_gate` | `count_saturated_count` | oscillator counter saturation or overflow events |
-| `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
-| `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
-| `pps_gate` | `count_resolution_edges` | native integer count resolution; currently one edge |
-| `pps_gate` | `counter_aperture_uncertainty_ns` | evidence-backed counter start/stop aperture uncertainty, or `unavailable` |
-| `pps_gate` | `reference_frequency_uncertainty_ppb` | evidence-backed reference uncertainty, or `unavailable` |
-| `fc0` | `fc0_observed_valid` | compatibility status for raw count-observation validity |
-| `fc0` | `fc0_valid_for_control` | compatibility status for post-inhibit clean-window qualification |
-| `fc0` | `fc0_fault` | compatibility status for post-inhibit invalid count windows |
+Every defensible completed pair emits one compact `CNT`; every delivered
+boundary emits its `REF`. Stable windows do not emit a full status bundle.
+Aggregate `pps_gate` and capture health is emitted every ten seconds by default.
+Detailed status is emitted on the first pair, validity/control or anomaly-
+reason transition, unpairable boundary, missing-PPS timeout, or explicit query.
+Every repeated bounded anomaly still emits its flagged `CNT`; rate limiting
+never suppresses the raw evidence.
 
-The `fc0_*` names are historical and should not leak into the internal backend
-abstraction. They remain in telemetry until host tooling and readiness docs can
-be migrated to backend-generic names such as `count_observed_valid` and
-`count_valid_for_control`.
+`CONFIG?` emits one bounded, begin/end-delimited snapshot of compile-time and
+backend metadata. Serial command intake is byte-bounded and processes at most
+one complete command per loop pass. Boundary-ring draining precedes command,
+DAC-sweep, environment, and periodic-status service. None of these service
+paths can alter the IRQ-owned aperture.
 
-## Fault Representation
+The CSV schema remains v1. Added `pps_gate` status keys are additive:
+`boundary_owner`, `aperture_backend`, `backend_qualified`,
+`boundary_sequence`, `boundary_validity`, `aperture_validity`,
+`observation_pair_validity`, `fifo_continuity`, ring depth/capacity/drop
+counters, and typed reason/counter fields. Existing emitters are single-
+foreground-producer line writers; the disturbed Run 001 pre-reset frames were
+caused by competing host serial ownership, not an identified concurrent
+firmware writer.
 
-Faults are represented with explicit `CNT` flags when a bounded count window can
-be emitted, and with `STS` rows when no honest `CNT` row exists.
+## Resources and limitations
 
-| Condition | `CNT` behavior | `STS` behavior |
-|---|---|---|
-| missing stop PPS | do not emit a clean `CNT`; current firmware reports `STS` only for the incomplete gate | increment `missing_pps_count`, reject the gate, set `last_reason=missing_pps` |
-| duplicate/short/long PPS interval | emit affected bounded gate with `REFERENCE_VALIDITY_SUSPECT` and `GATE_INCOMPLETE` if both boundaries are known | increment `pps_interval_anomaly_count`, emit the typed `reference_reason`, and increment bad-window counters |
-| flagged PPS boundary | emit the bounded window when both boundaries exist, preserving the boundary flags and adding reference/gate invalidity | emit `reference_reason=reference_capture_flagged`; a flagged first boundary does not open a clean gate |
-| gate following a rejected boundary | preserve the bounded `CNT`, but keep the reference side invalid for one re-anchoring window | emit `reference_reason=reference_previous_boundary_invalid`; the current clean boundary may anchor the next gate |
-| count overflow or saturation | emit the row with `COUNT_SATURATED` and the best available saturated count value | increment `count_saturated_count`, reject for control |
-| zero counted edges | emit `CNT` with `SOURCE_HEALTH_SUSPECT` and, when the input appears stuck low, `INPUT_STUCK_LOW` | increment bad-window counters, set `last_reason=counted_edges_zero` |
-| startup inhibit active | emit `CNT` with normal raw validity flags; do not add fault flags solely because of startup | set `fc0_valid_for_control=0`, report inhibit state |
-| post-inhibit invalid gate | emit raw `CNT` when bounded; flag the concrete invalidity | set `fc0_fault=1`, reset control eligibility |
+The backend claims:
 
-Firmware should prefer explicit bad-window telemetry over suppressing rows. The
-only exception is an incomplete gate with no defensible close boundary; in that
-case a status fault is more honest than a fake `CNT`.
+- GPIO26 and its GPIO IRQ through the existing `edge_capture` owner, with role
+  `pps_reference_and_count_boundary_irq`;
+- GPIO20, one dynamically allocated PIO0 state machine, and its five-word
+  program through `count_observation`;
+- no DMA channel and no additional IRQ.
 
-## Host-Derived Values
+The PIO and GPIO claims remain conflict-checked and visible through the resource
+registry. A gated build with the CPU-timestamped PIO edge-queue capture backend
+is rejected at compile time because that backend cannot provide an immediate
+PPS-owned count boundary.
 
-Host analysis derives:
+Remaining limitations are explicit:
 
-- PPS interval quality from `REF` cadence and `pps_gate` status rows;
-- gate duration assumptions from accepted PPS intervals and run metadata;
-- oscillator ratio as counted oscillator edges per accepted PPS interval;
-- oscillator frequency and ppm error from the ratio plus explicit nominal
-  source metadata;
-- run summaries, anomaly reports, and control-readiness summaries.
+- the timestamp is read in the GPIO IRQ and carries
+  `TIMESTAMP_RECONSTRUCTED`; it is not a hardware-latched timer capture;
+- ISR entry latency and the bounded stop/sample/restart dead time contribute
+  aperture quantisation;
+- a future continuous hardware snapshot would remove restart dead time;
+- host/unit tests do not qualify those hardware limits.
 
-Derived frequency, ratio, phase, ppm, or calibration products must be written as
-host-derived artifacts or status summaries. They must not overwrite `CNT`
-fields or imply the firmware emitted calibrated frequency.
-
-## Control-Gate Interaction
-
-The backend may provide the raw evidence needed by a future control loop, but it
-must not actuate the DAC or change control state by itself.
-
-For compatibility with current H1 readiness logic:
-
-- `fc0_observed_valid` maps to "the latest count observation is bounded and
-  internally coherent";
-- `fc0_valid_for_control` maps to "startup inhibit has expired and the required
-  number of consecutive clean PPS-gated count windows has been observed";
-- `fc0_fault` maps to "a post-inhibit PPS-gated count window was invalid".
-
-Future control gates must require both PPS/reference health and oscillator-count
-health. A clean count with a suspect PPS gate is not control-eligible. A clean
-PPS interval with zero, saturated, or missing oscillator count is not
-control-eligible.
-
-The independent `reference_validity` and `count_validity` fields are
-authoritative for this distinction. `pps_gate.valid` remains a compatibility
-summary and must not be used to erase either underlying conclusion.
-
-## Compile-Time Selection
-
-The selector is:
-
-```cpp
-#define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-```
-
-This selector belongs beside the current count-observation backend choices:
-
-- `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0`
-- `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
-- `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`
-- `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`
-
-It applies to count-observation modes such as `SW1_TCXO_OBSERVE` and
-`H1_OCXO_OBSERVE_OPEN_LOOP`. It also requires a valid PPS input on `D14` /
-GPIO26. Without PPS, firmware reports `pps_gate/missing_pps_count` and withholds
-clean PPS-gated `CNT` rows.
-
-## Implementation Checklist
-
-- Backend selector and compile-time validation exist in `otis_config.h`.
-- Count-observation logic lives in the extracted count-observation module, not
-  in the `.ino` sketch.
-- Current firmware uses a PIO oscillator counter and consumes authoritative
-  foreground PPS capture events; bench validation still needs to prove
-  hardware-clean counter stop/start timing.
-- The PIO counter restarts immediately after the bounded stop/read operation
-  and before arithmetic, diagnostics, or serial emission. This removes
-  variable service-plane reporting time from the inter-gate aperture; the
-  residual stop/read/restart aperture remains a bench uncertainty component.
-- Counter width, rollover, saturation, and timeout behavior are explicit in
-  firmware and status telemetry.
-- A rollover-closing `CNT` preserves the raw authoritative `REF` timestamp as
-  its close boundary; modular arithmetic is used only to compute the interval.
-- A rejected duplicate/short/long/flagged boundary cannot silently become the
-  accepted opening boundary of a clean ratio window. The next bounded window
-  remains visible but reference-ineligible while the gate re-anchors.
-- Absence of the first PPS after backend start is subject to the same explicit
-  missing-PPS timeout as an incomplete open gate.
-- Keep the sparse capture event authoritative for PPS `REF`, diagnostics, and
-  gated counting; do not poll or timestamp D14 again in a consumer.
-- Emit `CNT` rows only for bounded observations with honest gate boundaries.
-- Emit `STS` rows for missing PPS, PPS interval anomalies, count saturation, startup
-  inhibit, control qualification, and bad-window counters.
-- Preserve existing `CNT` column meanings and avoid adding calibrated frequency
-  fields to firmware rows.
-- Update host validation only if ordinary `STS` keys are rejected.
-- Compile the default backend and the PPS-gated backend selector.
-- Capture a bench run with PPS wired and oscillator input wired before marking
-  the backend hardware-clean.
-- Populate aperture and reference uncertainty only from bench/calibration
-  evidence; until then the components remain `unavailable`.
-
-## Open Bench Questions
-
-- Does foreground processing of the captured PPS event produce acceptable
-  counter start/stop latency for the intended ratio run, or is a
-  hardware-latched PPS gate needed?
-- Should a later implementation emit a flagged partial `CNT` with a timeout
-  close tick, or keep the current `STS`-only missing-stop-PPS policy?
-- What PPS interval tolerances should be defaults for GPS PPS, and should they
-  be compile-time constants or manifest-configured host expectations?
-- How should host reports name the backend-generic replacements for historical
-  `fc0_*` control-readiness fields?
+Foreground backlog can now cause an explicit observation-ring overflow, but it
+cannot shorten the physical count aperture or trigger rapid stale
+stop/restart operations.

@@ -39,13 +39,16 @@ REFERENCE_INVALID_FLAGS = (
     | (1 << 9)
     | (1 << 10)
     | (1 << 11)
-    | (1 << 12)
 )
 CANDIDATE_COUNT_INVALID_FLAGS = (
-    (1 << 5)
+    (1 << 0)
+    | (1 << 1)
+    | (1 << 2)
+    | (1 << 5)
     | (1 << 8)
     | (1 << 9)
     | (1 << 10)
+    | (1 << 12)
     | (1 << 13)
 )
 INDEPENDENT_COUNT_INVALID_FLAGS = (
@@ -685,6 +688,10 @@ def _candidate_windows(
             reasons.append("count_zero")
         elif count.flags & (1 << 13):
             reasons.append("count_saturated")
+        elif count.flags & (1 << 12):
+            reasons.append("physical_aperture_invalid")
+        elif count.flags & ((1 << 0) | (1 << 1) | (1 << 2)):
+            reasons.append("boundary_continuity_invalid")
         elif count.flags & CANDIDATE_COUNT_INVALID_FLAGS:
             reasons.append("count_flagged_invalid")
         eligible = reference_valid and count_valid
@@ -854,6 +861,7 @@ def _capture_integrity(rows: list[dict[str, str]]) -> dict[str, Any]:
     watched = {
         "capture.dropped_count",
         "capture.capture_drop_count",
+        "capture.pps_count_boundary_dropped_count",
         "capture.pio_fifo_overflow_drop_count",
         "capture.parser_error_count",
         "host.dropped_record_count",
@@ -901,6 +909,10 @@ def _runtime_backend_identity(
         ("build", "enable_phase4_observe_preview"): "0",
         ("phase4_preview", "actuation_authorized"): "false",
         ("pps_gate", "backend"): "pps_gated_ratio",
+        ("pps_gate", "boundary_owner"): "pps_gpio_irq",
+        ("pps_gate", "aperture_backend"):
+            "pps_isr_stop_sample_restart_v1",
+        ("pps_gate", "backend_qualified"): "false",
         ("pps_gate", "duplicate_max_interval_us"): str(
             round(config.duplicate_max_interval_s * 1_000_000.0)
         ),

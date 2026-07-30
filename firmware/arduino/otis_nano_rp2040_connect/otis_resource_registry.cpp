@@ -231,7 +231,12 @@ bool otis_resource_registry_begin(void) {
   add_pps_witness_owner();
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE,
+                         "pps_reference_and_count_boundary_irq");
+#else
   add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE, "pps_reference_input");
+#endif
   add_pps_witness_owner();
   add_count_observation_owner();
 #endif

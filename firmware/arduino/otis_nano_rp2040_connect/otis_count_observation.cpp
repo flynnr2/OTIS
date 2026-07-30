@@ -6,12 +6,15 @@
 #include <hardware/pio.h>
 #include <hardware/pio_instructions.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "otis_board.h"
 #include "otis_capture_irq.h"
 #include "otis_config.h"
 #include "otis_emit.h"
 #include "otis_pio_counter_math.h"
+#include "otis_pps_count_boundary.h"
+#include "otis_pps_count_boundary_ring.h"
 #include "otis_pps_gate_math.h"
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
@@ -37,6 +40,21 @@ const char kWindowReasonPpsIntervalAnomaly[] = "pps_interval_anomaly";
 const char kWindowReasonPpsBoundaryFlagged[] = "pps_boundary_flagged";
 const char kWindowReasonPpsRecoveryInhibit[] = "pps_recovery_inhibit";
 const char kWindowReasonCounterSaturated[] = "counter_saturated";
+const char kWindowReasonBoundaryCaptureUnavailable[] =
+    "boundary_capture_unavailable";
+const char kWindowReasonBoundarySequenceGap[] = "boundary_sequence_gap";
+const char kWindowReasonBoundarySequenceDuplicate[] =
+    "boundary_sequence_duplicate";
+const char kWindowReasonBoundaryObservationOverflow[] =
+    "boundary_observation_overflow";
+const char kWindowReasonCounterSnapshotInvalid[] =
+    "counter_snapshot_invalid";
+const char kWindowReasonCounterWrapHandled[] = "counter_wrap_handled";
+const char kWindowReasonCounterWrapAmbiguous[] = "counter_wrap_ambiguous";
+const char kWindowReasonPhysicalApertureIncomplete[] =
+    "physical_aperture_incomplete";
+const char kWindowReasonObservationPairInvalid[] =
+    "observation_pair_invalid";
 const char kReferenceReasonUnavailable[] = "reference_unavailable";
 const char kReferenceReasonValid[] = "reference_valid";
 const char kReferenceReasonMissingPps[] = "reference_missing_pps";
@@ -53,6 +71,7 @@ const char kCountReasonUnavailable[] = "count_unavailable";
 const char kCountReasonValid[] = "count_valid";
 const char kCountReasonZero[] = "count_zero";
 const char kCountReasonSaturated[] = "count_saturated";
+const char kCountReasonSnapshotInvalid[] = "count_snapshot_invalid";
 
 enum class PpsGateState : uint8_t {
   Idle,
@@ -75,7 +94,7 @@ struct H1PioLongGateCounter {
   uint sm;
   uint offset;
   bool initialized;
-  bool active;
+  volatile bool active;
   uint64_t gate_open_ticks;
   uint32_t saturation_count;
 };
@@ -142,6 +161,7 @@ bool begin_h1_pio_long_gate_counter(void) {
   return true;
 }
 
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
 void start_h1_pio_long_gate_counter(uint64_t gate_open_ticks) {
   if (!h1_pio_long_gate.initialized) {
     return;
@@ -174,43 +194,152 @@ uint32_t stop_h1_pio_long_gate_counter(void) {
 #endif
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+bool start_h1_pio_counter_from_pps_isr(uint64_t gate_open_ticks) {
+  if (!h1_pio_long_gate.initialized) {
+    return false;
+  }
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
+  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_clkdiv_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  if (pio_sm_is_tx_fifo_full(h1_pio_long_gate.pio,
+                             h1_pio_long_gate.sm)) {
+    h1_pio_long_gate.active = false;
+    return false;
+  }
+  pio_sm_put(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+             kH1PioCounterInitialX);
+  pio_sm_exec(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+              pio_encode_jmp(h1_pio_long_gate.offset));
+  if (pio_sm_is_exec_stalled(h1_pio_long_gate.pio,
+                             h1_pio_long_gate.sm)) {
+    h1_pio_long_gate.active = false;
+    return false;
+  }
+  h1_pio_long_gate.gate_open_ticks = gate_open_ticks;
+  h1_pio_long_gate.active = true;
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, true);
+  return true;
+}
+
+bool stop_and_sample_h1_pio_counter_from_pps_isr(uint32_t *remaining) {
+  if (!h1_pio_long_gate.initialized || !h1_pio_long_gate.active ||
+      remaining == nullptr) {
+    return false;
+  }
+  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
+  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  pio_sm_exec(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+              pio_encode_mov(pio_isr, pio_x));
+  if (pio_sm_is_exec_stalled(h1_pio_long_gate.pio,
+                             h1_pio_long_gate.sm)) {
+    h1_pio_long_gate.active = false;
+    return false;
+  }
+  pio_sm_exec(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
+              pio_encode_push(false, false));
+  if (pio_sm_is_exec_stalled(h1_pio_long_gate.pio,
+                             h1_pio_long_gate.sm) ||
+      pio_sm_is_rx_fifo_empty(h1_pio_long_gate.pio,
+                              h1_pio_long_gate.sm)) {
+    h1_pio_long_gate.active = false;
+    return false;
+  }
+  *remaining = pio_sm_get(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
+  h1_pio_long_gate.active = false;
+  return true;
+}
+#endif
+#endif
+
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 struct PpsGatedRatioBackend {
   PpsGateState state;
   uint64_t waiting_since_ticks;
-  uint64_t last_pps_ticks;
-  uint64_t gate_open_ticks;
-  uint32_t gate_open_capture_flags;
-  bool gate_open_inhibited;
+  OtisPpsCountBoundaryObservation previous_observation;
+  bool have_previous_observation;
+  bool previous_boundary_inhibited;
+  bool missing_before_first_reported;
+  uint32_t missing_reported_after_sequence;
+  bool missing_after_sequence_reported;
+  bool last_window_state_known;
+  bool last_window_valid;
+  bool last_control_eligible;
   uint32_t accepted_window_count;
   uint32_t rejected_window_count;
   uint32_t missing_pps_count;
   uint32_t pps_interval_anomaly_count;
   uint32_t count_saturated_count;
+  uint32_t boundary_sequence_gap_count;
+  uint32_t boundary_sequence_duplicate_count;
+  uint32_t boundary_overflow_count;
+  uint32_t counter_snapshot_invalid_count;
+  uint32_t physical_aperture_incomplete_count;
   const char *last_reference_validity;
   const char *last_count_validity;
+  const char *last_boundary_validity;
+  const char *last_aperture_validity;
+  const char *last_pair_validity;
+  const char *last_fifo_continuity;
   const char *last_reference_reason;
   const char *last_count_reason;
+  const char *last_boundary_reason;
+  const char *last_aperture_reason;
+  const char *last_pair_reason;
   const char *last_reason;
 };
 
-PpsGatedRatioBackend pps_gated_ratio = {
-    PpsGateState::Idle,
-    0,
-    0,
-    0,
-    false,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    "unavailable",
-    "unavailable",
-    kReferenceReasonUnavailable,
-    kCountReasonUnavailable,
-    kWindowReasonNone,
-};
+PpsGatedRatioBackend pps_gated_ratio = {};
+
+volatile uint32_t pps_boundary_next_sequence = 0u;
+volatile uint64_t pps_boundary_last_isr_ticks = 0u;
+volatile bool pps_boundary_seen = false;
+
+void capture_pps_count_boundary_from_isr(uint64_t timestamp_ticks,
+                                         uint32_t capture_flags) {
+  OtisPpsCountBoundaryObservation observation = {
+      pps_boundary_next_sequence++,
+      timestamp_ticks,
+      0u,
+      capture_flags,
+      OTIS_PPS_APERTURE_NONE,
+  };
+
+  if (!h1_pio_long_gate.active) {
+    observation.aperture_flags |=
+        OTIS_PPS_APERTURE_PREVIOUS_BOUNDARY_UNAVAILABLE |
+        OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
+  } else {
+    uint32_t remaining = 0u;
+    if (stop_and_sample_h1_pio_counter_from_pps_isr(&remaining)) {
+      OtisPioCounterSample sample =
+          otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
+      observation.interval_count =
+          static_cast<uint32_t>(sample.counted_edges);
+      if (sample.saturated) {
+        observation.aperture_flags |= OTIS_PPS_APERTURE_COUNTER_SATURATED;
+      } else if (sample.counted_edges == 0u) {
+        observation.aperture_flags |= OTIS_PPS_APERTURE_ZERO_COUNT;
+      }
+    } else {
+      observation.aperture_flags |=
+          OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
+          OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
+    }
+  }
+
+  if (!start_h1_pio_counter_from_pps_isr(timestamp_ticks)) {
+    observation.aperture_flags |=
+        OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE |
+        OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
+  }
+
+  // Publish only after the timestamp and physical counter boundary are both
+  // complete. Overflow is latched into the next deliverable observation.
+  otis_pps_count_boundary_ring_push_from_isr(observation);
+  pps_boundary_last_isr_ticks = timestamp_ticks;
+  pps_boundary_seen = true;
+}
 #endif
 
 void emit_status(OtisStatusEmitContext *context, const char *component,
@@ -228,6 +357,44 @@ void emit_status_u32(OtisStatusEmitContext *context, const char *component,
 const char *bool_text(bool value) { return value ? "true" : "false"; }
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+const char *aperture_reason_name(uint32_t flags) {
+  if ((flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u) {
+    return kWindowReasonBoundaryObservationOverflow;
+  }
+  if ((flags & OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS) != 0u) {
+    return kWindowReasonCounterWrapAmbiguous;
+  }
+  if ((flags & OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID) != 0u) {
+    return kWindowReasonCounterSnapshotInvalid;
+  }
+  if ((flags & OTIS_PPS_APERTURE_COUNTER_SATURATED) != 0u) {
+    return kWindowReasonCounterSaturated;
+  }
+  if ((flags & OTIS_PPS_APERTURE_ZERO_COUNT) != 0u) {
+    return kWindowReasonCountedEdgesZero;
+  }
+  if ((flags & (OTIS_PPS_APERTURE_PREVIOUS_BOUNDARY_UNAVAILABLE |
+                OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE)) != 0u) {
+    return kWindowReasonPhysicalApertureIncomplete;
+  }
+  if ((flags & OTIS_PPS_APERTURE_COUNTER_WRAP_HANDLED) != 0u) {
+    return kWindowReasonCounterWrapHandled;
+  }
+  return kWindowReasonNone;
+}
+
+const char *sequence_relation_name(OtisBoundarySequenceRelation relation) {
+  switch (relation) {
+    case OtisBoundarySequenceRelation::Continuous:
+      return "continuous";
+    case OtisBoundarySequenceRelation::Duplicate:
+      return "duplicate";
+    case OtisBoundarySequenceRelation::Gap:
+      return "gap";
+  }
+  return "unavailable";
+}
+
 const char *pps_boundary_reason_name(OtisPpsBoundaryReason reason) {
   switch (reason) {
     case OtisPpsBoundaryReason::Valid:
@@ -264,6 +431,27 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                           const char *severity, uint32_t flags) {
   emit_status(status_context, "pps_gate", "backend", "pps_gated_ratio",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "boundary_owner", "pps_gpio_irq",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "aperture_backend",
+              "pps_isr_stop_sample_restart_v1", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "backend_qualified",
+              bool_text(OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0),
+              OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? OTIS_SEVERITY_INFO
+                                                  : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "valid",
+              bool_text(pps_gated_ratio.last_window_state_known &&
+                        pps_gated_ratio.last_window_valid),
+              pps_gated_ratio.last_window_valid ? OTIS_SEVERITY_INFO
+                                                : OTIS_SEVERITY_WARN,
+              flags);
+  emit_status(status_context, "pps_gate", "control_eligible",
+              bool_text(pps_gated_ratio.last_control_eligible),
+              pps_gated_ratio.last_control_eligible ? OTIS_SEVERITY_INFO
+                                                    : OTIS_SEVERITY_WARN,
+              flags);
   emit_status(status_context, "pps_gate", "state",
               pps_gate_state_name(pps_gated_ratio.state), severity, flags);
   emit_status(status_context, "pps_gate", "last_reason",
@@ -276,6 +464,39 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
               pps_gated_ratio.last_count_validity, severity, flags);
   emit_status(status_context, "pps_gate", "count_reason",
               pps_gated_ratio.last_count_reason, severity, flags);
+  emit_status(status_context, "pps_gate", "boundary_validity",
+              pps_gated_ratio.last_boundary_validity, severity, flags);
+  emit_status(status_context, "pps_gate", "boundary_reason",
+              pps_gated_ratio.last_boundary_reason, severity, flags);
+  emit_status(status_context, "pps_gate", "aperture_validity",
+              pps_gated_ratio.last_aperture_validity, severity, flags);
+  emit_status(status_context, "pps_gate", "aperture_reason",
+              pps_gated_ratio.last_aperture_reason, severity, flags);
+  emit_status(status_context, "pps_gate", "observation_pair_validity",
+              pps_gated_ratio.last_pair_validity, severity, flags);
+  emit_status(status_context, "pps_gate", "observation_pair_reason",
+              pps_gated_ratio.last_pair_reason, severity, flags);
+  emit_status(status_context, "pps_gate", "fifo_continuity",
+              pps_gated_ratio.last_fifo_continuity, severity, flags);
+  if (pps_gated_ratio.have_previous_observation) {
+    emit_status_u32(status_context, "pps_gate", "boundary_sequence",
+                    pps_gated_ratio.previous_observation.sequence,
+                    OTIS_SEVERITY_INFO, flags);
+  }
+  emit_status_u32(status_context, "pps_gate", "boundary_ring_depth",
+                  otis_pps_count_boundary_ring_depth(), OTIS_SEVERITY_INFO,
+                  flags);
+  emit_status_u32(status_context, "pps_gate", "boundary_ring_capacity",
+                  otis_pps_count_boundary_ring_capacity(), OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  uint32_t boundary_ring_dropped_count =
+      otis_pps_count_boundary_ring_dropped_count();
+  emit_status_u32(status_context, "pps_gate", "boundary_ring_dropped_count",
+                  boundary_ring_dropped_count,
+                  boundary_ring_dropped_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
   emit_status_u32(status_context, "pps_gate", "accepted_window_count",
                   pps_gated_ratio.accepted_window_count, OTIS_SEVERITY_INFO,
                   flags);
@@ -299,6 +520,39 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
   emit_status_u32(status_context, "pps_gate", "count_saturated_count",
                   pps_gated_ratio.count_saturated_count,
                   pps_gated_ratio.count_saturated_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "pps_gate", "boundary_sequence_gap_count",
+                  pps_gated_ratio.boundary_sequence_gap_count,
+                  pps_gated_ratio.boundary_sequence_gap_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "pps_gate",
+                  "boundary_sequence_duplicate_count",
+                  pps_gated_ratio.boundary_sequence_duplicate_count,
+                  pps_gated_ratio.boundary_sequence_duplicate_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "pps_gate", "boundary_overflow_count",
+                  pps_gated_ratio.boundary_overflow_count,
+                  pps_gated_ratio.boundary_overflow_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "pps_gate",
+                  "counter_snapshot_invalid_count",
+                  pps_gated_ratio.counter_snapshot_invalid_count,
+                  pps_gated_ratio.counter_snapshot_invalid_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  flags);
+  emit_status_u32(status_context, "pps_gate",
+                  "physical_aperture_incomplete_count",
+                  pps_gated_ratio.physical_aperture_incomplete_count,
+                  pps_gated_ratio.physical_aperture_incomplete_count == 0u
                       ? OTIS_SEVERITY_INFO
                       : OTIS_SEVERITY_WARN,
                   flags);
@@ -354,10 +608,20 @@ void emit_pps_gate_fault(OtisRuntimeState *runtime_state,
                          const char *count_reason,
                          uint32_t flags) {
   pps_gated_ratio.last_reason = reason;
+  pps_gated_ratio.last_control_eligible = false;
+  pps_gated_ratio.last_window_state_known = true;
+  pps_gated_ratio.last_window_valid = false;
   pps_gated_ratio.last_reference_validity = "invalid";
   pps_gated_ratio.last_count_validity = "unavailable";
+  pps_gated_ratio.last_boundary_validity = "unavailable";
+  pps_gated_ratio.last_aperture_validity = "invalid";
+  pps_gated_ratio.last_pair_validity = "invalid";
+  pps_gated_ratio.last_fifo_continuity = "unavailable";
   pps_gated_ratio.last_reference_reason = reference_reason;
   pps_gated_ratio.last_count_reason = count_reason;
+  pps_gated_ratio.last_boundary_reason = kWindowReasonBoundaryCaptureUnavailable;
+  pps_gated_ratio.last_aperture_reason = kWindowReasonPhysicalApertureIncomplete;
+  pps_gated_ratio.last_pair_reason = kWindowReasonObservationPairInvalid;
   pps_gated_ratio.state = PpsGateState::Fault;
   pps_gated_ratio.rejected_window_count += 1u;
   runtime_state->tcxo.consecutive_bad_windows += 1u;
@@ -586,6 +850,11 @@ void update_control_gate(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.valid_for_control =
       runtime_state->tcxo.control_clean_window_count >=
       config->control_ready_clean_windows;
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  runtime_state->tcxo.valid_for_control =
+      runtime_state->tcxo.valid_for_control &&
+      OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED;
+#endif
   if (runtime_state->tcxo.valid_for_control) {
     runtime_state->tcxo.fault_after_startup = false;
   }
@@ -640,24 +909,51 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
-  // D14 remains configured and owned by the sparse edge-capture subsystem.
-  // This backend consumes that subsystem's authoritative captured event.
+  // D14's GPIO IRQ remains the single PPS authority. It invokes the bounded
+  // handler below before foreground or serial service can run.
+  otis_pps_count_boundary_ring_reset();
+  pps_boundary_next_sequence = 0u;
+  pps_boundary_last_isr_ticks = 0u;
+  pps_boundary_seen = false;
+  // Even an unavailable counter publishes an atomic boundary observation with
+  // explicit failure flags; it must not fall back to an unpaired REF stream.
+  otis_capture_irq_set_pps_count_boundary_handler(
+      capture_pps_count_boundary_from_isr);
   pps_gated_ratio.state = counter_ok ? PpsGateState::Armed
                                      : PpsGateState::Fault;
   pps_gated_ratio.waiting_since_ticks = otis_capture_ticks_now();
-  pps_gated_ratio.last_pps_ticks = 0;
-  pps_gated_ratio.gate_open_ticks = 0;
-  pps_gated_ratio.gate_open_capture_flags = OTIS_FLAG_NONE;
-  pps_gated_ratio.gate_open_inhibited = false;
+  pps_gated_ratio.previous_observation = {};
+  pps_gated_ratio.have_previous_observation = false;
+  pps_gated_ratio.previous_boundary_inhibited = false;
+  pps_gated_ratio.missing_before_first_reported = false;
+  pps_gated_ratio.missing_reported_after_sequence = 0u;
+  pps_gated_ratio.missing_after_sequence_reported = false;
+  pps_gated_ratio.last_window_state_known = false;
+  pps_gated_ratio.last_window_valid = false;
+  pps_gated_ratio.last_control_eligible = false;
   pps_gated_ratio.accepted_window_count = 0;
   pps_gated_ratio.rejected_window_count = 0;
   pps_gated_ratio.missing_pps_count = 0;
   pps_gated_ratio.pps_interval_anomaly_count = 0;
   pps_gated_ratio.count_saturated_count = 0;
+  pps_gated_ratio.boundary_sequence_gap_count = 0;
+  pps_gated_ratio.boundary_sequence_duplicate_count = 0;
+  pps_gated_ratio.boundary_overflow_count = 0;
+  pps_gated_ratio.counter_snapshot_invalid_count = 0;
+  pps_gated_ratio.physical_aperture_incomplete_count = 0;
   pps_gated_ratio.last_reference_validity = "unavailable";
   pps_gated_ratio.last_count_validity = "unavailable";
+  pps_gated_ratio.last_boundary_validity = "unavailable";
+  pps_gated_ratio.last_aperture_validity = "unavailable";
+  pps_gated_ratio.last_pair_validity = "unavailable";
+  pps_gated_ratio.last_fifo_continuity = "unavailable";
   pps_gated_ratio.last_reference_reason = kReferenceReasonUnavailable;
   pps_gated_ratio.last_count_reason = kCountReasonUnavailable;
+  pps_gated_ratio.last_boundary_reason =
+      kWindowReasonBoundaryCaptureUnavailable;
+  pps_gated_ratio.last_aperture_reason =
+      kWindowReasonPhysicalApertureIncomplete;
+  pps_gated_ratio.last_pair_reason = kWindowReasonObservationPairInvalid;
   pps_gated_ratio.last_reason = counter_ok ? kWindowReasonNone
                                            : "counter_init_failed";
   emit_status(status_context, "capture", "tcxo_counter_backend",
@@ -688,6 +984,19 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "count_resolution_edges", 1u,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "boundary_ring_capacity",
+                  otis_pps_count_boundary_ring_capacity(), OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "boundary_owner", "pps_gpio_irq",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "aperture_backend",
+              "pps_isr_stop_sample_restart_v1", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "pps_gate", "backend_qualified",
+              bool_text(OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0),
+              OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? OTIS_SEVERITY_INFO
+                                                  : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status(status_context, "pps_gate",
               "counter_aperture_uncertainty_ns", "unavailable",
               OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -716,92 +1025,112 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
 #endif
 }
 
-bool otis_count_observation_on_reference(
+bool otis_count_observation_on_pps_boundary(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
-    uint64_t timestamp_ticks,
-    uint32_t capture_flags) {
+    const OtisPpsCountBoundaryObservation *observation) {
 #if (OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
      OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE) && \
     OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  if (!h1_pio_long_gate.initialized) {
+  if (observation == nullptr) {
     return false;
   }
 
   uint32_t now_ms = millis();
   update_startup_inhibit(runtime_state, config, now_ms);
+  pps_gated_ratio.missing_before_first_reported = false;
+  pps_gated_ratio.missing_after_sequence_reported = false;
 
-  if (pps_gated_ratio.state != PpsGateState::Open) {
-    if ((capture_flags & otis_pps_reference_invalid_flag_mask()) != 0u) {
-      pps_gated_ratio.waiting_since_ticks = timestamp_ticks;
-      emit_pps_gate_fault(
-          runtime_state, status_context, kWindowReasonPpsBoundaryFlagged,
-          kReferenceReasonCaptureFlagged, kCountReasonUnavailable,
-          capture_flags | OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
-              OTIS_FLAG_GATE_INCOMPLETE);
-      return false;
-    }
-    start_h1_pio_long_gate_counter(timestamp_ticks);
-    pps_gated_ratio.state = PpsGateState::Open;
-    pps_gated_ratio.last_pps_ticks = timestamp_ticks;
-    pps_gated_ratio.gate_open_ticks = timestamp_ticks;
-    pps_gated_ratio.gate_open_capture_flags = capture_flags;
-    pps_gated_ratio.gate_open_inhibited = false;
-    pps_gated_ratio.last_reason = kWindowReasonNone;
-    emit_pps_gate_status(status_context, OTIS_SEVERITY_INFO, capture_flags);
+  if (!pps_gated_ratio.have_previous_observation) {
+    bool boundary_valid =
+        (observation->aperture_flags &
+         OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE) == 0u;
+    pps_gated_ratio.previous_observation = *observation;
+    pps_gated_ratio.have_previous_observation = true;
+    pps_gated_ratio.previous_boundary_inhibited = !boundary_valid;
+    pps_gated_ratio.state =
+        boundary_valid ? PpsGateState::Open : PpsGateState::Fault;
+    pps_gated_ratio.last_reference_validity = "unavailable";
+    pps_gated_ratio.last_count_validity = "unavailable";
+    pps_gated_ratio.last_boundary_validity =
+        boundary_valid ? "valid" : "invalid";
+    pps_gated_ratio.last_aperture_validity = "invalid";
+    pps_gated_ratio.last_pair_validity = "invalid";
+    pps_gated_ratio.last_fifo_continuity = "unavailable";
+    pps_gated_ratio.last_reference_reason = kReferenceReasonUnavailable;
+    pps_gated_ratio.last_count_reason = kCountReasonUnavailable;
+    pps_gated_ratio.last_boundary_reason =
+        boundary_valid ? "boundary_valid"
+                       : kWindowReasonBoundaryCaptureUnavailable;
+    pps_gated_ratio.last_aperture_reason =
+        kWindowReasonPhysicalApertureIncomplete;
+    pps_gated_ratio.last_pair_reason = kWindowReasonObservationPairInvalid;
+    pps_gated_ratio.last_reason = kWindowReasonPpsRecoveryInhibit;
+    pps_gated_ratio.physical_aperture_incomplete_count += 1u;
+    emit_pps_gate_status(status_context, OTIS_SEVERITY_WARN,
+                         observation->capture_flags |
+                             OTIS_FLAG_GATE_INCOMPLETE);
     return false;
   }
 
-  const uint64_t completed_gate_open_ticks =
-      pps_gated_ratio.gate_open_ticks;
-  const uint32_t completed_gate_open_capture_flags =
-      pps_gated_ratio.gate_open_capture_flags;
-  const bool completed_gate_open_inhibited =
-      pps_gated_ratio.gate_open_inhibited;
-  uint64_t observation_span_us =
-      otis_timer0_interval_ticks(completed_gate_open_ticks, timestamp_ticks) /
-      OTIS_RP2040_TIMER0_TICKS_PER_US;
-  uint32_t remaining = stop_h1_pio_long_gate_counter();
-  OtisPioCounterSample counter_sample =
-      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
-  // Restart before arithmetic, diagnostics, or serial emission. The remaining
-  // foreground aperture is the bounded stop/read/restart sequence rather than
-  // the variable service-plane reporting time.
-  start_h1_pio_long_gate_counter(timestamp_ticks);
-  uint64_t counted_edges = counter_sample.counted_edges;
-  uint32_t measured_khz = 0;
-  if (observation_span_us > 0ull) {
-    measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
+  const OtisPpsCountBoundaryObservation previous =
+      pps_gated_ratio.previous_observation;
+  OtisBoundarySequenceRelation sequence_relation =
+      otis_boundary_sequence_relation(previous.sequence,
+                                      observation->sequence);
+  uint32_t aperture_flags = observation->aperture_flags;
+  uint32_t wire_flags =
+      previous.capture_flags | observation->capture_flags;
+  if ((aperture_flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u) {
+    pps_gated_ratio.boundary_overflow_count += 1u;
+    wire_flags |= OTIS_FLAG_CAPTURE_RING_OVERRUN |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if (sequence_relation == OtisBoundarySequenceRelation::Gap) {
+    pps_gated_ratio.boundary_sequence_gap_count += 1u;
+    wire_flags |= OTIS_FLAG_EDGE_ORDER_SUSPECT |
+                  OTIS_FLAG_CAPTURE_RING_OVERRUN |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+  } else if (sequence_relation ==
+             OtisBoundarySequenceRelation::Duplicate) {
+    pps_gated_ratio.boundary_sequence_duplicate_count += 1u;
+    wire_flags |= OTIS_FLAG_EDGE_ORDER_SUSPECT |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if ((aperture_flags &
+       OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE) != 0u) {
+    wire_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if ((aperture_flags &
+       OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID) != 0u) {
+    pps_gated_ratio.counter_snapshot_invalid_count += 1u;
+    wire_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if ((aperture_flags &
+       OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE) != 0u) {
+    pps_gated_ratio.physical_aperture_incomplete_count += 1u;
+    wire_flags |= OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if ((aperture_flags & OTIS_PPS_APERTURE_COUNTER_SATURATED) != 0u) {
+    pps_gated_ratio.count_saturated_count += 1u;
+    wire_flags |= OTIS_FLAG_COUNT_SATURATED;
+  }
+  if ((aperture_flags & OTIS_PPS_APERTURE_ZERO_COUNT) != 0u) {
+    wire_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT |
+                  OTIS_FLAG_INPUT_STUCK_LOW;
+  }
+  if ((aperture_flags &
+       OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS) != 0u) {
+    wire_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT |
+                  OTIS_FLAG_GATE_INCOMPLETE;
   }
 
-  runtime_state->tcxo.last_gate_open_ticks = completed_gate_open_ticks;
-  // Keep the raw accepted REF timestamp as the CNT boundary. Interval
-  // arithmetic is modular, but provenance must remain byte-for-byte traceable.
-  runtime_state->tcxo.last_gate_close_ticks = timestamp_ticks;
-  runtime_state->tcxo.last_counted_edges = counted_edges;
-  runtime_state->tcxo.last_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_measured_khz = measured_khz;
-  runtime_state->tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_sample_count = 1u;
-  runtime_state->tcxo.last_zero_sample_count = counted_edges > 0ull ? 0u : 1u;
-  runtime_state->tcxo.last_valid_sample_count = counted_edges > 0ull ? 1u : 0u;
-  runtime_state->tcxo.last_first_sample_khz = measured_khz;
-  runtime_state->tcxo.last_last_sample_khz = measured_khz;
-  runtime_state->tcxo.last_min_sample_khz = measured_khz;
-  runtime_state->tcxo.last_max_sample_khz = measured_khz;
-  runtime_state->tcxo.last_window_flags =
-      completed_gate_open_capture_flags | capture_flags;
-
-  // Once a boundary is rejected it cannot silently become the accepted open
-  // of a clean window. The following bounded observation remains visible but
-  // is inhibited once while the current clean boundary re-anchors the gate.
-  uint32_t assessment_flags =
-      capture_flags |
-      (completed_gate_open_inhibited ? OTIS_FLAG_NONE
-                                    : completed_gate_open_capture_flags);
   OtisPpsBoundaryAssessment raw_boundary = otis_pps_gate_assess_boundary(
-      completed_gate_open_ticks, timestamp_ticks, assessment_flags,
+      previous.pps_timestamp_ticks, observation->pps_timestamp_ticks,
+      previous.capture_flags | observation->capture_flags,
       (uint64_t)OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US *
           OTIS_RP2040_TIMER0_TICKS_PER_US,
       (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US *
@@ -809,80 +1138,188 @@ bool otis_count_observation_on_reference(
       (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US *
           OTIS_RP2040_TIMER0_TICKS_PER_US);
   OtisPpsBoundaryAssessment boundary = raw_boundary;
-  if (completed_gate_open_inhibited && raw_boundary.valid) {
+  if (pps_gated_ratio.previous_boundary_inhibited && raw_boundary.valid) {
     boundary.valid = false;
     boundary.reason = OtisPpsBoundaryReason::PreviousBoundaryInvalid;
   }
-  pps_gated_ratio.state = PpsGateState::Open;
-  pps_gated_ratio.last_pps_ticks = timestamp_ticks;
-  pps_gated_ratio.gate_open_ticks = timestamp_ticks;
-  pps_gated_ratio.gate_open_capture_flags = capture_flags;
-  pps_gated_ratio.gate_open_inhibited = !raw_boundary.valid;
 
-  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
+  OtisPpsCountWindowValidity validity = otis_pps_count_window_validity(
+      true, boundary.valid, sequence_relation, aperture_flags,
+      OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0, true);
+  bool measurement_valid =
+      validity.reference_interval_valid &&
+      validity.count_boundary_valid &&
+      validity.counter_window_valid &&
+      validity.observation_pair_valid &&
+      validity.fifo_continuous;
+
+  uint64_t observation_span_us =
+      otis_timer0_interval_ticks(previous.pps_timestamp_ticks,
+                                observation->pps_timestamp_ticks) /
+      OTIS_RP2040_TIMER0_TICKS_PER_US;
+  uint64_t counted_edges = observation->interval_count;
+  uint32_t measured_khz = 0u;
+  if (observation_span_us > 0u) {
+    measured_khz =
+        static_cast<uint32_t>((counted_edges * 1000ull) /
+                              observation_span_us);
+  }
+  runtime_state->tcxo.last_gate_open_ticks =
+      previous.pps_timestamp_ticks;
+  runtime_state->tcxo.last_gate_close_ticks =
+      observation->pps_timestamp_ticks;
+  runtime_state->tcxo.last_counted_edges = counted_edges;
+  runtime_state->tcxo.last_elapsed_us =
+      static_cast<uint32_t>(observation_span_us);
+  runtime_state->tcxo.last_measured_khz = measured_khz;
+  runtime_state->tcxo.last_sampled_elapsed_us =
+      static_cast<uint32_t>(observation_span_us);
+  runtime_state->tcxo.last_sample_count = 1u;
+  runtime_state->tcxo.last_zero_sample_count =
+      counted_edges > 0u ? 0u : 1u;
+  runtime_state->tcxo.last_valid_sample_count =
+      counted_edges > 0u ? 1u : 0u;
+  runtime_state->tcxo.last_first_sample_khz = measured_khz;
+  runtime_state->tcxo.last_last_sample_khz = measured_khz;
+  runtime_state->tcxo.last_min_sample_khz = measured_khz;
+  runtime_state->tcxo.last_max_sample_khz = measured_khz;
+
   pps_gated_ratio.last_reference_validity =
-      boundary.valid ? "valid" : "invalid";
+      validity.reference_interval_valid ? "valid" : "invalid";
   pps_gated_ratio.last_reference_reason =
       pps_boundary_reason_name(boundary.reason);
+  pps_gated_ratio.last_boundary_validity =
+      validity.count_boundary_valid ? "valid" : "invalid";
+  pps_gated_ratio.last_boundary_reason =
+      validity.count_boundary_valid
+          ? "boundary_valid"
+          : kWindowReasonBoundaryCaptureUnavailable;
+  pps_gated_ratio.last_aperture_validity =
+      validity.counter_window_valid ? "valid" : "invalid";
+  pps_gated_ratio.last_aperture_reason =
+      aperture_reason_name(aperture_flags);
+  pps_gated_ratio.last_pair_validity =
+      validity.observation_pair_valid ? "valid" : "invalid";
+  pps_gated_ratio.last_pair_reason =
+      validity.observation_pair_valid
+          ? "observation_pair_valid"
+          : (sequence_relation == OtisBoundarySequenceRelation::Duplicate
+                 ? kWindowReasonBoundarySequenceDuplicate
+                 : kWindowReasonBoundarySequenceGap);
+  pps_gated_ratio.last_fifo_continuity =
+      (aperture_flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u
+          ? "overflow"
+          : sequence_relation_name(sequence_relation);
+  bool count_sample_valid =
+      counted_edges > 0u &&
+      (aperture_flags &
+       (OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
+        OTIS_PPS_APERTURE_COUNTER_SATURATED |
+        OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS)) == 0u;
   pps_gated_ratio.last_count_validity =
-      counted_edges > 0ull && !counter_sample.saturated ? "valid" : "invalid";
+      count_sample_valid ? "valid" : "invalid";
   pps_gated_ratio.last_count_reason =
-      counted_edges == 0ull
-          ? kCountReasonZero
-          : (counter_sample.saturated ? kCountReasonSaturated
-                                      : kCountReasonValid);
-  if (!boundary.valid) {
-    if (boundary.reason == OtisPpsBoundaryReason::CaptureFlagged) {
-      anomaly.reason = kWindowReasonPpsBoundaryFlagged;
-    } else if (
-        boundary.reason ==
-        OtisPpsBoundaryReason::PreviousBoundaryInvalid) {
-      anomaly.reason = kWindowReasonPpsRecoveryInhibit;
-    } else {
-      anomaly.reason = kWindowReasonPpsIntervalAnomaly;
-    }
-    anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
-                     OTIS_FLAG_GATE_INCOMPLETE;
+      (aperture_flags & OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID) != 0u
+          ? kCountReasonSnapshotInvalid
+          : ((aperture_flags & OTIS_PPS_APERTURE_COUNTER_SATURATED) != 0u
+                 ? kCountReasonSaturated
+                 : (counted_edges == 0u ? kCountReasonZero
+                                        : kCountReasonValid));
+
+  WindowAnomaly anomaly = {
+      kWindowReasonNone,
+      measurement_valid,
+      false,
+      wire_flags,
+  };
+  if (!validity.fifo_continuous) {
+    anomaly.reason =
+        (aperture_flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u
+            ? kWindowReasonBoundaryObservationOverflow
+            : (sequence_relation ==
+                       OtisBoundarySequenceRelation::Duplicate
+                   ? kWindowReasonBoundarySequenceDuplicate
+                   : kWindowReasonBoundarySequenceGap);
+  } else if (!validity.observation_pair_valid) {
+    anomaly.reason = kWindowReasonObservationPairInvalid;
+  } else if (!validity.count_boundary_valid) {
+    anomaly.reason = kWindowReasonBoundaryCaptureUnavailable;
+  } else if (!validity.counter_window_valid) {
+    anomaly.reason = aperture_reason_name(aperture_flags);
+  } else if (!validity.reference_interval_valid) {
+    anomaly.reason =
+        boundary.reason == OtisPpsBoundaryReason::CaptureFlagged
+            ? kWindowReasonPpsBoundaryFlagged
+            : (boundary.reason ==
+                       OtisPpsBoundaryReason::PreviousBoundaryInvalid
+                   ? kWindowReasonPpsRecoveryInhibit
+                   : kWindowReasonPpsIntervalAnomaly);
+  }
+  if (!validity.reference_interval_valid) {
+    wire_flags |= OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
+                  OTIS_FLAG_GATE_INCOMPLETE;
+    anomaly.flags = wire_flags;
     if (boundary.reason == OtisPpsBoundaryReason::Duplicate ||
         boundary.reason == OtisPpsBoundaryReason::ShortInterval ||
         boundary.reason == OtisPpsBoundaryReason::LongInterval) {
       pps_gated_ratio.pps_interval_anomaly_count += 1u;
     }
   }
-  if (counter_sample.saturated) {
-    anomaly.reason = kWindowReasonCounterSaturated;
-    anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;
-    pps_gated_ratio.count_saturated_count += 1u;
-  }
   runtime_state->tcxo.last_window_flags = anomaly.flags;
   runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
 
+  bool prior_control_eligible = runtime_state->tcxo.valid_for_control;
   update_control_gate(runtime_state, config, &anomaly, now_ms);
   record_window_quality(runtime_state, anomaly);
   if (anomaly.valid) {
     pps_gated_ratio.accepted_window_count += 1u;
+    pps_gated_ratio.state = PpsGateState::Open;
   } else {
     pps_gated_ratio.rejected_window_count += 1u;
+    pps_gated_ratio.state = PpsGateState::Fault;
   }
+  bool reason_transition =
+      strcmp(pps_gated_ratio.last_reason, anomaly.reason) != 0;
   pps_gated_ratio.last_reason = anomaly.reason;
 
-  emit_count_observation(runtime_state, config, counted_edges,
-                         runtime_state->tcxo.last_window_flags);
-  emit_pps_gate_window_status(runtime_state, status_context, anomaly,
-                              anomaly.valid && counted_edges > 0ull);
-  if (!anomaly.valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
+  // A sequence gap has no defensible opening timestamp for the ISR-captured
+  // interval count. Preserve the current REF and fault telemetry, but do not
+  // fabricate a CNT pair by joining it to an older foreground record.
+  bool emit_count =
+      sequence_relation == OtisBoundarySequenceRelation::Continuous;
+  if (emit_count) {
+    // count_seq is the closing PPS boundary sequence for this backend, making
+    // dropped boundaries visible without another wire field.
+    runtime_state->sequences.count_seq = observation->sequence;
+    emit_count_observation(runtime_state, config, counted_edges,
+                           runtime_state->tcxo.last_window_flags);
   }
 
-  return true;
+  bool state_transition =
+      !pps_gated_ratio.last_window_state_known ||
+      pps_gated_ratio.last_window_valid != anomaly.valid ||
+      prior_control_eligible != runtime_state->tcxo.valid_for_control;
+  pps_gated_ratio.last_window_state_known = true;
+  pps_gated_ratio.last_window_valid = anomaly.valid;
+  pps_gated_ratio.last_control_eligible =
+      runtime_state->tcxo.valid_for_control;
+  pps_gated_ratio.previous_boundary_inhibited =
+      !raw_boundary.valid || !validity.count_boundary_valid;
+  pps_gated_ratio.previous_observation = *observation;
+  if (state_transition || reason_transition || !emit_count) {
+    emit_pps_gate_window_status(runtime_state, status_context, anomaly,
+                                anomaly.valid && counted_edges > 0u);
+    if (!anomaly.valid) {
+      emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
+    }
+  }
+
+  return emit_count;
 #else
   (void)runtime_state;
   (void)status_context;
   (void)config;
-  (void)timestamp_ticks;
-  (void)capture_flags;
+  (void)observation;
   return false;
 #endif
 }
@@ -1059,47 +1496,43 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 
   uint32_t now_ms = millis();
   update_startup_inhibit(runtime_state, config, now_ms);
-
   uint64_t now_ticks = otis_capture_ticks_now();
-  if (pps_gated_ratio.state == PpsGateState::Armed) {
-    uint64_t waiting_ticks = otis_timer0_interval_ticks(
-        pps_gated_ratio.waiting_since_ticks, now_ticks);
-    uint64_t waiting_us =
-        waiting_ticks / OTIS_RP2040_TIMER0_TICKS_PER_US;
-    if (waiting_us > OTIS_PPS_GATE_MISSING_TIMEOUT_US) {
-      pps_gated_ratio.missing_pps_count += 1u;
-      runtime_state->tcxo.last_elapsed_us = (uint32_t)waiting_us;
-      emit_pps_gate_fault(
-          runtime_state, status_context, kWindowReasonMissingPps,
-          kReferenceReasonMissingPps, kCountReasonUnavailable,
-          OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
-              OTIS_FLAG_GATE_INCOMPLETE);
-      return false;
+  noInterrupts();
+  bool boundary_seen = pps_boundary_seen;
+  uint64_t last_isr_ticks = pps_boundary_last_isr_ticks;
+  uint32_t last_isr_sequence = pps_boundary_next_sequence - 1u;
+  interrupts();
+  uint64_t anchor_ticks =
+      boundary_seen ? last_isr_ticks : pps_gated_ratio.waiting_since_ticks;
+  uint64_t waiting_ticks =
+      otis_timer0_interval_ticks(anchor_ticks, now_ticks);
+  uint64_t waiting_us =
+      waiting_ticks / OTIS_RP2040_TIMER0_TICKS_PER_US;
+  bool missing_already_reported =
+      boundary_seen
+          ? (pps_gated_ratio.missing_after_sequence_reported &&
+             pps_gated_ratio.missing_reported_after_sequence ==
+                 last_isr_sequence)
+          : pps_gated_ratio.missing_before_first_reported;
+  if (waiting_us > OTIS_PPS_GATE_MISSING_TIMEOUT_US &&
+      !missing_already_reported) {
+    pps_gated_ratio.missing_pps_count += 1u;
+    runtime_state->tcxo.last_elapsed_us =
+        static_cast<uint32_t>(waiting_us);
+    if (boundary_seen) {
+      pps_gated_ratio.missing_reported_after_sequence =
+          last_isr_sequence;
+      pps_gated_ratio.missing_after_sequence_reported = true;
+    } else {
+      pps_gated_ratio.missing_before_first_reported = true;
     }
-  }
-  if (pps_gated_ratio.state == PpsGateState::Open) {
-    uint64_t timeout_ticks = now_ticks;
-    if (timeout_ticks < pps_gated_ratio.gate_open_ticks) {
-      timeout_ticks += kRp2040Timer0MicrosWrapTicks;
-    }
-    uint64_t open_us =
-        (timeout_ticks - pps_gated_ratio.gate_open_ticks) / 16ull;
-    if (open_us > OTIS_PPS_GATE_MISSING_TIMEOUT_US) {
-      stop_h1_pio_long_gate_counter();
-      pps_gated_ratio.missing_pps_count += 1u;
-      pps_gated_ratio.last_pps_ticks = 0;
-      pps_gated_ratio.gate_open_ticks = 0;
-      pps_gated_ratio.gate_open_capture_flags = OTIS_FLAG_NONE;
-      pps_gated_ratio.gate_open_inhibited = false;
-      pps_gated_ratio.state = PpsGateState::Armed;
-      runtime_state->tcxo.last_elapsed_us = (uint32_t)open_us;
-      emit_pps_gate_fault(
-          runtime_state, status_context, kWindowReasonMissingPps,
-          kReferenceReasonMissingPps, kCountReasonUnavailable,
-          OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
-              OTIS_FLAG_GATE_INCOMPLETE);
-      return false;
-    }
+    // The counter remains running. Only a future PPS ISR may close or restart
+    // its physical aperture; foreground timeout reporting never touches it.
+    emit_pps_gate_fault(
+        runtime_state, status_context, kWindowReasonMissingPps,
+        kReferenceReasonMissingPps, kCountReasonUnavailable,
+        OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
+            OTIS_FLAG_GATE_INCOMPLETE);
   }
 
   return false;
@@ -1147,6 +1580,27 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   (void)status_context;
   (void)config;
   return false;
+#endif
+}
+
+void otis_count_observation_emit_status(
+    OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context) {
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  emit_pps_gate_status(
+      status_context,
+      runtime_state->tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
+                                                 : OTIS_SEVERITY_WARN,
+      runtime_state->tcxo.last_window_flags);
+  emit_status(status_context, "pps_gate", "startup_inhibit_active",
+              bool_text(runtime_state->tcxo.startup_inhibit_active),
+              runtime_state->tcxo.startup_inhibit_active
+                  ? OTIS_SEVERITY_WARN
+                  : OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
+  (void)runtime_state;
+  (void)status_context;
 #endif
 }
 

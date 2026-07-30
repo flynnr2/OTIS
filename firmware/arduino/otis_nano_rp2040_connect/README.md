@@ -73,12 +73,19 @@ oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It still
 emits raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
 frequency, ratio, and ppm. Selecting it must not enable DAC steering.
 
-The current implementation keeps PPS `REF` capture on the existing sparse edge
-backend and uses foreground PPS edge qualification to start/stop a PIO oscillator
-counter. Emitted PPS-gated `CNT` rows therefore carry reconstructed
-`rp2040_timer0` gate timestamps. Bench validation must still prove PPS edge
-ownership, counter start/stop latency, timeout behavior, and counter saturation
-handling before treating the backend as hardware-clean.
+The corrected implementation requires the GPIO IRQ capture backend. The D14
+PPS IRQ reads one reconstructed `rp2040_timer0` timestamp, immediately
+stops/samples/restarts the PIO oscillator counter, and publishes the timestamp
+and interval count as one sequenced boundary observation. Foreground code only
+validates and emits that object; serial, status, DAC-sweep, environment and
+capture-backlog service cannot define the physical aperture.
+
+The checked-in candidate sets
+`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`, so raw evidence is emitted while
+control eligibility remains structurally false. Bench validation must still
+bound IRQ/restart quantisation and exercise the focused fault/recovery
+contract. A future continuous PPS-triggered snapshot can replace the ISR
+stop/sample/restart implementation without changing foreground semantics.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.

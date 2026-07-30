@@ -92,7 +92,8 @@ directories; parallel Arduino CLI builds can collide in the shared sketch cache.
 | TCXO FC0 | Existing H0 count path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
 | H1 PIO long-gate | Raw OCXO long-gate path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_DAC_AD5693R=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
 | GPIO IRQ count backend | Divided oscillator test path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| PPS-gated ratio backend | PPS-gated count ratio path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero and boot/status telemetry reports `capture,tcxo_counter_backend=pps_gated_ratio` plus `pps_gate,backend=pps_gated_ratio`. |
+| PPS-gated ratio backend | PPS-IRQ-owned count ratio path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero and boot/status telemetry reports `pps_gate,boundary_owner=pps_gpio_irq`, `pps_gate,aperture_backend=pps_isr_stop_sample_restart_v1`, and `pps_gate,backend_qualified=false`. |
+| Phase 4 observe/replay adapter | Existing estimator interface over corrected records | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero without changing Phase 4 estimator/model semantics. |
 
 ## Run Directory and Capture Pattern
 
@@ -311,6 +312,9 @@ Expected telemetry:
 
 - `capture,tcxo_counter_backend=pps_gated_ratio`;
 - `pps_gate,backend=pps_gated_ratio`;
+- `pps_gate,boundary_owner=pps_gpio_irq`;
+- `pps_gate,aperture_backend=pps_isr_stop_sample_restart_v1`;
+- `pps_gate,backend_qualified=false` in the qualification candidate;
 - `pps_gate,state` transitions through `armed` / `open` in nominal operation;
 - `pps_gate,valid=true` for bounded clean windows;
 - `pps_gate,reference_validity=valid` and
@@ -320,18 +324,18 @@ Expected telemetry:
 - `pps_gate,missing_pps_count=0` after startup in nominal operation;
 - `pps_gate,pps_interval_anomaly_count=0` after startup in nominal operation;
 - `pps_gate,count_saturated_count=0`;
-- `pps_gate,control_eligible=true` only after startup inhibit and clean-window
-  qualification;
+- `pps_gate,control_eligible=false` throughout the unqualified candidate;
 - `REF` rows on `CH1` and `CNT` rows on `CH2`;
-- count windows align to valid PPS intervals by construction or are explicitly
-  flagged as invalid;
+- count windows align to sequence-continuous atomic PPS boundaries by
+  construction or are explicitly withheld/flagged as invalid;
 - no unflagged zero `counted_edges`;
 - no non-positive or implausible gate duration findings;
 - `fc0,fc0_fault=false` in nominal operation.
 
 Pass criteria:
 
-- compile, host validation, report generation, and H1 characterization pass;
+- compile, host validation, report generation, and the focused 60-window quiet
+  plus 60-window loaded contract pass;
 - count-derived frequency agrees with the existing FC0 or PIO long-gate backend
   within the expected bench tolerance recorded in the run notes;
 - anomaly counters remain zero after startup in a nominal run.

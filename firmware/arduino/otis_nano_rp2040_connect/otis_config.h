@@ -41,7 +41,7 @@
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #define OTIS_FIRMWARE_CONFIG_ID "phase4_observe_preview_v2"
 #else
-#define OTIS_FIRMWARE_CONFIG_ID "phase5_pps_gated_qualification_v1"
+#define OTIS_FIRMWARE_CONFIG_ID "phase5_pps_isr_boundary_qualification_v1"
 #endif
 #endif
 
@@ -165,8 +165,16 @@
 #define OTIS_CAPTURE_RING_SIZE 32u
 #endif
 
+#ifndef OTIS_PPS_COUNT_BOUNDARY_RING_SIZE
+#define OTIS_PPS_COUNT_BOUNDARY_RING_SIZE 8u
+#endif
+
 #ifndef OTIS_STATUS_PERIOD_MS
 #define OTIS_STATUS_PERIOD_MS 1000u
+#endif
+
+#ifndef OTIS_PPS_GATE_STATUS_PERIOD_MS
+#define OTIS_PPS_GATE_STATUS_PERIOD_MS 10000u
 #endif
 
 #ifndef OTIS_LOOPBACK_TOGGLE_PERIOD_MS
@@ -204,6 +212,13 @@
 
 #ifndef OTIS_PPS_GATE_MISSING_TIMEOUT_US
 #define OTIS_PPS_GATE_MISSING_TIMEOUT_US 2500000u
+#endif
+
+// This remains zero until the ISR-owned boundary backend passes the focused
+// bench contract. Raw REF/CNT evidence is still emitted while control
+// eligibility is structurally inhibited.
+#ifndef OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED
+#define OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED 0
 #endif
 
 #if OTIS_PPS_GATE_MIN_INTERVAL_US == 0u || \
@@ -364,6 +379,11 @@
 #error "OTIS_CAPTURE_BACKEND must be OTIS_CAPTURE_BACKEND_IRQ or OTIS_CAPTURE_BACKEND_PIO_FIFO."
 #endif
 
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO && \
+    OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ
+#error "PPS_GATED_RATIO requires the GPIO IRQ capture backend so the PPS event owns the count boundary."
+#endif
+
 #if OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_SYNTHETIC_USB && \
     OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_GPIO_LOOPBACK && \
     OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_GPS_PPS && \
@@ -447,6 +467,25 @@
 
 #if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u
 #error "OTIS_CAPTURE_RING_SIZE must be between 2 and 255."
+#endif
+
+#if OTIS_PPS_COUNT_BOUNDARY_RING_SIZE < 3u || \
+    OTIS_PPS_COUNT_BOUNDARY_RING_SIZE > 255u
+#error "OTIS_PPS_COUNT_BOUNDARY_RING_SIZE must be between 3 and 255."
+#endif
+
+#if (OTIS_PPS_COUNT_BOUNDARY_RING_SIZE & \
+     (OTIS_PPS_COUNT_BOUNDARY_RING_SIZE - 1u)) != 0u
+#error "OTIS_PPS_COUNT_BOUNDARY_RING_SIZE must be a power of two."
+#endif
+
+#if OTIS_PPS_GATE_STATUS_PERIOD_MS < 1000u
+#error "OTIS_PPS_GATE_STATUS_PERIOD_MS must be at least 1000 ms."
+#endif
+
+#if OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0 && \
+    OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 1
+#error "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED must be 0 or 1."
 #endif
 
 #if OTIS_SAFE_MODE_FAILURE_THRESHOLD > 255u

@@ -11,7 +11,7 @@
   "firmware": {
     "name": "otis_nano_rp2040_connect",
     "version": "SW1",
-    "config_id": "phase5_pps_gated_qualification_v1",
+    "config_id": "phase5_pps_isr_boundary_qualification_v1",
     "git_commit": ""
   },
   "host": {

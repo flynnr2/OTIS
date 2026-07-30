@@ -67,7 +67,8 @@ def test_phase5_ide_configuration_and_dormant_run_020_profile_are_exact() -> Non
 
     expected = {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
-        "OTIS_FIRMWARE_CONFIG_ID": '"phase5_pps_gated_qualification_v1"',
+        "OTIS_FIRMWARE_CONFIG_ID":
+            '"phase5_pps_isr_boundary_qualification_v1"',
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND":
             "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",

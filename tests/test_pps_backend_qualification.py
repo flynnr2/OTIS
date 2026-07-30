@@ -27,6 +27,13 @@ SCENARIOS = (
     / "pps_backend_qualification"
     / "scenarios_v1.json"
 )
+PARTIAL_APERTURE = (
+    ROOT
+    / "tests"
+    / "fixtures"
+    / "pps_count_boundary"
+    / "partial_aperture_v1.json"
+)
 TICKS_PER_SECOND = 16_000_000
 CANDIDATE_BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
 WRAP_TICKS = (1 << 32) * 16
@@ -177,6 +184,13 @@ def _health_rows() -> list[list[object]]:
         ("build", "enable_phase4_observe_preview", "0"),
         ("phase4_preview", "actuation_authorized", "false"),
         ("pps_gate", "backend", "pps_gated_ratio"),
+        ("pps_gate", "boundary_owner", "pps_gpio_irq"),
+        (
+            "pps_gate",
+            "aperture_backend",
+            "pps_isr_stop_sample_restart_v1",
+        ),
+        ("pps_gate", "backend_qualified", "false"),
         ("pps_gate", "duplicate_max_interval_us", "100000"),
         ("pps_gate", "min_interval_us", "800000"),
         ("pps_gate", "max_interval_us", "1200000"),
@@ -241,8 +255,13 @@ def _health_rows() -> list[list[object]]:
         ("count_validity", "valid"),
         ("control_eligible", "true"),
         ("dropped_count", "0"),
+        ("pps_count_boundary_dropped_count", "0"),
     ):
-        component = "capture" if key == "dropped_count" else "pps_gate"
+        component = (
+            "capture"
+            if key in {"dropped_count", "pps_count_boundary_dropped_count"}
+            else "pps_gate"
+        )
         rows.append(
             [
                 "STS",
@@ -614,7 +633,7 @@ def test_reference_only_fault_keeps_count_validity_independent(
     candidate = _make_candidate(tmp_path)
     path = candidate / "csv" / "count_observations.csv"
     rows = list(csv.reader(path.open(newline="", encoding="utf-8")))
-    rows[1][-1] = str(16 | (1 << 3) | (1 << 12))
+    rows[1][-1] = str(16 | (1 << 3))
     with path.open("w", newline="", encoding="utf-8") as handle:
         csv.writer(handle, lineterminator="\n").writerows(rows)
 
@@ -628,7 +647,42 @@ def test_reference_only_fault_keeps_count_validity_independent(
     assert report["candidate"]["count_valid_window_count"] == 6
     assert report["candidate"]["eligible_window_count"] == 5
     assert report["candidate"]["ineligible_reason_counts"] == {
-        "reference_flagged_invalid": 1
+        "reference_flagged_invalid": 1,
+    }
+
+
+def test_nominal_timestamps_with_partial_physical_aperture_are_ineligible(
+    tmp_path: Path,
+) -> None:
+    fixture = json.loads(PARTIAL_APERTURE.read_text(encoding="utf-8"))
+    assert (
+        fixture["gate_close_ticks"] - fixture["gate_open_ticks"]
+        == TICKS_PER_SECOND
+    )
+    assert fixture["aperture_flag"] == "GATE_INCOMPLETE"
+    candidate = _make_candidate(tmp_path)
+    path = candidate / "csv" / "count_observations.csv"
+    rows = list(csv.reader(path.open(newline="", encoding="utf-8")))
+    # Preserve a nominal one-second REF/CNT timestamp pair and a plausible,
+    # nonzero, nonsaturated count. Explicit aperture provenance—not an
+    # arbitrary frequency threshold—must reject the old failure class.
+    rows[1][7] = str(fixture["counted_edges"])
+    rows[1][-1] = str(16 | (1 << 12))
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle, lineterminator="\n").writerows(rows)
+
+    result = qualify_pps_backend(
+        candidate,
+        independent_run=_make_independent(tmp_path),
+        config_path=_fast_config(tmp_path),
+    )
+    report = _report(result.report_path)
+    assert report["candidate"]["traceable_window_count"] == 6
+    assert report["candidate"]["reference_valid_window_count"] == 6
+    assert report["candidate"]["count_valid_window_count"] == 5
+    assert report["candidate"]["eligible_window_count"] == 5
+    assert report["candidate"]["ineligible_reason_counts"] == {
+        "physical_aperture_invalid": 1,
     }
 
 

@@ -302,10 +302,12 @@ The backend must keep `CNT` semantics stable:
 - `source_domain` identifies the oscillator source;
 - calibrated frequency, ratio, and ppm remain host-derived products.
 
-The current implementation keeps PPS `REF` capture on the sparse edge-capture
-backend and uses foreground PPS edge qualification to start and stop the PIO
-oscillator counter. PPS-gated `CNT` rows therefore carry reconstructed
-`rp2040_timer0` gate timestamps until a later hardware-latched PPS gate
+The corrected implementation requires the GPIO IRQ sparse-capture backend.
+That D14 IRQ timestamps the PPS, immediately stops/samples/restarts the PIO
+oscillator counter, and publishes one atomic sequenced boundary observation.
+Foreground code validates and emits the observation; it never defines the
+physical aperture. PPS-gated `CNT` rows continue to carry reconstructed
+`rp2040_timer0` timestamps until a later hardware-latched snapshot
 implementation is proven.
 
 ## Non-Goals For This Stage

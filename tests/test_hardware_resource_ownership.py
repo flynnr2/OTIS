@@ -150,33 +150,41 @@ def test_pps_gated_counter_consumes_the_capture_authority() -> None:
 
     assert "digitalRead(OTIS_PIN_PPS_REFERENCE)" not in count_source
     assert "pps_rising_edge" not in count_source
-    assert "otis_count_observation_on_reference(" in count_source
+    assert "capture_pps_count_boundary_from_isr(" in count_source
+    assert "otis_count_observation_on_pps_boundary(" in count_source
 
-    emit_start = sketch_source.index("void emit_captured_edge(")
-    emit_end = sketch_source.index("const char *edge_string(", emit_start)
+    emit_start = sketch_source.index("void emit_pps_count_boundary(")
+    emit_end = sketch_source.index(
+        "void drain_pps_count_boundary_ring(", emit_start
+    )
     emit_body = sketch_source[emit_start:emit_end]
     assert "otis_emit_raw_event(" in emit_body
-    assert "otis_count_observation_on_reference(" in emit_body
-    assert emit_body.count("record.timestamp_ticks") >= 2
-    assert "record.flags" in emit_body
+    assert "otis_count_observation_on_pps_boundary(" in emit_body
+    assert emit_body.count("observation.pps_timestamp_ticks") >= 2
+    assert "observation.capture_flags" in emit_body
     assert "otis_capture_ticks_now()" not in emit_body
 
     loop_body = sketch_source[sketch_source.index("void loop()") :]
     assert loop_body.index("otis_capture_backend_service()") < loop_body.index(
         "service_tcxo_gate()"
     )
+    assert loop_body.index("drain_pps_count_boundary_ring()") < loop_body.index(
+        "service_serial_commands()"
+    )
     assert loop_body.index("drain_capture_ring()") < loop_body.index(
         "service_tcxo_gate()"
     )
 
     reference_handler_start = count_source.index(
-        "bool otis_count_observation_on_reference("
+        "bool otis_count_observation_on_pps_boundary("
     )
     reference_handler_end = count_source.index(
         "bool otis_count_observation_service(", reference_handler_start
     )
     reference_handler = count_source[reference_handler_start:reference_handler_end]
-    assert "gate_open_capture_flags | capture_flags" in reference_handler
+    assert "previous.capture_flags | observation->capture_flags" in reference_handler
+    assert "stop_h1_pio_long_gate_counter" not in reference_handler
+    assert "start_h1_pio_long_gate_counter" not in reference_handler
 
 
 def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
@@ -190,6 +198,10 @@ def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
     handler = irq_source[handler_start:handler_end]
     assert handler.count("otis_capture_ticks_now()") == 1
     assert "const OtisCapturedEdge captured_event" in handler
+    assert "pps_count_boundary_handler(timestamp, kCaptureFlags)" in handler
+    assert handler.index("pps_count_boundary_handler(") < handler.index(
+        "digitalRead("
+    )
     assert "otis_capture_ring_push_from_isr(captured_event)" in handler
     assert "d14_last_raw_timestamp = timestamp" in handler
     assert "d14_last_accepted_timestamp = timestamp" in handler

@@ -70,6 +70,14 @@ bounded `CNT` row visible and mark it with `REFERENCE_VALIDITY_SUSPECT` and
 `GATE_INCOMPLETE`. A bounded zero-edge oscillator window should remain visible
 with `INPUT_STUCK_LOW` or `SOURCE_HEALTH_SUSPECT`.
 
+For the PPS ISR boundary backend, `GATE_INCOMPLETE` independently means the
+physical aperture, boundary pairing, or snapshot provenance was incomplete.
+It makes the count/aperture invalid even when the PPS timestamp interval is
+nominal and `counted_edges` is nonzero. `CAPTURE_RING_OVERRUN` and
+`EDGE_ORDER_SUSPECT` likewise prevent a sequence-discontinuous boundary from
+being joined opportunistically. `REFERENCE_VALIDITY_SUSPECT` remains the
+separate PPS/reference conclusion.
+
 Startup inhibit is represented by `STS` control-eligibility telemetry. It is not
 itself a reason to add a count-quality flag to an otherwise bounded raw `CNT`
 row.

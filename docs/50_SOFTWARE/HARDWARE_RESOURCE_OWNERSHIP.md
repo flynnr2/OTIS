@@ -84,10 +84,12 @@ For TCXO/OCXO observation, the count backend adds:
 | `PIO_LONG_GATE` | one dynamically allocated PIO0 SM and five-word instruction range | `count_observation` |
 | `PPS_GATED_RATIO` | one dynamically allocated PIO0 SM and five-word instruction range | `count_observation` |
 
-The PPS-gated ratio backend reads the already-owned D14 reference signal as a
-client. It does not become a second D14 owner. The authoritative boundary
-contract is frozen in `PPS_OWNERSHIP_ARCHITECTURE.md`; the remaining handoff is
-bench qualification of aperture and measurement behavior.
+The PPS-gated ratio backend does not add a second D14 owner. The existing
+`edge_capture` GPIO26 IRQ claim has the explicit
+`pps_reference_and_count_boundary_irq` role: its callback performs the bounded
+counter stop/sample/restart before publishing the atomic boundary observation.
+The `count_observation` owner retains GPIO20, its PIO0 state machine and its
+five-word program. No DMA channel or additional IRQ is introduced.
 
 ## PIO and DMA policy
 
@@ -178,9 +180,8 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 ## PPS qualification handoff
 
 PPS ownership work is complete: `edge_capture` remains the one D14 owner, the
-optional D10 input remains an independent witness, and the PPS-gated backend is
-a consumer of the authoritative captured event. Phase 5 qualification must
-measure the residual foreground counter aperture, verify raw boundary
-traceability and fault behavior, and retain these ownership assignments. It
-must not add a second D14 owner, hide rejected PPS evidence, or authorize
-steering.
+optional D10 input remains an independent witness, and the D14 IRQ owns the
+physical count boundary before foreground service. Phase 5 qualification must
+bound IRQ/restart quantisation, verify atomic boundary traceability and fault
+behavior, and retain these ownership assignments. It must not add a second D14
+owner, hide rejected evidence, or authorize steering.

@@ -1,0 +1,9 @@
+{
+  "aperture_flag": "GATE_INCOMPLETE",
+  "case_id": "nominal_reference_partial_physical_aperture",
+  "counted_edges": 5437639,
+  "gate_close_ticks": 32000000,
+  "gate_open_ticks": 16000000,
+  "nominal_frequency_hz": 10000000,
+  "schema_version": 1
+}
