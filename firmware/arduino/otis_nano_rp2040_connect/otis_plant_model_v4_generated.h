@@ -16,12 +16,39 @@ constexpr bool kPlantModelStructurallyValid = true;
 constexpr bool kPlantModelSemanticallyValid = true;
 constexpr bool kPlantModelControlReady = false;
 constexpr bool kPlantModelActuationEnabled = false;
+constexpr char kPlantModelTopologyId[] =
+    "h1_run_020_g17_reworked_d14_d10_pps_witness";
+constexpr char kPlantModelApplicabilityMode[] =
+    "observe_only";
+constexpr char kPlantModelMeasurementBackend[] =
+    "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE";
+constexpr double kPlantModelGateDurationS = 300;
+constexpr double kPlantModelSettlingExclusionS =
+    900;
+constexpr double kPlantModelTemperatureMinC =
+    28.445;
+constexpr double kPlantModelTemperatureMaxC =
+    30.455;
+constexpr uint32_t kPlantModelExcludedCountSequences[] = {77u};
+constexpr uint32_t kPlantModelExcludedCountSequenceCount = 1u;
 constexpr char kPlantModelEstimatorVersion[] =
     "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1";
 constexpr char kPlantModelEstimatorMethodHash[] =
     "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b";
+constexpr char kPlantModelEstimatorTimingDomain[] =
+    "rp2040_timer0";
+constexpr char kPlantModelEstimatorExtrapolationPolicy[] =
+    "prohibited";
+constexpr double kPlantModelReferenceIntervalMinS =
+    0.8;
+constexpr double kPlantModelReferenceIntervalMaxS =
+    1.2;
+constexpr uint32_t kPlantModelReferenceInvalidFlagMask =
+    4143u;
 constexpr uint16_t kModelApplicabilityMin = 0xA800u;
 constexpr uint16_t kModelApplicabilityMax = 0xB400u;
+constexpr uint16_t kManualSafeMin = 0xA800u;
+constexpr uint16_t kManualSafeMax = 0xB400u;
 constexpr uint16_t kCandidateMin = 0xA800u;
 constexpr uint16_t kCandidateMax = 0xAB00u;
 constexpr uint16_t kMaximumPreviewStep = 0x0300u;

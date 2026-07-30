@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import copy
 import csv
 import hashlib
 import io
@@ -18,6 +19,12 @@ from host.otis_tools.contracts import (
     validate_csv,
 )
 from host.otis_tools.phase4_replay import ReplayConfig, replay_phase4
+from host.otis_tools.plant_model import (
+    estimator_contract_definition_hash,
+    load_plant_model,
+    validate_plant_model_semantics,
+)
+from tools.generate_plant_model_binding import render_binding
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -471,8 +478,20 @@ def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
     method = model["plant_response"]["applicability"][
         "estimator_method_contract"
     ]
+    applicability_contract = model["plant_response"]["applicability"]
     assert method["estimator_method_id"] in binding
     assert method["method_definition_hash"] in binding
+    assert model["hardware_topology"]["topology_id"] in binding
+    assert applicability_contract["mode"] in binding
+    assert applicability_contract["measurement_backend"] in binding
+    assert str(applicability_contract["gate_duration_s"]) in binding
+    assert str(applicability_contract["settling_exclusion_s"]) in binding
+    assert str(applicability_contract["temperature_range_c"]["min_c"]) in binding
+    assert str(applicability_contract["temperature_range_c"]["max_c"]) in binding
+    assert all(
+        f"{sequence}u" in binding
+        for sequence in applicability_contract["excluded_count_sequences"]
+    )
     assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in binding
     applicability = model["plant_response"]["applicability"]["dac_code_range"]
     candidate = model["dac"]["automatic_control_range_codes"]
@@ -490,6 +509,77 @@ def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
         )
     )
     assert ReplayConfig.from_mapping(profile).config_hash in source
+
+
+def test_mutated_artifact_applicability_values_change_generated_binding(
+    tmp_path: Path,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    changed["hardware_topology"]["topology_id"] = "mutated_topology"
+    applicability = changed["plant_response"]["applicability"]
+    applicability["gate_duration_s"] = 301
+    applicability["settling_exclusion_s"] = 901
+    applicability["temperature_range_c"] = {
+        "min_c": 10.0,
+        "max_c": 20.0,
+    }
+    applicability["excluded_count_sequences"] = [11, 12]
+    path = tmp_path / "mutated_model.json"
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    assert validate_plant_model_semantics(changed).valid
+    rendered = render_binding(
+        path,
+        model_ref_override="profiles/plant_models/mutated_model.json",
+    )
+
+    assert '"mutated_topology"' in rendered
+    assert "kPlantModelGateDurationS = 301" in rendered
+    assert "kPlantModelSettlingExclusionS =\n    901" in rendered
+    assert "kPlantModelTemperatureMinC =\n    10.0" in rendered
+    assert "kPlantModelTemperatureMaxC =\n    20.0" in rendered
+    assert "kPlantModelExcludedCountSequences[] = {11u, 12u}" in rendered
+
+
+def test_binding_generator_rejects_valid_but_incompatible_estimator(
+    tmp_path: Path,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    method = changed["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]
+    method["reference_time_mapping"] = "future_mapping"
+    method["method_definition_hash"] = estimator_contract_definition_hash(
+        method
+    )
+    path = tmp_path / "future_estimator_model.json"
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    assert validate_plant_model_semantics(changed).valid
+    with pytest.raises(ValueError, match="incompatible with the current"):
+        render_binding(
+            path,
+            model_ref_override=(
+                "profiles/plant_models/future_estimator_model.json"
+            ),
+        )
+
+
+def test_live_preview_compares_generated_applicability_to_runtime_context() -> None:
+    source = LIVE_ADAPTER.read_text(encoding="utf-8")
+
+    assert "strcmp(kPlantModelTopologyId, kRuntimeTopologyId)" in source
+    assert (
+        "strcmp(kPlantModelMeasurementBackend,"
+        "\n             kRuntimeMeasurementBackend)"
+        in source
+    )
+    assert "observed_gate_matches" in source
+    assert "kPlantModelTemperatureMinC" in source
+    assert "kPlantModelTemperatureMaxC" in source
+    assert "kPlantModelSettlingExclusionS" in source
+    assert "count_sequence_is_excluded" in source
+    assert "replaying_model_source_evidence" in source
 
 
 def test_live_est_ctl_rows_match_normative_contracts(
@@ -535,8 +625,15 @@ def test_live_est_ctl_rows_match_normative_contracts(
     assert all(row["preview_only"] == "true" for row in previews)
     assert all(row["actuation_authorized"] == "false" for row in previews)
     assert all(row["actionable"] == "false" for row in previews)
+    assert all(
+        "boundary_pps_support_overwritten"
+        not in row["observation_reason_codes"]
+        for row in estimates
+    )
     assert previews[-1]["preview_available"] == "true"
-    assert estimates[-1]["estimator_timestamp_ticks"] == "128000000"
+    assert estimates[-1]["estimator_timestamp_ticks"] == str(
+        1803 * 16_000_000
+    )
     assert float(estimates[-1]["frequency_observation_hz"]) == pytest.approx(
         10_000_001.333333334
     )

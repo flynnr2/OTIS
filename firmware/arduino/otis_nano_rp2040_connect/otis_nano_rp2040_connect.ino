@@ -1489,6 +1489,10 @@ void emit_env_sample(const OtisEnvSample &sample) {
   if (!sample.valid) {
     return;
   }
+  if (strcmp(sample.role, "vcocxo_near") == 0) {
+    otis_phase4_observe_preview_on_temperature(
+        true, sample.temperature_c);
+  }
   char temperature[16];
   char humidity[16];
   char pressure[16];

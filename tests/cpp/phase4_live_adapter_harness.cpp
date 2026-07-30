@@ -48,31 +48,44 @@ void otis_status_emit_u32(OtisStatusEmitContext *, const char *, const char *,
                           uint32_t, const char *, uint32_t) {}
 
 int main() {
+  constexpr uint64_t kTickHz = 16000000ull;
+  constexpr uint32_t kGateSeconds = 300u;
+  constexpr uint64_t kNominalGateEdges = 3000000300ull;
   OtisRuntimeState runtime = {};
   runtime.sequences.estimate_seq = 1u;
   runtime.sequences.control_seq = 1u;
   OtisPhase4LiveDacState dac = {true, 0xA950u};
   otis_phase4_observe_preview_begin(0u);
   otis_phase4_observe_preview_emit_headers();
-  otis_phase4_observe_preview_poll(32000000ull, &runtime, &dac);
+  otis_phase4_observe_preview_poll(2u * kTickHz, &runtime, &dac);
   do {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());
   otis_phase4_observe_preview_on_reference(
-      1u, 32000000ull, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
+      1u, 2u * kTickHz, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
   do {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());
 
-  for (uint32_t seq = 1u; seq <= 5u; ++seq) {
-    const uint64_t close = (uint64_t)(seq + 2u) * 16000000ull;
-    otis_phase4_observe_preview_on_reference(
-        seq + 1u, close, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
-    runtime.tcxo.last_gate_open_ticks = close - 16000000ull;
-    runtime.tcxo.last_gate_close_ticks = close;
-    runtime.tcxo.last_counted_edges = 10000001ull;
+  uint32_t reference_seq = 1u;
+  uint32_t last_reference_second = 2u;
+  for (uint32_t count_seq = 1u; count_seq <= 5u; ++count_seq) {
+    const uint32_t close_second =
+        2u + count_seq * kGateSeconds;
+    for (uint32_t second = last_reference_second + 1u;
+         second <= close_second; ++second) {
+      otis_phase4_observe_preview_on_reference(
+          ++reference_seq, (uint64_t)second * kTickHz,
+          OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
+    }
+    last_reference_second = close_second;
+    runtime.tcxo.last_gate_open_ticks =
+        (uint64_t)(close_second - kGateSeconds) * kTickHz;
+    runtime.tcxo.last_gate_close_ticks =
+        (uint64_t)close_second * kTickHz;
+    runtime.tcxo.last_counted_edges = kNominalGateEdges;
     runtime.tcxo.last_window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-    otis_phase4_observe_preview_on_count(seq, &runtime, &dac);
+    otis_phase4_observe_preview_on_count(count_seq, &runtime, &dac);
     do {
       otis_phase4_observe_preview_service_transport();
     } while (otis_phase4_observe_preview_transport_busy());
@@ -80,15 +93,22 @@ int main() {
     otis_phase4_observe_preview_service_transport();
   }
 
-  // Non-PPS-aligned count: the adapter must retain it until REF:7 supplies
-  // the following bracket for the close boundary.
-  runtime.tcxo.last_gate_open_ticks = 108000000ull;
-  runtime.tcxo.last_gate_close_ticks = 120000000ull;
-  runtime.tcxo.last_counted_edges = 7500001ull;
+  // Non-PPS-aligned count: the adapter must retain it until the next REF
+  // supplies the following bracket for the close boundary.
+  for (uint32_t second = last_reference_second + 1u;
+       second <= 1802u; ++second) {
+    otis_phase4_observe_preview_on_reference(
+        ++reference_seq, (uint64_t)second * kTickHz,
+        OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
+  }
+  runtime.tcxo.last_gate_open_ticks = 1502u * kTickHz + kTickHz / 2u;
+  runtime.tcxo.last_gate_close_ticks = 1802u * kTickHz + kTickHz / 2u;
+  runtime.tcxo.last_counted_edges = 3000000400ull;
   runtime.tcxo.last_window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
   otis_phase4_observe_preview_on_count(6u, &runtime, &dac);
   otis_phase4_observe_preview_on_reference(
-      7u, 128000000ull, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
+      ++reference_seq, 1803u * kTickHz,
+      OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
   do {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());

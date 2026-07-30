@@ -12,6 +12,7 @@ from host.otis_tools.plant_model import (
     assess_control_eligibility,
     assess_evidence_availability,
     assess_model_applicability,
+    estimator_contract_definition_hash,
     load_plant_model,
     validate_plant_model,
     validate_plant_model_semantics,
@@ -191,7 +192,7 @@ def test_rejects_unknown_estimator_method_hash() -> None:
         "estimator_method_contract"
     ]["method_definition_hash"] = "0" * 64
 
-    with pytest.raises(ValueError, match="does not match the executed estimator"):
+    with pytest.raises(ValueError, match="does not match its contract definition"):
         validate_plant_model(changed)
 
 
@@ -286,16 +287,54 @@ def test_provenance_fields_are_structurally_and_semantically_enforced() -> None:
     assert "must contain a known commit" in semantic.errors[0]
 
 
-def test_estimator_mismatch_is_semantic_not_structural() -> None:
+def test_evolved_estimator_is_valid_but_not_applicable_to_current_execution(
+    tmp_path: Path,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    method = changed["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]
+    method["reference_time_mapping"] = "evolved_piecewise_mapping"
+    method["method_definition_hash"] = estimator_contract_definition_hash(
+        method
+    )
+
+    assert validate_plant_model_structure(changed).valid
+    assert validate_plant_model_semantics(changed).valid
+    path = tmp_path / "evolved_model.json"
+    path.write_text(json.dumps(changed), encoding="utf-8")
+    model = load_plant_model(path)
+    applicability = assess_model_applicability(
+        model,
+        ModelApplicabilityContext(
+            hardware_topology_id=model.data["hardware_topology"]["topology_id"],
+            measurement_backend=model.data["plant_response"]["applicability"][
+                "measurement_backend"
+            ],
+            estimator_method=estimator_method_contract(),
+            dac_code=model.nominal_code,
+            required_model_version=4,
+        ),
+    )
+    assert not applicability.applicable
+    assert applicability.reasons == (
+        "plant_model_estimator_method_mismatch",
+    )
+
+
+def test_outer_and_nested_measurement_backends_must_agree() -> None:
     changed = copy.deepcopy(load_plant_model(MODEL).data)
     changed["plant_response"]["applicability"][
-        "estimator_method_contract"
-    ]["reference_time_mapping"] = "different_executed_mapping"
+        "measurement_backend"
+    ] = "DIFFERENT_BACKEND"
 
     assert validate_plant_model_structure(changed).valid
     semantic = validate_plant_model_semantics(changed)
     assert not semantic.valid
-    assert any("executed estimator contract" in error for error in semantic.errors)
+    assert any(
+        "measurement_backend must equal estimator_method_contract" in error
+        for error in semantic.errors
+    )
 
 
 def test_historical_fields_are_declared_but_prohibited_in_current_models() -> None:
@@ -309,7 +348,31 @@ def test_historical_fields_are_declared_but_prohibited_in_current_models() -> No
     semantic = validate_plant_model_semantics(changed)
     assert not semantic.valid
     assert any(
-        "pps_witness is historical and prohibited" in error
+        "pps_witness is reserved for the retained historical model identity"
+        in error
+        for error in semantic.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("model_id", "new_model"),
+        ("model_version", 1),
+    ],
+)
+def test_historical_reader_is_limited_to_exact_model_identity(
+    field: str,
+    value: object,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(LEGACY_MODEL).data)
+    changed[field] = value
+
+    assert validate_plant_model_structure(changed).valid
+    semantic = validate_plant_model_semantics(changed)
+    assert not semantic.valid
+    assert any(
+        "reserved for the retained historical model identity" in error
         for error in semantic.errors
     )
 

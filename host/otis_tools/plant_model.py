@@ -4,19 +4,22 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 import argparse
+import hashlib
 import json
 import math
 from typing import Any, Mapping
 
 from jsonschema import Draft202012Validator
 
-from .phase4_boundary_estimator import estimator_method_contract
-
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PLANT_MODEL_SCHEMAS = {
     1: REPOSITORY_ROOT / "schemas" / "plant_model_v1.schema.json",
 }
+HISTORICAL_MODEL_IDENTITIES = frozenset(
+    {
+        (1, "cx317_h1_bench", 2),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -127,6 +130,24 @@ def _json_path(parts: tuple[object, ...]) -> str:
         else:
             path += f".{part}"
     return path
+
+
+def estimator_contract_definition_hash(
+    contract: Mapping[str, object],
+) -> str:
+    definition = {
+        key: value
+        for key, value in contract.items()
+        if key != "method_definition_hash"
+    }
+    canonical = json.dumps(
+        definition,
+        ensure_ascii=True,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def validate_plant_model_structure(data: object) -> ValidationResult:
@@ -505,10 +526,36 @@ def _validate_applicability(
                 "model_version >= 4 requires "
                 "plant_response.applicability.estimator_method_contract"
             )
-        elif method_contract != estimator_method_contract():
+    if isinstance(method_contract, dict):
+        if (
+            applicability["measurement_backend"]
+            != method_contract["measurement_backend"]
+        ):
+            errors.append(
+                "plant_response.applicability.measurement_backend must equal "
+                "estimator_method_contract.measurement_backend"
+            )
+        try:
+            expected_hash = estimator_contract_definition_hash(method_contract)
+        except (TypeError, ValueError):
+            expected_hash = None
+        if expected_hash is None:
             errors.append(
                 "plant_response.applicability.estimator_method_contract "
-                "does not match the executed estimator contract"
+                "definition must have a canonical finite JSON representation"
+            )
+        elif method_contract["method_definition_hash"] != expected_hash:
+            errors.append(
+                "plant_response.applicability.estimator_method_contract."
+                "method_definition_hash does not match its contract definition"
+            )
+        if (
+            method_contract["reference_interval_min_s"]
+            > method_contract["reference_interval_max_s"]
+        ):
+            errors.append(
+                "plant_response.applicability.estimator_method_contract."
+                "reference_interval_min_s must be <= reference_interval_max_s"
             )
 
 
@@ -572,8 +619,12 @@ def _validate_source_evidence(
 def _validate_historical_policy(
     data: dict[str, Any], errors: list[str]
 ) -> None:
-    if data["model_version"] < 3:
-        return
+    identity = (
+        data["schema_version"],
+        data["model_id"],
+        data["model_version"],
+    )
+    historical_allowed = identity in HISTORICAL_MODEL_IDENTITIES
     historical_paths = (
         ("oscillator", "datasheet_tuning_range_ppm"),
         ("hardware_topology", "pps_witness"),
@@ -583,10 +634,11 @@ def _validate_historical_policy(
         ("plant_response", "startup_control_eligibility"),
     )
     for section, field in historical_paths:
-        if field in data[section]:
+        if field in data[section] and not historical_allowed:
             errors.append(
-                f"{section}.{field} is historical and prohibited for "
-                "model_version >= 3"
+                f"{section}.{field} is reserved for the retained historical "
+                "model identity schema_version=1, "
+                "model_id=cx317_h1_bench, model_version=2"
             )
     uncertainty = data["plant_response"]["local_slope"]["uncertainty"]
     for field in (
@@ -596,15 +648,22 @@ def _validate_historical_policy(
         "positive_0x1000_hz_per_v",
         "negative_0x1000_hz_per_v",
     ):
-        if field in uncertainty:
+        if field in uncertainty and not historical_allowed:
             errors.append(
                 "plant_response.local_slope.uncertainty."
-                f"{field} is historical and prohibited for model_version >= 3"
+                f"{field} is reserved for the retained historical model "
+                "identity schema_version=1, model_id=cx317_h1_bench, "
+                "model_version=2"
             )
-    if "model_updated_from_repo_commit" in data["source_evidence"]["source_commits"]:
+    if (
+        "model_updated_from_repo_commit"
+        in data["source_evidence"]["source_commits"]
+        and not historical_allowed
+    ):
         errors.append(
             "source_evidence.source_commits.model_updated_from_repo_commit is "
-            "historical and prohibited for model_version >= 3"
+            "reserved for the retained historical model identity "
+            "schema_version=1, model_id=cx317_h1_bench, model_version=2"
         )
 
 

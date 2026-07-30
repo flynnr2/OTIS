@@ -12,15 +12,17 @@ The five decisions are deliberately separate:
 1. **Structural validity**: field names, required fields, types, closed
    objects, formats, and schema version. JSON Schema decides this.
 2. **Semantic validity**: cross-field range ordering, sign consistency,
-   provenance completeness, estimator-contract equality, and model-version
-   requirements. `validate_plant_model_semantics()` decides this without
-   redefining structure.
+   provenance completeness, estimator-contract internal consistency, and
+   model-version requirements. `validate_plant_model_semantics()` decides this
+   without redefining structure. It does not compare the artifact with the
+   estimator in the currently installed software.
 3. **Evidence availability**: whether every declared source artifact is
    present in the repository or evidence workspace. Missing evidence is
    reported separately and does not rewrite artifact validity.
 4. **Applicability**: whether topology, backend, executed estimator, DAC input,
    source-run exclusions, gate, and temperature agree with the model's stated
-   scope.
+   scope. A self-consistent artifact for a future estimator therefore remains
+   valid but is not applicable to the current executable.
 5. **Control eligibility**: a conservative final gate requiring control-ready
    and actuation-enabled status, available evidence, applicable and fully
    observed inputs, and no unresolved fields.
@@ -146,12 +148,15 @@ requires a new schema version or an explicit, closed schema extension.
 
 ## Historical policy
 
-The repository retains `cx317_h1_bench_v1.json` as a schema-v1 historical
-reader case. Its seven historical structures and
+The repository retains `cx317_h1_bench_v1.json` as the exact historical reader
+case `(schema_version=1, model_id=cx317_h1_bench, model_version=2)`. Its seven
+historical structures and
 `model_updated_from_repo_commit` spelling are now explicit, closed, deprecated
 schema properties. This preserves the committed evidence without pretending
 those fields are current control inputs. `additionalProperties` was not
-relaxed. The model-version 3 and 4 artifacts use current fields.
+relaxed. The model-version 3 and 4 artifacts use current fields. Reusing those
+deprecated properties or the legacy provenance alias in any other identity,
+including a newly created model-version 1 or 2 artifact, is a semantic error.
 
 No historical field is copied into the firmware binding. New artifacts must
 use `model_created_from_repo_commit`; the legacy spelling exists only for the
@@ -172,13 +177,35 @@ pass Python even though schema rejected them. It also compared only the
 estimator definition hash rather than the complete executed-method contract.
 
 After reconciliation, all three committed files pass the same JSON Schema and
-semantic validator. Replay uses the shared applicability assessor. The
-firmware header is generated only from a structurally and semantically valid
-artifact, embeds its exact byte hash, and is checked byte-for-byte by tests:
+semantic validator. Semantic validation verifies that the estimator definition
+hash describes the contract stored in that artifact and that its nested
+measurement backend equals the outer applicability backend. Replay uses the
+shared applicability assessor to compare that valid contract with the
+currently executed estimator.
+
+The firmware generator first requires a structurally and semantically valid
+artifact, then separately refuses to bind it unless its estimator contract
+exactly matches the estimator compiled by the current source. The generated
+header embeds the artifact's exact byte hash plus topology, mode, outer
+measurement backend, gate duration, settling exclusion, temperature limits,
+source-run count exclusions, estimator constraints, and DAC ranges. It is
+checked byte-for-byte by tests:
 
 ```sh
 python3 tools/generate_plant_model_binding.py --check
 ```
 
-The generated binding does not make evidence available, make the model
-applicable to arbitrary inputs, or authorize control.
+At runtime the observe-only preview compares the generated topology, mode,
+backend, configured and observed gate duration, estimator constraints, DAC
+range, settling time after an observed DAC change, and available near-VCXO
+temperature with compiled or observed values. Source-run count exclusions are
+only meaningful when replaying the declared source evidence; an unrelated live
+count sequence with the same integer is not excluded.
+
+The runtime has no persistent provenance attestation for the physical topology,
+sensor placement, source evidence, or DAC state before boot, and the current
+temperature input has no freshness timestamp or stale-age bound. An unavailable
+near-VCXO temperature is explicitly unverified rather than silently considered
+measured; this is acceptable for the disabled observe-only preview but remains
+a control-eligibility blocker. The generated binding does not make evidence
+available, make the model applicable to arbitrary inputs, or authorize control.

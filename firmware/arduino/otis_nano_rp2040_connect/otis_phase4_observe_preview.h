@@ -12,6 +12,8 @@ struct OtisPhase4LiveDacState {
 };
 
 bool otis_phase4_observe_preview_begin(uint64_t startup_ticks);
+void otis_phase4_observe_preview_on_temperature(bool available,
+                                                float temperature_c);
 void otis_phase4_observe_preview_emit_headers(void);
 void otis_phase4_observe_preview_on_reference(uint32_t reference_seq,
                                               uint64_t timestamp_ticks,

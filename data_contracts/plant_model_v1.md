@@ -80,9 +80,13 @@ manual-safe and applicability ranges.
 Version-4 applicability also requires a complete estimator-method contract:
 identity/version, measurement backend, count-window semantics, independent
 boundary mapping, PPS acceptance rules, timing domain, extrapolation policy,
-and a definition hash. Runtime applicability compares this contract with the
-compiled/executed estimator; a manifest string alone cannot make the model
-applicable.
+and a definition hash. Semantic validation verifies that the definition hash
+matches the contract recorded in the artifact and that the nested and outer
+measurement backends agree. It deliberately does not require equality with the
+currently installed estimator: a self-consistent artifact describing an
+evolved estimator is valid. Runtime applicability compares the artifact
+contract with the compiled/executed estimator and reports such an artifact as
+not applicable; a manifest string alone cannot make it applicable.
 
 The Phase-4 firmware constants are generated from the exact validated current
 artifact rather than copied by hand:
@@ -93,19 +97,27 @@ firmware/arduino/otis_nano_rp2040_connect/otis_plant_model_v4_generated.h
 ```
 
 The generated header records the artifact path, exact byte hash, schema/model
-versions, complete estimator identity, gain, and range constants. Generation
-fails unless both structural and semantic validation pass. The generated
-`control_ready` and `actuation_enabled` values remain false; a compiled binding
-does not authorize actuation.
+versions, topology, applicability mode, outer measurement backend, gate and
+settling durations, temperature limits, source-run exclusions, estimator
+constraints, gain, and DAC ranges. Generation fails unless structural and
+semantic validation pass and separately refuses an artifact whose estimator
+does not match the current firmware implementation. The live preview compares
+those generated values with compiled and observed runtime values. Unknown
+near-VCXO temperature remains an unverified applicability condition; it is not
+invented as an in-range measurement. The generated `control_ready` and
+`actuation_enabled` values remain false; a compiled binding does not authorize
+actuation.
 
 ## Historical v1 Reader
 
-The Run 017 artifact includes historical measurement summaries that predate the
-current field layout. They are retained as explicit closed schema properties
-marked deprecated, including the legacy
+The exact historical identity `(schema_version=1,
+model_id=cx317_h1_bench, model_version=2)` includes measurement summaries that
+predate the current field layout. They are retained as explicit closed schema
+properties marked deprecated, including the legacy
 `source_commits.model_updated_from_repo_commit` spelling. New artifacts must
-not emit these fields. Unknown fields remain rejected at every object boundary;
-`additionalProperties` is not relaxed for historical compatibility.
+not emit these fields, even if they choose model version 1 or 2. Unknown fields
+remain rejected at every object boundary; `additionalProperties` is not
+relaxed for historical compatibility.
 
 ## Unknown Values
 

@@ -446,9 +446,8 @@ not feed back into the estimator. A fixed 384-point support array implements
 `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`; non-aligned count closes wait in one
 bounded pending slot for their following PPS bracket. No extrapolation or
 dynamic allocation is used. Model-version-4 identity, method-contract hash,
-topology/backend
-applicability, gain, DAC range, disabled candidate range, and maximum preview
-step are recorded with every decision.
+topology/backend applicability, gain, DAC range, disabled candidate range, and
+maximum preview step are recorded with every decision.
 
 Those plant-model constants come from
 `otis_plant_model_v4_generated.h`, which is generated only after structural and
@@ -459,6 +458,15 @@ binding before a preview build:
 ```bash
 python3 tools/generate_plant_model_binding.py --check
 ```
+
+Generation also requires exact compatibility with the estimator implemented by
+the current source. The generated binding carries the model topology,
+observe-only mode, measurement backend, gate and settling durations,
+temperature limits, source-evidence exclusions, estimator timing constraints,
+and DAC ranges. The preview compares those values with the compiled
+configuration and live gate/DAC observations. Successful near-VCXO SHT4x
+samples are range-checked; an unavailable sample remains unverified. Run-local
+count-sequence exclusions are not applied to unrelated live sequence numbers.
 
 The checked-in default remains disabled. Build the explicit preview variant
 with:
