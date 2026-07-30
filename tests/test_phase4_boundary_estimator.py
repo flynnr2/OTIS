@@ -300,9 +300,9 @@ def test_semantic_mismatch_changes_result_and_model_contract_rejects_it(
         config=config,
     )
     mismatch_preview = _read_rows(mismatch_result.previews_path)[0]
-    assert mismatch_preview["model_applicability"] == "not_applicable"
+    assert mismatch_preview["model_applicability"] == "invalid"
     assert (
-        "plant_model_estimator_method_mismatch"
+        "plant_model_invalid"
         in mismatch_preview["model_reason_codes"]
     )
     assert mismatch_preview["preview_available"] == "false"
@@ -366,7 +366,7 @@ def test_historical_outputs_and_model_are_not_reinterpreted(
     assert preview["model_applicability"] == "not_applicable"
     assert "plant_model_version_not_4" in preview["model_reason_codes"]
     assert (
-        "plant_model_estimator_method_mismatch"
+        "plant_model_estimator_method_unavailable"
         in preview["model_reason_codes"]
     )
     assert preview["preview_available"] == "false"

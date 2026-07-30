@@ -450,6 +450,16 @@ topology/backend
 applicability, gain, DAC range, disabled candidate range, and maximum preview
 step are recorded with every decision.
 
+Those plant-model constants come from
+`otis_plant_model_v4_generated.h`, which is generated only after structural and
+semantic validation of
+`profiles/plant_models/cx317_h1_bench_v3.json`. Check the exact artifact
+binding before a preview build:
+
+```bash
+python3 tools/generate_plant_model_binding.py --check
+```
+
 The checked-in default remains disabled. Build the explicit preview variant
 with:
 

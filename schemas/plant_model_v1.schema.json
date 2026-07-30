@@ -41,16 +41,24 @@
     "invalidation_conditions": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "minItems": 1
+      "minItems": 1,
+      "uniqueItems": true
     },
     "unresolved_fields": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
     }
   },
   "$defs": {
     "nullable_number": { "type": ["number", "null"] },
     "nullable_string": { "type": ["string", "null"] },
+    "nullable_git_commit": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "type": "null" }
+      ]
+    },
     "code_range": {
       "type": "object",
       "additionalProperties": false,
@@ -79,7 +87,33 @@
         "nominal_frequency_hz": { "type": "number", "exclusiveMinimum": 0 },
         "supply_voltage_v": { "$ref": "#/$defs/nullable_number" },
         "control_voltage_range_v": { "$ref": "#/$defs/voltage_range" },
+        "datasheet_tuning_range_ppm": {
+          "$ref": "#/$defs/historical_datasheet_tuning_range_ppm",
+          "deprecated": true
+        },
         "pinout_source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "historical_datasheet_tuning_range_ppm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min_abs_ppm",
+        "max_abs_ppm",
+        "control_voltage_min_v",
+        "control_voltage_nominal_v",
+        "control_voltage_max_v",
+        "implied_hz_per_v_min",
+        "implied_hz_per_v_max"
+      ],
+      "properties": {
+        "min_abs_ppm": { "type": "number", "minimum": 0 },
+        "max_abs_ppm": { "type": "number", "minimum": 0 },
+        "control_voltage_min_v": { "type": "number" },
+        "control_voltage_nominal_v": { "type": "number" },
+        "control_voltage_max_v": { "type": "number" },
+        "implied_hz_per_v_min": { "type": "number" },
+        "implied_hz_per_v_max": { "type": "number" }
       }
     },
     "hardware_topology": {
@@ -112,7 +146,35 @@
             "rp2040_pin": { "type": "string", "minLength": 1 },
             "logic_voltage_v": { "$ref": "#/$defs/nullable_number" }
           }
+        },
+        "pps_witness": {
+          "$ref": "#/$defs/historical_pps_witness",
+          "deprecated": true
         }
+      }
+    },
+    "historical_pps_witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_ref_pin",
+        "witness_pin",
+        "run_017_final_d14_raw_count",
+        "run_017_final_d10_raw_count",
+        "run_017_d14_minus_d10_delta",
+        "d10_short_rows",
+        "d10_buffer_overflow_rows",
+        "d10_burst_rows"
+      ],
+      "properties": {
+        "primary_ref_pin": { "type": "string", "minLength": 1 },
+        "witness_pin": { "type": "string", "minLength": 1 },
+        "run_017_final_d14_raw_count": { "type": "integer", "minimum": 0 },
+        "run_017_final_d10_raw_count": { "type": "integer", "minimum": 0 },
+        "run_017_d14_minus_d10_delta": { "type": "integer" },
+        "d10_short_rows": { "type": "integer", "minimum": 0 },
+        "d10_buffer_overflow_rows": { "type": "integer", "minimum": 0 },
+        "d10_burst_rows": { "type": "integer", "minimum": 0 }
       }
     },
     "dac": {
@@ -163,13 +225,33 @@
             "uncertainty": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["method", "hz_per_v_stdev", "hz_per_v_iqr", "hz_per_v_min", "hz_per_v_max"],
+              "required": ["method", "hz_per_v_min", "hz_per_v_max"],
               "properties": {
                 "method": { "type": "string", "minLength": 1 },
                 "hz_per_v_stdev": { "$ref": "#/$defs/nullable_number" },
                 "hz_per_v_iqr": { "$ref": "#/$defs/nullable_number" },
                 "hz_per_v_min": { "$ref": "#/$defs/nullable_number" },
-                "hz_per_v_max": { "$ref": "#/$defs/nullable_number" }
+                "hz_per_v_max": { "$ref": "#/$defs/nullable_number" },
+                "hz_per_v_span": {
+                  "$ref": "#/$defs/nullable_number",
+                  "deprecated": true
+                },
+                "positive_0x0800_hz_per_v": {
+                  "$ref": "#/$defs/nullable_number",
+                  "deprecated": true
+                },
+                "negative_0x0800_hz_per_v": {
+                  "$ref": "#/$defs/nullable_number",
+                  "deprecated": true
+                },
+                "positive_0x1000_hz_per_v": {
+                  "$ref": "#/$defs/nullable_number",
+                  "deprecated": true
+                },
+                "negative_0x1000_hz_per_v": {
+                  "$ref": "#/$defs/nullable_number",
+                  "deprecated": true
+                }
               }
             }
           }
@@ -219,6 +301,24 @@
             "warmup_s": { "$ref": "#/$defs/nullable_number" },
             "drift_after_warmup_ppm_per_hour": { "$ref": "#/$defs/nullable_number" }
           }
+        },
+        "observed_frequency_range": {
+          "$ref": "#/$defs/historical_observed_frequency_range",
+          "deprecated": true
+        },
+        "run_017_settled_outputs_mhz": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/historical_settled_output" },
+          "minItems": 1,
+          "deprecated": true
+        },
+        "reference_integrity": {
+          "$ref": "#/$defs/historical_reference_integrity",
+          "deprecated": true
+        },
+        "startup_control_eligibility": {
+          "$ref": "#/$defs/historical_startup_control_eligibility",
+          "deprecated": true
         },
         "crossing_estimate": {
           "type": "object",
@@ -362,10 +462,84 @@
             "limitations": {
               "type": "array",
               "items": { "type": "string", "minLength": 1 },
-              "minItems": 1
+              "minItems": 1,
+              "uniqueItems": true
             }
           }
         }
+      }
+    },
+    "historical_observed_frequency_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min_code",
+        "min_output_mhz",
+        "max_code",
+        "max_output_mhz",
+        "span_hz"
+      ],
+      "properties": {
+        "min_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "min_output_mhz": { "type": "number", "exclusiveMinimum": 0 },
+        "max_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "max_output_mhz": { "type": "number", "exclusiveMinimum": 0 },
+        "span_hz": { "type": "number", "minimum": 0 }
+      }
+    },
+    "historical_settled_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dac_code_hex", "dac_code", "output_mhz"],
+      "properties": {
+        "dac_code_hex": { "type": "string", "pattern": "^0x[0-9A-Fa-f]{4}$" },
+        "dac_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "output_mhz": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "historical_reference_integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_rows",
+        "ref_raw_duration_s",
+        "timestamp_wrap_count",
+        "raw_timestamp_monotonic",
+        "unwrapped_timestamp_monotonic",
+        "host_pps_anomalies",
+        "d14_rejected_long_count",
+        "d14_rejected_long_count_interpretation"
+      ],
+      "properties": {
+        "ref_rows": { "type": "integer", "minimum": 0 },
+        "ref_raw_duration_s": { "type": "number", "minimum": 0 },
+        "timestamp_wrap_count": { "type": "integer", "minimum": 0 },
+        "raw_timestamp_monotonic": { "type": "boolean" },
+        "unwrapped_timestamp_monotonic": { "type": "boolean" },
+        "host_pps_anomalies": { "type": "integer", "minimum": 0 },
+        "d14_rejected_long_count": { "type": "integer", "minimum": 0 },
+        "d14_rejected_long_count_interpretation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "historical_startup_control_eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fc0_valid_for_control",
+        "fc0_fault",
+        "count_windows",
+        "invalid_count_windows",
+        "first_control_eligible_elapsed_s"
+      ],
+      "properties": {
+        "fc0_valid_for_control": { "type": "boolean" },
+        "fc0_fault": { "type": "boolean" },
+        "count_windows": { "type": "integer", "minimum": 0 },
+        "invalid_count_windows": { "type": "integer", "minimum": 0 },
+        "first_control_eligible_elapsed_s": { "type": "number", "minimum": 0 }
       }
     },
     "source_evidence": {
@@ -376,30 +550,57 @@
         "source_run_ids": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "source_artifacts": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "source_commits": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["model_created_from_repo_commit", "run_manifest_host_git_commit", "run_manifest_firmware_git_commit"],
           "properties": {
-            "model_created_from_repo_commit": { "$ref": "#/$defs/nullable_string" },
-            "run_manifest_host_git_commit": { "$ref": "#/$defs/nullable_string" },
-            "run_manifest_firmware_git_commit": { "$ref": "#/$defs/nullable_string" }
-          }
+            "model_created_from_repo_commit": { "$ref": "#/$defs/nullable_git_commit" },
+            "model_updated_from_repo_commit": {
+              "$ref": "#/$defs/nullable_git_commit",
+              "deprecated": true
+            },
+            "run_manifest_host_git_commit": { "$ref": "#/$defs/nullable_git_commit" },
+            "run_manifest_firmware_git_commit": { "$ref": "#/$defs/nullable_git_commit" }
+          },
+          "required": [
+            "run_manifest_host_git_commit",
+            "run_manifest_firmware_git_commit"
+          ],
+          "oneOf": [
+            { "required": ["model_created_from_repo_commit"] },
+            { "required": ["model_updated_from_repo_commit"] }
+          ]
         },
         "source_versions": {
           "type": "object",
           "additionalProperties": false,
           "required": ["run_manifest_host_tool_version", "run_manifest_firmware_version"],
           "properties": {
-            "run_manifest_host_tool_version": { "$ref": "#/$defs/nullable_string" },
-            "run_manifest_firmware_version": { "$ref": "#/$defs/nullable_string" }
+            "run_manifest_host_tool_version": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ]
+            },
+            "run_manifest_firmware_version": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ]
+            }
           }
         }
       }

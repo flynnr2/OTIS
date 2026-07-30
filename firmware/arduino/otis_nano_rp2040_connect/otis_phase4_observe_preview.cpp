@@ -8,6 +8,7 @@
 #include "otis_config.h"
 #include "otis_phase4_boundary_estimator.h"
 #include "otis_phase4_engine.h"
+#include "otis_plant_model_v4_generated.h"
 #include "otis_protocol.h"
 #include "otis_timebase_math.h"
 #include "otis_transport_serial.h"
@@ -39,9 +40,6 @@ constexpr uint32_t kCountInvalidFlags =
     OTIS_FLAG_INPUT_STUCK_LOW | OTIS_FLAG_INPUT_STUCK_HIGH |
     OTIS_FLAG_GATE_INCOMPLETE | OTIS_FLAG_COUNT_SATURATED;
 #endif
-constexpr char kPlantModelId[] = "cx317_h1_bench";
-constexpr char kPlantModelHash[] =
-    "900af6b2ec325f99798db043df964a28a36ac2a2209669c7f4b7d569efbf161d";
 constexpr char kConfigHash[] =
     "10c38248661c46e4b31ed3f77d097ea8b6f668ff8e53784bd357ccbd66dbac85";
 constexpr char kEstimatorVersion[] = "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1";
@@ -49,12 +47,6 @@ constexpr char kEstimatorMethodHash[] =
     "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b";
 constexpr char kPolicyVersion[] = "phase4_observe_preview_v2";
 constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_TIMER0;
-constexpr uint16_t kModelApplicabilityMin = 0xA800u;
-constexpr uint16_t kModelApplicabilityMax = 0xB400u;
-constexpr uint16_t kCandidateMin = 0xA800u;
-constexpr uint16_t kCandidateMax = 0xAB00u;
-constexpr uint16_t kMaximumPreviewStep = 0x0300u;
-constexpr double kHzPerCode = 0.0001673035127775317;
 constexpr size_t kFrameCapacity = 3072u;
 constexpr size_t kTransportChunkLimit = 128u;
 constexpr double kCaptureDomainHz = 16000000.0;
@@ -216,8 +208,9 @@ void reasons_text(uint32_t mask, const char *clear_reason, char *buffer,
 OtisPhase4ModelInput model_input(const OtisPhase4LiveDacState *dac) {
   OtisPhase4ModelInput model = {};
   model.available = true;
-  model.valid = true;
-  model.version_4 = true;
+  model.valid =
+      kPlantModelStructurallyValid && kPlantModelSemanticallyValid;
+  model.version_4 = kPlantModelVersion == 4u;
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     OTIS_ENABLE_PPS_DUAL_OBSERVER
   model.topology_match = true;
@@ -225,11 +218,8 @@ OtisPhase4ModelInput model_input(const OtisPhase4LiveDacState *dac) {
   model.topology_match = false;
 #endif
   model.estimator_method_match =
-      strcmp(kEstimatorVersion, "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1") == 0 &&
-      strcmp(
-          kEstimatorMethodHash,
-          "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b") ==
-          0;
+      strcmp(kEstimatorVersion, kPlantModelEstimatorVersion) == 0 &&
+      strcmp(kEstimatorMethodHash, kPlantModelEstimatorMethodHash) == 0;
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
   model.backend_match = true;
 #else
@@ -422,12 +412,13 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   int added = snprintf(
       frame + used, sizeof(frame) - (size_t)used,
       "CTL,1,%lu,ctl:live:%06lu,%llu,%s,est:live:%06lu,"
-      "profiles/plant_models/cx317_h1_bench_v3.json,%s,4,%s,%s,%s,%s,%s,"
+      "%s,%s,%lu,%s,%s,%s,%s,%s,"
       "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
       "%s,true,false,false,%s\r\n",
       (unsigned long)control_seq, (unsigned long)control_seq,
       (unsigned long long)ticks, kTimeDomain, (unsigned long)estimate_seq,
-      kPlantModelId, kPlantModelHash, kPolicyVersion, kConfigHash,
+      kPlantModelRef, kPlantModelId, (unsigned long)kPlantModelVersion,
+      kPlantModelHash, kPolicyVersion, kConfigHash,
       otis_phase4_state_name(decision.state),
       otis_phase4_state_name(decision.previous_state),
       decision.state_transition ? "true" : "false",

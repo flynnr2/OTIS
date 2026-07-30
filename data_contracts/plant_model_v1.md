@@ -2,7 +2,8 @@
 
 `plant_model_v1` is the host-side, machine-readable contract for an H1/SW2
 oscillator control-path model. It records evidence-backed plant behavior and
-safety envelopes without putting plant constants in firmware.
+safety envelopes without treating hand-coded firmware constants as an
+independent authority.
 
 The contract is intentionally conservative:
 
@@ -19,6 +20,14 @@ The machine-readable schema lives at:
 ```text
 schemas/plant_model_v1.schema.json
 ```
+
+That JSON Schema is the single structural authority. The exhaustive field
+classification, historical-field policy, and pre-reconciliation validator
+disagreements are recorded in
+`docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md`. Host loading always runs
+schema validation first. Cross-field semantic validation, evidence
+availability, applicability, and control eligibility are separate decisions;
+success at one layer does not imply success at a later layer.
 
 Initial H1 plant models live under:
 
@@ -74,6 +83,29 @@ boundary mapping, PPS acceptance rules, timing domain, extrapolation policy,
 and a definition hash. Runtime applicability compares this contract with the
 compiled/executed estimator; a manifest string alone cannot make the model
 applicable.
+
+The Phase-4 firmware constants are generated from the exact validated current
+artifact rather than copied by hand:
+
+```text
+tools/generate_plant_model_binding.py
+firmware/arduino/otis_nano_rp2040_connect/otis_plant_model_v4_generated.h
+```
+
+The generated header records the artifact path, exact byte hash, schema/model
+versions, complete estimator identity, gain, and range constants. Generation
+fails unless both structural and semantic validation pass. The generated
+`control_ready` and `actuation_enabled` values remain false; a compiled binding
+does not authorize actuation.
+
+## Historical v1 Reader
+
+The Run 017 artifact includes historical measurement summaries that predate the
+current field layout. They are retained as explicit closed schema properties
+marked deprecated, including the legacy
+`source_commits.model_updated_from_repo_commit` spelling. New artifacts must
+not emit these fields. Unknown fields remain rejected at every object boundary;
+`additionalProperties` is not relaxed for historical compatibility.
 
 ## Unknown Values
 

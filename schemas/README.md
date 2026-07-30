@@ -2,7 +2,17 @@
 
 This directory is reserved for machine-readable OTIS schemas generated from, or kept in lock-step with, the normative contracts in `data_contracts/`.
 
-At SW0 and SW1 the Markdown contracts remain authoritative. Add JSON Schema, CSVW, or generated firmware and host schema artifacts here only when they are wired into validation tests.
+At SW0 and SW1 the Markdown contracts remain authoritative except where a
+contract explicitly promotes a machine-readable schema. Add JSON Schema, CSVW,
+or generated firmware and host schema artifacts here only when they are wired
+into validation tests.
+
+`plant_model_v1.schema.json` is the sole structural authority for plant-model
+schema version 1. `host.otis_tools.plant_model` executes it before applying
+separate semantic, evidence-availability, applicability, and
+control-eligibility checks. See
+`docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md` for the complete field
+inventory and historical-reader policy.
 
 The PPS-gated ratio backend does not require a new raw-row schema: `CNT` rows
 still use `count_observations_v1`, and `pps_gate` telemetry is ordinary

@@ -6,7 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.plant_model import load_plant_model, validate_plant_model
+from host.otis_tools.phase4_boundary_estimator import estimator_method_contract
+from host.otis_tools.plant_model import (
+    ModelApplicabilityContext,
+    assess_control_eligibility,
+    assess_evidence_availability,
+    assess_model_applicability,
+    load_plant_model,
+    validate_plant_model,
+    validate_plant_model_semantics,
+    validate_plant_model_structure,
+)
 
 
 LEGACY_MODEL = Path("profiles/plant_models/cx317_h1_bench_v1.json")
@@ -113,6 +123,19 @@ def test_schema_and_canonical_source_references_are_present() -> None:
     assert "runs/" in Path(".gitignore").read_text(encoding="utf-8")
 
 
+def test_every_committed_model_is_structurally_and_semantically_valid() -> None:
+    paths = sorted(Path("profiles/plant_models").glob("*.json"))
+    assert paths == [
+        Path("profiles/plant_models/cx317_h1_bench_v1.json"),
+        Path("profiles/plant_models/cx317_h1_bench_v2.json"),
+        Path("profiles/plant_models/cx317_h1_bench_v3.json"),
+    ]
+    for path in paths:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert validate_plant_model_structure(data).valid, path
+        assert validate_plant_model_semantics(data).valid, path
+
+
 def test_rejects_automatic_range_outside_manual_safe_range() -> None:
     model = load_plant_model(MODEL).data
     changed = copy.deepcopy(model)
@@ -157,7 +180,7 @@ def test_rejects_non_observe_only_applicability() -> None:
     changed = copy.deepcopy(model)
     changed["plant_response"]["applicability"]["mode"] = "active_control"
 
-    with pytest.raises(ValueError, match="mode must be observe_only"):
+    with pytest.raises(ValueError, match="'observe_only' was expected"):
         validate_plant_model(changed)
 
 
@@ -168,7 +191,7 @@ def test_rejects_unknown_estimator_method_hash() -> None:
         "estimator_method_contract"
     ]["method_definition_hash"] = "0" * 64
 
-    with pytest.raises(ValueError, match="unknown method_definition_hash"):
+    with pytest.raises(ValueError, match="does not match the executed estimator"):
         validate_plant_model(changed)
 
 
@@ -177,7 +200,7 @@ def test_rejects_empty_string_unknowns_and_enabled_actuation() -> None:
     changed = copy.deepcopy(model)
     changed["dac"]["reference_voltage_v"] = ""
 
-    with pytest.raises(ValueError, match="must be null when unknown"):
+    with pytest.raises(ValueError, match="is not of type 'number', 'null'"):
         validate_plant_model(changed)
 
     changed = copy.deepcopy(model)
@@ -200,3 +223,164 @@ def test_rejects_zero_slope_as_unknown_sentinel() -> None:
 
     with pytest.raises(ValueError, match="must be null when unknown"):
         validate_plant_model(changed)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ((), {"unexpected_top_level": True}),
+        (("dac",), {"unexpected_dac_policy": 1}),
+        (("plant_response", "applicability"), {"unknown_condition": "x"}),
+    ],
+)
+def test_unknown_fields_are_rejected_at_every_object_boundary(
+    path: tuple[str, ...],
+    value: dict[str, object],
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    target = changed
+    for part in path:
+        target = target[part]
+    target.update(value)
+
+    result = validate_plant_model_structure(changed)
+
+    assert not result.valid
+    assert any(
+        "Additional properties are not allowed" in error
+        for error in result.errors
+    )
+
+
+def test_provenance_fields_are_structurally_and_semantically_enforced() -> None:
+    model = load_plant_model(MODEL).data
+
+    changed = copy.deepcopy(model)
+    del changed["source_evidence"]["source_commits"][
+        "run_manifest_firmware_git_commit"
+    ]
+    result = validate_plant_model_structure(changed)
+    assert not result.valid
+    assert any("required property" in error for error in result.errors)
+
+    changed = copy.deepcopy(model)
+    changed["source_evidence"]["source_commits"][
+        "run_manifest_host_git_commit"
+    ] = "not-a-commit"
+    result = validate_plant_model_structure(changed)
+    assert not result.valid
+    assert any("not valid under any" in error for error in result.errors)
+
+    changed = copy.deepcopy(model)
+    changed["source_evidence"]["source_artifacts"][0] = "../outside"
+    result = validate_plant_model_structure(changed)
+    assert not result.valid
+    assert any("does not match" in error for error in result.errors)
+
+    changed = copy.deepcopy(model)
+    for key in changed["source_evidence"]["source_commits"]:
+        changed["source_evidence"]["source_commits"][key] = None
+    assert validate_plant_model_structure(changed).valid
+    semantic = validate_plant_model_semantics(changed)
+    assert not semantic.valid
+    assert "must contain a known commit" in semantic.errors[0]
+
+
+def test_estimator_mismatch_is_semantic_not_structural() -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    changed["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]["reference_time_mapping"] = "different_executed_mapping"
+
+    assert validate_plant_model_structure(changed).valid
+    semantic = validate_plant_model_semantics(changed)
+    assert not semantic.valid
+    assert any("executed estimator contract" in error for error in semantic.errors)
+
+
+def test_historical_fields_are_declared_but_prohibited_in_current_models() -> None:
+    legacy = load_plant_model(LEGACY_MODEL).data
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    changed["hardware_topology"]["pps_witness"] = copy.deepcopy(
+        legacy["hardware_topology"]["pps_witness"]
+    )
+
+    assert validate_plant_model_structure(changed).valid
+    semantic = validate_plant_model_semantics(changed)
+    assert not semantic.valid
+    assert any(
+        "pps_witness is historical and prohibited" in error
+        for error in semantic.errors
+    )
+
+
+def test_validity_evidence_applicability_and_control_eligibility_are_separate(
+    tmp_path: Path,
+) -> None:
+    model = load_plant_model(MODEL)
+    structural = validate_plant_model_structure(model.data)
+    semantic = validate_plant_model_semantics(model.data)
+    evidence = assess_evidence_availability(model, tmp_path)
+    applicability = assess_model_applicability(
+        model,
+        ModelApplicabilityContext(
+            hardware_topology_id=model.data["hardware_topology"]["topology_id"],
+            measurement_backend=model.data["plant_response"]["applicability"][
+                "measurement_backend"
+            ],
+            estimator_method=estimator_method_contract(),
+            dac_code=model.nominal_code,
+            source_run_id="unrelated_run",
+            required_model_version=4,
+        ),
+    )
+    eligibility = assess_control_eligibility(
+        model,
+        evidence=evidence,
+        applicability=applicability,
+    )
+
+    assert structural.valid
+    assert semantic.valid
+    assert not evidence.available
+    assert applicability.applicable
+    assert applicability.unverified_conditions == (
+        "gate_duration_not_observed",
+        "temperature_not_observed",
+    )
+    assert not eligibility.eligible
+    assert "plant_model_not_control_ready" in eligibility.reasons
+    assert "plant_model_actuation_disabled" in eligibility.reasons
+    assert "plant_model_source_evidence_unavailable" in eligibility.reasons
+
+
+def test_applicability_rejects_context_and_estimator_mismatches() -> None:
+    model = load_plant_model(MODEL)
+    wrong_method = estimator_method_contract()
+    wrong_method["method_definition_hash"] = "0" * 64
+    result = assess_model_applicability(
+        model,
+        ModelApplicabilityContext(
+            hardware_topology_id="different_topology",
+            measurement_backend="different_backend",
+            estimator_method=wrong_method,
+            dac_code=0,
+            source_run_id="run_020",
+            count_sequence=77,
+            gate_duration_s=1.0,
+            temperature_c=100.0,
+            required_model_version=3,
+        ),
+    )
+
+    assert not result.applicable
+    assert set(result.reasons) == {
+        "plant_model_version_not_3",
+        "plant_model_topology_mismatch",
+        "plant_model_backend_mismatch",
+        "plant_model_estimator_method_mismatch",
+        "input_outside_model_applicability",
+        "plant_model_excluded_count_sequence",
+        "plant_model_gate_duration_mismatch",
+        "input_outside_model_temperature_range",
+    }

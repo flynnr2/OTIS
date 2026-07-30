@@ -7,6 +7,7 @@ import io
 import json
 import re
 import subprocess
+import sys
 
 import pytest
 
@@ -32,6 +33,8 @@ HARNESS = ROOT / "tests" / "cpp" / "phase4_engine_harness.cpp"
 LIVE_HARNESS = ROOT / "tests" / "cpp" / "phase4_live_adapter_harness.cpp"
 LIVE_ADAPTER = ENGINE.parent / "otis_phase4_observe_preview.cpp"
 BOUNDARY_ESTIMATOR = ENGINE.parent / "otis_phase4_boundary_estimator.cpp"
+MODEL_BINDING = ENGINE.parent / "otis_plant_model_v4_generated.h"
+MODEL_BINDING_GENERATOR = ROOT / "tools" / "generate_plant_model_binding.py"
 TICK_HZ = 1_000_000
 TOPOLOGY = "h1_run_020_g17_reworked_d14_d10_pps_witness"
 BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE"
@@ -452,27 +455,34 @@ def test_preview_translation_unit_has_no_dac_write_route() -> None:
 
 def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
     source = LIVE_ADAPTER.read_text(encoding="utf-8")
+    binding = MODEL_BINDING.read_text(encoding="utf-8")
     model_bytes = MODEL.read_bytes()
     model = json.loads(model_bytes)
-    assert hashlib.sha256(model_bytes).hexdigest() in source
+    subprocess.run(
+        [sys.executable, str(MODEL_BINDING_GENERATOR), "--check"],
+        check=True,
+        cwd=ROOT,
+    )
+    assert '#include "otis_plant_model_v4_generated.h"' in source
+    assert hashlib.sha256(model_bytes).hexdigest() in binding
     assert model["model_version"] == 4
     assert model["status"]["control_ready"] is False
     assert model["status"]["actuation_enabled"] is False
     method = model["plant_response"]["applicability"][
         "estimator_method_contract"
     ]
-    assert method["estimator_method_id"] in source
-    assert method["method_definition_hash"] in source
-    assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in source
+    assert method["estimator_method_id"] in binding
+    assert method["method_definition_hash"] in binding
+    assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in binding
     applicability = model["plant_response"]["applicability"]["dac_code_range"]
     candidate = model["dac"]["automatic_control_range_codes"]
-    assert f"0x{applicability['min']:04X}u" in source
-    assert f"0x{applicability['max']:04X}u" in source
-    assert f"0x{candidate['min']:04X}u" in source
-    assert f"0x{candidate['max']:04X}u" in source
+    assert f"0x{applicability['min']:04X}u" in binding
+    assert f"0x{applicability['max']:04X}u" in binding
+    assert f"0x{candidate['min']:04X}u" in binding
+    assert f"0x{candidate['max']:04X}u" in binding
     assert re.search(
         rf"kMaximumPreviewStep = 0x{model['dac']['manual_preview_max_step_codes']:04X}u",
-        source,
+        binding,
     )
     profile = json.loads(
         (ROOT / "profiles" / "discipline" / "phase4_host_replay_v2.json").read_text(
