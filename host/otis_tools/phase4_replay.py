@@ -15,9 +15,17 @@ import statistics
 
 from .contracts import (
     CONTROL_PREVIEW_V1_FIELDS,
-    ESTIMATE_V1_FIELDS,
+    DIAGNOSTICS_V1_FIELDS,
+    ESTIMATE_V2_FIELDS,
+    REFERENCE_OBSERVATION_V1_FIELDS,
     CsvValidationContext,
     validate_csv,
+)
+from .diagnostics import (
+    DEFAULT_DIAGNOSTIC_CONFIG_HASH,
+    DEFAULT_DIAGNOSTIC_SPECS,
+    DIAGNOSTIC_ALGORITHM_VERSION,
+    DiagnosticEngine,
 )
 from .phase4_boundary_estimator import (
     BoundaryEstimate,
@@ -34,15 +42,26 @@ from .plant_model import (
     load_plant_model,
 )
 from .run_loader import RunManifest, load_manifest
+from .reference_quality import (
+    REFERENCE_QUALITY_ALGORITHM_VERSION,
+    ReferenceEvidence,
+    ReferenceIdentityTracker,
+    ReferenceQualityConfig,
+    assess_reference_quality,
+    metadata_from_status,
+)
 from .timebase import unwrap_ticks
+from .uncertainty import UNCERTAINTY_MODEL_REF, evaluate_uncertainty
 
 
 ESTIMATOR_VERSION = ESTIMATOR_METHOD_ID
-POLICY_VERSION = "phase4_observe_preview_v2"
-OUTPUT_SUBDIRECTORY = Path("derived") / "phase4_replay_v2"
-ESTIMATES_FILENAME = "estimates_v1.csv"
+POLICY_VERSION = "phase4_observe_preview_v3"
+OUTPUT_SUBDIRECTORY = Path("derived") / "phase4_replay_v3"
+ESTIMATES_FILENAME = "estimates_v2.csv"
+REFERENCE_OBSERVATIONS_FILENAME = "reference_observations_v1.csv"
+DIAGNOSTICS_FILENAME = "diagnostics_v1.csv"
 PREVIEWS_FILENAME = "control_previews_v1.csv"
-REPORT_FILENAME = "replay_report_v2.json"
+REPORT_FILENAME = "replay_report_v3.json"
 
 COUNT_INVALID_FLAGS = (
     (1 << 0)
@@ -208,6 +227,8 @@ class PlantContext:
 class ReplayResult:
     output_dir: Path
     estimates_path: Path
+    reference_observations_path: Path
+    diagnostics_path: Path
     previews_path: Path
     report_path: Path
     estimate_count: int
@@ -501,7 +522,9 @@ def _status_snapshot(status: list[StatusRecord], ticks: int, domain: str) -> tup
             considered.append(record)
     if not considered:
         return latest, "unavailable:health_v1"
-    return latest, f"health_v1:STS:{considered[-1].seq}"
+    return latest, (
+        f"health_v1:STS:{considered[0].seq}-{considered[-1].seq}"
+    )
 
 
 def _true(value: str) -> bool:
@@ -520,9 +543,24 @@ def _status_diagnostics(snapshot: dict[tuple[str, str], StatusRecord]) -> tuple[
             "fc0",
             "count",
             "reference",
+            "resource_registry",
+            "pio",
+            "dma",
+            "timer",
+            "clock",
         }:
             fault = True
-            reasons.append("status_timing_path_fault")
+            reasons.append(
+                "status_resource_failure"
+                if component in {
+                    "resource_registry",
+                    "pio",
+                    "dma",
+                    "timer",
+                    "clock",
+                }
+                else "status_timing_path_fault"
+            )
         if normalized in {"fc0.fc0_fault", "count.count_fault"} and _true(record.value):
             fault = True
             reasons.append("status_count_fault")
@@ -543,7 +581,23 @@ def _status_diagnostics(snapshot: dict[tuple[str, str], StatusRecord]) -> tuple[
             "reference.reference_valid_for_control",
             "pps_gate.valid",
         } and not _true(record.value):
-            reasons.append("status_reference_not_valid")
+                reasons.append("status_reference_not_valid")
+        if normalized in {
+            "resource_registry.valid",
+            "resource_registry.complete",
+        } and not _true(record.value):
+            fault = True
+            reasons.append("status_resource_failure")
+        if normalized in {
+            "resource_registry.conflict_count",
+            "resource_registry.binding_failure_count",
+        }:
+            try:
+                if int(record.value, 0) > 0:
+                    fault = True
+                    reasons.append("status_resource_failure")
+            except ValueError:
+                reasons.append("status_value_unparseable")
     if fault:
         return "fault", reasons
     if reasons:
@@ -876,6 +930,8 @@ def replay_phase4(
 
     rolling: deque[tuple[float, int, int]] = deque(maxlen=config.estimator_window)
     estimate_rows: list[dict[str, str]] = []
+    reference_observation_rows: list[dict[str, str]] = []
+    diagnostic_rows: list[dict[str, str]] = []
     preview_rows: list[dict[str, str]] = []
     state = "BOOT"
     fault_latched = False
@@ -890,6 +946,13 @@ def replay_phase4(
     latest_boundary_estimate: BoundaryEstimate | None = None
     count_index = 0
     manifest_identity = _manifest_ref(manifest)
+    reference_quality_config = ReferenceQualityConfig(
+        nominal_interval_s=config.reference_nominal_interval_s,
+        interval_tolerance_s=config.reference_interval_tolerance_s,
+        reference_max_age_s=config.reference_max_age_s,
+    )
+    diagnostic_engine = DiagnosticEngine(DEFAULT_DIAGNOSTIC_SPECS)
+    reference_identity_tracker = ReferenceIdentityTracker()
 
     for index, ticks in enumerate(timeline, start=1):
         new_count = False
@@ -937,6 +1000,141 @@ def replay_phase4(
         status_snapshot, status_ref = _status_snapshot(status, ticks, domain)
         diagnostic_health, diagnostic_reasons = _status_diagnostics(status_snapshot)
         current_dac, dac_ref = _latest_dac(dac_rows, ticks)
+        reference_candidates = [
+            row for row in references if row.domain == domain and row.ticks <= ticks
+        ]
+        current_reference = reference_candidates[-1] if reference_candidates else None
+        previous_reference = (
+            reference_candidates[-2] if len(reference_candidates) >= 2 else None
+        )
+        current_reference_evidence = (
+            ReferenceEvidence(
+                current_reference.seq,
+                current_reference.ticks,
+                current_reference.domain,
+                current_reference.flags,
+                f"{sources.reference_ref}:REF:{current_reference.seq}",
+            )
+            if current_reference is not None
+            else None
+        )
+        previous_reference_evidence = (
+            ReferenceEvidence(
+                previous_reference.seq,
+                previous_reference.ticks,
+                previous_reference.domain,
+                previous_reference.flags,
+                f"{sources.reference_ref}:REF:{previous_reference.seq}",
+            )
+            if previous_reference is not None
+            else None
+        )
+        receiver_metadata = reference_identity_tracker.observe(
+            metadata_from_status(status_snapshot, now_ticks=ticks)
+        )
+        reference_quality = assess_reference_quality(
+            previous_reference_evidence,
+            current_reference_evidence,
+            now_ticks=ticks,
+            domain_hz=domain_hz,
+            metadata=receiver_metadata,
+            config=reference_quality_config,
+        )
+        reference_range = (
+            f"{sources.reference_ref}:REF:"
+            f"{previous_reference.seq if previous_reference is not None else current_reference.seq}-"
+            f"{current_reference.seq}"
+            if current_reference is not None
+            else f"unavailable:{sources.reference_ref}:REF"
+        )
+        metadata_ref = (
+            receiver_metadata.evidence_ref
+            if receiver_metadata is not None
+            else "unavailable:reference_receiver_metadata"
+        )
+        reference_observation_rows.append(
+            {
+                "record_type": "RFO",
+                "schema_version": "1",
+                "reference_observation_seq": str(index),
+                "reference_observation_id": f"rfo:{manifest.run_id}:{index:06d}",
+                "observation_timestamp_ticks": str(ticks),
+                "time_domain": domain,
+                "source_identity_epoch": (
+                    receiver_metadata.identity_epoch
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "source_reference_first_seq": (
+                    str(previous_reference.seq)
+                    if previous_reference is not None
+                    else (str(current_reference.seq) if current_reference is not None else "")
+                ),
+                "source_reference_last_seq": (
+                    str(current_reference.seq) if current_reference is not None else ""
+                ),
+                "source_reference_refs": reference_range,
+                "source_metadata_refs": metadata_ref,
+                "receiver_identity": (
+                    receiver_metadata.receiver_identity
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "receiver_firmware": (
+                    receiver_metadata.receiver_firmware
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "cadence_state": reference_quality.cadence_state,
+                "capture_path_state": reference_quality.capture_path_state,
+                "receiver_authority_state": reference_quality.receiver_authority_state,
+                "utc_traceability_state": reference_quality.utc_traceability_state,
+                "metadata_freshness": reference_quality.metadata_freshness,
+                "timing_mode": (
+                    receiver_metadata.timing_mode if receiver_metadata is not None else "unknown"
+                ),
+                "fix_holdover_state": (
+                    receiver_metadata.fix_holdover_state
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "antenna_state": (
+                    receiver_metadata.antenna_state if receiver_metadata is not None else "unknown"
+                ),
+                "leap_state": (
+                    receiver_metadata.leap_state if receiver_metadata is not None else "unknown"
+                ),
+                "sawtooth_correction_ns": _format_number(
+                    receiver_metadata.sawtooth_correction_ns
+                    if receiver_metadata is not None
+                    else None
+                ),
+                "cable_delay_ns": _format_number(
+                    receiver_metadata.cable_delay_ns
+                    if receiver_metadata is not None
+                    else None
+                ),
+                "pulse_configuration": (
+                    receiver_metadata.pulse_configuration
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "calibration_ref": (
+                    receiver_metadata.calibration_ref
+                    if receiver_metadata is not None
+                    else "unknown"
+                ),
+                "reference_standard_uncertainty_s": _format_number(
+                    receiver_metadata.reference_standard_uncertainty_s
+                    if receiver_metadata is not None
+                    else None
+                ),
+                "qualification_state": reference_quality.qualification_state,
+                "qualification_reason_codes": ";".join(reference_quality.reason_codes),
+                "algorithm_version": REFERENCE_QUALITY_ALGORITHM_VERSION,
+                "config_hash": reference_quality_config.config_hash,
+            }
+        )
 
         boundary_reasons = (
             list(latest_boundary_estimate.reason_codes)
@@ -1033,6 +1231,7 @@ def replay_phase4(
 
         estimator_eligible = (
             observation_valid
+            and reference_quality.qualification_state == "qualified"
             and confidence == "high"
             and diagnostic_health == "healthy"
             and state in {"ACQUIRE_PREVIEW", "SETTLE_PREVIEW", "LOCKED_PREVIEW"}
@@ -1041,6 +1240,8 @@ def replay_phase4(
         eligibility_reasons: list[str] = []
         if not estimator_eligible:
             eligibility_reasons.extend(estimator_reasons)
+            if reference_quality.qualification_state != "qualified":
+                eligibility_reasons.append("reference_authority_unqualified")
             if state == "WARMUP_INHIBIT":
                 eligibility_reasons.append("startup_inhibit_active")
             elif state in {"QUALIFYING", "RECOVER_PREVIEW"}:
@@ -1059,10 +1260,14 @@ def replay_phase4(
             if latest_count is not None
             else f"unavailable:{sources.count_ref}:CNT"
         )
+        uncertainty = evaluate_uncertainty(
+            {},
+            estimate_available=estimate_hz is not None,
+        )
         estimate_rows.append(
             {
                 "record_type": "EST",
-                "schema_version": "1",
+                "schema_version": "2",
                 "estimate_seq": str(index),
                 "estimate_id": estimate_id,
                 "estimator_timestamp_ticks": str(ticks),
@@ -1096,8 +1301,21 @@ def replay_phase4(
                 "estimator_confidence": confidence,
                 "frequency_estimate_hz": _format_number(estimate_hz),
                 "frequency_error_hz": _format_number(frequency_error_hz),
-                "frequency_uncertainty_hz": _format_number(dispersion_hz),
                 "dispersion_hz": _format_number(dispersion_hz),
+                "uncertainty_status": uncertainty.status,
+                "uncertainty_reason_codes": ";".join(
+                    uncertainty.reason_codes
+                ),
+                "count_quantization_standard_uncertainty_hz": "",
+                "counter_aperture_standard_uncertainty_hz": "",
+                "reference_standard_uncertainty_hz": "",
+                "calibration_standard_uncertainty_hz": "",
+                "model_standard_uncertainty_hz": "",
+                "combined_standard_uncertainty_hz": "",
+                "coverage_factor": "",
+                "expanded_uncertainty_hz": "",
+                "correlation_policy": uncertainty.correlation_policy,
+                "uncertainty_model_ref": uncertainty.model_ref,
                 "drift_enabled": "false",
                 "drift_hz_per_s": "",
                 "preview_eligibility": _bool_text(estimator_eligible),
@@ -1110,6 +1328,45 @@ def replay_phase4(
         model_state, model_reasons, slope = _model_applicability(
             plant, manifest, latest_count, current_dac
         )
+        diagnostic_conditions = {
+            "diag.reference.cadence": reference_quality.cadence_state != "valid",
+            "diag.reference.authority": (
+                reference_quality.qualification_state != "qualified"
+            ),
+            "diag.aperture.unqualified": True,
+            "diag.sequence.discontinuity": any(
+                "sequence" in reason for reason in observation_reasons
+            ),
+            "diag.interpolation.support": any(
+                "pps" in reason and ("support" in reason or "before_or_after" in reason)
+                for reason in boundary_reasons
+            ),
+            "diag.count.window": count_validity == "invalid",
+            "diag.resource.failure": diagnostic_health == "fault",
+            "diag.plant.inapplicable": model_state != "applicable",
+            "diag.output.loss": any(
+                "drop" in reason for reason in diagnostic_reasons
+            ),
+            "diag.estimator.identity": (
+                "plant_model_estimator_method_mismatch" in model_reasons
+            ),
+        }
+        diagnostic_evidence = (
+            f"{reference_range};"
+            f"{sources.count_ref}:CNT:{latest_count.seq if latest_count is not None else 'unavailable'};"
+            f"{status_ref}"
+        )
+        for diagnostic_id, active in diagnostic_conditions.items():
+            transition_row = diagnostic_engine.observe(
+                diagnostic_id,
+                active=active,
+                ticks=ticks,
+                time_domain=domain,
+                evidence_refs=diagnostic_evidence,
+                evidence_token=f"{index}:{diagnostic_id}:{active}",
+            )
+            if transition_row is not None:
+                diagnostic_rows.append(transition_row)
         full_reasons = list(eligibility_reasons)
         full_reasons.extend(model_reasons)
         full_eligible = estimator_eligible and model_state == "applicable" and current_dac is not None
@@ -1170,7 +1427,11 @@ def replay_phase4(
             }
         )
 
-    estimates_bytes = _csv_bytes(ESTIMATE_V1_FIELDS, estimate_rows)
+    estimates_bytes = _csv_bytes(ESTIMATE_V2_FIELDS, estimate_rows)
+    reference_observations_bytes = _csv_bytes(
+        REFERENCE_OBSERVATION_V1_FIELDS, reference_observation_rows
+    )
+    diagnostics_bytes = _csv_bytes(DIAGNOSTICS_V1_FIELDS, diagnostic_rows)
     previews_bytes = _csv_bytes(CONTROL_PREVIEW_V1_FIELDS, preview_rows)
 
     output_dir = root / OUTPUT_SUBDIRECTORY
@@ -1180,13 +1441,19 @@ def replay_phase4(
             raise ValueError(f"refusing derived output through symlink: {candidate}")
     output_dir.mkdir(parents=True, exist_ok=True)
     estimates_path = output_dir / ESTIMATES_FILENAME
+    reference_observations_path = output_dir / REFERENCE_OBSERVATIONS_FILENAME
+    diagnostics_path = output_dir / DIAGNOSTICS_FILENAME
     previews_path = output_dir / PREVIEWS_FILENAME
     report_path = output_dir / REPORT_FILENAME
 
     _write_managed_output(estimates_path, estimates_bytes)
+    _write_managed_output(reference_observations_path, reference_observations_bytes)
+    _write_managed_output(diagnostics_path, diagnostics_bytes)
     _write_managed_output(previews_path, previews_bytes)
     for path, contract in (
-        (estimates_path, "estimates_v1"),
+        (estimates_path, "estimates_v2"),
+        (reference_observations_path, "reference_observations_v1"),
+        (diagnostics_path, "diagnostics_v1"),
         (previews_path, "control_previews_v1"),
     ):
         validation = validate_csv(
@@ -1218,6 +1485,15 @@ def replay_phase4(
         for reason in row["decision_reason_code"].split(";")
         if reason
     )
+    reference_qualification_counts = Counter(
+        row["qualification_state"] for row in reference_observation_rows
+    )
+    diagnostic_transition_counts = Counter(
+        row["transition"] for row in diagnostic_rows
+    )
+    diagnostic_reason_counts = Counter(
+        row["reason_code"] for row in diagnostic_rows
+    )
     report = {
         "schema_version": 1,
         "record_type": "PHASE4_REPLAY_REPORT",
@@ -1237,6 +1513,21 @@ def replay_phase4(
             "record_count": len(estimate_rows),
             "eligibility_reason_counts": dict(sorted(estimate_reason_counts.items())),
         },
+        "uncertainty": {
+            "model_ref": UNCERTAINTY_MODEL_REF,
+            "available_record_count": sum(
+                row["uncertainty_status"] == "available"
+                for row in estimate_rows
+            ),
+            "incomplete_record_count": sum(
+                row["uncertainty_status"] == "incomplete"
+                for row in estimate_rows
+            ),
+            "unavailable_record_count": sum(
+                row["uncertainty_status"] == "unavailable"
+                for row in estimate_rows
+            ),
+        },
         "policy": {
             "version": POLICY_VERSION,
             "record_count": len(preview_rows),
@@ -1245,6 +1536,21 @@ def replay_phase4(
             ),
             "actionable_count": sum(row["actionable"] == "true" for row in preview_rows),
             "decision_reason_counts": dict(sorted(decision_reason_counts.items())),
+        },
+        "reference_quality": {
+            "algorithm_version": REFERENCE_QUALITY_ALGORITHM_VERSION,
+            "configuration_hash": reference_quality_config.config_hash,
+            "record_count": len(reference_observation_rows),
+            "qualification_state_counts": dict(
+                sorted(reference_qualification_counts.items())
+            ),
+        },
+        "diagnostics": {
+            "algorithm_version": DIAGNOSTIC_ALGORITHM_VERSION,
+            "configuration_hash": DEFAULT_DIAGNOSTIC_CONFIG_HASH,
+            "record_count": len(diagnostic_rows),
+            "transition_counts": dict(sorted(diagnostic_transition_counts.items())),
+            "reason_counts": dict(sorted(diagnostic_reason_counts.items())),
         },
         "state_transitions": [
             {
@@ -1269,6 +1575,8 @@ def replay_phase4(
         },
         "derived_products": {
             ESTIMATES_FILENAME: _sha256_bytes(estimates_bytes),
+            REFERENCE_OBSERVATIONS_FILENAME: _sha256_bytes(reference_observations_bytes),
+            DIAGNOSTICS_FILENAME: _sha256_bytes(diagnostics_bytes),
             PREVIEWS_FILENAME: _sha256_bytes(previews_bytes),
         },
     }
@@ -1282,6 +1590,8 @@ def replay_phase4(
     return ReplayResult(
         output_dir=output_dir,
         estimates_path=estimates_path,
+        reference_observations_path=reference_observations_path,
+        diagnostics_path=diagnostics_path,
         previews_path=previews_path,
         report_path=report_path,
         estimate_count=len(estimate_rows),

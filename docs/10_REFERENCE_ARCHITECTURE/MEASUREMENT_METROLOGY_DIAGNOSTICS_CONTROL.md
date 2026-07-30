@@ -158,7 +158,8 @@ than creating competing meanings.
 
 The first normative host replay products are:
 
-- `data_contracts/estimates_v1.csv.md` for `EST` metrology snapshots;
+- `data_contracts/estimates_v2.csv.md` for current `EST` metrology snapshots
+  (`estimates_v1` remains a historical compatibility contract);
 - `data_contracts/control_previews_v1.csv.md` for observe-only `CTL` decisions.
 
 `EST` keeps raw-observation validity, diagnostic health, estimator confidence,

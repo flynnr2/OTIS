@@ -11,38 +11,41 @@ SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[4]
 
 
+PYTHON = sys.executable
+
+
 COMMANDS: tuple[tuple[str, ...], ...] = (
-    ("python3", "-m", "pytest"),
-    ("python3", "tools/firmware_matrix.py"),
+    (PYTHON, "-m", "pytest"),
+    (PYTHON, "tools/firmware_matrix.py"),
     (
-        "python3",
+        PYTHON,
         "tools/otis_wire_validate.py",
         "firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt",
         "--profile",
         "synthetic",
     ),
     (
-        "python3",
+        PYTHON,
         "tools/otis_wire_validate.py",
         "firmware/arduino/validation/golden/gpio_loopback_sw1_excerpt.txt",
         "--profile",
         "gpio_loopback",
     ),
     (
-        "python3",
+        PYTHON,
         "tools/otis_wire_validate.py",
         "firmware/arduino/validation/golden/gpin0_observe_sw1_excerpt.txt",
         "--profile",
         "gpin0_observe",
     ),
     (
-        "python3",
+        PYTHON,
         "-m",
         "host.otis_tools.validate_run",
         "examples/h0_pps_tcxo_synthetic",
     ),
     (
-        "python3",
+        PYTHON,
         "-m",
         "host.otis_tools.report_run",
         "examples/h0_pps_tcxo_synthetic",

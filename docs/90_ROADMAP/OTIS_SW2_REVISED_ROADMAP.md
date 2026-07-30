@@ -706,12 +706,12 @@ deterministic replay without hardware actuation.
 
 ### Status
 
-Passed for host-only Phase 4 replay. The normative `EST v1` and observe-only
-`CTL v1` contracts, strict host validation, deterministic canonical-record
+Passed for host-only Phase 4 replay. The normative `EST v2`, `RFO v1`, `DIAG
+v1`, and observe-only `CTL v1` contracts, strict host validation, deterministic canonical-record
 adapter, boundary-interpolated frequency estimator, roadmap-aligned preview
 state machine, model-v4 method-contract applicability policy, bounded correction preview, replay CLI, and
 fault/repeatability fixtures are implemented. Derived products are confined to
-the supplied run's `derived/phase4_replay_v2/` directory and source evidence is
+the supplied run's `derived/phase4_replay_v3/` directory and source evidence is
 content-hashed before and after.
 
 This status includes native host/firmware estimator parity but does not claim
@@ -768,8 +768,9 @@ The host can reproduce every decision deterministically from raw records, the pl
 Implementation and deterministic parity are complete; the live exit gate is
 still open. The opt-in firmware build now runs the bounded mean estimator,
 eligibility gates, roadmap state subset, model-v3 applicability checks, and
-correction preview while exposing no DAC-write callback. Normative live
-`EST v1`/`CTL v1` rows pass strict host validation, and the exact C++ engine
+correction preview while exposing no DAC-write callback. Normative live `EST
+v2`/`RFO v1`/`DIAG v1`/`CTL v1` rows pass strict host validation, and the
+exact C++ engine
 matches host replay across startup, reference loss/return, count fault, model
 mismatch/out-of-range, and clamp fixtures.
 
@@ -1206,7 +1207,7 @@ focused fixtures are present. DAC output is unchanged.
 
 Completed: frequency estimation and distinct validity, diagnostic, confidence,
 and eligibility gates consume existing canonical records. Output is confined to
-a run's `derived/phase4_replay_v2/` directory and raw/source hashes are checked
+a run's `derived/phase4_replay_v3/` directory and raw/source hashes are checked
 unchanged.
 
 ### Package 6 — Host preview controller

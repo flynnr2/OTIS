@@ -349,7 +349,7 @@ def test_historical_outputs_and_model_are_not_reinterpreted(
         }
     )
     result = replay_phase4(run, plant_model_path=MODEL, config=config)
-    assert result.output_dir.name == "phase4_replay_v2"
+    assert result.output_dir.name == "phase4_replay_v3"
     assert historical.read_bytes() == historical_bytes
     assert _read_rows(result.estimates_path)[0]["estimator_version"] == (
         "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1"

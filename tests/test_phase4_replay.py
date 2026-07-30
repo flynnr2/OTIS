@@ -9,6 +9,7 @@ import json
 import pytest
 
 from host.otis_tools.contracts import CsvValidationContext, validate_csv
+from host.otis_tools.diagnostics import DEFAULT_DIAGNOSTIC_CONFIG_HASH
 from host.otis_tools.phase4_replay import ReplayConfig, main, replay_phase4
 
 
@@ -140,6 +141,8 @@ def _make_run(
         [
             ["STS", 1, 1, 0, "fixture_ticks", "reference", "reference_valid_for_control", "true", "INFO", 0],
             ["STS", 1, 2, 1, "fixture_ticks", "count", "count_valid_for_control", "true", "INFO", 0],
+            ["STS", 1, 3, 1, "fixture_ticks", "reference_receiver", "authority_state", "qualified", "INFO", 0],
+            ["STS", 1, 4, 1, "fixture_ticks", "reference_receiver", "utc_traceability_state", "valid", "INFO", 0],
         ],
     )
     _write_csv(
@@ -256,22 +259,40 @@ def test_replay_cli_uses_explicit_model_and_configuration(
 def test_nominal_replay_is_strict_deterministic_and_preserves_sources(tmp_path: Path) -> None:
     run_dir = _make_run(tmp_path)
     before = _source_hashes(run_dir)
+    raw_reference_before = (
+        run_dir / "csv" / "raw_events.csv"
+    ).read_bytes()
     result = replay_phase4(run_dir, plant_model_path=MODEL, config=_config())
     first_bytes = {
         path.name: path.read_bytes()
-        for path in (result.estimates_path, result.previews_path, result.report_path)
+        for path in (
+            result.estimates_path,
+            result.reference_observations_path,
+            result.diagnostics_path,
+            result.previews_path,
+            result.report_path,
+        )
     }
     repeated = replay_phase4(run_dir, plant_model_path=MODEL, config=_config())
 
     assert before == _source_hashes(run_dir)
+    assert (
+        run_dir / "csv" / "raw_events.csv"
+    ).read_bytes() == raw_reference_before
     assert first_bytes == {
         path.name: path.read_bytes()
-        for path in (repeated.estimates_path, repeated.previews_path, repeated.report_path)
+        for path in (
+            repeated.estimates_path,
+            repeated.reference_observations_path,
+            repeated.diagnostics_path,
+            repeated.previews_path,
+            repeated.report_path,
+        )
     }
 
     estimate_validation = validate_csv(
         result.estimates_path,
-        CsvValidationContext("estimates_v1", frozenset(), frozenset({"fixture_ticks"})),
+        CsvValidationContext("estimates_v2", frozenset(), frozenset({"fixture_ticks"})),
     )
     preview_validation = validate_csv(
         result.previews_path,
@@ -281,7 +302,12 @@ def test_nominal_replay_is_strict_deterministic_and_preserves_sources(tmp_path: 
     assert preview_validation.errors == ()
 
     estimates = _rows(result.estimates_path)
+    diagnostics = _rows(result.diagnostics_path)
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
     previews = _rows(result.previews_path)
+    assert "frequency_uncertainty_hz" not in estimates[-1]
+    assert estimates[-1]["uncertainty_status"] == "incomplete"
+    assert estimates[-1]["combined_standard_uncertainty_hz"] == ""
     assert estimates[-1]["preview_eligibility"] == "true"
     assert previews[-1]["preview_available"] == "true"
     assert previews[-1]["preview_only"] == "true"
@@ -291,6 +317,136 @@ def test_nominal_replay_is_strict_deterministic_and_preserves_sources(tmp_path: 
     assert previews[-1]["plant_model_version"] == "4"
     assert previews[-1]["policy_version"]
     assert previews[-1]["config_hash"] == estimates[-1]["config_hash"]
+    assert diagnostics
+    assert {
+        row["config_hash"] for row in diagnostics
+    } == {DEFAULT_DIAGNOSTIC_CONFIG_HASH}
+    assert all(
+        "phase4_replay" not in row["config_hash"] for row in diagnostics
+    )
+    assert all(
+        ":REF:" in row["first_evidence_refs"]
+        or "unavailable:" in row["first_evidence_refs"]
+        for row in diagnostics
+    )
+    assert any(
+        row["diagnostic_id"] == "diag.aperture.unqualified"
+        for row in diagnostics
+    )
+    assert (
+        report["diagnostics"]["configuration_hash"]
+        == DEFAULT_DIAGNOSTIC_CONFIG_HASH
+    )
+    assert report["uncertainty"]["available_record_count"] == 0
+
+
+def test_reference_receiver_identity_change_creates_a_new_replay_epoch(
+    tmp_path: Path,
+) -> None:
+    run_dir = _make_run(tmp_path)
+    _write_csv(
+        run_dir / "csv" / "health.csv",
+        [
+            "record_type",
+            "schema_version",
+            "status_seq",
+            "timestamp_ticks",
+            "status_domain",
+            "component",
+            "status_key",
+            "status_value",
+            "severity",
+            "flags",
+        ],
+        [
+            ["STS", 1, 1, 0, "fixture_ticks", "reference_receiver",
+             "authority_state", "qualified", "INFO", 0],
+            ["STS", 1, 2, 0, "fixture_ticks", "reference_receiver",
+             "utc_traceability_state", "valid", "INFO", 0],
+            ["STS", 1, 3, 0, "fixture_ticks", "reference_receiver",
+             "identity", "module-A", "INFO", 0],
+            ["STS", 1, 4, 0, "fixture_ticks", "reference_receiver",
+             "firmware", "1.0", "INFO", 0],
+            ["STS", 1, 5, 4 * TICK_HZ, "fixture_ticks",
+             "reference_receiver", "identity", "module-B", "INFO", 0],
+            ["STS", 1, 6, 4 * TICK_HZ, "fixture_ticks",
+             "reference_receiver", "firmware", "2.0", "INFO", 0],
+        ],
+    )
+    result = replay_phase4(run_dir, plant_model_path=MODEL, config=_config())
+    rows = _rows(result.reference_observations_path)
+    module_a = next(row for row in rows if row["receiver_identity"] == "module-A")
+    module_b = next(row for row in rows if row["receiver_identity"] == "module-B")
+    assert module_a["source_identity_epoch"] == "reference_source_epoch:1"
+    assert module_b["source_identity_epoch"] == "reference_source_epoch:2"
+    assert module_a["source_identity_epoch"] != module_b["source_identity_epoch"]
+
+
+def test_nominal_cadence_without_receiver_metadata_inhibits_eligibility(
+    tmp_path: Path,
+) -> None:
+    run_dir = _make_run(tmp_path)
+    _write_csv(
+        run_dir / "csv" / "health.csv",
+        [
+            "record_type",
+            "schema_version",
+            "status_seq",
+            "timestamp_ticks",
+            "status_domain",
+            "component",
+            "status_key",
+            "status_value",
+            "severity",
+            "flags",
+        ],
+        [
+            ["STS", 1, 1, 0, "fixture_ticks", "reference",
+             "reference_valid_for_control", "true", "INFO", 0],
+            ["STS", 1, 2, 1, "fixture_ticks", "count",
+             "count_valid_for_control", "true", "INFO", 0],
+        ],
+    )
+    result = replay_phase4(
+        run_dir, plant_model_path=MODEL, config=_config()
+    )
+    references = _rows(result.reference_observations_path)
+    estimates = _rows(result.estimates_path)
+    assert any(row["cadence_state"] == "valid" for row in references)
+    assert all(row["qualification_state"] != "qualified" for row in references)
+    assert all(row["preview_eligibility"] == "false" for row in estimates)
+    assert all(
+        "reference_authority_unqualified" in row["eligibility_reason_codes"]
+        for row in estimates
+    )
+
+
+def test_replay_output_loss_and_resource_failure_raise_then_clear(
+    tmp_path: Path,
+) -> None:
+    run_dir = _make_run(tmp_path)
+    health = run_dir / "csv" / "health.csv"
+    with health.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(
+            ["STS", 1, 5, 2 * TICK_HZ, "fixture_ticks", "capture",
+             "drop_count", "1", "ERROR", 0]
+        )
+        writer.writerow(
+            ["STS", 1, 6, 3 * TICK_HZ, "fixture_ticks", "capture",
+             "drop_count", "0", "INFO", 0]
+        )
+    result = replay_phase4(
+        run_dir, plant_model_path=MODEL, config=_config()
+    )
+    diagnostics = _rows(result.diagnostics_path)
+    for diagnostic_id in ("diag.output.loss", "diag.resource.failure"):
+        transitions = [
+            row["transition"]
+            for row in diagnostics
+            if row["diagnostic_id"] == diagnostic_id
+        ]
+        assert transitions == ["raised", "cleared"]
 
 
 def test_replay_refuses_to_replace_a_different_existing_derived_product(tmp_path: Path) -> None:
@@ -477,10 +633,12 @@ def test_replay_unwraps_rp2040_reference_and_count_gate_rollover(tmp_path: Path)
             "severity",
             "flags",
         ],
-        [
-            ["STS", 1, 1, 0, "rp2040_timer0", "reference", "reference_valid_for_control", "true", "INFO", 0],
-            ["STS", 1, 2, 1, "rp2040_timer0", "count", "count_valid_for_control", "true", "INFO", 0],
-        ],
+            [
+                ["STS", 1, 1, wrap - 32_000_000, "rp2040_timer0", "reference", "reference_valid_for_control", "true", "INFO", 0],
+                ["STS", 1, 2, wrap - 32_000_000, "rp2040_timer0", "count", "count_valid_for_control", "true", "INFO", 0],
+                ["STS", 1, 3, wrap - 32_000_000, "rp2040_timer0", "reference_receiver", "authority_state", "qualified", "INFO", 0],
+                ["STS", 1, 4, wrap - 32_000_000, "rp2040_timer0", "reference_receiver", "utc_traceability_state", "valid", "INFO", 0],
+            ],
     )
     result = replay_phase4(run_dir, plant_model_path=MODEL, config=_config())
     estimates = _rows(result.estimates_path)

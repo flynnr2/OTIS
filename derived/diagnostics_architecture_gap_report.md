@@ -1,5 +1,13 @@
 # Diagnostics Architecture Gap Report
 
+> Historical planning inventory. The software gaps identified here were closed
+> on 30 July 2026 by the normative `diagnostics_v1` contract, deterministic
+> host and fixed-capacity firmware reducers, canonical rule-table hashing,
+> exact episode evidence ranges, reference/estimate/control effects, and sealed
+> native/host parity fixtures. The remaining work is physical bench evidence,
+> not a missing diagnostic software architecture. The draft-v0 discussion and
+> term counts below are retained as the design record.
+
 ## Scope
 
 This report inventories current repository terminology and identifies the

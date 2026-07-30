@@ -13,6 +13,10 @@ RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 HEALTH_CSV = "health.csv"
 ENVIRONMENT_CSV = "environment.csv"
+REFERENCE_OBSERVATIONS_CSV = "reference_observations_v1.csv"
+DIAGNOSTICS_CSV = "diagnostics_v1.csv"
+ESTIMATES_CSV = "estimates_v2.csv"
+CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,26 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
+        {
+            "path": f"{CSV_DIR}/{REFERENCE_OBSERVATIONS_CSV}",
+            "contract": "reference_observations_v1",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{DIAGNOSTICS_CSV}",
+            "contract": "diagnostics_v1",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{ESTIMATES_CSV}",
+            "contract": "estimates_v2",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{CONTROL_PREVIEWS_CSV}",
+            "contract": "control_previews_v1",
+            "optional": True,
+        },
     ]
 
 

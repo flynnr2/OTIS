@@ -20,6 +20,10 @@ RECORD_CONTRACTS = {
     "STS": "health_v1",
     "DAC": "dac_steps_v1",
     "ENV": "environment_v1",
+    "RFO": "reference_observations_v1",
+    "DIAG": "diagnostics_v1",
+    "EST": "estimates_v2",
+    "CTL": "control_previews_v1",
 }
 
 

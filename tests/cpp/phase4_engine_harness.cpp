@@ -47,7 +47,7 @@ int main() {
   while (std::getline(std::cin, line)) {
     if (line.empty()) continue;
     std::vector<std::string> f = split(line);
-    if (f.size() != 24u || f[0] != "OBS") return 4;
+    if (f.size() != 25u || f[0] != "OBS") return 4;
     OtisPhase4Observation observation = {};
     observation.timestamp_ticks = std::stoull(f[1]);
     observation.elapsed_s = std::stod(f[2]);
@@ -75,6 +75,7 @@ int main() {
     observation.model.dac_available = boolean(f[22]);
     observation.model.current_dac_code =
         (uint16_t)std::stoul(f[23]);
+    observation.reference_authority_qualified = boolean(f[24]);
     observation.model.candidate_min_code = 0xA800u;
     observation.model.candidate_max_code = 0xAB00u;
     observation.model.maximum_preview_step_codes = 0x0300u;

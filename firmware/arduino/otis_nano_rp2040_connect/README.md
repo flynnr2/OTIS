@@ -444,16 +444,18 @@ The minimum live Phase 4 estimator and preview state machine is an opt-in build:
 #define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 1
 ```
 
-It emits normative `EST v1` and `CTL v1` rows derived from canonical live
-`REF`, `CNT`, diagnostic, and evidence-backed DAC state. It is preview-only:
+It emits normative `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` rows derived
+from canonical live `REF`, `CNT`, diagnostic, and evidence-backed DAC state. It
+is preview-only:
 `actuation_authorized=false` and `actionable=false` are compile/runtime
 invariants. The preview module has no DAC-driver dependency or write callback;
 manual DAC and explicitly started sweep commands remain separately owned by the
 H1 open-loop command path.
 
-`EST`/`CTL` rows are queued as fixed-capacity pairs and serviced only after
-capture. Queue drops are visible through `phase4_preview` status keys and do
-not feed back into the estimator. A fixed 384-point support array implements
+The complete derived frame is queued in a fixed-capacity ring and serviced only
+after capture. Queue drops are visible through `phase4_preview` status keys,
+diagnosed after recovery, and do not feed back into the estimator. A fixed
+384-point support array implements
 `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`; non-aligned count closes wait in one
 bounded pending slot for their following PPS bracket. No extrapolation or
 dynamic allocation is used. Model-version-4 identity, method-contract hash,
