@@ -5,7 +5,11 @@
 // smoke firmware. Protocol constants and board pin contracts live elsewhere.
 
 #if defined(ARDUINO)
+#if __has_include("otis_build_profile.generated.h")
 #include "otis_build_profile.generated.h"
+#else
+#error "Generate an Arduino profile first: python3 tools/firmware_matrix.py --prepare-ide --profile <profile_id>"
+#endif
 #endif
 
 // SW1 bring-up modes.
@@ -25,13 +29,14 @@
 #define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 0
 #endif
 
-// Firmware provenance is supplied only by the pinned matrix builder. A
-// hand-maintained source literal is not evidence of the tree or toolchain that
-// produced a binary. Host-only C++ harnesses do not produce firmware and use a
-// conspicuous non-firmware profile token so they can exercise shared logic.
+// Firmware provenance is supplied by the pinned matrix builder or its explicit
+// Arduino IDE profile generator. A hand-maintained source literal is not
+// evidence of the tree or toolchain that produced a binary. Host-only C++
+// harnesses do not produce firmware and use a conspicuous non-firmware profile
+// token so they can exercise shared logic.
 #if defined(ARDUINO)
 #ifndef OTIS_BUILD_PROFILE_GENERATED
-#error "Build OTIS firmware with tools/firmware_matrix.py; generated provenance is required."
+#error "Build with tools/firmware_matrix.py or generate an IDE profile with --prepare-ide; generated provenance is required."
 #endif
 
 #ifndef OTIS_BUILD_PROVENANCE_FORMAT

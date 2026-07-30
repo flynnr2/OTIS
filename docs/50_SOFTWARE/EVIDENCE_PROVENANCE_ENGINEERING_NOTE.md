@@ -28,6 +28,14 @@ one-use header and the compiler flag, so an accidentally retained complete
 header cannot authorize an ordinary raw compile. The firmware has no fallback
 commit, board, or configuration literal.
 
+For interactive bench bring-up, the same tool can materialize one supported
+profile beside the source sketch with `--prepare-ide --profile <profile_id>`.
+That ignored header allows normal Arduino IDE compilation and records the
+validated source/profile/environment identity at generation time. It is not a
+qualification artifact: the IDE path does not emit
+`firmware_build_manifest.json`, bind a one-use compiler session flag, or run
+the builder's post-compile source/toolchain and artifact-hash checks.
+
 Multi-session captures require the same preservation rule. A reset or reconnect
 may define a later authoritative session, but the original raw capture remains
 immutable. Any session-scoped derived product must identify the source run,
