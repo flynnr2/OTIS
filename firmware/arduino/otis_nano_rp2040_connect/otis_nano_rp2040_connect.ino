@@ -1,7 +1,5 @@
 #include <Arduino.h>
-#include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "otis_config.h"
@@ -24,6 +22,7 @@
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
+#include "otis_serial_command.h"
 #include "otis_status_emit.h"
 #include "otis_status_led.h"
 #include "otis_timebase.h"
@@ -59,8 +58,7 @@ constexpr uint32_t kFc0ControlReadyCleanWindows =
 
 OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
-char serial_command_line[64];
-uint8_t serial_command_len = 0;
+OtisSerialFrameCollector serial_command_collector;
 bool resource_ownership_status_emitted = false;
 
 void enter_boot_phase(BootPhase next_phase) {
@@ -1517,44 +1515,6 @@ void service_tcxo_gate(void) {
 #endif
 }
 
-char *trim_command(char *s) {
-  while (*s != '\0' && isspace((unsigned char)*s)) {
-    s++;
-  }
-  char *end = s + strlen(s);
-  while (end > s && isspace((unsigned char)*(end - 1))) {
-    --end;
-    *end = '\0';
-  }
-  return s;
-}
-
-bool parse_u16_code(const char *text, uint16_t *out) {
-  if (text == nullptr || out == nullptr || *text == '\0') {
-    return false;
-  }
-  char *end = nullptr;
-  unsigned long parsed = strtoul(text, &end, 0);
-  if (end == text || *trim_command(end) != '\0' || parsed > 0xFFFFul) {
-    return false;
-  }
-  *out = (uint16_t)parsed;
-  return true;
-}
-
-bool parse_u32_value(const char *text, uint32_t *out) {
-  if (text == nullptr || out == nullptr || *text == '\0') {
-    return false;
-  }
-  char *end = nullptr;
-  unsigned long parsed = strtoul(text, &end, 0);
-  if (end == text || *trim_command(end) != '\0') {
-    return false;
-  }
-  *out = (uint32_t)parsed;
-  return true;
-}
-
 void emit_fc0_status(void) {
   emit_status("fc0", "valid",
               runtime_state.tcxo.last_observation_valid ? "true" : "false",
@@ -1697,44 +1657,23 @@ void handle_dac_set(uint16_t requested_code) {
 }
 
 #if OTIS_ENABLE_H1_DAC_SWEEP
-void handle_sweep_add(char *args) {
-  char *code_text = trim_command(args);
-  char *space = code_text;
-  while (*space != '\0' && !isspace((unsigned char)*space)) {
-    ++space;
-  }
-  if (*space == '\0') {
+void handle_sweep_add(const OtisParsedSerialCommand &command) {
+  if (!command.arguments_valid) {
     emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
     return;
   }
-  *space = '\0';
-  char *dwell_text = trim_command(space + 1);
-
-  uint16_t code = 0;
-  uint32_t dwell_ms = 0;
-  if (!parse_u16_code(code_text, &code) ||
-      !parse_u32_value(dwell_text, &dwell_ms) || dwell_ms == 0u) {
-    emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
-                OTIS_FLAG_NONE);
-    return;
-  }
-  h1_dac_sweep_add_step(code, dwell_ms);
+  h1_dac_sweep_add_step(command.code, command.dwell_ms);
 }
 #endif
 
-void handle_serial_command(char *line) {
+void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-  char *command = trim_command(line);
-  for (char *p = command; *p != '\0'; ++p) {
-    *p = (char)toupper((unsigned char)*p);
-  }
-
-  if (strcmp(command, "HELP") == 0) {
+  if (command.kind == OtisSerialCommandKind::Help) {
     emit_status("command", "h1_help",
                 "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  } else if (strcmp(command, "CONFIG?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
@@ -1801,56 +1740,62 @@ void handle_serial_command(char *line) {
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("command", "config_snapshot", "end",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  } else if (strcmp(command, "DAC?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacQuery) {
     emit_dac_status("dac");
-  } else if (strcmp(command, "DAC LIMITS?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacLimitsQuery) {
     emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  } else if (strcmp(command, "DAC MID") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacMid) {
     uint16_t mid = (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
                               (uint32_t)OTIS_DAC_MAX_CODE) /
                              2u);
     handle_dac_set(mid);
-  } else if (strcmp(command, "DAC ZERO") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacZero) {
     handle_dac_set((uint16_t)OTIS_DAC_MIN_CODE);
-  } else if (strncmp(command, "DAC SET ", 8) == 0) {
-    uint16_t requested_code = 0;
-    if (parse_u16_code(command + 8, &requested_code)) {
-      handle_dac_set(requested_code);
+  } else if (command.kind == OtisSerialCommandKind::DacSet) {
+    if (command.arguments_valid) {
+      handle_dac_set(command.code);
     } else {
       emit_status("dac", "set", "rejected_parse_error", OTIS_SEVERITY_WARN,
                   OTIS_FLAG_NONE);
     }
-  } else if (strcmp(command, "FC0?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::Fc0Query) {
     emit_fc0_status();
 #if OTIS_ENABLE_H1_DAC_SWEEP
-  } else if (strcmp(command, "SWEEP?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepQuery) {
     emit_sweep_status();
-  } else if (strncmp(command, "SWEEP LOAD ", 11) == 0) {
-    h1_dac_sweep_load_profile(trim_command(command + 11));
-  } else if (strcmp(command, "SWEEP START") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepLoad) {
+    h1_dac_sweep_load_profile(command.text_argument);
+  } else if (command.kind == OtisSerialCommandKind::SweepStart) {
     h1_dac_sweep_start();
-  } else if (strcmp(command, "SWEEP STOP") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepStop) {
     h1_dac_sweep_stop("stop");
-  } else if (strcmp(command, "SWEEP STEP") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepStep) {
     h1_dac_sweep_manual_step();
-  } else if (strcmp(command, "SWEEP CLEAR") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepClear) {
     h1_dac_sweep_clear();
-  } else if (strncmp(command, "SWEEP ADD ", 10) == 0) {
-    handle_sweep_add(command + 10);
+  } else if (command.kind == OtisSerialCommandKind::SweepAdd) {
+    handle_sweep_add(command);
 #else
-  } else if (strncmp(command, "SWEEP", 5) == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepQuery ||
+             command.kind == OtisSerialCommandKind::SweepLoad ||
+             command.kind == OtisSerialCommandKind::SweepStart ||
+             command.kind == OtisSerialCommandKind::SweepStop ||
+             command.kind == OtisSerialCommandKind::SweepStep ||
+             command.kind == OtisSerialCommandKind::SweepClear ||
+             command.kind == OtisSerialCommandKind::SweepAdd ||
+             command.kind == OtisSerialCommandKind::SweepOther) {
     emit_status("sweep", "command", "rejected_disabled", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
-  } else if (*command != '\0') {
-    emit_status("command", "unknown", command, OTIS_SEVERITY_WARN,
+  } else if (command.kind != OtisSerialCommandKind::Empty) {
+    emit_status("command", "unknown", "rejected_unknown", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
   }
 #else
-  (void)line;
+  (void)command;
 #endif
 }
 
@@ -1858,21 +1803,30 @@ void service_serial_commands(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   uint8_t byte_budget = 32u;
   while (Serial.available() > 0 && byte_budget-- > 0u) {
-    char c = (char)Serial.read();
-    if (c == '\r' || c == '\n') {
-      if (serial_command_len > 0u) {
-        serial_command_line[serial_command_len] = '\0';
-        handle_serial_command(serial_command_line);
-        serial_command_len = 0u;
-        return;
-      }
-    } else if (serial_command_len < sizeof(serial_command_line) - 1u) {
-      serial_command_line[serial_command_len++] = c;
-    } else {
-      serial_command_len = 0u;
+    OtisSerialFrameEvent event = otis_serial_frame_collect(
+        &serial_command_collector, (char)Serial.read());
+    if (event == OtisSerialFrameEvent::RejectedTooLong) {
       emit_status("command", "line", "rejected_too_long", OTIS_SEVERITY_WARN,
                   OTIS_FLAG_NONE);
+      return;
     }
+    if (event != OtisSerialFrameEvent::Complete) {
+      continue;
+    }
+
+    if (otis_serial_frame_validate(&serial_command_collector) !=
+        OtisSerialFrameValidation::Valid) {
+      otis_serial_frame_collector_init(&serial_command_collector);
+      emit_status("command", "line", "rejected_invalid_character",
+                  OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
+      return;
+    }
+
+    OtisParsedSerialCommand command =
+        otis_serial_command_parse(serial_command_collector.line);
+    execute_serial_command(command);
+    otis_serial_frame_collector_init(&serial_command_collector);
+    return;
   }
 #endif
 }
@@ -1881,6 +1835,7 @@ void service_serial_commands(void) {
 
 void setup() {
   otis_runtime_state_init(&runtime_state);
+  otis_serial_frame_collector_init(&serial_command_collector);
   otis_status_emit_init(&status_emit_context,
                         &runtime_state.sequences.status_seq);
   boot_phase_reset_entry();

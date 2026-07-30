@@ -172,6 +172,28 @@ H1 DAC support is compile-time gated:
 #define OTIS_ENABLE_DAC_AD5693R 1
 ```
 
+### Serial command framing and CSV text policy
+
+The command service treats CR, LF, and CRLF as physical-line delimiters. A
+command may contain at most 63 bytes before its delimiter. Once a 64th byte is
+observed, the complete physical line is discarded through its CR or LF; no
+prefix or suffix is parsed or executed. The service emits one bounded
+`command,line,rejected_too_long` status when that delimiter arrives, then
+accepts the next physical line. Empty delimiters, including the LF half of
+CRLF, do not produce a command or diagnostic.
+
+Collection, printable-ASCII/tab frame validation, command parsing, and command
+execution are separate steps. Invalid frames and unknown commands emit fixed
+symbolic reason codes; rejected command text is never copied into status
+records.
+
+Firmware CSV remains one physical record per line and does not use quoted
+multiline fields. Every textual field is emitted with reversible `%HH`
+encoding for `%`, comma, double quote, CR, and LF (for example, comma becomes
+`%2C`). Consequently external text cannot introduce an unquoted field or
+record boundary. Existing symbolic firmware values contain none of these bytes
+and therefore retain their wire representation.
+
 The firmware uses a minimal direct I2C write path for AD5693R rather than adding
 an Arduino library dependency. The default I2C address is `0x4C`; `0x4E` is also
 accepted:

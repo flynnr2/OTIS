@@ -133,8 +133,10 @@ def test_run_020_configuration_and_profile_plan_are_queryable_before_start() -> 
     source = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
+    parser = (FIRMWARE / "otis_serial_command.cpp").read_text(encoding="utf-8")
 
-    assert 'strcmp(command, "CONFIG?") == 0' in source
+    assert 'strcmp(command, "CONFIG?") == 0' in parser
+    assert "OtisSerialCommandKind::ConfigQuery" in source
     assert '"config_id"' in source
     assert '"default_dwell_ms"' in source
     assert '"tiny_step_codes"' in source

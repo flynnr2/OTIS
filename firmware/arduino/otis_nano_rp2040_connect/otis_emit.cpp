@@ -23,6 +23,27 @@ static void otis_emit_line_end(void) {
   otis_transport_write_cstr("\r\n");
 }
 
+// Text fields are emitted without CSV quoting because the serial ingest path is
+// deliberately physical-line oriented. Reserved bytes use reversible
+// percent-encoding so a value can never introduce a field or record boundary.
+static void otis_emit_csv_text(const char *text) {
+  static const char kHex[] = "0123456789ABCDEF";
+  if (text == nullptr) {
+    return;
+  }
+  while (*text != '\0') {
+    const unsigned char byte = (unsigned char)*text++;
+    if (byte == '%' || byte == ',' || byte == '"' || byte == '\r' ||
+        byte == '\n') {
+      otis_transport_write_char('%');
+      otis_transport_write_char(kHex[(byte >> 4u) & 0x0Fu]);
+      otis_transport_write_char(kHex[byte & 0x0Fu]);
+    } else {
+      otis_transport_write_char((char)byte);
+    }
+  }
+}
+
 static void otis_print_int32(int32_t value) {
   if (value < 0) {
     otis_transport_write_char('-');
@@ -54,7 +75,7 @@ void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
                          uint32_t channel_id, const char *edge,
                          uint64_t timestamp_ticks, const char *capture_domain,
                          uint32_t flags) {
-  otis_transport_write_cstr(record_type);
+  otis_emit_csv_text(record_type);
   otis_emit_comma();
   otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
   otis_emit_comma();
@@ -62,11 +83,11 @@ void otis_emit_raw_event(const char *record_type, uint32_t event_seq,
   otis_emit_comma();
   otis_transport_write_uint32(channel_id);
   otis_emit_comma();
-  otis_transport_write_cstr(edge);
+  otis_emit_csv_text(edge);
   otis_emit_comma();
   otis_print_uint64(timestamp_ticks);
   otis_emit_comma();
-  otis_transport_write_cstr(capture_domain);
+  otis_emit_csv_text(capture_domain);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();
@@ -80,7 +101,7 @@ void otis_emit_dac_step(uint32_t seq, uint32_t elapsed_ms, int32_t step_index,
                         const char *ocxo_tune_voltage_measured_v,
                         uint32_t dwell_ms, const char *event,
                         uint32_t flags) {
-  otis_transport_write_cstr(OTIS_RECORD_DAC);
+  otis_emit_csv_text(OTIS_RECORD_DAC);
   otis_emit_comma();
   otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
   otis_emit_comma();
@@ -96,17 +117,13 @@ void otis_emit_dac_step(uint32_t seq, uint32_t elapsed_ms, int32_t step_index,
   otis_emit_comma();
   otis_transport_write_uint32(dac_code_clamped ? 1u : 0u);
   otis_emit_comma();
-  otis_transport_write_cstr(dac_voltage_measured_v != nullptr
-                                ? dac_voltage_measured_v
-                                : "");
+  otis_emit_csv_text(dac_voltage_measured_v);
   otis_emit_comma();
-  otis_transport_write_cstr(ocxo_tune_voltage_measured_v != nullptr
-                                ? ocxo_tune_voltage_measured_v
-                                : "");
+  otis_emit_csv_text(ocxo_tune_voltage_measured_v);
   otis_emit_comma();
   otis_transport_write_uint32(dwell_ms);
   otis_emit_comma();
-  otis_transport_write_cstr(event);
+  otis_emit_csv_text(event);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();
@@ -120,7 +137,7 @@ void otis_emit_count_observation(uint32_t count_seq, uint32_t channel_id,
                                  uint64_t counted_edges,
                                  const char *source_edge,
                                  const char *source_domain, uint32_t flags) {
-  otis_transport_write_cstr(OTIS_RECORD_CNT);
+  otis_emit_csv_text(OTIS_RECORD_CNT);
   otis_emit_comma();
   otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
   otis_emit_comma();
@@ -132,13 +149,13 @@ void otis_emit_count_observation(uint32_t count_seq, uint32_t channel_id,
   otis_emit_comma();
   otis_print_uint64(gate_close_ticks);
   otis_emit_comma();
-  otis_transport_write_cstr(gate_domain);
+  otis_emit_csv_text(gate_domain);
   otis_emit_comma();
   otis_print_uint64(counted_edges);
   otis_emit_comma();
-  otis_transport_write_cstr(source_edge);
+  otis_emit_csv_text(source_edge);
   otis_emit_comma();
-  otis_transport_write_cstr(source_domain);
+  otis_emit_csv_text(source_domain);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();
@@ -149,7 +166,7 @@ void otis_emit_health(uint32_t status_seq, uint64_t timestamp_ticks,
                       const char *status_domain, const char *component,
                       const char *status_key, const char *status_value,
                       const char *severity, uint32_t flags) {
-  otis_transport_write_cstr(OTIS_RECORD_STS);
+  otis_emit_csv_text(OTIS_RECORD_STS);
   otis_emit_comma();
   otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
   otis_emit_comma();
@@ -157,15 +174,15 @@ void otis_emit_health(uint32_t status_seq, uint64_t timestamp_ticks,
   otis_emit_comma();
   otis_print_uint64(timestamp_ticks);
   otis_emit_comma();
-  otis_transport_write_cstr(status_domain);
+  otis_emit_csv_text(status_domain);
   otis_emit_comma();
-  otis_transport_write_cstr(component);
+  otis_emit_csv_text(component);
   otis_emit_comma();
-  otis_transport_write_cstr(status_key);
+  otis_emit_csv_text(status_key);
   otis_emit_comma();
-  otis_transport_write_cstr(status_value);
+  otis_emit_csv_text(status_value);
   otis_emit_comma();
-  otis_transport_write_cstr(severity);
+  otis_emit_csv_text(severity);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();
@@ -180,7 +197,7 @@ void otis_emit_environment(uint32_t env_seq, uint64_t timestamp_ticks,
                            const char *relative_humidity_pct,
                            const char *pressure_pa,
                            uint32_t flags) {
-  otis_transport_write_cstr(OTIS_RECORD_ENV);
+  otis_emit_csv_text(OTIS_RECORD_ENV);
   otis_emit_comma();
   otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
   otis_emit_comma();
@@ -188,19 +205,17 @@ void otis_emit_environment(uint32_t env_seq, uint64_t timestamp_ticks,
   otis_emit_comma();
   otis_print_uint64(timestamp_ticks);
   otis_emit_comma();
-  otis_transport_write_cstr(observation_domain);
+  otis_emit_csv_text(observation_domain);
   otis_emit_comma();
-  otis_transport_write_cstr(source);
+  otis_emit_csv_text(source);
   otis_emit_comma();
-  otis_transport_write_cstr(role);
+  otis_emit_csv_text(role);
   otis_emit_comma();
-  otis_transport_write_cstr(temperature_c != nullptr ? temperature_c : "");
+  otis_emit_csv_text(temperature_c);
   otis_emit_comma();
-  otis_transport_write_cstr(relative_humidity_pct != nullptr
-                                ? relative_humidity_pct
-                                : "");
+  otis_emit_csv_text(relative_humidity_pct);
   otis_emit_comma();
-  otis_transport_write_cstr(pressure_pa != nullptr ? pressure_pa : "");
+  otis_emit_csv_text(pressure_pa);
   otis_emit_comma();
   otis_transport_write_uint32(flags);
   otis_emit_line_end();
