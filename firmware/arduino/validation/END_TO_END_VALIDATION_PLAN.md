@@ -96,8 +96,7 @@ python3 tools/firmware_matrix.py
 
 The matrix passes only when every supported profile compiles and every invalid
 tuple fails with its named diagnostic. Each supported profile writes its
-binary, generated provenance header, build log, and
-`firmware_build_provenance.json` below the ignored
+binary, build log, and artifact-hashing `firmware_build_manifest.json` below the ignored
 `build/firmware_matrix/<profile>/` directory.
 
 ## Run Directory and Capture Pattern

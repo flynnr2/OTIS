@@ -29,14 +29,20 @@ The snapshot covers:
 - every regular file below `raw/`, plus legacy root-level raw serial logs;
 - every existing file declared by the run manifest.
 
-When the declared `health_v1` evidence contains the build-generated firmware
-provenance banner, the snapshot also records the exact emitted Git commit,
+When the declared `health_v1` evidence contains the new-only
+`build,provenance_format,otis_generated_build_v1` sentinel, the snapshot also
+records the exact emitted Git commit,
 clean/dirty source state, canonical build-input source hash, configuration hash,
-profile, FQBN/board, Arduino core provider/version, compiler/toolchain, Arduino
-CLI version, and build invocation identity as `firmware_build_provenance`.
+profile, generated FQBN/board identity, Arduino core provider/version and
+installed-byte hash, compiler/toolchain and installed-byte hash, Arduino CLI
+version, and build invocation identity as `firmware_build_provenance`.
 These values are derived from the sealed device output; a detached build-side
-claim is not substituted for what the device reported. A partial provenance
-banner is rejected.
+claim is not substituted for what the device reported. A partial new banner is
+rejected. Historical identity-like rows without the sentinel remain legacy v1
+evidence and do not acquire a new provenance interpretation. A run manifest
+may require the complete banner with
+`firmware.build_provenance_required: true`; new OTIS Phase 5 candidate
+templates do so.
 
 Reports, plots, and derived products are covered only when the run manifest
 declares them. They are otherwise reproducible outputs, not primary evidence.

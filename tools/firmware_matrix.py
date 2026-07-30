@@ -6,10 +6,13 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 
@@ -17,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MATRIX = REPO_ROOT / "firmware" / "arduino" / "firmware_matrix.json"
 SKETCH = REPO_ROOT / "firmware" / "arduino" / "otis_nano_rp2040_connect"
 CONFIG_HEADER = SKETCH / "otis_config.h"
-BUILDER_VERSION = 1
+BUILDER_VERSION = 2
 PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]*$")
 DEFINE_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 DEFINE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_()+.,:+*/<>=!-]+$")
@@ -27,6 +30,20 @@ FORBIDDEN_PROFILE_DEFINES = {
     "OTIS_FIRMWARE_CONFIG_ID",
     "OTIS_FIRMWARE_GIT_COMMIT",
 }
+PROFILE_SELECTOR_NAMES = {
+    "OTIS_SW1_BRINGUP_MODE",
+    "OTIS_CAPTURE_BACKEND",
+    "OTIS_TCXO_COUNTER_BACKEND",
+    "OTIS_ENABLE_PPS_DUAL_OBSERVER",
+    "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED",
+    "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+    "OTIS_ENABLE_DAC_AD5693R",
+    "OTIS_ENABLE_H1_DAC_SWEEP",
+    "OTIS_ENABLE_ENV_SENSORS",
+}
+GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
+PROVENANCE_FORMAT = "otis_generated_build_v1"
+EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
 
 
 class MatrixError(RuntimeError):
@@ -96,11 +113,11 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
 
     required_target = {
         "fqbn",
-        "board",
         "core_provider",
         "core_architecture",
         "core_version",
         "core_archive_sha256",
+        "core_installed_sha256",
     }
     required_toolchain = {
         "packager",
@@ -108,6 +125,7 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
         "version",
         "compiler",
         "compiler_version",
+        "installed_sha256",
     }
     if required_target - set(target):
         raise MatrixError(
@@ -120,6 +138,10 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
         )
     if not HEX64_PATTERN.fullmatch(str(target["core_archive_sha256"])):
         raise MatrixError("target core_archive_sha256 must be lowercase SHA-256")
+    if not HEX64_PATTERN.fullmatch(str(target["core_installed_sha256"])):
+        raise MatrixError("target core_installed_sha256 must be lowercase SHA-256")
+    if not HEX64_PATTERN.fullmatch(str(toolchain["installed_sha256"])):
+        raise MatrixError("toolchain installed_sha256 must be lowercase SHA-256")
 
     seen: set[str] = set()
     pass_count = 0
@@ -175,6 +197,14 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 raise MatrixError(
                     f"profile {profile_id} has unsafe define value for {name}: {value!r}"
                 )
+        unknown_selectors = set(defines) - PROFILE_SELECTOR_NAMES
+        missing_selectors = PROFILE_SELECTOR_NAMES - set(defines)
+        if unknown_selectors or missing_selectors:
+            raise MatrixError(
+                f"profile {profile_id} selector set mismatch: "
+                f"missing {sorted(missing_selectors)}, "
+                f"unsupported {sorted(unknown_selectors)}"
+            )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(
             "firmware matrix must contain supported and expected-fail profiles"
@@ -259,6 +289,44 @@ def source_input_hash(
     return digest.hexdigest()
 
 
+def installed_tree_hash(root: Path) -> str:
+    """Hash installed file and symlink bytes independently of metadata."""
+    root = root.resolve()
+    if not root.is_dir():
+        raise MatrixError(f"installed package path is not a directory: {root}")
+    paths = sorted(
+        (path for path in root.rglob("*") if path.is_file() or path.is_symlink()),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+    if not paths:
+        raise MatrixError(f"installed package path contains no files: {root}")
+    digest = sha256()
+    for path in paths:
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        if path.is_symlink():
+            kind = b"L"
+            data = os.readlink(path).encode("utf-8")
+        else:
+            kind = b"F"
+            data = path.read_bytes()
+        digest.update(kind)
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def _require_installed_hash(label: str, root: Path, expected: str) -> str:
+    actual = installed_tree_hash(root)
+    if actual != expected:
+        raise MatrixError(
+            f"{label} installed-byte SHA-256 mismatch: "
+            f"expected {expected}, found {actual}"
+        )
+    return actual
+
+
 def _build_properties(board_details: dict[str, Any]) -> dict[str, str]:
     properties: dict[str, str] = {}
     for item in board_details.get("build_properties", []):
@@ -319,6 +387,8 @@ def verify_environment(
             raise MatrixError(
                 f"{label} mismatch: expected {expected!r}, found {actual!r}"
             )
+    if not details.get("properties_id") or not details.get("name"):
+        raise MatrixError("board details do not expose generated board identity")
 
     toolchain = matrix["toolchain"]
     dependency = next(
@@ -339,6 +409,14 @@ def verify_environment(
         )
 
     properties = _build_properties(details)
+    platform_root_value = properties.get("runtime.platform.path")
+    if not platform_root_value:
+        raise MatrixError("board details do not expose the installed platform path")
+    core_installed_sha256 = _require_installed_hash(
+        "Arduino core",
+        Path(platform_root_value),
+        str(target["core_installed_sha256"]),
+    )
     toolchain_name = str(toolchain["name"])
     path_key = f"runtime.tools.{toolchain_name}.path"
     tool_root = properties.get(path_key)
@@ -351,6 +429,11 @@ def verify_environment(
             f"board selects compiler package {compiler_package!r}, "
             f"not {toolchain_name!r}"
         )
+    toolchain_installed_sha256 = _require_installed_hash(
+        "compiler toolchain",
+        Path(tool_root),
+        str(toolchain["installed_sha256"]),
+    )
     compiler_path = Path(tool_root) / "bin" / str(toolchain["compiler"])
     if str(toolchain["compiler"]) != f"{compiler_prefix}-g++":
         raise MatrixError(
@@ -367,6 +450,10 @@ def verify_environment(
 
     return {
         "arduino_cli_version": actual_cli,
+        "board_id": str(details.get("properties_id", "")),
+        "board_name": str(details.get("name", "")),
+        "core_installed_sha256": core_installed_sha256,
+        "toolchain_installed_sha256": toolchain_installed_sha256,
         "compiler_identity": (
             f"{toolchain_name}@{toolchain['version']}/"
             f"{toolchain['compiler']}@{toolchain['compiler_version']}"
@@ -383,10 +470,15 @@ def build_provenance(
     git_commit: str,
     source_state: str,
     source_sha256: str,
+    config_source_sha256: str | None = None,
 ) -> dict[str, Any]:
     if not HEX64_PATTERN.fullmatch(source_sha256):
         raise MatrixError("source_sha256 must be lowercase SHA-256")
-    config = configuration_payload(matrix, profile)
+    config = configuration_payload(
+        matrix,
+        profile,
+        config_source_sha256=config_source_sha256,
+    )
     config_sha256 = _sha256_json(config)
     invocation_payload = {
         "builder_id": matrix["builder_id"],
@@ -398,9 +490,14 @@ def build_provenance(
         "arduino_cli_version": environment["arduino_cli_version"],
         "core_provider": matrix["target"]["core_provider"],
         "core_version": matrix["target"]["core_version"],
+        "core_installed_sha256": environment["core_installed_sha256"],
+        "board_id": environment["board_id"],
         "toolchain": (
             f"{matrix['toolchain']['name']}@{matrix['toolchain']['version']}"
         ),
+        "toolchain_installed_sha256": environment[
+            "toolchain_installed_sha256"
+        ],
         "compiler": environment["compiler_identity"],
     }
     return {
@@ -414,10 +511,16 @@ def build_provenance(
             **config,
             "sha256": config_sha256,
         },
-        "target": dict(matrix["target"]),
+        "target": {
+            **matrix["target"],
+            "board_id": environment["board_id"],
+            "board_name": environment["board_name"],
+            "core_installed_sha256": environment["core_installed_sha256"],
+        },
         "toolchain": {
             **matrix["toolchain"],
             "compiler_identity": environment["compiler_identity"],
+            "installed_sha256": environment["toolchain_installed_sha256"],
         },
         "invocation": {
             "builder_id": matrix["builder_id"],
@@ -434,42 +537,65 @@ def provenance_header(provenance: dict[str, Any]) -> str:
     toolchain = provenance["toolchain"]
     invocation = provenance["invocation"]
     generated = {
+        "OTIS_BUILD_PROVENANCE_FORMAT": PROVENANCE_FORMAT,
         "OTIS_BUILD_GIT_COMMIT": source["git_commit"],
         "OTIS_BUILD_SOURCE_STATE": source["state"],
         "OTIS_BUILD_SOURCE_SHA256": source["sha256"],
         "OTIS_BUILD_CONFIG_SHA256": config["sha256"],
         "OTIS_BUILD_PROFILE_ID": config["profile_id"],
         "OTIS_BUILD_FQBN": target["fqbn"],
+        "OTIS_BUILD_BOARD_ID": target["board_id"],
+        "OTIS_BUILD_BOARD_NAME": target["board_name"],
         "OTIS_BUILD_CORE_PROVIDER": target["core_provider"],
         "OTIS_BUILD_CORE_VERSION": target["core_version"],
+        "OTIS_BUILD_CORE_INSTALLED_SHA256": target["core_installed_sha256"],
         "OTIS_BUILD_TOOLCHAIN": (
             f"{toolchain['name']}@{toolchain['version']}"
         ),
         "OTIS_BUILD_COMPILER": toolchain["compiler_identity"],
+        "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256": toolchain[
+            "installed_sha256"
+        ],
         "OTIS_BUILD_ARDUINO_CLI_VERSION": invocation[
             "arduino_cli_version"
         ],
         "OTIS_BUILD_INVOCATION_ID": invocation["id"],
     }
     lines = [
-        "#ifndef OTIS_BUILD_PROVENANCE_GENERATED_H",
-        "#define OTIS_BUILD_PROVENANCE_GENERATED_H",
+        "// Generated into a one-use temporary sketch by tools/firmware_matrix.py.",
+        "// Do not reuse, hand-edit, or commit.",
+        "#ifdef OTIS_BUILD_PROFILE_GENERATED",
+        '#error "OTIS generated build profile was externally pre-defined or included twice."',
+        "#endif",
+        "#define OTIS_BUILD_PROFILE_GENERATED 1",
         "",
-        "// Generated by tools/firmware_matrix.py. Do not hand-edit or commit.",
-        "#define OTIS_BUILD_PROVENANCE_GENERATED 1",
     ]
     for name, value in sorted(generated.items()):
         encoded = json.dumps(str(value), ensure_ascii=True)
+        lines.extend(
+            [
+                f"#ifdef {name}",
+                f'#error "{name} was externally pre-defined."',
+                "#endif",
+            ]
+        )
         lines.append(f"#define {name} {encoded}")
-    lines.extend(["", "#endif", ""])
+    for name, value in sorted(config["defines"].items()):
+        expected_name = f"OTIS_BUILD_EXPECTED_{name}"
+        lines.extend(
+            [
+                f"#ifdef {expected_name}",
+                f'#error "{expected_name} was externally pre-defined."',
+                "#endif",
+                f"#define {expected_name} {value}",
+                f"#ifdef {name}",
+                f'#error "{name} was externally pre-defined."',
+                "#endif",
+                f"#define {name} {value}",
+            ]
+        )
+    lines.append("")
     return "\n".join(lines)
-
-
-def compiler_defines(profile: dict[str, Any]) -> list[str]:
-    return [
-        f"-D{name}={value}"
-        for name, value in sorted(profile["defines"].items())
-    ]
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -478,6 +604,74 @@ def _write_json(path: Path, value: object) -> None:
         json.dumps(value, indent=2, ensure_ascii=True, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _capture_source_state(
+    matrix: dict[str, Any],
+    profile: dict[str, Any],
+    *,
+    repo_root: Path = REPO_ROOT,
+    sketch: Path = SKETCH,
+    config_path: Path = CONFIG_HEADER,
+    matrix_path: Path = DEFAULT_MATRIX,
+    builder_path: Path = Path(__file__).resolve(),
+) -> dict[str, str]:
+    git_commit, source_state = _git_identity(repo_root)
+    config_source_sha256 = sha256(config_path.read_bytes()).hexdigest()
+    return {
+        "git_commit": git_commit,
+        "source_state": source_state,
+        "source_sha256": source_input_hash(
+            sketch=sketch,
+            matrix_path=matrix_path,
+            builder_path=builder_path,
+        ),
+        "config_source_sha256": config_source_sha256,
+        "config_sha256": _sha256_json(
+            configuration_payload(
+                matrix,
+                profile,
+                config_source_sha256=config_source_sha256,
+            )
+        ),
+    }
+
+
+def _assert_source_unchanged(
+    expected: dict[str, str],
+    actual: dict[str, str],
+) -> None:
+    changed = sorted(
+        key for key in expected if expected.get(key) != actual.get(key)
+    )
+    if changed:
+        raise MatrixError(
+            "repository/build input changed during compilation: "
+            + ", ".join(changed)
+        )
+
+
+def _artifact_hashes(artifacts_dir: Path) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    for suffix in EXPECTED_ARTIFACT_SUFFIXES:
+        matches = sorted(
+            path for path in artifacts_dir.iterdir()
+            if path.is_file() and path.suffix == suffix
+        )
+        if len(matches) != 1:
+            raise MatrixError(
+                f"successful build must produce exactly one {suffix} artifact; "
+                f"found {len(matches)}"
+            )
+        path = matches[0]
+        artifacts.append(
+            {
+                "name": path.name,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    return sorted(artifacts, key=lambda item: item["name"])
 
 
 def _selected_profiles(
@@ -504,40 +698,71 @@ def _compile_profile(
     provenance: dict[str, Any],
     output_dir: Path,
     arduino_cli: str,
+    *,
+    source_snapshot: dict[str, str],
+    matrix_path: Path = DEFAULT_MATRIX,
 ) -> dict[str, Any]:
     profile_dir = output_dir / profile["id"]
     build_dir = profile_dir / "build"
     artifacts_dir = profile_dir / "artifacts"
     build_dir.mkdir(parents=True, exist_ok=True)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    for stale_artifact in artifacts_dir.iterdir():
+    for stale_artifact in artifacts_dir.rglob("*"):
         if stale_artifact.is_file():
             stale_artifact.unlink()
-    generated_header = profile_dir / "otis_build_provenance.generated.h"
-    generated_header.write_text(
-        provenance_header(provenance),
-        encoding="utf-8",
-    )
-    flags = " ".join(
-        [f"-include{generated_header}", *compiler_defines(profile)]
-    )
-    command = [
-        arduino_cli,
-        "compile",
-        "--clean",
-        "--fqbn",
-        str(matrix["target"]["fqbn"]),
-        "--build-path",
-        str(build_dir),
-        "--output-dir",
-        str(artifacts_dir),
-        "--build-property",
-        f"compiler.cpp.extra_flags={flags}",
-        str(SKETCH),
-    ]
-    result = _run(command, check=False)
-    combined = result.stdout + result.stderr
-    (profile_dir / "build.log").write_text(combined, encoding="utf-8")
+    source_header = SKETCH / GENERATED_HEADER_NAME
+    if source_header.exists():
+        raise MatrixError(
+            f"refusing reusable generated profile header in source tree: "
+            f"{source_header}"
+        )
+
+    temporary_sketch_path: Path | None = None
+    with tempfile.TemporaryDirectory(
+        prefix="temporary_sketch_", dir=profile_dir
+    ) as temporary_root_value:
+        temporary_root = Path(temporary_root_value)
+        temporary_sketch_path = temporary_root / SKETCH.name
+        shutil.copytree(SKETCH, temporary_sketch_path)
+        (temporary_sketch_path / GENERATED_HEADER_NAME).write_text(
+            provenance_header(provenance),
+            encoding="utf-8",
+        )
+        command = [
+            arduino_cli,
+            "compile",
+            "--clean",
+            "--fqbn",
+            str(matrix["target"]["fqbn"]),
+            "--build-path",
+            str(build_dir),
+            "--output-dir",
+            str(artifacts_dir),
+            str(temporary_sketch_path),
+        ]
+        result = _run(command, check=False)
+        combined = result.stdout + result.stderr
+        (profile_dir / "build.log").write_text(combined, encoding="utf-8")
+
+        after_compile = _capture_source_state(
+            matrix,
+            profile,
+            matrix_path=matrix_path,
+        )
+        try:
+            _assert_source_unchanged(source_snapshot, after_compile)
+        except MatrixError:
+            for artifact in artifacts_dir.rglob("*"):
+                if artifact.is_file():
+                    artifact.unlink()
+            raise
+
+    if temporary_sketch_path.exists():
+        raise MatrixError("temporary firmware source was not removed after compilation")
+    for copied_header in build_dir.rglob(GENERATED_HEADER_NAME):
+        copied_header.unlink()
+    if any(build_dir.rglob(GENERATED_HEADER_NAME)):
+        raise MatrixError("transient generated profile header was not removed")
 
     expected = profile["expect"]
     passed = result.returncode == 0
@@ -546,10 +771,28 @@ def _compile_profile(
     if expected == "fail":
         error_matched = profile["expected_error"] in combined
         outcome_matches = outcome_matches and error_matched
+    build_manifest_path = artifacts_dir / "firmware_build_manifest.json"
     if passed:
+        artifacts = _artifact_hashes(artifacts_dir)
+        after_hashing = _capture_source_state(
+            matrix,
+            profile,
+            matrix_path=matrix_path,
+        )
+        try:
+            _assert_source_unchanged(source_snapshot, after_hashing)
+        except MatrixError:
+            for artifact in artifacts_dir.rglob("*"):
+                if artifact.is_file():
+                    artifact.unlink()
+            raise
         _write_json(
-            artifacts_dir / "firmware_build_provenance.json",
-            provenance,
+            build_manifest_path,
+            {
+                "schema_version": 1,
+                "provenance": provenance,
+                "artifacts": artifacts,
+            },
         )
     return {
         "profile_id": profile["id"],
@@ -561,15 +804,7 @@ def _compile_profile(
         "config_sha256": provenance["configuration"]["sha256"],
         "invocation_id": provenance["invocation"]["id"],
         "build_log": str((profile_dir / "build.log").resolve()),
-        "provenance": (
-            str(
-                (
-                    artifacts_dir / "firmware_build_provenance.json"
-                ).resolve()
-            )
-            if passed
-            else None
-        ),
+        "build_manifest": str(build_manifest_path.resolve()) if passed else None,
     }
 
 
@@ -582,17 +817,24 @@ def run_matrix(
     matrix_path: Path = DEFAULT_MATRIX,
 ) -> list[dict[str, Any]]:
     environment = verify_environment(matrix, arduino_cli=arduino_cli)
-    git_commit, source_state = _git_identity()
-    source_sha256 = source_input_hash(matrix_path=matrix_path)
     results: list[dict[str, Any]] = []
+    first_source: dict[str, str] | None = None
     for profile in profiles:
+        source_snapshot = _capture_source_state(
+            matrix,
+            profile,
+            matrix_path=matrix_path,
+        )
+        if first_source is None:
+            first_source = source_snapshot
         provenance = build_provenance(
             matrix,
             profile,
             environment,
-            git_commit=git_commit,
-            source_state=source_state,
-            source_sha256=source_sha256,
+            git_commit=source_snapshot["git_commit"],
+            source_state=source_snapshot["source_state"],
+            source_sha256=source_snapshot["source_sha256"],
+            config_source_sha256=source_snapshot["config_source_sha256"],
         )
         print(
             f"[{profile['expect']}] {profile['id']} "
@@ -605,6 +847,8 @@ def run_matrix(
             provenance,
             output_dir,
             arduino_cli,
+            source_snapshot=source_snapshot,
+            matrix_path=matrix_path,
         )
         results.append(result)
         print(
@@ -618,8 +862,8 @@ def run_matrix(
     summary = {
         "schema_version": 1,
         "matrix": matrix_name,
-        "git_commit": git_commit,
-        "source_state": source_state,
+        "git_commit": first_source["git_commit"],
+        "source_state": first_source["source_state"],
         "all_verified": all(result["verified"] for result in results),
         "results": results,
     }

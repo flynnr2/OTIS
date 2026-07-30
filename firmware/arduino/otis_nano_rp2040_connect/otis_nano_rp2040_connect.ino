@@ -411,6 +411,8 @@ void drain_pps_count_boundary_ring(void) {
 }
 
 void emit_common_boot_status(void) {
+  emit_status("build", "provenance_format", OTIS_BUILD_PROVENANCE_FORMAT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "boot", "true", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("protocol", "schema_version", OTIS_SCHEMA_VERSION_V1,
@@ -466,17 +468,25 @@ void emit_common_boot_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "board_name", OTIS_TARGET_BOARD_NAME,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "fqbn", OTIS_BUILD_FQBN, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "arduino_core_provider", OTIS_BUILD_CORE_PROVIDER,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "arduino_core_version", OTIS_BUILD_CORE_VERSION,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_installed_hash",
+              OTIS_BUILD_CORE_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("build", "profile_id", OTIS_BUILD_PROFILE_ID,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("build", "toolchain", OTIS_BUILD_TOOLCHAIN,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("build", "compiler", OTIS_BUILD_COMPILER, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "toolchain_installed_hash",
+              OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("build", "arduino_cli_version",
               OTIS_BUILD_ARDUINO_CLI_VERSION, OTIS_SEVERITY_INFO,

@@ -114,8 +114,10 @@ python3 tools/firmware_matrix.py --profile h1_characterization
 ```
 
 Every compile must exit zero. Preserve each profile's ignored
-`firmware_build_provenance.json`, which records the exact command inputs,
-source/configuration hashes, Arduino CLI/core/toolchain, and output identity.
+`firmware_build_manifest.json`, which records the exact command inputs,
+source/configuration hashes, generated board identity, Arduino
+CLI/core/toolchain installed-byte hashes, output identity, and successful
+binary artifact hashes.
 
 ## Upload and boot acceptance
 

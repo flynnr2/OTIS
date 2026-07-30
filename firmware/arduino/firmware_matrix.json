@@ -4,18 +4,19 @@
   "arduino_cli_version": "1.4.1",
   "target": {
     "fqbn": "rp2040:rp2040:arduino_nano_connect",
-    "board": "arduino_nano_rp2040_connect",
     "core_provider": "rp2040",
     "core_architecture": "rp2040",
     "core_version": "6.0.0",
-    "core_archive_sha256": "d2163a321748be872a29cb99ead739840990d3ddf0935de756eb52f9fc2b5d46"
+    "core_archive_sha256": "d2163a321748be872a29cb99ead739840990d3ddf0935de756eb52f9fc2b5d46",
+    "core_installed_sha256": "39ff1163d297ff0872abd52ca52fb11bdeaf85322a79c32a3d4d5e4d17128c8e"
   },
   "toolchain": {
     "packager": "rp2040",
     "name": "pqt-gcc",
     "version": "5.0.0-9576866",
     "compiler": "arm-none-eabi-g++",
-    "compiler_version": "16.1.0"
+    "compiler_version": "16.1.0",
+    "installed_sha256": "cd81889182bd89b30a63c3ddfff14a27098dfae86bd695183211221734e01071"
   },
   "profiles": [
     {
@@ -43,9 +44,11 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
         "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "1",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -57,6 +60,7 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
         "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
         "OTIS_ENABLE_H1_DAC_SWEEP": "0",
@@ -72,6 +76,7 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
         "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "1",
         "OTIS_ENABLE_H1_DAC_SWEEP": "1",
@@ -87,8 +92,11 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -100,8 +108,11 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -113,8 +124,11 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -126,8 +140,59 @@
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
         "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
+      }
+    },
+    {
+      "id": "gps_pps_pio_capture",
+      "purpose": "GPS PPS reference capture using the sparse-edge PIO FIFO and FC0 counter.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
+      }
+    },
+    {
+      "id": "h1_pio_capture_long_gate",
+      "purpose": "H1 sparse PPS PIO FIFO capture with independent raw-edge PIO long-gate counting.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
+      }
+    },
+    {
+      "id": "tcxo_gpio_irq_divided",
+      "purpose": "Deliberately divided TCXO observation using GPIO IRQ capture and counting.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_TCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -139,8 +204,12 @@
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -152,8 +221,12 @@
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "1",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     },
     {
@@ -165,8 +238,12 @@
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
-        "OTIS_ENABLE_H1_DAC_SWEEP": "1"
+        "OTIS_ENABLE_H1_DAC_SWEEP": "1",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     }
   ]

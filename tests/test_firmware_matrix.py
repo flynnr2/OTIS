@@ -8,9 +8,12 @@ import subprocess
 
 import pytest
 
+import tools.firmware_matrix as firmware_matrix
 from tools.firmware_matrix import (
     MatrixError,
+    _compile_profile,
     _git_identity,
+    _require_installed_hash,
     build_provenance,
     configuration_hash,
     load_matrix,
@@ -33,6 +36,10 @@ def _environment() -> dict[str, str]:
             "pqt-gcc@5.0.0-9576866/arm-none-eabi-g++@16.1.0"
         ),
         "compiler_path": "/pinned/arm-none-eabi-g++",
+        "board_id": "arduino_nano_connect",
+        "board_name": "Arduino Nano RP2040 Connect",
+        "core_installed_sha256": "1" * 64,
+        "toolchain_installed_sha256": "2" * 64,
     }
 
 
@@ -49,8 +56,11 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "gpio_loopback_pio_capture",
         "gps_pps_irq_capture",
         "tcxo_fc0_observe",
+        "gps_pps_pio_capture",
+        "h1_pio_capture_long_gate",
+        "tcxo_gpio_irq_divided",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 8
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 11
     assert sum(item["expect"] == "fail" for item in profiles.values()) == 3
 
 
@@ -102,16 +112,23 @@ def test_generated_provenance_contains_exact_source_target_and_toolchain() -> No
         "rp2040:rp2040:arduino_nano_connect"
     )
     assert provenance["target"]["core_version"] == "6.0.0"
+    assert provenance["target"]["board_id"] == "arduino_nano_connect"
+    assert provenance["target"]["board_name"] == "Arduino Nano RP2040 Connect"
+    assert provenance["target"]["core_installed_sha256"] == "1" * 64
     assert provenance["configuration"]["profile_id"] == "phase4_observe_only"
     assert provenance["configuration"]["sha256"] == configuration_hash(
         matrix, profile
     )
     assert provenance["toolchain"]["compiler_identity"].endswith("@16.1.0")
+    assert provenance["toolchain"]["installed_sha256"] == "2" * 64
     assert len(provenance["invocation"]["id"]) == 64
     header = provenance_header(provenance)
     assert '#define OTIS_BUILD_GIT_COMMIT "' in header
     assert '#define OTIS_BUILD_CONFIG_SHA256 "' in header
     assert '#define OTIS_BUILD_INVOCATION_ID "' in header
+    assert '#define OTIS_BUILD_BOARD_ID "arduino_nano_connect"' in header
+    assert "#ifdef OTIS_CAPTURE_BACKEND" in header
+    assert "#define OTIS_BUILD_EXPECTED_OTIS_CAPTURE_BACKEND" in header
 
 
 def test_git_identity_reports_exact_commit_and_dirty_state(tmp_path: Path) -> None:
@@ -179,25 +196,262 @@ def test_arduino_preprocessing_rejects_unprovenanced_compile(
     )
 
     assert result.returncode != 0
-    assert "generated provenance is required" in result.stderr
+    assert "otis_build_profile.generated.h" in result.stderr
+
+
+def test_generated_header_is_included_before_any_profile_selector() -> None:
+    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+    include_offset = config.index('#include "otis_build_profile.generated.h"')
+    first_selector_offset = min(
+        config.index(f"#define {name}") for name in firmware_matrix.PROFILE_SELECTOR_NAMES
+    )
+
+    assert include_offset < first_selector_offset
+
+
+def test_generated_header_rejects_external_selector_override(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("c++") is None:
+        pytest.skip("host C++ preprocessor is not available")
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="clean",
+        source_sha256="e" * 64,
+    )
+    (tmp_path / "otis_build_profile.generated.h").write_text(
+        provenance_header(provenance),
+        encoding="utf-8",
+    )
+    harness = tmp_path / "override.cpp"
+    harness.write_text(
+        "#define OTIS_CAPTURE_BACKEND 999\n"
+        '#include "otis_build_profile.generated.h"\n',
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["c++", "-E", str(harness)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "OTIS_CAPTURE_BACKEND was externally pre-defined" in result.stderr
+
+
+def test_stale_generated_header_effective_selector_mismatch_is_rejected(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("c++") is None:
+        pytest.skip("host C++ preprocessor is not available")
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="clean",
+        source_sha256="e" * 64,
+    )
+    header = provenance_header(provenance).replace(
+        "#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_IRQ",
+        "#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_PIO_FIFO",
+        1,
+    )
+    (tmp_path / "otis_build_profile.generated.h").write_text(
+        header,
+        encoding="utf-8",
+    )
+    shutil.copyfile(FIRMWARE / "otis_config.h", tmp_path / "otis_config.h")
+    harness = tmp_path / "stale.cpp"
+    harness.write_text('#include "otis_config.h"\n', encoding="utf-8")
+    result = subprocess.run(
+        ["c++", "-E", "-DARDUINO=1", "-I", str(tmp_path), str(harness)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Effective OTIS_CAPTURE_BACKEND differs" in result.stderr
+
+
+def test_installed_byte_pin_rejects_mutated_package(tmp_path: Path) -> None:
+    package = tmp_path / "installed"
+    package.mkdir()
+    binary = package / "compiler"
+    binary.write_bytes(b"pinned bytes")
+    expected = firmware_matrix.installed_tree_hash(package)
+
+    assert _require_installed_hash("test package", package, expected) == expected
+    binary.write_bytes(b"mutated bytes")
+    with pytest.raises(MatrixError, match="installed-byte SHA-256 mismatch"):
+        _require_installed_hash("test package", package, expected)
+
+
+def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    snapshot = {
+        "git_commit": "d" * 40,
+        "source_state": "clean",
+        "source_sha256": "e" * 64,
+        "config_source_sha256": "f" * 64,
+        "config_sha256": configuration_hash(matrix, profile),
+    }
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit=snapshot["git_commit"],
+        source_state=snapshot["source_state"],
+        source_sha256=snapshot["source_sha256"],
+        config_source_sha256=snapshot["config_source_sha256"],
+    )
+    snapshot["config_sha256"] = provenance["configuration"]["sha256"]
+    compiled_sketch: Path | None = None
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        cwd: Path = firmware_matrix.REPO_ROOT,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal compiled_sketch
+        assert arguments[1] == "compile"
+        assert "--build-property" not in arguments
+        compiled_sketch = Path(arguments[-1])
+        assert compiled_sketch.is_dir()
+        assert " " in str(compiled_sketch)
+        header = compiled_sketch / firmware_matrix.GENERATED_HEADER_NAME
+        assert header.is_file()
+        assert not (FIRMWARE / firmware_matrix.GENERATED_HEADER_NAME).exists()
+        artifacts = Path(arguments[arguments.index("--output-dir") + 1])
+        for suffix in firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES:
+            (artifacts / f"firmware{suffix}").write_bytes(
+                f"artifact {suffix}".encode()
+            )
+        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+
+    monkeypatch.setattr(firmware_matrix, "_run", fake_run)
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: dict(snapshot),
+    )
+    output = tmp_path / "output path with spaces"
+    result = _compile_profile(
+        matrix,
+        profile,
+        provenance,
+        output,
+        "fake-arduino-cli",
+        source_snapshot=snapshot,
+    )
+
+    assert compiled_sketch is not None and not compiled_sketch.exists()
+    manifest = json.loads(
+        Path(result["build_manifest"]).read_text(encoding="utf-8")
+    )
+    assert len(manifest["artifacts"]) == len(
+        firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES
+    )
+    for artifact in manifest["artifacts"]:
+        path = output / profile["id"] / "artifacts" / artifact["name"]
+        assert artifact["sha256"] == firmware_matrix.sha256(
+            path.read_bytes()
+        ).hexdigest()
+
+
+def test_post_build_source_mutation_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    before = {
+        "git_commit": "a" * 40,
+        "source_state": "clean",
+        "source_sha256": "b" * 64,
+        "config_source_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+    }
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit=before["git_commit"],
+        source_state=before["source_state"],
+        source_sha256=before["source_sha256"],
+        config_source_sha256=before["config_source_sha256"],
+    )
+    before["config_sha256"] = provenance["configuration"]["sha256"]
+    after = dict(before)
+    after["config_source_sha256"] = "e" * 64
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        cwd: Path = firmware_matrix.REPO_ROOT,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        artifacts = Path(arguments[arguments.index("--output-dir") + 1])
+        (artifacts / "untrusted.bin").write_bytes(b"must be removed")
+        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+
+    monkeypatch.setattr(firmware_matrix, "_run", fake_run)
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: dict(after),
+    )
+
+    with pytest.raises(MatrixError, match="changed during compilation"):
+        _compile_profile(
+            matrix,
+            profile,
+            provenance,
+            tmp_path / "race output",
+            "fake-arduino-cli",
+            source_snapshot=before,
+        )
+    assert not list((tmp_path / "race output").rglob("untrusted.bin"))
 
 
 def test_source_has_no_manual_commit_literal_and_requires_builder() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+    board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
 
     assert '#error "Build OTIS firmware with tools/firmware_matrix.py' in config
+    assert '#include "otis_build_profile.generated.h"' in config
     assert "#define OTIS_FIRMWARE_GIT_COMMIT OTIS_BUILD_GIT_COMMIT" in config
+    assert "#define OTIS_TARGET_BOARD OTIS_BUILD_BOARD_ID" in board
+    assert '"arduino_nano_rp2040_connect"' not in board
     assert "1095a16dc0c4e6f9ce875032fbe64209c2832b41" not in config
     for token in (
         "OTIS_BUILD_SOURCE_STATE",
         "OTIS_BUILD_SOURCE_SHA256",
-        "OTIS_BUILD_CONFIG_SHA256",
-        "OTIS_BUILD_FQBN",
-        "OTIS_BUILD_CORE_VERSION",
+            "OTIS_BUILD_CONFIG_SHA256",
+            "OTIS_BUILD_FQBN",
+            "OTIS_BUILD_CORE_VERSION",
+        "OTIS_BUILD_CORE_INSTALLED_SHA256",
         "OTIS_BUILD_COMPILER",
+        "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256",
         "OTIS_BUILD_INVOCATION_ID",
-    ):
-        assert token in sketch
+        ):
+            assert token in sketch
+    assert 'emit_status("system", "board", OTIS_TARGET_BOARD' in sketch
+    assert 'emit_status("system", "board_name", OTIS_TARGET_BOARD_NAME' in sketch

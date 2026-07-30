@@ -18,10 +18,13 @@ SDK surface, supports `setup1()` / `loop1()` multicore sketches, and leaves a
 practical route to PIO-backed capture while retaining an Arduino entrypoint.
 
 All evidentiary builds use `tools/firmware_matrix.py`. The builder verifies the
-pinned Arduino CLI, core archive, and compiler toolchain; computes the exact Git
-commit, clean/dirty state, canonical build-input and profile configuration
-hashes, and invocation identity; injects those values at compile time; and writes
-`firmware_build_provenance.json` next to each successful binary. Direct
+pinned Arduino CLI, core archive metadata, and deterministic hashes of the
+installed core and compiler-toolchain bytes; derives board identity from
+`arduino-cli board details`; computes the exact Git commit, clean/dirty state,
+canonical build-input and profile configuration hashes, and invocation
+identity; and writes `firmware_build_manifest.json` next to each successful
+binary. The manifest also hashes the `.bin`, `.elf`, `.map`, and `.uf2`
+artifacts. Direct
 Arduino IDE/CLI compilation is rejected because it cannot prove those values.
 The IDE remains useful for editing and serial monitoring, but not for producing
 a qualification binary.
@@ -505,7 +508,7 @@ python3 tools/firmware_matrix.py --list
 python3 tools/firmware_matrix.py
 ```
 
-The full command compiles the eight intentional supported tuples and verifies
+The full command compiles the eleven intentional supported tuples and verifies
 that three known-invalid tuples fail with their named guard. Build one
 qualification binary with:
 
@@ -514,7 +517,10 @@ python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
 The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
-binary and its full provenance document. Upload the already-built artifact
+binary and its full build manifest. The generated identity/profile header
+exists only in a disposable sketch copy during compilation; the builder removes
+that copy and any compiler-copied header before returning. Upload the
+already-built artifact
 without recompiling:
 
 ```bash

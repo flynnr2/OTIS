@@ -16,10 +16,13 @@ copies its exact bytes to `selected_profile.yaml` before hashing so later
 repository profile edits cannot silently change replay context.
 
 Qualification firmware is produced only by `tools/firmware_matrix.py`. The
-builder verifies pinned Arduino CLI/core/toolchain inputs, rejects profile
-attempts to override generated identity, hashes all sketch/build-definition
-inputs, and supplies a generated header outside the source tree. The firmware
-has no fallback commit or configuration literal.
+builder verifies pinned Arduino CLI/core/toolchain identities and hashes the
+installed core/toolchain bytes, rejects profile attempts to override generated
+identity or selectors, hashes all sketch/build-definition inputs, and compiles
+a disposable sketch copy containing a one-use generated profile header. The
+builder rechecks Git/source/configuration state after compilation and artifact
+hashing, then removes transient source/header bytes. The firmware has no
+fallback commit, board, or configuration literal.
 
 Multi-session captures require the same preservation rule. A reset or reconnect
 may define a later authoritative session, but the original raw capture remains
@@ -67,7 +70,9 @@ Manifest schema version 1 and all CSV contracts are unchanged. Existing runs
 without snapshots continue to validate, with a warning that their evidence is
 not cryptographically bound. Once a snapshot is present, a mismatch is a hard
 validation failure. This is deliberate: silently accepting changed evidence
-would defeat the snapshot contract.
+would defeat the snapshot contract. Historical firmware identity rows remain
+legacy unless the new generated-provenance sentinel is present. New Phase 5
+candidate templates explicitly require the complete sentinel banner.
 
 ## Risk assessment
 

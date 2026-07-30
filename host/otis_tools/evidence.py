@@ -23,15 +23,20 @@ FIRMWARE_PROVENANCE_STATUS_FIELDS = {
     ("firmware", "source_hash"): "source_sha256",
     ("firmware", "config_hash"): "config_sha256",
     ("system", "board"): "board",
+    ("system", "board_name"): "board_name",
     ("system", "fqbn"): "fqbn",
     ("system", "arduino_core_provider"): "core_provider",
     ("system", "arduino_core_version"): "core_version",
+    ("system", "arduino_core_installed_hash"): "core_installed_sha256",
     ("build", "profile_id"): "profile_id",
     ("build", "toolchain"): "toolchain",
     ("build", "compiler"): "compiler",
+    ("build", "toolchain_installed_hash"): "toolchain_installed_sha256",
     ("build", "arduino_cli_version"): "arduino_cli_version",
     ("build", "invocation_id"): "invocation_id",
 }
+FIRMWARE_PROVENANCE_SENTINEL = ("build", "provenance_format")
+FIRMWARE_PROVENANCE_FORMAT = "otis_generated_build_v1"
 LOWER_HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -137,8 +142,17 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
     return sources
 
 
+def _requires_generated_firmware_provenance(manifest) -> bool:
+    firmware = manifest.data.get("firmware", {})
+    return (
+        isinstance(firmware, dict)
+        and firmware.get("build_provenance_required") is True
+    )
+
+
 def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None:
-    values: dict[str, str] = {}
+    banners: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
     for entry in manifest.files:
         if entry.get("contract") != "health_v1":
             continue
@@ -154,50 +168,97 @@ def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None
             with path.open("r", newline="", encoding="utf-8") as handle:
                 reader = csv.DictReader(handle)
                 for row in reader:
+                    field = (row.get("component", ""), row.get("status_key", ""))
+                    if field == FIRMWARE_PROVENANCE_SENTINEL:
+                        value = row.get("status_value", "")
+                        if value != FIRMWARE_PROVENANCE_FORMAT:
+                            raise EvidenceError(
+                                "unsupported emitted firmware provenance format: "
+                                f"{value!r}"
+                            )
+                        if current is not None:
+                            banners.append(current)
+                        current = {"provenance_format": value}
+                        continue
+                    if current is None:
+                        continue
                     output_key = FIRMWARE_PROVENANCE_STATUS_FIELDS.get(
-                        (row.get("component", ""), row.get("status_key", ""))
+                        field
                     )
                     if output_key is None:
                         continue
                     value = row.get("status_value", "")
-                    previous = values.get(output_key)
+                    previous = current.get(output_key)
                     if previous is not None and previous != value:
                         raise EvidenceError(
                             "conflicting emitted firmware provenance for "
                             f"{output_key}: {previous!r} != {value!r}"
                         )
-                    values[output_key] = value
+                    current[output_key] = value
         except (OSError, csv.Error) as exc:
             raise EvidenceError(
                 f"cannot extract firmware provenance from {rel_path}: {exc}"
             ) from exc
 
-    if not values:
+    if current is not None:
+        banners.append(current)
+    if not banners:
+        if _requires_generated_firmware_provenance(manifest):
+            raise EvidenceError(
+                "complete generated firmware build provenance is required "
+                "but its sentinel banner is missing"
+            )
         return None
-    required = set(FIRMWARE_PROVENANCE_STATUS_FIELDS.values())
-    missing = sorted(required - set(values))
-    if missing:
-        raise EvidenceError(
-            "emitted firmware build provenance is incomplete; missing "
-            + ", ".join(missing)
-        )
-    if not LOWER_HEX_40.fullmatch(values["git_commit"]):
-        raise EvidenceError("emitted firmware git_commit is not exact lowercase Git SHA-1")
-    for field in ("source_sha256", "config_sha256", "invocation_id"):
-        if not LOWER_HEX_64.fullmatch(values[field]):
-            raise EvidenceError(f"emitted firmware {field} is not lowercase SHA-256")
-    if values["source_state"] not in {"clean", "dirty"}:
-        raise EvidenceError("emitted firmware source_state must be clean or dirty")
-    for field in required - {
-        "git_commit",
-        "config_sha256",
-        "invocation_id",
-        "source_sha256",
-        "source_state",
-    }:
-        if not values[field]:
-            raise EvidenceError(f"emitted firmware {field} must be non-empty")
-    return dict(sorted(values.items()))
+    required = {
+        "provenance_format",
+        *FIRMWARE_PROVENANCE_STATUS_FIELDS.values(),
+    }
+    normalized: list[dict[str, str]] = []
+    for index, values in enumerate(banners, start=1):
+        missing = sorted(required - set(values))
+        if missing:
+            raise EvidenceError(
+                f"emitted firmware build provenance banner {index} is "
+                "incomplete; missing " + ", ".join(missing)
+            )
+        if not LOWER_HEX_40.fullmatch(values["git_commit"]):
+            raise EvidenceError(
+                "emitted firmware git_commit is not exact lowercase Git SHA-1"
+            )
+        for field in (
+            "source_sha256",
+            "config_sha256",
+            "core_installed_sha256",
+            "toolchain_installed_sha256",
+            "invocation_id",
+        ):
+            if not LOWER_HEX_64.fullmatch(values[field]):
+                raise EvidenceError(
+                    f"emitted firmware {field} is not lowercase SHA-256"
+                )
+        if values["source_state"] not in {"clean", "dirty"}:
+            raise EvidenceError(
+                "emitted firmware source_state must be clean or dirty"
+            )
+        for field in required - {
+            "git_commit",
+            "config_sha256",
+            "invocation_id",
+            "source_sha256",
+            "source_state",
+        }:
+            if not values[field]:
+                raise EvidenceError(
+                    f"emitted firmware {field} must be non-empty"
+                )
+        normalized.append(dict(sorted(values.items())))
+    first = normalized[0]
+    for index, values in enumerate(normalized[1:], start=2):
+        if values != first:
+            raise EvidenceError(
+                f"conflicting emitted firmware provenance in banner {index}"
+            )
+    return first
 
 
 def create_evidence_snapshot(run_dir: Path, allow_incomplete: bool = False) -> Path:
