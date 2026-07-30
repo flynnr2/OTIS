@@ -21,9 +21,9 @@
   "maximum_candidate_jitter_hz": 1.5,
   "maximum_service_plane_mean_shift_hz": 0.05,
   "missing_timeout_s": 2.5,
-  "minimum_eligible_windows": 3600,
-  "minimum_service_plane_windows_per_segment": 600,
-  "minimum_stable_duration_s": 3600.0,
+  "minimum_eligible_windows": 120,
+  "minimum_service_plane_windows_per_segment": 60,
+  "minimum_stable_duration_s": 120.0,
   "nominal_reference_interval_s": 1.0,
   "reference_interval_tolerance_s": 0.2,
   "required_fault_reason_codes": [

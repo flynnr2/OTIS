@@ -19,6 +19,7 @@
 #include "otis_env_sensors.h"
 #include "otis_modes.h"
 #include "otis_phase4_observe_preview.h"
+#include "otis_pps_count_boundary_ring.h"
 #include "otis_pps_dual_observer.h"
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
@@ -40,7 +41,11 @@
 
 namespace {
 
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+constexpr uint32_t kStatusPeriodMs = OTIS_PPS_GATE_STATUS_PERIOD_MS;
+#else
 constexpr uint32_t kStatusPeriodMs = OTIS_STATUS_PERIOD_MS;
+#endif
 constexpr uint32_t kLoopbackTogglePeriodMs = OTIS_LOOPBACK_TOGGLE_PERIOD_MS;
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
 constexpr uint32_t kTcxoGatePeriodUs = OTIS_H1_LONG_GATE_PERIOD_US;
@@ -185,22 +190,6 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
     otis_phase4_observe_preview_on_reference(
         runtime_state.sequences.event_seq, record.timestamp_ticks, record.flags,
         &runtime_state, &phase4_dac);
-    OtisCountObservationConfig count_config = count_observation_config();
-    bool window_completed = otis_count_observation_on_reference(
-        &runtime_state, &status_emit_context, &count_config,
-        record.timestamp_ticks, record.flags);
-    if (window_completed) {
-      otis_phase4_observe_preview_on_count(
-          runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
-    }
-#if OTIS_ENABLE_H1_DAC_SWEEP && \
-    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-    if (window_completed) {
-      emit_h1_dac_sweep_fc0_window();
-    }
-#else
-    (void)window_completed;
-#endif
   }
 
   otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF : OTIS_RECORD_EVT,
@@ -243,6 +232,77 @@ void drain_capture_ring(void) {
   while (otis_capture_ring_pop(&record)) {
     emit_captured_edge(record);
   }
+}
+
+void emit_pps_count_boundary(
+    const OtisPpsCountBoundaryObservation &observation) {
+  uint32_t reference_flags = observation.capture_flags;
+  constexpr uint32_t kInvalidApertureMask =
+      OTIS_PPS_APERTURE_PREVIOUS_BOUNDARY_UNAVAILABLE |
+      OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE |
+      OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
+      OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
+      OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS |
+      OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE |
+      OTIS_PPS_APERTURE_COUNTER_SATURATED |
+      OTIS_PPS_APERTURE_ZERO_COUNT;
+  if ((observation.aperture_flags & kInvalidApertureMask) != 0u) {
+    // GATE_INCOMPLETE describes count-aperture provenance; it does not make
+    // the independently captured PPS timestamp invalid.
+    reference_flags |= OTIS_FLAG_GATE_INCOMPLETE;
+  }
+  if ((observation.aperture_flags &
+       OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u) {
+    reference_flags |=
+        OTIS_FLAG_CAPTURE_RING_OVERRUN | OTIS_FLAG_EDGE_ORDER_SUSPECT;
+  }
+  if ((observation.aperture_flags &
+       (OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE |
+        OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
+        OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS |
+        OTIS_PPS_APERTURE_ZERO_COUNT)) != 0u) {
+    reference_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
+  }
+  if ((observation.aperture_flags &
+       OTIS_PPS_APERTURE_COUNTER_SATURATED) != 0u) {
+    reference_flags |= OTIS_FLAG_COUNT_SATURATED;
+  }
+  OtisDacAd5693rStatus dac_status;
+  otis_dac_ad5693r_get_status(&dac_status);
+  OtisPhase4LiveDacState phase4_dac = {
+      dac_status.last_write_ok &&
+          dac_status.last_requested_code == dac_status.last_applied_code,
+      dac_status.last_applied_code,
+  };
+  otis_phase4_observe_preview_on_reference(
+      runtime_state.sequences.event_seq, observation.pps_timestamp_ticks,
+      reference_flags, &runtime_state, &phase4_dac);
+  OtisCountObservationConfig count_config = count_observation_config();
+  bool window_completed = otis_count_observation_on_pps_boundary(
+      &runtime_state, &status_emit_context, &count_config, &observation);
+  if (window_completed) {
+    otis_phase4_observe_preview_on_count(
+        runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
+#if OTIS_ENABLE_H1_DAC_SWEEP && \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+    emit_h1_dac_sweep_fc0_window();
+#endif
+  }
+  otis_emit_raw_event(
+      OTIS_RECORD_REF, runtime_state.sequences.event_seq++,
+      OTIS_CHANNEL_PPS_REFERENCE, OTIS_EDGE_RISING,
+      observation.pps_timestamp_ticks, OTIS_DOMAIN_RP2040_TIMER0,
+      reference_flags);
+  runtime_state.capture.emitted_event_count++;
+}
+
+void drain_pps_count_boundary_ring(void) {
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  OtisPpsCountBoundaryObservation observation;
+  while (otis_pps_count_boundary_ring_pop(&observation)) {
+    emit_pps_count_boundary(observation);
+  }
+#endif
 }
 
 void emit_common_boot_status(void) {
@@ -532,8 +592,10 @@ void emit_periodic_status(void) {
   runtime_state.periodic.last_status_ms = now_ms;
 
   uint32_t capture_dropped_count = otis_capture_ring_dropped_count();
+  uint32_t boundary_dropped_count =
+      otis_pps_count_boundary_ring_dropped_count();
   uint32_t drop_flag = OTIS_FLAG_NONE;
-  if (capture_dropped_count) {
+  if (capture_dropped_count || boundary_dropped_count) {
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
     drop_flag = OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY;
 #else
@@ -549,9 +611,18 @@ void emit_periodic_status(void) {
   emit_status_u32("capture", "dropped_count", capture_dropped_count,
                   capture_dropped_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
                   drop_flag);
+  emit_status_u32(
+      "capture", "pps_count_boundary_dropped_count",
+      boundary_dropped_count,
+      boundary_dropped_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      boundary_dropped_count ? OTIS_FLAG_CAPTURE_RING_OVERRUN
+                             : OTIS_FLAG_NONE);
   emit_status_u32("capture", "error_flags", drop_flag,
-                  capture_dropped_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+                  capture_dropped_count || boundary_dropped_count
+                      ? OTIS_SEVERITY_WARN
+                      : OTIS_SEVERITY_INFO,
                   drop_flag);
+  otis_count_observation_emit_status(&runtime_state, &status_emit_context);
   otis_phase4_observe_preview_emit_status(&status_emit_context);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
   OtisCaptureIrqReferenceStats d14_stats;
@@ -788,6 +859,12 @@ void configure_tcxo_observe_mode(void) {
   runtime_state.tcxo.fault_after_startup = false;
 
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+  OtisCountObservationConfig count_config = count_observation_config();
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  // Register and initialize the bounded PPS ISR handler before enabling D14.
+  otis_count_observation_begin(&runtime_state, &status_emit_context,
+                               &count_config);
+#endif
   // In TCXO observe mode the edge-capture backend, including PIO FIFO when
   // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 is
   // handled by the selected count-observation backend below, not FIFO records.
@@ -812,9 +889,10 @@ void configure_tcxo_observe_mode(void) {
   }
 #endif
 
-  OtisCountObservationConfig count_config = count_observation_config();
+#if OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   otis_count_observation_begin(&runtime_state, &status_emit_context,
                                &count_config);
+#endif
 }
 
 void emit_dac_status(const char *component) {
@@ -1657,6 +1735,8 @@ void handle_serial_command(char *line) {
                 "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (strcmp(command, "CONFIG?") == 0) {
+    emit_status("command", "config_snapshot", "begin",
+                OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
                 OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("firmware", "config_id", OTIS_FIRMWARE_CONFIG_ID,
@@ -1668,6 +1748,21 @@ void handle_serial_command(char *line) {
     emit_status("build", "tcxo_counter_backend",
                 otis_tcxo_counter_backend_name(), OTIS_SEVERITY_INFO,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+    emit_status("pps_gate", "boundary_owner", "pps_gpio_irq",
+                OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("pps_gate", "aperture_backend",
+                "pps_isr_stop_sample_restart_v1", OTIS_SEVERITY_INFO,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("pps_gate", "backend_qualified",
+                OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? "true" : "false",
+                OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? OTIS_SEVERITY_INFO
+                                                    : OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("pps_gate", "boundary_ring_capacity",
+                    otis_pps_count_boundary_ring_capacity(),
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
     emit_status_u32("capture", "counter_gate_period_us", kTcxoGatePeriodUs,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("build", "enable_pps_dual_observer",
@@ -1704,6 +1799,8 @@ void handle_serial_command(char *line) {
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status("command", "config_snapshot", "end",
+                OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (strcmp(command, "DAC?") == 0) {
     emit_dac_status("dac");
   } else if (strcmp(command, "DAC LIMITS?") == 0) {
@@ -1759,13 +1856,15 @@ void handle_serial_command(char *line) {
 
 void service_serial_commands(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-  while (Serial.available() > 0) {
+  uint8_t byte_budget = 32u;
+  while (Serial.available() > 0 && byte_budget-- > 0u) {
     char c = (char)Serial.read();
     if (c == '\r' || c == '\n') {
       if (serial_command_len > 0u) {
         serial_command_line[serial_command_len] = '\0';
         handle_serial_command(serial_command_line);
         serial_command_len = 0u;
+        return;
       }
     } else if (serial_command_len < sizeof(serial_command_line) - 1u) {
       serial_command_line[serial_command_len++] = c;
@@ -1825,14 +1924,15 @@ void loop() {
 
   emit_protocol_banner_if_serial_ready();
   emit_resource_ownership_status();
+  drain_pps_count_boundary_ring();
+  drain_capture_ring();
+  service_tcxo_gate();
   service_serial_commands();
   service_loopback_output();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   service_h1_dac_sweep();
 #endif
-  drain_capture_ring();
-  service_tcxo_gate();
   OtisDacAd5693rStatus phase4_dac_status;
   otis_dac_ad5693r_get_status(&phase4_dac_status);
   OtisPhase4LiveDacState phase4_dac = {

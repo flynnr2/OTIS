@@ -23,9 +23,19 @@ volatile uint64_t d14_last_raw_interval = 0;
 volatile uint64_t d14_last_accepted_timestamp = 0;
 volatile uint32_t d14_sampled_high_count = 0;
 volatile uint32_t d14_sampled_low_count = 0;
+OtisPpsCountBoundaryIsrHandler pps_count_boundary_handler = nullptr;
 
 void handle_capture_edge(void) {
   uint64_t timestamp = otis_capture_ticks_now();
+  constexpr uint32_t kCaptureFlags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  bool pps_boundary_owned =
+      capture_reference_record && pps_count_boundary_handler != nullptr;
+  if (pps_boundary_owned) {
+    // Secure the physical aperture immediately after timestamp capture. D14
+    // diagnostics and sampled-level bookkeeping deliberately happen later.
+    pps_count_boundary_handler(timestamp, kCaptureFlags);
+  }
+
   int sampled_level = digitalRead(capture_gpio);
   char edge =
       capture_reference_record ? 'R' : (sampled_level ? 'R' : 'F');
@@ -34,7 +44,7 @@ void handle_capture_edge(void) {
       capture_reference_record,
       edge,
       timestamp,
-      OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
+      kCaptureFlags,
   };
   if (capture_reference_record) {
     d14_raw_edge_count++;
@@ -62,6 +72,12 @@ void handle_capture_edge(void) {
     }
     d14_last_raw_timestamp = timestamp;
   }
+  if (pps_boundary_owned) {
+    capture_irq_edge_count++;
+    d14_accepted_pps_count++;
+    d14_last_accepted_timestamp = timestamp;
+    return;
+  }
   if (otis_capture_ring_push_from_isr(captured_event)) {
     capture_irq_edge_count++;
     if (capture_reference_record) {
@@ -84,6 +100,13 @@ bool otis_capture_irq_begin(const OtisCaptureBackendConfig &config) {
   attachInterrupt(digitalPinToInterrupt(config.gpio), handle_capture_edge,
                   static_cast<PinStatus>(config.interrupt_mode));
   return true;
+}
+
+void otis_capture_irq_set_pps_count_boundary_handler(
+    OtisPpsCountBoundaryIsrHandler handler) {
+  noInterrupts();
+  pps_count_boundary_handler = handler;
+  interrupts();
 }
 
 uint32_t otis_capture_irq_edge_count(void) {

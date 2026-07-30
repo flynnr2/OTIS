@@ -123,39 +123,52 @@ def test_pps_backend_times_out_before_the_first_reference_and_preserves_raw_boun
         encoding="utf-8"
     )
     service = source[source.index("bool otis_count_observation_service(") :]
-    assert "pps_gated_ratio.state == PpsGateState::Armed" in service
+    assert "pps_boundary_seen" in service
+    assert "missing_before_first_reported" in service
     assert "kReferenceReasonMissingPps" in service
 
-    reference_start = source.index("bool otis_count_observation_on_reference(")
+    reference_start = source.index(
+        "bool otis_count_observation_on_pps_boundary("
+    )
     reference_end = source.index(
         "bool otis_count_observation_service(", reference_start
     )
     reference = source[reference_start:reference_end]
     assert (
-        "runtime_state->tcxo.last_gate_close_ticks = timestamp_ticks;"
+        "runtime_state->tcxo.last_gate_close_ticks =\n"
+        "      observation->pps_timestamp_ticks;"
         in reference
     )
     assert "otis_timer0_interval_ticks(" in reference
 
 
-def test_pps_counter_restarts_before_reporting_and_inhibits_rejected_anchor() -> None:
+def test_pps_counter_boundary_is_owned_by_irq_and_inhibits_rejected_anchor() -> None:
     source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
-    reference_start = source.index("bool otis_count_observation_on_reference(")
+    isr_start = source.index("void capture_pps_count_boundary_from_isr(")
+    isr_end = source.index("#endif", isr_start)
+    isr = source[isr_start:isr_end]
+    assert isr.index(
+        "stop_and_sample_h1_pio_counter_from_pps_isr"
+    ) < isr.index("start_h1_pio_counter_from_pps_isr")
+    assert isr.index(
+        "start_h1_pio_counter_from_pps_isr"
+    ) < isr.index("otis_pps_count_boundary_ring_push_from_isr")
+    assert "_blocking" not in isr
+    assert "emit_" not in isr
+
+    reference_start = source.index(
+        "bool otis_count_observation_on_pps_boundary("
+    )
     reference_end = source.index(
         "bool otis_count_observation_service(", reference_start
     )
     reference = source[reference_start:reference_end]
-    completed = reference[reference.index("uint32_t remaining =") :]
-    assert completed.index("stop_h1_pio_long_gate_counter()") < completed.index(
-        "start_h1_pio_long_gate_counter(timestamp_ticks)"
-    )
-    assert completed.index(
-        "start_h1_pio_long_gate_counter(timestamp_ticks)"
-    ) < completed.index("emit_count_observation(")
-    assert "gate_open_inhibited = !raw_boundary.valid" in completed
-    assert "OtisPpsBoundaryReason::PreviousBoundaryInvalid" in completed
+    assert "stop_h1_pio_long_gate_counter" not in reference
+    assert "start_h1_pio_long_gate_counter" not in reference
+    assert "previous_boundary_inhibited" in reference
+    assert "OtisPpsBoundaryReason::PreviousBoundaryInvalid" in reference
     assert '"reference_previous_boundary_invalid"' in source
 
 

@@ -62,7 +62,16 @@ All current count-observation backends use the same schema:
 | `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0` | firmware gate in `rp2040_timer0` | RP2040 FC0/GPIN0 | accumulated FC0 samples converted to counted edges over the emitted gate |
 | `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe test input | not valid for raw MHz oscillator input |
 | `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE` | firmware gate in `rp2040_timer0` | PIO oscillator edge counter | long raw-edge gate for H1 characterization |
-| `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` | accepted PPS rising edges | PIO oscillator edge counter | PPS remains visible as `REF`; ratio/frequency remain host-derived |
+| `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` | immediate D14 PPS GPIO IRQ boundary | PIO oscillator edge counter | ISR stop/sample/restart publishes one atomic boundary; PPS remains visible as `REF`; ratio/frequency remain host-derived |
+
+For the PPS-gated backend, a `CNT` row is emitted only when its opening and
+closing atomic boundary observations are sequence-continuous. A nominal
+timestamp interval and nonzero count do not establish a complete physical
+aperture: `GATE_INCOMPLETE`, boundary overrun/order flags, snapshot failure,
+zero count, or saturation make the row ineligible. A sequence gap with no
+defensible opening timestamp produces `REF` plus `STS`, not a fabricated
+`CNT`. Its `count_seq` is the modulo-\(2^{32}\) closing boundary sequence, so a
+lost boundary remains visible as a sequence gap.
 
 See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
 backend contract.

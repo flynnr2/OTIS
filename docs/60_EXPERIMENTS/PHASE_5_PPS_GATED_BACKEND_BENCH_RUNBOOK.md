@@ -2,9 +2,11 @@
 
 ## Purpose and gate
 
-This runbook produces the bench evidence needed to decide whether
-`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` is qualified metrology. It does not
-authorize DAC steering. Throughout this procedure:
+This runbook first provides a short functional acceptance of the corrected
+PPS-IRQ-owned count boundary. Longer independent-metrology and uncertainty
+work may follow as a separate evidence package; it is not a prerequisite for
+accepting that foreground and service load no longer define the aperture. This
+runbook does not authorize DAC steering. Throughout this procedure:
 
 ```text
 status.control_ready=false
@@ -23,7 +25,7 @@ The v1 profile is
 
 - a conditioned 10 MHz CX317 observation on `D8` / GPIO20;
 - one authoritative conditioned PPS on `D14` / GPIO26;
-- the IRQ reference-capture authority and PIO PPS-gated count backend;
+- the GPIO IRQ reference/count-boundary authority and PIO oscillator counter;
 - a nominal one-second PPS interval, accepted over `0.8..1.2 s`;
 - duplicate classification at `<=0.1 s`;
 - a missing-PPS timeout of `2.5 s`;
@@ -34,21 +36,20 @@ The fixed v1 acceptance thresholds are:
 
 | Check | Threshold |
 |---|---:|
-| Stable measurement-eligible duration after warmup selection | at least 3600 s |
-| Measurement-eligible PPS-gated windows | at least 3600 |
+| Stable measurement-eligible duration after warmup selection | at least 120 s |
+| Measurement-eligible PPS-gated windows | at least 120 |
 | Raw `CNT` boundaries traceable to adjacent authoritative `REF` rows | 100% |
 | Candidate population jitter | no more than 1.5 Hz per one-second window |
-| Absolute mean bias against independent metrology | no more than 0.05 Hz |
 | Baseline-to-service-load mean shift | no more than 0.05 Hz |
-| Baseline and service-load segment size | at least 600 eligible windows in every declared segment |
+| Baseline and service-load segment size | at least 60 eligible windows in every declared segment |
 | Required safe bench faults | all detected with the specified reason and inhibition |
-| Required uncertainty components | all available and evidence-backed |
 
-The 0.05 Hz comparison bound is 5 parts in \(10^9\) at 10 MHz and is below the
-smallest Run 020 plant-response scale used for preview decisions. The 1.5 Hz
-single-window jitter bound permits integer-edge aperture variation while still
-detecting unexplained multi-edge service latency. These are qualification
-limits, not controller thresholds.
+The 1.5 Hz single-window jitter bound permits integer-edge aperture variation
+while still detecting unexplained multi-edge service latency. The 0.05 Hz
+quiet-to-load bound tests service-plane independence. These are architectural
+qualification limits, not controller thresholds. The profile retains
+independent-bias and uncertainty fields for a later metrology report; those are
+not prerequisites for the focused ownership acceptance.
 
 Counter saturation is outside this applicability envelope: a one-second 10 MHz
 gate is far below the 32-bit terminal count. Saturation arithmetic, flagging,
@@ -57,15 +58,15 @@ result is reported `qualified_with_limits`, with this limitation retained.
 
 ## Equipment and safe wiring
 
-Required:
+Required for focused architectural acceptance:
 
 - Arduino Nano RP2040 Connect running the candidate build;
 - repaired H1 CX317 plus SN74LVC1G17 conditioning path;
 - stable, 3.3 V-safe PPS source;
-- independent, authorised counter path observing the same oscillator during
-  the same stable interval;
-- oscilloscope or time-interval capability for counter-aperture evidence;
-- two USB serial paths if the independent path is a second OTIS instrument.
+
+An independent counter, oscilloscope/logic-analyser marker, or second serial
+path may be used for later metrology/latency evidence, but is not required to
+accept the architectural correction.
 
 Wire:
 
@@ -111,7 +112,7 @@ arduino-cli compile \
 arduino-cli compile \
   --fqbn rp2040:rp2040:arduino_nano_connect \
   --build-path /private/tmp/otis-phase5-pps \
-  --build-property "compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=1 -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0 -DOTIS_ENABLE_DAC_AD5693R=0 -DOTIS_ENABLE_H1_DAC_SWEEP=0 -DOTIS_ENABLE_ENV_SENSORS=0 -DOTIS_FIRMWARE_CONFIG_ID=\\\"phase5_pps_gated_qualification_v1\\\" -DOTIS_FIRMWARE_GIT_COMMIT=\\\"${OTIS_PHASE5_GIT_COMMIT}\\\"" \
+  --build-property "compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=1 -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0 -DOTIS_ENABLE_DAC_AD5693R=0 -DOTIS_ENABLE_H1_DAC_SWEEP=0 -DOTIS_ENABLE_ENV_SENSORS=0 -DOTIS_FIRMWARE_CONFIG_ID=\\\"phase5_pps_isr_boundary_qualification_v1\\\" -DOTIS_FIRMWARE_GIT_COMMIT=\\\"${OTIS_PHASE5_GIT_COMMIT}\\\"" \
   firmware/arduino/otis_nano_rp2040_connect
 ```
 
@@ -155,9 +156,13 @@ registry conflict/incompleteness, or a backend other than
 ```text
 capture/tcxo_counter_backend=pps_gated_ratio
 capture/pps_gated_ratio_init=ok
-firmware/config_id=phase5_pps_gated_qualification_v1
+firmware/config_id=phase5_pps_isr_boundary_qualification_v1
 firmware/git_commit=<the exact 40-hex OTIS_PHASE5_GIT_COMMIT>
 pps_gate/backend=pps_gated_ratio
+pps_gate/boundary_owner=pps_gpio_irq
+pps_gate/aperture_backend=pps_isr_stop_sample_restart_v1
+pps_gate/backend_qualified=false
+pps_gate/boundary_ring_capacity=7
 pps_gate/duplicate_max_interval_us=100000
 pps_gate/min_interval_us=800000
 pps_gate/max_interval_us=1200000
@@ -176,6 +181,8 @@ resource_registry/dma_claim_count=0
 
 The two uncertainty status values remain `unavailable` until promoted from
 measured/calibrated host evidence. They must never be emitted as zero.
+`backend_qualified=false` is also required for this candidate: the run is the
+evidence used to decide whether a later build may set that compile-time gate.
 
 ## Local run preparation
 
@@ -204,7 +211,7 @@ independent estimator/backend pair must be one of the explicit
 `allowed_independent_paths` in the qualification profile, and both runs must
 name the same oscillator `source_domain`.
 
-## Nominal, service-load, and simultaneous independent capture
+## Focused nominal and service-load capture
 
 Before starting capture, close Arduino IDE Serial Monitor/Plotter and every
 other process that may open the candidate serial device. `capture_device` must
@@ -228,8 +235,8 @@ python3 -m host.otis_tools.capture_device \
   --command-fifo "$OTIS_CANDIDATE_RUN/commands.fifo"
 ```
 
-Start the independent capture in a second terminal at the same planned
-interval. If it is a second OTIS instrument:
+If collecting the separate independent-metrology package, start the independent
+capture in a second terminal at the same planned interval:
 
 ```bash
 python3 -m host.otis_tools.capture_device \
@@ -238,22 +245,22 @@ python3 -m host.otis_tools.capture_device \
   --run-dir "$OTIS_INDEPENDENT_RUN"
 ```
 
-Required sequence:
+Focused acceptance sequence:
 
 1. Allow the 600 s startup inhibit to complete.
-2. Confirm at least three subsequent clean windows and
-   `pps_gate/control_eligible=true`.
-3. Capture at least 3600 stable, valid one-second candidate windows while the
-   independent path observes the same oscillator and interval.
-4. Within that stable hour, designate at least one 600-window baseline segment
-   and one 600-window service-load segment.
-5. During the load segment, send read-only `CONFIG?` requests every two seconds:
+2. Confirm at least three subsequent measurement-valid windows. Control remains
+   false while `backend_qualified=false`.
+3. Capture at least 60 quiet, valid one-second candidate windows.
+4. Capture at least 60 service-load windows while issuing repeated `CONFIG?`
+   requests and allowing periodic status, sweep service (without actuation),
+   and environment service where the build enables them.
+5. During the load segment, send read-only `CONFIG?` requests once per second:
 
 ```bash
-for request in {1..300}; do
+for request in {1..60}; do
   python3 -m host.otis_tools.send_command \
     --fifo "$OTIS_CANDIDATE_RUN/commands.fifo" 'CONFIG?'
-  sleep 2
+  sleep 1
 done
 ```
 
@@ -282,7 +289,7 @@ Perform fault injection only after the stable interval. Preserve every raw
 | Long PPS | isolated programmable interval of 1.5 s, below missing timeout | `reference_reason=reference_pps_long_interval`; invalid bounded `CNT` |
 | Missing PPS | remove the reference for more than 2.5 s | `reference_reason=reference_missing_pps`; no fabricated clean close `CNT` |
 | Invalid count | safely disconnect only the conditioned oscillator observation for one bounded gate | `count_reason=count_zero`; `SOURCE_HEALTH_SUSPECT` and `INPUT_STUCK_LOW` |
-| Recovery | restore both inputs and wait for at least three clean windows | independent validity returns to `valid`; `control_eligible=true` |
+| Recovery | restore both inputs and wait for at least three clean windows | independent validity returns to `valid`; `control_eligible` remains false in the unqualified candidate |
 
 Do not attempt a >4 GHz source or an overlong PPS gate to force 32-bit
 saturation. That is outside the v1 hardware envelope and remains a
@@ -293,12 +300,32 @@ sequence restart cannot be mistaken for one continuous metrology session.
 Preserve reconnect markers, repeat startup qualification, and compare clean
 pre/post-reconnect segments. Do not splice or renumber raw records.
 
-## Aperture and uncertainty evidence
+## Focused acceptance contract
 
-Measure the delay from each authoritative PPS edge to PIO counter disable and
-re-enable under baseline and service load. Record sample count, instrument
-calibration, mean, standard deviation, extrema, and whether start/stop latency
-is correlated. Populate these manifest values only from evidence:
+Accept the architectural correction when:
+
+- every emitted `CNT` is traceable to adjacent, sequence-continuous atomic
+  boundaries and authoritative `REF` timestamps;
+- clean 10 MHz / 1 Hz windows remain inside the implementation-derived narrow
+  integer-count envelope established by the quiet segment;
+- the loaded segment is statistically and operationally equivalent to quiet
+  operation, with no gross partial or zero count accepted;
+- `CONFIG?`, status, DAC-sweep service, environment service, and foreground
+  backlog do not alter the physical aperture;
+- missing PPS, duplicate/extra PPS, sequence gaps, ring overflow, invalid
+  snapshot, zero count, and saturation have explicit typed status or synthetic
+  test evidence;
+- no invalid or ambiguous aperture is control-eligible;
+- restoration follows the documented re-anchor/recovery sequence.
+
+GPIO/logic-analyser markers are optional diagnostics. They are not a
+prerequisite for accepting this ownership correction.
+
+## Separate metrology and uncertainty evidence
+
+If later promoting the backend as quantified metrology, measure or otherwise
+bound ISR/restart aperture quantisation and populate these manifest values only
+from evidence:
 
 - `count_quantization_standard_uncertainty_hz`;
 - `counter_aperture_s_1sigma`;
