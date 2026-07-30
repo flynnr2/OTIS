@@ -14,13 +14,15 @@ validation and protocol bring-up, not final PIO/DMA metrology.
 ## Firmware Metadata
 
 SW1 firmware emits `STS` rows during boot for protocol/schema version, firmware
-name, firmware version, optional firmware git commit, board target, Arduino core,
-bring-up mode, capture mode, nominal capture clock, nominal PPS/TCXO frequencies,
-pin mapping, and relevant compile-time feature flags.
+name/version, exact Git commit and clean/dirty state, canonical build-input and
+configuration hashes, build profile/invocation identity, FQBN/board, exact
+Arduino core and compiler/toolchain, bring-up mode, capture mode, nominal
+capture clock, nominal PPS/TCXO frequencies, pin mapping, and relevant
+compile-time feature flags.
 
-`OTIS_FIRMWARE_GIT_COMMIT` defaults to `unknown`. Scripted builds may pass a
-git hash with a compiler define, but Arduino IDE builds do not require git
-integration.
+These identity fields have no source defaults. Produce firmware with
+`python3 tools/firmware_matrix.py`; direct IDE/CLI builds fail rather than
+silently emitting a stale or unknown commit.
 
 ## Capture Lifecycle
 

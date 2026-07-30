@@ -99,36 +99,25 @@ python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
 Confirm those paths resolve to the reviewed, merged deterministic Phase 4 host
 replay and live-parity contracts, not only an unmerged feature stack.
 
-Compile the default and candidate configurations into separate build paths:
+Verify the pinned environment and compile the candidate profile:
 
 ```bash
-export OTIS_PHASE5_GIT_COMMIT="$(git rev-parse HEAD)"
-
-arduino-cli compile \
-  --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-path /private/tmp/otis-phase5-default \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile \
-  --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-path /private/tmp/otis-phase5-pps \
-  --build-property "compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=1 -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0 -DOTIS_ENABLE_DAC_AD5693R=0 -DOTIS_ENABLE_H1_DAC_SWEEP=0 -DOTIS_ENABLE_ENV_SENSORS=0 -DOTIS_FIRMWARE_CONFIG_ID=\\\"phase5_pps_isr_boundary_qualification_v1\\\" -DOTIS_FIRMWARE_GIT_COMMIT=\\\"${OTIS_PHASE5_GIT_COMMIT}\\\"" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --check-environment
+python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
 Compile the independent PIO long-gate configuration if a second OTIS
 instrument is the authorised comparison:
 
 ```bash
-arduino-cli compile \
-  --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-path /private/tmp/otis-phase5-independent \
-  --build-property "compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0 -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0 -DOTIS_ENABLE_DAC_AD5693R=0 -DOTIS_ENABLE_H1_DAC_SWEEP=0 -DOTIS_ENABLE_ENV_SENSORS=0 -DOTIS_FIRMWARE_CONFIG_ID=\\\"phase5_independent_long_gate_v1\\\" -DOTIS_FIRMWARE_GIT_COMMIT=\\\"${OTIS_PHASE5_GIT_COMMIT}\\\"" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile h1_characterization
 ```
 
-Every compile must exit zero. Preserve the commands, Arduino CLI version,
-RP2040 core version, and output sizes in local notes.
+Every compile must exit zero. Preserve each profile's ignored
+`firmware_build_manifest.json`, which records the exact command inputs,
+source/configuration hashes, generated board identity, Arduino
+CLI/core/toolchain installed-byte hashes, output identity, and successful
+binary artifact hashes.
 
 ## Upload and boot acceptance
 
@@ -145,8 +134,7 @@ Upload the already compiled candidate:
 arduino-cli upload \
   --port "$OTIS_CANDIDATE_PORT" \
   --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-path /private/tmp/otis-phase5-pps \
-  firmware/arduino/otis_nano_rp2040_connect
+  --input-dir build/firmware_matrix/phase5_qualification/artifacts
 ```
 
 Abort before capture if boot shows `BOOT_FATAL`, repeated resets, resource
@@ -156,8 +144,19 @@ registry conflict/incompleteness, or a backend other than
 ```text
 capture/tcxo_counter_backend=pps_gated_ratio
 capture/pps_gated_ratio_init=ok
-firmware/config_id=phase5_pps_isr_boundary_qualification_v1
-firmware/git_commit=<the exact 40-hex OTIS_PHASE5_GIT_COMMIT>
+firmware/config_id=phase5_qualification
+firmware/git_commit=<the exact generated 40-hex Git commit>
+firmware/source_state=<clean or dirty>
+firmware/source_hash=<the generated 64-hex build-input hash>
+firmware/config_hash=<the generated 64-hex profile hash>
+system/fqbn=rp2040:rp2040:arduino_nano_connect
+system/arduino_core_provider=rp2040
+system/arduino_core_version=6.0.0
+build/profile_id=phase5_qualification
+build/toolchain=pqt-gcc@5.0.0-9576866
+build/compiler=pqt-gcc@5.0.0-9576866/arm-none-eabi-g++@16.1.0
+build/arduino_cli_version=1.4.1
+build/invocation_id=<the generated 64-hex invocation hash>
 pps_gate/backend=pps_gated_ratio
 pps_gate/boundary_owner=pps_gpio_irq
 pps_gate/aperture_backend=pps_isr_stop_sample_restart_v1

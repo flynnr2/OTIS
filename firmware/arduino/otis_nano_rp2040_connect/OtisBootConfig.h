@@ -12,18 +12,21 @@ constexpr uint8_t kOtisSafeModeFailureThreshold =
     OTIS_SAFE_MODE_FAILURE_THRESHOLD;
 
 enum class BootPhase : uint8_t {
-  ResetEntry,
-  EarlyInit,
-  ClocksInit,
-  GpioInit,
-  CaptureInit,
-  TimerInit,
-  PpsInputInit,
-  RingBuffersInit,
-  SerialInit,
-  ProtocolBanner,
-  RunMode,
-  Fatal,
+  ResetEntry = 0,
+  EarlyInit = 1,
+  ClocksInit = 2,
+  GpioInit = 3,
+  CaptureInit = 4,
+  TimerInit = 5,
+  PpsInputInit = 6,
+  RingBuffersInit = 7,
+  SerialInit = 8,
+  ProtocolBanner = 9,
+  RunMode = 10,
+  Fatal = 11,
+  PeripheralsInit = 12,
+  PreviewInit = 13,
+  CapabilityAudit = 14,
 };
 
 enum class BootFatal : uint8_t {
@@ -39,6 +42,7 @@ enum class BootFatal : uint8_t {
   ForcedBeforeRunMode,
   RepeatedBootFailure,
   ResourceOwnershipConflict,
+  RequiredCapabilityUnavailable,
 };
 
 #endif

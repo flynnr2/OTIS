@@ -148,9 +148,7 @@ The checked-in default remains `OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0`. An
 observe-only build uses:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile phase4_observe_only
 ```
 
 The corrected H1 PIO-long-gate preview build used 93,504 bytes of program
@@ -186,6 +184,9 @@ endpoints were present. No upload or hardware claim is made.
 | Derived USB traffic disturbs capture | Queueing and chunking are bounded; deliberate target load/reconnect testing remains required. |
 | Long-run reference/count recovery differs on hardware | Fault/recovery fixtures pass; a long live run remains required. |
 | Alternative backend or estimator semantics are mistaken for model applicability | Backend and full method-contract mismatch explicitly inhibit preview; string identity alone is insufficient. |
+| Foreground latency extends a PIO gate | Artifact/configured duration identity remains exact; observed aperture has a configured 50 ms quality tolerance and larger deviations invalidate the observation. Target load evidence must confirm that bound. |
+| A gate straddles DAC settling | Successful write timestamps are captured at both manual and sweep owners; applicability requires gate-open at or after the generated settling cutoff. Pre-boot DAC history remains unattested. |
+| Primary temperature is missing or old | Failed SHT4x reads invalidate immediately and samples expire after three configured sample periods; `temperature_not_observed` blocks applicability. Physical sensor placement still requires bench evidence. |
 | Candidate range is mistaken for permission | CTL and model flags remain false/non-actionable; no actuation callback exists. |
 
 This change completes the implementation and deterministic-parity portion of

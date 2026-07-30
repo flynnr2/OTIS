@@ -27,6 +27,7 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->boot.serial_absent_warn_pending = false;
   state->boot.safe_mode_active = false;
   state->boot.safe_mode_warn_pending = false;
+  state->boot.degraded = false;
 
   state->loopback.last_toggle_ms = 0;
   state->loopback.output_high = false;

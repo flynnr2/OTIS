@@ -62,6 +62,97 @@
         }
       }
     },
+    "firmware_build_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arduino_cli_version",
+        "board",
+        "board_name",
+        "compiler",
+        "config_sha256",
+        "core_provider",
+        "core_installed_sha256",
+        "core_version",
+        "fqbn",
+        "git_commit",
+        "invocation_id",
+        "profile_id",
+        "provenance_format",
+        "source_sha256",
+        "source_state",
+        "toolchain",
+        "toolchain_installed_sha256"
+      ],
+      "properties": {
+        "arduino_cli_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "board": {
+          "type": "string",
+          "minLength": 1
+        },
+        "board_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compiler": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "core_provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "core_installed_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "core_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fqbn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "git_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "invocation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance_format": {
+          "const": "otis_generated_build_v1"
+        },
+        "source_state": {
+          "enum": ["clean", "dirty"]
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "toolchain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolchain_installed_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "snapshot_digest": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"

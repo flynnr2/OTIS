@@ -27,7 +27,12 @@ from .phase4_boundary_estimator import (
     REFERENCE_INVALID_FLAGS,
     estimator_method_contract,
 )
-from .plant_model import PlantModel, load_plant_model
+from .plant_model import (
+    ModelApplicabilityContext,
+    PlantModel,
+    assess_model_applicability,
+    load_plant_model,
+)
 from .run_loader import RunManifest, load_manifest
 from .timebase import unwrap_ticks
 
@@ -646,58 +651,33 @@ def _model_applicability(
     if plant.model is None:
         return plant.load_state, [plant.load_reason], None
     model = plant.model
-    reasons: list[str] = []
-    if model.model_version != 4:
-        reasons.append("plant_model_version_not_4")
-
-    applicability = model.data["plant_response"].get("applicability", {})
-    model_method = (
-        applicability.get("estimator_method_contract")
-        if isinstance(applicability, dict)
-        else None
-    )
-    if model_method != estimator_method_contract():
-        reasons.append("plant_model_estimator_method_mismatch")
-
     replay_identity = manifest.data.get("phase4_replay")
-    if not isinstance(replay_identity, dict):
-        reasons.append("plant_model_input_identity_unavailable")
-    else:
-        topology = replay_identity.get("hardware_topology_id")
-        backend = replay_identity.get("measurement_backend")
-        expected_topology = model.data["hardware_topology"]["topology_id"]
-        expected_backend = applicability.get("measurement_backend")
-        if topology != expected_topology:
-            reasons.append("plant_model_topology_mismatch")
-        if backend != expected_backend:
-            reasons.append("plant_model_backend_mismatch")
-
-    applicability_range = model.applicability_range
-    if dac is None:
-        reasons.append("dac_state_unavailable")
-    elif applicability_range is None:
-        reasons.append("plant_model_applicability_unavailable")
-    elif not applicability_range[0] <= dac.applied_code <= applicability_range[1]:
-        reasons.append("input_outside_model_applicability")
-
-    excluded = set(model.data["plant_response"]["applicability"].get("excluded_count_sequences", []))
-    source_run_ids = model.data.get("source_evidence", {}).get(
-        "source_run_ids", []
-    )
-    source_identity: object = manifest.run_id
+    topology: str | None = None
+    backend: str | None = None
+    source_identity: str | None = manifest.run_id
     if isinstance(replay_identity, dict):
-        source_identity = replay_identity.get(
+        topology_value = replay_identity.get("hardware_topology_id")
+        backend_value = replay_identity.get("measurement_backend")
+        source_value = replay_identity.get(
             "source_evidence_run_id", manifest.run_id
         )
-    source_identity_text = str(source_identity)
-    replaying_model_source = any(
-        source_identity_text == str(source_run_id)
-        or str(source_run_id).endswith(f"/{source_identity_text}")
-        or source_identity_text.endswith(f"/{source_run_id}")
-        for source_run_id in source_run_ids
+        topology = str(topology_value) if topology_value is not None else None
+        backend = str(backend_value) if backend_value is not None else None
+        source_identity = str(source_value) if source_value is not None else None
+
+    assessment = assess_model_applicability(
+        model,
+        ModelApplicabilityContext(
+            hardware_topology_id=topology,
+            measurement_backend=backend,
+            estimator_method=estimator_method_contract(),
+            dac_code=dac.applied_code if dac is not None else None,
+            source_run_id=source_identity,
+            count_sequence=count.seq if count is not None else None,
+            required_model_version=4,
+        ),
     )
-    if count is not None and replaying_model_source and count.seq in excluded:
-        reasons.append("plant_model_excluded_count_sequence")
+    reasons = list(assessment.reasons)
 
     slope = model.data["plant_response"]["local_slope"].get("hz_per_code")
     if not isinstance(slope, (int, float)) or not math.isfinite(float(slope)) or float(slope) == 0:

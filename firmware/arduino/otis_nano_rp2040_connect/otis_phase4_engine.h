@@ -98,6 +98,16 @@ struct OtisPhase4EngineConfig {
   double nominal_frequency_hz;
 };
 
+enum OtisPhase4ModelApplicabilityDetail : uint8_t {
+  OTIS_PHASE4_MODEL_DETAIL_NONE = 0u,
+  OTIS_PHASE4_MODEL_DETAIL_DAC_RANGE = 1u << 0,
+  OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_UNVERIFIED = 1u << 1,
+  OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_ACTIVE = 1u << 2,
+  OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_UNAVAILABLE = 1u << 3,
+  OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_STALE = 1u << 4,
+  OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_RANGE = 1u << 5,
+};
+
 struct OtisPhase4ModelInput {
   bool available;
   bool valid;
@@ -106,6 +116,7 @@ struct OtisPhase4ModelInput {
   bool backend_match;
   bool estimator_method_match;
   bool input_in_applicability;
+  uint8_t applicability_detail_mask;
   bool excluded_input;
   bool gain_available;
   double hz_per_code;

@@ -1,13 +1,12 @@
 #include <Arduino.h>
-#include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "otis_config.h"
 
 #include "OtisBootConfig.h"
 #include "otis_board.h"
+#include "otis_boot_capabilities.h"
 #include "otis_boot_diag.h"
 #include "otis_capture_backend.h"
 #include "otis_capture_irq.h"
@@ -24,6 +23,7 @@
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
+#include "otis_serial_command.h"
 #include "otis_status_emit.h"
 #include "otis_status_led.h"
 #include "otis_timebase.h"
@@ -59,17 +59,112 @@ constexpr uint32_t kFc0ControlReadyCleanWindows =
 
 OtisRuntimeState runtime_state;
 OtisStatusEmitContext status_emit_context;
-char serial_command_line[64];
-uint8_t serial_command_len = 0;
+OtisSerialFrameCollector serial_command_collector;
+OtisBootCapabilityTracker boot_capabilities;
 bool resource_ownership_status_emitted = false;
+bool boot_capability_status_emitted = false;
+bool run_mode_status_emitted = false;
+bool transport_started = false;
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
 }
 
+void begin_boot_phase(BootPhase next_phase) {
+  enter_boot_phase(next_phase);
+  otis_boot_capability_begin_phase(&boot_capabilities, next_phase);
+}
+
 void complete_boot_phase(BootPhase completed_phase) {
+  otis_boot_capability_complete_phase(&boot_capabilities, completed_phase);
   otisBootBreadcrumbCompletePhase(completed_phase);
 }
+
+OtisBootCapabilityRequirement capability_requirement(
+    OtisBootCapability capability) {
+  const OtisBootCapabilityEntry *entry =
+      otis_boot_capability_entry(&boot_capabilities, capability);
+  return entry == nullptr ? OtisBootCapabilityRequirement::Disabled
+                          : entry->requirement;
+}
+
+void record_capability_result(OtisBootCapability capability, bool ready) {
+  otis_boot_capability_record(
+      &boot_capabilities, capability,
+      otis_boot_capability_result(capability_requirement(capability), ready));
+}
+
+bool capability_ready(OtisBootCapability capability) {
+  const OtisBootCapabilityEntry *entry =
+      otis_boot_capability_entry(&boot_capabilities, capability);
+  return entry != nullptr && entry->reported &&
+         entry->outcome == OtisBootCapabilityOutcome::Ready;
+}
+
+void configure_selected_capabilities(void) {
+  otis_boot_capability_tracker_init(&boot_capabilities);
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::ResourceRegistry,
+                              OtisBootCapabilityRequirement::Required);
+  otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Timebase,
+                              OtisBootCapabilityRequirement::Required);
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::RingBuffers,
+                              OtisBootCapabilityRequirement::Required);
+  otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Transport,
+                              OtisBootCapabilityRequirement::Required);
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::HostConnection,
+                              OtisBootCapabilityRequirement::Optional);
+
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::SparseCapture,
+                              OtisBootCapabilityRequirement::Required);
+#elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::SparseCapture,
+                              OtisBootCapabilityRequirement::Required);
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::PpsCapture,
+                              OtisBootCapabilityRequirement::Required);
+#if OTIS_ENABLE_PPS_DUAL_OBSERVER
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::PpsWitness,
+                              OtisBootCapabilityRequirement::Optional);
+#endif
+#endif
+
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::CountBackend,
+                              OtisBootCapabilityRequirement::Required);
+#endif
+
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
+    OTIS_ENABLE_DAC_AD5693R
+  otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Dac,
+                              OtisBootCapabilityRequirement::Required);
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
+    OTIS_ENABLE_ENV_SENSORS && \
+    (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
+  otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Sensors,
+                              OtisBootCapabilityRequirement::Optional);
+#endif
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::Phase4Preview,
+                              OtisBootCapabilityRequirement::Required);
+#endif
+}
+
+void emit_selected_capability_status();
+void emit_resource_ownership_status();
+void emit_protocol_banner_if_serial_ready();
 
 void emit_boot_records_if_serial_ready(void) {
   if (runtime_state.boot.summary_emitted || !otis_transport_ready()) {
@@ -105,15 +200,23 @@ void halt_boot(BootFatal fatal, BootPhase failed_phase) {
   otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
 
   bool fatal_emitted = false;
+  if (!transport_started) {
+    transport_started = otis_transport_begin(kOtisSerialBaud);
+    wait_for_serial_or_timeout();
+  }
   if (otis_transport_ready()) {
-    emit_boot_records_if_serial_ready();
+    emit_protocol_banner_if_serial_ready();
+    emit_selected_capability_status();
+    emit_resource_ownership_status();
     emitOtisBootFatal(Serial, fatal, failed_phase);
     fatal_emitted = true;
   }
 
   while (true) {
     if (otis_transport_ready() && !fatal_emitted) {
-      emit_boot_records_if_serial_ready();
+      emit_protocol_banner_if_serial_ready();
+      emit_selected_capability_status();
+      emit_resource_ownership_status();
       emitOtisBootFatal(Serial, fatal, failed_phase);
       fatal_emitted = true;
     }
@@ -129,10 +232,12 @@ void enter_safe_mode(void) {
   otisBootBreadcrumbSetSafeModeFatal(BootFatal::RepeatedBootFailure);
 
   otis_status_led_begin();
-  otis_transport_begin(kOtisSerialBaud);
+  transport_started = otis_transport_begin(kOtisSerialBaud);
   wait_for_serial_or_timeout();
   otis_status_led_set(OTIS_SYSTEM_STATE_FATAL_CONFIG_FAULT);
-  emit_boot_records_if_serial_ready();
+  emit_protocol_banner_if_serial_ready();
+  emit_selected_capability_status();
+  emit_resource_ownership_status();
 }
 
 const char *edge_string(char edge);
@@ -306,6 +411,8 @@ void drain_pps_count_boundary_ring(void) {
 }
 
 void emit_common_boot_status(void) {
+  emit_status("build", "provenance_format", OTIS_BUILD_PROVENANCE_FORMAT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "boot", "true", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("protocol", "schema_version", OTIS_SCHEMA_VERSION_V1,
@@ -317,6 +424,12 @@ void emit_common_boot_status(void) {
   emit_status("firmware", "config_id", OTIS_FIRMWARE_CONFIG_ID,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("firmware", "git_commit", OTIS_FIRMWARE_GIT_COMMIT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "source_state", OTIS_BUILD_SOURCE_STATE,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "source_hash", OTIS_BUILD_SOURCE_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "config_hash", OTIS_BUILD_CONFIG_SHA256,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "mode", otis_bringup_mode_name(), OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -355,6 +468,31 @@ void emit_common_boot_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "board_name", OTIS_TARGET_BOARD_NAME,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "fqbn", OTIS_BUILD_FQBN, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_provider", OTIS_BUILD_CORE_PROVIDER,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_version", OTIS_BUILD_CORE_VERSION,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_installed_hash",
+              OTIS_BUILD_CORE_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "profile_id", OTIS_BUILD_PROFILE_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "toolchain", OTIS_BUILD_TOOLCHAIN,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "compiler", OTIS_BUILD_COMPILER, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "toolchain_installed_hash",
+              OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "arduino_cli_version",
+              OTIS_BUILD_ARDUINO_CLI_VERSION, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "invocation_id", OTIS_BUILD_INVOCATION_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_rp2040_boot_diag",
                   OTIS_ENABLE_RP2040_BOOT_DIAG, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -478,6 +616,79 @@ void emit_h0_pin_status(void) {
 #endif
 }
 
+void emit_selected_capability_status(void) {
+  if (boot_capability_status_emitted || !otis_transport_ready()) {
+    return;
+  }
+
+  const OtisBootCapabilityOutcome overall =
+      otis_boot_capability_overall_outcome(&boot_capabilities);
+  const bool run_mode_ready = boot_capabilities.run_mode_marked;
+  const bool degraded = otis_boot_capability_degraded(&boot_capabilities);
+  emit_status("boot_capabilities", "selected_profile",
+              otis_bringup_mode_name(), OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("boot_capabilities", "overall",
+              otis_boot_capability_outcome_name(overall),
+              overall == OtisBootCapabilityOutcome::Ready
+                  ? OTIS_SEVERITY_INFO
+                  : (overall == OtisBootCapabilityOutcome::OptionalDegraded
+                         ? OTIS_SEVERITY_WARN
+                         : OTIS_SEVERITY_FATAL),
+              overall == OtisBootCapabilityOutcome::Ready
+                  ? OTIS_FLAG_PROFILE_ASSUMPTION
+                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("boot_capabilities", "run_mode",
+              run_mode_ready ? "Ready" : "blocked",
+              run_mode_ready ? (degraded ? OTIS_SEVERITY_WARN
+                                         : OTIS_SEVERITY_INFO)
+                             : OTIS_SEVERITY_FATAL,
+              run_mode_ready && !degraded ? OTIS_FLAG_PROFILE_ASSUMPTION
+                                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("boot_capabilities", "degraded",
+              degraded ? "true" : "false",
+              degraded ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+              degraded ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                       : OTIS_FLAG_PROFILE_ASSUMPTION);
+
+  uint32_t selected_count = 0u;
+  for (uint8_t index = 0u;
+       index < static_cast<uint8_t>(OtisBootCapability::Count); ++index) {
+    const OtisBootCapability capability =
+        static_cast<OtisBootCapability>(index);
+    const OtisBootCapabilityEntry *entry =
+        otis_boot_capability_entry(&boot_capabilities, capability);
+    if (entry == nullptr ||
+        entry->requirement == OtisBootCapabilityRequirement::Disabled) {
+      continue;
+    }
+    selected_count++;
+    char value[48];
+    snprintf(value, sizeof(value), "%s:%s",
+             otis_boot_capability_requirement_name(entry->requirement),
+             entry->reported
+                 ? otis_boot_capability_outcome_name(entry->outcome)
+                 : "pending");
+    const bool capability_ready =
+        entry->reported &&
+        (entry->outcome == OtisBootCapabilityOutcome::Ready ||
+         entry->outcome == OtisBootCapabilityOutcome::OptionalDegraded);
+    emit_status("boot_capabilities",
+                otis_boot_capability_name(capability), value,
+                entry->outcome == OtisBootCapabilityOutcome::OptionalDegraded
+                    ? OTIS_SEVERITY_WARN
+                    : (capability_ready ? OTIS_SEVERITY_INFO
+                                        : OTIS_SEVERITY_FATAL),
+                capability_ready && entry->outcome ==
+                                        OtisBootCapabilityOutcome::Ready
+                    ? OTIS_FLAG_PROFILE_ASSUMPTION
+                    : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  }
+  emit_status_u32("boot_capabilities", "selected_count", selected_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  boot_capability_status_emitted = true;
+}
+
 void emit_resource_ownership_status(void) {
   if (resource_ownership_status_emitted || !otis_transport_ready()) {
     return;
@@ -578,8 +789,6 @@ void emit_protocol_banner_if_serial_ready(void) {
 #endif
   otis_emit_csv_headers();
   otis_phase4_observe_preview_emit_headers();
-  emit_common_boot_status();
-  emit_h0_pin_status();
   runtime_state.boot.protocol_banner_emitted = true;
 }
 
@@ -760,12 +969,15 @@ bool begin_edge_capture_backend(uint32_t gpio, uint32_t channel_id,
 #endif
 }
 
-void begin_pps_dual_observer_if_enabled(void) {
+bool begin_pps_dual_observer_if_enabled(void) {
 #if OTIS_ENABLE_PPS_DUAL_OBSERVER
   bool ok = otis_pps_dual_observer_begin(OTIS_PIN_GENERIC_EVENT);
   emit_status("pps_dual_observer", "init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  return ok;
+#else
+  return true;
 #endif
 }
 
@@ -799,17 +1011,12 @@ void configure_synthetic_usb_mode(void) {
 }
 
 void configure_gpio_loopback_mode(void) {
-  pinMode(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, OUTPUT);
-  digitalWrite(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, LOW);
-  pinMode(OTIS_PIN_GENERIC_EVENT, INPUT_PULLDOWN);
   emit_status("pins", "gpio_loopback_output", "D7", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("wiring", "gpio_loopback", "D7_to_D10", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
-  bool ok = begin_edge_capture_backend(OTIS_PIN_GENERIC_EVENT,
-                                       OTIS_CHANNEL_GENERIC_EVENT, false,
-                                       CHANGE);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
+  bool ok = capability_ready(OtisBootCapability::SparseCapture);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -828,12 +1035,8 @@ void configure_gpio_loopback_mode(void) {
 }
 
 void configure_gps_pps_mode(void) {
-  pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
-  bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
-                                       OTIS_CHANNEL_PPS_REFERENCE, true,
-                                       RISING);
-  begin_pps_dual_observer_if_enabled();
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
+  bool ok = capability_ready(OtisBootCapability::PpsCapture);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -852,27 +1055,11 @@ void configure_gps_pps_mode(void) {
 }
 
 void configure_tcxo_observe_mode(void) {
-  runtime_state.tcxo.startup_inhibit_start_ms = millis();
-  runtime_state.tcxo.startup_inhibit_active = true;
-  runtime_state.tcxo.valid_for_control = false;
-  runtime_state.tcxo.control_clean_window_count = 0;
-  runtime_state.tcxo.fault_after_startup = false;
-
-  pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
-  OtisCountObservationConfig count_config = count_observation_config();
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  // Register and initialize the bounded PPS ISR handler before enabling D14.
-  otis_count_observation_begin(&runtime_state, &status_emit_context,
-                               &count_config);
-#endif
   // In TCXO observe mode the edge-capture backend, including PIO FIFO when
   // enabled, remains on sparse PPS input. Raw CXO input on D8 / GPIO20 is
-  // handled by the selected count-observation backend below, not FIFO records.
-  bool ok = begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
-                                       OTIS_CHANNEL_PPS_REFERENCE, true,
-                                       RISING);
-  begin_pps_dual_observer_if_enabled();
+  // handled by the selected count-observation backend, not FIFO records.
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
+  bool ok = capability_ready(OtisBootCapability::PpsCapture);
   emit_status("capture", "pio_init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -887,11 +1074,6 @@ void configure_tcxo_observe_mode(void) {
                     (uint32_t)otis_capture_pio_state_machine(),
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   }
-#endif
-
-#if OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  otis_count_observation_begin(&runtime_state, &status_emit_context,
-                               &count_config);
 #endif
 }
 
@@ -1172,6 +1354,10 @@ bool h1_dac_sweep_apply_active_step(const char *event_name) {
   }
 
   bool ok = otis_dac_ad5693r_set_raw(step.code);
+  if (ok) {
+    otis_phase4_observe_preview_on_dac_applied(
+        clamped, otis_capture_ticks_now());
+  }
   h1_dac_sweep.last_requested_code = step.code;
   h1_dac_sweep.last_applied_code = ok ? clamped : h1_dac_sweep.last_applied_code;
   h1_dac_sweep.last_dwell_ms = step.dwell_ms;
@@ -1305,7 +1491,7 @@ void configure_h1_ocxo_observe_mode(void) {
   configure_tcxo_observe_mode();
 
 #if OTIS_ENABLE_DAC_AD5693R
-  bool ok = otis_dac_ad5693r_begin();
+  bool ok = capability_ready(OtisBootCapability::Dac);
   emit_status("dac", "init", ok ? "ok" : "failed",
               ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
               ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -1315,7 +1501,7 @@ void configure_h1_ocxo_observe_mode(void) {
 #endif
   emit_dac_status("dac");
 #if OTIS_ENABLE_ENV_SENSORS
-  bool env_ok = otis_env_sensors_begin();
+  bool env_ok = capability_ready(OtisBootCapability::Sensors);
   emit_status("environment", "init", env_ok ? "ok" : "failed",
               env_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
               env_ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -1336,9 +1522,14 @@ void format_env_float(float value, char *buffer, size_t buffer_size) {
   snprintf(buffer, buffer_size, "%.3f", static_cast<double>(value));
 }
 
-void emit_env_sample(const OtisEnvSample &sample) {
+void emit_env_sample(const OtisEnvSample &sample,
+                     uint64_t timestamp_ticks) {
   if (!sample.valid) {
     return;
+  }
+  if (strcmp(sample.role, "vcocxo_near") == 0) {
+    otis_phase4_observe_preview_on_temperature(
+        true, sample.temperature_c, timestamp_ticks);
   }
   char temperature[16];
   char humidity[16];
@@ -1355,7 +1546,7 @@ void emit_env_sample(const OtisEnvSample &sample) {
     pressure[0] = '\0';
   }
   otis_emit_environment(runtime_state.sequences.env_seq++,
-                        otis_capture_ticks_now(), OTIS_DOMAIN_RP2040_TIMER0,
+                        timestamp_ticks, OTIS_DOMAIN_RP2040_TIMER0,
                         sample.source, sample.role, temperature, humidity,
                         pressure, OTIS_FLAG_NONE);
 }
@@ -1371,12 +1562,16 @@ void service_environment_sensors(void) {
   OtisEnvSample sample;
 #if OTIS_ENABLE_ENV_SHT4X
   if (otis_env_sensors_read_sht4x(&sample)) {
-    emit_env_sample(sample);
+    const uint64_t timestamp_ticks = otis_capture_ticks_now();
+    emit_env_sample(sample, timestamp_ticks);
+  } else {
+    otis_phase4_observe_preview_on_temperature(
+        false, 0.0f, otis_capture_ticks_now());
   }
 #endif
 #if OTIS_ENABLE_ENV_BMP280
   if (otis_env_sensors_read_bmp280(&sample)) {
-    emit_env_sample(sample);
+    emit_env_sample(sample, otis_capture_ticks_now());
   }
 #endif
 #endif
@@ -1396,8 +1591,22 @@ void setup_mode(void) {
 #endif
 }
 
+void emit_run_mode_status_if_ready(void) {
+  if (run_mode_status_emitted || !boot_capabilities.run_mode_marked ||
+      !runtime_state.boot.protocol_banner_emitted ||
+      !otis_transport_ready()) {
+    return;
+  }
+  emit_common_boot_status();
+  emit_h0_pin_status();
+  setup_mode();
+  emit_selected_capability_status();
+  emit_resource_ownership_status();
+  run_mode_status_emitted = true;
+}
+
 void boot_phase_reset_entry(void) {
-  enter_boot_phase(BootPhase::ResetEntry);
+  begin_boot_phase(BootPhase::ResetEntry);
 #if OTIS_ENABLE_RP2040_BOOT_DIAG
   captureRp2040BootDiag();
 #endif
@@ -1407,51 +1616,105 @@ void boot_phase_reset_entry(void) {
 }
 
 void boot_phase_early_init(void) {
-  enter_boot_phase(BootPhase::EarlyInit);
+  begin_boot_phase(BootPhase::EarlyInit);
+  const bool valid = otis_resource_registry_begin();
+  if (!valid) {
+    otis_boot_capability_record(
+        &boot_capabilities, OtisBootCapability::ResourceRegistry,
+        OtisBootCapabilityOutcome::FatalConflict);
+  }
   complete_boot_phase(BootPhase::EarlyInit);
 }
 
 void boot_phase_clocks_init(void) {
-  enter_boot_phase(BootPhase::ClocksInit);
+  begin_boot_phase(BootPhase::ClocksInit);
 #if OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS
   halt_boot(BootFatal::ForcedBeforeClocks, BootPhase::ClocksInit);
 #endif
+  record_capability_result(OtisBootCapability::Timebase,
+                           otis_timebase_begin());
   complete_boot_phase(BootPhase::ClocksInit);
 }
 
 void boot_phase_gpio_init(void) {
-  enter_boot_phase(BootPhase::GpioInit);
+  begin_boot_phase(BootPhase::GpioInit);
   otis_status_led_begin();
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
+  pinMode(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, OUTPUT);
+  digitalWrite(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, LOW);
+  pinMode(OTIS_PIN_GENERIC_EVENT, INPUT_PULLDOWN);
+#elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+#endif
   complete_boot_phase(BootPhase::GpioInit);
 }
 
 void boot_phase_capture_init(void) {
-  enter_boot_phase(BootPhase::CaptureInit);
+  begin_boot_phase(BootPhase::CaptureInit);
 #if OTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE
   halt_boot(BootFatal::ForcedBeforeCapture, BootPhase::CaptureInit);
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
+  const bool ready =
+      begin_edge_capture_backend(OTIS_PIN_GENERIC_EVENT,
+                                 OTIS_CHANNEL_GENERIC_EVENT, false, CHANGE);
+  record_capability_result(OtisBootCapability::SparseCapture, ready);
 #endif
   complete_boot_phase(BootPhase::CaptureInit);
 }
 
 void boot_phase_timer_init(void) {
-  enter_boot_phase(BootPhase::TimerInit);
+  begin_boot_phase(BootPhase::TimerInit);
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  runtime_state.tcxo.startup_inhibit_start_ms = millis();
+  runtime_state.tcxo.startup_inhibit_active = true;
+  runtime_state.tcxo.valid_for_control = false;
+  runtime_state.tcxo.control_clean_window_count = 0;
+  runtime_state.tcxo.fault_after_startup = false;
+  OtisCountObservationConfig count_config = count_observation_config();
+  const bool ready = otis_count_observation_begin(
+      &runtime_state, &status_emit_context, &count_config);
+  record_capability_result(OtisBootCapability::CountBackend, ready);
+#endif
   complete_boot_phase(BootPhase::TimerInit);
 }
 
 void boot_phase_pps_input_init(void) {
-  enter_boot_phase(BootPhase::PpsInputInit);
+  begin_boot_phase(BootPhase::PpsInputInit);
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  const bool pps_ready =
+      begin_edge_capture_backend(OTIS_PIN_PPS_REFERENCE,
+                                 OTIS_CHANNEL_PPS_REFERENCE, true, RISING);
+  record_capability_result(OtisBootCapability::SparseCapture, pps_ready);
+  record_capability_result(OtisBootCapability::PpsCapture, pps_ready);
+#if OTIS_ENABLE_PPS_DUAL_OBSERVER
+  const bool witness_ready = begin_pps_dual_observer_if_enabled();
+  record_capability_result(OtisBootCapability::PpsWitness, witness_ready);
+#endif
+#endif
   complete_boot_phase(BootPhase::PpsInputInit);
 }
 
 void boot_phase_ring_buffers_init(void) {
-  enter_boot_phase(BootPhase::RingBuffersInit);
+  begin_boot_phase(BootPhase::RingBuffersInit);
+  otis_capture_ring_reset();
+  otis_pps_count_boundary_ring_reset();
+  record_capability_result(OtisBootCapability::RingBuffers, true);
   complete_boot_phase(BootPhase::RingBuffersInit);
 }
 
 void boot_phase_serial_init(void) {
-  enter_boot_phase(BootPhase::SerialInit);
-  otis_transport_begin(kOtisSerialBaud);
+  begin_boot_phase(BootPhase::SerialInit);
+  transport_started = otis_transport_begin(kOtisSerialBaud);
   wait_for_serial_or_timeout();
+  record_capability_result(OtisBootCapability::Transport, transport_started);
+  record_capability_result(OtisBootCapability::HostConnection,
+                           runtime_state.boot.serial_ready);
 
   otis_status_led_boot_test();
   otis_status_led_set(OTIS_SYSTEM_STATE_BOOT_STARTING);
@@ -1460,25 +1723,67 @@ void boot_phase_serial_init(void) {
 }
 
 void boot_phase_protocol_banner(void) {
-  enter_boot_phase(BootPhase::ProtocolBanner);
+  begin_boot_phase(BootPhase::ProtocolBanner);
   emit_protocol_banner_if_serial_ready();
   complete_boot_phase(BootPhase::ProtocolBanner);
 }
 
+void boot_phase_peripherals_init(void) {
+  begin_boot_phase(BootPhase::PeripheralsInit);
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
+    OTIS_ENABLE_DAC_AD5693R
+  const bool dac_ready = otis_dac_ad5693r_begin();
+  record_capability_result(OtisBootCapability::Dac, dac_ready);
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
+    OTIS_ENABLE_ENV_SENSORS && \
+    (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
+  const bool sensors_ready = otis_env_sensors_begin();
+  record_capability_result(OtisBootCapability::Sensors, sensors_ready);
+#endif
+  complete_boot_phase(BootPhase::PeripheralsInit);
+}
+
+void boot_phase_preview_init(void) {
+  begin_boot_phase(BootPhase::PreviewInit);
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+  const bool preview_ready =
+      otis_phase4_observe_preview_begin(otis_capture_ticks_now());
+  record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
+#endif
+  complete_boot_phase(BootPhase::PreviewInit);
+}
+
+void boot_phase_capability_audit(void) {
+  begin_boot_phase(BootPhase::CapabilityAudit);
+  const bool registry_valid = otis_resource_registry_valid();
+  const bool registry_complete = otis_resource_registry_complete();
+  otis_boot_capability_record(
+      &boot_capabilities, OtisBootCapability::ResourceRegistry,
+      otis_boot_registry_outcome(registry_valid, registry_complete));
+  complete_boot_phase(BootPhase::CapabilityAudit);
+}
+
 void boot_phase_run_mode(void) {
-  enter_boot_phase(BootPhase::RunMode);
 #if OTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE
   halt_boot(BootFatal::ForcedBeforeRunMode, BootPhase::RunMode);
 #endif
-  setup_mode();
-  otis_phase4_observe_preview_begin(otis_capture_ticks_now());
-  emit_resource_ownership_status();
-  if (!otis_resource_registry_valid()) {
-    halt_boot(BootFatal::ResourceOwnershipConflict, BootPhase::RunMode);
+  if (!otis_boot_capability_mark_run_mode(&boot_capabilities)) {
+    const BootFatal fatal =
+        otis_boot_capability_has_fatal_conflict(&boot_capabilities)
+            ? BootFatal::ResourceOwnershipConflict
+            : BootFatal::RequiredCapabilityUnavailable;
+    emit_selected_capability_status();
+    emit_resource_ownership_status();
+    halt_boot(fatal, BootPhase::CapabilityAudit);
   }
+  enter_boot_phase(BootPhase::RunMode);
+  runtime_state.boot.degraded =
+      otis_boot_capability_degraded(&boot_capabilities);
   runtime_state.periodic.last_status_ms = millis();
   otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
   otisBootBreadcrumbMarkRunMode();
+  emit_run_mode_status_if_ready();
 }
 
 void service_loopback_output(void) {
@@ -1515,44 +1820,6 @@ void service_tcxo_gate(void) {
 #endif
   }
 #endif
-}
-
-char *trim_command(char *s) {
-  while (*s != '\0' && isspace((unsigned char)*s)) {
-    s++;
-  }
-  char *end = s + strlen(s);
-  while (end > s && isspace((unsigned char)*(end - 1))) {
-    --end;
-    *end = '\0';
-  }
-  return s;
-}
-
-bool parse_u16_code(const char *text, uint16_t *out) {
-  if (text == nullptr || out == nullptr || *text == '\0') {
-    return false;
-  }
-  char *end = nullptr;
-  unsigned long parsed = strtoul(text, &end, 0);
-  if (end == text || *trim_command(end) != '\0' || parsed > 0xFFFFul) {
-    return false;
-  }
-  *out = (uint16_t)parsed;
-  return true;
-}
-
-bool parse_u32_value(const char *text, uint32_t *out) {
-  if (text == nullptr || out == nullptr || *text == '\0') {
-    return false;
-  }
-  char *end = nullptr;
-  unsigned long parsed = strtoul(text, &end, 0);
-  if (end == text || *trim_command(end) != '\0') {
-    return false;
-  }
-  *out = (uint32_t)parsed;
-  return true;
 }
 
 void emit_fc0_status(void) {
@@ -1690,6 +1957,10 @@ void handle_dac_set(uint16_t requested_code) {
     return;
   }
   bool ok = otis_dac_ad5693r_set_raw(requested_code);
+  if (ok) {
+    otis_phase4_observe_preview_on_dac_applied(
+        requested_code, otis_capture_ticks_now());
+  }
   emit_status_u16_hex("dac", ok ? "accepted_code" : "failed_code",
                       requested_code,
                       ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
@@ -1697,44 +1968,23 @@ void handle_dac_set(uint16_t requested_code) {
 }
 
 #if OTIS_ENABLE_H1_DAC_SWEEP
-void handle_sweep_add(char *args) {
-  char *code_text = trim_command(args);
-  char *space = code_text;
-  while (*space != '\0' && !isspace((unsigned char)*space)) {
-    ++space;
-  }
-  if (*space == '\0') {
+void handle_sweep_add(const OtisParsedSerialCommand &command) {
+  if (!command.arguments_valid) {
     emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
     return;
   }
-  *space = '\0';
-  char *dwell_text = trim_command(space + 1);
-
-  uint16_t code = 0;
-  uint32_t dwell_ms = 0;
-  if (!parse_u16_code(code_text, &code) ||
-      !parse_u32_value(dwell_text, &dwell_ms) || dwell_ms == 0u) {
-    emit_status("sweep", "add", "rejected_parse_error", OTIS_SEVERITY_WARN,
-                OTIS_FLAG_NONE);
-    return;
-  }
-  h1_dac_sweep_add_step(code, dwell_ms);
+  h1_dac_sweep_add_step(command.code, command.dwell_ms);
 }
 #endif
 
-void handle_serial_command(char *line) {
+void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-  char *command = trim_command(line);
-  for (char *p = command; *p != '\0'; ++p) {
-    *p = (char)toupper((unsigned char)*p);
-  }
-
-  if (strcmp(command, "HELP") == 0) {
+  if (command.kind == OtisSerialCommandKind::Help) {
     emit_status("command", "h1_help",
                 "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  } else if (strcmp(command, "CONFIG?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
@@ -1801,56 +2051,62 @@ void handle_serial_command(char *line) {
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("command", "config_snapshot", "end",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  } else if (strcmp(command, "DAC?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacQuery) {
     emit_dac_status("dac");
-  } else if (strcmp(command, "DAC LIMITS?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacLimitsQuery) {
     emit_status_u16_hex("dac", "min_code", OTIS_DAC_MIN_CODE,
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  } else if (strcmp(command, "DAC MID") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacMid) {
     uint16_t mid = (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +
                               (uint32_t)OTIS_DAC_MAX_CODE) /
                              2u);
     handle_dac_set(mid);
-  } else if (strcmp(command, "DAC ZERO") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::DacZero) {
     handle_dac_set((uint16_t)OTIS_DAC_MIN_CODE);
-  } else if (strncmp(command, "DAC SET ", 8) == 0) {
-    uint16_t requested_code = 0;
-    if (parse_u16_code(command + 8, &requested_code)) {
-      handle_dac_set(requested_code);
+  } else if (command.kind == OtisSerialCommandKind::DacSet) {
+    if (command.arguments_valid) {
+      handle_dac_set(command.code);
     } else {
       emit_status("dac", "set", "rejected_parse_error", OTIS_SEVERITY_WARN,
                   OTIS_FLAG_NONE);
     }
-  } else if (strcmp(command, "FC0?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::Fc0Query) {
     emit_fc0_status();
 #if OTIS_ENABLE_H1_DAC_SWEEP
-  } else if (strcmp(command, "SWEEP?") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepQuery) {
     emit_sweep_status();
-  } else if (strncmp(command, "SWEEP LOAD ", 11) == 0) {
-    h1_dac_sweep_load_profile(trim_command(command + 11));
-  } else if (strcmp(command, "SWEEP START") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepLoad) {
+    h1_dac_sweep_load_profile(command.text_argument);
+  } else if (command.kind == OtisSerialCommandKind::SweepStart) {
     h1_dac_sweep_start();
-  } else if (strcmp(command, "SWEEP STOP") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepStop) {
     h1_dac_sweep_stop("stop");
-  } else if (strcmp(command, "SWEEP STEP") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepStep) {
     h1_dac_sweep_manual_step();
-  } else if (strcmp(command, "SWEEP CLEAR") == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepClear) {
     h1_dac_sweep_clear();
-  } else if (strncmp(command, "SWEEP ADD ", 10) == 0) {
-    handle_sweep_add(command + 10);
+  } else if (command.kind == OtisSerialCommandKind::SweepAdd) {
+    handle_sweep_add(command);
 #else
-  } else if (strncmp(command, "SWEEP", 5) == 0) {
+  } else if (command.kind == OtisSerialCommandKind::SweepQuery ||
+             command.kind == OtisSerialCommandKind::SweepLoad ||
+             command.kind == OtisSerialCommandKind::SweepStart ||
+             command.kind == OtisSerialCommandKind::SweepStop ||
+             command.kind == OtisSerialCommandKind::SweepStep ||
+             command.kind == OtisSerialCommandKind::SweepClear ||
+             command.kind == OtisSerialCommandKind::SweepAdd ||
+             command.kind == OtisSerialCommandKind::SweepOther) {
     emit_status("sweep", "command", "rejected_disabled", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
-  } else if (*command != '\0') {
-    emit_status("command", "unknown", command, OTIS_SEVERITY_WARN,
+  } else if (command.kind != OtisSerialCommandKind::Empty) {
+    emit_status("command", "unknown", "rejected_unknown", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
   }
 #else
-  (void)line;
+  (void)command;
 #endif
 }
 
@@ -1858,21 +2114,30 @@ void service_serial_commands(void) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   uint8_t byte_budget = 32u;
   while (Serial.available() > 0 && byte_budget-- > 0u) {
-    char c = (char)Serial.read();
-    if (c == '\r' || c == '\n') {
-      if (serial_command_len > 0u) {
-        serial_command_line[serial_command_len] = '\0';
-        handle_serial_command(serial_command_line);
-        serial_command_len = 0u;
-        return;
-      }
-    } else if (serial_command_len < sizeof(serial_command_line) - 1u) {
-      serial_command_line[serial_command_len++] = c;
-    } else {
-      serial_command_len = 0u;
+    OtisSerialFrameEvent event = otis_serial_frame_collect(
+        &serial_command_collector, (char)Serial.read());
+    if (event == OtisSerialFrameEvent::RejectedTooLong) {
       emit_status("command", "line", "rejected_too_long", OTIS_SEVERITY_WARN,
                   OTIS_FLAG_NONE);
+      return;
     }
+    if (event != OtisSerialFrameEvent::Complete) {
+      continue;
+    }
+
+    if (otis_serial_frame_validate(&serial_command_collector) !=
+        OtisSerialFrameValidation::Valid) {
+      otis_serial_frame_collector_init(&serial_command_collector);
+      emit_status("command", "line", "rejected_invalid_character",
+                  OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
+      return;
+    }
+
+    OtisParsedSerialCommand command =
+        otis_serial_command_parse(serial_command_collector.line);
+    execute_serial_command(command);
+    otis_serial_frame_collector_init(&serial_command_collector);
+    return;
   }
 #endif
 }
@@ -1881,10 +2146,13 @@ void service_serial_commands(void) {
 
 void setup() {
   otis_runtime_state_init(&runtime_state);
+  otis_serial_frame_collector_init(&serial_command_collector);
   otis_status_emit_init(&status_emit_context,
                         &runtime_state.sequences.status_seq);
+  configure_selected_capabilities();
   boot_phase_reset_entry();
-  if (!otis_resource_registry_begin()) {
+  boot_phase_early_init();
+  if (otis_boot_capability_has_fatal_conflict(&boot_capabilities)) {
     halt_boot(BootFatal::ResourceOwnershipConflict, BootPhase::EarlyInit);
   }
   if (otisBootSafeModeRequested()) {
@@ -1892,15 +2160,34 @@ void setup() {
     return;
   }
 
-  boot_phase_early_init();
   boot_phase_clocks_init();
   boot_phase_gpio_init();
-  boot_phase_capture_init();
-  boot_phase_timer_init();
-  boot_phase_pps_input_init();
   boot_phase_ring_buffers_init();
   boot_phase_serial_init();
   boot_phase_protocol_banner();
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  // The count boundary handler must exist before the primary PPS IRQ is armed.
+  boot_phase_timer_init();
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
+  boot_phase_capture_init();
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
+    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+  boot_phase_pps_input_init();
+#endif
+#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
+    (OTIS_ENABLE_DAC_AD5693R ||                                   \
+     (OTIS_ENABLE_ENV_SENSORS &&                                 \
+      (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)))
+  boot_phase_peripherals_init();
+#endif
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+  boot_phase_preview_init();
+#endif
+  boot_phase_capability_audit();
   boot_phase_run_mode();
 }
 
@@ -1923,6 +2210,7 @@ void loop() {
   }
 
   emit_protocol_banner_if_serial_ready();
+  emit_run_mode_status_if_ready();
   emit_resource_ownership_status();
   drain_pps_count_boundary_ring();
   drain_capture_ring();

@@ -15,6 +15,7 @@ from host.otis_tools.phase4_boundary_estimator import (
     ESTIMATOR_METHOD_ID,
 )
 from host.otis_tools.phase4_replay import ReplayConfig, replay_phase4
+from host.otis_tools.plant_model import estimator_contract_definition_hash
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -280,9 +281,15 @@ def test_semantic_mismatch_changes_result_and_model_contract_rejects_it(
     assert preview["model_applicability"] == "applicable"
 
     mismatched_model = json.loads(MODEL.read_text(encoding="utf-8"))
-    mismatched_model["plant_response"]["applicability"][
+    mismatched_method = mismatched_model["plant_response"]["applicability"][
         "estimator_method_contract"
-    ]["boundary_interpolation"] = "one_recent_pps_interval_full_gate_scaling"
+    ]
+    mismatched_method[
+        "boundary_interpolation"
+    ] = "one_recent_pps_interval_full_gate_scaling"
+    mismatched_method[
+        "method_definition_hash"
+    ] = estimator_contract_definition_hash(mismatched_method)
     mismatch_path = tmp_path / "mismatched_model.json"
     mismatch_path.write_text(
         json.dumps(mismatched_model, indent=2, sort_keys=True) + "\n",
@@ -366,7 +373,7 @@ def test_historical_outputs_and_model_are_not_reinterpreted(
     assert preview["model_applicability"] == "not_applicable"
     assert "plant_model_version_not_4" in preview["model_reason_codes"]
     assert (
-        "plant_model_estimator_method_mismatch"
+        "plant_model_estimator_method_unavailable"
         in preview["model_reason_codes"]
     )
     assert preview["preview_available"] == "false"

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import copy
 import csv
 import hashlib
 import io
 import json
 import re
 import subprocess
+import sys
 
 import pytest
 
@@ -17,6 +19,12 @@ from host.otis_tools.contracts import (
     validate_csv,
 )
 from host.otis_tools.phase4_replay import ReplayConfig, replay_phase4
+from host.otis_tools.plant_model import (
+    estimator_contract_definition_hash,
+    load_plant_model,
+    validate_plant_model_semantics,
+)
+from tools.generate_plant_model_binding import render_binding
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +40,8 @@ HARNESS = ROOT / "tests" / "cpp" / "phase4_engine_harness.cpp"
 LIVE_HARNESS = ROOT / "tests" / "cpp" / "phase4_live_adapter_harness.cpp"
 LIVE_ADAPTER = ENGINE.parent / "otis_phase4_observe_preview.cpp"
 BOUNDARY_ESTIMATOR = ENGINE.parent / "otis_phase4_boundary_estimator.cpp"
+MODEL_BINDING = ENGINE.parent / "otis_plant_model_v4_generated.h"
+MODEL_BINDING_GENERATOR = ROOT / "tools" / "generate_plant_model_binding.py"
 TICK_HZ = 1_000_000
 TOPOLOGY = "h1_run_020_g17_reworked_d14_d10_pps_witness"
 BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE"
@@ -182,6 +192,33 @@ def _make_run(
 def _rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _live_harness_rows(
+    executable: Path,
+    scenario: str = "nominal",
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    completed = subprocess.run(
+        [str(executable), scenario],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=ROOT,
+    )
+    lines = [line for line in completed.stdout.splitlines() if line]
+    estimate_lines = [
+        lines[0],
+        *[line for line in lines[2:] if line.startswith("EST,")],
+    ]
+    preview_lines = [
+        lines[1],
+        *[line for line in lines[2:] if line.startswith("CTL,")],
+    ]
+    return (
+        list(csv.DictReader(estimate_lines)),
+        list(csv.DictReader(preview_lines)),
+    )
 
 
 @pytest.fixture(scope="session")
@@ -452,27 +489,46 @@ def test_preview_translation_unit_has_no_dac_write_route() -> None:
 
 def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
     source = LIVE_ADAPTER.read_text(encoding="utf-8")
+    binding = MODEL_BINDING.read_text(encoding="utf-8")
     model_bytes = MODEL.read_bytes()
     model = json.loads(model_bytes)
-    assert hashlib.sha256(model_bytes).hexdigest() in source
+    subprocess.run(
+        [sys.executable, str(MODEL_BINDING_GENERATOR), "--check"],
+        check=True,
+        cwd=ROOT,
+    )
+    assert '#include "otis_plant_model_v4_generated.h"' in source
+    assert hashlib.sha256(model_bytes).hexdigest() in binding
     assert model["model_version"] == 4
     assert model["status"]["control_ready"] is False
     assert model["status"]["actuation_enabled"] is False
     method = model["plant_response"]["applicability"][
         "estimator_method_contract"
     ]
-    assert method["estimator_method_id"] in source
-    assert method["method_definition_hash"] in source
-    assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in source
+    applicability_contract = model["plant_response"]["applicability"]
+    assert method["estimator_method_id"] in binding
+    assert method["method_definition_hash"] in binding
+    assert model["hardware_topology"]["topology_id"] in binding
+    assert applicability_contract["mode"] in binding
+    assert applicability_contract["measurement_backend"] in binding
+    assert str(applicability_contract["gate_duration_s"]) in binding
+    assert str(applicability_contract["settling_exclusion_s"]) in binding
+    assert str(applicability_contract["temperature_range_c"]["min_c"]) in binding
+    assert str(applicability_contract["temperature_range_c"]["max_c"]) in binding
+    assert all(
+        f"{sequence}u" in binding
+        for sequence in applicability_contract["excluded_count_sequences"]
+    )
+    assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in binding
     applicability = model["plant_response"]["applicability"]["dac_code_range"]
     candidate = model["dac"]["automatic_control_range_codes"]
-    assert f"0x{applicability['min']:04X}u" in source
-    assert f"0x{applicability['max']:04X}u" in source
-    assert f"0x{candidate['min']:04X}u" in source
-    assert f"0x{candidate['max']:04X}u" in source
+    assert f"0x{applicability['min']:04X}u" in binding
+    assert f"0x{applicability['max']:04X}u" in binding
+    assert f"0x{candidate['min']:04X}u" in binding
+    assert f"0x{candidate['max']:04X}u" in binding
     assert re.search(
         rf"kMaximumPreviewStep = 0x{model['dac']['manual_preview_max_step_codes']:04X}u",
-        source,
+        binding,
     )
     profile = json.loads(
         (ROOT / "profiles" / "discipline" / "phase4_host_replay_v2.json").read_text(
@@ -480,6 +536,198 @@ def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
         )
     )
     assert ReplayConfig.from_mapping(profile).config_hash in source
+
+
+def test_mutated_artifact_applicability_values_change_generated_binding(
+    tmp_path: Path,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    changed["hardware_topology"]["topology_id"] = "mutated_topology"
+    applicability = changed["plant_response"]["applicability"]
+    applicability["gate_duration_s"] = 301
+    applicability["settling_exclusion_s"] = 901
+    applicability["temperature_range_c"] = {
+        "min_c": 10.0,
+        "max_c": 20.0,
+    }
+    applicability["excluded_count_sequences"] = [11, 12]
+    path = tmp_path / "mutated_model.json"
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    assert validate_plant_model_semantics(changed).valid
+    rendered = render_binding(
+        path,
+        model_ref_override="profiles/plant_models/mutated_model.json",
+    )
+
+    assert '"mutated_topology"' in rendered
+    assert "kPlantModelGateDurationS = 301" in rendered
+    assert "kPlantModelSettlingExclusionS =\n    901" in rendered
+    assert "kPlantModelTemperatureMinC =\n    10.0" in rendered
+    assert "kPlantModelTemperatureMaxC =\n    20.0" in rendered
+    assert "kPlantModelExcludedCountSequences[] = {11u, 12u}" in rendered
+
+
+def test_binding_generator_rejects_valid_but_incompatible_estimator(
+    tmp_path: Path,
+) -> None:
+    changed = copy.deepcopy(load_plant_model(MODEL).data)
+    method = changed["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]
+    method["reference_time_mapping"] = "future_mapping"
+    method["method_definition_hash"] = estimator_contract_definition_hash(
+        method
+    )
+    path = tmp_path / "future_estimator_model.json"
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    assert validate_plant_model_semantics(changed).valid
+    with pytest.raises(ValueError, match="incompatible with the current"):
+        render_binding(
+            path,
+            model_ref_override=(
+                "profiles/plant_models/future_estimator_model.json"
+            ),
+        )
+
+
+def test_live_preview_compares_generated_applicability_to_runtime_context() -> None:
+    source = LIVE_ADAPTER.read_text(encoding="utf-8")
+    sketch = (
+        ENGINE.parent / "otis_nano_rp2040_connect.ino"
+    ).read_text(encoding="utf-8")
+
+    assert "strcmp(kPlantModelTopologyId, kRuntimeTopologyId)" in source
+    assert (
+        "strcmp(kPlantModelMeasurementBackend,"
+        "\n             kRuntimeMeasurementBackend)"
+        in source
+    )
+    assert "observed_gate_duration_acceptable" in source
+    assert "OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US" in source
+    assert (
+        "fabs(observed_s - kRuntimeConfiguredGateDurationS)"
+        in source
+    )
+    assert "kPlantModelTemperatureMinC" in source
+    assert "kPlantModelTemperatureMaxC" in source
+    assert "OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS" in source
+    assert '"temperature_not_observed"' in source
+    assert "kPlantModelSettlingExclusionS" in source
+    assert "count_sequence_is_excluded" in source
+    assert "replaying_model_source_evidence" in source
+    assert sketch.count("otis_phase4_observe_preview_on_dac_applied(") == 2
+    assert (
+        "otis_phase4_observe_preview_on_temperature(\n"
+        "        false, 0.0f, otis_capture_ticks_now())"
+        in sketch
+    )
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "gate_plus_1us",
+        "gate_minus_1us",
+        "gate_plus_1ms",
+        "gate_minus_1ms",
+    ],
+)
+def test_live_gate_aperture_tolerance_accepts_normal_service_latency(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+) -> None:
+    estimates, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+
+    assert estimates[-1]["observation_validity"] == "valid"
+    assert "count_flagged_invalid" not in estimates[-1][
+        "observation_reason_codes"
+    ]
+    assert previews[-1]["model_applicability"] == "applicable"
+    assert previews[-1]["preview_available"] == "true"
+
+
+def test_egregious_live_gate_aperture_is_observation_quality_failure(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    estimates, previews = _live_harness_rows(
+        phase4_live_adapter_harness, "gate_egregious"
+    )
+
+    assert estimates[-1]["observation_validity"] == "invalid"
+    assert "count_flagged_invalid" in estimates[-1][
+        "observation_reason_codes"
+    ]
+    assert previews[-1]["model_applicability"] == "applicable"
+    assert previews[-1]["preview_available"] == "false"
+
+
+@pytest.mark.parametrize(
+    ("scenario", "applicable"),
+    [
+        ("settling_boundary", True),
+        ("settling_straddling", False),
+    ],
+)
+def test_dac_settling_requires_the_entire_count_window_after_cutoff(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+    applicable: bool,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+
+    assert (
+        previews[-1]["model_applicability"] == "applicable"
+    ) is applicable
+    assert (
+        "count_window_inside_model_settling_exclusion"
+        in previews[-1]["model_reason_codes"]
+    ) is (not applicable)
+    assert (previews[-1]["preview_available"] == "true") is applicable
+
+
+@pytest.mark.parametrize(
+    ("scenario", "extra_reason"),
+    [
+        ("temperature_missing", None),
+        ("temperature_loss", None),
+        ("temperature_stale", "temperature_observation_stale"),
+    ],
+)
+def test_temperature_unavailable_loss_and_staleness_block_applicability(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+    extra_reason: str | None,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+    reasons = previews[-1]["model_reason_codes"].split(";")
+
+    assert previews[-1]["model_applicability"] == "not_applicable"
+    assert "temperature_not_observed" in reasons
+    if extra_reason is not None:
+        assert extra_reason in reasons
+    assert previews[-1]["preview_available"] == "false"
+
+
+def test_out_of_range_temperature_has_specific_model_reason(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, "temperature_outside"
+    )
+
+    assert previews[-1]["model_applicability"] == "not_applicable"
+    assert "input_outside_model_temperature_range" in previews[-1][
+        "model_reason_codes"
+    ]
+    assert previews[-1]["preview_available"] == "false"
 
 
 def test_live_est_ctl_rows_match_normative_contracts(
@@ -525,8 +773,15 @@ def test_live_est_ctl_rows_match_normative_contracts(
     assert all(row["preview_only"] == "true" for row in previews)
     assert all(row["actuation_authorized"] == "false" for row in previews)
     assert all(row["actionable"] == "false" for row in previews)
+    assert all(
+        "boundary_pps_support_overwritten"
+        not in row["observation_reason_codes"]
+        for row in estimates
+    )
     assert previews[-1]["preview_available"] == "true"
-    assert estimates[-1]["estimator_timestamp_ticks"] == "128000000"
+    assert estimates[-1]["estimator_timestamp_ticks"] == str(
+        1803 * 16_000_000
+    )
     assert float(estimates[-1]["frequency_observation_hz"]) == pytest.approx(
         10_000_001.333333334
     )

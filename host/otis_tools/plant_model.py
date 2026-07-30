@@ -1,12 +1,65 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 import argparse
+import hashlib
 import json
-from typing import Any
+import math
+from typing import Any, Mapping
 
-from .phase4_boundary_estimator import estimator_method_contract
+from jsonschema import Draft202012Validator
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+PLANT_MODEL_SCHEMAS = {
+    1: REPOSITORY_ROOT / "schemas" / "plant_model_v1.schema.json",
+}
+HISTORICAL_MODEL_IDENTITIES = frozenset(
+    {
+        (1, "cx317_h1_bench", 2),
+    }
+)
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    valid: bool
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class EvidenceAvailability:
+    available: bool
+    available_artifacts: tuple[str, ...]
+    unavailable_artifacts: tuple[str, ...]
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ModelApplicabilityContext:
+    hardware_topology_id: str | None
+    measurement_backend: str | None
+    estimator_method: Mapping[str, object] | None
+    dac_code: int | None
+    source_run_id: str | None = None
+    count_sequence: int | None = None
+    gate_duration_s: float | None = None
+    temperature_c: float | None = None
+    required_model_version: int | None = None
+
+
+@dataclass(frozen=True)
+class ApplicabilityAssessment:
+    applicable: bool
+    reasons: tuple[str, ...] = ()
+    unverified_conditions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ControlEligibility:
+    eligible: bool
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,253 +108,563 @@ class PlantModel:
         return bool(self.data["status"]["control_ready"])
 
 
+@lru_cache(maxsize=None)
+def _schema_validator(schema_version: int) -> Draft202012Validator:
+    try:
+        schema_path = PLANT_MODEL_SCHEMAS[schema_version]
+    except KeyError as exc:
+        raise ValueError(
+            f"unsupported plant model schema_version: {schema_version!r}"
+        ) from exc
+    with schema_path.open("r", encoding="utf-8") as handle:
+        schema = json.load(handle)
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _json_path(parts: tuple[object, ...]) -> str:
+    path = "$"
+    for part in parts:
+        if isinstance(part, int):
+            path += f"[{part}]"
+        else:
+            path += f".{part}"
+    return path
+
+
+def estimator_contract_definition_hash(
+    contract: Mapping[str, object],
+) -> str:
+    definition = {
+        key: value
+        for key, value in contract.items()
+        if key != "method_definition_hash"
+    }
+    canonical = json.dumps(
+        definition,
+        ensure_ascii=True,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def validate_plant_model_structure(data: object) -> ValidationResult:
+    """Validate only the versioned JSON structure.
+
+    JSON Schema is the sole structural authority. Runtime semantic policy must
+    not add fields, required keys, or type rules that contradict this result.
+    """
+
+    if not isinstance(data, dict):
+        return ValidationResult(False, ("$: plant model must be an object",))
+    schema_version = data.get("schema_version")
+    if type(schema_version) is not int:
+        return ValidationResult(
+            False, ("$.schema_version: must be an integer",)
+        )
+    try:
+        validator = _schema_validator(schema_version)
+    except ValueError as exc:
+        return ValidationResult(False, (str(exc),))
+    errors = tuple(
+        f"{_json_path(tuple(error.absolute_path))}: {error.message}"
+        for error in sorted(
+            validator.iter_errors(data),
+            key=lambda item: (
+                tuple(str(part) for part in item.absolute_path),
+                item.message,
+            ),
+        )
+    )
+    return ValidationResult(not errors, errors)
+
+
+def validate_plant_model_semantics(data: dict[str, Any]) -> ValidationResult:
+    """Validate cross-field meaning without redefining JSON structure."""
+
+    structural = validate_plant_model_structure(data)
+    if not structural.valid:
+        return ValidationResult(
+            False,
+            (
+                "semantic validation requires a structurally valid model",
+                *structural.errors,
+            ),
+        )
+
+    errors: list[str] = []
+    _reject_non_finite_numbers(data, errors)
+    _validate_status(data["status"], errors)
+    _validate_dac(data["dac"], errors)
+    _validate_plant_response(
+        data["plant_response"], int(data["model_version"]), errors
+    )
+    _validate_model_envelopes(data, errors)
+    _validate_source_evidence(data["source_evidence"], errors)
+    _validate_historical_policy(data, errors)
+    return ValidationResult(not errors, tuple(errors))
+
+
+def validate_plant_model(data: dict[str, Any]) -> None:
+    structural = validate_plant_model_structure(data)
+    if not structural.valid:
+        raise ValueError(
+            "structural validation failed: " + "; ".join(structural.errors)
+        )
+    semantic = validate_plant_model_semantics(data)
+    if not semantic.valid:
+        raise ValueError(
+            "semantic validation failed: " + "; ".join(semantic.errors)
+        )
+
+
 def load_plant_model(path: Path | str) -> PlantModel:
     model_path = Path(path)
     with model_path.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError("$: plant model must be an object")
     validate_plant_model(data)
     return PlantModel(path=model_path, data=data)
 
 
-def validate_plant_model(data: dict[str, Any]) -> None:
+def assess_evidence_availability(
+    model: PlantModel,
+    repository_root: Path | str = REPOSITORY_ROOT,
+) -> EvidenceAvailability:
+    """Report whether every declared source artifact is locally available.
+
+    Missing evidence does not make the JSON artifact structurally or
+    semantically invalid. It does make the model ineligible for control.
+    """
+
+    root = Path(repository_root).resolve()
+    available: list[str] = []
+    unavailable: list[str] = []
     errors: list[str] = []
-    _require(data, "schema_version", int, errors)
-    _require(data, "model_id", str, errors)
-    _require(data, "model_version", int, errors)
-
-    if data.get("schema_version") != 1:
-        errors.append(f"unsupported plant model schema_version: {data.get('schema_version')!r}")
-    if isinstance(data.get("model_version"), int) and data["model_version"] < 1:
-        errors.append("model_version must be a positive integer")
-
-    for section in ("status", "oscillator", "hardware_topology", "dac", "control_path", "plant_response", "source_evidence"):
-        _require(data, section, dict, errors)
-
-    if errors:
-        raise ValueError("; ".join(errors))
-
-    _reject_empty_strings(data, errors)
-    _validate_status(data["status"], errors)
-    _validate_dac(data["dac"], errors)
-    _validate_plant_response(data["plant_response"], errors)
-    _validate_model_envelopes(data, errors)
-    _validate_source_evidence(data["source_evidence"], errors)
-
-    for field_name in ("invalidation_conditions", "unresolved_fields"):
-        _require(data, field_name, list, errors)
-    if isinstance(data.get("invalidation_conditions"), list) and not data["invalidation_conditions"]:
-        errors.append("invalidation_conditions must not be empty")
-
-    if errors:
-        raise ValueError("; ".join(errors))
+    artifacts = model.data["source_evidence"]["source_artifacts"]
+    for artifact in artifacts:
+        candidate = (root / artifact).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            errors.append(f"source artifact escapes repository root: {artifact}")
+            continue
+        if candidate.is_file():
+            available.append(artifact)
+        else:
+            unavailable.append(artifact)
+    return EvidenceAvailability(
+        available=not errors and not unavailable,
+        available_artifacts=tuple(available),
+        unavailable_artifacts=tuple(unavailable),
+        errors=tuple(errors),
+    )
 
 
-def _require(parent: dict[str, Any], key: str, expected_type: type, errors: list[str]) -> None:
-    if key not in parent:
-        errors.append(f"missing required field: {key}")
-        return
-    if not isinstance(parent[key], expected_type):
-        errors.append(f"{key} must be {expected_type.__name__}")
+def assess_model_applicability(
+    model: PlantModel,
+    context: ModelApplicabilityContext,
+) -> ApplicabilityAssessment:
+    """Compare a valid model with a concrete use context.
+
+    Unknown environmental observations are exposed separately from definite
+    mismatches. They do not turn structural or semantic validity into an
+    applicability failure, but control eligibility treats them conservatively.
+    """
+
+    response = model.data["plant_response"]
+    applicability = response.get("applicability")
+    if not isinstance(applicability, dict):
+        return ApplicabilityAssessment(
+            False, ("plant_model_applicability_unavailable",)
+        )
+
+    reasons: list[str] = []
+    unverified: list[str] = []
+    if (
+        context.required_model_version is not None
+        and model.model_version != context.required_model_version
+    ):
+        reasons.append(
+            f"plant_model_version_not_{context.required_model_version}"
+        )
+    if context.hardware_topology_id is None:
+        reasons.append("plant_model_input_identity_unavailable")
+    elif (
+        context.hardware_topology_id
+        != model.data["hardware_topology"]["topology_id"]
+    ):
+        reasons.append("plant_model_topology_mismatch")
+
+    expected_backend = applicability["measurement_backend"]
+    if context.measurement_backend is None:
+        if "plant_model_input_identity_unavailable" not in reasons:
+            reasons.append("plant_model_input_identity_unavailable")
+    elif context.measurement_backend != expected_backend:
+        reasons.append("plant_model_backend_mismatch")
+
+    expected_method = applicability.get("estimator_method_contract")
+    if expected_method is None:
+        reasons.append("plant_model_estimator_method_unavailable")
+    elif context.estimator_method is None:
+        reasons.append("plant_model_estimator_method_unavailable")
+    elif dict(context.estimator_method) != expected_method:
+        reasons.append("plant_model_estimator_method_mismatch")
+
+    range_data = applicability["dac_code_range"]
+    if context.dac_code is None:
+        reasons.append("dac_state_unavailable")
+    elif not range_data["min"] <= context.dac_code <= range_data["max"]:
+        reasons.append("input_outside_model_applicability")
+
+    source_run_ids = model.data["source_evidence"]["source_run_ids"]
+    replaying_model_source = (
+        context.source_run_id is not None
+        and any(
+            context.source_run_id == source_run_id
+            or source_run_id.endswith(f"/{context.source_run_id}")
+            or context.source_run_id.endswith(f"/{source_run_id}")
+            for source_run_id in source_run_ids
+        )
+    )
+    excluded = set(applicability["excluded_count_sequences"])
+    if (
+        replaying_model_source
+        and context.count_sequence is not None
+        and context.count_sequence in excluded
+    ):
+        reasons.append("plant_model_excluded_count_sequence")
+
+    if context.gate_duration_s is None:
+        unverified.append("gate_duration_not_observed")
+    elif not math.isclose(
+        context.gate_duration_s,
+        float(applicability["gate_duration_s"]),
+        rel_tol=0.0,
+        abs_tol=1e-9,
+    ):
+        reasons.append("plant_model_gate_duration_mismatch")
+
+    temperature = applicability["temperature_range_c"]
+    if context.temperature_c is None:
+        unverified.append("temperature_not_observed")
+    elif not (
+        temperature["min_c"]
+        <= context.temperature_c
+        <= temperature["max_c"]
+    ):
+        reasons.append("input_outside_model_temperature_range")
+
+    return ApplicabilityAssessment(
+        applicable=not reasons,
+        reasons=tuple(dict.fromkeys(reasons)),
+        unverified_conditions=tuple(unverified),
+    )
 
 
-def _reject_empty_strings(value: Any, errors: list[str], path: str = "$") -> None:
+def assess_control_eligibility(
+    model: PlantModel,
+    *,
+    evidence: EvidenceAvailability,
+    applicability: ApplicabilityAssessment,
+) -> ControlEligibility:
+    """Apply the conservative active-control gate to an already valid model."""
+
+    reasons: list[str] = []
+    if not model.control_ready:
+        reasons.append("plant_model_not_control_ready")
+    if not model.actuation_enabled:
+        reasons.append("plant_model_actuation_disabled")
+    if not evidence.available:
+        reasons.append("plant_model_source_evidence_unavailable")
+    if not applicability.applicable:
+        reasons.extend(applicability.reasons)
+    if applicability.unverified_conditions:
+        reasons.append("plant_model_applicability_conditions_unverified")
+    if model.data["unresolved_fields"]:
+        reasons.append("plant_model_has_unresolved_fields")
+    return ControlEligibility(
+        eligible=not reasons,
+        reasons=tuple(dict.fromkeys(reasons)),
+    )
+
+
+def _reject_non_finite_numbers(
+    value: Any, errors: list[str], path: str = "$"
+) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            _reject_empty_strings(child, errors, f"{path}.{key}")
+            _reject_non_finite_numbers(child, errors, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            _reject_empty_strings(child, errors, f"{path}[{index}]")
-    elif value == "":
-        errors.append(f"{path} must be null when unknown, not an empty string")
+            _reject_non_finite_numbers(child, errors, f"{path}[{index}]")
+    elif isinstance(value, float) and not math.isfinite(value):
+        errors.append(f"{path} must be finite")
 
 
 def _validate_status(status: dict[str, Any], errors: list[str]) -> None:
-    for key in ("control_ready", "actuation_enabled"):
-        if not isinstance(status.get(key), bool):
-            errors.append(f"status.{key} must be boolean")
-    if status.get("control_ready"):
+    if status["control_ready"]:
         errors.append("status.control_ready must remain false for H1 plant models")
-    if status.get("actuation_enabled"):
+    if status["actuation_enabled"]:
         errors.append("status.actuation_enabled must remain false for H1 plant models")
 
 
 def _validate_dac(dac: dict[str, Any], errors: list[str]) -> None:
-    for key in ("nominal_code", "manual_preview_max_step_codes"):
-        _check_code(dac.get(key), f"dac.{key}", errors)
-
     for key in ("manual_safe_range_codes", "automatic_control_range_codes"):
-        range_data = dac.get(key)
-        if not isinstance(range_data, dict):
-            errors.append(f"dac.{key} must be an object")
-            continue
-        _check_code(range_data.get("min"), f"dac.{key}.min", errors)
-        _check_code(range_data.get("max"), f"dac.{key}.max", errors)
-        if isinstance(range_data.get("min"), int) and isinstance(range_data.get("max"), int):
-            if range_data["min"] > range_data["max"]:
-                errors.append(f"dac.{key}.min must be <= max")
+        range_data = dac[key]
+        if range_data["min"] > range_data["max"]:
+            errors.append(f"dac.{key}.min must be <= max")
 
-    auto_range = dac.get("automatic_control_range_codes", {})
-    manual_range = dac.get("manual_safe_range_codes", {})
-    if isinstance(auto_range, dict):
-        min_code = auto_range.get("min")
-        max_code = auto_range.get("max")
-        if isinstance(manual_range, dict):
-            manual_min = manual_range.get("min")
-            manual_max = manual_range.get("max")
-            if isinstance(min_code, int) and isinstance(manual_min, int) and min_code < manual_min:
-                errors.append("dac.automatic_control_range_codes.min is below manual_safe_range_codes.min")
-            if isinstance(max_code, int) and isinstance(manual_max, int) and max_code > manual_max:
-                errors.append("dac.automatic_control_range_codes.max is above manual_safe_range_codes.max")
-        nominal_code = dac.get("nominal_code")
-        if isinstance(nominal_code, int) and isinstance(min_code, int) and nominal_code < min_code:
-            errors.append("dac.nominal_code is below automatic_control_range_codes.min")
-        if isinstance(nominal_code, int) and isinstance(max_code, int) and nominal_code > max_code:
-            errors.append("dac.nominal_code is above automatic_control_range_codes.max")
+    auto_range = dac["automatic_control_range_codes"]
+    manual_range = dac["manual_safe_range_codes"]
+    if auto_range["min"] < manual_range["min"]:
+        errors.append(
+            "dac.automatic_control_range_codes.min is below "
+            "manual_safe_range_codes.min"
+        )
+    if auto_range["max"] > manual_range["max"]:
+        errors.append(
+            "dac.automatic_control_range_codes.max is above "
+            "manual_safe_range_codes.max"
+        )
+    if dac["nominal_code"] < auto_range["min"]:
+        errors.append("dac.nominal_code is below automatic_control_range_codes.min")
+    if dac["nominal_code"] > auto_range["max"]:
+        errors.append("dac.nominal_code is above automatic_control_range_codes.max")
 
 
-def _validate_plant_response(plant_response: dict[str, Any], errors: list[str]) -> None:
-    slope = plant_response.get("local_slope")
-    if not isinstance(slope, dict):
-        errors.append("plant_response.local_slope must be an object")
-        return
+def _validate_plant_response(
+    plant_response: dict[str, Any],
+    model_version: int,
+    errors: list[str],
+) -> None:
+    slope = plant_response["local_slope"]
+    sign = slope["sign"]
+    for key in ("hz_per_v", "ppm_per_v", "hz_per_code", "ppm_per_code"):
+        value = slope[key]
+        if value == 0:
+            errors.append(
+                f"plant_response.local_slope.{key} must be null when unknown, "
+                "not zero"
+            )
+        if value is not None and sign == "positive" and value <= 0:
+            errors.append(f"positive local_slope.sign requires {key} > 0")
+        if value is not None and sign == "negative" and value >= 0:
+            errors.append(f"negative local_slope.sign requires {key} < 0")
+    if sign == "unknown" and any(
+        slope[key] is not None
+        for key in ("hz_per_v", "ppm_per_v", "hz_per_code", "ppm_per_code")
+    ):
+        errors.append("unknown local_slope.sign requires all slope values to be null")
 
-    sign = slope.get("sign")
-    if sign not in {"positive", "negative", "unknown"}:
-        errors.append("plant_response.local_slope.sign must be positive, negative, or unknown")
-    hz_per_v = slope.get("hz_per_v")
-    if hz_per_v is not None and not isinstance(hz_per_v, (int, float)):
-        errors.append("plant_response.local_slope.hz_per_v must be numeric or null")
-    if hz_per_v == 0:
-        errors.append("plant_response.local_slope.hz_per_v must be null when unknown, not zero")
-    if hz_per_v is not None and sign == "positive" and hz_per_v <= 0:
-        errors.append("positive local_slope.sign requires hz_per_v > 0")
-    if hz_per_v is not None and sign == "negative" and hz_per_v >= 0:
-        errors.append("negative local_slope.sign requires hz_per_v < 0")
+    uncertainty = slope["uncertainty"]
+    minimum = uncertainty["hz_per_v_min"]
+    maximum = uncertainty["hz_per_v_max"]
+    if minimum is not None and maximum is not None and minimum > maximum:
+        errors.append(
+            "plant_response.local_slope.uncertainty.hz_per_v_min must be <= "
+            "hz_per_v_max"
+        )
 
     crossing = plant_response.get("crossing_estimate")
-    if crossing is not None:
-        _validate_crossing_estimate(crossing, errors)
-
     applicability = plant_response.get("applicability")
-    if applicability is not None:
-        _validate_applicability(applicability, errors)
+    repeatability = plant_response.get("repeatability_evidence")
+    if model_version >= 3:
+        for key, value in (
+            ("crossing_estimate", crossing),
+            ("repeatability_evidence", repeatability),
+            ("applicability", applicability),
+        ):
+            if not isinstance(value, dict):
+                errors.append(f"model_version >= 3 requires plant_response.{key}")
+        for key in ("hz_per_v_stdev", "hz_per_v_iqr"):
+            if uncertainty.get(key) is None:
+                errors.append(
+                    f"model_version >= 3 requires "
+                    f"plant_response.local_slope.uncertainty.{key}"
+                )
+
+    if isinstance(crossing, dict):
+        _validate_crossing_estimate(crossing, errors)
+    if isinstance(applicability, dict):
+        _validate_applicability(applicability, model_version, errors)
 
 
-def _validate_crossing_estimate(crossing: Any, errors: list[str]) -> None:
-    if not isinstance(crossing, dict):
-        errors.append("plant_response.crossing_estimate must be an object")
-        return
-
-    for key in ("code", "code_min", "code_max"):
-        _check_code(crossing.get(key), f"plant_response.crossing_estimate.{key}", errors)
-
-    code = crossing.get("code")
-    code_min = crossing.get("code_min")
-    code_max = crossing.get("code_max")
-    if isinstance(code_min, int) and isinstance(code_max, int) and code_min > code_max:
+def _validate_crossing_estimate(
+    crossing: dict[str, Any], errors: list[str]
+) -> None:
+    if crossing["code_min"] > crossing["code_max"]:
         errors.append("plant_response.crossing_estimate.code_min must be <= code_max")
-    if isinstance(code, int) and isinstance(code_min, int) and code < code_min:
+    if crossing["code"] < crossing["code_min"]:
         errors.append("plant_response.crossing_estimate.code is below code_min")
-    if isinstance(code, int) and isinstance(code_max, int) and code > code_max:
+    if crossing["code"] > crossing["code_max"]:
         errors.append("plant_response.crossing_estimate.code is above code_max")
 
-    target_hz = crossing.get("target_frequency_hz")
-    if not isinstance(target_hz, (int, float)) or target_hz <= 0:
-        errors.append("plant_response.crossing_estimate.target_frequency_hz must be positive")
 
+def _validate_applicability(
+    applicability: dict[str, Any],
+    model_version: int,
+    errors: list[str],
+) -> None:
+    range_data = applicability["dac_code_range"]
+    if range_data["min"] > range_data["max"]:
+        errors.append("plant_response.applicability.dac_code_range.min must be <= max")
 
-def _validate_applicability(applicability: Any, errors: list[str]) -> None:
-    if not isinstance(applicability, dict):
-        errors.append("plant_response.applicability must be an object")
-        return
-    if applicability.get("mode") != "observe_only":
-        errors.append("plant_response.applicability.mode must be observe_only for H1 plant models")
-    method_contract = applicability.get("estimator_method_contract")
-    if method_contract is not None and not isinstance(method_contract, dict):
+    temperature = applicability["temperature_range_c"]
+    if temperature["min_c"] > temperature["max_c"]:
         errors.append(
-            "plant_response.applicability.estimator_method_contract must be an object"
+            "plant_response.applicability.temperature_range_c.min_c must be <= max_c"
         )
-    elif isinstance(method_contract, dict):
-        expected_contract = estimator_method_contract()
-        if method_contract.get("method_definition_hash") != expected_contract[
-            "method_definition_hash"
-        ]:
-            errors.append(
-                "plant_response.applicability.estimator_method_contract "
-                "has an unknown method_definition_hash"
-            )
-    range_data = applicability.get("dac_code_range")
-    if not isinstance(range_data, dict):
-        errors.append("plant_response.applicability.dac_code_range must be an object")
-        return
-    _check_code(range_data.get("min"), "plant_response.applicability.dac_code_range.min", errors)
-    _check_code(range_data.get("max"), "plant_response.applicability.dac_code_range.max", errors)
-    if isinstance(range_data.get("min"), int) and isinstance(range_data.get("max"), int):
-        if range_data["min"] > range_data["max"]:
-            errors.append("plant_response.applicability.dac_code_range.min must be <= max")
 
-
-def _validate_model_envelopes(data: dict[str, Any], errors: list[str]) -> None:
-    dac = data["dac"]
-    plant_response = data["plant_response"]
-    auto_range = dac.get("automatic_control_range_codes")
-    manual_range = dac.get("manual_safe_range_codes")
-    crossing = plant_response.get("crossing_estimate")
-    applicability = plant_response.get("applicability")
-    if data.get("model_version", 0) >= 4 and isinstance(applicability, dict):
-        if not isinstance(applicability.get("estimator_method_contract"), dict):
+    method_contract = applicability.get("estimator_method_contract")
+    if model_version >= 4:
+        if not isinstance(method_contract, dict):
             errors.append(
                 "model_version >= 4 requires "
                 "plant_response.applicability.estimator_method_contract"
             )
-    if not isinstance(auto_range, dict) or not isinstance(manual_range, dict):
-        return
+    if isinstance(method_contract, dict):
+        if (
+            applicability["measurement_backend"]
+            != method_contract["measurement_backend"]
+        ):
+            errors.append(
+                "plant_response.applicability.measurement_backend must equal "
+                "estimator_method_contract.measurement_backend"
+            )
+        try:
+            expected_hash = estimator_contract_definition_hash(method_contract)
+        except (TypeError, ValueError):
+            expected_hash = None
+        if expected_hash is None:
+            errors.append(
+                "plant_response.applicability.estimator_method_contract "
+                "definition must have a canonical finite JSON representation"
+            )
+        elif method_contract["method_definition_hash"] != expected_hash:
+            errors.append(
+                "plant_response.applicability.estimator_method_contract."
+                "method_definition_hash does not match its contract definition"
+            )
+        if (
+            method_contract["reference_interval_min_s"]
+            > method_contract["reference_interval_max_s"]
+        ):
+            errors.append(
+                "plant_response.applicability.estimator_method_contract."
+                "reference_interval_min_s must be <= reference_interval_max_s"
+            )
 
-    auto_min = auto_range.get("min")
-    auto_max = auto_range.get("max")
-    if isinstance(crossing, dict) and isinstance(auto_min, int) and isinstance(auto_max, int):
-        crossing_min = crossing.get("code_min")
-        crossing_max = crossing.get("code_max")
-        if isinstance(crossing_min, int) and auto_min > crossing_min:
-            errors.append("dac.automatic_control_range_codes.min does not contain crossing_estimate.code_min")
-        if isinstance(crossing_max, int) and auto_max < crossing_max:
-            errors.append("dac.automatic_control_range_codes.max does not contain crossing_estimate.code_max")
+
+def _validate_model_envelopes(
+    data: dict[str, Any], errors: list[str]
+) -> None:
+    dac = data["dac"]
+    plant_response = data["plant_response"]
+    auto_range = dac["automatic_control_range_codes"]
+    manual_range = dac["manual_safe_range_codes"]
+    crossing = plant_response.get("crossing_estimate")
+    applicability = plant_response.get("applicability")
+
+    if isinstance(crossing, dict):
+        if auto_range["min"] > crossing["code_min"]:
+            errors.append(
+                "dac.automatic_control_range_codes.min does not contain "
+                "crossing_estimate.code_min"
+            )
+        if auto_range["max"] < crossing["code_max"]:
+            errors.append(
+                "dac.automatic_control_range_codes.max does not contain "
+                "crossing_estimate.code_max"
+            )
 
     if isinstance(applicability, dict):
-        applicable_range = applicability.get("dac_code_range")
-        if isinstance(applicable_range, dict):
-            applicable_min = applicable_range.get("min")
-            applicable_max = applicable_range.get("max")
-            manual_min = manual_range.get("min")
-            manual_max = manual_range.get("max")
-            if isinstance(applicable_min, int) and isinstance(manual_min, int) and applicable_min < manual_min:
-                errors.append("plant_response.applicability.dac_code_range.min is below manual_safe_range_codes.min")
-            if isinstance(applicable_max, int) and isinstance(manual_max, int) and applicable_max > manual_max:
-                errors.append("plant_response.applicability.dac_code_range.max is above manual_safe_range_codes.max")
-            if isinstance(auto_min, int) and isinstance(applicable_min, int) and auto_min < applicable_min:
-                errors.append("dac.automatic_control_range_codes.min is below the model applicability range")
-            if isinstance(auto_max, int) and isinstance(applicable_max, int) and auto_max > applicable_max:
-                errors.append("dac.automatic_control_range_codes.max is above the model applicability range")
+        applicable_range = applicability["dac_code_range"]
+        if applicable_range["min"] < manual_range["min"]:
+            errors.append(
+                "plant_response.applicability.dac_code_range.min is below "
+                "manual_safe_range_codes.min"
+            )
+        if applicable_range["max"] > manual_range["max"]:
+            errors.append(
+                "plant_response.applicability.dac_code_range.max is above "
+                "manual_safe_range_codes.max"
+            )
+        if auto_range["min"] < applicable_range["min"]:
+            errors.append(
+                "dac.automatic_control_range_codes.min is below the model "
+                "applicability range"
+            )
+        if auto_range["max"] > applicable_range["max"]:
+            errors.append(
+                "dac.automatic_control_range_codes.max is above the model "
+                "applicability range"
+            )
 
 
-def _validate_source_evidence(source_evidence: dict[str, Any], errors: list[str]) -> None:
-    run_ids = source_evidence.get("source_run_ids")
-    artifacts = source_evidence.get("source_artifacts")
-    if not isinstance(run_ids, list) or not run_ids:
-        errors.append("source_evidence.source_run_ids must be a non-empty list")
-    if not isinstance(artifacts, list) or not artifacts:
-        errors.append("source_evidence.source_artifacts must be a non-empty list")
-    if not isinstance(source_evidence.get("source_commits"), dict):
-        errors.append("source_evidence.source_commits must be an object")
-    if not isinstance(source_evidence.get("source_versions"), dict):
-        errors.append("source_evidence.source_versions must be an object")
+def _validate_source_evidence(
+    source_evidence: dict[str, Any], errors: list[str]
+) -> None:
+    commits = source_evidence["source_commits"]
+    if not any(value is not None for value in commits.values()):
+        errors.append("source_evidence.source_commits must contain a known commit")
+    versions = source_evidence["source_versions"]
+    if not any(value is not None for value in versions.values()):
+        errors.append("source_evidence.source_versions must contain a known version")
 
 
-def _check_code(value: Any, path: str, errors: list[str]) -> None:
-    if not isinstance(value, int):
-        errors.append(f"{path} must be an integer DAC code")
-    elif not 0 <= value <= 0xFFFF:
-        errors.append(f"{path} must be in 0..65535")
+def _validate_historical_policy(
+    data: dict[str, Any], errors: list[str]
+) -> None:
+    identity = (
+        data["schema_version"],
+        data["model_id"],
+        data["model_version"],
+    )
+    historical_allowed = identity in HISTORICAL_MODEL_IDENTITIES
+    historical_paths = (
+        ("oscillator", "datasheet_tuning_range_ppm"),
+        ("hardware_topology", "pps_witness"),
+        ("plant_response", "observed_frequency_range"),
+        ("plant_response", "run_017_settled_outputs_mhz"),
+        ("plant_response", "reference_integrity"),
+        ("plant_response", "startup_control_eligibility"),
+    )
+    for section, field in historical_paths:
+        if field in data[section] and not historical_allowed:
+            errors.append(
+                f"{section}.{field} is reserved for the retained historical "
+                "model identity schema_version=1, "
+                "model_id=cx317_h1_bench, model_version=2"
+            )
+    uncertainty = data["plant_response"]["local_slope"]["uncertainty"]
+    for field in (
+        "hz_per_v_span",
+        "positive_0x0800_hz_per_v",
+        "negative_0x0800_hz_per_v",
+        "positive_0x1000_hz_per_v",
+        "negative_0x1000_hz_per_v",
+    ):
+        if field in uncertainty and not historical_allowed:
+            errors.append(
+                "plant_response.local_slope.uncertainty."
+                f"{field} is reserved for the retained historical model "
+                "identity schema_version=1, model_id=cx317_h1_bench, "
+                "model_version=2"
+            )
+    if (
+        "model_updated_from_repo_commit"
+        in data["source_evidence"]["source_commits"]
+        and not historical_allowed
+    ):
+        errors.append(
+            "source_evidence.source_commits.model_updated_from_repo_commit is "
+            "reserved for the retained historical model identity "
+            "schema_version=1, model_id=cx317_h1_bench, model_version=2"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -315,12 +678,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR {args.path}: {exc}")
         return 1
 
+    evidence = assess_evidence_availability(model)
     auto_min, auto_max = model.automatic_control_range
-    crossing = f"0x{model.crossing_code:04X}" if model.crossing_code is not None else "unavailable"
+    crossing = (
+        f"0x{model.crossing_code:04X}"
+        if model.crossing_code is not None
+        else "unavailable"
+    )
+    evidence_state = "available" if evidence.available else "partial"
     print(
-        f"OK {args.path}: {model.model_id} v{model.model_version}, "
+        f"OK {args.path}: structural=valid, semantic=valid, "
+        f"evidence={evidence_state}, {model.model_id} v{model.model_version}, "
         f"nominal_code=0x{model.nominal_code:04X}, crossing_code={crossing}, "
         f"automatic_control_range=0x{auto_min:04X}..0x{auto_max:04X}, "
+        f"control_ready={str(model.control_ready).lower()}, "
         f"actuation_enabled={str(model.actuation_enabled).lower()}"
     )
     return 0

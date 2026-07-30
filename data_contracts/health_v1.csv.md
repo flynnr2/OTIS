@@ -125,6 +125,28 @@ initialization status or any raw timing observation. The normative ownership
 map is
 [`../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md`](../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md).
 
+## Boot Capability Status
+
+Firmware reports the selected boot profile and its capability gate with
+component `boot_capabilities`. Each selected capability has a requirement and a
+typed outcome in `requirement:outcome` form:
+
+- `Ready`: initialization completed successfully;
+- `OptionalDegraded`: an explicitly optional selected capability failed;
+- `RequiredUnavailable`: a required selected capability did not initialize;
+- `FatalConflict`: resource selection or ownership is invalid.
+
+`selected_profile`, `selected_count`, `overall`, `degraded`, and `run_mode`
+summarize the set. `run_mode=Ready` is emitted only after every selected
+capability has a known result and every required measurement and transport
+capability is `Ready`. Optional failure is therefore visible as
+`overall=OptionalDegraded` and `degraded=true`; it is never represented as an
+unqualified successful boot.
+
+Registry `valid` and `complete` remain separate status keys. An invalid
+registry is a `FatalConflict`; a valid but incomplete registry is
+`RequiredUnavailable`, because an expected dynamic resource did not bind.
+
 ## Diagnostics Migration
 
 `health_v1` remains the compatibility status contract. First-class diagnostic

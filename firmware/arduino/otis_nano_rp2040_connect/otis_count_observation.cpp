@@ -872,7 +872,7 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
 
 }  // namespace
 
-void otis_count_observation_begin(OtisRuntimeState *runtime_state,
+bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
@@ -882,6 +882,7 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
   emit_status(status_context, "capture", "tcxo_counter_backend",
               "rp2040_fc0_gpin0", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
+  return true;
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
@@ -906,6 +907,7 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
                     h1_pio_long_gate.sm, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
   }
+  return counter_ok;
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   (void)runtime_state;
   bool counter_ok = begin_h1_pio_long_gate_counter();
@@ -1015,13 +1017,14 @@ void otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   : OTIS_SEVERITY_ERROR,
                        counter_ok ? OTIS_FLAG_PROFILE_ASSUMPTION
                                   : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  return counter_ok;
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
   pinMode(OTIS_PIN_OSC_OBSERVATION, INPUT_PULLDOWN);
   runtime_state->tcxo.gate_open_us = micros();
   emit_status(status_context, "capture", "tcxo_counter_backend",
               "gpio_irq_divided_only", OTIS_SEVERITY_WARN,
               OTIS_FLAG_RATE_TOO_HIGH);
-  otis_capture_irq_begin_tcxo_counter(OTIS_PIN_OSC_OBSERVATION);
+  return otis_capture_irq_begin_tcxo_counter(OTIS_PIN_OSC_OBSERVATION);
 #endif
 }
 

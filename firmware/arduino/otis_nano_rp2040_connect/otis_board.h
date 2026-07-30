@@ -8,7 +8,8 @@
 #endif
 
 #define OTIS_TARGET_ARDUINO_CORE "earlephilhower_arduino_pico"
-#define OTIS_TARGET_BOARD "arduino_nano_rp2040_connect"
+#define OTIS_TARGET_BOARD OTIS_BUILD_BOARD_ID
+#define OTIS_TARGET_BOARD_NAME OTIS_BUILD_BOARD_NAME
 
 #define OTIS_GPIO_OSC_OBSERVATION 20u
 

@@ -12,7 +12,8 @@
     "name": "otis_nano_rp2040_connect",
     "version": "SW1",
     "config_id": "phase5_pps_isr_boundary_qualification_v1",
-    "git_commit": ""
+    "git_commit": "",
+    "build_provenance_required": true
   },
   "host": {
     "tool": "host.otis_tools.capture_device",

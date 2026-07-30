@@ -15,7 +15,7 @@ struct OtisCountObservationConfig {
   const char *source_domain;
 };
 
-void otis_count_observation_begin(OtisRuntimeState *runtime_state,
+bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config);
 bool otis_count_observation_on_pps_boundary(

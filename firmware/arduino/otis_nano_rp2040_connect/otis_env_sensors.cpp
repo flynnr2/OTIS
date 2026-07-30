@@ -191,7 +191,11 @@ bool otis_env_sensors_begin(void) {
   bmp280_initialized = false;
   bmp280_last_read_ok = false;
 #endif
-  return sht4x_initialized || bmp280_initialized;
+  // A selected sensor set is ready only when every selected member completed
+  // initialization. The boot capability policy decides whether that complete
+  // set is required or explicitly degraded.
+  return (!OTIS_ENABLE_ENV_SHT4X || sht4x_initialized) &&
+         (!OTIS_ENABLE_ENV_BMP280 || bmp280_initialized);
 #else
   sht4x_initialized = false;
   sht4x_last_read_ok = false;

@@ -25,7 +25,8 @@ refactor commits can be compared against known-good SW1 behavior.
 - Do not change firmware behavior to satisfy this process.
 - Do not change the wire format, timestamp semantics, public field names, tag
   names, or existing diagnostics.
-- Build each mode from the current SW1 sketch and record the exact commit used.
+- Build each mode through the pinned matrix; the device emits the exact source,
+  configuration, board, core, and toolchain identity.
 - Keep raw serial logs. Derived CSV and reports are useful, but the raw log is
   the behavioral source of truth.
 - Use representative captures long enough to include boot records, CSV headers,
@@ -63,9 +64,7 @@ and deterministic synthetic `EVT`, `REF`, and `CNT` records.
 Build:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_SYNTHETIC_USB \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile synthetic_usb
 ```
 
 Capture:
@@ -86,9 +85,7 @@ Wiring: jumper `D7` to `D10`.
 Build:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile gpio_loopback_pio_capture
 ```
 
 Capture:
@@ -109,9 +106,7 @@ Wiring: conditioned GPS PPS to `D14` / `GPIO26` / `CH1`.
 Build:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile gps_pps_irq_capture
 ```
 
 Capture:
@@ -135,9 +130,7 @@ Wiring: TCXO observation on `D8` / `GPIO20` / `GPIN0`; conditioned GPS PPS on
 Build:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile tcxo_fc0_observe
 ```
 
 Capture:

@@ -13,6 +13,7 @@ REPO_ROOT = SCRIPT_PATH.parents[4]
 
 COMMANDS: tuple[tuple[str, ...], ...] = (
     ("python3", "-m", "pytest"),
+    ("python3", "tools/firmware_matrix.py"),
     (
         "python3",
         "tools/otis_wire_validate.py",

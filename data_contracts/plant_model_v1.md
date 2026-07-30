@@ -2,7 +2,8 @@
 
 `plant_model_v1` is the host-side, machine-readable contract for an H1/SW2
 oscillator control-path model. It records evidence-backed plant behavior and
-safety envelopes without putting plant constants in firmware.
+safety envelopes without treating hand-coded firmware constants as an
+independent authority.
 
 The contract is intentionally conservative:
 
@@ -19,6 +20,14 @@ The machine-readable schema lives at:
 ```text
 schemas/plant_model_v1.schema.json
 ```
+
+That JSON Schema is the single structural authority. The exhaustive field
+classification, historical-field policy, and pre-reconciliation validator
+disagreements are recorded in
+`docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md`. Host loading always runs
+schema validation first. Cross-field semantic validation, evidence
+availability, applicability, and control eligibility are separate decisions;
+success at one layer does not imply success at a later layer.
 
 Initial H1 plant models live under:
 
@@ -71,9 +80,48 @@ manual-safe and applicability ranges.
 Version-4 applicability also requires a complete estimator-method contract:
 identity/version, measurement backend, count-window semantics, independent
 boundary mapping, PPS acceptance rules, timing domain, extrapolation policy,
-and a definition hash. Runtime applicability compares this contract with the
-compiled/executed estimator; a manifest string alone cannot make the model
-applicable.
+and a definition hash. Semantic validation verifies that the definition hash
+matches the contract recorded in the artifact and that the nested and outer
+measurement backends agree. It deliberately does not require equality with the
+currently installed estimator: a self-consistent artifact describing an
+evolved estimator is valid. Runtime applicability compares the artifact
+contract with the compiled/executed estimator and reports such an artifact as
+not applicable; a manifest string alone cannot make it applicable.
+
+The Phase-4 firmware constants are generated from the exact validated current
+artifact rather than copied by hand:
+
+```text
+tools/generate_plant_model_binding.py
+firmware/arduino/otis_nano_rp2040_connect/otis_plant_model_v4_generated.h
+```
+
+The generated header records the artifact path, exact byte hash, schema/model
+versions, topology, applicability mode, outer measurement backend, gate and
+settling durations, temperature limits, source-run exclusions, estimator
+constraints, gain, and DAC ranges. Generation fails unless structural and
+semantic validation pass and separately refuses an artifact whose estimator
+does not match the current firmware implementation. The live preview compares
+those generated values with compiled and observed runtime values. Configured
+gate duration is an identity comparison; bounded observed aperture error is an
+observation-quality decision. Settling is measured from a successful DAC-write
+notification to the opening boundary of a count window, so a window that
+straddles the exclusion cutoff is rejected. Missing, failed, or stale
+near-VCXO temperature reports `temperature_not_observed` and blocks firmware
+applicability; it is not invented as an in-range measurement. The generated
+`control_ready` and `actuation_enabled` values remain false; a compiled binding
+does not authorize actuation.
+
+## Historical v1 Reader
+
+The exact historical identity `(schema_version=1,
+model_id=cx317_h1_bench, model_version=2)` includes measurement summaries that
+predate the current field layout. They are retained as explicit closed schema
+properties marked deprecated, including the legacy
+`source_commits.model_updated_from_repo_commit` spelling. New artifacts must
+not emit these fields, even if they choose model version 1 or 2. Unknown fields
+remain rejected at every object boundary; `additionalProperties` is not
+relaxed for historical compatibility.
 
 ## Unknown Values
 

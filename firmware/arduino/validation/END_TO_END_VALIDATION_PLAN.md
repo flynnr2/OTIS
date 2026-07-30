@@ -16,6 +16,11 @@ A validation leg passes only when all of these are true:
 
 - firmware compiles with the intended mode/backend flags;
 - `BOOT` appears and `BOOT_FATAL` does not appear;
+- `boot_capabilities,run_mode=Ready` appears only after all selected required
+  capabilities report `Ready`;
+- `resource_registry,valid=true` and `resource_registry,complete=true` both
+  appear;
+- any selected optional failure is reported as `OptionalDegraded`;
 - serial output remains parseable as ordinary OTIS CSV/boot records;
 - expected `EVT`, `REF`, `CNT`, `STS`, `DAC`, or `ENV` families appear for the
   selected mode;
@@ -52,6 +57,8 @@ The script expands to:
 ```bash
 python3 -m pytest
 
+python3 tools/firmware_matrix.py
+
 python3 tools/otis_wire_validate.py \
   firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt \
   --profile synthetic
@@ -75,25 +82,22 @@ missing `COMPLETE` marker; those warnings are acceptable for this dry check.
 
 ## Compile Matrix
 
-Compile every row before uploading any firmware. Keep the exact command in the
-run notes.
+The versioned intentional matrix is
+`firmware/arduino/firmware_matrix.json`. It contains the qualification,
+observe-only, characterization, explicit laboratory actuator, and
+representative capture/count profiles, plus known-invalid guard tuples. It
+intentionally does not compile the theoretical cross-product.
 
-Run compile commands sequentially or provide distinct `--build-path`
-directories; parallel Arduino CLI builds can collide in the shared sketch cache.
+```bash
+python3 tools/firmware_matrix.py --check-environment
+python3 tools/firmware_matrix.py --list
+python3 tools/firmware_matrix.py
+```
 
-| Leg | Purpose | Command | Pass criteria |
-| --- | --- | --- | --- |
-| Default | Current default H1 open-loop build | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| Synthetic USB | USB/parser sanity | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_SYNTHETIC_USB firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| GPIO loopback | Local CH0 capture | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| GPS PPS IRQ | CH1 PPS capture | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| GPS PPS PIO FIFO | Sparse-reference PIO path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| H1 shared PIO ownership | Sparse PPS edge queue plus OCXO long-gate counter | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero; bench boot telemetry reports distinct claimed state machines for edge capture and long-gate count. |
-| TCXO FC0 | Existing H0 count path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| H1 PIO long-gate | Raw OCXO long-gate path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE -DOTIS_ENABLE_DAC_AD5693R=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| GPIO IRQ count backend | Divided oscillator test path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero. |
-| PPS-gated ratio backend | PPS-IRQ-owned count ratio path | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero and boot/status telemetry reports `pps_gate,boundary_owner=pps_gpio_irq`, `pps_gate,aperture_backend=pps_isr_stop_sample_restart_v1`, and `pps_gate,backend_qualified=false`. |
-| Phase 4 observe/replay adapter | Existing estimator interface over corrected records | `arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_IRQ -DOTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO -DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" firmware/arduino/otis_nano_rp2040_connect` | Build exits zero without changing Phase 4 estimator/model semantics. |
+The matrix passes only when every supported profile compiles and every invalid
+tuple fails with its named diagnostic. Each supported profile writes its
+binary, build log, and artifact-hashing `firmware_build_manifest.json` below the ignored
+`build/firmware_matrix/<profile>/` directory.
 
 ## Run Directory and Capture Pattern
 

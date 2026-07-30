@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void otis_transport_begin(uint32_t baud);
+bool otis_transport_begin(uint32_t baud);
 size_t otis_transport_write_char(char c);
 size_t otis_transport_write_cstr(const char *s);
 size_t otis_transport_write_bytes(const uint8_t *data, size_t length);
