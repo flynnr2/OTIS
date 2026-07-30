@@ -698,20 +698,54 @@ def _verify_installed_environment(environment: dict[str, str]) -> None:
     )
 
 
-def _discard_artifacts(path: Path) -> None:
+def _path_has_symlink_component(path: Path) -> bool:
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def _validate_profile_output_paths(paths: tuple[Path, ...]) -> None:
+    for path in paths:
+        if _path_has_symlink_component(path):
+            raise MatrixError(
+                f"firmware output path traverses a symbolic link: {path}"
+            )
+        if path.exists() and not path.is_dir():
+            raise MatrixError(f"firmware output path is not a directory: {path}")
+
+
+def _reject_descendant_symlinks(path: Path) -> None:
     if not path.exists():
         return
-    for artifact in path.rglob("*"):
-        if artifact.is_file() or artifact.is_symlink():
+    for root, directory_names, file_names in os.walk(path, followlinks=False):
+        root_path = Path(root)
+        for name in [*directory_names, *file_names]:
+            candidate = root_path / name
+            if candidate.is_symlink():
+                raise MatrixError(
+                    "firmware output directory contains a symbolic link: "
+                    f"{candidate}"
+                )
+
+
+def _discard_artifacts(path: Path) -> None:
+    if not path.exists() or _path_has_symlink_component(path):
+        return
+    for artifact in path.iterdir():
+        if artifact.is_file() and not artifact.is_symlink():
             artifact.unlink()
 
 
-def _discard_matrix_artifacts(output_dir: Path) -> None:
-    if not output_dir.exists():
-        return
-    for artifacts_dir in output_dir.rglob("artifacts"):
-        if artifacts_dir.is_dir():
-            _discard_artifacts(artifacts_dir)
+def _discard_matrix_artifacts(
+    output_dir: Path,
+    profile_ids: list[str],
+) -> None:
+    for profile_id in profile_ids:
+        _discard_artifacts(output_dir / profile_id / "artifacts")
 
 
 def _artifact_hashes(artifacts_dir: Path) -> list[dict[str, Any]]:
@@ -769,8 +803,13 @@ def _compile_profile(
     profile_dir = output_dir / profile["id"]
     build_dir = profile_dir / "build"
     artifacts_dir = profile_dir / "artifacts"
+    _validate_profile_output_paths(
+        (output_dir, profile_dir, build_dir, artifacts_dir)
+    )
     build_dir.mkdir(parents=True, exist_ok=True)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+    _reject_descendant_symlinks(build_dir)
+    _reject_descendant_symlinks(artifacts_dir)
     _discard_artifacts(artifacts_dir)
     source_header = SKETCH / GENERATED_HEADER_NAME
     if source_header.exists():
@@ -823,6 +862,12 @@ def _compile_profile(
 
     if temporary_sketch_path.exists():
         raise MatrixError("temporary firmware source was not removed after compilation")
+    try:
+        _reject_descendant_symlinks(build_dir)
+        _reject_descendant_symlinks(artifacts_dir)
+    except MatrixError:
+        _discard_artifacts(artifacts_dir)
+        raise
     for copied_header in build_dir.rglob(GENERATED_HEADER_NAME):
         copied_header.unlink()
     if any(build_dir.rglob(GENERATED_HEADER_NAME)):
@@ -884,11 +929,13 @@ def run_matrix(
     arduino_cli: str = "arduino-cli",
     matrix_path: Path = DEFAULT_MATRIX,
 ) -> list[dict[str, Any]]:
+    _validate_profile_output_paths((output_dir,))
     summary_path = output_dir / "matrix_summary.json"
     if summary_path.exists():
         summary_path.unlink()
     environment = verify_environment(matrix, arduino_cli=arduino_cli)
     results: list[dict[str, Any]] = []
+    touched_profile_ids: list[str] = []
     matrix_snapshot = _capture_source_state(
         matrix,
         profiles[0],
@@ -922,6 +969,17 @@ def run_matrix(
                 f"config={provenance['configuration']['sha256'][:12]}",
                 flush=True,
             )
+            profile_id = str(profile["id"])
+            profile_dir = output_dir / profile_id
+            _validate_profile_output_paths(
+                (
+                    output_dir,
+                    profile_dir,
+                    profile_dir / "build",
+                    profile_dir / "artifacts",
+                )
+            )
+            touched_profile_ids.append(profile_id)
             result = _compile_profile(
                 matrix,
                 profile,
@@ -948,7 +1006,10 @@ def run_matrix(
         )
         _verify_installed_environment(environment)
     except MatrixError:
-        _discard_matrix_artifacts(output_dir)
+        _discard_matrix_artifacts(
+            output_dir,
+            touched_profile_ids,
+        )
         if summary_path.exists():
             summary_path.unlink()
         raise
@@ -1033,7 +1094,7 @@ def main(argv: list[str] | None = None) -> int:
         results = run_matrix(
             matrix,
             selected,
-            args.output_dir.resolve(),
+            args.output_dir.absolute(),
             arduino_cli=args.arduino_cli,
             matrix_path=args.matrix.resolve(),
         )

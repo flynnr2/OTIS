@@ -700,6 +700,14 @@ def test_matrix_wide_source_identity_change_aborts_and_cleans_prior_artifacts(
     monkeypatch.setattr(firmware_matrix, "_compile_profile", fake_compile)
     output = tmp_path / "matrix race output"
     output.mkdir()
+    unrelated = output / "unrelated" / "artifacts"
+    unrelated.mkdir(parents=True)
+    unrelated_file = unrelated / "keep.bin"
+    unrelated_file.write_bytes(b"unrelated")
+    untouched_later = output / profiles[1]["id"] / "artifacts"
+    untouched_later.mkdir(parents=True)
+    untouched_later_file = untouched_later / "keep.bin"
+    untouched_later_file.write_bytes(b"untouched selected profile")
     (output / "matrix_summary.json").write_text(
         '{"all_verified": true}\n',
         encoding="utf-8",
@@ -714,6 +722,85 @@ def test_matrix_wide_source_identity_change_aborts_and_cleans_prior_artifacts(
         )
     assert not list(output.rglob("accepted.bin"))
     assert not (output / "matrix_summary.json").exists()
+    assert unrelated_file.read_bytes() == b"unrelated"
+    assert untouched_later_file.read_bytes() == b"untouched selected profile"
+
+
+@pytest.mark.parametrize("symlink_level", ["profile", "build", "artifacts"])
+def test_profile_output_symlinks_are_rejected_without_touching_target(
+    tmp_path: Path,
+    symlink_level: str,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    environment = _environment()
+    snapshot = {
+        "git_commit": "a" * 40,
+        "source_state": "clean",
+        "source_sha256": "b" * 64,
+        "config_source_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+    }
+    provenance = build_provenance(
+        matrix,
+        profile,
+        environment,
+        git_commit=snapshot["git_commit"],
+        source_state=snapshot["source_state"],
+        source_sha256=snapshot["source_sha256"],
+        build_session_id=TEST_BUILD_SESSION,
+        config_source_sha256=snapshot["config_source_sha256"],
+    )
+    snapshot["config_sha256"] = provenance["configuration"]["sha256"]
+    output = tmp_path / "output"
+    output.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    external_file = external / "keep.bin"
+    external_file.write_bytes(b"outside")
+    profile_dir = output / profile["id"]
+    if symlink_level == "profile":
+        profile_dir.symlink_to(external, target_is_directory=True)
+    else:
+        profile_dir.mkdir()
+        (profile_dir / symlink_level).symlink_to(
+            external,
+            target_is_directory=True,
+        )
+
+    with pytest.raises(MatrixError, match="traverses a symbolic link"):
+        _compile_profile(
+            matrix,
+            profile,
+            provenance,
+            output,
+            "must-not-run",
+            environment=environment,
+            source_snapshot=snapshot,
+        )
+    firmware_matrix._discard_matrix_artifacts(output, [profile["id"]])
+    assert external_file.read_bytes() == b"outside"
+
+
+def test_matrix_output_root_symlink_is_rejected_before_summary_cleanup(
+    tmp_path: Path,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    external = tmp_path / "external"
+    external.mkdir()
+    summary = external / "matrix_summary.json"
+    summary.write_bytes(b"external summary")
+    output = tmp_path / "output"
+    output.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(MatrixError, match="traverses a symbolic link"):
+        firmware_matrix.run_matrix(
+            matrix,
+            [_profile(matrix, "synthetic_usb")],
+            output,
+            arduino_cli="must-not-run",
+        )
+    assert summary.read_bytes() == b"external summary"
 
 
 def test_source_has_no_manual_commit_literal_and_requires_builder() -> None:
