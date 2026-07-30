@@ -48,7 +48,7 @@ profiles/plant_models/
 `dac.manual_safe_range_codes` records the manually checked bench range.
 `dac.automatic_control_range_codes` records the range a future controller may
 consider. These ranges are deliberately independent. Run 020 supports the
-observe-only v3 model's local applicability range `0xA800..0xB400`, crossing
+observe-only version-4 model's local applicability range `0xA800..0xB400`, crossing
 band `0xA840..0xAA00`, and candidate automatic range `0xA800..0xAB00`.
 The candidate range is recorded for deterministic preview and policy design;
 it is not permission to actuate.
@@ -57,7 +57,9 @@ it is not permission to actuate.
 `status.actuation_enabled` means software may apply DAC updates. The initial H1
 CX317 models must keep both false because Phase 3 hands off to observe-only.
 `cx317_h1_bench_v1.json` retains the earlier Run 017 range as historical model
-evidence. `cx317_h1_bench_v2.json` is the current Run 020-backed model.
+evidence. `cx317_h1_bench_v2.json` preserves the pre-correction version-3
+model. `cx317_h1_bench_v3.json` is the current Run 020-backed version-4 model
+and adds the exact `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` applicability contract.
 
 Optional `plant_response.crossing_estimate`,
 `plant_response.repeatability_evidence`, and
@@ -65,6 +67,13 @@ Optional `plant_response.crossing_estimate`,
 machine-readable. When present, host validation requires the candidate
 automatic range to contain the crossing band and remain within the model's
 manual-safe and applicability ranges.
+
+Version-4 applicability also requires a complete estimator-method contract:
+identity/version, measurement backend, count-window semantics, independent
+boundary mapping, PPS acceptance rules, timing domain, extrapolation policy,
+and a definition hash. Runtime applicability compares this contract with the
+compiled/executed estimator; a manifest string alone cannot make the model
+applicable.
 
 ## Unknown Values
 

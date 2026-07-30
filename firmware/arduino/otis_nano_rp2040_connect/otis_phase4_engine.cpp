@@ -24,9 +24,11 @@ uint32_t model_reasons(const OtisPhase4ModelInput &model) {
     return OTIS_PHASE4_REASON_MODEL_UNAVAILABLE;
   }
   if (!model.valid) reasons |= OTIS_PHASE4_REASON_MODEL_INVALID;
-  if (!model.version_3) reasons |= OTIS_PHASE4_REASON_MODEL_VERSION;
+  if (!model.version_4) reasons |= OTIS_PHASE4_REASON_MODEL_VERSION;
   if (!model.topology_match) reasons |= OTIS_PHASE4_REASON_MODEL_TOPOLOGY;
   if (!model.backend_match) reasons |= OTIS_PHASE4_REASON_MODEL_BACKEND;
+  if (!model.estimator_method_match)
+    reasons |= OTIS_PHASE4_REASON_MODEL_ESTIMATOR_METHOD;
   if (!model.input_in_applicability)
     reasons |= OTIS_PHASE4_REASON_MODEL_INPUT_RANGE;
   if (model.excluded_input)
@@ -60,7 +62,9 @@ void otis_phase4_engine_evaluate(OtisPhase4Engine *engine,
       observation->reference_validity == OTIS_PHASE4_VALID &&
       observation->count_validity == OTIS_PHASE4_VALID &&
       observation->diagnostic_health != OTIS_PHASE4_DIAGNOSTIC_FAULT &&
-      observation->reference_continuity && observation->count_continuity;
+      observation->reference_continuity && observation->count_continuity &&
+      (!observation->new_count ||
+       observation->frequency_observation_available);
   if (observation->new_count && observation_valid &&
       observation->frequency_observation_available &&
       isfinite(observation->frequency_observation_hz)) {

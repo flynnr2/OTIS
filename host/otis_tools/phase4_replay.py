@@ -19,19 +19,26 @@ from .contracts import (
     CsvValidationContext,
     validate_csv,
 )
+from .phase4_boundary_estimator import (
+    BoundaryEstimate,
+    BoundaryPpsTimeMapper,
+    ESTIMATOR_METHOD_DEFINITION_HASH,
+    ESTIMATOR_METHOD_ID,
+    REFERENCE_INVALID_FLAGS,
+    estimator_method_contract,
+)
 from .plant_model import PlantModel, load_plant_model
 from .run_loader import RunManifest, load_manifest
 from .timebase import unwrap_ticks
 
 
-ESTIMATOR_VERSION = "phase4_frequency_mean_v1"
-POLICY_VERSION = "phase4_observe_preview_v1"
-OUTPUT_SUBDIRECTORY = Path("derived") / "phase4_replay_v1"
+ESTIMATOR_VERSION = ESTIMATOR_METHOD_ID
+POLICY_VERSION = "phase4_observe_preview_v2"
+OUTPUT_SUBDIRECTORY = Path("derived") / "phase4_replay_v2"
 ESTIMATES_FILENAME = "estimates_v1.csv"
 PREVIEWS_FILENAME = "control_previews_v1.csv"
-REPORT_FILENAME = "replay_report_v1.json"
+REPORT_FILENAME = "replay_report_v2.json"
 
-REFERENCE_INVALID_FLAGS = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 12)
 COUNT_INVALID_FLAGS = (
     (1 << 0)
     | (1 << 1)
@@ -48,7 +55,7 @@ COUNT_INVALID_FLAGS = (
 
 @dataclass(frozen=True)
 class ReplayConfig:
-    schema_version: int = 1
+    schema_version: int = 2
     startup_inhibit_s: float = 600.0
     clean_window_requirement: int = 3
     recovery_clean_window_requirement: int = 3
@@ -60,6 +67,8 @@ class ReplayConfig:
     count_max_age_s: float = 450.0
     maximum_dispersion_hz: float = 0.25
     drift_estimation_enabled: bool = False
+    estimator_method_id: str = ESTIMATOR_METHOD_ID
+    estimator_method_definition_hash: str = ESTIMATOR_METHOD_DEFINITION_HASH
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> "ReplayConfig":
@@ -72,10 +81,22 @@ class ReplayConfig:
         return config
 
     def validate(self) -> None:
-        if self.schema_version != 1:
-            raise ValueError("replay configuration schema_version must be 1")
+        if self.schema_version != 2:
+            raise ValueError("replay configuration schema_version must be 2")
         if self.drift_estimation_enabled:
             raise ValueError("drift_estimation_enabled must remain false in Phase 4")
+        if self.estimator_method_id != ESTIMATOR_METHOD_ID:
+            raise ValueError(
+                f"estimator_method_id must be {ESTIMATOR_METHOD_ID}"
+            )
+        if (
+            self.estimator_method_definition_hash
+            != ESTIMATOR_METHOD_DEFINITION_HASH
+        ):
+            raise ValueError(
+                "estimator_method_definition_hash does not identify the "
+                "compiled boundary-interpolated estimator"
+            )
         for field_name in (
             "startup_inhibit_s",
             "reference_nominal_interval_s",
@@ -616,44 +637,6 @@ def _count_state(
     return "valid", age_s, continuity, []
 
 
-def _frequency_observation(
-    count: CountRecord,
-    references: list[ReferenceRecord],
-    domain_hz: float,
-    config: ReplayConfig,
-) -> float | None:
-    gate_ticks = count.close_ticks - count.open_ticks
-    if gate_ticks <= 0 or count.counted_edges <= 0:
-        return None
-    domain_references = [row for row in references if row.domain == count.domain]
-    open_index = next(
-        (index for index, row in enumerate(domain_references) if row.ticks == count.open_ticks),
-        None,
-    )
-    close_index = next(
-        (index for index, row in enumerate(domain_references) if row.ticks == count.close_ticks),
-        None,
-    )
-    if (
-        open_index is not None
-        and close_index is not None
-        and close_index > open_index
-    ):
-        gate_reference_time_s = (
-            close_index - open_index
-        ) * config.reference_nominal_interval_s
-        if gate_reference_time_s > 0:
-            return count.counted_edges / gate_reference_time_s
-
-    eligible = [row for row in domain_references if row.ticks <= count.close_ticks]
-    if len(eligible) >= 2:
-        reference_ticks = eligible[-1].ticks - eligible[-2].ticks
-        if reference_ticks > 0:
-            calibrated_tick_rate_hz = reference_ticks / config.reference_nominal_interval_s
-            return count.counted_edges / (gate_ticks / calibrated_tick_rate_hz)
-    return count.counted_edges / (gate_ticks / domain_hz)
-
-
 def _model_applicability(
     plant: PlantContext,
     manifest: RunManifest,
@@ -664,8 +647,17 @@ def _model_applicability(
         return plant.load_state, [plant.load_reason], None
     model = plant.model
     reasons: list[str] = []
-    if model.model_version != 3:
-        reasons.append("plant_model_version_not_3")
+    if model.model_version != 4:
+        reasons.append("plant_model_version_not_4")
+
+    applicability = model.data["plant_response"].get("applicability", {})
+    model_method = (
+        applicability.get("estimator_method_contract")
+        if isinstance(applicability, dict)
+        else None
+    )
+    if model_method != estimator_method_contract():
+        reasons.append("plant_model_estimator_method_mismatch")
 
     replay_identity = manifest.data.get("phase4_replay")
     if not isinstance(replay_identity, dict):
@@ -674,7 +666,7 @@ def _model_applicability(
         topology = replay_identity.get("hardware_topology_id")
         backend = replay_identity.get("measurement_backend")
         expected_topology = model.data["hardware_topology"]["topology_id"]
-        expected_backend = model.data["plant_response"]["applicability"]["measurement_backend"]
+        expected_backend = applicability.get("measurement_backend")
         if topology != expected_topology:
             reasons.append("plant_model_topology_mismatch")
         if backend != expected_backend:
@@ -862,8 +854,36 @@ def replay_phase4(
     dac_rows = _load_dac(sources.dac, domain_hz)
     nominal_hz = _nominal_frequency_hz(manifest, plant)
 
-    timeline = [row.close_ticks for row in counts]
-    terminal_candidates = timeline + [row.ticks for row in references if row.domain == domain]
+    mapper = BoundaryPpsTimeMapper.from_references(
+        [row for row in references if row.domain == domain],
+        domain_hz=domain_hz,
+        nominal_interval_s=config.reference_nominal_interval_s,
+        interval_tolerance_s=config.reference_interval_tolerance_s,
+    )
+    count_estimates = [
+        mapper.estimate_gate(
+            row.open_ticks,
+            row.close_ticks,
+            row.counted_edges,
+        )
+        for row in counts
+    ]
+    scheduled_counts = [
+        (
+            estimate.evaluation_tick
+            if estimate.valid and estimate.evaluation_tick is not None
+            else count.close_ticks,
+            count,
+            estimate,
+        )
+        for count, estimate in zip(counts, count_estimates)
+    ]
+    timeline = [item[0] for item in scheduled_counts]
+    terminal_candidates = (
+        [row.close_ticks for row in counts]
+        + timeline
+        + [row.ticks for row in references if row.domain == domain]
+    )
     terminal_candidates += [row.ticks for row in status if row.domain == domain]
     terminal_candidates += [row.ticks for row in dac_rows]
     if terminal_candidates:
@@ -887,19 +907,26 @@ def replay_phase4(
     first_ticks = min(terminal_candidates)
     previous_distinct_count_seq: int | None = None
     latest_count: CountRecord | None = None
+    latest_boundary_estimate: BoundaryEstimate | None = None
     count_index = 0
     manifest_identity = _manifest_ref(manifest)
 
     for index, ticks in enumerate(timeline, start=1):
         new_count = False
-        while count_index < len(counts) and counts[count_index].close_ticks <= ticks:
-            candidate = counts[count_index]
+        while (
+            count_index < len(scheduled_counts)
+            and scheduled_counts[count_index][0] <= ticks
+        ):
+            scheduled_tick, candidate, boundary_estimate = scheduled_counts[
+                count_index
+            ]
             if latest_count is None or candidate.seq != latest_count.seq:
                 latest_count = candidate
-                new_count = candidate.close_ticks == ticks
+                latest_boundary_estimate = boundary_estimate
+                new_count = scheduled_tick == ticks
             count_index += 1
 
-        reference_validity, reference_age_s, reference_continuity, reference_reasons, first_ref, last_ref = (
+        reference_validity, reference_age_s, reference_continuity, reference_reasons, _first_ref, last_ref = (
             _reference_state(
                 references,
                 ticks,
@@ -931,8 +958,29 @@ def replay_phase4(
         diagnostic_health, diagnostic_reasons = _status_diagnostics(status_snapshot)
         current_dac, dac_ref = _latest_dac(dac_rows, ticks)
 
-        observation_reasons = [*reference_reasons, *count_reasons]
+        boundary_reasons = (
+            list(latest_boundary_estimate.reason_codes)
+            if new_count
+            and latest_boundary_estimate is not None
+            and not latest_boundary_estimate.valid
+            else []
+        )
+        observation_reasons = [
+            *reference_reasons,
+            *count_reasons,
+            *boundary_reasons,
+        ]
         observation_valid = reference_validity == "valid" and count_validity == "valid"
+        if (
+            new_count
+            and (
+                latest_boundary_estimate is None
+                or not latest_boundary_estimate.valid
+            )
+        ):
+            observation_valid = False
+            if reference_validity not in {"unavailable", "stale"}:
+                reference_validity = "invalid"
         if diagnostic_health == "fault":
             observation_reasons.append("diagnostic_timing_path_fault")
             observation_valid = False
@@ -944,15 +992,17 @@ def replay_phase4(
 
         observation_hz: float | None = None
         if new_count and latest_count is not None and observation_valid:
-            observation_hz = _frequency_observation(
-                latest_count, references, domain_hz, config
+            observation_hz = (
+                latest_boundary_estimate.frequency_hz
+                if latest_boundary_estimate is not None
+                else None
             )
             if observation_hz is not None:
                 rolling.append(
                     (
                         observation_hz,
-                        first_ref.seq if first_ref is not None else 0,
-                        last_ref.seq if last_ref is not None else 0,
+                        latest_boundary_estimate.pps_before_open_seq or 0,
+                        latest_boundary_estimate.pps_after_close_seq or 0,
                     )
                 )
 
@@ -1040,7 +1090,12 @@ def replay_phase4(
                 "source_count_seq": str(latest_count.seq) if latest_count is not None else "",
                 "source_count_ref": count_ref,
                 "source_reference_first_seq": str(rolling[0][1]) if rolling and rolling[0][1] else "",
-                "source_reference_last_seq": str(last_ref.seq) if last_ref is not None else "",
+                "source_reference_last_seq": (
+                    str(latest_boundary_estimate.pps_after_close_seq)
+                    if latest_boundary_estimate is not None
+                    and latest_boundary_estimate.pps_after_close_seq is not None
+                    else (str(last_ref.seq) if last_ref is not None else "")
+                ),
                 "source_status_refs": status_ref,
                 "source_dac_ref": dac_ref,
                 "manifest_ref": manifest_identity,
@@ -1196,6 +1251,7 @@ def replay_phase4(
         },
         "estimator": {
             "version": ESTIMATOR_VERSION,
+            "method_contract": estimator_method_contract(),
             "configuration_hash": config.config_hash,
             "configuration": asdict(config),
             "record_count": len(estimate_rows),
@@ -1255,11 +1311,11 @@ def replay_phase4(
 
 
 def _default_plant_model_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "profiles" / "plant_models" / "cx317_h1_bench_v2.json"
+    return Path(__file__).resolve().parents[2] / "profiles" / "plant_models" / "cx317_h1_bench_v3.json"
 
 
 def _default_config_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "profiles" / "discipline" / "phase4_host_replay_v1.json"
+    return Path(__file__).resolve().parents[2] / "profiles" / "discipline" / "phase4_host_replay_v2.json"
 
 
 def _load_config(path: Path | None) -> ReplayConfig:

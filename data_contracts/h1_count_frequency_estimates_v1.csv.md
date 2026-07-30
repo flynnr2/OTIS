@@ -32,10 +32,12 @@ by `host/otis_tools/h1_characterize.py`.
 | `pps_after_close_timestamp` | uint64 | Accepted PPS timestamp after or at gate close. |
 | `pps_support_count` | uint32 | Accepted PPS observations spanning the gate support. |
 | `max_pps_gap_seconds` | float | Largest adjacent accepted PPS interval in the support region. |
-| `estimator_mode` | enum | `LOCAL_PPS_INTERPOLATED`, `RUN_WIDE_TICK_RATE`, `NOMINAL_TICK_RATE`, or `UNAVAILABLE`. |
+| `estimator_mode` | enum | `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`, `RUN_WIDE_TICK_RATE`, `NOMINAL_TICK_RATE`, or `UNAVAILABLE`. Historical generated tables may retain `LOCAL_PPS_INTERPOLATED`; they are not silently rewritten. |
 | `estimator_valid` | bool | True only for local PPS estimates valid for H1 plant analysis. |
 | `estimator_quality_flags` | string | Pipe-separated diagnostic flags, or `none`. |
 
-Local PPS interpolation uses only adjacent accepted REF/PPS intervals from the
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` uses only adjacent accepted REF/PPS intervals from the
 same `rp2040_timer0` timestamp domain. It does not extrapolate by default and
-does not interpolate across rejected PPS intervals.
+does not interpolate across rejected PPS intervals. Each count-window boundary
+is mapped independently; the method never scales the full raw gate by one
+nearby PPS interval.

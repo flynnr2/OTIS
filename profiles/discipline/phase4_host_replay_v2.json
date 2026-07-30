@@ -1,0 +1,16 @@
+{
+  "clean_window_requirement": 3,
+  "count_max_age_s": 450.0,
+  "drift_estimation_enabled": false,
+  "estimator_method_definition_hash": "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b",
+  "estimator_method_id": "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1",
+  "estimator_window": 5,
+  "maximum_dispersion_hz": 0.25,
+  "minimum_estimator_samples": 3,
+  "recovery_clean_window_requirement": 3,
+  "reference_interval_tolerance_s": 0.2,
+  "reference_max_age_s": 1.5,
+  "reference_nominal_interval_s": 1.0,
+  "schema_version": 2,
+  "startup_inhibit_s": 600.0
+}

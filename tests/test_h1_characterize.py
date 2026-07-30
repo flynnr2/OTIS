@@ -275,7 +275,10 @@ def test_h1_characterize_local_pps_removes_injected_timer_rate_error(tmp_path: P
 
     analysis = analyze_run(run_dir, settling_discard_s=0)
 
-    assert analysis.count_windows[1].estimator_mode == "LOCAL_PPS_INTERPOLATED"
+    assert (
+        analysis.count_windows[1].estimator_mode
+        == "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1"
+    )
     assert analysis.count_windows[1].estimator_valid
     assert analysis.count_windows[1].local_pps_gate_seconds == 1
     assert analysis.count_windows[1].measured_hz == 10_000_000

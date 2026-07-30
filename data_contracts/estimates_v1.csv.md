@@ -56,10 +56,26 @@ while a newer observation is stale or invalid, but that state is explicitly
 ineligible. Unavailable values use an empty CSV field; they are never replaced
 with zero.
 
-The v1 estimator is deliberately simple: valid reference-qualified count
-observations enter a bounded arithmetic-mean window. Confidence depends on
-sample count, dispersion, continuity, age, and startup qualification. Drift
-estimation is disabled.
+The corrected Phase 4 estimator identity is
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`. For each `CNT`, the start and end capture
+ticks are independently mapped by piecewise-linear interpolation between the
+accepted PPS pair surrounding that boundary. Reference gate duration is the
+difference between those two mapped times; frequency is counted edges divided
+by that duration. Extrapolation is prohibited. Both boundaries must be
+bracketed in one continuous accepted-PPS segment.
+
+Accepted PPS intervals have clean reference flags, strictly increasing source
+sequence, one timing domain, and cadence within 0.8..1.2 nominal seconds.
+Missing support, rejected intervals, sequence regression, support overwrite,
+non-positive windows, and impossible results invalidate the observation.
+Valid observations then enter the existing bounded arithmetic-mean window.
+Confidence depends on sample count, dispersion, continuity, age, and startup
+qualification. Drift estimation is disabled.
+
+Historical `phase4_frequency_mean_v1` records used latest-adjacent-interval
+full-gate scaling (with a nominal fallback) and are not this method. They remain
+historical products and must not be relabelled or used with the version-4 CX317
+model.
 
 ## Provenance and safety
 

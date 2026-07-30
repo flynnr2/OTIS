@@ -79,6 +79,21 @@ int main() {
     // The first service may complete a whole frame, leaving busy false.
     otis_phase4_observe_preview_service_transport();
   }
+
+  // Non-PPS-aligned count: the adapter must retain it until REF:7 supplies
+  // the following bracket for the close boundary.
+  runtime.tcxo.last_gate_open_ticks = 108000000ull;
+  runtime.tcxo.last_gate_close_ticks = 120000000ull;
+  runtime.tcxo.last_counted_edges = 7500001ull;
+  runtime.tcxo.last_window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+  otis_phase4_observe_preview_on_count(6u, &runtime, &dac);
+  otis_phase4_observe_preview_on_reference(
+      7u, 128000000ull, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
+  do {
+    otis_phase4_observe_preview_service_transport();
+  } while (otis_phase4_observe_preview_transport_busy());
+  otis_phase4_observe_preview_service_transport();
+
   std::cout << output;
   return 0;
 }

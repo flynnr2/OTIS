@@ -299,6 +299,50 @@
             "mode": { "const": "observe_only" },
             "dac_code_range": { "$ref": "#/$defs/code_range" },
             "measurement_backend": { "type": "string", "minLength": 1 },
+            "estimator_method_contract": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "boundary_interpolation",
+                "count_window_semantics",
+                "estimator_method_id",
+                "extrapolation_policy",
+                "measurement_backend",
+                "method_definition_hash",
+                "reference_acceptance",
+                "reference_interval_max_s",
+                "reference_interval_min_s",
+                "reference_invalid_flag_mask",
+                "reference_time_mapping",
+                "required_timing_domain"
+              ],
+              "properties": {
+                "boundary_interpolation": { "type": "string", "minLength": 1 },
+                "count_window_semantics": { "type": "string", "minLength": 1 },
+                "estimator_method_id": { "type": "string", "minLength": 1 },
+                "extrapolation_policy": { "type": "string", "minLength": 1 },
+                "measurement_backend": { "type": "string", "minLength": 1 },
+                "method_definition_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "reference_acceptance": { "type": "string", "minLength": 1 },
+                "reference_interval_max_s": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "reference_interval_min_s": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "reference_invalid_flag_mask": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reference_time_mapping": { "type": "string", "minLength": 1 },
+                "required_timing_domain": { "type": "string", "minLength": 1 }
+              }
+            },
             "gate_duration_s": { "type": "number", "exclusiveMinimum": 0 },
             "settling_exclusion_s": { "type": "number", "minimum": 0 },
             "temperature_range_c": {

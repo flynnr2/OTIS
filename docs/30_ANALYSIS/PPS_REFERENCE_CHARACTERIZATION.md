@@ -88,10 +88,15 @@ misattributed to the oscillator under test when a 300 s count gate is converted
 with one average tick rate.
 
 The H1 host analysis preserves the legacy run-wide estimate but prefers
-`LOCAL_PPS_INTERPOLATED` when both count-gate boundaries are bracketed by
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` when both count-gate boundaries are bracketed by
 accepted REF/PPS observations. The mapper is piecewise linear between adjacent
 accepted PPS observations in the same `rp2040_timer0` domain. Rejected PPS
 intervals remain diagnostic evidence and are not used for interpolation.
+
+Each boundary is mapped independently, so a long gate may use one local PPS
+pair at its start and a different pair at its end. Scaling the entire raw gate
+by one recent PPS interval is a different estimator and is not model-applicable.
+No boundary extrapolation is permitted.
 
 Per-gate diagnostics are written to `csv/h1_count_frequency_estimates.csv` using
 `h1_count_frequency_estimates_v1.csv`. This is a host-side correction to

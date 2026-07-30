@@ -413,7 +413,11 @@ H1 open-loop command path.
 
 `EST`/`CTL` rows are queued as fixed-capacity pairs and serviced only after
 capture. Queue drops are visible through `phase4_preview` status keys and do
-not feed back into the estimator. Model-version-3 identity, topology/backend
+not feed back into the estimator. A fixed 384-point support array implements
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`; non-aligned count closes wait in one
+bounded pending slot for their following PPS bracket. No extrapolation or
+dynamic allocation is used. Model-version-4 identity, method-contract hash,
+topology/backend
 applicability, gain, DAC range, disabled candidate range, and maximum preview
 step are recorded with every decision.
 

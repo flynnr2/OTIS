@@ -170,7 +170,8 @@ If a PPS/reference anomaly overlaps a DAC step, the raw data is preserved and
 the step is marked `quality=degraded`. Degraded steps are not used as normal
 inputs for local or center-bracketed slope estimates.
 
-For sub-hertz plant work, host reports prefer `LOCAL_PPS_INTERPOLATED` count
+For sub-hertz plant work, host reports prefer
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` count
 estimates when accepted REF/PPS observations bracket both gate boundaries. This
 is a derived analysis of existing `CNT` and `REF` evidence; raw count rows remain
 authoritative and are not overwritten. Nearby air-temperature regression is
@@ -431,7 +432,7 @@ sequence 77 straddles sweep completion and the immediate `0x8000` restore; it
 is preserved but excluded from settled final-centre interpretation.
 
 The current observe-only model is
-`../../profiles/plant_models/cx317_h1_bench_v2.json`. Its applicability range
+`../../profiles/plant_models/cx317_h1_bench_v3.json` (model version 4). Its applicability range
 is `0xA800..0xB400`; its candidate automatic range `0xA800..0xAB00` remains
 disabled. See `RUN_020_PLANT_MODEL_RESULTS.md`.
 

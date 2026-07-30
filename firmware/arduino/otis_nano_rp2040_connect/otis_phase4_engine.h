@@ -81,6 +81,11 @@ enum OtisPhase4Reason : uint32_t {
   OTIS_PHASE4_REASON_MODEL_GAIN = 1u << 24,
   OTIS_PHASE4_REASON_DAC_UNAVAILABLE = 1u << 25,
   OTIS_PHASE4_REASON_REFERENCE_CONTINUITY_UNAVAILABLE = 1u << 26,
+  OTIS_PHASE4_REASON_MODEL_ESTIMATOR_METHOD = 1u << 27,
+  OTIS_PHASE4_REASON_BOUNDARY_SUPPORT = 1u << 28,
+  OTIS_PHASE4_REASON_REFERENCE_SEQUENCE = 1u << 29,
+  OTIS_PHASE4_REASON_SUPPORT_OVERWRITTEN = 1u << 30,
+  OTIS_PHASE4_REASON_PENDING_COUNT_OVERWRITTEN = 1u << 31,
 };
 
 struct OtisPhase4EngineConfig {
@@ -96,9 +101,10 @@ struct OtisPhase4EngineConfig {
 struct OtisPhase4ModelInput {
   bool available;
   bool valid;
-  bool version_3;
+  bool version_4;
   bool topology_match;
   bool backend_match;
+  bool estimator_method_match;
   bool input_in_applicability;
   bool excluded_input;
   bool gain_available;

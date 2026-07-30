@@ -20,7 +20,7 @@ from host.otis_tools.phase4_replay import ReplayConfig, replay_phase4
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = ROOT / "profiles" / "plant_models" / "cx317_h1_bench_v2.json"
+MODEL = ROOT / "profiles" / "plant_models" / "cx317_h1_bench_v3.json"
 ENGINE = (
     ROOT
     / "firmware"
@@ -31,12 +31,10 @@ ENGINE = (
 HARNESS = ROOT / "tests" / "cpp" / "phase4_engine_harness.cpp"
 LIVE_HARNESS = ROOT / "tests" / "cpp" / "phase4_live_adapter_harness.cpp"
 LIVE_ADAPTER = ENGINE.parent / "otis_phase4_observe_preview.cpp"
+BOUNDARY_ESTIMATOR = ENGINE.parent / "otis_phase4_boundary_estimator.cpp"
 TICK_HZ = 1_000_000
 TOPOLOGY = "h1_run_020_g17_reworked_d14_d10_pps_witness"
-BACKEND = (
-    "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE with LOCAL_PPS_INTERPOLATED "
-    "host estimator"
-)
+BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE"
 
 VALIDITY = {"unavailable": 0, "valid": 1, "invalid": 2, "stale": 3}
 DIAGNOSTIC = {"unknown": 0, "healthy": 1, "degraded": 2, "fault": 3}
@@ -52,6 +50,11 @@ OBSERVATION_REASON_BITS = {
     "count_sequence_discontinuity": 1 << 8,
     "count_flagged_invalid": 1 << 9,
     "reference_continuity_unavailable": 1 << 26,
+    "plant_model_estimator_method_mismatch": 1 << 27,
+    "boundary_pps_support_unavailable": 1 << 28,
+    "reference_sequence_nonmonotonic": 1 << 29,
+    "boundary_pps_support_overwritten": 1 << 30,
+    "pending_count_overwritten": 1 << 31,
 }
 
 
@@ -209,7 +212,8 @@ def phase4_live_adapter_harness(
             "-DOTIS_TCXO_COUNTER_BACKEND="
             "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
             "-DOTIS_FC0_STARTUP_INHIBIT_MS=0",
-            str(LIVE_HARNESS), str(LIVE_ADAPTER), str(ENGINE),
+            str(LIVE_HARNESS), str(LIVE_ADAPTER), str(BOUNDARY_ESTIMATOR),
+            str(ENGINE),
             "-I", str(ROOT / "tests" / "cpp" / "stubs"),
             "-I", str(ENGINE.parent), "-o", str(output),
         ],
@@ -256,9 +260,10 @@ def _harness_input(
         model_reasons = set(preview["model_reason_codes"].split(";"))
         available = "plant_model_unavailable" not in model_reasons
         valid = "plant_model_invalid" not in model_reasons
-        version = "plant_model_version_not_3" not in model_reasons
+        version = "plant_model_version_not_4" not in model_reasons
         topology = "plant_model_topology_mismatch" not in model_reasons
         backend = "plant_model_backend_mismatch" not in model_reasons
+        method = "plant_model_estimator_method_mismatch" not in model_reasons
         in_range = "input_outside_model_applicability" not in model_reasons
         excluded = "plant_model_excluded_count_sequence" in model_reasons
         gain = "plant_model_unknown_gain" not in model_reasons
@@ -280,7 +285,8 @@ def _harness_input(
             str(int(bool(estimate["frequency_observation_hz"]))),
             estimate["frequency_observation_hz"] or "0",
             str(int(available)), str(int(valid)), str(int(version)),
-            str(int(topology)), str(int(backend)), str(int(in_range)),
+            str(int(topology)), str(int(backend)), str(int(method)),
+            str(int(in_range)),
             str(int(excluded)), str(int(gain)),
             preview["hz_per_code"] or "0",
             str(int(bool(dac))), dac or "0",
@@ -444,14 +450,19 @@ def test_preview_translation_unit_has_no_dac_write_route() -> None:
     assert "actionable = false" in engine
 
 
-def test_firmware_preview_constants_are_bound_to_plant_model_v3() -> None:
+def test_firmware_preview_constants_are_bound_to_plant_model_v4() -> None:
     source = LIVE_ADAPTER.read_text(encoding="utf-8")
     model_bytes = MODEL.read_bytes()
     model = json.loads(model_bytes)
     assert hashlib.sha256(model_bytes).hexdigest() in source
-    assert model["model_version"] == 3
+    assert model["model_version"] == 4
     assert model["status"]["control_ready"] is False
     assert model["status"]["actuation_enabled"] is False
+    method = model["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]
+    assert method["estimator_method_id"] in source
+    assert method["method_definition_hash"] in source
     assert str(model["plant_response"]["local_slope"]["hz_per_code"]) in source
     applicability = model["plant_response"]["applicability"]["dac_code_range"]
     candidate = model["dac"]["automatic_control_range_codes"]
@@ -464,7 +475,7 @@ def test_firmware_preview_constants_are_bound_to_plant_model_v3() -> None:
         source,
     )
     profile = json.loads(
-        (ROOT / "profiles" / "discipline" / "phase4_host_replay_v1.json").read_text(
+        (ROOT / "profiles" / "discipline" / "phase4_host_replay_v2.json").read_text(
             encoding="utf-8"
         )
     )
@@ -487,8 +498,8 @@ def test_live_est_ctl_rows_match_normative_contracts(
     assert next(csv.reader([lines[1]])) == CONTROL_PREVIEW_V1_FIELDS
     estimate_lines = [lines[0], *[line for line in lines[2:] if line.startswith("EST,")]]
     preview_lines = [lines[1], *[line for line in lines[2:] if line.startswith("CTL,")]]
-    assert len(estimate_lines) == 8
-    assert len(preview_lines) == 8
+    assert len(estimate_lines) == 9
+    assert len(preview_lines) == 9
     estimate_path = tmp_path / "estimates.csv"
     preview_path = tmp_path / "previews.csv"
     estimate_path.write_text("\n".join(estimate_lines) + "\n", encoding="utf-8")
@@ -515,6 +526,10 @@ def test_live_est_ctl_rows_match_normative_contracts(
     assert all(row["actuation_authorized"] == "false" for row in previews)
     assert all(row["actionable"] == "false" for row in previews)
     assert previews[-1]["preview_available"] == "true"
+    assert estimates[-1]["estimator_timestamp_ticks"] == "128000000"
+    assert float(estimates[-1]["frequency_observation_hz"]) == pytest.approx(
+        10_000_001.333333334
+    )
 
 
 def test_preview_queue_is_bounded_and_drop_is_telemetry_only() -> None:
@@ -534,6 +549,21 @@ def test_preview_queue_is_bounded_and_drop_is_telemetry_only() -> None:
     )
 
 
+def test_boundary_support_and_pending_count_are_fixed_capacity() -> None:
+    header = (
+        ENGINE.parent / "otis_phase4_boundary_estimator.h"
+    ).read_text(encoding="utf-8")
+    source = BOUNDARY_ESTIMATOR.read_text(encoding="utf-8")
+    adapter = LIVE_ADAPTER.read_text(encoding="utf-8")
+    assert "#define OTIS_PHASE4_PPS_SUPPORT_CAPACITY 384u" in header
+    assert "points[OTIS_PHASE4_PPS_SUPPORT_CAPACITY]" in header
+    assert "PendingCount pending_count" in adapter
+    assert "pending_count_overwrite_count" in adapter
+    forbidden = ("malloc(", "calloc(", "realloc(", "new ", "std::vector")
+    assert all(token not in source for token in forbidden)
+    assert all(token not in adapter for token in forbidden)
+
+
 def test_long_clean_engine_run_does_not_wrap_qualification_counter(
     phase4_engine_harness: Path,
 ) -> None:
@@ -544,7 +574,7 @@ def test_long_clean_engine_run_does_not_wrap_qualification_counter(
                 [
                     "OBS", str(seq * TICK_HZ), str(seq), "1",
                     "1", "1", "1", "1", "1", "0", "1", "10000000.1",
-                    "1", "1", "1", "1", "1", "1", "0", "1",
+                    "1", "1", "1", "1", "1", "1", "1", "0", "1",
                     "0.0001673035127775317", "1", str(0xA950),
                 ]
             )
@@ -563,3 +593,33 @@ def test_long_clean_engine_run_does_not_wrap_qualification_counter(
     assert rows[-1]["state"] == "ACQUIRE_PREVIEW"
     assert rows[-1]["estimate_eligible"] == "true"
     assert rows[-1]["preview_available"] == "true"
+
+
+def test_firmware_engine_inhibits_estimator_method_mismatch(
+    phase4_engine_harness: Path,
+) -> None:
+    lines = ["CONFIG,0,1,1,1,1,0.25,10000000"]
+    lines.append(
+        ",".join(
+            [
+                "OBS", str(TICK_HZ), "1", "1",
+                "1", "1", "1", "1", "1", "0", "1", "10000000",
+                "1", "1", "1", "1", "1", "0", "1", "0", "1",
+                "0.0001673035127775317", "1", str(0xA950),
+            ]
+        )
+    )
+    completed = subprocess.run(
+        [str(phase4_engine_harness)],
+        input="\n".join(lines) + "\n",
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=ROOT,
+    )
+    row = list(csv.DictReader(io.StringIO(completed.stdout)))[0]
+    assert row["estimate_eligible"] == "true"
+    assert row["preview_eligible"] == "false"
+    assert row["preview_available"] == "false"
+    assert int(row["model_mask"]) & (1 << 27)

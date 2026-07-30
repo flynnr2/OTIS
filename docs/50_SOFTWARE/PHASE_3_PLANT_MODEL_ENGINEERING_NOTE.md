@@ -92,3 +92,18 @@ are made.
 Phase 3 is complete when the new model, validator tests, documentation, and
 repository test suite pass. The handoff is ready for SW2 observe-only estimator
 and correction-preview work. It is not a handoff to active DAC steering.
+
+## Phase 4 estimator-contract correction
+
+This note describes the historical Phase 3 handoff. The numerical Run 020
+model values are unchanged, but Phase 4 review later found that the original
+model-version-3 applicability text named local PPS interpolation while the
+executed Phase 4 algorithm scaled a whole non-aligned gate by one adjacent PPS
+interval.
+
+`cx317_h1_bench_v2.json` therefore remains the historical version-3 artifact.
+The current `cx317_h1_bench_v3.json` / model version 4 adds the complete
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` method contract. Only the corrected
+boundary-interpolated host/live estimator can make that model applicable.
+Historical derived products keep their original estimator identity and require
+regeneration under the Phase 4 v2 replay namespace.
