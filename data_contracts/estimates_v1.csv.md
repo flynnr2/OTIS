@@ -1,5 +1,11 @@
 # estimates_v1.csv
 
+> Historical compatibility contract. Version 1 labelled estimator-window
+> population dispersion as `frequency_uncertainty_hz`. New producers use
+> `estimates_v2`, which separates dispersion from evidence-backed measurement
+> uncertainty. Version-1 rows remain readable but are never silently
+> reinterpreted.
+
 ## Status and scope
 
 Normative Phase 4 estimator contract for deterministic host replay and live

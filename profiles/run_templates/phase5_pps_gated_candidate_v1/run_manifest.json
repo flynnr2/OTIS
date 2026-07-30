@@ -58,6 +58,26 @@
     {
       "path": "csv/sts.csv",
       "contract": "health_v1"
+    },
+    {
+      "path": "csv/reference_observations_v1.csv",
+      "contract": "reference_observations_v1",
+      "optional": true
+    },
+    {
+      "path": "csv/diagnostics_v1.csv",
+      "contract": "diagnostics_v1",
+      "optional": true
+    },
+    {
+      "path": "csv/estimates_v2.csv",
+      "contract": "estimates_v2",
+      "optional": true
+    },
+    {
+      "path": "csv/control_previews_v1.csv",
+      "contract": "control_previews_v1",
+      "optional": true
     }
   ],
   "phase5_pps_backend_qualification": {

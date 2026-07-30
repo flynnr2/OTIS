@@ -97,6 +97,68 @@ DIAGNOSTICS_DRAFT_V0_FIELDS = [
     "control_eligibility",
 ]
 
+DIAGNOSTICS_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "diagnostic_seq",
+    "diagnostic_id",
+    "episode_id",
+    "subsystem",
+    "severity",
+    "state",
+    "transition",
+    "diagnostic_confidence",
+    "reason_code",
+    "clear_reason_code",
+    "first_seen_ticks",
+    "last_seen_ticks",
+    "time_domain",
+    "occurrence_count",
+    "persistence_state",
+    "first_evidence_refs",
+    "latest_evidence_refs",
+    "algorithm_version",
+    "config_hash",
+    "observation_effect",
+    "reference_effect",
+    "model_effect",
+    "control_effect",
+]
+
+REFERENCE_OBSERVATION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "reference_observation_seq",
+    "reference_observation_id",
+    "observation_timestamp_ticks",
+    "time_domain",
+    "source_identity_epoch",
+    "source_reference_first_seq",
+    "source_reference_last_seq",
+    "source_reference_refs",
+    "source_metadata_refs",
+    "receiver_identity",
+    "receiver_firmware",
+    "cadence_state",
+    "capture_path_state",
+    "receiver_authority_state",
+    "utc_traceability_state",
+    "metadata_freshness",
+    "timing_mode",
+    "fix_holdover_state",
+    "antenna_state",
+    "leap_state",
+    "sawtooth_correction_ns",
+    "cable_delay_ns",
+    "pulse_configuration",
+    "calibration_ref",
+    "reference_standard_uncertainty_s",
+    "qualification_state",
+    "qualification_reason_codes",
+    "algorithm_version",
+    "config_hash",
+]
+
 ESTIMATE_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -134,6 +196,24 @@ ESTIMATE_V1_FIELDS = [
     "drift_hz_per_s",
     "preview_eligibility",
     "eligibility_reason_codes",
+]
+
+ESTIMATE_V2_FIELDS = [
+    *ESTIMATE_V1_FIELDS[:30],
+    "dispersion_hz",
+    "uncertainty_status",
+    "uncertainty_reason_codes",
+    "count_quantization_standard_uncertainty_hz",
+    "counter_aperture_standard_uncertainty_hz",
+    "reference_standard_uncertainty_hz",
+    "calibration_standard_uncertainty_hz",
+    "model_standard_uncertainty_hz",
+    "combined_standard_uncertainty_hz",
+    "coverage_factor",
+    "expanded_uncertainty_hz",
+    "correlation_policy",
+    "uncertainty_model_ref",
+    *ESTIMATE_V1_FIELDS[32:],
 ]
 
 CONTROL_PREVIEW_V1_FIELDS = [
@@ -181,7 +261,10 @@ CONTRACT_FIELDS = {
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
     "diagnostics_draft_v0": DIAGNOSTICS_DRAFT_V0_FIELDS,
+    "diagnostics_v1": DIAGNOSTICS_V1_FIELDS,
+    "reference_observations_v1": REFERENCE_OBSERVATION_V1_FIELDS,
     "estimates_v1": ESTIMATE_V1_FIELDS,
+    "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
 }
 
@@ -192,7 +275,10 @@ CONTRACT_RECORD_TYPES = {
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
     "diagnostics_draft_v0": {"DIAG"},
+    "diagnostics_v1": {"DIAG"},
+    "reference_observations_v1": {"RFO"},
     "estimates_v1": {"EST"},
+    "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
 }
 
@@ -203,7 +289,10 @@ CONTRACT_SCHEMA_VERSIONS = {
     "dac_steps_v1": 1,
     "environment_v1": 1,
     "diagnostics_draft_v0": 0,
+    "diagnostics_v1": 1,
+    "reference_observations_v1": 1,
     "estimates_v1": 1,
+    "estimates_v2": 2,
     "control_previews_v1": 1,
 }
 
@@ -214,7 +303,10 @@ SEQUENCE_FIELDS = {
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
     "diagnostics_draft_v0": "diagnostic_seq",
+    "diagnostics_v1": "diagnostic_seq",
+    "reference_observations_v1": "reference_observation_seq",
     "estimates_v1": "estimate_seq",
+    "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
 }
 
@@ -225,7 +317,10 @@ TIMESTAMP_FIELDS = {
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
     "diagnostics_draft_v0": ("first_seen_ticks", "last_seen_ticks"),
+    "diagnostics_v1": ("last_seen_ticks",),
+    "reference_observations_v1": ("observation_timestamp_ticks",),
     "estimates_v1": ("estimator_timestamp_ticks",),
+    "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
 }
 
@@ -241,7 +336,10 @@ DOMAIN_FIELDS = {
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
     "diagnostics_draft_v0": ("time_domain",),
+    "diagnostics_v1": ("time_domain",),
+    "reference_observations_v1": ("time_domain",),
     "estimates_v1": ("time_domain",),
+    "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
 }
 
@@ -272,6 +370,63 @@ VALID_CONTROL_EFFECTS = {
     "unknown",
 }
 VALID_CONTROL_ELIGIBILITY = {"eligible", "not_eligible", "not_applicable", "unknown"}
+VALID_DIAGNOSTIC_EFFECTS = {
+    "none",
+    "invalidate",
+    "mark_unavailable",
+    "reduce_trust",
+    "not_applicable",
+    "inhibit",
+    "holdover",
+    "fail_static",
+    "unknown",
+}
+VALID_PERSISTENCE_STATES = {"candidate", "confirmed", "recovering", "cleared", "latched"}
+VALID_CADENCE_STATES = {
+    "valid",
+    "duplicate",
+    "short",
+    "long",
+    "missing",
+    "invalid",
+    "unavailable",
+}
+VALID_CAPTURE_PATH_STATES = {
+    "valid",
+    "sequence_gap",
+    "overflow",
+    "resource_failure",
+    "invalid",
+    "unavailable",
+}
+VALID_REFERENCE_AUTHORITY_STATES = {
+    "qualified",
+    "holdover",
+    "fix_unavailable",
+    "antenna_fault",
+    "invalid",
+    "unknown",
+    "unavailable",
+}
+VALID_UTC_TRACEABILITY_STATES = {"valid", "invalid", "unknown", "unavailable"}
+VALID_METADATA_FRESHNESS = {"current", "stale", "missing", "unavailable"}
+VALID_REFERENCE_QUALIFICATION_STATES = {
+    "qualified",
+    "cadence_valid_authority_unknown",
+    "holdover",
+    "utc_invalid",
+    "antenna_fault",
+    "metadata_stale",
+    "capture_path_invalid",
+    "unqualified",
+    "unknown",
+}
+VALID_UNCERTAINTY_STATUS = {"available", "incomplete", "unavailable"}
+VALID_CORRELATION_POLICIES = {
+    "independent_root_sum_square",
+    "single_component_no_correlation",
+    "not_combined_missing_components",
+}
 VALID_ENV_SOURCES = {"sht4x", "bmp280"}
 VALID_ENV_ROLES = {"vcocxo_near", "ambient_board", "ambient", "pressure_reference"}
 VALID_BOOLEAN_TEXT = {"true", "false"}
@@ -537,6 +692,189 @@ def _check_diagnostics_draft_v0(row: dict[str, str], row_number: int, errors: li
         )
 
 
+def _check_diagnostics_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    if row.get("subsystem") not in VALID_DIAGNOSTIC_SUBSYSTEMS:
+        errors.append(
+            f"row {row_number}: subsystem must be one of "
+            f"{sorted(VALID_DIAGNOSTIC_SUBSYSTEMS)}"
+        )
+    if row.get("severity") not in VALID_DIAGNOSTIC_SEVERITIES:
+        errors.append(
+            f"row {row_number}: severity must be one of "
+            f"{sorted(VALID_DIAGNOSTIC_SEVERITIES)}"
+        )
+    if row.get("state") not in VALID_DIAGNOSTIC_STATES:
+        errors.append(
+            f"row {row_number}: state must be one of {sorted(VALID_DIAGNOSTIC_STATES)}"
+        )
+    if row.get("transition") not in VALID_DIAGNOSTIC_TRANSITIONS:
+        errors.append(
+            f"row {row_number}: transition must be one of "
+            f"{sorted(VALID_DIAGNOSTIC_TRANSITIONS)}"
+        )
+    confidence = row.get("diagnostic_confidence", "")
+    if confidence != "unknown":
+        parsed_confidence = _parse_optional_float(
+            confidence, "diagnostic_confidence", row_number, errors
+        )
+        if parsed_confidence is None or not 0.0 <= parsed_confidence <= 1.0:
+            errors.append(
+                f"row {row_number}: diagnostic_confidence must be between "
+                "0.0 and 1.0 or 'unknown'"
+            )
+    first_seen = _parse_non_negative_int(
+        row.get("first_seen_ticks", ""), "first_seen_ticks", row_number, errors
+    )
+    last_seen = _parse_non_negative_int(
+        row.get("last_seen_ticks", ""), "last_seen_ticks", row_number, errors
+    )
+    if first_seen is not None and last_seen is not None and last_seen < first_seen:
+        errors.append(
+            f"row {row_number}: last_seen_ticks must be greater than or equal "
+            "to first_seen_ticks"
+        )
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "diagnostic_id",
+            "episode_id",
+            "reason_code",
+            "persistence_state",
+            "first_evidence_refs",
+            "latest_evidence_refs",
+            "algorithm_version",
+            "config_hash",
+        ),
+    )
+    if row.get("persistence_state") not in VALID_PERSISTENCE_STATES:
+        errors.append(
+            f"row {row_number}: persistence_state must be one of "
+            f"{sorted(VALID_PERSISTENCE_STATES)}"
+        )
+    _parse_non_negative_int(
+        row.get("occurrence_count", ""),
+        "occurrence_count",
+        row_number,
+        errors,
+    )
+    for field_name in (
+        "observation_effect",
+        "reference_effect",
+        "model_effect",
+        "control_effect",
+    ):
+        if row.get(field_name) not in VALID_DIAGNOSTIC_EFFECTS:
+            errors.append(
+                f"row {row_number}: {field_name} must be one of "
+                f"{sorted(VALID_DIAGNOSTIC_EFFECTS)}"
+            )
+    is_clear = row.get("transition") == "cleared"
+    if is_clear and not row.get("clear_reason_code"):
+        errors.append(
+            f"row {row_number}: cleared transition requires clear_reason_code"
+        )
+    if not is_clear and row.get("clear_reason_code"):
+        errors.append(
+            f"row {row_number}: clear_reason_code is only valid for cleared transitions"
+        )
+    if row.get("subsystem") == "service_plane" and row.get("reference_effect") not in {
+        "none",
+        "unknown",
+    }:
+        errors.append(
+            f"row {row_number}: service-plane diagnostics must not redefine reference truth"
+        )
+
+
+def _check_reference_observation_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "reference_observation_id",
+            "source_identity_epoch",
+            "source_reference_refs",
+            "source_metadata_refs",
+            "qualification_reason_codes",
+            "algorithm_version",
+            "config_hash",
+        ),
+    )
+    for field_name in ("source_reference_first_seq", "source_reference_last_seq"):
+        if row.get(field_name):
+            _parse_non_negative_int(row[field_name], field_name, row_number, errors)
+    if row.get("cadence_state") not in VALID_CADENCE_STATES:
+        errors.append(
+            f"row {row_number}: cadence_state must be one of {sorted(VALID_CADENCE_STATES)}"
+        )
+    if row.get("capture_path_state") not in VALID_CAPTURE_PATH_STATES:
+        errors.append(
+            f"row {row_number}: capture_path_state must be one of "
+            f"{sorted(VALID_CAPTURE_PATH_STATES)}"
+        )
+    if row.get("receiver_authority_state") not in VALID_REFERENCE_AUTHORITY_STATES:
+        errors.append(
+            f"row {row_number}: receiver_authority_state must be one of "
+            f"{sorted(VALID_REFERENCE_AUTHORITY_STATES)}"
+        )
+    if row.get("utc_traceability_state") not in VALID_UTC_TRACEABILITY_STATES:
+        errors.append(
+            f"row {row_number}: utc_traceability_state must be one of "
+            f"{sorted(VALID_UTC_TRACEABILITY_STATES)}"
+        )
+    if row.get("metadata_freshness") not in VALID_METADATA_FRESHNESS:
+        errors.append(
+            f"row {row_number}: metadata_freshness must be one of "
+            f"{sorted(VALID_METADATA_FRESHNESS)}"
+        )
+    if row.get("qualification_state") not in VALID_REFERENCE_QUALIFICATION_STATES:
+        errors.append(
+            f"row {row_number}: qualification_state must be one of "
+            f"{sorted(VALID_REFERENCE_QUALIFICATION_STATES)}"
+        )
+    for field_name in (
+        "sawtooth_correction_ns",
+        "cable_delay_ns",
+        "reference_standard_uncertainty_s",
+    ):
+        value = _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+        if field_name == "reference_standard_uncertainty_s" and value is not None and value < 0:
+            errors.append(
+                f"row {row_number}: reference_standard_uncertainty_s must be non-negative"
+            )
+    if (
+        row.get("cadence_state") == "valid"
+        and row.get("receiver_authority_state") in {"unknown", "unavailable"}
+        and row.get("qualification_state") == "qualified"
+    ):
+        errors.append(
+            f"row {row_number}: valid cadence alone must not qualify reference authority"
+        )
+    if row.get("qualification_state") == "qualified":
+        required = {
+            "cadence_state": "valid",
+            "capture_path_state": "valid",
+            "receiver_authority_state": "qualified",
+            "utc_traceability_state": "valid",
+            "metadata_freshness": "current",
+        }
+        mismatched = [
+            field_name
+            for field_name, expected in required.items()
+            if row.get(field_name) != expected
+        ]
+        if mismatched:
+            errors.append(
+                f"row {row_number}: qualified reference requires evidence-backed "
+                f"{', '.join(mismatched)}"
+            )
+
+
 def _check_required_text(
     row: dict[str, str], row_number: int, errors: list[str], field_names: tuple[str, ...]
 ) -> None:
@@ -614,6 +952,143 @@ def _check_estimate_v1(row: dict[str, str], row_number: int, errors: list[str]) 
     for field_name in ("source_reference_first_seq", "source_reference_last_seq"):
         if row.get(field_name):
             _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+
+
+def _check_estimate_v2(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    _check_estimate_v1(row, row_number, errors)
+    status = row.get("uncertainty_status")
+    if status not in VALID_UNCERTAINTY_STATUS:
+        errors.append(
+            f"row {row_number}: uncertainty_status must be one of "
+            f"{sorted(VALID_UNCERTAINTY_STATUS)}"
+        )
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        ("uncertainty_reason_codes", "correlation_policy", "uncertainty_model_ref"),
+    )
+    component_fields = (
+        "count_quantization_standard_uncertainty_hz",
+        "counter_aperture_standard_uncertainty_hz",
+        "reference_standard_uncertainty_hz",
+        "calibration_standard_uncertainty_hz",
+        "model_standard_uncertainty_hz",
+        "combined_standard_uncertainty_hz",
+        "expanded_uncertainty_hz",
+    )
+    parsed_components: dict[str, float | None] = {}
+    for field_name in component_fields:
+        value = _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+        parsed_components[field_name] = value
+        if value is not None and value < 0:
+            errors.append(f"row {row_number}: {field_name} must be non-negative")
+    coverage = _parse_optional_float(
+        row.get("coverage_factor"), "coverage_factor", row_number, errors
+    )
+    if coverage is not None and coverage <= 0:
+        errors.append(f"row {row_number}: coverage_factor must be positive")
+    combined = row.get("combined_standard_uncertainty_hz", "")
+    if status == "available" and not combined:
+        errors.append(
+            f"row {row_number}: available uncertainty requires combined_standard_uncertainty_hz"
+        )
+    if status != "available" and combined:
+        errors.append(
+            f"row {row_number}: incomplete or unavailable uncertainty must not claim a combined value"
+        )
+    if row.get("expanded_uncertainty_hz") and not (
+        combined and row.get("coverage_factor")
+    ):
+        errors.append(
+            f"row {row_number}: expanded uncertainty requires combined uncertainty and coverage factor"
+        )
+    policy = row.get("correlation_policy")
+    if policy not in VALID_CORRELATION_POLICIES:
+        errors.append(
+            f"row {row_number}: correlation_policy must be one of "
+            f"{sorted(VALID_CORRELATION_POLICIES)}"
+        )
+    available_components = [
+        value
+        for field_name, value in parsed_components.items()
+        if field_name
+        not in {"combined_standard_uncertainty_hz", "expanded_uncertainty_hz"}
+        and value is not None
+    ]
+    combined_value = parsed_components["combined_standard_uncertainty_hz"]
+    expanded_value = parsed_components["expanded_uncertainty_hz"]
+    if status == "available":
+        if row.get("uncertainty_reason_codes") != "uncertainty_complete":
+            errors.append(
+                f"row {row_number}: available uncertainty requires "
+                "uncertainty_reason_codes=uncertainty_complete"
+            )
+        if row.get("uncertainty_model_ref", "").startswith("unavailable:"):
+            errors.append(
+                f"row {row_number}: available uncertainty requires an "
+                "evidence-backed uncertainty model reference"
+            )
+        if policy == "single_component_no_correlation":
+            if len(available_components) != 1 or (
+                combined_value is not None
+                and not math.isclose(
+                    combined_value,
+                    available_components[0],
+                    rel_tol=1e-9,
+                    abs_tol=1e-12,
+                )
+            ):
+                errors.append(
+                    f"row {row_number}: single-component uncertainty must "
+                    "equal its only component"
+                )
+        elif policy == "independent_root_sum_square":
+            expected = math.sqrt(
+                sum(value * value for value in available_components)
+            )
+            if len(available_components) < 2 or (
+                combined_value is not None
+                and not math.isclose(
+                    combined_value, expected, rel_tol=1e-9, abs_tol=1e-12
+                )
+            ):
+                errors.append(
+                    f"row {row_number}: independent uncertainty must be the "
+                    "root-sum-square of at least two components"
+                )
+        else:
+            errors.append(
+                f"row {row_number}: available uncertainty requires an "
+                "implemented correlation policy"
+            )
+    elif policy != "not_combined_missing_components":
+        errors.append(
+            f"row {row_number}: incomplete or unavailable uncertainty must "
+            "declare not_combined_missing_components"
+        )
+    if status != "available" and (
+        coverage is not None or expanded_value is not None
+    ):
+        errors.append(
+            f"row {row_number}: incomplete or unavailable uncertainty must "
+            "not claim coverage or expanded uncertainty"
+        )
+    if (
+        expanded_value is not None
+        and combined_value is not None
+        and coverage is not None
+        and not math.isclose(
+            expanded_value,
+            combined_value * coverage,
+            rel_tol=1e-9,
+            abs_tol=1e-12,
+        )
+    ):
+        errors.append(
+            f"row {row_number}: expanded uncertainty must equal combined "
+            "uncertainty multiplied by coverage_factor"
+        )
 
 
 def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -750,8 +1225,14 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_environment(row, row_count, errors)
             if context.contract == "diagnostics_draft_v0":
                 _check_diagnostics_draft_v0(row, row_count, errors)
+            if context.contract == "diagnostics_v1":
+                _check_diagnostics_v1(row, row_count, errors)
+            if context.contract == "reference_observations_v1":
+                _check_reference_observation_v1(row, row_count, errors)
             if context.contract == "estimates_v1":
                 _check_estimate_v1(row, row_count, errors)
+            if context.contract == "estimates_v2":
+                _check_estimate_v2(row, row_count, errors)
             if context.contract == "control_previews_v1":
                 _check_control_preview_v1(row, row_count, errors)
 

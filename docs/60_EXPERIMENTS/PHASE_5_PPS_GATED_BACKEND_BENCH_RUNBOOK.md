@@ -89,7 +89,7 @@ From the repository root:
 ```bash
 git status --short --branch
 git log -8 --oneline --decorate
-git log -1 --oneline -- data_contracts/estimates_v1.csv.md
+git log -1 --oneline -- data_contracts/estimates_v2.csv.md
 git log -1 --oneline -- \
   docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md
 python3 -m pytest -q
@@ -98,6 +98,17 @@ python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
 
 Confirm those paths resolve to the reviewed, merged deterministic Phase 4 host
 replay and live-parity contracts, not only an unmerged feature stack.
+
+The preflight suite must also prove:
+
+- the diagnostic and reference configuration hashes bind their actual rule
+  tables rather than the discipline profile;
+- sealed native/host diagnostic and reference fixtures are semantic matches;
+- output-backpressure loss raises and clears without feeding estimator or
+  actuation state;
+- `EST v2` live/replay uncertainty fields match for unavailable and incomplete
+  budgets;
+- the generated repository-wide measurement-semantics inventory is current.
 
 Verify the pinned environment and compile the candidate profile:
 

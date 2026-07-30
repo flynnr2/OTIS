@@ -14,10 +14,14 @@ import pytest
 
 from host.otis_tools.contracts import (
     CONTROL_PREVIEW_V1_FIELDS,
-    ESTIMATE_V1_FIELDS,
+    DIAGNOSTICS_V1_FIELDS,
+    ESTIMATE_V2_FIELDS,
+    REFERENCE_OBSERVATION_V1_FIELDS,
     CsvValidationContext,
     validate_csv,
 )
+from host.otis_tools.diagnostics import DEFAULT_DIAGNOSTIC_CONFIG_HASH
+from host.otis_tools.reference_quality import ReferenceQualityConfig
 from host.otis_tools.phase4_replay import ReplayConfig, replay_phase4
 from host.otis_tools.plant_model import (
     estimator_contract_definition_hash,
@@ -39,6 +43,9 @@ ENGINE = (
 HARNESS = ROOT / "tests" / "cpp" / "phase4_engine_harness.cpp"
 LIVE_HARNESS = ROOT / "tests" / "cpp" / "phase4_live_adapter_harness.cpp"
 LIVE_ADAPTER = ENGINE.parent / "otis_phase4_observe_preview.cpp"
+DIAGNOSTIC_ENGINE = ENGINE.parent / "otis_diagnostic_engine.cpp"
+DIAGNOSTIC_CATALOG = ENGINE.parent / "otis_diagnostic_catalog.cpp"
+REFERENCE_QUALITY = ENGINE.parent / "otis_reference_quality.cpp"
 BOUNDARY_ESTIMATOR = ENGINE.parent / "otis_phase4_boundary_estimator.cpp"
 MODEL_BINDING = ENGINE.parent / "otis_plant_model_v4_generated.h"
 MODEL_BINDING_GENERATOR = ROOT / "tools" / "generate_plant_model_binding.py"
@@ -173,6 +180,10 @@ def _make_run(
              "reference_valid_for_control", "true", "INFO", 0],
             ["STS", 1, 2, 1, "fixture_ticks", "count",
              "count_valid_for_control", "true", "INFO", 0],
+            ["STS", 1, 3, 1, "fixture_ticks", "reference_receiver",
+             "authority_state", "qualified", "INFO", 0],
+            ["STS", 1, 4, 1, "fixture_ticks", "reference_receiver",
+             "utc_traceability_state", "valid", "INFO", 0],
         ],
     )
     _write_csv(
@@ -250,7 +261,8 @@ def phase4_live_adapter_harness(
             "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
             "-DOTIS_FC0_STARTUP_INHIBIT_MS=0",
             str(LIVE_HARNESS), str(LIVE_ADAPTER), str(BOUNDARY_ESTIMATOR),
-            str(ENGINE),
+            str(ENGINE), str(DIAGNOSTIC_ENGINE), str(DIAGNOSTIC_CATALOG),
+            str(REFERENCE_QUALITY),
             "-I", str(ROOT / "tests" / "cpp" / "stubs"),
             "-I", str(ENGINE.parent), "-o", str(output),
         ],
@@ -327,6 +339,12 @@ def _harness_input(
             str(int(excluded)), str(int(gain)),
             preview["hz_per_code"] or "0",
             str(int(bool(dac))), dac or "0",
+            str(
+                int(
+                    "reference_authority_unqualified"
+                    not in estimate["eligibility_reason_codes"].split(";")
+                )
+            ),
         ]
         lines.append(",".join(fields))
     return "\n".join(lines) + "\n"
@@ -647,7 +665,10 @@ def test_live_gate_aperture_tolerance_accepts_normal_service_latency(
         "observation_reason_codes"
     ]
     assert previews[-1]["model_applicability"] == "applicable"
-    assert previews[-1]["preview_available"] == "true"
+    assert previews[-1]["preview_available"] == "false"
+    assert "reference_authority_unqualified" in previews[-1][
+        "eligibility_reason_codes"
+    ]
 
 
 def test_egregious_live_gate_aperture_is_observation_quality_failure(
@@ -688,7 +709,10 @@ def test_dac_settling_requires_the_entire_count_window_after_cutoff(
         "count_window_inside_model_settling_exclusion"
         in previews[-1]["model_reason_codes"]
     ) is (not applicable)
-    assert (previews[-1]["preview_available"] == "true") is applicable
+    assert previews[-1]["preview_available"] == "false"
+    assert "reference_authority_unqualified" in previews[-1][
+        "eligibility_reason_codes"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -742,22 +766,46 @@ def test_live_est_ctl_rows_match_normative_contracts(
         cwd=ROOT,
     )
     lines = [line for line in completed.stdout.splitlines() if line]
-    assert next(csv.reader([lines[0]])) == ESTIMATE_V1_FIELDS
+    assert next(csv.reader([lines[0]])) == ESTIMATE_V2_FIELDS
     assert next(csv.reader([lines[1]])) == CONTROL_PREVIEW_V1_FIELDS
+    assert next(csv.reader([lines[2]])) == REFERENCE_OBSERVATION_V1_FIELDS
+    assert next(csv.reader([lines[3]])) == DIAGNOSTICS_V1_FIELDS
     estimate_lines = [lines[0], *[line for line in lines[2:] if line.startswith("EST,")]]
     preview_lines = [lines[1], *[line for line in lines[2:] if line.startswith("CTL,")]]
+    reference_lines = [
+        lines[2], *[line for line in lines[4:] if line.startswith("RFO,")]
+    ]
+    diagnostic_lines = [
+        lines[3], *[line for line in lines[4:] if line.startswith("DIAG,")]
+    ]
     assert len(estimate_lines) == 9
     assert len(preview_lines) == 9
     estimate_path = tmp_path / "estimates.csv"
     preview_path = tmp_path / "previews.csv"
+    reference_path = tmp_path / "reference_observations.csv"
+    diagnostic_path = tmp_path / "diagnostics.csv"
     estimate_path.write_text("\n".join(estimate_lines) + "\n", encoding="utf-8")
     preview_path.write_text("\n".join(preview_lines) + "\n", encoding="utf-8")
+    reference_path.write_text("\n".join(reference_lines) + "\n", encoding="utf-8")
+    diagnostic_path.write_text("\n".join(diagnostic_lines) + "\n", encoding="utf-8")
     context = CsvValidationContext(
-        contract="estimates_v1",
+        contract="estimates_v2",
         known_channels=frozenset(),
         known_domains=frozenset({"rp2040_timer0"}),
     )
     assert validate_csv(estimate_path, context).errors == ()
+    reference_context = CsvValidationContext(
+        contract="reference_observations_v1",
+        known_channels=frozenset(),
+        known_domains=frozenset({"rp2040_timer0"}),
+    )
+    assert validate_csv(reference_path, reference_context).errors == ()
+    diagnostic_context = CsvValidationContext(
+        contract="diagnostics_v1",
+        known_channels=frozenset(),
+        known_domains=frozenset({"rp2040_timer0"}),
+    )
+    assert validate_csv(diagnostic_path, diagnostic_context).errors == ()
     preview_context = CsvValidationContext(
         contract="control_previews_v1",
         known_channels=frozenset(),
@@ -766,6 +814,8 @@ def test_live_est_ctl_rows_match_normative_contracts(
     assert validate_csv(preview_path, preview_context).errors == ()
     previews = _rows(preview_path)
     estimates = _rows(estimate_path)
+    references = _rows(reference_path)
+    diagnostics = _rows(diagnostic_path)
     assert estimates[0]["source_count_seq"] == ""
     assert estimates[0]["frequency_observation_hz"] == ""
     assert previews[0]["current_dac_code"] == str(0xA950)
@@ -778,15 +828,67 @@ def test_live_est_ctl_rows_match_normative_contracts(
         not in row["observation_reason_codes"]
         for row in estimates
     )
-    assert previews[-1]["preview_available"] == "true"
+    assert previews[-1]["preview_available"] == "false"
+    assert "reference_authority_unqualified" in previews[-1][
+        "eligibility_reason_codes"
+    ]
     assert estimates[-1]["estimator_timestamp_ticks"] == str(
         1803 * 16_000_000
     )
     assert float(estimates[-1]["frequency_observation_hz"]) == pytest.approx(
         10_000_001.333333334
     )
+    assert {row["config_hash"] for row in diagnostics} == {
+        DEFAULT_DIAGNOSTIC_CONFIG_HASH
+    }
+    assert all(
+        not row["first_evidence_refs"].startswith("live:evidence_at:")
+        and row["latest_evidence_refs"]
+        for row in diagnostics
+    )
+    assert {row["config_hash"] for row in references} == {
+        ReferenceQualityConfig().config_hash
+    }
 
 
+def test_live_and_replay_est2_uncertainty_semantics_match(
+    tmp_path: Path, phase4_live_adapter_harness: Path
+) -> None:
+    run = _make_run(tmp_path / "host")
+    replay = replay_phase4(
+        run, plant_model_path=MODEL, config=_config()
+    )
+    unavailable_run = _make_run(
+        tmp_path / "host_unavailable", counts=[]
+    )
+    unavailable_replay = replay_phase4(
+        unavailable_run, plant_model_path=MODEL, config=_config()
+    )
+    host_rows = [
+        *_rows(replay.estimates_path),
+        *_rows(unavailable_replay.estimates_path),
+    ]
+    live_rows, _ = _live_harness_rows(phase4_live_adapter_harness)
+    fields = (
+        "uncertainty_status",
+        "uncertainty_reason_codes",
+        "count_quantization_standard_uncertainty_hz",
+        "counter_aperture_standard_uncertainty_hz",
+        "reference_standard_uncertainty_hz",
+        "calibration_standard_uncertainty_hz",
+        "model_standard_uncertainty_hz",
+        "combined_standard_uncertainty_hz",
+        "coverage_factor",
+        "expanded_uncertainty_hz",
+        "correlation_policy",
+        "uncertainty_model_ref",
+    )
+    for status in ("unavailable", "incomplete"):
+        host = next(row for row in host_rows if row["uncertainty_status"] == status)
+        live = next(row for row in live_rows if row["uncertainty_status"] == status)
+        assert {field: host[field] for field in fields} == {
+            field: live[field] for field in fields
+        }
 def test_preview_queue_is_bounded_and_drop_is_telemetry_only() -> None:
     source = (
         ROOT
@@ -797,11 +899,70 @@ def test_preview_queue_is_bounded_and_drop_is_telemetry_only() -> None:
     ).read_text(encoding="utf-8")
     assert "queue[OTIS_PHASE4_PREVIEW_QUEUE_DEPTH]" in source
     assert "dropped_telemetry_pair_count" in source
+    assert "last_diagnosed_drop_count" in source
+    assert "dropped_pairs > last_diagnosed_drop_count" in source
     assert "otis_phase4_engine_evaluate" in source
     # State evaluation happens before enqueue; an output drop cannot feed back.
     assert source.index("otis_phase4_engine_evaluate") < source.index(
         "format_and_enqueue(estimate_seq"
     )
+
+
+def test_output_backpressure_diagnostic_is_eventually_raised_and_cleared(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    completed = subprocess.run(
+        [str(phase4_live_adapter_harness), "output_backpressure"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=ROOT,
+    )
+    lines = [line for line in completed.stdout.splitlines() if line]
+    diagnostic_lines = [
+        lines[3], *[line for line in lines[4:] if line.startswith("DIAG,")]
+    ]
+    diagnostics = list(csv.DictReader(diagnostic_lines))
+    output_loss = [
+        row
+        for row in diagnostics
+        if row["diagnostic_id"] == "diag.output.loss"
+    ]
+    assert [row["transition"] for row in output_loss] == ["raised", "cleared"]
+    assert output_loss[0]["control_effect"] == "none"
+    assert output_loss[0]["first_evidence_refs"].startswith("live:REF:")
+    assert not output_loss[0]["first_evidence_refs"].startswith(
+        "live:evidence_at:"
+    )
+
+
+def test_live_resource_registry_failure_raises_and_clears(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    completed = subprocess.run(
+        [str(phase4_live_adapter_harness), "resource_failure"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=ROOT,
+    )
+    lines = [line for line in completed.stdout.splitlines() if line]
+    diagnostics = list(
+        csv.DictReader(
+            [
+                lines[3],
+                *[line for line in lines[4:] if line.startswith("DIAG,")],
+            ]
+        )
+    )
+    transitions = [
+        row["transition"]
+        for row in diagnostics
+        if row["diagnostic_id"] == "diag.resource.failure"
+    ]
+    assert transitions == ["raised", "cleared"]
 
 
 def test_boundary_support_and_pending_count_are_fixed_capacity() -> None:
@@ -831,6 +992,7 @@ def test_long_clean_engine_run_does_not_wrap_qualification_counter(
                     "1", "1", "1", "1", "1", "0", "1", "10000000.1",
                     "1", "1", "1", "1", "1", "1", "1", "0", "1",
                     "0.0001673035127775317", "1", str(0xA950),
+                    "1",
                 ]
             )
         )
@@ -861,6 +1023,7 @@ def test_firmware_engine_inhibits_estimator_method_mismatch(
                 "1", "1", "1", "1", "1", "0", "1", "10000000",
                 "1", "1", "1", "1", "1", "0", "1", "0", "1",
                 "0.0001673035127775317", "1", str(0xA950),
+                "1",
             ]
         )
     )

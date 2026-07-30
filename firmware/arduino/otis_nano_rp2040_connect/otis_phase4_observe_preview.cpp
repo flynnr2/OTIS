@@ -6,10 +6,14 @@
 
 #include "otis_capture_ring.h"
 #include "otis_config.h"
+#include "otis_diagnostic_catalog.h"
+#include "otis_diagnostic_engine.h"
 #include "otis_phase4_boundary_estimator.h"
 #include "otis_phase4_engine.h"
 #include "otis_plant_model_v4_generated.h"
 #include "otis_protocol.h"
+#include "otis_reference_quality.h"
+#include "otis_resource_registry.h"
 #include "otis_timebase_math.h"
 #include "otis_transport_serial.h"
 
@@ -46,7 +50,10 @@ constexpr char kEstimatorVersion[] = "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1";
 constexpr char kEstimatorMethodHash[] =
     "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b";
 constexpr char kEstimatorExtrapolationPolicy[] = "prohibited";
-constexpr char kPolicyVersion[] = "phase4_observe_preview_v2";
+constexpr char kPolicyVersion[] = "phase4_observe_preview_v3";
+constexpr char kUncertaintyModelRef[] =
+    "phase4_uncertainty_budget_v1#sha256:"
+    "bf8d6dcb244c27e341a2c59e4500184ca700cfb2913f8733a687f1d2bb7d39a7";
 constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_TIMER0;
 constexpr char kRuntimeApplicabilityMode[] = "observe_only";
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
@@ -76,7 +83,7 @@ constexpr char kRuntimeMeasurementBackend[] =
     "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO";
 constexpr double kRuntimeConfiguredGateDurationS = 1.0;
 #endif
-constexpr size_t kFrameCapacity = 3072u;
+constexpr size_t kFrameCapacity = 8192u;
 constexpr size_t kTransportChunkLimit = 128u;
 constexpr double kCaptureDomainHz = 16000000.0;
 constexpr uint64_t kMinimumReferenceIntervalTicks =
@@ -87,6 +94,11 @@ static_assert(
     OTIS_H1_LONG_GATE_PERIOD_US / OTIS_PPS_GATE_MIN_INTERVAL_US + 4u <=
         OTIS_PHASE4_PPS_SUPPORT_CAPACITY,
     "Phase 4 PPS support capacity is too small for the H1 long gate");
+static_assert(
+    OTIS_PPS_GATE_MIN_INTERVAL_US == 800000u &&
+        OTIS_PPS_GATE_MAX_INTERVAL_US == 1200000u &&
+        OTIS_PHASE4_REFERENCE_MAX_AGE_US == 1500000u,
+    "reference-quality thresholds changed; regenerate its configuration hash");
 
 struct TelemetryFrame {
   char data[kFrameCapacity];
@@ -108,13 +120,20 @@ struct PendingCount {
 
 OtisPhase4Engine engine;
 OtisPhase4BoundaryEstimator boundary_estimator;
+OtisDiagnosticState live_diagnostic_states[OTIS_DIAG_COUNT];
+OtisDiagnosticState diagnostic_state_checkpoint[OTIS_DIAG_COUNT];
+uint32_t live_diagnostic_seq = 1u;
 PendingCount pending_count = {};
 TelemetryFrame queue[OTIS_PHASE4_PREVIEW_QUEUE_DEPTH];
+// Formatting is foreground-only. Keep the largest frame in static storage so
+// first-transition bursts cannot consume the constrained Mbed thread stack.
+char format_frame[kFrameCapacity];
 uint8_t queue_head = 0u;
 uint8_t queue_tail = 0u;
 uint8_t queue_count = 0u;
 uint8_t queue_high_water = 0u;
 uint32_t dropped_pairs = 0u;
+uint32_t last_diagnosed_drop_count = 0u;
 uint64_t startup_ticks = 0u;
 uint64_t tick_wrap_offset = 0u;
 uint64_t last_raw_ticks = 0u;
@@ -122,6 +141,8 @@ uint64_t last_reference_ticks = 0u;
 uint64_t previous_reference_ticks = 0u;
 uint32_t last_reference_seq = 0u;
 uint32_t previous_reference_seq = 0u;
+uint32_t last_reference_flags = 0u;
+uint32_t previous_reference_flags = 0u;
 uint32_t previous_count_seq = 0u;
 uint64_t last_count_ticks = 0u;
 bool reference_seen = false;
@@ -372,16 +393,18 @@ OtisPhase4ModelInput model_input(
 }
 
 OtisPhase4DiagnosticHealth diagnostic_health(void) {
-  return otis_capture_ring_dropped_count() == 0u
+  return otis_capture_ring_dropped_count() == 0u &&
+                 otis_resource_registry_valid() &&
+                 otis_resource_registry_complete()
              ? OTIS_PHASE4_DIAGNOSTIC_HEALTHY
              : OTIS_PHASE4_DIAGNOSTIC_FAULT;
 }
 
-void enqueue(const char *data, size_t length) {
+bool enqueue(const char *data, size_t length) {
   if (length == 0u || length >= kFrameCapacity ||
       queue_count >= OTIS_PHASE4_PREVIEW_QUEUE_DEPTH) {
     if (dropped_pairs < UINT32_MAX) dropped_pairs++;
-    return;
+    return false;
   }
   TelemetryFrame &frame = queue[queue_tail];
   memcpy(frame.data, data, length);
@@ -391,6 +414,133 @@ void enqueue(const char *data, size_t length) {
       (uint8_t)((queue_tail + 1u) % OTIS_PHASE4_PREVIEW_QUEUE_DEPTH);
   queue_count++;
   if (queue_count > queue_high_water) queue_high_water = queue_count;
+  return true;
+}
+
+int append_reference_observation(
+    char *frame, size_t capacity, size_t used, uint32_t sequence,
+    uint64_t ticks, const OtisPhase4Observation &observation,
+    const char *reference_first_text, const char *reference_last_text) {
+  (void)observation;
+  const OtisReferenceEvidence previous = {
+      previous_reference_seq != 0u, previous_reference_seq,
+      previous_reference_ticks, previous_reference_flags};
+  const OtisReferenceEvidence current = {
+      last_reference_seq != 0u, last_reference_seq, last_reference_ticks,
+      last_reference_flags};
+  const OtisReferenceQualityConfig config = {
+      16000000ull, 3200000ull,
+      (uint64_t)OTIS_PHASE4_REFERENCE_MAX_AGE_US * 16ull,
+      57600000000ull, kReferenceInvalidFlags};
+  const OtisReferenceQualityResult quality = otis_assess_reference_quality(
+      &previous, &current, ticks, nullptr, &config);
+  char reasons[384];
+  otis_reference_quality_reasons(quality.reason_mask, reasons,
+                                 sizeof(reasons));
+  char source_reference_refs[64];
+  if (reference_first_text[0] != '\0' &&
+      reference_last_text[0] != '\0') {
+    snprintf(source_reference_refs, sizeof(source_reference_refs),
+             "live:REF:%s-%s", reference_first_text, reference_last_text);
+  } else if (reference_last_text[0] != '\0') {
+    snprintf(source_reference_refs, sizeof(source_reference_refs),
+             "live:REF:%s", reference_last_text);
+  } else {
+    snprintf(source_reference_refs, sizeof(source_reference_refs),
+             "unavailable:live:REF");
+  }
+  return snprintf(
+      frame + used, capacity - used,
+      "RFO,1,%lu,rfo:live:%06lu,%llu,%s,unknown,%s,%s,"
+      "%s,unavailable:reference_receiver_metadata,"
+      "unknown,unknown,%s,%s,unknown,unknown,missing,"
+      "unknown,unknown,unknown,unknown,,,unknown,unknown,,%s,%s,"
+      "reference_quality_v1,%s\r\n",
+      (unsigned long)sequence, (unsigned long)sequence,
+      (unsigned long long)ticks, kTimeDomain, reference_first_text,
+      reference_last_text, source_reference_refs,
+      quality.cadence_state, quality.capture_path_state,
+      quality.qualification_state, reasons,
+      kOtisReferenceQualityConfigHash);
+}
+
+int append_diagnostic_transitions(
+    char *frame, size_t capacity, size_t used, uint32_t evidence_token,
+    uint64_t ticks, uint32_t count_seq,
+    const OtisPhase4Observation &observation,
+    const OtisPhase4Decision &decision) {
+  const bool conditions[OTIS_DIAG_COUNT] = {
+      observation.reference_validity != OTIS_PHASE4_VALID ||
+          !observation.reference_continuity,
+      true,  // This hardware path currently has no receiver-authority metadata.
+      true,  // No qualified physical counter-aperture model is configured.
+      (observation.observation_reason_mask &
+       (OTIS_PHASE4_REASON_COUNT_DISCONTINUITY |
+        OTIS_PHASE4_REASON_REFERENCE_SEQUENCE)) != 0u,
+      (observation.observation_reason_mask &
+       OTIS_PHASE4_REASON_BOUNDARY_SUPPORT) != 0u,
+      observation.count_validity == OTIS_PHASE4_INVALID,
+      observation.diagnostic_health == OTIS_PHASE4_DIAGNOSTIC_FAULT,
+      !decision.model_applicable,
+      dropped_pairs > last_diagnosed_drop_count,
+      (decision.model_reason_mask &
+       OTIS_PHASE4_REASON_MODEL_ESTIMATOR_METHOD) != 0u,
+  };
+  char evidence_refs[OTIS_DIAGNOSTIC_EVIDENCE_REFS_CAPACITY];
+  char reference_refs[64];
+  char count_refs[48];
+  if (last_reference_seq != 0u) {
+    if (previous_reference_seq != 0u) {
+      snprintf(reference_refs, sizeof(reference_refs), "live:REF:%lu-%lu",
+               (unsigned long)previous_reference_seq,
+               (unsigned long)last_reference_seq);
+    } else {
+      snprintf(reference_refs, sizeof(reference_refs), "live:REF:%lu",
+               (unsigned long)last_reference_seq);
+    }
+  } else {
+    snprintf(reference_refs, sizeof(reference_refs), "unavailable:live:REF");
+  }
+  if (count_seq != 0u) {
+    snprintf(count_refs, sizeof(count_refs), "live:CNT:%lu",
+             (unsigned long)count_seq);
+  } else {
+    snprintf(count_refs, sizeof(count_refs), "unavailable:live:CNT");
+  }
+  snprintf(evidence_refs, sizeof(evidence_refs), "%s;%s;"
+           "unavailable:live:STS;live:DAC:latest",
+           reference_refs, count_refs);
+  size_t offset = used;
+  for (uint8_t index = 0u; index < OTIS_DIAG_COUNT; ++index) {
+    const OtisDiagnosticDefinition &definition =
+        kOtisDiagnosticDefinitions[index];
+    const OtisDiagnosticResult result = otis_diagnostic_observe(
+        &live_diagnostic_states[index], &definition.rule, conditions[index],
+        ticks, evidence_token, evidence_refs);
+    if (result.transition == OTIS_DIAGNOSTIC_NO_TRANSITION) continue;
+    const bool cleared = result.transition == OTIS_DIAGNOSTIC_CLEARED;
+    const int added = snprintf(
+        frame + offset, capacity - offset,
+        "DIAG,1,%lu,%s,%s:episode:%lu,%s,%s,%s,%s,1,%s,%s,"
+        "%llu,%llu,%s,%lu,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n",
+        (unsigned long)live_diagnostic_seq++, definition.diagnostic_id,
+        definition.diagnostic_id, (unsigned long)result.episode,
+        definition.subsystem, definition.severity,
+        cleared ? "cleared" : "active",
+        otis_diagnostic_transition_name(result.transition), definition.reason,
+        cleared ? definition.clear_reason : "",
+        (unsigned long long)result.first_seen_ticks,
+        (unsigned long long)result.last_seen_ticks, kTimeDomain,
+        (unsigned long)result.occurrence_count,
+        cleared ? "cleared" : "confirmed", result.first_evidence_refs,
+        result.latest_evidence_refs, kOtisDiagnosticAlgorithmVersion,
+        kOtisDiagnosticConfigHash, definition.observation_effect,
+        definition.reference_effect, definition.model_effect,
+        definition.control_effect);
+    if (added < 0 || (size_t)added >= capacity - offset) return -1;
+    offset += (size_t)added;
+  }
+  return (int)(offset - used);
 }
 
 void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
@@ -410,6 +560,9 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   reasons_text(decision.eligibility_reason_mask,
                "estimator_preview_eligible", eligibility_reasons,
                sizeof(eligibility_reasons));
+  if (!observation.reference_authority_qualified)
+    append_reason(eligibility_reasons, sizeof(eligibility_reasons),
+                  "reference_authority_unqualified");
   reasons_text(decision.model_reason_mask, "plant_model_applicable",
                model_reasons, sizeof(model_reasons));
   const uint8_t model_detail =
@@ -452,6 +605,12 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   char frequency_estimate_text[32] = "";
   char frequency_error_text[32] = "";
   char dispersion_text[32] = "";
+  const char *uncertainty_status =
+      decision.estimate_available ? "incomplete" : "unavailable";
+  const char *uncertainty_reasons =
+      decision.estimate_available
+          ? "count_quantization_model_unavailable;counter_aperture_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable;model_uncertainty_unavailable"
+          : "estimate_unavailable";
   char reference_age_text[32] = "";
   if (count_seq != 0u) {
     snprintf(count_seq_text, sizeof(count_seq_text), "%lu",
@@ -488,14 +647,15 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
       observation.diagnostic_health == OTIS_PHASE4_DIAGNOSTIC_HEALTHY
           ? "diagnostic_healthy"
           : "status_capture_or_host_drop";
-  char frame[kFrameCapacity];
+  char *frame = format_frame;
   int used = snprintf(
-      frame, sizeof(frame),
-      "EST,1,%lu,est:live:%06lu,%llu,%s,%s,%s,%s,%s,"
+      frame, kFrameCapacity,
+      "EST,2,%lu,est:live:%06lu,%llu,%s,%s,%s,%s,%s,"
       "live:STS:snapshot_at:%llu,%s,firmware_config:" OTIS_FIRMWARE_CONFIG_ID
       ";config_hash:%s,%s,%s,%s,%s,"
-      "%s,%s,%s,%s,,%s,%s,%s,%s,%u,%s,%s,%s,%s,%s,"
-      "false,,%s,%s\r\n",
+      "%s,%s,%s,%s,,%s,%s,%s,%s,%u,%s,%s,%s,%s,"
+      "%s,%s,,,,,,,,,not_combined_missing_components,"
+      "%s,false,,%s,%s\r\n",
       (unsigned long)estimate_seq, (unsigned long)estimate_seq,
       (unsigned long long)ticks, kTimeDomain, count_seq_text, count_ref,
       reference_first_text, reference_last_text, (unsigned long long)ticks,
@@ -512,9 +672,9 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
       decision.accepted_sample_count,
       otis_phase4_confidence_name(decision.confidence),
       frequency_estimate_text, frequency_error_text, dispersion_text,
-      dispersion_text,
+      uncertainty_status, uncertainty_reasons, kUncertaintyModelRef,
       decision.estimator_eligible ? "true" : "false", eligibility_reasons);
-  if (used < 0 || (size_t)used >= sizeof(frame)) {
+  if (used < 0 || (size_t)used >= kFrameCapacity) {
     if (dropped_pairs < UINT32_MAX) dropped_pairs++;
     return;
   }
@@ -559,7 +719,7 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   }
 
   int added = snprintf(
-      frame + used, sizeof(frame) - (size_t)used,
+      frame + used, kFrameCapacity - (size_t)used,
       "CTL,1,%lu,ctl:live:%06lu,%llu,%s,est:live:%06lu,"
       "%s,%s,%lu,%s,%s,%s,%s,%s,"
       "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
@@ -580,11 +740,39 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
       decision.step_limited ? "true" : "false",
       decision.range_clamped ? "true" : "false",
       decision.preview_available ? "true" : "false", decision_reasons);
-  if (added < 0 || (size_t)added >= sizeof(frame) - (size_t)used) {
+  if (added < 0 || (size_t)added >= kFrameCapacity - (size_t)used) {
     if (dropped_pairs < UINT32_MAX) dropped_pairs++;
     return;
   }
-  enqueue(frame, (size_t)(used + added));
+  used += added;
+  added = append_reference_observation(
+      frame, kFrameCapacity, (size_t)used, estimate_seq, ticks, observation,
+      reference_first_text, reference_last_text);
+  if (added < 0 || (size_t)added >= kFrameCapacity - (size_t)used) {
+    if (dropped_pairs < UINT32_MAX) dropped_pairs++;
+    return;
+  }
+  used += added;
+  memcpy(diagnostic_state_checkpoint, live_diagnostic_states,
+         sizeof(live_diagnostic_states));
+  const uint32_t diagnostic_seq_checkpoint = live_diagnostic_seq;
+  added = append_diagnostic_transitions(
+      frame, kFrameCapacity, (size_t)used, estimate_seq, ticks, count_seq,
+      observation, decision);
+  if (added < 0 || (size_t)added >= kFrameCapacity - (size_t)used) {
+    memcpy(live_diagnostic_states, diagnostic_state_checkpoint,
+           sizeof(live_diagnostic_states));
+    live_diagnostic_seq = diagnostic_seq_checkpoint;
+    if (dropped_pairs < UINT32_MAX) dropped_pairs++;
+    return;
+  }
+  if (enqueue(frame, (size_t)(used + added))) {
+    last_diagnosed_drop_count = dropped_pairs;
+  } else {
+    memcpy(live_diagnostic_states, diagnostic_state_checkpoint,
+           sizeof(live_diagnostic_states));
+    live_diagnostic_seq = diagnostic_seq_checkpoint;
+  }
 }
 
 void evaluate(uint64_t ticks, bool new_count, uint32_t count_seq,
@@ -605,6 +793,9 @@ void evaluate(uint64_t ticks, bool new_count, uint32_t count_seq,
       !(reasons & (OTIS_PHASE4_REASON_REFERENCE_OUTLIER |
                    OTIS_PHASE4_REASON_REFERENCE_FLAGGED |
                    OTIS_PHASE4_REASON_REFERENCE_STALE));
+  // The current hardware path captures PPS cadence but has no receiver-status
+  // evidence. Cadence alone must not qualify reference authority.
+  observation.reference_authority_qualified = false;
   observation.count_continuity =
       count_seq == 0u || previous_count_seq == 0u ||
       count_seq == previous_count_seq + 1u;
@@ -719,13 +910,18 @@ bool otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
   };
   otis_phase4_engine_init(&engine, &config);
   otis_phase4_boundary_estimator_init(&boundary_estimator);
+  for (uint8_t index = 0u; index < OTIS_DIAG_COUNT; ++index)
+    otis_diagnostic_state_init(&live_diagnostic_states[index]);
+  live_diagnostic_seq = 1u;
   memset(&pending_count, 0, sizeof(pending_count));
   startup_ticks = initial_ticks;
   queue_head = queue_tail = queue_count = queue_high_water = 0u;
   dropped_pairs = 0u;
+  last_diagnosed_drop_count = 0u;
   tick_wrap_offset = last_raw_ticks = 0u;
   last_reference_ticks = previous_reference_ticks = 0u;
   last_reference_seq = previous_reference_seq = previous_count_seq = 0u;
+  last_reference_flags = previous_reference_flags = 0u;
   last_count_ticks = 0u;
   reference_seen = count_seen = false;
   reference_window_reason_mask = OTIS_PHASE4_REASON_NONE;
@@ -749,9 +945,13 @@ bool otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
 void otis_phase4_observe_preview_emit_headers(void) {
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
   otis_transport_write_cstr(
-      "record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,frequency_uncertainty_hz,dispersion_hz,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n");
+      "record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n");
   otis_transport_write_cstr(
       "record_type,schema_version,control_seq,decision_id,decision_timestamp_ticks,time_domain,est_input_ref,plant_model_ref,plant_model_id,plant_model_version,plant_model_hash,policy_version,config_hash,control_state,previous_control_state,state_transition,transition_reason_code,preview_eligibility,eligibility_reason_codes,diagnostic_health,model_applicability,model_reason_codes,current_dac_code,frequency_error_hz,hz_per_code,raw_delta_codes,limited_delta_codes,proposed_dac_code,step_limited,range_clamped,preview_available,preview_only,actuation_authorized,actionable,decision_reason_code\r\n");
+  otis_transport_write_cstr(
+      "record_type,schema_version,reference_observation_seq,reference_observation_id,observation_timestamp_ticks,time_domain,source_identity_epoch,source_reference_first_seq,source_reference_last_seq,source_reference_refs,source_metadata_refs,receiver_identity,receiver_firmware,cadence_state,capture_path_state,receiver_authority_state,utc_traceability_state,metadata_freshness,timing_mode,fix_holdover_state,antenna_state,leap_state,sawtooth_correction_ns,cable_delay_ns,pulse_configuration,calibration_ref,reference_standard_uncertainty_s,qualification_state,qualification_reason_codes,algorithm_version,config_hash\r\n");
+  otis_transport_write_cstr(
+      "record_type,schema_version,diagnostic_seq,diagnostic_id,episode_id,subsystem,severity,state,transition,diagnostic_confidence,reason_code,clear_reason_code,first_seen_ticks,last_seen_ticks,time_domain,occurrence_count,persistence_state,first_evidence_refs,latest_evidence_refs,algorithm_version,config_hash,observation_effect,reference_effect,model_effect,control_effect\r\n");
 #endif
 }
 
@@ -762,8 +962,10 @@ void otis_phase4_observe_preview_on_reference(
   const uint64_t ticks = unwrap_ticks(timestamp_ticks);
   previous_reference_ticks = last_reference_ticks;
   previous_reference_seq = last_reference_seq;
+  previous_reference_flags = last_reference_flags;
   last_reference_ticks = ticks;
   last_reference_seq = reference_seq;
+  last_reference_flags = flags;
   uint32_t reasons = OTIS_PHASE4_REASON_NONE;
   if (flags & kReferenceInvalidFlags) {
     reasons |= OTIS_PHASE4_REASON_REFERENCE_FLAGGED;

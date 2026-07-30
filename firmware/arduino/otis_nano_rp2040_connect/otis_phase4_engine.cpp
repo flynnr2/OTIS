@@ -194,6 +194,7 @@ void otis_phase4_engine_evaluate(OtisPhase4Engine *engine,
 
   decision->estimator_eligible =
       observation_valid &&
+      observation->reference_authority_qualified &&
       decision->confidence == OTIS_PHASE4_CONFIDENCE_HIGH &&
       observation->diagnostic_health == OTIS_PHASE4_DIAGNOSTIC_HEALTHY &&
       next == OTIS_PHASE4_ACQUIRE_PREVIEW &&

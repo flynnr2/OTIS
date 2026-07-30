@@ -33,8 +33,8 @@ qualification, not active steering.
 
 The host-only M2 gate is passed:
 
-- normative `EST v1` and observe-only `CTL v1` contracts have strict host
-  validation;
+- normative `EST v2`, `RFO v1`, `DIAG v1`, and observe-only `CTL v1`
+  contracts have strict host validation;
 - replay consumes manifest-resolved `REF`, `CNT`, `STS`, and `DAC` evidence;
 - estimator qualification uses accepted reference cadence, count validity,
   age, continuity, dispersion, and startup/recovery clean windows;
@@ -57,8 +57,9 @@ complete:
 - the exact pure C++ engine used by firmware matches host replay state,
   eligibility, numeric estimate, reason, and preview decisions for the focused
   fixture matrix;
-- live firmware emits strict `EST v1` and `CTL v1` rows with plant-model,
-  policy, configuration, diagnostic, source, and DAC provenance;
+- live firmware emits strict `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` rows
+  with plant-model, policy, configuration, diagnostic, source, and DAC
+  provenance;
 - model-version-4 topology/backend/method-contract applicability, disabled candidate range, and
   maximum preview step are enforced;
 - the preview module has no DAC-driver include, callback, serial command, or

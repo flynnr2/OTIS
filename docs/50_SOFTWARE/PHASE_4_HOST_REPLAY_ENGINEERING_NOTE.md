@@ -64,7 +64,9 @@ part of the estimator itself.
 
 The normative derived record contracts are:
 
-- `data_contracts/estimates_v1.csv.md`;
+- `data_contracts/estimates_v2.csv.md` (`estimates_v1` is historical);
+- `data_contracts/reference_observations_v1.csv.md`;
+- `data_contracts/diagnostics_v1.csv.md`;
 - `data_contracts/control_previews_v1.csv.md`.
 
 Strict field ordering and semantic validation live with the existing host CSV
@@ -77,6 +79,15 @@ Unknown numerical values remain empty CSV fields. Reason fields use stable,
 non-empty machine codes. In particular, observation validity, diagnostic
 health, estimator confidence, model applicability, and preview eligibility are
 not collapsed into one flag.
+
+Measurement uncertainty uses a versioned component budget. Dispersion remains
+an estimator consistency statistic. Missing quantization, physical aperture,
+reference, calibration, or model contributions make the budget incomplete and
+leave combined/expanded uncertainty empty. The only implemented combination
+rules are a one-component identity and independent root-sum-square; contract
+validation recomputes both. A generated, line-addressed repository inventory
+keeps every uncertainty, dispersion, standard-deviation, confidence,
+error-bound, and coverage-factor use under test.
 
 ## Deterministic adapter and estimator
 
@@ -181,9 +192,11 @@ proposal. It never falls back to assumed topology.
 The command writes only:
 
 ```text
-<run>/derived/phase4_replay_v2/estimates_v1.csv
-<run>/derived/phase4_replay_v2/control_previews_v1.csv
-<run>/derived/phase4_replay_v2/replay_report_v2.json
+<run>/derived/phase4_replay_v3/estimates_v2.csv
+<run>/derived/phase4_replay_v3/reference_observations_v1.csv
+<run>/derived/phase4_replay_v3/diagnostics_v1.csv
+<run>/derived/phase4_replay_v3/control_previews_v1.csv
+<run>/derived/phase4_replay_v3/replay_report_v3.json
 ```
 
 Files outside `derived/` are hashed before and after replay. Any change aborts
@@ -217,6 +230,14 @@ many-interval gates, rollover, missing support, flagged/anomalous PPS,
 sequence regression, invalid windows, a deliberate one-interval-scaling
 counterexample, and exact native-firmware estimator parity.
 
+First-class diagnostic fixtures additionally cover raise/update/clear,
+hysteresis, duplicate evidence, exact first/latest references, missing and
+reordered source evidence, resource/output loss, eligibility effects, and
+complete native/host catalog parity. Reference fixtures cover cadence without
+authority, healthy metadata with bad cadence, staleness, holdover, UTC invalid,
+antenna fault, reconnect identity epochs, raw preservation, qualification
+effects, and deterministic native/host reduction.
+
 ## Historical compatibility
 
 Existing `derived/phase4_replay_v1/` outputs retain estimator identity
@@ -225,8 +246,8 @@ interval to scale a whole non-aligned count gate and could fall back to the
 nominal capture rate. It is deliberately not relabelled as the corrected
 method and is not applicable to the version-4 plant model.
 
-Corrected products are regenerated only under `derived/phase4_replay_v2/`.
-They carry policy identity `phase4_observe_preview_v2`; the historical v1
+Corrected products are regenerated only under `derived/phase4_replay_v3/`.
+They carry policy identity `phase4_observe_preview_v3`; the historical v1
 policy identity is not reused for the strengthened applicability check.
 Raw `REF` and `CNT` evidence is never changed. The old
 `cx317_h1_bench_v2.json` model remains historical; the current
@@ -252,7 +273,7 @@ python3 -m pytest -q tests/test_phase4_boundary_estimator.py \
 | Model dynamics overstated | Preview uses only the static local gain and existing manual step/range limits; no settling controller, PI/PID, Kalman, thermal, or holdover predictor is implemented. |
 | Replay damages evidence | Non-derived files are content-hashed before/after; managed outputs never replace different bytes. |
 | Host/firmware meanings diverge | The exact production C++ estimator is compiled on the host and compared with replay for valid results, invalid results, reason codes, and boundary provenance. |
-| Semantic correction mistaken for aperture qualification | Explicitly separate: estimator consistency is corrected; physical PPS-gated aperture, latency, and uncertainty qualification remain unresolved. |
+| Semantic correction mistaken for aperture qualification | Explicitly separate: estimator consistency is corrected; the aperture diagnostic and incomplete uncertainty budget remain active until physical PPS-gated aperture, latency, and uncertainty evidence is collected. |
 
 ## Gate effect
 
