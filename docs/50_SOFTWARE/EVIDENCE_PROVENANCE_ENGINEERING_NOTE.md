@@ -21,8 +21,12 @@ installed core/toolchain bytes, rejects profile attempts to override generated
 identity or selectors, hashes all sketch/build-definition inputs, and compiles
 a disposable sketch copy containing a one-use generated profile header. The
 builder rechecks Git/source/configuration state after compilation and artifact
-hashing, then removes transient source/header bytes. The firmware has no
-fallback commit, board, or configuration literal.
+hashing, rehashes installed core/toolchain bytes around every profile, and then
+removes transient source/header bytes. One matrix-wide source identity is
+pinned across all profiles. A fresh builder session ID must match between the
+one-use header and the compiler flag, so an accidentally retained complete
+header cannot authorize an ordinary raw compile. The firmware has no fallback
+commit, board, or configuration literal.
 
 Multi-session captures require the same preservation rule. A reset or reconnect
 may define a later authoritative session, but the original raw capture remains
@@ -84,6 +88,7 @@ candidate templates explicitly require the complete sentinel banner.
 | Derived reports legitimately change | They are excluded unless explicitly declared by the run manifest. Primary evidence remains bound. |
 | Legacy layouts use root-level raw logs | `serial_raw.log` and `raw_serial.log` are covered alongside the canonical `raw/` tree. |
 | Additional evidence may appear after sealing | Validation fails for uncovered evidence-bearing files, requiring a new immutable snapshot/run rather than mutation. |
+| A malicious caller can replay a generated session binding | The binding prevents accidental stale-header/raw builds, but it is deliberately unsigned and not secret. A caller that reconstructs the matching invocation remains outside the trust boundary; signing and isolated builders remain future work. |
 
 ## Plant-model promotion handoff
 

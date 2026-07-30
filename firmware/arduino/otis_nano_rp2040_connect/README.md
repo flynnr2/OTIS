@@ -24,8 +24,9 @@ installed core and compiler-toolchain bytes; derives board identity from
 canonical build-input and profile configuration hashes, and invocation
 identity; and writes `firmware_build_manifest.json` next to each successful
 binary. The manifest also hashes the `.bin`, `.elf`, `.map`, and `.uf2`
-artifacts. Direct
-Arduino IDE/CLI compilation is rejected because it cannot prove those values.
+artifacts. Every profile rechecks the matrix-wide source identity and installed
+package bytes before and after compilation. Direct Arduino IDE/CLI compilation
+is rejected because it cannot prove those values.
 The IDE remains useful for editing and serial monitoring, but not for producing
 a qualification binary.
 
@@ -519,7 +520,12 @@ python3 tools/firmware_matrix.py --profile phase5_qualification
 The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
 binary and its full build manifest. The generated identity/profile header
 exists only in a disposable sketch copy during compilation; the builder removes
-that copy and any compiler-copied header before returning. Upload the
+that copy and any compiler-copied header before returning. A fresh builder
+session ID is bound between that header and the sole non-profile compiler flag,
+so copying an intact old header into the source sketch does not authorize an
+ordinary raw compile. This is an unsigned anti-staleness binding, not a secret
+or signature: a caller that deliberately reads the header and reconstructs the
+matching invocation is outside the stated trust boundary. Upload the
 already-built artifact
 without recompiling:
 

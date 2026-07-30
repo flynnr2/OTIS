@@ -24,7 +24,10 @@ def _snapshot(run_dir: Path) -> dict:
     return json.loads((run_dir / EVIDENCE_MANIFEST).read_text(encoding="utf-8"))
 
 
-def _append_build_provenance(run_dir: Path) -> dict[str, str]:
+def _append_build_provenance(
+    run_dir: Path,
+    filename: str = "health.csv",
+) -> dict[str, str]:
     values = {
         "provenance_format": "otis_generated_build_v1",
         "git_commit": "a" * 40,
@@ -71,7 +74,7 @@ def _append_build_provenance(run_dir: Path) -> dict[str, str]:
         ("build", "arduino_cli_version", values["arduino_cli_version"]),
         ("build", "invocation_id", values["invocation_id"]),
     ]
-    path = run_dir / "health.csv"
+    path = run_dir / filename
     with path.open("a", encoding="utf-8") as handle:
         for offset, (component, key, value) in enumerate(statuses, start=10):
             handle.write(
@@ -138,6 +141,36 @@ def test_complete_banner_cannot_mask_later_partial_boot(tmp_path: Path) -> None:
 
     with pytest.raises(EvidenceError, match="banner 2 is incomplete"):
         create_evidence_snapshot(run_dir)
+
+
+def test_each_health_file_ignores_legacy_rows_before_its_own_sentinel(
+    tmp_path: Path,
+) -> None:
+    run_dir = _completed_run(tmp_path)
+    expected = _append_build_provenance(run_dir)
+    second_name = "health_second.csv"
+    header = (run_dir / "health.csv").read_text(encoding="utf-8").splitlines()[0]
+    (run_dir / second_name).write_text(
+        header
+        + "\n"
+        + "STS,1,1,10,rp2040_timer0,firmware,git_commit,"
+        + f"{'9' * 40},INFO,32768\n",
+        encoding="utf-8",
+    )
+    _append_build_provenance(run_dir, second_name)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"].append(
+        {"path": second_name, "contract": "health_v1"}
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    create_evidence_snapshot(run_dir)
+
+    assert _snapshot(run_dir)["firmware_build_provenance"] == dict(
+        sorted(expected.items())
+    )
+    assert validate_run(run_dir) == 0
 
 
 def test_legacy_identity_rows_remain_legacy_even_for_phase5_run(

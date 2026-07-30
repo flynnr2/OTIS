@@ -23,6 +23,7 @@ from tools.firmware_matrix import (
 
 MATRIX_PATH = Path("firmware/arduino/firmware_matrix.json")
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
+TEST_BUILD_SESSION = "0123456789abcdef"
 
 
 def _profile(matrix: dict, profile_id: str) -> dict:
@@ -40,6 +41,8 @@ def _environment() -> dict[str, str]:
         "board_name": "Arduino Nano RP2040 Connect",
         "core_installed_sha256": "1" * 64,
         "toolchain_installed_sha256": "2" * 64,
+        "core_path": "/pinned/core",
+        "toolchain_path": "/pinned/toolchain",
     }
 
 
@@ -101,6 +104,7 @@ def test_generated_provenance_contains_exact_source_target_and_toolchain() -> No
         git_commit="d" * 40,
         source_state="dirty",
         source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
     )
 
     assert provenance["source"] == {
@@ -122,6 +126,7 @@ def test_generated_provenance_contains_exact_source_target_and_toolchain() -> No
     assert provenance["toolchain"]["compiler_identity"].endswith("@16.1.0")
     assert provenance["toolchain"]["installed_sha256"] == "2" * 64
     assert len(provenance["invocation"]["id"]) == 64
+    assert provenance["invocation"]["build_session_id"] == TEST_BUILD_SESSION
     header = provenance_header(provenance)
     assert '#define OTIS_BUILD_GIT_COMMIT "' in header
     assert '#define OTIS_BUILD_CONFIG_SHA256 "' in header
@@ -209,6 +214,41 @@ def test_generated_header_is_included_before_any_profile_selector() -> None:
     assert include_offset < first_selector_offset
 
 
+def test_complete_stale_header_cannot_authorize_ordinary_raw_compile(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("c++") is None:
+        pytest.skip("host C++ preprocessor is not available")
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="clean",
+        source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
+    )
+    shutil.copyfile(FIRMWARE / "otis_config.h", tmp_path / "otis_config.h")
+    (tmp_path / firmware_matrix.GENERATED_HEADER_NAME).write_text(
+        provenance_header(provenance),
+        encoding="utf-8",
+    )
+    harness = tmp_path / "raw_stale.cpp"
+    harness.write_text('#include "otis_config.h"\n', encoding="utf-8")
+
+    result = subprocess.run(
+        ["c++", "-E", "-DARDUINO=1", "-I", str(tmp_path), str(harness)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "builder session flag is required" in result.stderr
+
+
 def test_generated_header_rejects_external_selector_override(
     tmp_path: Path,
 ) -> None:
@@ -223,6 +263,7 @@ def test_generated_header_rejects_external_selector_override(
         git_commit="d" * 40,
         source_state="clean",
         source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
     )
     (tmp_path / "otis_build_profile.generated.h").write_text(
         provenance_header(provenance),
@@ -235,7 +276,12 @@ def test_generated_header_rejects_external_selector_override(
         encoding="utf-8",
     )
     result = subprocess.run(
-        ["c++", "-E", str(harness)],
+        [
+            "c++",
+            "-E",
+            f"-DOTIS_BUILD_SESSION_ID=0x{TEST_BUILD_SESSION}ULL",
+            str(harness),
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -259,6 +305,7 @@ def test_stale_generated_header_effective_selector_mismatch_is_rejected(
         git_commit="d" * 40,
         source_state="clean",
         source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
     )
     header = provenance_header(provenance).replace(
         "#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_IRQ",
@@ -273,7 +320,15 @@ def test_stale_generated_header_effective_selector_mismatch_is_rejected(
     harness = tmp_path / "stale.cpp"
     harness.write_text('#include "otis_config.h"\n', encoding="utf-8")
     result = subprocess.run(
-        ["c++", "-E", "-DARDUINO=1", "-I", str(tmp_path), str(harness)],
+        [
+            "c++",
+            "-E",
+            "-DARDUINO=1",
+            f"-DOTIS_BUILD_SESSION_ID=0x{TEST_BUILD_SESSION}ULL",
+            "-I",
+            str(tmp_path),
+            str(harness),
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -316,6 +371,7 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
         git_commit=snapshot["git_commit"],
         source_state=snapshot["source_state"],
         source_sha256=snapshot["source_sha256"],
+        build_session_id=TEST_BUILD_SESSION,
         config_source_sha256=snapshot["config_source_sha256"],
     )
     snapshot["config_sha256"] = provenance["configuration"]["sha256"]
@@ -329,7 +385,11 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
     ) -> subprocess.CompletedProcess[str]:
         nonlocal compiled_sketch
         assert arguments[1] == "compile"
-        assert "--build-property" not in arguments
+        property_index = arguments.index("--build-property")
+        assert arguments[property_index + 1] == (
+            "compiler.cpp.extra_flags="
+            f"-DOTIS_BUILD_SESSION_ID=0x{TEST_BUILD_SESSION}ULL"
+        )
         compiled_sketch = Path(arguments[-1])
         assert compiled_sketch.is_dir()
         assert " " in str(compiled_sketch)
@@ -349,6 +409,11 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
         "_capture_source_state",
         lambda *args, **kwargs: dict(snapshot),
     )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_verify_installed_environment",
+        lambda environment: None,
+    )
     output = tmp_path / "output path with spaces"
     result = _compile_profile(
         matrix,
@@ -356,6 +421,7 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
         provenance,
         output,
         "fake-arduino-cli",
+        environment=_environment(),
         source_snapshot=snapshot,
     )
 
@@ -393,6 +459,7 @@ def test_post_build_source_mutation_is_rejected(
         git_commit=before["git_commit"],
         source_state=before["source_state"],
         source_sha256=before["source_sha256"],
+        build_session_id=TEST_BUILD_SESSION,
         config_source_sha256=before["config_source_sha256"],
     )
     before["config_sha256"] = provenance["configuration"]["sha256"]
@@ -415,6 +482,11 @@ def test_post_build_source_mutation_is_rejected(
         "_capture_source_state",
         lambda *args, **kwargs: dict(after),
     )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_verify_installed_environment",
+        lambda environment: None,
+    )
 
     with pytest.raises(MatrixError, match="changed during compilation"):
         _compile_profile(
@@ -423,9 +495,225 @@ def test_post_build_source_mutation_is_rejected(
             provenance,
             tmp_path / "race output",
             "fake-arduino-cli",
+            environment=_environment(),
             source_snapshot=before,
         )
     assert not list((tmp_path / "race output").rglob("untrusted.bin"))
+
+
+def test_post_compile_installed_package_mutation_rejects_and_cleans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    core = tmp_path / "core"
+    toolchain = tmp_path / "toolchain"
+    core.mkdir()
+    toolchain.mkdir()
+    (core / "platform.txt").write_bytes(b"pinned core")
+    compiler = toolchain / "compiler"
+    compiler.write_bytes(b"pinned toolchain")
+    environment = _environment()
+    environment.update(
+        {
+            "core_path": str(core),
+            "toolchain_path": str(toolchain),
+            "core_installed_sha256": firmware_matrix.installed_tree_hash(core),
+            "toolchain_installed_sha256": firmware_matrix.installed_tree_hash(
+                toolchain
+            ),
+        }
+    )
+    snapshot = {
+        "git_commit": "a" * 40,
+        "source_state": "clean",
+        "source_sha256": "b" * 64,
+        "config_source_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+    }
+    provenance = build_provenance(
+        matrix,
+        profile,
+        environment,
+        git_commit=snapshot["git_commit"],
+        source_state=snapshot["source_state"],
+        source_sha256=snapshot["source_sha256"],
+        build_session_id=TEST_BUILD_SESSION,
+        config_source_sha256=snapshot["config_source_sha256"],
+    )
+    snapshot["config_sha256"] = provenance["configuration"]["sha256"]
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        cwd: Path = firmware_matrix.REPO_ROOT,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        artifacts = Path(arguments[arguments.index("--output-dir") + 1])
+        for suffix in firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES:
+            (artifacts / f"untrusted{suffix}").write_bytes(b"untrusted")
+        compiler.write_bytes(b"mutated during compile")
+        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+
+    monkeypatch.setattr(firmware_matrix, "_run", fake_run)
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: dict(snapshot),
+    )
+
+    with pytest.raises(MatrixError, match="installed-byte SHA-256 mismatch"):
+        _compile_profile(
+            matrix,
+            profile,
+            provenance,
+            tmp_path / "installed race output",
+            "fake-arduino-cli",
+            environment=environment,
+            source_snapshot=snapshot,
+        )
+    assert not list((tmp_path / "installed race output").rglob("untrusted.*"))
+
+
+def test_installed_bytes_are_rechecked_after_artifact_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    snapshot = {
+        "git_commit": "a" * 40,
+        "source_state": "clean",
+        "source_sha256": "b" * 64,
+        "config_source_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+    }
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit=snapshot["git_commit"],
+        source_state=snapshot["source_state"],
+        source_sha256=snapshot["source_sha256"],
+        build_session_id=TEST_BUILD_SESSION,
+        config_source_sha256=snapshot["config_source_sha256"],
+    )
+    snapshot["config_sha256"] = provenance["configuration"]["sha256"]
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        cwd: Path = firmware_matrix.REPO_ROOT,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        artifacts = Path(arguments[arguments.index("--output-dir") + 1])
+        for suffix in firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES:
+            (artifacts / f"untrusted{suffix}").write_bytes(b"untrusted")
+        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+
+    verification_count = 0
+
+    def verify_then_reject(environment: dict[str, str]) -> None:
+        nonlocal verification_count
+        verification_count += 1
+        if verification_count == 2:
+            raise MatrixError("installed bytes changed after artifact hashing")
+
+    monkeypatch.setattr(firmware_matrix, "_run", fake_run)
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: dict(snapshot),
+    )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_verify_installed_environment",
+        verify_then_reject,
+    )
+
+    with pytest.raises(MatrixError, match="after artifact hashing"):
+        _compile_profile(
+            matrix,
+            profile,
+            provenance,
+            tmp_path / "artifact hash race output",
+            "fake-arduino-cli",
+            environment=_environment(),
+            source_snapshot=snapshot,
+        )
+    assert verification_count == 2
+    assert not list(
+        (tmp_path / "artifact hash race output").rglob("untrusted.*")
+    )
+
+
+def test_matrix_wide_source_identity_change_aborts_and_cleans_prior_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profiles = [
+        _profile(matrix, "synthetic_usb"),
+        _profile(matrix, "gps_pps_irq_capture"),
+    ]
+    base = {
+        "git_commit": "a" * 40,
+        "source_state": "clean",
+        "source_sha256": "b" * 64,
+        "config_source_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+    }
+    changed = dict(base)
+    changed["source_sha256"] = "e" * 64
+    captures = iter([dict(base), dict(base), changed])
+
+    monkeypatch.setattr(
+        firmware_matrix,
+        "verify_environment",
+        lambda matrix, arduino_cli: _environment(),
+    )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_verify_installed_environment",
+        lambda environment: None,
+    )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: next(captures),
+    )
+
+    def fake_compile(
+        matrix: dict,
+        profile: dict,
+        provenance: dict,
+        output_dir: Path,
+        arduino_cli: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        artifacts = output_dir / profile["id"] / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "accepted.bin").write_bytes(b"must be discarded")
+        return {"outcome": "pass", "verified": True}
+
+    monkeypatch.setattr(firmware_matrix, "_compile_profile", fake_compile)
+    output = tmp_path / "matrix race output"
+    output.mkdir()
+    (output / "matrix_summary.json").write_text(
+        '{"all_verified": true}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MatrixError, match="changed during compilation"):
+        firmware_matrix.run_matrix(
+            matrix,
+            profiles,
+            output,
+            arduino_cli="fake-arduino-cli",
+        )
+    assert not list(output.rglob("accepted.bin"))
+    assert not (output / "matrix_summary.json").exists()
 
 
 def test_source_has_no_manual_commit_literal_and_requires_builder() -> None:
@@ -444,14 +732,14 @@ def test_source_has_no_manual_commit_literal_and_requires_builder() -> None:
     for token in (
         "OTIS_BUILD_SOURCE_STATE",
         "OTIS_BUILD_SOURCE_SHA256",
-            "OTIS_BUILD_CONFIG_SHA256",
-            "OTIS_BUILD_FQBN",
-            "OTIS_BUILD_CORE_VERSION",
+        "OTIS_BUILD_CONFIG_SHA256",
+        "OTIS_BUILD_FQBN",
+        "OTIS_BUILD_CORE_VERSION",
         "OTIS_BUILD_CORE_INSTALLED_SHA256",
         "OTIS_BUILD_COMPILER",
         "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256",
         "OTIS_BUILD_INVOCATION_ID",
-        ):
-            assert token in sketch
+    ):
+        assert token in sketch
     assert 'emit_status("system", "board", OTIS_TARGET_BOARD' in sketch
     assert 'emit_status("system", "board_name", OTIS_TARGET_BOARD_NAME' in sketch

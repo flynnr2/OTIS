@@ -156,6 +156,7 @@ def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None
     for entry in manifest.files:
         if entry.get("contract") != "health_v1":
             continue
+        current = None
         rel_path = _safe_relative_path(entry.get("path"))
         path = _artifact_path(run_dir, rel_path)
         if not path.is_file():
@@ -199,9 +200,9 @@ def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None
             raise EvidenceError(
                 f"cannot extract firmware provenance from {rel_path}: {exc}"
             ) from exc
-
-    if current is not None:
-        banners.append(current)
+        if current is not None:
+            banners.append(current)
+        current = None
     if not banners:
         if _requires_generated_firmware_provenance(manifest):
             raise EvidenceError(
