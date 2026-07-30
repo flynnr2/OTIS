@@ -276,7 +276,11 @@ def source_input_hash(
             return resolved.as_posix()
 
     paths = sorted(
-        [path for path in sketch.rglob("*") if path.is_file()]
+        [
+            path
+            for path in sketch.rglob("*")
+            if path.is_file() and path.name != GENERATED_HEADER_NAME
+        ]
         + [matrix_path.resolve(), builder_path.resolve()],
         key=source_name,
     )
@@ -539,7 +543,11 @@ def build_provenance(
     }
 
 
-def provenance_header(provenance: dict[str, Any]) -> str:
+def provenance_header(
+    provenance: dict[str, Any],
+    *,
+    ide_compatible: bool = False,
+) -> str:
     source = provenance["source"]
     config = provenance["configuration"]
     target = provenance["target"]
@@ -570,28 +578,46 @@ def provenance_header(provenance: dict[str, Any]) -> str:
         ],
         "OTIS_BUILD_INVOCATION_ID": invocation["id"],
     }
-    lines = [
-        "// Generated into a one-use temporary sketch by tools/firmware_matrix.py.",
-        "// Do not reuse, hand-edit, or commit.",
-        "#ifndef OTIS_BUILD_SESSION_ID",
-        '#error "OTIS builder session flag is required; raw/stale-header builds are forbidden."',
-        "#endif",
-        "#ifdef OTIS_BUILD_EXPECTED_SESSION_ID",
-        '#error "OTIS_BUILD_EXPECTED_SESSION_ID was externally pre-defined."',
-        "#endif",
-        f"#define OTIS_BUILD_EXPECTED_SESSION_ID 0x{invocation['build_session_id']}ULL",
-        "#if OTIS_BUILD_SESSION_ID != OTIS_BUILD_EXPECTED_SESSION_ID",
-        '#error "OTIS builder session flag does not match this generated profile."',
-        "#endif",
-        "#undef OTIS_BUILD_SESSION_ID",
-        "#undef OTIS_BUILD_EXPECTED_SESSION_ID",
-        "",
-        "#ifdef OTIS_BUILD_PROFILE_GENERATED",
-        '#error "OTIS generated build profile was externally pre-defined or included twice."',
-        "#endif",
-        "#define OTIS_BUILD_PROFILE_GENERATED 1",
-        "",
-    ]
+    if ide_compatible:
+        lines = [
+            "// Generated for direct Arduino IDE compilation by:",
+            "// python3 tools/firmware_matrix.py --prepare-ide --profile "
+            f"{config['profile_id']}",
+            "// Regenerate after changing source, profile, or toolchain. "
+            "Do not hand-edit or commit.",
+            "#ifdef OTIS_BUILD_IDE_PROFILE_GENERATED",
+            '#error "OTIS_BUILD_IDE_PROFILE_GENERATED was externally pre-defined."',
+            "#endif",
+            "#define OTIS_BUILD_IDE_PROFILE_GENERATED 1",
+            "",
+        ]
+    else:
+        lines = [
+            "// Generated into a one-use temporary sketch by tools/firmware_matrix.py.",
+            "// Do not reuse, hand-edit, or commit.",
+            "#ifndef OTIS_BUILD_SESSION_ID",
+            '#error "OTIS builder session flag is required; raw/stale-header builds are forbidden."',
+            "#endif",
+            "#ifdef OTIS_BUILD_EXPECTED_SESSION_ID",
+            '#error "OTIS_BUILD_EXPECTED_SESSION_ID was externally pre-defined."',
+            "#endif",
+            f"#define OTIS_BUILD_EXPECTED_SESSION_ID 0x{invocation['build_session_id']}ULL",
+            "#if OTIS_BUILD_SESSION_ID != OTIS_BUILD_EXPECTED_SESSION_ID",
+            '#error "OTIS builder session flag does not match this generated profile."',
+            "#endif",
+            "#undef OTIS_BUILD_SESSION_ID",
+            "#undef OTIS_BUILD_EXPECTED_SESSION_ID",
+            "",
+        ]
+    lines.extend(
+        [
+            "#ifdef OTIS_BUILD_PROFILE_GENERATED",
+            '#error "OTIS generated build profile was externally pre-defined or included twice."',
+            "#endif",
+            "#define OTIS_BUILD_PROFILE_GENERATED 1",
+            "",
+        ]
+    )
     for name, value in sorted(generated.items()):
         encoded = json.dumps(str(value), ensure_ascii=True)
         lines.extend(
@@ -789,6 +815,88 @@ def _selected_profiles(
     return selected
 
 
+def prepare_ide_profile(
+    matrix: dict[str, Any],
+    profile: dict[str, Any],
+    *,
+    arduino_cli: str = "arduino-cli",
+    repo_root: Path = REPO_ROOT,
+    sketch: Path = SKETCH,
+    config_path: Path = CONFIG_HEADER,
+    matrix_path: Path = DEFAULT_MATRIX,
+    builder_path: Path = Path(__file__).resolve(),
+) -> dict[str, Any]:
+    """Materialize one validated profile for direct Arduino IDE compilation."""
+    if profile["expect"] != "pass":
+        raise MatrixError(
+            f"cannot prepare expected-fail profile {profile['id']} for the IDE"
+        )
+    if not sketch.is_dir():
+        raise MatrixError(f"Arduino sketch directory is unavailable: {sketch}")
+    generated_header = sketch / GENERATED_HEADER_NAME
+    if _path_has_symlink_component(generated_header):
+        raise MatrixError(
+            f"Arduino IDE generated profile path traverses a symbolic link: "
+            f"{generated_header}"
+        )
+    if generated_header.exists() and not generated_header.is_file():
+        raise MatrixError(
+            f"Arduino IDE generated profile path is not a file: {generated_header}"
+        )
+
+    environment = verify_environment(matrix, arduino_cli=arduino_cli)
+    source_snapshot = _capture_source_state(
+        matrix,
+        profile,
+        repo_root=repo_root,
+        sketch=sketch,
+        config_path=config_path,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+    _verify_installed_environment(environment)
+    provenance = build_provenance(
+        matrix,
+        profile,
+        environment,
+        git_commit=source_snapshot["git_commit"],
+        source_state=source_snapshot["source_state"],
+        source_sha256=source_snapshot["source_sha256"],
+        build_session_id=secrets.token_hex(8),
+        config_source_sha256=source_snapshot["config_source_sha256"],
+    )
+    previous_header = (
+        generated_header.read_bytes() if generated_header.exists() else None
+    )
+    try:
+        generated_header.write_text(
+            provenance_header(provenance, ide_compatible=True),
+            encoding="utf-8",
+        )
+        after_generation = _capture_source_state(
+            matrix,
+            profile,
+            repo_root=repo_root,
+            sketch=sketch,
+            config_path=config_path,
+            matrix_path=matrix_path,
+            builder_path=builder_path,
+        )
+        _assert_source_unchanged(source_snapshot, after_generation)
+        _verify_installed_environment(environment)
+    except (OSError, MatrixError):
+        if previous_header is None:
+            generated_header.unlink(missing_ok=True)
+        else:
+            generated_header.write_bytes(previous_header)
+        raise
+    return {
+        "path": str(generated_header.resolve()),
+        "profile_id": profile["id"],
+        "provenance": provenance,
+    }
+
+
 def _compile_profile(
     matrix: dict[str, Any],
     profile: dict[str, Any],
@@ -812,10 +920,13 @@ def _compile_profile(
     _reject_descendant_symlinks(artifacts_dir)
     _discard_artifacts(artifacts_dir)
     source_header = SKETCH / GENERATED_HEADER_NAME
-    if source_header.exists():
+    if source_header.is_symlink():
         raise MatrixError(
-            f"refusing reusable generated profile header in source tree: "
-            f"{source_header}"
+            f"source generated profile header is a symbolic link: {source_header}"
+        )
+    if source_header.exists() and not source_header.is_file():
+        raise MatrixError(
+            f"source generated profile header is not a file: {source_header}"
         )
 
     temporary_sketch_path: Path | None = None
@@ -1062,6 +1173,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Verify the pinned CLI/core/toolchain without compiling.",
     )
     parser.add_argument(
+        "--prepare-ide",
+        action="store_true",
+        help=(
+            "Generate one supported profile in the source sketch for direct "
+            "Arduino IDE compilation (requires exactly one --profile)."
+        ),
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="List the intentional matrix without inspecting the toolchain.",
@@ -1075,6 +1194,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         matrix = load_matrix(args.matrix.resolve())
+        if args.prepare_ide and (args.list or args.check_environment):
+            raise MatrixError(
+                "--prepare-ide cannot be combined with --list or "
+                "--check-environment"
+            )
+        if args.prepare_ide and len(args.profile) != 1:
+            raise MatrixError(
+                "--prepare-ide requires exactly one explicit --profile"
+            )
         selected = _selected_profiles(
             matrix, list(args.profile), args.supported_only
         )
@@ -1090,6 +1218,27 @@ def main(argv: list[str] | None = None) -> int:
                 matrix, arduino_cli=args.arduino_cli
             )
             print(json.dumps(environment, indent=2, sort_keys=True))
+            return 0
+        if args.prepare_ide:
+            prepared = prepare_ide_profile(
+                matrix,
+                selected[0],
+                arduino_cli=args.arduino_cli,
+                matrix_path=args.matrix.resolve(),
+            )
+            provenance = prepared["provenance"]
+            print(
+                f"Prepared Arduino IDE profile {prepared['profile_id']} at "
+                f"{prepared['path']}"
+            )
+            print(
+                "Regenerate before compiling after any source, profile, or "
+                "toolchain change."
+            )
+            print(
+                f"source={provenance['source']['sha256']} "
+                f"config={provenance['configuration']['sha256']}"
+            )
             return 0
         results = run_matrix(
             matrix,

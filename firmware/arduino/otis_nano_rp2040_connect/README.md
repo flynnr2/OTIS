@@ -25,10 +25,10 @@ canonical build-input and profile configuration hashes, and invocation
 identity; and writes `firmware_build_manifest.json` next to each successful
 binary. The manifest also hashes the `.bin`, `.elf`, `.map`, and `.uf2`
 artifacts. Every profile rechecks the matrix-wide source identity and installed
-package bytes before and after compilation. Direct Arduino IDE/CLI compilation
-is rejected because it cannot prove those values.
-The IDE remains useful for editing and serial monitoring, but not for producing
-a qualification binary.
+package bytes before and after compilation. Direct Arduino IDE compilation is
+available through an explicit generated profile for interactive bench work.
+Because the IDE does not produce the builder's artifact manifest or perform its
+post-compile checks, use the matrix-built artifact for qualification evidence.
 
 GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
 enforced by `otis_resource_registry.*`. The normative ownership ledger,
@@ -519,17 +519,33 @@ qualification binary with:
 python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
+For an interactive Arduino IDE compile/upload of the same supported profile,
+generate the local sketch header first:
+
+```bash
+python3 tools/firmware_matrix.py \
+  --prepare-ide \
+  --profile phase5_qualification
+```
+
+Then open `otis_nano_rp2040_connect.ino` in the IDE, select **Arduino Nano
+RP2040 Connect** from the Philhower **Raspberry Pi Pico/RP2040/RP2350 6.0.0**
+core, and compile or upload normally. The command validates the pinned CLI,
+board/core, and compiler installation before writing
+`otis_build_profile.generated.h` beside the sketch. The header is ignored by
+Git and deliberately excluded from the source-input hash. Regenerate it after
+every checkout, source edit, profile change, or Arduino core/toolchain change;
+do not hand-edit or commit it.
+
 The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
-binary and its full build manifest. The generated identity/profile header
-exists only in a disposable sketch copy during compilation; the builder removes
-that copy and any compiler-copied header before returning. A fresh builder
-session ID is bound between that header and the sole non-profile compiler flag,
-so copying an intact old header into the source sketch does not authorize an
-ordinary raw compile. This is an unsigned anti-staleness binding, not a secret
-or signature: a caller that deliberately reads the header and reconstructs the
+binary and its full build manifest. Matrix compilation copies the sketch,
+replaces any local IDE header in that copy with a one-use header, and removes
+the temporary source and compiler-copied header before returning. A fresh
+builder session ID is bound between the one-use header and the sole non-profile
+compiler flag. This is an unsigned anti-staleness binding, not a secret or
+signature: a caller that deliberately reads the header and reconstructs the
 matching invocation is outside the stated trust boundary. Upload the
-already-built artifact
-without recompiling:
+already-built qualification artifact without recompiling:
 
 ```bash
 arduino-cli upload -p /dev/cu.usbmodemXXXX \

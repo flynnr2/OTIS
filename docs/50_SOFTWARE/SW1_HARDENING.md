@@ -20,9 +20,11 @@ Arduino core and compiler/toolchain, bring-up mode, capture mode, nominal
 capture clock, nominal PPS/TCXO frequencies, pin mapping, and relevant
 compile-time feature flags.
 
-These identity fields have no source defaults. Produce firmware with
-`python3 tools/firmware_matrix.py`; direct IDE/CLI builds fail rather than
-silently emitting a stale or unknown commit.
+These identity fields have no source defaults. Produce qualification firmware
+with `python3 tools/firmware_matrix.py`. Interactive Arduino IDE builds require
+an explicit local header generated with
+`python3 tools/firmware_matrix.py --prepare-ide --profile <profile_id>`;
+missing or manually incomplete profile state fails at compile time.
 
 ## Capture Lifecycle
 

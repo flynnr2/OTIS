@@ -117,6 +117,21 @@ python3 tools/firmware_matrix.py --check-environment
 python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
+If using the Arduino IDE for interactive bench upload, generate the matching
+local profile immediately before opening or compiling the sketch:
+
+```bash
+python3 tools/firmware_matrix.py \
+  --prepare-ide \
+  --profile phase5_qualification
+```
+
+Select the Philhower **Arduino Nano RP2040 Connect** target on core `6.0.0`.
+Regenerate the ignored `otis_build_profile.generated.h` after any source,
+profile, core, or toolchain change. IDE builds are suitable for interactive
+bench bring-up; use the matrix-built artifact and
+`firmware_build_manifest.json` when sealing qualification evidence.
+
 Compile the independent PIO long-gate configuration if a second OTIS
 instrument is the authorised comparison:
 
