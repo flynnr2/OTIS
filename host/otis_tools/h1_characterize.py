@@ -11,6 +11,10 @@ from typing import Iterable
 import zlib
 
 from .run_loader import RunManifest, load_manifest
+from .phase4_boundary_estimator import (
+    ESTIMATOR_METHOD_ID,
+    REFERENCE_INVALID_FLAGS,
+)
 from .pps_diagnostics import PpsIntervalClassification, classify_pps_interval
 from .sessions import RunSessionSummary, detect_run_sessions
 from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS, unwrap_ticks
@@ -191,7 +195,7 @@ class LocalPpsTimeMapper:
             flags.append("long_pps_support_gap")
         support_count = len(support_points)
         return LocalPpsGateEstimate(
-            "LOCAL_PPS_INTERPOLATED",
+            ESTIMATOR_METHOD_ID,
             not flags,
             tuple(flags),
             pps_time_open=open_mapping.second,
@@ -628,7 +632,7 @@ def _estimate_pps_clock(
     if not rows:
         return None, None, ()
 
-    segments: list[list[tuple[int, int, str]]] = [[]]
+    segments: list[list[tuple[int, int, str, int]]] = [[]]
     previous_seq: int | None = None
     skipped = 0
     for index, row in enumerate(rows, start=1):
@@ -638,13 +642,14 @@ def _estimate_pps_clock(
         seq = _parse_int(row.get("event_seq")) or index
         ticks = _parse_int(row.get("timestamp_ticks"))
         domain = str(row.get("capture_domain", ""))
+        flags = _parse_int(row.get("flags")) or 0
         if ticks is None or not domain:
             skipped += 1
             continue
         if previous_seq is not None and seq <= previous_seq:
             segments.append([])
         previous_seq = seq
-        segments[-1].append((seq, ticks, domain))
+        segments[-1].append((seq, ticks, domain, flags))
 
     populated = [segment for segment in segments if len(segment) >= 2]
     if skipped:
@@ -655,7 +660,7 @@ def _estimate_pps_clock(
         warnings.append("ref.csv: multiple capture segments detected; using the final segment for PPS clock calibration")
 
     segment = populated[-1]
-    domains = {domain for _, _, domain in segment}
+    domains = {domain for _, _, domain, _ in segment}
     if len(domains) != 1:
         warnings.append("ref.csv: final REF segment spans multiple capture domains; PPS clock calibration unavailable")
         return None, None, ()
@@ -665,10 +670,23 @@ def _estimate_pps_clock(
         warnings.append(f"ref.csv: capture_domain={domain} has no nominal_hz; PPS clock calibration unavailable")
         return None, None, ()
 
-    unwrapped, wrap_count = unwrap_ticks([ticks for _, ticks, _ in segment])
+    unwrapped, wrap_count = unwrap_ticks(
+        [ticks for _, ticks, _, _ in segment]
+    )
     intervals = [int(current - previous) for previous, current in zip(unwrapped, unwrapped[1:])]
     classifications = [classify_pps_interval(interval, nominal_rate) for interval in intervals]
-    valid_intervals = [float(item.raw_interval_ticks) for item in classifications if item.usable_for_calibration]
+    accepted_intervals = [
+        classification.usable_for_calibration
+        and not (segment[index - 1][3] & REFERENCE_INVALID_FLAGS)
+        and not (segment[index][3] & REFERENCE_INVALID_FLAGS)
+        and segment[index][0] > segment[index - 1][0]
+        for index, classification in enumerate(classifications, start=1)
+    ]
+    valid_intervals = [
+        float(item.raw_interval_ticks)
+        for item, accepted in zip(classifications, accepted_intervals)
+        if accepted
+    ]
     anomalies = tuple(
         PpsAnomaly(
             index=index,
@@ -689,7 +707,8 @@ def _estimate_pps_clock(
         return None, None, anomalies
     if len(valid_intervals) != len(intervals):
         warnings.append(
-            f"ref.csv: ignored {len(intervals) - len(valid_intervals)} PPS interval(s) outside 0.8..1.2 nominal seconds"
+            f"ref.csv: ignored {len(intervals) - len(valid_intervals)} PPS "
+            "interval(s) outside the accepted cadence, flag, or sequence contract"
         )
 
     tick_rate = _mean(valid_intervals)
@@ -699,8 +718,8 @@ def _estimate_pps_clock(
     mapper_segments: list[tuple[PpsTimePoint, ...]] = []
     current_points: list[PpsTimePoint] = []
     current_second = 0.0
-    for index, classification in enumerate(classifications, start=1):
-        if not classification.usable_for_calibration:
+    for index, accepted in enumerate(accepted_intervals, start=1):
+        if not accepted:
             if len(current_points) >= 2:
                 mapper_segments.append(tuple(current_points))
             current_points = []
@@ -2274,7 +2293,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         f"- requested_measurement_windows: derived from count windows available per DAC dwell",
         "",
         "## Formulas",
-        "- preferred estimator = LOCAL_PPS_INTERPOLATED when both count-gate boundaries are bracketed by accepted REF/PPS observations in one continuous PPS segment",
+        f"- preferred estimator = {ESTIMATOR_METHOD_ID} when both count-gate boundaries are bracketed by accepted REF/PPS observations in one continuous PPS segment",
         "- fallback estimator = RUN_WIDE_TICK_RATE when a sane REF/PPS stream exists but local bracketing is unavailable",
         "- fallback estimator = NOMINAL_TICK_RATE when PPS calibration is unavailable",
         "- local_pps_gate_seconds = pps_time(gate_close_ticks) - pps_time(gate_open_ticks)",
@@ -2333,7 +2352,12 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             ]
         )
     estimator_counts = _count_by(window.estimator_mode for window in analysis.count_windows)
-    valid_local = [window for window in analysis.count_windows if window.estimator_mode == "LOCAL_PPS_INTERPOLATED" and window.estimator_valid]
+    valid_local = [
+        window
+        for window in analysis.count_windows
+        if window.estimator_mode == ESTIMATOR_METHOD_ID
+        and window.estimator_valid
+    ]
     differences = [
         window.local_pps_frequency_hz - window.legacy_frequency_hz
         for window in valid_local
@@ -2343,7 +2367,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
         [
             "",
             "## Count Estimator Policy",
-            "- preferred_estimator: LOCAL_PPS_INTERPOLATED",
+            f"- preferred_estimator: {ESTIMATOR_METHOD_ID}",
             "- fallback_estimator: RUN_WIDE_TICK_RATE, then NOMINAL_TICK_RATE",
             "- pps_validity_policy: existing REF/PPS interval classifier accepts only 0.8..1.2 nominal-second intervals for calibration",
             "- interpolation_policy: piecewise linear between adjacent accepted PPS observations; no default extrapolation",

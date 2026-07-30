@@ -43,10 +43,22 @@ reference/count/DAC status supplied by existing owners, checks age,
 continuity, flags, count zero/saturation, and capture drops, and emits the same
 normative `EST v1` and `CTL v1` field ordering used by host replay.
 
-The adapter embeds and reports the exact SHA-256 of plant-model version 3 and
+`otis_phase4_boundary_estimator.*` is the allocation-free metrology component
+used by the live adapter. It retains a fixed 384-point accepted-PPS support
+array: enough for the 300 s H1 gate at the minimum accepted 0.8 s cadence plus
+explicit margin. Each count boundary is interpolated independently. A
+non-PPS-aligned close is retained in one fixed pending-count slot until the
+following accepted PPS supplies its closing bracket. A second count cannot
+silently overwrite it; overwrite, support-capacity loss, stale/missing
+following support, and every invalidation reason are counted or emitted.
+
+The adapter embeds and reports the exact SHA-256 of plant-model version 4 and
 the default discipline configuration. Tests fail if the model hash, gain,
 applicability range, disabled candidate range, or manual preview step diverges
-from `profiles/plant_models/cx317_h1_bench_v2.json`.
+from `profiles/plant_models/cx317_h1_bench_v3.json`. Model applicability also
+requires the compiled
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` definition hash; backend or method
+mismatch inhibits every correction preview.
 
 Run 020 count sequence 77 is excluded only when replaying Run 020 source
 evidence. It is not interpreted as a globally invalid live sequence number.
@@ -82,7 +94,8 @@ Derived frames are transmitted in bounded chunks after capture service. While
 a pair is partially transmitted, other record producers do not interleave
 bytes into it; IRQ/PIO capture continues into the separate capture ring.
 Periodic `STS` reports queue depth, high-water mark, drops, state, and the false
-authorization flags.
+authorization flags. It also reports estimator method/hash, last boundary
+reason, PPS-support overwrite count, and pending-count overwrite count.
 
 This architecture is compile- and synthetic-load checked. A live service-plane
 load/reconnect run is still required to quantify whether a prolonged host stall
@@ -106,13 +119,20 @@ mismatch, input outside applicability, and combined step/range clamping.
 A second native harness emits live adapter rows and passes them through the
 repository's strict `EST v1` and `CTL v1` validators.
 
+`tests/cpp/phase4_boundary_estimator_harness.cpp` compiles the exact production
+boundary estimator. Host/C++ comparisons cover valid and invalid mappings,
+reason codes, boundary provenance, non-uniform intervals, missing support, and
+the semantic counterexample where one-interval scaling gives a measurably
+different answer. The live-adapter harness also exercises the pending
+non-aligned-close path.
+
 Numeric parity tolerance is `1e-9 Hz` for the synthetic fixture arithmetic.
 Real target comparisons must use a documented tolerance based on emitted
 decimal precision and count/reference quantization.
 
 ## Build validation
 
-Validated on 29 July 2026 with FQBN
+Revalidated on 30 July 2026 with FQBN
 `rp2040:rp2040:arduino_nano_connect`:
 
 | Build | Result |
@@ -133,21 +153,22 @@ arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
   firmware/arduino/otis_nano_rp2040_connect
 ```
 
-The final preview build used 95,992 bytes of program storage and 24,592 bytes
-of global RAM in the local toolchain. The default build used 85,896 bytes and
-12,212 bytes respectively.
+The corrected H1 PIO-long-gate preview build used 93,504 bytes of program
+storage and 33,716 bytes of global RAM in the local toolchain. The checked-in
+default build used 82,848 bytes and 21,420 bytes respectively. The fixed PPS
+support array accounts for the intentional bounded RAM increase.
 
 ## Verification results
 
 Focused results:
 
 ```text
-python3 -m pytest -q tests/test_phase4_firmware_parity.py \
-  tests/test_phase4_replay.py
-38 passed
+python3 -m pytest -q tests/test_phase4_boundary_estimator.py \
+  tests/test_phase4_firmware_parity.py tests/test_phase4_replay.py
+61 passed
 
 python3 -m pytest -q
-204 passed, 2 skipped
+238 passed, 2 skipped
 ```
 
 The two skips are the existing locally retained Run 020 preflight hooks.
@@ -164,13 +185,18 @@ endpoints were present. No upload or hardware claim is made.
 | Target floating-point differs from host | Synthetic C++ parity passes; compare captured live rows within documented quantization tolerance. |
 | Derived USB traffic disturbs capture | Queueing and chunking are bounded; deliberate target load/reconnect testing remains required. |
 | Long-run reference/count recovery differs on hardware | Fault/recovery fixtures pass; a long live run remains required. |
-| Alternative backend is mistaken for model applicability | Selector builds compile, but identity mismatch explicitly inhibits preview. |
+| Alternative backend or estimator semantics are mistaken for model applicability | Backend and full method-contract mismatch explicitly inhibit preview; string identity alone is insufficient. |
 | Candidate range is mistaken for permission | CTL and model flags remain false/non-actionable; no actuation callback exists. |
 
 This change completes the implementation and deterministic-parity portion of
 roadmap Stage SW2-2. It does not pass the Stage SW2-2 long-live-run exit gate,
 qualify the PPS-gated measurement backend, or authorize any active-control
 milestone.
+
+Correct estimator semantics and physical aperture qualification are separate.
+This implementation does not establish PPS-gated capture aperture, target
+latency bounds under hardware load, traceable uncertainty, or a control-grade
+measurement backend.
 
 ## Phase 5 compatibility correction
 

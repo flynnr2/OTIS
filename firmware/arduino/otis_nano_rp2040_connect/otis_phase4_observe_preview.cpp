@@ -6,6 +6,7 @@
 
 #include "otis_capture_ring.h"
 #include "otis_config.h"
+#include "otis_phase4_boundary_estimator.h"
 #include "otis_phase4_engine.h"
 #include "otis_protocol.h"
 #include "otis_timebase_math.h"
@@ -40,11 +41,13 @@ constexpr uint32_t kCountInvalidFlags =
 #endif
 constexpr char kPlantModelId[] = "cx317_h1_bench";
 constexpr char kPlantModelHash[] =
-    "f515e8637e0b8d00e0c5ad7ef609e524d996481b46d41d08bb6d1ddbb24b5b17";
+    "900af6b2ec325f99798db043df964a28a36ac2a2209669c7f4b7d569efbf161d";
 constexpr char kConfigHash[] =
-    "d69f7b0fdbf0cb2b9b52c43071f64007c0038d17e0eff30c42c8f44a5925768a";
-constexpr char kEstimatorVersion[] = "phase4_frequency_mean_v1";
-constexpr char kPolicyVersion[] = "phase4_observe_preview_v1";
+    "10c38248661c46e4b31ed3f77d097ea8b6f668ff8e53784bd357ccbd66dbac85";
+constexpr char kEstimatorVersion[] = "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1";
+constexpr char kEstimatorMethodHash[] =
+    "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b";
+constexpr char kPolicyVersion[] = "phase4_observe_preview_v2";
 constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_TIMER0;
 constexpr uint16_t kModelApplicabilityMin = 0xA800u;
 constexpr uint16_t kModelApplicabilityMax = 0xB400u;
@@ -54,6 +57,15 @@ constexpr uint16_t kMaximumPreviewStep = 0x0300u;
 constexpr double kHzPerCode = 0.0001673035127775317;
 constexpr size_t kFrameCapacity = 3072u;
 constexpr size_t kTransportChunkLimit = 128u;
+constexpr double kCaptureDomainHz = 16000000.0;
+constexpr uint64_t kMinimumReferenceIntervalTicks =
+    (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US * 16ull;
+constexpr uint64_t kMaximumReferenceIntervalTicks =
+    (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US * 16ull;
+static_assert(
+    OTIS_H1_LONG_GATE_PERIOD_US / OTIS_PPS_GATE_MIN_INTERVAL_US + 4u <=
+        OTIS_PHASE4_PPS_SUPPORT_CAPACITY,
+    "Phase 4 PPS support capacity is too small for the H1 long gate");
 
 struct TelemetryFrame {
   char data[kFrameCapacity];
@@ -61,7 +73,21 @@ struct TelemetryFrame {
   uint16_t sent;
 };
 
+struct PendingCount {
+  bool active;
+  uint32_t seq;
+  uint64_t open_ticks;
+  uint64_t close_ticks;
+  uint64_t counted_edges;
+  OtisPhase4Validity reference_validity;
+  OtisPhase4Validity count_validity;
+  uint32_t reason_mask;
+  OtisPhase4LiveDacState dac;
+};
+
 OtisPhase4Engine engine;
+OtisPhase4BoundaryEstimator boundary_estimator;
+PendingCount pending_count = {};
 TelemetryFrame queue[OTIS_PHASE4_PREVIEW_QUEUE_DEPTH];
 uint8_t queue_head = 0u;
 uint8_t queue_tail = 0u;
@@ -85,6 +111,8 @@ bool count_stale_reported = false;
 uint32_t estimator_reference_first[OTIS_PHASE4_ESTIMATOR_WINDOW];
 uint8_t estimator_reference_count = 0u;
 uint8_t estimator_reference_next = 0u;
+OtisPhase4BoundaryReason last_boundary_reason = OTIS_PHASE4_BOUNDARY_OK;
+uint32_t pending_count_overwrite_count = 0u;
 
 uint64_t unwrap_ticks(uint64_t ticks) {
   // Count backends may already add one local timer epoch when a gate crosses
@@ -158,7 +186,7 @@ void reasons_text(uint32_t mask, const char *clear_reason, char *buffer,
        "post_qualification_measurement_fault"},
       {OTIS_PHASE4_REASON_MODEL_UNAVAILABLE, "plant_model_unavailable"},
       {OTIS_PHASE4_REASON_MODEL_INVALID, "plant_model_invalid"},
-      {OTIS_PHASE4_REASON_MODEL_VERSION, "plant_model_version_not_3"},
+      {OTIS_PHASE4_REASON_MODEL_VERSION, "plant_model_version_not_4"},
       {OTIS_PHASE4_REASON_MODEL_TOPOLOGY, "plant_model_topology_mismatch"},
       {OTIS_PHASE4_REASON_MODEL_BACKEND, "plant_model_backend_mismatch"},
       {OTIS_PHASE4_REASON_MODEL_INPUT_RANGE,
@@ -169,6 +197,16 @@ void reasons_text(uint32_t mask, const char *clear_reason, char *buffer,
       {OTIS_PHASE4_REASON_DAC_UNAVAILABLE, "dac_state_unavailable"},
       {OTIS_PHASE4_REASON_REFERENCE_CONTINUITY_UNAVAILABLE,
        "reference_continuity_unavailable"},
+      {OTIS_PHASE4_REASON_MODEL_ESTIMATOR_METHOD,
+       "plant_model_estimator_method_mismatch"},
+      {OTIS_PHASE4_REASON_BOUNDARY_SUPPORT,
+       "boundary_pps_support_unavailable"},
+      {OTIS_PHASE4_REASON_REFERENCE_SEQUENCE,
+       "reference_sequence_nonmonotonic"},
+      {OTIS_PHASE4_REASON_SUPPORT_OVERWRITTEN,
+       "boundary_pps_support_overwritten"},
+      {OTIS_PHASE4_REASON_PENDING_COUNT_OVERWRITTEN,
+       "pending_count_overwritten"},
   };
   for (const Mapping &mapping : mappings)
     if (mask & mapping.bit) append_reason(buffer, capacity, mapping.name);
@@ -179,13 +217,19 @@ OtisPhase4ModelInput model_input(const OtisPhase4LiveDacState *dac) {
   OtisPhase4ModelInput model = {};
   model.available = true;
   model.valid = true;
-  model.version_3 = true;
+  model.version_4 = true;
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     OTIS_ENABLE_PPS_DUAL_OBSERVER
   model.topology_match = true;
 #else
   model.topology_match = false;
 #endif
+  model.estimator_method_match =
+      strcmp(kEstimatorVersion, "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1") == 0 &&
+      strcmp(
+          kEstimatorMethodHash,
+          "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b") ==
+          0;
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
   model.backend_match = true;
 #else
@@ -239,6 +283,11 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   char model_reasons[384];
   reasons_text(observation.observation_reason_mask, "observation_valid",
                observation_reasons, sizeof(observation_reasons));
+  if ((observation.observation_reason_mask &
+       OTIS_PHASE4_REASON_BOUNDARY_SUPPORT) &&
+      last_boundary_reason != OTIS_PHASE4_BOUNDARY_OK)
+    append_reason(observation_reasons, sizeof(observation_reasons),
+                  otis_phase4_boundary_reason_name(last_boundary_reason));
   reasons_text(decision.eligibility_reason_mask,
                "estimator_preview_eligible", eligibility_reasons,
                sizeof(eligibility_reasons));
@@ -373,7 +422,7 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   int added = snprintf(
       frame + used, sizeof(frame) - (size_t)used,
       "CTL,1,%lu,ctl:live:%06lu,%llu,%s,est:live:%06lu,"
-      "profiles/plant_models/cx317_h1_bench_v2.json,%s,3,%s,%s,%s,%s,%s,"
+      "profiles/plant_models/cx317_h1_bench_v3.json,%s,4,%s,%s,%s,%s,%s,"
       "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
       "%s,true,false,false,%s\r\n",
       (unsigned long)control_seq, (unsigned long)control_seq,
@@ -436,6 +485,49 @@ void evaluate(uint64_t ticks, bool new_count, uint32_t count_seq,
   if (new_count) previous_count_seq = count_seq;
 }
 
+void remember_frequency_support(
+    const OtisPhase4BoundaryResult &boundary_result) {
+  estimator_reference_first[estimator_reference_next] =
+      boundary_result.before_open_seq;
+  estimator_reference_next = (uint8_t)(
+      (estimator_reference_next + 1u) % OTIS_PHASE4_ESTIMATOR_WINDOW);
+  if (estimator_reference_count < OTIS_PHASE4_ESTIMATOR_WINDOW)
+    estimator_reference_count++;
+}
+
+void finalize_pending_count(uint64_t evaluation_ticks,
+                            OtisRuntimeState *runtime_state,
+                            uint32_t additional_reasons) {
+  if (!pending_count.active) return;
+  const OtisPhase4BoundaryResult result =
+      otis_phase4_boundary_estimator_estimate(
+          &boundary_estimator, pending_count.open_ticks,
+          pending_count.close_ticks, pending_count.counted_edges,
+          kCaptureDomainHz,
+          (double)OTIS_PPS_GATE_MAX_INTERVAL_US / 1000000.0);
+  if (!result.valid && result.retryable_after_next_reference) return;
+
+  last_boundary_reason = result.reason;
+  uint32_t reasons = pending_count.reason_mask | additional_reasons;
+  if (!result.valid) reasons |= OTIS_PHASE4_REASON_BOUNDARY_SUPPORT;
+  if (boundary_estimator.last_reference_issue ==
+      OTIS_PHASE4_REFERENCE_ISSUE_SEQUENCE)
+    reasons |= OTIS_PHASE4_REASON_REFERENCE_SEQUENCE;
+  if (boundary_estimator.support_overwrite_count > 0u)
+    reasons |= OTIS_PHASE4_REASON_SUPPORT_OVERWRITTEN;
+  if (result.valid) remember_frequency_support(result);
+  const OtisPhase4Validity reference_validity =
+      result.valid ? pending_count.reference_validity
+                   : OTIS_PHASE4_INVALID;
+
+  evaluate(evaluation_ticks, true, pending_count.seq, runtime_state,
+           &pending_count.dac, reference_validity,
+           pending_count.count_validity, reasons, result.valid,
+           result.valid ? result.frequency_hz : 0.0);
+  pending_count.active = false;
+  reference_window_reason_mask = OTIS_PHASE4_REASON_NONE;
+}
+
 }  // namespace
 
 void otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
@@ -454,6 +546,8 @@ void otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
       nominal_frequency_hz,
   };
   otis_phase4_engine_init(&engine, &config);
+  otis_phase4_boundary_estimator_init(&boundary_estimator);
+  memset(&pending_count, 0, sizeof(pending_count));
   startup_ticks = initial_ticks;
   queue_head = queue_tail = queue_count = queue_high_water = 0u;
   dropped_pairs = 0u;
@@ -466,6 +560,8 @@ void otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
   reference_stale_reported = count_stale_reported = false;
   memset(estimator_reference_first, 0, sizeof(estimator_reference_first));
   estimator_reference_count = estimator_reference_next = 0u;
+  last_boundary_reason = OTIS_PHASE4_BOUNDARY_OK;
+  pending_count_overwrite_count = 0u;
 }
 
 void otis_phase4_observe_preview_emit_headers(void) {
@@ -499,7 +595,25 @@ void otis_phase4_observe_preview_on_reference(
       reference_window_reason_mask |= OTIS_PHASE4_REASON_REFERENCE_OUTLIER;
     }
   }
+  otis_phase4_boundary_estimator_on_reference(
+      &boundary_estimator, reference_seq, ticks, flags,
+      kReferenceInvalidFlags, kMinimumReferenceIntervalTicks,
+      kMaximumReferenceIntervalTicks, 1.0);
+  if (boundary_estimator.last_reference_issue ==
+      OTIS_PHASE4_REFERENCE_ISSUE_SEQUENCE) {
+    reasons |= OTIS_PHASE4_REASON_REFERENCE_SEQUENCE;
+    reference_window_reason_mask |= OTIS_PHASE4_REASON_REFERENCE_SEQUENCE;
+  }
+  if (boundary_estimator.last_reference_issue ==
+      OTIS_PHASE4_REFERENCE_ISSUE_SUPPORT_OVERWRITTEN) {
+    reasons |= OTIS_PHASE4_REASON_SUPPORT_OVERWRITTEN;
+    reference_window_reason_mask |= OTIS_PHASE4_REASON_SUPPORT_OVERWRITTEN;
+  }
   reference_seen = true;
+  if (pending_count.active) {
+    pending_count.reason_mask |= reasons;
+    finalize_pending_count(ticks, runtime_state, reasons);
+  }
   if (reference_stale_reported) {
     reference_stale_reported = false;
     if (previous_reference_seq == 0u)
@@ -526,6 +640,18 @@ void otis_phase4_observe_preview_on_count(
     const OtisPhase4LiveDacState *dac) {
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
   uint64_t ticks = unwrap_ticks(runtime_state->tcxo.last_gate_close_ticks);
+  if (pending_count.active) {
+    last_boundary_reason = OTIS_PHASE4_BOUNDARY_MISSING_END_SUPPORT;
+    uint32_t overwritten_reasons =
+        pending_count.reason_mask | OTIS_PHASE4_REASON_BOUNDARY_SUPPORT |
+        OTIS_PHASE4_REASON_PENDING_COUNT_OVERWRITTEN;
+    evaluate(ticks, true, pending_count.seq, runtime_state, &pending_count.dac,
+             OTIS_PHASE4_INVALID, pending_count.count_validity,
+             overwritten_reasons, false, 0.0);
+    pending_count.active = false;
+    if (pending_count_overwrite_count < UINT32_MAX)
+      pending_count_overwrite_count++;
+  }
   last_count_ticks = ticks;
   count_seen = true;
   count_stale_reported = false;
@@ -569,32 +695,43 @@ void otis_phase4_observe_preview_on_count(
     reasons |= OTIS_PHASE4_REASON_COUNT_DISCONTINUITY;
   }
 
-  bool frequency_available = false;
-  double frequency_hz = 0.0;
   const uint64_t gate_ticks = otis_timer0_interval_ticks(
       runtime_state->tcxo.last_gate_open_ticks,
       runtime_state->tcxo.last_gate_close_ticks);
-  if (reference_validity == OTIS_PHASE4_VALID &&
-      count_validity == OTIS_PHASE4_VALID && gate_ticks > 0u &&
-      previous_reference_seq != 0u &&
-      last_reference_ticks > previous_reference_ticks) {
-    const double calibrated_tick_hz =
-        (double)(last_reference_ticks - previous_reference_ticks);
-    frequency_hz =
-        (double)runtime_state->tcxo.last_counted_edges /
-        ((double)gate_ticks / calibrated_tick_hz);
-    frequency_available = isfinite(frequency_hz);
+  const uint64_t open_ticks =
+      ticks >= gate_ticks ? ticks - gate_ticks : 0u;
+  const OtisPhase4BoundaryResult boundary_result =
+      otis_phase4_boundary_estimator_estimate(
+          &boundary_estimator, open_ticks, ticks,
+          runtime_state->tcxo.last_counted_edges, kCaptureDomainHz,
+          (double)OTIS_PPS_GATE_MAX_INTERVAL_US / 1000000.0);
+  last_boundary_reason = boundary_result.reason;
+  if (boundary_result.valid) {
+    remember_frequency_support(boundary_result);
+    evaluate(ticks, true, count_seq, runtime_state, dac, reference_validity,
+             count_validity, reasons, true, boundary_result.frequency_hz);
+  } else if (boundary_result.retryable_after_next_reference) {
+    pending_count.active = true;
+    pending_count.seq = count_seq;
+    pending_count.open_ticks = open_ticks;
+    pending_count.close_ticks = ticks;
+    pending_count.counted_edges = runtime_state->tcxo.last_counted_edges;
+    pending_count.reference_validity = reference_validity;
+    pending_count.count_validity = count_validity;
+    pending_count.reason_mask = reasons;
+    pending_count.dac =
+        dac != nullptr ? *dac : OtisPhase4LiveDacState{false, 0u};
+  } else {
+    reasons |= OTIS_PHASE4_REASON_BOUNDARY_SUPPORT;
+    const OtisPhase4Validity boundary_reference_validity =
+        reference_validity == OTIS_PHASE4_UNAVAILABLE ||
+                reference_validity == OTIS_PHASE4_STALE
+            ? reference_validity
+            : OTIS_PHASE4_INVALID;
+    evaluate(ticks, true, count_seq, runtime_state, dac,
+             boundary_reference_validity,
+             count_validity, reasons, false, 0.0);
   }
-  if (frequency_available) {
-    estimator_reference_first[estimator_reference_next] =
-        previous_reference_seq;
-    estimator_reference_next = (uint8_t)(
-        (estimator_reference_next + 1u) % OTIS_PHASE4_ESTIMATOR_WINDOW);
-    if (estimator_reference_count < OTIS_PHASE4_ESTIMATOR_WINDOW)
-      estimator_reference_count++;
-  }
-  evaluate(ticks, true, count_seq, runtime_state, dac, reference_validity,
-           count_validity, reasons, frequency_available, frequency_hz);
   reference_window_reason_mask = OTIS_PHASE4_REASON_NONE;
 #else
   (void)count_seq;
@@ -608,6 +745,18 @@ void otis_phase4_observe_preview_poll(
     const OtisPhase4LiveDacState *dac) {
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
   const uint64_t ticks = unwrap_ticks(now_ticks);
+  if (pending_count.active && reference_seen &&
+      ticks - last_reference_ticks >
+          (uint64_t)OTIS_PHASE4_REFERENCE_MAX_AGE_US * 16ull) {
+    last_boundary_reason = OTIS_PHASE4_BOUNDARY_MISSING_END_SUPPORT;
+    evaluate(
+        ticks, true, pending_count.seq, runtime_state, &pending_count.dac,
+        OTIS_PHASE4_STALE, pending_count.count_validity,
+        pending_count.reason_mask | OTIS_PHASE4_REASON_REFERENCE_STALE |
+            OTIS_PHASE4_REASON_BOUNDARY_SUPPORT,
+        false, 0.0);
+    pending_count.active = false;
+  }
   if (!reference_seen && !reference_stale_reported &&
       ticks - startup_ticks >
           (uint64_t)OTIS_PHASE4_REFERENCE_MAX_AGE_US * 16ull) {
@@ -703,6 +852,22 @@ void otis_phase4_observe_preview_emit_status(
   otis_status_emit(status_context, "phase4_preview", "actuation_enabled",
                    "false", OTIS_SEVERITY_INFO,
                    OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(status_context, "phase4_preview", "estimator_method_id",
+                   kEstimatorVersion, OTIS_SEVERITY_INFO,
+                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(status_context, "phase4_preview",
+                   "estimator_method_definition_hash",
+                   kEstimatorMethodHash, OTIS_SEVERITY_INFO,
+                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(status_context, "phase4_preview",
+                   "boundary_last_reason",
+                   otis_phase4_boundary_reason_name(last_boundary_reason),
+                   last_boundary_reason == OTIS_PHASE4_BOUNDARY_OK
+                       ? OTIS_SEVERITY_INFO
+                       : OTIS_SEVERITY_WARN,
+                   last_boundary_reason == OTIS_PHASE4_BOUNDARY_OK
+                       ? OTIS_FLAG_NONE
+                       : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
   otis_status_emit(status_context, "phase4_preview", "state",
                    otis_phase4_state_name(engine.state), OTIS_SEVERITY_INFO,
                    OTIS_FLAG_NONE);
@@ -717,6 +882,22 @@ void otis_phase4_observe_preview_emit_status(
                                      : OTIS_FLAG_NONE);
   otis_status_emit_u32(status_context, "phase4_preview", "queue_high_water",
                        queue_high_water, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  otis_status_emit_u32(
+      status_context, "phase4_preview", "pps_support_overwrite_count",
+      boundary_estimator.support_overwrite_count,
+      boundary_estimator.support_overwrite_count == 0u ? OTIS_SEVERITY_INFO
+                                                       : OTIS_SEVERITY_WARN,
+      boundary_estimator.support_overwrite_count == 0u
+          ? OTIS_FLAG_NONE
+          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  otis_status_emit_u32(
+      status_context, "phase4_preview", "pending_count_overwrite_count",
+      pending_count_overwrite_count,
+      pending_count_overwrite_count == 0u ? OTIS_SEVERITY_INFO
+                                          : OTIS_SEVERITY_WARN,
+      pending_count_overwrite_count == 0u
+          ? OTIS_FLAG_NONE
+          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 #else
   (void)status_context;
 #endif

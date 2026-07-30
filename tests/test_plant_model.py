@@ -10,7 +10,7 @@ from host.otis_tools.plant_model import load_plant_model, validate_plant_model
 
 
 LEGACY_MODEL = Path("profiles/plant_models/cx317_h1_bench_v1.json")
-MODEL = Path("profiles/plant_models/cx317_h1_bench_v2.json")
+MODEL = Path("profiles/plant_models/cx317_h1_bench_v3.json")
 SCHEMA = Path("schemas/plant_model_v1.schema.json")
 
 
@@ -58,14 +58,17 @@ def test_loads_run_020_observe_only_plant_model() -> None:
     model = load_plant_model(MODEL)
 
     assert model.model_id == "cx317_h1_bench"
-    assert model.model_version == 3
+    assert model.model_version == 4
     assert model.nominal_code == 0xA950
     assert model.crossing_code == 0xA950
     assert model.automatic_control_range == (0xA800, 0xAB00)
     assert model.applicability_range == (0xA800, 0xB400)
     assert not model.control_ready
     assert not model.actuation_enabled
-    assert model.data["status"]["readiness"] == "plant_model_v3_run_020_validated_observe_only"
+    assert (
+        model.data["status"]["readiness"]
+        == "plant_model_v4_boundary_interpolated_contract_observe_only"
+    )
 
     slope = model.data["plant_response"]["local_slope"]
     assert slope["sign"] == "positive"
@@ -84,6 +87,14 @@ def test_loads_run_020_observe_only_plant_model() -> None:
     assert applicability["mode"] == "observe_only"
     assert applicability["settling_exclusion_s"] == pytest.approx(900.0)
     assert applicability["excluded_count_sequences"] == [77]
+    method = applicability["estimator_method_contract"]
+    assert method["estimator_method_id"] == (
+        "LOCAL_PPS_BOUNDARY_INTERPOLATED_V1"
+    )
+    assert method["boundary_interpolation"] == (
+        "independent_bracketing_accepted_pps_pairs"
+    )
+    assert method["extrapolation_policy"] == "prohibited"
 
 
 def test_schema_and_canonical_source_references_are_present() -> None:
@@ -147,6 +158,17 @@ def test_rejects_non_observe_only_applicability() -> None:
     changed["plant_response"]["applicability"]["mode"] = "active_control"
 
     with pytest.raises(ValueError, match="mode must be observe_only"):
+        validate_plant_model(changed)
+
+
+def test_rejects_unknown_estimator_method_hash() -> None:
+    model = load_plant_model(MODEL).data
+    changed = copy.deepcopy(model)
+    changed["plant_response"]["applicability"][
+        "estimator_method_contract"
+    ]["method_definition_hash"] = "0" * 64
+
+    with pytest.raises(ValueError, match="unknown method_definition_hash"):
         validate_plant_model(changed)
 
 

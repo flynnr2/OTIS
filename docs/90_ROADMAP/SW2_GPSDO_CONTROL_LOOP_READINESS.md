@@ -38,16 +38,16 @@ The host-only M2 gate is passed:
 - replay consumes manifest-resolved `REF`, `CNT`, `STS`, and `DAC` evidence;
 - estimator qualification uses accepted reference cadence, count validity,
   age, continuity, dispersion, and startup/recovery clean windows;
-- model-version-3 identity, applicability, excluded sequences, disabled
+- model-version-4 identity, estimator-method contract, applicability, excluded sequences, disabled
   candidate range, and manual preview step are enforced;
 - repeated execution produces byte-identical derived records;
 - raw/source evidence hashes remain unchanged;
 - no firmware, serial command, DAC write, arming, PI/PID/Kalman, thermal, or
   holdover-prediction path was added.
 
-This passes host replay only. Firmware observe-only parity, PPS-gated backend
-bench qualification, active-control policy approval, and guarded actuation are
-still incomplete.
+This passes deterministic host replay and native estimator parity only.
+Physical aperture and PPS-gated backend bench qualification, active-control
+policy approval, and guarded actuation are still incomplete.
 
 ## Phase 4 live observe-only parity readiness
 
@@ -59,7 +59,7 @@ complete:
   fixture matrix;
 - live firmware emits strict `EST v1` and `CTL v1` rows with plant-model,
   policy, configuration, diagnostic, source, and DAC provenance;
-- model-version-3 topology/backend/applicability, disabled candidate range, and
+- model-version-4 topology/backend/method-contract applicability, disabled candidate range, and
   maximum preview step are enforced;
 - the preview module has no DAC-driver include, callback, serial command, or
   returned proposal path to the manual DAC owner;
@@ -141,7 +141,8 @@ Primary artifacts:
 - `runs/h1_open_loop/dac_manual_sweep/run_020/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/csv/h1_center_bracketed_slopes.csv`
 - `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`
-- `profiles/plant_models/cx317_h1_bench_v2.json`
+- `profiles/plant_models/cx317_h1_bench_v3.json` (current model version 4;
+  `cx317_h1_bench_v2.json` remains historical)
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md`

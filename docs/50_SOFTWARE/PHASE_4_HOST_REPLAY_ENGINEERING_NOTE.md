@@ -16,8 +16,49 @@ CTL actuation_authorized=false
 CTL actionable=false
 ```
 
-Firmware observe-only parity, live measurement qualification, and every active
+Host/live estimator parity is covered by native fixtures. Live measurement
+qualification, physical gate-aperture qualification, and every active
 actuation gate remain incomplete.
+
+## Verified pre-change finding
+
+The mismatch was confirmed before correction:
+
+- `profiles/plant_models/cx317_h1_bench_v2.json`,
+  `plant_response.applicability.measurement_backend`, declared the PIO
+  long-gate backend "with LOCAL_PPS_INTERPOLATED host estimator."
+- `host/otis_tools/h1_characterize.py`,
+  `LocalPpsTimeMapper.map_tick()` and `estimate_gate()`, derived the Run 020
+  frequency observations by mapping `gate_open_ticks` and `gate_close_ticks`
+  independently through the accepted-PPS segment, then calculating
+  `counted_edges / (pps_time_close - pps_time_open)`. Those observations feed
+  dwell medians, centre brackets, `Hz/code`/`Hz/V` gain, settling, and crossing
+  calculations used by the plant model.
+- the former `host/otis_tools/phase4_replay.py::_frequency_observation()`
+  handled exactly PPS-aligned endpoints by reference index, but for a
+  non-aligned gate used only the last two PPS observations at or before the
+  close: `r = (pps_last - pps_previous) / nominal_pps_seconds`, then
+  `f = counted_edges / ((close_ticks - open_ticks) / r)`. With fewer than two
+  PPS observations it used nominal capture-domain rate.
+- the former live path in
+  `firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp`,
+  `otis_phase4_observe_preview_on_count()`, always used
+  `last_reference_ticks - previous_reference_ticks` as the tick rate for the
+  complete gate. It had no independent open-boundary mapping.
+
+Thus the H1 method used two independently selected bracketing PPS pairs, while
+Phase 4 generally used one closing-adjacent interval for both boundaries.
+They agree only in special cases, such as uniform PPS intervals or exactly
+aligned endpoints, and are materially different estimators.
+
+At review time H1 unwrapped `rp2040_timer0` rollover before interpolation and
+split support at cadence-rejected intervals. Phase 4 host also unwrapped input
+ticks, while live used modular gate arithmetic plus a run-wide reference epoch.
+Host/live checked reference flags, cadence, age, and monotonicity, but those
+validity checks did not change the one-interval frequency formula. The
+corrected contract now makes clean flags, increasing sequence, 0.8..1.2 s
+cadence, one timing domain, no cross-gap interpolation, and no extrapolation
+part of the estimator itself.
 
 ## Contracts and configuration
 
@@ -28,8 +69,8 @@ The normative derived record contracts are:
 
 Strict field ordering and semantic validation live with the existing host CSV
 contracts in `host/otis_tools/contracts.py`. The default replay configuration
-is `profiles/discipline/phase4_host_replay_v1.json`, with its machine-readable
-shape in `schemas/phase4_replay_config_v1.schema.json`. The canonical
+is `profiles/discipline/phase4_host_replay_v2.json`, with its machine-readable
+shape in `schemas/phase4_replay_config_v2.schema.json`. The canonical
 configuration is SHA-256 hashed into every `EST` and `CTL` row.
 
 Unknown numerical values remain empty CSV fields. Reason fields use stable,
@@ -47,14 +88,30 @@ and validates their existing contracts before replay. It adapts:
 - compatibility `STS` diagnostics;
 - latest confirmed `DAC` evidence;
 - manifest domain, oscillator, topology, and backend identity;
-- plant-model version 3.
+- plant-model version 4.
 
-Accepted reference intervals qualify the count gate and, when the gate
-boundaries match reference captures, define its elapsed reference time.
-Otherwise the latest accepted reference interval calibrates the local capture
-tick rate. Reference flags, age, cadence, and continuity remain explicit.
-Count zero, saturation, flags, age, and sequence continuity remain separate
-conclusions.
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` is the only model-applicable observation
+method. Let `P(t)` be a piecewise-linear mapping between adjacent accepted PPS
+captures. For count-window ticks `t0`, `t1` and edge count `N`:
+
+```text
+P(t0) = P0 + (t0 - T0) * (P1 - P0) / (T1 - T0)
+P(t1) = Q0 + (t1 - U0) * (Q1 - Q0) / (U1 - U0)
+gate_reference_seconds = P(t1) - P(t0)
+frequency_hz = N / gate_reference_seconds
+```
+
+`T0,T1` independently surround the start; `U0,U1` independently surround the
+end. They may be different PPS pairs many intervals apart. The method never
+substitutes raw gate ticks multiplied by one recent PPS scale factor.
+
+Accepted support has clean reference flags, strictly increasing reference
+sequence, one timing domain, and adjacent cadence in 0.8..1.2 nominal seconds.
+RP2040 capture ticks are unwrapped before mapping. Rejected intervals split
+support into separate segments. No extrapolation is allowed. Missing preceding
+or following support, a segment crossing, support loss/overwrite, invalid
+count window, non-positive mapped duration, or impossible result makes the
+frequency observation unavailable and preview-ineligible.
 
 The estimator is a bounded arithmetic mean of accepted frequency observations.
 Its confidence is based on configured sample count, dispersion, observation
@@ -81,7 +138,8 @@ The preview policy requires:
 
 - an estimator-eligible `EST`;
 - healthy timing-path diagnostics;
-- a valid model-version-3 artifact;
+- a valid model-version-4 artifact;
+- an estimator-method contract equal to the executed method and definition hash;
 - matching topology and measurement backend identity in the manifest;
 - an applied DAC code within model applicability;
 - a count sequence not excluded by the model;
@@ -112,7 +170,7 @@ input identity explicitly:
 {
   "phase4_replay": {
     "hardware_topology_id": "h1_run_020_g17_reworked_d14_d10_pps_witness",
-    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE with LOCAL_PPS_INTERPOLATED host estimator"
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE"
   }
 }
 ```
@@ -123,9 +181,9 @@ proposal. It never falls back to assumed topology.
 The command writes only:
 
 ```text
-<run>/derived/phase4_replay_v1/estimates_v1.csv
-<run>/derived/phase4_replay_v1/control_previews_v1.csv
-<run>/derived/phase4_replay_v1/replay_report_v1.json
+<run>/derived/phase4_replay_v2/estimates_v1.csv
+<run>/derived/phase4_replay_v2/control_previews_v1.csv
+<run>/derived/phase4_replay_v2/replay_report_v2.json
 ```
 
 Files outside `derived/` are hashed before and after replay. Any change aborts
@@ -153,20 +211,33 @@ The focused fixture matrix covers:
 - repeated execution with byte-identical EST, CTL, and report products;
 - source-evidence hashes unchanged before and after.
 
-Verification on 29 July 2026:
+The fixture matrix additionally covers aligned and non-aligned boundaries,
+different local PPS intervals at each boundary, jitter/non-uniform cadence,
+many-interval gates, rollover, missing support, flagged/anomalous PPS,
+sequence regression, invalid windows, a deliberate one-interval-scaling
+counterexample, and exact native-firmware estimator parity.
+
+## Historical compatibility
+
+Existing `derived/phase4_replay_v1/` outputs retain estimator identity
+`phase4_frequency_mean_v1`. That algorithm used the latest adjacent PPS
+interval to scale a whole non-aligned count gate and could fall back to the
+nominal capture rate. It is deliberately not relabelled as the corrected
+method and is not applicable to the version-4 plant model.
+
+Corrected products are regenerated only under `derived/phase4_replay_v2/`.
+They carry policy identity `phase4_observe_preview_v2`; the historical v1
+policy identity is not reused for the strengthened applicability check.
+Raw `REF` and `CNT` evidence is never changed. The old
+`cx317_h1_bench_v2.json` model remains historical; the current
+`cx317_h1_bench_v3.json` / model version 4 carries the method contract.
+
+Verification is run with:
 
 ```text
-python3 -m pytest -q tests/test_phase4_replay.py tests/test_diagnostics_contract.py tests/test_plant_model.py tests/test_run_020_preflight.py
-32 passed, 2 skipped in 0.28s
-
-python3 -m pytest -q
-175 passed, 2 skipped in 7.95s
+python3 -m pytest -q tests/test_phase4_boundary_estimator.py \
+  tests/test_phase4_replay.py tests/test_phase4_firmware_parity.py
 ```
-
-The two skips are the legacy preflight checks that execute the locally retained
-Run 020 operator script when that ignored run is present. A fresh clone now
-skips them in accordance with the repository evidence policy instead of
-failing because `runs/` is absent.
 
 ## Risk assessment
 
@@ -180,12 +251,14 @@ failing because `runs/` is absent.
 | Invalid count after acquisition retains an old proposal | Post-qualification count faults latch `FAULT`; inhibited CTL rows contain no proposed code. |
 | Model dynamics overstated | Preview uses only the static local gain and existing manual step/range limits; no settling controller, PI/PID, Kalman, thermal, or holdover predictor is implemented. |
 | Replay damages evidence | Non-derived files are content-hashed before/after; managed outputs never replace different bytes. |
-| Host/firmware meanings diverge | Firmware parity is explicitly the next gate and remains unclaimed. |
+| Host/firmware meanings diverge | The exact production C++ estimator is compiled on the host and compared with replay for valid results, invalid results, reason codes, and boundary provenance. |
+| Semantic correction mistaken for aperture qualification | Explicitly separate: estimator consistency is corrected; physical PPS-gated aperture, latency, and uncertainty qualification remain unresolved. |
 
 ## Gate effect
 
-This change passes roadmap milestone M2, host observe-only discipline replay.
-It does not pass M3 firmware parity, M4 live discipline measurement, or any
+This change corrects the Phase 4 estimator semantics and deterministic
+host/live parity. It does not qualify the physical gate aperture, establish
+traceable uncertainty, pass the long live measurement gate, or authorize any
 guarded-actuation milestone.
 
 Subsequent Phase 4 work implements and fixture-qualifies the live firmware

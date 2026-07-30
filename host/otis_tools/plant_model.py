@@ -6,6 +6,8 @@ import argparse
 import json
 from typing import Any
 
+from .phase4_boundary_estimator import estimator_method_contract
+
 
 @dataclass(frozen=True)
 class PlantModel:
@@ -214,6 +216,20 @@ def _validate_applicability(applicability: Any, errors: list[str]) -> None:
         return
     if applicability.get("mode") != "observe_only":
         errors.append("plant_response.applicability.mode must be observe_only for H1 plant models")
+    method_contract = applicability.get("estimator_method_contract")
+    if method_contract is not None and not isinstance(method_contract, dict):
+        errors.append(
+            "plant_response.applicability.estimator_method_contract must be an object"
+        )
+    elif isinstance(method_contract, dict):
+        expected_contract = estimator_method_contract()
+        if method_contract.get("method_definition_hash") != expected_contract[
+            "method_definition_hash"
+        ]:
+            errors.append(
+                "plant_response.applicability.estimator_method_contract "
+                "has an unknown method_definition_hash"
+            )
     range_data = applicability.get("dac_code_range")
     if not isinstance(range_data, dict):
         errors.append("plant_response.applicability.dac_code_range must be an object")
@@ -232,6 +248,12 @@ def _validate_model_envelopes(data: dict[str, Any], errors: list[str]) -> None:
     manual_range = dac.get("manual_safe_range_codes")
     crossing = plant_response.get("crossing_estimate")
     applicability = plant_response.get("applicability")
+    if data.get("model_version", 0) >= 4 and isinstance(applicability, dict):
+        if not isinstance(applicability.get("estimator_method_contract"), dict):
+            errors.append(
+                "model_version >= 4 requires "
+                "plant_response.applicability.estimator_method_contract"
+            )
     if not isinstance(auto_range, dict) or not isinstance(manual_range, dict):
         return
 

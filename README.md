@@ -40,7 +40,7 @@ open-loop OCXO/DAC characterization:
 - the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
 
 The current H1 CX317/AD5693R plant model is
-`profiles/plant_models/cx317_h1_bench_v2.json`. Run 019 supplies broad
+`profiles/plant_models/cx317_h1_bench_v3.json` (model version 4). Run 019 supplies broad
 monotonicity and gain; Run 020 supplies the direct local crossing bracket,
 drift-cancelled gain, repeatability, and settling evidence. The observe-only
 model records a crossing near `0xA950`, local gain
@@ -57,11 +57,14 @@ run evidence, the model, diagnostics, policy, and configuration with:
 python3 -m host.otis_tools.phase4_replay /path/to/local/run
 ```
 
-It writes only beneath the run's `derived/phase4_replay_v1/` directory, verifies
+It writes only beneath the run's `derived/phase4_replay_v2/` directory, verifies
 that source-evidence hashes remain unchanged, and contains no DAC write path.
 The opt-in live firmware engine now passes deterministic fixture parity and
 emits the same normative `EST`/`CTL` contracts without a callable actuation
-route. Target USB-load/reconnect testing and a long live observe-only run are
+route. Host and live frequency observations use
+`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`: each count-window boundary is mapped
+independently between its surrounding accepted PPS observations, with no
+extrapolation. Target USB-load/reconnect testing and a long live observe-only run are
 still required, so the firmware-parity exit gate and all active actuation
 remain incomplete. See
 `docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`.

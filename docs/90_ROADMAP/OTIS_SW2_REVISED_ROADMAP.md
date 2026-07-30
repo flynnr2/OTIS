@@ -9,7 +9,7 @@ on 29 July 2026
 **Current evidence caveat:** `run_019` remains the broad CX317/AD5693R
 response reference. The completed and sealed `run_020` supplies the focused
 crossing-region evidence and supports the versioned observe-only model
-`profiles/plant_models/cx317_h1_bench_v2.json`. Its applicability is local to
+`profiles/plant_models/cx317_h1_bench_v3.json` (model version 4). Its applicability is local to
 `0xA800..0xB400`; the narrower `0xA800..0xAB00` automatic range is a recorded
 candidate only. Endpoint hysteresis, a direct `run_020` DAC-voltage
 measurement, and an independently identifiable temperature model remain
@@ -589,8 +589,9 @@ actuation requires a later, separate gate.
 
 ### Status
 
-Passed for the Phase 3 observe-only handoff using `run_020`. The current model
-is `profiles/plant_models/cx317_h1_bench_v2.json` (model version 3).
+Passed for the Phase 3 observe-only handoff using `run_020`, with the Phase 4
+estimator-contract correction applied. The current model is
+`profiles/plant_models/cx317_h1_bench_v3.json` (model version 4).
 
 ### Required experiments
 
@@ -611,7 +612,7 @@ is `profiles/plant_models/cx317_h1_bench_v2.json` (model version 3).
 The versioned, machine-readable plant-model file is:
 
 ```text
-profiles/plant_models/cx317_h1_bench_v2.json
+profiles/plant_models/cx317_h1_bench_v3.json
 ```
 
 It should include:
@@ -707,13 +708,14 @@ deterministic replay without hardware actuation.
 
 Passed for host-only Phase 4 replay. The normative `EST v1` and observe-only
 `CTL v1` contracts, strict host validation, deterministic canonical-record
-adapter, simple frequency estimator, roadmap-aligned preview state machine,
-model-v3 applicability policy, bounded correction preview, replay CLI, and
+adapter, boundary-interpolated frequency estimator, roadmap-aligned preview
+state machine, model-v4 method-contract applicability policy, bounded correction preview, replay CLI, and
 fault/repeatability fixtures are implemented. Derived products are confined to
-the supplied run's `derived/phase4_replay_v1/` directory and source evidence is
+the supplied run's `derived/phase4_replay_v2/` directory and source evidence is
 content-hashed before and after.
 
-This status does not claim firmware parity, live PPS-gated measurement
+This status includes native host/firmware estimator parity but does not claim
+physical gate-aperture qualification, live PPS-gated measurement
 qualification, or active actuation. Every Phase 4 CTL remains preview-only,
 unauthorized, and non-actionable.
 
@@ -1204,13 +1206,14 @@ focused fixtures are present. DAC output is unchanged.
 
 Completed: frequency estimation and distinct validity, diagnostic, confidence,
 and eligibility gates consume existing canonical records. Output is confined to
-a run's `derived/phase4_replay_v1/` directory and raw/source hashes are checked
+a run's `derived/phase4_replay_v2/` directory and raw/source hashes are checked
 unchanged.
 
 ### Package 6 — Host preview controller
 
 Completed as a static model-inversion correction preview, not an integrating
-controller: the state machine requires plant-model version 3 and emits bounded
+controller: the state machine requires plant-model version 4 and the exact
+estimator-method contract, and emits bounded
 `CTL` proposals without a hardware write path. I-only accumulation remains a
 future guarded-actuation concern.
 

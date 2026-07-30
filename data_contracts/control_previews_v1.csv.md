@@ -49,7 +49,7 @@ mandatory. No field in this contract is permission to write a DAC.
 
 ## Policy semantics
 
-The policy consumes an eligible `EST`, a validated model-version-3 plant
+The policy consumes an eligible `EST`, a validated model-version-4 plant
 model, latest applied DAC evidence, and versioned configuration. It enforces:
 
 - model topology/backend identity and explicit applicability;
@@ -75,8 +75,9 @@ Reason-code families include `startup_inhibit_active`,
 `count_stale`, `count_zero`, `count_saturated`,
 `count_sequence_discontinuity`, `post_qualification_measurement_fault`,
 `plant_model_unavailable`, `plant_model_invalid`,
-`plant_model_version_not_3`, `plant_model_topology_mismatch`,
-`plant_model_backend_mismatch`, `input_outside_model_applicability`,
+`plant_model_version_not_4`, `plant_model_topology_mismatch`,
+`plant_model_backend_mismatch`, `plant_model_estimator_method_mismatch`,
+`input_outside_model_applicability`,
 `plant_model_excluded_count_sequence`, `dac_state_unavailable`,
 `estimator_underqualified_sample_count`, `estimator_dispersion_exceeded`,
 `preview_step_limited`, `preview_range_clamped`,

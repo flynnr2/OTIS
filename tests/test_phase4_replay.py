@@ -13,13 +13,13 @@ from host.otis_tools.phase4_replay import ReplayConfig, main, replay_phase4
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = ROOT / "profiles" / "plant_models" / "cx317_h1_bench_v2.json"
-DEFAULT_CONFIG = ROOT / "profiles" / "discipline" / "phase4_host_replay_v1.json"
-CONFIG_SCHEMA = ROOT / "schemas" / "phase4_replay_config_v1.schema.json"
+MODEL = ROOT / "profiles" / "plant_models" / "cx317_h1_bench_v3.json"
+DEFAULT_CONFIG = ROOT / "profiles" / "discipline" / "phase4_host_replay_v2.json"
+CONFIG_SCHEMA = ROOT / "schemas" / "phase4_replay_config_v2.schema.json"
 SCENARIOS = ROOT / "tests" / "fixtures" / "phase4_replay" / "scenarios_v1.json"
 TICK_HZ = 1_000_000
 TOPOLOGY = "h1_run_020_g17_reworked_d14_d10_pps_witness"
-BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE with LOCAL_PPS_INTERPOLATED host estimator"
+BACKEND = "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE"
 
 
 def _config(**changes: object) -> ReplayConfig:
@@ -288,7 +288,7 @@ def test_nominal_replay_is_strict_deterministic_and_preserves_sources(tmp_path: 
     assert previews[-1]["actuation_authorized"] == "false"
     assert previews[-1]["actionable"] == "false"
     assert previews[-1]["est_input_ref"] == estimates[-1]["estimate_id"]
-    assert previews[-1]["plant_model_version"] == "3"
+    assert previews[-1]["plant_model_version"] == "4"
     assert previews[-1]["policy_version"]
     assert previews[-1]["config_hash"] == estimates[-1]["config_hash"]
 
@@ -575,7 +575,7 @@ def test_known_dac_step_uses_h1_model_gain_and_latest_dac_evidence(tmp_path: Pat
     )
     assert before["current_dac_code"] == str(0xA950)
     assert after["current_dac_code"] == str(0xAC50)
-    assert after["plant_model_version"] == "3"
+    assert after["plant_model_version"] == "4"
     assert float(estimates[3]["frequency_observation_hz"]) - 10_000_000.0 == pytest.approx(
         expected_step_hz, abs=0.0006
     )

@@ -47,7 +47,7 @@ int main() {
   while (std::getline(std::cin, line)) {
     if (line.empty()) continue;
     std::vector<std::string> f = split(line);
-    if (f.size() != 23u || f[0] != "OBS") return 4;
+    if (f.size() != 24u || f[0] != "OBS") return 4;
     OtisPhase4Observation observation = {};
     observation.timestamp_ticks = std::stoull(f[1]);
     observation.elapsed_s = std::stod(f[2]);
@@ -64,16 +64,17 @@ int main() {
     observation.frequency_observation_hz = std::stod(f[11]);
     observation.model.available = boolean(f[12]);
     observation.model.valid = boolean(f[13]);
-    observation.model.version_3 = boolean(f[14]);
+    observation.model.version_4 = boolean(f[14]);
     observation.model.topology_match = boolean(f[15]);
     observation.model.backend_match = boolean(f[16]);
-    observation.model.input_in_applicability = boolean(f[17]);
-    observation.model.excluded_input = boolean(f[18]);
-    observation.model.gain_available = boolean(f[19]);
-    observation.model.hz_per_code = std::stod(f[20]);
-    observation.model.dac_available = boolean(f[21]);
+    observation.model.estimator_method_match = boolean(f[17]);
+    observation.model.input_in_applicability = boolean(f[18]);
+    observation.model.excluded_input = boolean(f[19]);
+    observation.model.gain_available = boolean(f[20]);
+    observation.model.hz_per_code = std::stod(f[21]);
+    observation.model.dac_available = boolean(f[22]);
     observation.model.current_dac_code =
-        (uint16_t)std::stoul(f[22]);
+        (uint16_t)std::stoul(f[23]);
     observation.model.candidate_min_code = 0xA800u;
     observation.model.candidate_max_code = 0xAB00u;
     observation.model.maximum_preview_step_codes = 0x0300u;

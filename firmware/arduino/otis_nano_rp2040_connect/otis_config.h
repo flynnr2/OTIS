@@ -39,7 +39,7 @@
 // this whenever the header-defined run configuration changes.
 #ifndef OTIS_FIRMWARE_CONFIG_ID
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
-#define OTIS_FIRMWARE_CONFIG_ID "phase4_observe_preview_v1"
+#define OTIS_FIRMWARE_CONFIG_ID "phase4_observe_preview_v2"
 #else
 #define OTIS_FIRMWARE_CONFIG_ID "phase5_pps_gated_qualification_v1"
 #endif
