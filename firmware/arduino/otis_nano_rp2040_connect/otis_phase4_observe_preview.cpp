@@ -530,7 +530,7 @@ void finalize_pending_count(uint64_t evaluation_ticks,
 
 }  // namespace
 
-void otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
+bool otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   constexpr double nominal_frequency_hz = (double)OTIS_NOMINAL_OCXO_HZ;
 #else
@@ -562,6 +562,7 @@ void otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
   estimator_reference_count = estimator_reference_next = 0u;
   last_boundary_reason = OTIS_PHASE4_BOUNDARY_OK;
   pending_count_overwrite_count = 0u;
+  return true;
 }
 
 void otis_phase4_observe_preview_emit_headers(void) {

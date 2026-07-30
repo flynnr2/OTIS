@@ -109,6 +109,12 @@ BootPhase unpack_phase(uint32_t value) {
       return BootPhase::RunMode;
     case 11u:
       return BootPhase::Fatal;
+    case 12u:
+      return BootPhase::PeripheralsInit;
+    case 13u:
+      return BootPhase::PreviewInit;
+    case 14u:
+      return BootPhase::CapabilityAudit;
     default:
       return BootPhase::Fatal;
   }
@@ -140,6 +146,8 @@ BootFatal unpack_fatal(uint32_t packed) {
       return BootFatal::RepeatedBootFailure;
     case 11u:
       return BootFatal::ResourceOwnershipConflict;
+    case 12u:
+      return BootFatal::RequiredCapabilityUnavailable;
     default:
       return BootFatal::InvalidBootConfig;
   }
@@ -193,6 +201,12 @@ const char *otisBootPhaseName(BootPhase phase) {
       return "SerialInit";
     case BootPhase::ProtocolBanner:
       return "ProtocolBanner";
+    case BootPhase::PeripheralsInit:
+      return "PeripheralsInit";
+    case BootPhase::PreviewInit:
+      return "PreviewInit";
+    case BootPhase::CapabilityAudit:
+      return "CapabilityAudit";
     case BootPhase::RunMode:
       return "RunMode";
     case BootPhase::Fatal:
@@ -228,6 +242,8 @@ const char *otisBootFatalName(BootFatal fatal) {
       return "RepeatedBootFailure";
     case BootFatal::ResourceOwnershipConflict:
       return "ResourceOwnershipConflict";
+    case BootFatal::RequiredCapabilityUnavailable:
+      return "RequiredCapabilityUnavailable";
     default:
       return "Unknown";
   }

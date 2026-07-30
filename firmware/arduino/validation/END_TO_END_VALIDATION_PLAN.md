@@ -16,6 +16,11 @@ A validation leg passes only when all of these are true:
 
 - firmware compiles with the intended mode/backend flags;
 - `BOOT` appears and `BOOT_FATAL` does not appear;
+- `boot_capabilities,run_mode=Ready` appears only after all selected required
+  capabilities report `Ready`;
+- `resource_registry,valid=true` and `resource_registry,complete=true` both
+  appear;
+- any selected optional failure is reported as `OptionalDegraded`;
 - serial output remains parseable as ordinary OTIS CSV/boot records;
 - expected `EVT`, `REF`, `CNT`, `STS`, `DAC`, or `ENV` families appear for the
   selected mode;

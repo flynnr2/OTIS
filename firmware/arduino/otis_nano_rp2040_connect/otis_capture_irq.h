@@ -25,7 +25,7 @@ void otis_capture_irq_set_pps_count_boundary_handler(
     OtisPpsCountBoundaryIsrHandler handler);
 uint32_t otis_capture_irq_edge_count(void);
 void otis_capture_irq_get_reference_stats(OtisCaptureIrqReferenceStats *out);
-void otis_capture_irq_begin_tcxo_counter(uint32_t gpio);
+bool otis_capture_irq_begin_tcxo_counter(uint32_t gpio);
 uint32_t otis_capture_irq_read_and_reset_tcxo_count(void);
 
 #endif

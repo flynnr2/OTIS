@@ -76,17 +76,21 @@ def test_registry_preflight_precedes_safe_mode_and_hardware_mode_setup() -> None
         encoding="utf-8"
     )
     setup = source[source.index("void setup()") : source.index("void loop()")]
-    assert setup.index("otis_resource_registry_begin()") < setup.index(
+    assert setup.index("boot_phase_early_init()") < setup.index(
         "otisBootSafeModeRequested()"
     )
+    early_start = source.index("void boot_phase_early_init(void)")
+    early_end = source.index("void boot_phase_clocks_init(void)", early_start)
+    assert "otis_resource_registry_begin()" in source[early_start:early_end]
 
     run_mode_start = source.index("void boot_phase_run_mode(void)")
     run_mode_end = source.index("void service_loopback_output(void)", run_mode_start)
     run_mode = source[run_mode_start:run_mode_end]
-    assert run_mode.index("setup_mode();") < run_mode.index(
-        "emit_resource_ownership_status();"
+    assert "setup_mode();" not in run_mode
+    assert run_mode.index("otis_boot_capability_mark_run_mode(") < run_mode.index(
+        "enter_boot_phase(BootPhase::RunMode)"
     )
-    assert run_mode.index("emit_resource_ownership_status();") < run_mode.index(
+    assert run_mode.index("enter_boot_phase(BootPhase::RunMode)") < run_mode.index(
         "otisBootBreadcrumbMarkRunMode();"
     )
     loop = source[source.index("void loop()") :]

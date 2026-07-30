@@ -130,9 +130,10 @@ void otis_capture_irq_get_reference_stats(OtisCaptureIrqReferenceStats *out) {
   interrupts();
 }
 
-void otis_capture_irq_begin_tcxo_counter(uint32_t gpio) {
+bool otis_capture_irq_begin_tcxo_counter(uint32_t gpio) {
   attachInterrupt(digitalPinToInterrupt(gpio), handle_tcxo_observation_edge,
                   RISING);
+  return true;
 }
 
 uint32_t otis_capture_irq_read_and_reset_tcxo_count(void) {

@@ -37,7 +37,7 @@ size_t otis_transport_write_uint32(uint32_t value) {
 }
 
 size_t otis_transport_available_for_write(void) { return 4096u; }
-void otis_transport_begin(uint32_t) {}
+bool otis_transport_begin(uint32_t) { return true; }
 void otis_transport_flush_if_needed(void) {}
 bool otis_transport_ready(void) { return true; }
 

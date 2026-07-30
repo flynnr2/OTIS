@@ -11,7 +11,7 @@ std::string output;
 
 }  // namespace
 
-void otis_transport_begin(uint32_t) {}
+bool otis_transport_begin(uint32_t) { return true; }
 
 size_t otis_transport_write_char(char value) {
   output.push_back(value);

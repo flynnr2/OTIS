@@ -2,8 +2,9 @@
 
 #include <Arduino.h>
 
-void otis_transport_begin(uint32_t baud) {
+bool otis_transport_begin(uint32_t baud) {
   Serial.begin(baud);
+  return true;
 }
 
 size_t otis_transport_write_char(char c) {

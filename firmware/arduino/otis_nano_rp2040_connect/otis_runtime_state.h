@@ -32,6 +32,7 @@ struct OtisBootRuntimeState {
   bool serial_absent_warn_pending;
   bool safe_mode_active;
   bool safe_mode_warn_pending;
+  bool degraded;
 };
 
 struct OtisLoopbackRuntimeState {
