@@ -17,6 +17,15 @@ OTIS targets the Philhower Arduino-Pico core because it exposes the RP2040/Pico
 SDK surface, supports `setup1()` / `loop1()` multicore sketches, and leaves a
 practical route to PIO-backed capture while retaining an Arduino entrypoint.
 
+All evidentiary builds use `tools/firmware_matrix.py`. The builder verifies the
+pinned Arduino CLI, core archive, and compiler toolchain; computes the exact Git
+commit, clean/dirty state, canonical build-input and profile configuration
+hashes, and invocation identity; injects those values at compile time; and writes
+`firmware_build_provenance.json` next to each successful binary. Direct
+Arduino IDE/CLI compilation is rejected because it cannot prove those values.
+The IDE remains useful for editing and serial monitoring, but not for producing
+a qualification binary.
+
 GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
 enforced by `otis_resource_registry.*`. The normative ownership ledger,
 diagnostic keys, compatibility notes, and risk assessment are in
@@ -31,11 +40,10 @@ arduino-cli board listall | grep -i "Nano RP2040"
 ## SW1 bring-up modes
 
 Select one bring-up mode in `otis_config.h` with `OTIS_SW1_BRINGUP_MODE`.
-The checked-in default is the observe-only Phase 5 PPS-gated qualification
-candidate in `H1_OCXO_OBSERVE_OPEN_LOOP`. The DAC driver, DAC sweep,
-environmental sensors, and Phase 4 preview are disabled. The config header is
-the preferred workflow for Arduino IDE builds; CLI `-D` overrides still work
-for scripted builds.
+The header defaults describe the observe-only Phase 5 PPS-gated qualification
+candidate in `H1_OCXO_OBSERVE_OPEN_LOOP`. The pinned matrix makes every
+supported profile selector explicit, so a build never relies on an operator
+remembering which defaults or `-D` overrides were active.
 
 | Mode | Purpose | Records |
 |---|---|---|
@@ -99,18 +107,16 @@ capture remains the default rollback path:
 #define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_IRQ
 ```
 
-Enable the experimental PIO path with:
+The experimental PIO selector is:
 
 ```cpp
 #define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_PIO_FIFO
 ```
 
-or with a CLI override:
+Build the intentional sparse loopback tuple through the matrix:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS -DOTIS_CAPTURE_BACKEND=OTIS_CAPTURE_BACKEND_PIO_FIFO -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile gpio_loopback_pio_capture
 ```
 
 The SW1.5a PIO backend claims one unused PIO0 state machine and observes rising
@@ -349,11 +355,12 @@ characterization, mount the SHT4x near the VCOCXO can/control-node area and use
 temperature is secondary; BMP280 pressure is useful bench context.
 
 During the boot banner, firmware emits `STS` provenance rows for schema version,
-firmware name/version/git commit, board target, Arduino core, bring-up mode,
-capture mode, nominal reference frequencies, pin mapping, and compile-time
-feature flags. The checked-in Phase 5 IDE profile carries its reviewed source
-commit explicitly; scripted builds may override it with
-`-DOTIS_FIRMWARE_GIT_COMMIT=\"<hash>\"`.
+firmware name/version, exact Git commit and clean/dirty state, deterministic
+configuration hash, build profile/invocation identity, FQBN/board, exact
+Arduino core and compiler/toolchain, bring-up mode, capture mode, nominal
+reference frequencies, pin mapping, and compile-time feature flags. These
+identity fields are required build-generated inputs; source literals and
+operator overrides are rejected by the supported build path.
 
 Status LED support is compiled out by default. Set
 `OTIS_ENABLE_STATUS_LED` to `1` in `otis_config.h` only for local bring-up
@@ -480,55 +487,40 @@ reads invalidate the input immediately; samples older than
 count-sequence exclusions are not applied to unrelated live sequence numbers.
 
 The checked-in default remains disabled. Build the explicit preview variant
-with:
+with exact provenance:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile phase4_observe_only
 ```
 
 See
 `../../../docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`
 for parity results, the selector matrix, and the still-open live bench gate.
 
-## CLI compile and upload
+## Pinned compile matrix and upload
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --check-environment
+python3 tools/firmware_matrix.py --list
+python3 tools/firmware_matrix.py
 ```
 
-For scripted builds, config values can be overridden without editing
-`otis_config.h`:
+The full command compiles the eight intentional supported tuples and verifies
+that three known-invalid tuples fail with their named guard. Build one
+qualification binary with:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_SYNTHETIC_USB \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPIO_LOOPBACK -DOTIS_ENABLE_PPS_DUAL_OBSERVER=0" \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_TCXO_OBSERVE \
-  firmware/arduino/otis_nano_rp2040_connect
-
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_H1_OCXO_OBSERVE -DOTIS_ENABLE_DAC_AD5693R=1" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
-Upload by adding the detected port:
+The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
+binary and its full provenance document. Upload the already-built artifact
+without recompiling:
 
 ```bash
-arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags=-DOTIS_SW1_BRINGUP_MODE=OTIS_SW1_MODE_GPS_PPS \
-  firmware/arduino/otis_nano_rp2040_connect
+arduino-cli upload -p /dev/cu.usbmodemXXXX \
+  --fqbn rp2040:rp2040:arduino_nano_connect \
+  --input-dir build/firmware_matrix/phase5_qualification/artifacts
 ```
 
 Capture serial into a run directory by piping monitor output through the host

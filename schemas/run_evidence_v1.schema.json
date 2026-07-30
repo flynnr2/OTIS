@@ -62,6 +62,78 @@
         }
       }
     },
+    "firmware_build_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arduino_cli_version",
+        "board",
+        "compiler",
+        "config_sha256",
+        "core_provider",
+        "core_version",
+        "fqbn",
+        "git_commit",
+        "invocation_id",
+        "profile_id",
+        "source_sha256",
+        "source_state",
+        "toolchain"
+      ],
+      "properties": {
+        "arduino_cli_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "board": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compiler": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "core_provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "core_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fqbn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "git_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "invocation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_state": {
+          "enum": ["clean", "dirty"]
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "toolchain": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "snapshot_digest": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"

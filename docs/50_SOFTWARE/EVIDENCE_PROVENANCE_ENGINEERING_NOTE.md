@@ -7,11 +7,19 @@ OTIS completed runs can now be sealed by a deterministic, versioned
 which artifacts should exist and an auditable record of the exact bytes that
 were observed.
 
-The implementation is intentionally host-side and narrow. It does not change
-firmware records, telemetry contracts, capture ordering, analysis, or control.
-Raw evidence remains untouched. If a run selects a repository profile, sealing
+Run sealing remains host-side and does not change capture ordering, analysis,
+or control. Firmware now emits build-generated identity rows, and sealing binds
+their exact source/configuration hashes, Git state, FQBN/board, core, compiler,
+toolchain, profile, and invocation identity into the canonical snapshot. Raw
+evidence remains untouched. If a run selects a repository profile, sealing
 copies its exact bytes to `selected_profile.yaml` before hashing so later
 repository profile edits cannot silently change replay context.
+
+Qualification firmware is produced only by `tools/firmware_matrix.py`. The
+builder verifies pinned Arduino CLI/core/toolchain inputs, rejects profile
+attempts to override generated identity, hashes all sketch/build-definition
+inputs, and supplies a generated header outside the source tree. The firmware
+has no fallback commit or configuration literal.
 
 Multi-session captures require the same preservation rule. A reset or reconnect
 may define a later authoritative session, but the original raw capture remains

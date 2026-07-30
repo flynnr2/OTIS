@@ -29,6 +29,15 @@ The snapshot covers:
 - every regular file below `raw/`, plus legacy root-level raw serial logs;
 - every existing file declared by the run manifest.
 
+When the declared `health_v1` evidence contains the build-generated firmware
+provenance banner, the snapshot also records the exact emitted Git commit,
+clean/dirty source state, canonical build-input source hash, configuration hash,
+profile, FQBN/board, Arduino core provider/version, compiler/toolchain, Arduino
+CLI version, and build invocation identity as `firmware_build_provenance`.
+These values are derived from the sealed device output; a detached build-side
+claim is not substituted for what the device reported. A partial provenance
+banner is rejected.
+
 Reports, plots, and derived products are covered only when the run manifest
 declares them. They are otherwise reproducible outputs, not primary evidence.
 The `COMPLETE` marker and the snapshot file itself are deliberately excluded.
@@ -38,7 +47,8 @@ The `COMPLETE` marker and the snapshot file itself are deliberately excluded.
 Every artifact entry records a normalized run-relative path, evidence role,
 byte length, and lowercase SHA-256 digest. Entries are sorted bytewise by path.
 `snapshot_digest` is SHA-256 over compact, UTF-8 JSON with sorted object keys
-containing exactly:
+containing exactly the following base fields, plus
+`firmware_build_provenance` when emitted by the device:
 
 ```text
 schema_version, run_id, run_state, digest_algorithm, artifacts

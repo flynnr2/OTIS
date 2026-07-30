@@ -148,9 +148,7 @@ The checked-in default remains `OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=0`. An
 observe-only build uses:
 
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:arduino_nano_connect \
-  --build-property compiler.cpp.extra_flags="-DOTIS_ENABLE_PHASE4_OBSERVE_PREVIEW=1" \
-  firmware/arduino/otis_nano_rp2040_connect
+python3 tools/firmware_matrix.py --profile phase4_observe_only
 ```
 
 The corrected H1 PIO-long-gate preview build used 93,504 bytes of program

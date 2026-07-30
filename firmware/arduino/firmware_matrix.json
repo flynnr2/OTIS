@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "builder_id": "otis_firmware_matrix_v1",
+  "arduino_cli_version": "1.4.1",
+  "target": {
+    "fqbn": "rp2040:rp2040:arduino_nano_connect",
+    "board": "arduino_nano_rp2040_connect",
+    "core_provider": "rp2040",
+    "core_architecture": "rp2040",
+    "core_version": "6.0.0",
+    "core_archive_sha256": "d2163a321748be872a29cb99ead739840990d3ddf0935de756eb52f9fc2b5d46"
+  },
+  "toolchain": {
+    "packager": "rp2040",
+    "name": "pqt-gcc",
+    "version": "5.0.0-9576866",
+    "compiler": "arm-none-eabi-g++",
+    "compiler_version": "16.1.0"
+  },
+  "profiles": [
+    {
+      "id": "phase5_qualification",
+      "purpose": "Phase 5 observe-only PPS-gated boundary qualification candidate.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
+      }
+    },
+    {
+      "id": "phase4_observe_only",
+      "purpose": "Live Phase 4 estimator/control-preview telemetry with actuation structurally disabled.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "1",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "h1_characterization",
+      "purpose": "H1 raw-edge long-gate characterization without an actuator.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
+      "id": "h1_lab_actuator",
+      "purpose": "Explicit operator-started H1 AD5693R characterization and sweep instrument.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "1",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
+      "id": "synthetic_usb",
+      "purpose": "Deterministic USB framing and parser sanity profile.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_SYNTHETIC_USB",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "gpio_loopback_pio_capture",
+      "purpose": "Sparse GPIO loopback using the PIO FIFO capture backend.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPIO_LOOPBACK",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "gps_pps_irq_capture",
+      "purpose": "GPS PPS reference capture using the conservative IRQ backend.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "tcxo_fc0_observe",
+      "purpose": "TCXO observation using IRQ PPS capture and the FC0/GPIN0 counter.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_TCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "invalid_pps_ratio_with_pio_capture",
+      "purpose": "Guard the single IRQ-owned PPS/count boundary authority.",
+      "expect": "fail",
+      "expected_error": "PPS_GATED_RATIO requires the GPIO IRQ capture backend",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_PIO_FIFO",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "invalid_lab_actuator_outside_h1",
+      "purpose": "Guard the explicit laboratory actuator profile boundary.",
+      "expect": "fail",
+      "expected_error": "AD5693R lab actuation is supported only in H1 OCXO observe mode",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0"
+      }
+    },
+    {
+      "id": "invalid_sweep_without_actuator",
+      "purpose": "Guard against compiling sweep commands without the DAC actuator.",
+      "expect": "fail",
+      "expected_error": "The H1 DAC sweep requires the explicit AD5693R lab actuator profile",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "1"
+      }
+    }
+  ]
+}

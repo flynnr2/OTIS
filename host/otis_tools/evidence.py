@@ -3,8 +3,10 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 import argparse
+import csv
 import json
 import os
+import re
 import shutil
 
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
@@ -15,6 +17,23 @@ EVIDENCE_SCHEMA_VERSION = 1
 DIGEST_ALGORITHM = "sha256"
 PROFILE_SNAPSHOT = "selected_profile.yaml"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FIRMWARE_PROVENANCE_STATUS_FIELDS = {
+    ("firmware", "git_commit"): "git_commit",
+    ("firmware", "source_state"): "source_state",
+    ("firmware", "source_hash"): "source_sha256",
+    ("firmware", "config_hash"): "config_sha256",
+    ("system", "board"): "board",
+    ("system", "fqbn"): "fqbn",
+    ("system", "arduino_core_provider"): "core_provider",
+    ("system", "arduino_core_version"): "core_version",
+    ("build", "profile_id"): "profile_id",
+    ("build", "toolchain"): "toolchain",
+    ("build", "compiler"): "compiler",
+    ("build", "arduino_cli_version"): "arduino_cli_version",
+    ("build", "invocation_id"): "invocation_id",
+}
+LOWER_HEX_40 = re.compile(r"^[0-9a-f]{40}$")
+LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class EvidenceError(ValueError):
@@ -49,13 +68,18 @@ def _artifact_path(run_dir: Path, rel_path: str) -> Path:
 
 
 def _snapshot_payload(snapshot: dict) -> dict:
-    return {
+    payload = {
         "schema_version": snapshot["schema_version"],
         "run_id": snapshot["run_id"],
         "run_state": snapshot["run_state"],
         "digest_algorithm": snapshot["digest_algorithm"],
         "artifacts": snapshot["artifacts"],
     }
+    if "firmware_build_provenance" in snapshot:
+        payload["firmware_build_provenance"] = snapshot[
+            "firmware_build_provenance"
+        ]
+    return payload
 
 
 def _snapshot_digest(snapshot: dict) -> str:
@@ -113,6 +137,69 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
     return sources
 
 
+def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None:
+    values: dict[str, str] = {}
+    for entry in manifest.files:
+        if entry.get("contract") != "health_v1":
+            continue
+        rel_path = _safe_relative_path(entry.get("path"))
+        path = _artifact_path(run_dir, rel_path)
+        if not path.is_file():
+            if entry.get("optional"):
+                continue
+            raise EvidenceError(
+                f"cannot extract firmware provenance from missing {rel_path}"
+            )
+        try:
+            with path.open("r", newline="", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    output_key = FIRMWARE_PROVENANCE_STATUS_FIELDS.get(
+                        (row.get("component", ""), row.get("status_key", ""))
+                    )
+                    if output_key is None:
+                        continue
+                    value = row.get("status_value", "")
+                    previous = values.get(output_key)
+                    if previous is not None and previous != value:
+                        raise EvidenceError(
+                            "conflicting emitted firmware provenance for "
+                            f"{output_key}: {previous!r} != {value!r}"
+                        )
+                    values[output_key] = value
+        except (OSError, csv.Error) as exc:
+            raise EvidenceError(
+                f"cannot extract firmware provenance from {rel_path}: {exc}"
+            ) from exc
+
+    if not values:
+        return None
+    required = set(FIRMWARE_PROVENANCE_STATUS_FIELDS.values())
+    missing = sorted(required - set(values))
+    if missing:
+        raise EvidenceError(
+            "emitted firmware build provenance is incomplete; missing "
+            + ", ".join(missing)
+        )
+    if not LOWER_HEX_40.fullmatch(values["git_commit"]):
+        raise EvidenceError("emitted firmware git_commit is not exact lowercase Git SHA-1")
+    for field in ("source_sha256", "config_sha256", "invocation_id"):
+        if not LOWER_HEX_64.fullmatch(values[field]):
+            raise EvidenceError(f"emitted firmware {field} is not lowercase SHA-256")
+    if values["source_state"] not in {"clean", "dirty"}:
+        raise EvidenceError("emitted firmware source_state must be clean or dirty")
+    for field in required - {
+        "git_commit",
+        "config_sha256",
+        "invocation_id",
+        "source_sha256",
+        "source_state",
+    }:
+        if not values[field]:
+            raise EvidenceError(f"emitted firmware {field} must be non-empty")
+    return dict(sorted(values.items()))
+
+
 def create_evidence_snapshot(run_dir: Path, allow_incomplete: bool = False) -> Path:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
@@ -151,6 +238,9 @@ def create_evidence_snapshot(run_dir: Path, allow_incomplete: bool = False) -> P
         "digest_algorithm": DIGEST_ALGORITHM,
         "artifacts": artifacts,
     }
+    firmware_build_provenance = _firmware_build_provenance(run_dir, manifest)
+    if firmware_build_provenance is not None:
+        snapshot["firmware_build_provenance"] = firmware_build_provenance
     snapshot["snapshot_digest"] = _snapshot_digest(snapshot)
     encoded = (json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     with destination.open("xb") as handle:
@@ -192,6 +282,7 @@ def validate_evidence_snapshot(run_dir: Path, manifest) -> tuple[list[str], list
         "run_state",
         "digest_algorithm",
         "artifacts",
+        "firmware_build_provenance",
         "snapshot_digest",
     }
     extra_snapshot_keys = set(snapshot) - allowed_snapshot_keys
@@ -201,6 +292,18 @@ def validate_evidence_snapshot(run_dir: Path, manifest) -> tuple[list[str], list
     if all(key in snapshot for key in required_snapshot_keys):
         if snapshot.get("snapshot_digest") != _snapshot_digest(snapshot):
             failures.append(f"{EVIDENCE_MANIFEST}: snapshot_digest does not match canonical snapshot content")
+
+    try:
+        emitted_provenance = _firmware_build_provenance(run_dir, manifest)
+    except EvidenceError as exc:
+        failures.append(str(exc))
+    else:
+        sealed_provenance = snapshot.get("firmware_build_provenance")
+        if emitted_provenance != sealed_provenance:
+            failures.append(
+                f"{EVIDENCE_MANIFEST}: firmware_build_provenance does not "
+                "match the emitted health evidence"
+            )
 
     seen: set[str] = set()
     listed: set[str] = set()

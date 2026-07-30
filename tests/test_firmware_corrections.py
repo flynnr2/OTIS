@@ -67,8 +67,6 @@ def test_phase5_ide_configuration_and_dormant_run_020_profile_are_exact() -> Non
 
     expected = {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
-        "OTIS_FIRMWARE_CONFIG_ID":
-            '"phase5_pps_isr_boundary_qualification_v1"',
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND":
             "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
@@ -93,10 +91,12 @@ def test_phase5_ide_configuration_and_dormant_run_020_profile_are_exact() -> Non
             config,
             flags=re.MULTILINE,
         )
-    assert re.search(
-        r'^#define OTIS_FIRMWARE_GIT_COMMIT "[0-9a-f]{40}"$',
+    assert "#define OTIS_FIRMWARE_CONFIG_ID OTIS_BUILD_PROFILE_ID" in config
+    assert '#define OTIS_FIRMWARE_GIT_COMMIT OTIS_BUILD_GIT_COMMIT' in config
+    assert not re.search(
+        r'^#define OTIS_BUILD_GIT_COMMIT "[0-9a-f]{40}"$',
         config,
-        flags=re.MULTILINE,
+        re.MULTILINE,
     )
 
     # The disabled Run 020 profile remains available for an explicit future
