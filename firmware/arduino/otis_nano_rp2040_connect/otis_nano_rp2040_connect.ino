@@ -1321,6 +1321,10 @@ bool h1_dac_sweep_apply_active_step(const char *event_name) {
   }
 
   bool ok = otis_dac_ad5693r_set_raw(step.code);
+  if (ok) {
+    otis_phase4_observe_preview_on_dac_applied(
+        clamped, otis_capture_ticks_now());
+  }
   h1_dac_sweep.last_requested_code = step.code;
   h1_dac_sweep.last_applied_code = ok ? clamped : h1_dac_sweep.last_applied_code;
   h1_dac_sweep.last_dwell_ms = step.dwell_ms;
@@ -1485,13 +1489,14 @@ void format_env_float(float value, char *buffer, size_t buffer_size) {
   snprintf(buffer, buffer_size, "%.3f", static_cast<double>(value));
 }
 
-void emit_env_sample(const OtisEnvSample &sample) {
+void emit_env_sample(const OtisEnvSample &sample,
+                     uint64_t timestamp_ticks) {
   if (!sample.valid) {
     return;
   }
   if (strcmp(sample.role, "vcocxo_near") == 0) {
     otis_phase4_observe_preview_on_temperature(
-        true, sample.temperature_c);
+        true, sample.temperature_c, timestamp_ticks);
   }
   char temperature[16];
   char humidity[16];
@@ -1508,7 +1513,7 @@ void emit_env_sample(const OtisEnvSample &sample) {
     pressure[0] = '\0';
   }
   otis_emit_environment(runtime_state.sequences.env_seq++,
-                        otis_capture_ticks_now(), OTIS_DOMAIN_RP2040_TIMER0,
+                        timestamp_ticks, OTIS_DOMAIN_RP2040_TIMER0,
                         sample.source, sample.role, temperature, humidity,
                         pressure, OTIS_FLAG_NONE);
 }
@@ -1524,12 +1529,16 @@ void service_environment_sensors(void) {
   OtisEnvSample sample;
 #if OTIS_ENABLE_ENV_SHT4X
   if (otis_env_sensors_read_sht4x(&sample)) {
-    emit_env_sample(sample);
+    const uint64_t timestamp_ticks = otis_capture_ticks_now();
+    emit_env_sample(sample, timestamp_ticks);
+  } else {
+    otis_phase4_observe_preview_on_temperature(
+        false, 0.0f, otis_capture_ticks_now());
   }
 #endif
 #if OTIS_ENABLE_ENV_BMP280
   if (otis_env_sensors_read_bmp280(&sample)) {
-    emit_env_sample(sample);
+    emit_env_sample(sample, otis_capture_ticks_now());
   }
 #endif
 #endif
@@ -1915,6 +1924,10 @@ void handle_dac_set(uint16_t requested_code) {
     return;
   }
   bool ok = otis_dac_ad5693r_set_raw(requested_code);
+  if (ok) {
+    otis_phase4_observe_preview_on_dac_applied(
+        requested_code, otis_capture_ticks_now());
+  }
   emit_status_u16_hex("dac", ok ? "accepted_code" : "failed_code",
                       requested_code,
                       ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,

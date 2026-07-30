@@ -134,11 +134,15 @@ uint8_t estimator_reference_count = 0u;
 uint8_t estimator_reference_next = 0u;
 OtisPhase4BoundaryReason last_boundary_reason = OTIS_PHASE4_BOUNDARY_OK;
 uint32_t pending_count_overwrite_count = 0u;
-bool plant_temperature_available = false;
+bool plant_temperature_observed = false;
+bool plant_temperature_valid = false;
 double plant_temperature_c = 0.0;
-bool plant_dac_code_seen = false;
+uint64_t plant_temperature_ticks = 0u;
+bool plant_dac_write_seen = false;
 uint16_t plant_last_dac_code = 0u;
 uint64_t plant_last_dac_change_ticks = 0u;
+bool plant_gate_open_seen = false;
+uint64_t plant_last_gate_open_ticks = 0u;
 
 uint64_t unwrap_ticks(uint64_t ticks) {
   // Count backends may already add one local timer epoch when a gate crosses
@@ -243,6 +247,21 @@ bool nearly_equal(double lhs, double rhs) {
   return isfinite(lhs) && isfinite(rhs) && fabs(lhs - rhs) <= 1e-9;
 }
 
+bool observed_gate_duration_acceptable(const OtisRuntimeState *runtime_state) {
+  if (runtime_state == nullptr ||
+      runtime_state->tcxo.last_gate_close_ticks <=
+          runtime_state->tcxo.last_gate_open_ticks)
+    return false;
+  const uint64_t gate_ticks = otis_timer0_interval_ticks(
+      runtime_state->tcxo.last_gate_open_ticks,
+      runtime_state->tcxo.last_gate_close_ticks);
+  const double observed_s = (double)gate_ticks / kCaptureDomainHz;
+  const double tolerance_s =
+      (double)OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US / 1000000.0;
+  return isfinite(observed_s) &&
+         fabs(observed_s - kRuntimeConfiguredGateDurationS) <= tolerance_s;
+}
+
 bool count_sequence_is_excluded(uint32_t count_seq) {
   for (uint32_t index = 0u;
        index < kPlantModelExcludedCountSequenceCount; ++index) {
@@ -253,7 +272,6 @@ bool count_sequence_is_excluded(uint32_t count_seq) {
 
 OtisPhase4ModelInput model_input(
     const OtisPhase4LiveDacState *dac,
-    const OtisRuntimeState *runtime_state,
     uint64_t ticks,
     uint32_t count_seq,
     bool replaying_model_source_evidence) {
@@ -278,53 +296,70 @@ OtisPhase4ModelInput model_input(
           (double)OTIS_PPS_GATE_MAX_INTERVAL_US / 1000000.0,
           kPlantModelReferenceIntervalMaxS) &&
       kReferenceInvalidFlags == kPlantModelReferenceInvalidFlagMask;
-  bool observed_gate_matches = true;
-  if (runtime_state != nullptr &&
-      runtime_state->tcxo.last_gate_close_ticks >
-          runtime_state->tcxo.last_gate_open_ticks) {
-    const uint64_t gate_ticks = otis_timer0_interval_ticks(
-        runtime_state->tcxo.last_gate_open_ticks,
-        runtime_state->tcxo.last_gate_close_ticks);
-    observed_gate_matches = nearly_equal(
-        (double)gate_ticks / kCaptureDomainHz,
-        kPlantModelGateDurationS);
-  }
   model.backend_match =
       strcmp(kPlantModelMeasurementBackend,
              kRuntimeMeasurementBackend) == 0 &&
       nearly_equal(kPlantModelGateDurationS,
-                   kRuntimeConfiguredGateDurationS) &&
-      observed_gate_matches;
+                   kRuntimeConfiguredGateDurationS);
   model.gain_available = true;
   model.hz_per_code = kHzPerCode;
-  model.dac_available = dac != nullptr && dac->available;
+  model.dac_available =
+      dac != nullptr && dac->available && plant_dac_write_seen &&
+      dac->applied_code == plant_last_dac_code;
   model.current_dac_code = model.dac_available ? dac->applied_code : 0u;
-  bool settling_complete = true;
+  if (model.dac_available &&
+      !(model.current_dac_code >= kModelApplicabilityMin &&
+        model.current_dac_code <= kModelApplicabilityMax)) {
+    model.applicability_detail_mask |=
+        OTIS_PHASE4_MODEL_DETAIL_DAC_RANGE;
+  }
   if (model.dac_available) {
-    if (!plant_dac_code_seen) {
-      plant_dac_code_seen = true;
-      plant_last_dac_code = model.current_dac_code;
-    } else if (plant_last_dac_code != model.current_dac_code) {
-      plant_last_dac_code = model.current_dac_code;
-      plant_last_dac_change_ticks = ticks;
+    if (!plant_gate_open_seen) {
+      model.applicability_detail_mask |=
+          OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_UNVERIFIED;
+    } else {
+      const double settling_ticks_double =
+          kPlantModelSettlingExclusionS * kCaptureDomainHz;
+      const uint64_t settling_ticks =
+          settling_ticks_double > 0.0
+              ? (uint64_t)ceil(settling_ticks_double)
+              : 0u;
+      const bool cutoff_representable =
+          plant_last_dac_change_ticks <= UINT64_MAX - settling_ticks;
+      const uint64_t cutoff_ticks =
+          cutoff_representable
+              ? plant_last_dac_change_ticks + settling_ticks
+              : UINT64_MAX;
+      if (!cutoff_representable ||
+          plant_last_gate_open_ticks < cutoff_ticks) {
+        model.applicability_detail_mask |=
+            OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_ACTIVE;
+      }
     }
-    if (plant_last_dac_change_ticks != 0u) {
-      settling_complete =
-          ticks >= plant_last_dac_change_ticks &&
-          (double)(ticks - plant_last_dac_change_ticks) /
-                  kCaptureDomainHz >=
-              kPlantModelSettlingExclusionS;
+  } else {
+    model.applicability_detail_mask |=
+        OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_UNVERIFIED;
+  }
+  if (!plant_temperature_observed || !plant_temperature_valid ||
+      ticks < plant_temperature_ticks) {
+    model.applicability_detail_mask |=
+        OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_UNAVAILABLE;
+  } else {
+    const uint64_t temperature_max_age_ticks =
+        (uint64_t)OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS * 16000ull;
+    if (ticks - plant_temperature_ticks > temperature_max_age_ticks) {
+      model.applicability_detail_mask |=
+          OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_STALE;
+    } else if (
+        plant_temperature_c < kPlantModelTemperatureMinC ||
+        plant_temperature_c > kPlantModelTemperatureMaxC) {
+      model.applicability_detail_mask |=
+          OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_RANGE;
     }
   }
-  const bool temperature_in_range =
-      !plant_temperature_available ||
-      (plant_temperature_c >= kPlantModelTemperatureMinC &&
-       plant_temperature_c <= kPlantModelTemperatureMaxC);
   model.input_in_applicability =
-      !model.dac_available ||
-      (model.current_dac_code >= kModelApplicabilityMin &&
-       model.current_dac_code <= kModelApplicabilityMax &&
-       temperature_in_range && settling_complete);
+      model.dac_available &&
+      model.applicability_detail_mask == OTIS_PHASE4_MODEL_DETAIL_NONE;
   // Run-specific exclusions apply only while replaying the declared source
   // evidence. A live sequence number that happens to be 77 is unrelated.
   model.excluded_input =
@@ -377,6 +412,26 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
                sizeof(eligibility_reasons));
   reasons_text(decision.model_reason_mask, "plant_model_applicable",
                model_reasons, sizeof(model_reasons));
+  const uint8_t model_detail =
+      observation.model.applicability_detail_mask;
+  if (model_detail & OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_UNVERIFIED)
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "dac_settling_state_unverified");
+  if (model_detail & OTIS_PHASE4_MODEL_DETAIL_DAC_SETTLING_ACTIVE)
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "count_window_inside_model_settling_exclusion");
+  if (model_detail & OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_UNAVAILABLE)
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "temperature_not_observed");
+  if (model_detail & OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_STALE) {
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "temperature_not_observed");
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "temperature_observation_stale");
+  }
+  if (model_detail & OTIS_PHASE4_MODEL_DETAIL_TEMPERATURE_RANGE)
+    append_reason(model_reasons, sizeof(model_reasons),
+                  "input_outside_model_temperature_range");
   const bool observation_valid =
       observation.reference_validity == OTIS_PHASE4_VALID &&
       observation.count_validity == OTIS_PHASE4_VALID &&
@@ -559,8 +614,7 @@ void evaluate(uint64_t ticks, bool new_count, uint32_t count_seq,
   observation.observation_reason_mask = reasons;
   observation.frequency_observation_available = frequency_available;
   observation.frequency_observation_hz = frequency_hz;
-  observation.model = model_input(
-      dac, runtime_state, ticks, count_seq, false);
+  observation.model = model_input(dac, ticks, count_seq, false);
 
   OtisPhase4Decision decision;
   otis_phase4_engine_evaluate(&engine, &observation, &decision);
@@ -619,14 +673,32 @@ void finalize_pending_count(uint64_t evaluation_ticks,
 }  // namespace
 
 void otis_phase4_observe_preview_on_temperature(bool available,
-                                                float temperature_c) {
+                                                float temperature_c,
+                                                uint64_t timestamp_ticks) {
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
-  plant_temperature_available = available && isfinite(temperature_c);
-  if (plant_temperature_available)
+  plant_temperature_observed = true;
+  plant_temperature_valid = available && isfinite(temperature_c);
+  plant_temperature_ticks = unwrap_ticks(timestamp_ticks);
+  if (plant_temperature_valid)
     plant_temperature_c = (double)temperature_c;
 #else
   (void)available;
   (void)temperature_c;
+  (void)timestamp_ticks;
+#endif
+}
+
+void otis_phase4_observe_preview_on_dac_applied(
+    uint16_t applied_code, uint64_t timestamp_ticks) {
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+  const uint64_t applied_ticks = unwrap_ticks(timestamp_ticks);
+  if (!plant_dac_write_seen || applied_code != plant_last_dac_code)
+    plant_last_dac_change_ticks = applied_ticks;
+  plant_dac_write_seen = true;
+  plant_last_dac_code = applied_code;
+#else
+  (void)applied_code;
+  (void)timestamp_ticks;
 #endif
 }
 
@@ -662,11 +734,15 @@ bool otis_phase4_observe_preview_begin(uint64_t initial_ticks) {
   estimator_reference_count = estimator_reference_next = 0u;
   last_boundary_reason = OTIS_PHASE4_BOUNDARY_OK;
   pending_count_overwrite_count = 0u;
-  plant_temperature_available = false;
+  plant_temperature_observed = false;
+  plant_temperature_valid = false;
   plant_temperature_c = 0.0;
-  plant_dac_code_seen = false;
+  plant_temperature_ticks = 0u;
+  plant_dac_write_seen = false;
   plant_last_dac_code = 0u;
   plant_last_dac_change_ticks = 0u;
+  plant_gate_open_seen = false;
+  plant_last_gate_open_ticks = 0u;
   return true;
 }
 
@@ -791,6 +867,10 @@ void otis_phase4_observe_preview_on_count(
     count_validity = OTIS_PHASE4_INVALID;
     reasons |= OTIS_PHASE4_REASON_COUNT_FLAGGED;
   }
+  if (!observed_gate_duration_acceptable(runtime_state)) {
+    count_validity = OTIS_PHASE4_INVALID;
+    reasons |= OTIS_PHASE4_REASON_COUNT_FLAGGED;
+  }
   if (previous_count_seq != 0u && count_seq != previous_count_seq + 1u) {
     count_validity = OTIS_PHASE4_INVALID;
     reasons |= OTIS_PHASE4_REASON_COUNT_DISCONTINUITY;
@@ -801,6 +881,8 @@ void otis_phase4_observe_preview_on_count(
       runtime_state->tcxo.last_gate_close_ticks);
   const uint64_t open_ticks =
       ticks >= gate_ticks ? ticks - gate_ticks : 0u;
+  plant_gate_open_seen = true;
+  plant_last_gate_open_ticks = open_ticks;
   const OtisPhase4BoundaryResult boundary_result =
       otis_phase4_boundary_estimator_estimate(
           &boundary_estimator, open_ticks, ticks,

@@ -464,8 +464,19 @@ the current source. The generated binding carries the model topology,
 observe-only mode, measurement backend, gate and settling durations,
 temperature limits, source-evidence exclusions, estimator timing constraints,
 and DAC ranges. The preview compares those values with the compiled
-configuration and live gate/DAC observations. Successful near-VCXO SHT4x
-samples are range-checked; an unavailable sample remains unverified. Run-local
+configuration and live gate/DAC observations. The configured gate must exactly
+match the artifact; the observed PIO aperture may differ by at most
+`OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US` (50 ms by default, five times the
+known 10 ms blocking SHT4x conversion). Larger errors invalidate observation
+quality rather than changing the model identity.
+
+Successful manual and sweep DAC writes notify the preview with their capture
+timestamp. A measured window is settled only when its opening boundary is at
+least the generated settling exclusion after the last changed code. Successful
+near-VCXO SHT4x samples are timestamped and range-checked. Missing or failed
+reads invalidate the input immediately; samples older than
+`OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS` (three sample periods by default) report
+`temperature_not_observed` and block preview applicability. Run-local
 count-sequence exclusions are not applied to unrelated live sequence numbers.
 
 The checked-in default remains disabled. Build the explicit preview variant

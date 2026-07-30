@@ -324,6 +324,23 @@
 #define OTIS_ENV_SAMPLE_PERIOD_MS 1000u
 #endif
 
+// Phase-4 model applicability treats the primary near-VCOCXO temperature as
+// stale after three expected sample periods. This tolerates two consecutive
+// delayed/missed low-rate reads without allowing an old value to remain a
+// silent applicability input indefinitely.
+#ifndef OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS
+#define OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS (3u * OTIS_ENV_SAMPLE_PERIOD_MS)
+#endif
+
+// The PIO long gate is stopped by foreground service after its configured
+// deadline. SHT4x high-precision sampling alone blocks that service for 10 ms.
+// Allow five such intervals of aperture latency (0.017% of a 300 s gate);
+// larger deviations are observation-quality failures, not model-identity
+// mismatches.
+#ifndef OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US
+#define OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US 50000u
+#endif
+
 #ifndef OTIS_ENV_SHT4X_I2C_ADDRESS
 #define OTIS_ENV_SHT4X_I2C_ADDRESS 0x44u
 #endif
@@ -410,6 +427,14 @@
 
 #if OTIS_ENV_SAMPLE_PERIOD_MS < 100u
 #error "OTIS_ENV_SAMPLE_PERIOD_MS must be at least 100 ms."
+#endif
+
+#if OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS < OTIS_ENV_SAMPLE_PERIOD_MS
+#error "OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS must cover at least one sample period."
+#endif
+
+#if OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US > 1000000u
+#error "OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US must not exceed one second."
 #endif
 
 #if OTIS_DAC_MIN_CODE > OTIS_DAC_MAX_CODE

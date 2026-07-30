@@ -194,6 +194,33 @@ def _rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def _live_harness_rows(
+    executable: Path,
+    scenario: str = "nominal",
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    completed = subprocess.run(
+        [str(executable), scenario],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        cwd=ROOT,
+    )
+    lines = [line for line in completed.stdout.splitlines() if line]
+    estimate_lines = [
+        lines[0],
+        *[line for line in lines[2:] if line.startswith("EST,")],
+    ]
+    preview_lines = [
+        lines[1],
+        *[line for line in lines[2:] if line.startswith("CTL,")],
+    ]
+    return (
+        list(csv.DictReader(estimate_lines)),
+        list(csv.DictReader(preview_lines)),
+    )
+
+
 @pytest.fixture(scope="session")
 def phase4_engine_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
     output = tmp_path_factory.mktemp("phase4_engine") / "phase4_engine_harness"
@@ -567,6 +594,9 @@ def test_binding_generator_rejects_valid_but_incompatible_estimator(
 
 def test_live_preview_compares_generated_applicability_to_runtime_context() -> None:
     source = LIVE_ADAPTER.read_text(encoding="utf-8")
+    sketch = (
+        ENGINE.parent / "otis_nano_rp2040_connect.ino"
+    ).read_text(encoding="utf-8")
 
     assert "strcmp(kPlantModelTopologyId, kRuntimeTopologyId)" in source
     assert (
@@ -574,12 +604,130 @@ def test_live_preview_compares_generated_applicability_to_runtime_context() -> N
         "\n             kRuntimeMeasurementBackend)"
         in source
     )
-    assert "observed_gate_matches" in source
+    assert "observed_gate_duration_acceptable" in source
+    assert "OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US" in source
+    assert (
+        "fabs(observed_s - kRuntimeConfiguredGateDurationS)"
+        in source
+    )
     assert "kPlantModelTemperatureMinC" in source
     assert "kPlantModelTemperatureMaxC" in source
+    assert "OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS" in source
+    assert '"temperature_not_observed"' in source
     assert "kPlantModelSettlingExclusionS" in source
     assert "count_sequence_is_excluded" in source
     assert "replaying_model_source_evidence" in source
+    assert sketch.count("otis_phase4_observe_preview_on_dac_applied(") == 2
+    assert (
+        "otis_phase4_observe_preview_on_temperature(\n"
+        "        false, 0.0f, otis_capture_ticks_now())"
+        in sketch
+    )
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "gate_plus_1us",
+        "gate_minus_1us",
+        "gate_plus_1ms",
+        "gate_minus_1ms",
+    ],
+)
+def test_live_gate_aperture_tolerance_accepts_normal_service_latency(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+) -> None:
+    estimates, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+
+    assert estimates[-1]["observation_validity"] == "valid"
+    assert "count_flagged_invalid" not in estimates[-1][
+        "observation_reason_codes"
+    ]
+    assert previews[-1]["model_applicability"] == "applicable"
+    assert previews[-1]["preview_available"] == "true"
+
+
+def test_egregious_live_gate_aperture_is_observation_quality_failure(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    estimates, previews = _live_harness_rows(
+        phase4_live_adapter_harness, "gate_egregious"
+    )
+
+    assert estimates[-1]["observation_validity"] == "invalid"
+    assert "count_flagged_invalid" in estimates[-1][
+        "observation_reason_codes"
+    ]
+    assert previews[-1]["model_applicability"] == "applicable"
+    assert previews[-1]["preview_available"] == "false"
+
+
+@pytest.mark.parametrize(
+    ("scenario", "applicable"),
+    [
+        ("settling_boundary", True),
+        ("settling_straddling", False),
+    ],
+)
+def test_dac_settling_requires_the_entire_count_window_after_cutoff(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+    applicable: bool,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+
+    assert (
+        previews[-1]["model_applicability"] == "applicable"
+    ) is applicable
+    assert (
+        "count_window_inside_model_settling_exclusion"
+        in previews[-1]["model_reason_codes"]
+    ) is (not applicable)
+    assert (previews[-1]["preview_available"] == "true") is applicable
+
+
+@pytest.mark.parametrize(
+    ("scenario", "extra_reason"),
+    [
+        ("temperature_missing", None),
+        ("temperature_loss", None),
+        ("temperature_stale", "temperature_observation_stale"),
+    ],
+)
+def test_temperature_unavailable_loss_and_staleness_block_applicability(
+    phase4_live_adapter_harness: Path,
+    scenario: str,
+    extra_reason: str | None,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, scenario
+    )
+    reasons = previews[-1]["model_reason_codes"].split(";")
+
+    assert previews[-1]["model_applicability"] == "not_applicable"
+    assert "temperature_not_observed" in reasons
+    if extra_reason is not None:
+        assert extra_reason in reasons
+    assert previews[-1]["preview_available"] == "false"
+
+
+def test_out_of_range_temperature_has_specific_model_reason(
+    phase4_live_adapter_harness: Path,
+) -> None:
+    _, previews = _live_harness_rows(
+        phase4_live_adapter_harness, "temperature_outside"
+    )
+
+    assert previews[-1]["model_applicability"] == "not_applicable"
+    assert "input_outside_model_temperature_range" in previews[-1][
+        "model_reason_codes"
+    ]
+    assert previews[-1]["preview_available"] == "false"
 
 
 def test_live_est_ctl_rows_match_normative_contracts(

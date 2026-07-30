@@ -102,11 +102,15 @@ settling durations, temperature limits, source-run exclusions, estimator
 constraints, gain, and DAC ranges. Generation fails unless structural and
 semantic validation pass and separately refuses an artifact whose estimator
 does not match the current firmware implementation. The live preview compares
-those generated values with compiled and observed runtime values. Unknown
-near-VCXO temperature remains an unverified applicability condition; it is not
-invented as an in-range measurement. The generated `control_ready` and
-`actuation_enabled` values remain false; a compiled binding does not authorize
-actuation.
+those generated values with compiled and observed runtime values. Configured
+gate duration is an identity comparison; bounded observed aperture error is an
+observation-quality decision. Settling is measured from a successful DAC-write
+notification to the opening boundary of a count window, so a window that
+straddles the exclusion cutoff is rejected. Missing, failed, or stale
+near-VCXO temperature reports `temperature_not_observed` and blocks firmware
+applicability; it is not invented as an in-range measurement. The generated
+`control_ready` and `actuation_enabled` values remain false; a compiled binding
+does not authorize actuation.
 
 ## Historical v1 Reader
 

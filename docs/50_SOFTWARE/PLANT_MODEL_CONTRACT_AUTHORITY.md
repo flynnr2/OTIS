@@ -196,16 +196,28 @@ python3 tools/generate_plant_model_binding.py --check
 ```
 
 At runtime the observe-only preview compares the generated topology, mode,
-backend, configured and observed gate duration, estimator constraints, DAC
-range, settling time after an observed DAC change, and available near-VCXO
-temperature with compiled or observed values. Source-run count exclusions are
-only meaningful when replaying the declared source evidence; an unrelated live
-count sequence with the same integer is not excluded.
+backend, configured gate duration, estimator constraints, DAC range, settling
+time after an observed DAC change, and fresh near-VCXO temperature with
+compiled or observed values. The configured gate/model comparison is exact.
+The measured aperture is instead an observation-quality input: it permits the
+configured 50 ms foreground-service tolerance around a 300 s PIO gate and
+invalidates larger deviations without changing model identity.
+
+Successful DAC writes notify the preview at the captured write-completion
+timestamp. Settling applicability requires the measured gate-open timestamp to
+be at or after that change plus the artifact's exclusion interval; checking
+only the close/evaluation time would incorrectly admit a straddling window.
+The near-VCOCXO temperature notification also carries a capture timestamp,
+expires after three configured sample periods, and reports
+`temperature_not_observed` for missing, failed, or stale input. Source-run
+count exclusions are only meaningful when replaying the declared source
+evidence; an unrelated live count sequence with the same integer is not
+excluded.
 
 The runtime has no persistent provenance attestation for the physical topology,
-sensor placement, source evidence, or DAC state before boot, and the current
-temperature input has no freshness timestamp or stale-age bound. An unavailable
-near-VCXO temperature is explicitly unverified rather than silently considered
-measured; this is acceptable for the disabled observe-only preview but remains
-a control-eligibility blocker. The generated binding does not make evidence
-available, make the model applicable to arbitrary inputs, or authorize control.
+sensor placement, source evidence, or DAC state before boot. Consequently the
+preview remains inapplicable until it observes a successful DAC write and a
+fresh primary-temperature sample. Those observations establish software
+timing, not physical sensor placement or board identity. The generated binding
+does not make evidence available, make the model applicable to arbitrary
+inputs, or authorize control.
