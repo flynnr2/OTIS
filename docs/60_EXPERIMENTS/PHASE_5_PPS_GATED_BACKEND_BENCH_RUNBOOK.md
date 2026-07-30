@@ -206,6 +206,18 @@ name the same oscillator `source_domain`.
 
 ## Nominal, service-load, and simultaneous independent capture
 
+Before starting capture, close Arduino IDE Serial Monitor/Plotter and every
+other process that may open the candidate serial device. `capture_device` must
+be the sole serial-port owner for the run. Opening the IDE itself is harmless
+only if it does not claim, monitor, reset, or upload through that port.
+
+Start capture before the intended manual reset so the authoritative `BOOT` is
+preserved. If another process contends for the port or malformed/interleaved
+serial frames occur before that BOOT, preserve the disturbed directory as
+diagnostic evidence and use a fresh run directory for a future sealable formal
+attempt. A later clean BOOT may define a valid session-scoped engineering test,
+but pre-BOOT corruption must never be silently deleted from the original run.
+
 Start candidate capture with reconnect logging and a validated command FIFO:
 
 ```bash
