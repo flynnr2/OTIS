@@ -25,10 +25,10 @@ canonical build-input and profile configuration hashes, and invocation
 identity; and writes `firmware_build_manifest.json` next to each successful
 binary. The manifest also hashes the `.bin`, `.elf`, `.map`, and `.uf2`
 artifacts. Every profile rechecks the matrix-wide source identity and installed
-package bytes before and after compilation. Direct Arduino IDE/CLI compilation
-is rejected because it cannot prove those values.
-The IDE remains useful for editing and serial monitoring, but not for producing
-a qualification binary.
+package bytes before and after compilation. Direct Arduino IDE compilation is
+available through an explicit generated profile for interactive bench work.
+Because the IDE does not produce the builder's artifact manifest or perform its
+post-compile checks, use the matrix-built artifact for qualification evidence.
 
 GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
 enforced by `otis_resource_registry.*`. The normative ownership ledger,
@@ -85,19 +85,21 @@ oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It still
 emits raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
 frequency, ratio, and ppm. Selecting it must not enable DAC steering.
 
-The corrected implementation requires the GPIO IRQ capture backend. The D14
-PPS IRQ reads one reconstructed `rp2040_timer0` timestamp, immediately
-stops/samples/restarts the PIO oscillator counter, and publishes the timestamp
-and interval count as one sequenced boundary observation. Foreground code only
-validates and emits that object; serial, status, DAC-sweep, environment and
+The corrected implementation uses one PIO0 state machine to alternate
+oscillator `WAIT` instructions, decrement a cumulative 32-bit counter on each
+recognized rise, test PPS through the independent `JMP PIN` mapping, and
+autopush `X` on the PPS boundary. A joined RX FIFO and DMA move immutable
+snapshots into a 128-word ring. The D14 IRQ remains only an independent
+reconstructed REF timestamp observer. Foreground code associates and
+differences adjacent snapshots; serial, status, DAC-sweep, environment and
 capture-backlog service cannot define the physical aperture.
 
 The checked-in candidate sets
 `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`, so raw evidence is emitted while
 control eligibility remains structurally false. Bench validation must still
-bound IRQ/restart quantisation and exercise the focused fault/recovery
-contract. A future continuous PPS-triggered snapshot can replace the ISR
-stop/sample/restart implementation without changing foreground semantics.
+prove the pad-level 16 MHz phase/duty envelope and exercise the focused
+fault/recovery contract. The authoritative digital listing and timing proof are
+in `docs/50_SOFTWARE/PPS_PIO_PROOF_AND_VERIFICATION.md`.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.
@@ -444,16 +446,18 @@ The minimum live Phase 4 estimator and preview state machine is an opt-in build:
 #define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 1
 ```
 
-It emits normative `EST v1` and `CTL v1` rows derived from canonical live
-`REF`, `CNT`, diagnostic, and evidence-backed DAC state. It is preview-only:
+It emits normative `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` rows derived
+from canonical live `REF`, `CNT`, diagnostic, and evidence-backed DAC state. It
+is preview-only:
 `actuation_authorized=false` and `actionable=false` are compile/runtime
 invariants. The preview module has no DAC-driver dependency or write callback;
 manual DAC and explicitly started sweep commands remain separately owned by the
 H1 open-loop command path.
 
-`EST`/`CTL` rows are queued as fixed-capacity pairs and serviced only after
-capture. Queue drops are visible through `phase4_preview` status keys and do
-not feed back into the estimator. A fixed 384-point support array implements
+The complete derived frame is queued in a fixed-capacity ring and serviced only
+after capture. Queue drops are visible through `phase4_preview` status keys,
+diagnosed after recovery, and do not feed back into the estimator. A fixed
+384-point support array implements
 `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`; non-aligned count closes wait in one
 bounded pending slot for their following PPS bracket. No extrapolation or
 dynamic allocation is used. Model-version-4 identity, method-contract hash,
@@ -517,17 +521,33 @@ qualification binary with:
 python3 tools/firmware_matrix.py --profile phase5_qualification
 ```
 
+For an interactive Arduino IDE compile/upload of the same supported profile,
+generate the local sketch header first:
+
+```bash
+python3 tools/firmware_matrix.py \
+  --prepare-ide \
+  --profile phase5_qualification
+```
+
+Then open `otis_nano_rp2040_connect.ino` in the IDE, select **Arduino Nano
+RP2040 Connect** from the Philhower **Raspberry Pi Pico/RP2040/RP2350 6.0.0**
+core, and compile or upload normally. The command validates the pinned CLI,
+board/core, and compiler installation before writing
+`otis_build_profile.generated.h` beside the sketch. The header is ignored by
+Git and deliberately excluded from the source-input hash. Regenerate it after
+every checkout, source edit, profile change, or Arduino core/toolchain change;
+do not hand-edit or commit it.
+
 The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
-binary and its full build manifest. The generated identity/profile header
-exists only in a disposable sketch copy during compilation; the builder removes
-that copy and any compiler-copied header before returning. A fresh builder
-session ID is bound between that header and the sole non-profile compiler flag,
-so copying an intact old header into the source sketch does not authorize an
-ordinary raw compile. This is an unsigned anti-staleness binding, not a secret
-or signature: a caller that deliberately reads the header and reconstructs the
+binary and its full build manifest. Matrix compilation copies the sketch,
+replaces any local IDE header in that copy with a one-use header, and removes
+the temporary source and compiler-copied header before returning. A fresh
+builder session ID is bound between the one-use header and the sole non-profile
+compiler flag. This is an unsigned anti-staleness binding, not a secret or
+signature: a caller that deliberately reads the header and reconstructs the
 matching invocation is outside the stated trust boundary. Upload the
-already-built artifact
-without recompiling:
+already-built qualification artifact without recompiling:
 
 ```bash
 arduino-cli upload -p /dev/cu.usbmodemXXXX \

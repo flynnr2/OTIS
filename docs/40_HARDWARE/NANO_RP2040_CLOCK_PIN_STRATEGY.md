@@ -23,10 +23,11 @@ not as a replacement for the board clock.
 D8 / GPIO20 / GPIN0 is the preferred non-surgical reference-clock ingress for
 OTIS MVP hardware on the Nano RP2040 Connect.
 
-Firmware guardrail: raw 10 MHz / 16 MHz CXO input on GPIN0 should be observed
-with the RP2040 frequency-counter / FC0 / gated-count path. The PIO FIFO edge
-backend is for sparse event streams such as GPS PPS and slow GPIO loopback, not
-for enqueuing one event per oscillator edge.
+Firmware guardrail: the raw 10 MHz / 16 MHz CXO input on GPIN0 is consumed by
+the single-state-machine PPS snapshot programme. The PIO X register counts
+edges and only one cumulative word is pushed per accepted PPS; individual
+oscillator edges are never enqueued. FC0 remains useful for diagnostics but
+does not own a PPS aperture.
 
 GPOUT0 and GPOUT3 expose RP2040 internal clocks for diagnostics, validation,
 and external measurement. They are not evidence that the external reference has
@@ -55,6 +56,20 @@ For the OTIS MVP:
 The external reference should remain visible as a measured input domain. Host
 artifacts and analysis should distinguish RP2040 platform-clock observations
 from GPSDO/OCXO reference-clock observations.
+
+## PPS and Loopback Pins
+
+| Arduino pin | RP2040 GPIO | Normal role | Loopback-only role |
+|---|---:|---|---|
+| D14 | GPIO26 | physical GPS PPS input; shared read-only by PIO and GPIO REF observer | pseudo-PPS input |
+| D10 | GPIO5 | independent diagnostic PPS witness | unchanged |
+| D3 | GPIO15 | unclaimed input/high impedance | deterministic pseudo-PPS output |
+
+The `pseudo_pps_loopback` build is the only profile allowed to drive D3. Before
+arming it, disconnect the real GPS PPS output and wire D3 through an
+approximately 1 kΩ series resistor to D14. Stop, completion, reset, underflow,
+and resource faults all return D3 to high impedance. Never enable the loopback
+driver against a connected GPS output.
 
 ## Electrical Requirements
 

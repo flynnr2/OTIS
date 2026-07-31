@@ -4,14 +4,14 @@
   "template": false,
   "stage": "PHASE5_PPS_BACKEND_QUALIFICATION",
   "h_phase": "H1",
-  "capture_mode": "irq_reconstructed_pps_authority_with_pio_ratio_counter",
+  "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
   "control_mode": "observe_only",
   "closed_loop_control": false,
   "board": "arduino_nano_rp2040_connect",
   "firmware": {
     "name": "otis_nano_rp2040_connect",
     "version": "SW1",
-    "config_id": "phase5_pps_isr_boundary_qualification_v1",
+    "config_id": "phase5_qualification",
     "git_commit": "",
     "build_provenance_required": true
   },
@@ -21,8 +21,8 @@
     "git_commit": ""
   },
   "oscillator": {
-    "part": "CX317 VCOCXO",
-    "nominal_frequency_hz": 10000000.0
+    "part": "ECS-TXO-5032 16 MHz TCXO",
+    "nominal_frequency_hz": 16000000.0
   },
   "domains": [
     {
@@ -30,8 +30,8 @@
       "nominal_hz": 16000000
     },
     {
-      "name": "h1_ocxo_open_loop",
-      "nominal_hz": 10000000
+      "name": "h0_tcxo_16mhz",
+      "nominal_hz": 16000000
     }
   ],
   "channels": [
@@ -56,8 +56,32 @@
       "contract": "count_observations_v1"
     },
     {
+      "path": "csv/snp.csv",
+      "contract": "pps_snapshots_v1"
+    },
+    {
       "path": "csv/sts.csv",
       "contract": "health_v1"
+    },
+    {
+      "path": "csv/reference_observations_v1.csv",
+      "contract": "reference_observations_v1",
+      "optional": true
+    },
+    {
+      "path": "csv/diagnostics_v1.csv",
+      "contract": "diagnostics_v1",
+      "optional": true
+    },
+    {
+      "path": "csv/estimates_v2.csv",
+      "contract": "estimates_v2",
+      "optional": true
+    },
+    {
+      "path": "csv/control_previews_v1.csv",
+      "contract": "control_previews_v1",
+      "optional": true
     }
   ],
   "phase5_pps_backend_qualification": {
@@ -69,7 +93,7 @@
     "comparison_last_count_seq": 3600,
     "estimator_type": "pps_gated_ratio_count_v1",
     "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
-    "source_domain": "h1_ocxo_open_loop",
+    "source_domain": "h0_tcxo_16mhz",
     "uncertainty": {
       "count_quantization_standard_uncertainty_hz": null,
       "counter_aperture_s_1sigma": null,
@@ -80,6 +104,7 @@
   },
   "known_limitations": [
     "Observe-only PPS-gated backend qualification; no PPS/count-derived DAC write is authorized.",
+    "The first cumulative SNP in every session is an anchor and does not produce CNT.",
     "Unknown uncertainty components remain null until measured or supplied by authorised calibration evidence."
   ]
 }

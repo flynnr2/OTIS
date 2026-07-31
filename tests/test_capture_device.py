@@ -6,7 +6,7 @@ import shutil
 import threading
 
 from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner, LineFramer
-from host.otis_tools.run_paths import RunPaths
+from host.otis_tools.run_paths import RunPaths, default_csv_files
 
 
 class FakeSerial:
@@ -110,6 +110,7 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
             b"CNT,1,7,2,1,16000001,rp2040_timer0,16,R,h0_tcxo_16mhz,0\n",
             b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n",
             b"ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0\n",
+            b"PGT,1,1,1,CLEAN_NOMINAL,1,0,start,marker,0,0,0,0\n",
         ],
         stop_event=stop_event,
     )
@@ -126,6 +127,9 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     )
     assert "STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768" in paths.health_csv.read_text(encoding="utf-8")
     assert "ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0" in paths.environment_csv.read_text(
+        encoding="utf-8"
+    )
+    assert "PGT,1,1,1,CLEAN_NOMINAL" in paths.pseudo_pps_truth_csv.read_text(
         encoding="utf-8"
     )
 
@@ -203,12 +207,7 @@ def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
     assert paths.raw_dir.exists()
     assert paths.csv_dir.exists()
     assert paths.reports_dir.exists()
-    assert manifest["files"] == [
-        {"path": "csv/raw_events.csv", "contract": "raw_events_v1"},
-        {"path": "csv/count_observations.csv", "contract": "count_observations_v1"},
-        {"path": "csv/health.csv", "contract": "health_v1"},
-        {"path": "csv/environment.csv", "contract": "environment_v1", "optional": True},
-    ]
+    assert manifest["files"] == default_csv_files()
     assert not (config.run_dir / "capture_in_progress.flag").exists()
 
 

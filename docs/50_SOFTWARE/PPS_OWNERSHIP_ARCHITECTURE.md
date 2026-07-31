@@ -2,110 +2,117 @@
 
 ## Decision
 
-The sparse reference capture backend is the sole firmware authority for a
-physical PPS edge. It constructs one `OtisCapturedEdge` containing:
+PPS has two independent read-only observers with different authority:
 
-- channel and reference classification;
-- edge polarity;
-- the captured `rp2040_timer0` timestamp;
-- capture provenance and quality flags.
+- the single PIO state machine owns the oscillator count and physical count
+  snapshot boundary; and
+- the D14 GPIO IRQ owns a reconstructed REF timestamp and physical-presence
+  diagnostic event.
 
-That captured event is passed unchanged to all firmware consumers. The `REF`
-emitter, IRQ reference diagnostics, and PPS-gated count backend must not sample
-the pin or create another timestamp for the same edge.
+Neither observer substitutes for the other. The optional D10 input is a third,
+diagnostic-only witness. DMA and foreground transport or associate truth but do
+not own it.
 
-This is an ownership decision, not a new telemetry abstraction. The existing
-`REF`, `CNT`, and `STS` wire contracts remain unchanged.
+The hard rule is:
 
-## Event Flow
+> Physical measurement boundaries are hardware-owned. ISRs may transport or
+> annotate already-latched truth but may not define the aperture.
+
+## Event flow
 
 ```text
-D14 PPS edge
-    |
-    v
-IRQ or sparse PIO capture backend
-    |
-    v
-one OtisCapturedEdge(timestamp_ticks, flags)
-    |--------------------------|
-    v                          v
-REF raw record          PPS-gated counter
-                               |
-                               v
-                    CNT boundary + pps_gate STS
+                       D14 / GPIO26 PPS
+                         /             \
+                        /               \
+            PIO JMP PIN                 GPIO IRQ
+                 |                         |
+ D8 oscillator -> one PIO SM              +-- timestamp + compact REF record
+ WAIT PIN          X-- / IN X,32           +-- physical PPS progress
+                 |                         |
+          immutable SNP word               |
+                 |                         |
+         joined FIFO -> DMA                |
+                 |                         |
+                 +--------- foreground association
+                                  |
+                         adjacent X difference
+                                  |
+                  raw SNP + REF + bounded CNT + STS
+
+D10 / GPIO5 witness -> separate compact ISR record -> diagnostics only
 ```
 
-For the GPIO IRQ backend, raw and accepted-edge diagnostic counters are updated
-from the same timestamp used in the queued `OtisCapturedEdge`. The capture ring
-only transports that record; it does not timestamp it again.
+## Authority by field
 
-The optional D10 dual observer remains a diagnostic witness of a separate
-physical input. It may preserve independent witness evidence, but it is not a
-second authority for D14 PPS, `REF`, or gated-count boundaries.
-
-## Deterministic Consumption
-
-Reference capture is serviced before the missing-PPS timeout check in each
-foreground loop. This prevents a captured boundary already waiting in the
-backend or ring from being declared missing first.
-
-The PPS-gated backend receives the authoritative timestamp and flags directly.
-It uses consecutive captured timestamps as `CNT.gate_open_ticks` and
-`CNT.gate_close_ticks`. Flags from both boundary events are combined on the
-bounded `CNT` observation so capture provenance is not lost.
-
-The oscillator counter is stopped before serial emission of the corresponding
-`REF` row. This minimizes foreground stop latency. Wire rows can therefore be
-interleaved by record type; host replay must use the existing per-record
-sequences and timestamps rather than assuming cross-type serial order.
-
-## Evidence and Failure Behaviour
-
-- Every accepted captured PPS remains a raw `REF` row.
-- A GPIO IRQ ring overflow preserves raw IRQ diagnostic counts and reports the
-  existing capture-drop telemetry; an unqueued edge cannot silently become a
-  gated-count boundary.
-- A missing stop event produces the existing explicit `pps_gate` fault and no
-  invented clean `CNT` close boundary.
-- Implausible captured intervals remain bounded raw observations with the
-  existing reference-validity and incomplete-gate flags.
-- No host schema or CSV column changes are required.
-
-## Compatibility
-
-The change is wire-compatible: record tags, columns, channel IDs, domains,
-sequence counters, and status keys are unchanged. The intentional behavioural
-change is that PPS-gated `CNT` boundaries now exactly reuse captured `REF`
-timestamps instead of timestamps from a second foreground D14 poll.
-
-The internal `otis_capture_ring_push_from_isr` interface now accepts a complete
-`OtisCapturedEdge`. This prevents transport code from silently recapturing time.
-It is an internal firmware API with no host impact.
-
-## Engineering Notes
-
-- Default and PPS-gated H1 firmware selectors must both compile.
-- Regression tests enforce one timer read in the IRQ capture handler, no timer
-  read in the capture ring, and no D14 polling in the PPS-gated counter.
-- Backend validation should compare every bounded PPS-gated `CNT` open/close
-  timestamp to the corresponding adjacent `REF` timestamps.
-
-## Risk Assessment
-
-| Risk | Treatment | Residual validation |
+| Evidence | Owner | Meaning |
 |---|---|---|
-| Foreground PIO counter stop occurs after the physical edge | Counter handling runs before serial emission; captured timestamp remains exact evidence | Measure count bias and jitter on the bench |
-| Capture backlog contains more than one PPS | Every event is replayed in order, but late counter stops cannot reconstruct hardware gating | Exercise host backpressure and verify overflow/status evidence |
-| Timer rollover between boundaries | Existing timer-domain rollover extension remains in the gated backend | Retain rollover regression and bench crossing test |
-| Host assumes `REF` precedes related `CNT` on the serial wire | Contracts already separate record sequences and provide timestamps | Confirm backend ingest does not impose cross-tag ordering |
-| D10 witness is mistaken for PPS authority | Documentation explicitly limits it to diagnostic evidence | Check run manifests and status interpretation during backend validation |
+| `SNP.cumulative_down_counter` | PIO state machine | immutable cumulative 32-bit down-counter copied at PIO-recognized PPS |
+| `SNP.snapshot_sequence/session` | DMA transport plus backend session state | continuity/ownership metadata; DMA does not define the value or boundary |
+| `REF.timestamp_ticks` | D14 GPIO IRQ | reconstructed RP2040 timer observation of physical PPS |
+| `CNT.counted_edges` | foreground arithmetic over adjacent PIO snapshots | `previous_X - current_X mod 2^32`; no foreground time participates |
+| `CNT.gate_open/close_ticks` | associated adjacent D14 records | reference/gate-time evidence, not the count aperture |
+| D10 witness | D10 minimal ISR/foreground diagnostics | independent corroboration only; never a voting authority |
 
-## Backend Validation Handoff
+## Deterministic association
 
-Backend validation is ready to test:
+The D14 ISR captures one timer tick and publishes one fixed-size record. It
+does not touch PIO, DMA, or the counter. Foreground pairs the next contiguous
+PIO snapshot with the next D14 source sequence in the same acquisition
+session. Cross-type serial order is irrelevant; sequences, sessions, and raw
+timestamps are authoritative.
 
-1. two adjacent D14 `REF` events map exactly to each bounded `CNT` gate open and
-   close timestamp;
-2. PPS anomaly diagnostics classify the same intervals visible in raw `REF`;
-3. missing PPS and capture overflow preserve explicit fault evidence;
-4. default and PPS-gated firmware builds retain their existing wire contracts.
+The first pair after boot or rearm establishes an anchor only. A clean `CNT`
+requires an adjacent PIO sequence, adjacent D14 source sequence, one session,
+acceptable REF interval/flags, valid snapshot status, and an unambiguous
+counter delta.
+
+If a second D14 REF is waiting while the first has no PIO snapshot, association
+is immediately lost. Firmware rearms the PIO/DMA session, clears old pairing
+state, discards a possible late recovery snapshot, and requires two fresh
+snapshots. No later word is paired retroactively with the unmatched REF.
+
+## Presence, backlog, and diagnostics
+
+Physical PPS presence follows the D14 hardware/ISR producer marker, not
+foreground drain or telemetry time. One continuous outage creates one missing
+transition; repeated watchdog polls do not create new outages. A later new D14
+event creates one restoration transition. Optional reminders use their own
+counter.
+
+PIO snapshot production, snapshot drain, measurement reconstruction, telemetry
+emission, control consumption, foreground backlog, and telemetry backpressure
+are separate progress planes. Backlog within capacity can delay reporting but
+cannot alter captured count values or become `reference_missing_pps`.
+
+## Failure behavior
+
+- D14 ring overflow is a capture/storage fault, not proof that physical PPS is
+  absent.
+- PIO snapshot sequence gap/duplicate, D14 source-sequence mismatch, session
+  change, RX stall, DMA error/stop, or snapshot-ring overwrite invalidates
+  continuity.
+- Missing PPS with a continuing oscillator may produce a later long snapshot;
+  reference validity rejects it.
+- A stopped oscillator parks the PIO state machine in `WAIT`. D14 continues;
+  missing snapshot association fails closed and resumption begins a new
+  session.
+- Short, long, duplicate, bounce, glitch, or otherwise malformed PPS evidence
+  remains raw and diagnostic, but cannot become control-valid measurement.
+- The checked-in backend remains `backend_qualified=false`, so no PPS-gated
+  observation authorizes actuation.
+
+## Validation obligations
+
+1. Every candidate `CNT` must reconstruct exactly from adjacent raw `SNP`
+   values.
+2. Snapshot and D14 source sequences must be contiguous and associated REF
+   timestamps must be present in raw evidence.
+3. Quiet/load changes may alter backlog and reporting latency but not raw count
+   distribution or mean beyond the reviewed thresholds.
+4. One outage/restoration must produce exactly one transition each.
+5. D14 and D10 ISR bodies must remain bounded event-preservation paths with no
+   policy, formatting, serial, floating point, PIO, or DMA choreography.
+
+See `PPS_PIO_PROOF_AND_VERIFICATION.md`,
+`PPS_GATED_RATIO_BACKEND_DESIGN.md`, and
+`ISR_AND_PPS_DIAGNOSTICS_REMEDIATION.md` for the detailed proofs and rules.

@@ -41,7 +41,15 @@ transport, command, I2C, or DAC-driver dependency. It implements:
 `otis_phase4_observe_preview.*` is the live adapter. It consumes immutable
 reference/count/DAC status supplied by existing owners, checks age,
 continuity, flags, count zero/saturation, and capture drops, and emits the same
-normative `EST v1` and `CTL v1` field ordering used by host replay.
+normative `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` field ordering used by
+host replay.
+
+The live receiver-status boundary is deliberately explicit: this hardware
+profile currently supplies PPS capture only, not decoded GNSS receiver
+metadata. `RFO` therefore reports cadence independently while receiver
+identity, authority, UTC validity, antenna state, calibration, and reference
+uncertainty remain unknown/unavailable. Cadence alone cannot qualify the
+reference or make an estimator eligible.
 
 `otis_phase4_boundary_estimator.*` is the allocation-free metrology component
 used by the live adapter. It retains a fixed 384-point accepted-PPS support
@@ -86,9 +94,12 @@ interact with a sweep.
 
 Every estimate and its corresponding preview are formatted into one fixed-size
 pair and enqueued in a fixed-capacity ring. Queue insertion happens after
-estimator/state evaluation. If the queue is full, both derived rows are dropped
-together and `phase4_preview.dropped_telemetry_pair_count` increments; the loss
-cannot alter estimator state or raw `REF`/`CNT` capture.
+estimator/state evaluation. If the queue is full, the complete derived frame is
+dropped and `phase4_preview.dropped_telemetry_pair_count` increments; the loss
+cannot alter estimator state or raw `REF`/`CNT` capture. Tentative diagnostic
+transitions are checkpointed and rolled back with a dropped frame, ensuring
+the output-loss raise is eventually emitted after transport recovery and then
+explicitly cleared.
 
 Derived frames are transmitted in bounded chunks after capture service. While
 a pair is partially transmitted, other record producers do not interleave
@@ -117,7 +128,12 @@ The matrix covers nominal acquisition, startup inhibit/qualification,
 post-qualification zero-count fault, reference loss/return, model identity
 mismatch, input outside applicability, and combined step/range clamping.
 A second native harness emits live adapter rows and passes them through the
-repository's strict `EST v1` and `CTL v1` validators.
+repository's strict `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` validators.
+Sealed catalog fixtures compare all diagnostic transitions, evidence ranges,
+effects, and configuration identity between native firmware code and Python.
+The same scheme covers reference-quality states and reason codes, including
+missing metadata, bad cadence, stale metadata, holdover, UTC invalid, antenna
+fault, sequence regression, and qualified evidence.
 
 `tests/cpp/phase4_boundary_estimator_harness.cpp` compiles the exact production
 boundary estimator. Host/C++ comparisons cover valid and invalid mappings,
@@ -151,10 +167,12 @@ observe-only build uses:
 python3 tools/firmware_matrix.py --profile phase4_observe_only
 ```
 
-The corrected H1 PIO-long-gate preview build used 93,504 bytes of program
-storage and 33,716 bytes of global RAM in the local toolchain. The checked-in
-default build used 82,848 bytes and 21,420 bytes respectively. The fixed PPS
-support array accounts for the intentional bounded RAM increase.
+The current H1 PIO-long-gate preview build uses 110,952 bytes of program
+storage and 71,260 bytes of global RAM in the pinned local toolchain. The
+fixed PPS support array, four-frame telemetry queue, static format buffer, and
+checkpointed diagnostic evidence account for the intentional bounded RAM.
+Treat the generated build manifest and compiler size report as authoritative
+for later revisions.
 
 ## Verification results
 
@@ -162,11 +180,13 @@ Focused results:
 
 ```text
 python3 -m pytest -q tests/test_phase4_boundary_estimator.py \
-  tests/test_phase4_firmware_parity.py tests/test_phase4_replay.py
-61 passed
+  tests/test_phase4_firmware_parity.py tests/test_phase4_replay.py \
+  tests/test_diagnostic_engine.py tests/test_reference_quality.py \
+  tests/test_measurement_semantics.py
+107 passed
 
 python3 -m pytest -q
-238 passed, 2 skipped
+346 passed, 2 skipped
 ```
 
 The two skips are the existing locally retained Run 020 preflight hooks.

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "truth": [
+    {"event_id": "short-1", "generator_session": "g1", "generator_sequence": 31, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "fault", "expected_classification": "short_interval", "scheduled_timestamp_ticks": 496000000, "time_domain": "rp2040_timer0"},
+    {"event_id": "omit-1", "generator_session": "g1", "generator_sequence": 42, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "fault", "expected_classification": "likely_missed_1_pps", "scheduled_timestamp_ticks": 672000000, "time_domain": "rp2040_timer0"},
+    {"event_id": "double-1", "generator_session": "g1", "generator_sequence": 44, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "fault", "expected_classification": "short_interval", "scheduled_timestamp_ticks": 704000000, "time_domain": "rp2040_timer0"},
+    {"event_id": "outage-1", "generator_session": "g1", "generator_sequence": 45, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "outage_start"},
+    {"event_id": "restoration-1", "generator_session": "g1", "generator_sequence": 48, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "restoration"},
+    {"event_id": "recovery-1", "generator_session": "g1", "generator_sequence": 50, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "recovery"},
+    {"event_id": "clean-1", "generator_session": "g1", "generator_sequence": 51, "profile_id": "composite_acceptance_v1", "profile_version": 1, "kind": "clean"}
+  ],
+  "physical_detections": [
+    {"detection_id": "d-short", "event_id": "short-1", "classification": "short_interval", "reference_sequence": 31, "timestamp_ticks": 496000016, "time_domain": "rp2040_timer0"},
+    {"detection_id": "d-double-correct", "event_id": "double-1", "classification": "short_interval", "reference_sequence": 44, "timestamp_ticks": 704000020, "time_domain": "rp2040_timer0"},
+    {"detection_id": "d-double-extra", "event_id": "double-1", "classification": "long_interval", "reference_sequence": 45, "timestamp_ticks": 704000040, "time_domain": "rp2040_timer0"},
+    {"detection_id": "d-orphan", "event_id": null, "classification": "short_interval", "reference_sequence": 99, "timestamp_ticks": 900000000, "time_domain": "rp2040_timer0"}
+  ],
+  "snapshot_validity": [
+    {"event_id": "short-1", "snapshot_sequence": 31, "measurement_valid": false, "reasons": ["reference_interval_outlier"]},
+    {"event_id": "omit-1", "snapshot_sequence": 42, "measurement_valid": false, "reasons": ["snapshot_sequence_gap"]},
+    {"event_id": "double-1", "snapshot_sequence": 44, "measurement_valid": false, "reasons": ["reference_interval_outlier"]},
+    {"event_id": "recovery-1", "snapshot_sequence": 50, "measurement_valid": true, "reasons": []}
+  ],
+  "diagnostics": [
+    {"diagnostic_id": "diag-outage", "event_id": "outage-1", "transition": "outage", "reason_code": "reference_missing_pps"},
+    {"diagnostic_id": "diag-reminder-1", "event_id": "outage-1", "transition": "reminder", "reason_code": "reference_missing_pps_reminder"},
+    {"diagnostic_id": "diag-reminder-2", "event_id": "outage-1", "transition": "reminder", "reason_code": "reference_missing_pps_reminder"},
+    {"diagnostic_id": "diag-restoration", "event_id": "restoration-1", "transition": "restoration", "reason_code": "reference_restored"},
+    {"diagnostic_id": "diag-recovery", "event_id": "recovery-1", "transition": "recovery", "reason_code": "clean_pair_reacquired"}
+  ],
+  "expected_metrics": {
+    "expected_event_count": 3,
+    "correctly_detected_event_count": 2,
+    "missed_detection_count": 1,
+    "false_detection_count": 1,
+    "duplicate_detection_count": 1,
+    "classification_mismatch_count": 1,
+    "fault_measurement_invalid_count": 3,
+    "fault_events_without_snapshot_assessment": 0,
+    "clean_recovery_count": 1,
+    "missing_recovery_count": 0
+  }
+}

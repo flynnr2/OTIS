@@ -123,8 +123,8 @@ def test_pps_backend_times_out_before_the_first_reference_and_preserves_raw_boun
         encoding="utf-8"
     )
     service = source[source.index("bool otis_count_observation_service(") :]
-    assert "pps_boundary_seen" in service
-    assert "missing_before_first_reported" in service
+    assert "otis_pps_diagnostics_poll" in service
+    assert "OtisPpsDiagnosticsTransition::PhysicalPpsMissing" in service
     assert "kReferenceReasonMissingPps" in service
 
     reference_start = source.index(
@@ -142,21 +142,20 @@ def test_pps_backend_times_out_before_the_first_reference_and_preserves_raw_boun
     assert "otis_timer0_interval_ticks(" in reference
 
 
-def test_pps_counter_boundary_is_owned_by_irq_and_inhibits_rejected_anchor() -> None:
+def test_pps_counter_boundary_is_owned_by_pio_and_inhibits_rejected_anchor() -> None:
     source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
-    isr_start = source.index("void capture_pps_count_boundary_from_isr(")
-    isr_end = source.index("#endif", isr_start)
-    isr = source[isr_start:isr_end]
-    assert isr.index(
-        "stop_and_sample_h1_pio_counter_from_pps_isr"
-    ) < isr.index("start_h1_pio_counter_from_pps_isr")
-    assert isr.index(
-        "start_h1_pio_counter_from_pps_isr"
-    ) < isr.index("otis_pps_count_boundary_ring_push_from_isr")
-    assert "_blocking" not in isr
-    assert "emit_" not in isr
+    backend = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(
+        encoding="utf-8"
+    )
+    pio_source = (FIRMWARE / "otis_pps_snapshot.pio").read_text(
+        encoding="utf-8"
+    )
+    assert "sm_config_set_jmp_pin(&config, OTIS_PIN_PPS_REFERENCE)" in backend
+    assert "sm_config_set_in_shift(&config, true, true, 32u)" in backend
+    assert "in x, 32" in pio_source
+    assert "stop_and_sample_h1_pio_counter_from_pps_isr" not in source
 
     reference_start = source.index(
         "bool otis_count_observation_on_pps_boundary("

@@ -53,6 +53,7 @@ __pycache__/
 # Arduino / local build outputs
 # (only matters if you configure builds to land in the repo)
 #######################################
+firmware/arduino/otis_nano_rp2040_connect/otis_build_profile.generated.h
 build/
 out/
 dist/

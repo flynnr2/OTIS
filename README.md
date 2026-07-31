@@ -57,7 +57,7 @@ run evidence, the model, diagnostics, policy, and configuration with:
 python3 -m host.otis_tools.phase4_replay /path/to/local/run
 ```
 
-It writes only beneath the run's `derived/phase4_replay_v2/` directory, verifies
+It writes only beneath the run's `derived/phase4_replay_v3/` directory, verifies
 that source-evidence hashes remain unchanged, and contains no DAC write path.
 The opt-in live firmware engine now passes deterministic fixture parity and
 emits the same normative `EST`/`CTL` contracts without a callable actuation

@@ -9,7 +9,6 @@ namespace {
 
 struct D10WitnessEvent {
   uint64_t timestamp_ticks;
-  uint64_t interval_ticks;
   uint8_t sampled_high;
 };
 
@@ -28,6 +27,8 @@ volatile uint8_t d10_event_head = 0;
 volatile uint8_t d10_event_tail = 0;
 
 uint32_t d10_consumed_event_count = 0;
+bool d10_have_processed_timestamp = false;
+uint64_t d10_last_processed_timestamp = 0;
 uint32_t pps_burst_count = 0;
 bool pps_burst_active = false;
 uint64_t pps_burst_start = 0;
@@ -51,23 +52,6 @@ void push_d10_event_from_isr(const D10WitnessEvent &event) {
 void handle_d10_witness_edge(void) {
   uint64_t timestamp = otis_capture_ticks_now();
   int sampled_level = digitalRead(d10_gpio);
-  uint64_t interval = 0;
-  if (d10_last_edge_timestamp != 0u) {
-    interval = otis_timer0_interval_ticks(d10_last_edge_timestamp, timestamp);
-    d10_last_interval = interval;
-    switch (otis_classify_pps_interval_ticks(
-        interval, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
-        OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
-      case OTIS_PPS_INTERVAL_SHORT:
-        d10_short_interval_count++;
-        break;
-      case OTIS_PPS_INTERVAL_LONG:
-        d10_long_interval_count++;
-        break;
-      case OTIS_PPS_INTERVAL_NORMAL:
-        break;
-    }
-  }
   d10_last_edge_timestamp = timestamp;
   d10_raw_edge_count++;
   if (sampled_level) {
@@ -76,7 +60,7 @@ void handle_d10_witness_edge(void) {
     d10_sampled_low_count++;
   }
   push_d10_event_from_isr(
-      {timestamp, interval, (uint8_t)(sampled_level ? 1u : 0u)});
+      {timestamp, (uint8_t)(sampled_level ? 1u : 0u)});
 }
 
 bool pop_d10_event(D10WitnessEvent *out) {
@@ -117,8 +101,28 @@ void otis_pps_dual_observer_service(void) {
   while (processed < 4u && pop_d10_event(&event)) {
     processed++;
     d10_consumed_event_count++;
-    if (event.interval_ticks > 0u &&
-        event.interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
+    uint64_t interval_ticks = 0u;
+    if (d10_have_processed_timestamp) {
+      interval_ticks = otis_timer0_interval_ticks(
+          d10_last_processed_timestamp, event.timestamp_ticks);
+      d10_last_interval = interval_ticks;
+      switch (otis_classify_pps_interval_ticks(
+          interval_ticks, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
+          OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
+        case OTIS_PPS_INTERVAL_SHORT:
+          d10_short_interval_count++;
+          break;
+        case OTIS_PPS_INTERVAL_LONG:
+          d10_long_interval_count++;
+          break;
+        case OTIS_PPS_INTERVAL_NORMAL:
+          break;
+      }
+    }
+    d10_last_processed_timestamp = event.timestamp_ticks;
+    d10_have_processed_timestamp = true;
+    if (interval_ticks > 0u &&
+        interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
       recent_short_intervals++;
       if (!pps_burst_active &&
           recent_short_intervals >= OTIS_PPS_DUAL_OBSERVER_BURST_SHORT_THRESHOLD) {
@@ -135,8 +139,8 @@ void otis_pps_dual_observer_service(void) {
     if (pps_burst_active) {
       pps_burst_last_event = event.timestamp_ticks;
       pps_burst_d10_edges++;
-      if (event.interval_ticks > 0u &&
-          event.interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
+      if (interval_ticks > 0u &&
+          interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
         pps_burst_d10_short++;
       }
     }

@@ -18,6 +18,25 @@ KNOWN_SWEEP_PROFILES = frozenset(
         "SLOPE_REPEAT_300S",
     }
 )
+KNOWN_PSEUDO_PPS_PROFILES = frozenset(
+    {
+        "CLEAN_NOMINAL",
+        "ONE_SHORT",
+        "ONE_LONG",
+        "ONE_OMIT",
+        "DOUBLE",
+        "BOUNCE",
+        "NARROW_GLITCH",
+        "POSITIVE_PHASE_STEP",
+        "NEGATIVE_PHASE_STEP",
+        "SUSTAINED_POSITIVE_OFFSET",
+        "SUSTAINED_NEGATIVE_OFFSET",
+        "REPEATED_OMISSIONS",
+        "MIXED_MALFORMED",
+        "RETURN_CLEAN",
+        "COMPOSITE",
+    }
+)
 SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
@@ -32,6 +51,10 @@ SIMPLE_COMMANDS = frozenset(
         "SWEEP STOP",
         "SWEEP STEP",
         "SWEEP CLEAR",
+        "PPSGEN?",
+        "PPSGEN PROFILES?",
+        "PPSGEN START",
+        "PPSGEN STOP",
     }
 )
 
@@ -77,6 +100,14 @@ def parse_serial_command(text: str) -> SerialCommand:
 
     if command.startswith("SWEEP ADD"):
         raise ValueError("SWEEP ADD is intentionally unsupported by host command ingress")
+
+    if command.startswith("PPSGEN ARM "):
+        profile = command[len("PPSGEN ARM ") :]
+        if profile not in KNOWN_PSEUDO_PPS_PROFILES:
+            raise ValueError(
+                f"PPSGEN ARM profile must be one of {sorted(KNOWN_PSEUDO_PPS_PROFILES)}"
+            )
+        return SerialCommand(f"PPSGEN ARM {profile}")
 
     raise ValueError("unknown or unsupported command")
 

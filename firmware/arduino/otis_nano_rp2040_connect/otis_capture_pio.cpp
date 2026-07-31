@@ -127,6 +127,7 @@ void otis_capture_pio_service(void) {
     (void)pio_sm_get(pio_capture, pio_capture_sm);
     OtisCapturedEdge record = {
         pio_capture_channel_id,
+        pio_fifo_drained_event_count,
         pio_capture_reference_record,
         'R',
         otis_capture_ticks_now(),

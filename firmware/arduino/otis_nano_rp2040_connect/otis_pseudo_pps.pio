@@ -1,0 +1,27 @@
+; Deterministic, single-SM pseudo-PPS waveform engine.
+;
+; TX words are (high_loop_count, low_loop_count) pairs followed by a zero
+; high_loop_count sentinel. The output is driven low before either blocking
+; pull, so starvation is electrically fail-safe. A polled PIO IRQ flag marks
+; normal completion; no CPU ISR owns an edge or interval.
+.program otis_pseudo_pps
+
+.wrap_target
+    set pins, 0
+    pull block
+    out y, 32
+    jmp !y complete
+    pull block
+    out x, 32
+low_delay:
+    jmp x-- low_delay
+    set pins, 1
+high_delay:
+    jmp y-- high_delay
+    jmp 0
+complete:
+    set pins, 0
+    irq set 7
+halt:
+    jmp halt
+.wrap

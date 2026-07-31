@@ -62,9 +62,11 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "gps_pps_pio_capture",
         "h1_pio_capture_long_gate",
         "tcxo_gpio_irq_divided",
+        "pseudo_pps_loopback",
+        "invalid_pseudo_pps_nonisolated_resources",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 11
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 3
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 12
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 4
 
 
 def test_config_hash_is_deterministic_and_changes_with_configuration() -> None:
@@ -94,6 +96,44 @@ def test_config_hash_changes_when_header_defined_defaults_change(
     )
 
 
+def test_source_hash_ignores_local_ide_profile_header(tmp_path: Path) -> None:
+    sketch = tmp_path / "sketch"
+    sketch.mkdir()
+    (sketch / "sketch.ino").write_text("void setup() {}\n", encoding="utf-8")
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text('{"matrix": 1}\n', encoding="utf-8")
+    builder_path = tmp_path / "builder.py"
+    builder_path.write_text("# builder\n", encoding="utf-8")
+
+    initial = firmware_matrix.source_input_hash(
+        sketch=sketch,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+    generated = sketch / firmware_matrix.GENERATED_HEADER_NAME
+    generated.write_text("// first IDE profile\n", encoding="utf-8")
+    with_generated = firmware_matrix.source_input_hash(
+        sketch=sketch,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+    generated.write_text("// different IDE profile\n", encoding="utf-8")
+    changed_generated = firmware_matrix.source_input_hash(
+        sketch=sketch,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+    (sketch / "sketch.ino").write_text("void setup() { }\n", encoding="utf-8")
+    changed_source = firmware_matrix.source_input_hash(
+        sketch=sketch,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+
+    assert initial == with_generated == changed_generated
+    assert changed_source != initial
+
+
 def test_generated_provenance_contains_exact_source_target_and_toolchain() -> None:
     matrix = load_matrix(MATRIX_PATH)
     profile = _profile(matrix, "phase4_observe_only")
@@ -113,7 +153,7 @@ def test_generated_provenance_contains_exact_source_target_and_toolchain() -> No
         "sha256": "e" * 64,
     }
     assert provenance["target"]["fqbn"] == (
-        "rp2040:rp2040:arduino_nano_connect"
+        "rp2040:rp2040:arduino_nano_connect:freq=133"
     )
     assert provenance["target"]["core_version"] == "6.0.0"
     assert provenance["target"]["board_id"] == "arduino_nano_connect"
@@ -184,6 +224,7 @@ def test_arduino_preprocessing_rejects_unprovenanced_compile(
 ) -> None:
     if shutil.which("c++") is None:
         pytest.skip("host C++ preprocessor is not available")
+    shutil.copyfile(FIRMWARE / "otis_config.h", tmp_path / "otis_config.h")
     harness = tmp_path / "unprovenanced.cpp"
     harness.write_text('#include "otis_config.h"\n', encoding="utf-8")
     result = subprocess.run(
@@ -192,7 +233,7 @@ def test_arduino_preprocessing_rejects_unprovenanced_compile(
             "-E",
             "-DARDUINO=1",
             "-I",
-            str(FIRMWARE),
+            str(tmp_path),
             str(harness),
         ],
         check=False,
@@ -201,7 +242,7 @@ def test_arduino_preprocessing_rejects_unprovenanced_compile(
     )
 
     assert result.returncode != 0
-    assert "otis_build_profile.generated.h" in result.stderr
+    assert "--prepare-ide --profile" in result.stderr
 
 
 def test_generated_header_is_included_before_any_profile_selector() -> None:
@@ -247,6 +288,106 @@ def test_complete_stale_header_cannot_authorize_ordinary_raw_compile(
 
     assert result.returncode != 0
     assert "builder session flag is required" in result.stderr
+
+
+def test_ide_profile_header_authorizes_direct_arduino_preprocessing(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("c++") is None:
+        pytest.skip("host C++ preprocessor is not available")
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "synthetic_usb")
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="clean",
+        source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
+    )
+    shutil.copyfile(FIRMWARE / "otis_config.h", tmp_path / "otis_config.h")
+    (tmp_path / firmware_matrix.GENERATED_HEADER_NAME).write_text(
+        provenance_header(provenance, ide_compatible=True),
+        encoding="utf-8",
+    )
+    harness = tmp_path / "ide.cpp"
+    harness.write_text(
+        '#include "otis_config.h"\n'
+        "#ifndef OTIS_BUILD_IDE_PROFILE_GENERATED\n"
+        '#error "IDE profile marker is missing"\n'
+        "#endif\n"
+        "const char *profile = OTIS_BUILD_PROFILE_ID;\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["c++", "-E", "-DARDUINO=1", "-I", str(tmp_path), str(harness)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert '"synthetic_usb"' in result.stdout
+
+
+def test_prepare_ide_profile_writes_validated_source_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "phase5_qualification")
+    sketch = tmp_path / "sketch"
+    sketch.mkdir()
+    config_path = sketch / "otis_config.h"
+    config_path.write_text("// config\n", encoding="utf-8")
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text("{}\n", encoding="utf-8")
+    builder_path = tmp_path / "builder.py"
+    builder_path.write_text("# builder\n", encoding="utf-8")
+    snapshot = {
+        "git_commit": "d" * 40,
+        "source_state": "clean",
+        "source_sha256": "e" * 64,
+        "config_source_sha256": "f" * 64,
+        "config_sha256": "1" * 64,
+    }
+    captures = iter([dict(snapshot), dict(snapshot)])
+    monkeypatch.setattr(
+        firmware_matrix,
+        "verify_environment",
+        lambda matrix, arduino_cli: _environment(),
+    )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_capture_source_state",
+        lambda *args, **kwargs: next(captures),
+    )
+    monkeypatch.setattr(
+        firmware_matrix,
+        "_verify_installed_environment",
+        lambda environment: None,
+    )
+
+    prepared = firmware_matrix.prepare_ide_profile(
+        matrix,
+        profile,
+        arduino_cli="fake-arduino-cli",
+        repo_root=tmp_path,
+        sketch=sketch,
+        config_path=config_path,
+        matrix_path=matrix_path,
+        builder_path=builder_path,
+    )
+
+    generated = sketch / firmware_matrix.GENERATED_HEADER_NAME
+    text = generated.read_text(encoding="utf-8")
+    assert prepared["path"] == str(generated.resolve())
+    assert prepared["profile_id"] == "phase5_qualification"
+    assert "#define OTIS_BUILD_IDE_PROFILE_GENERATED 1" in text
+    assert "--prepare-ide --profile phase5_qualification" in text
+    assert "OTIS builder session flag is required" not in text
 
 
 def test_generated_header_rejects_external_selector_override(
@@ -357,6 +498,15 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
 ) -> None:
     matrix = load_matrix(MATRIX_PATH)
     profile = _profile(matrix, "synthetic_usb")
+    source_sketch = tmp_path / FIRMWARE.name
+    shutil.copytree(FIRMWARE, source_sketch)
+    source_header = source_sketch / firmware_matrix.GENERATED_HEADER_NAME
+    source_header.write_text(
+        "// local Arduino IDE profile that the matrix build must replace\n"
+        "#define OTIS_BUILD_IDE_PROFILE_GENERATED 1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(firmware_matrix, "SKETCH", source_sketch)
     snapshot = {
         "git_commit": "d" * 40,
         "source_state": "clean",
@@ -395,7 +545,12 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
         assert " " in str(compiled_sketch)
         header = compiled_sketch / firmware_matrix.GENERATED_HEADER_NAME
         assert header.is_file()
-        assert not (FIRMWARE / firmware_matrix.GENERATED_HEADER_NAME).exists()
+        header_text = header.read_text(encoding="utf-8")
+        assert "OTIS builder session flag is required" in header_text
+        assert "OTIS_BUILD_IDE_PROFILE_GENERATED" not in header_text
+        assert "local Arduino IDE profile" in source_header.read_text(
+            encoding="utf-8"
+        )
         artifacts = Path(arguments[arguments.index("--output-dir") + 1])
         for suffix in firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES:
             (artifacts / f"firmware{suffix}").write_bytes(
@@ -803,14 +958,18 @@ def test_matrix_output_root_symlink_is_rejected_before_summary_cleanup(
     assert summary.read_bytes() == b"external summary"
 
 
-def test_source_has_no_manual_commit_literal_and_requires_builder() -> None:
+def test_source_has_no_manual_commit_literal_and_requires_generated_profile() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
     board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
 
-    assert '#error "Build OTIS firmware with tools/firmware_matrix.py' in config
+    assert "--prepare-ide --profile <profile_id>" in config
+    assert (
+        "Build with tools/firmware_matrix.py or generate an IDE profile"
+        in config
+    )
     assert '#include "otis_build_profile.generated.h"' in config
     assert "#define OTIS_FIRMWARE_GIT_COMMIT OTIS_BUILD_GIT_COMMIT" in config
     assert "#define OTIS_TARGET_BOARD OTIS_BUILD_BOARD_ID" in board

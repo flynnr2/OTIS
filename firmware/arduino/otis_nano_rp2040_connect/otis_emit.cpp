@@ -69,6 +69,72 @@ void otis_emit_csv_headers(void) {
   otis_transport_write_cstr(
       "record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags");
   otis_emit_line_end();
+  otis_transport_write_cstr(
+      "record_type,schema_version,session,snapshot_sequence,cumulative_down_counter,reference_sequence,reference_timestamp_ticks,status,backend");
+  otis_emit_line_end();
+  otis_transport_write_cstr(
+      "record_type,schema_version,truth_seq,generator_session,profile_id,profile_version,generator_sequence,event,intended_class,scheduled_offset_us,scheduled_interval_us,pulse_width_us,flags");
+  otis_emit_line_end();
+}
+
+void otis_emit_pseudo_pps_truth(
+    uint32_t truth_seq, uint32_t generator_session, const char *profile_id,
+    uint16_t profile_version, uint32_t generator_sequence, const char *event,
+    const char *intended_class, uint32_t scheduled_offset_us,
+    uint32_t scheduled_interval_us, uint32_t pulse_width_us, uint32_t flags) {
+  otis_emit_csv_text(OTIS_RECORD_PGT);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(truth_seq);
+  otis_emit_comma();
+  otis_transport_write_uint32(generator_session);
+  otis_emit_comma();
+  otis_emit_csv_text(profile_id);
+  otis_emit_comma();
+  otis_transport_write_uint32(profile_version);
+  otis_emit_comma();
+  otis_transport_write_uint32(generator_sequence);
+  otis_emit_comma();
+  otis_emit_csv_text(event);
+  otis_emit_comma();
+  otis_emit_csv_text(intended_class);
+  otis_emit_comma();
+  otis_transport_write_uint32(scheduled_offset_us);
+  otis_emit_comma();
+  otis_transport_write_uint32(scheduled_interval_us);
+  otis_emit_comma();
+  otis_transport_write_uint32(pulse_width_us);
+  otis_emit_comma();
+  otis_transport_write_uint32(flags);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
+}
+
+void otis_emit_pps_snapshot(uint32_t session, uint32_t snapshot_sequence,
+                            uint32_t cumulative_down_counter,
+                            uint32_t reference_sequence,
+                            uint64_t reference_timestamp_ticks,
+                            uint32_t status, const char *backend) {
+  otis_emit_csv_text(OTIS_RECORD_SNP);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(session);
+  otis_emit_comma();
+  otis_transport_write_uint32(snapshot_sequence);
+  otis_emit_comma();
+  otis_transport_write_uint32(cumulative_down_counter);
+  otis_emit_comma();
+  otis_transport_write_uint32(reference_sequence);
+  otis_emit_comma();
+  otis_print_uint64(reference_timestamp_ticks);
+  otis_emit_comma();
+  otis_transport_write_uint32(status);
+  otis_emit_comma();
+  otis_emit_csv_text(backend);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
 }
 
 void otis_emit_raw_event(const char *record_type, uint32_t event_seq,

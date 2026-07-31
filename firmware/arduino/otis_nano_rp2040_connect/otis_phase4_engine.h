@@ -134,6 +134,7 @@ struct OtisPhase4Observation {
   OtisPhase4Validity reference_validity;
   OtisPhase4Validity count_validity;
   bool reference_continuity;
+  bool reference_authority_qualified;
   bool count_continuity;
   OtisPhase4DiagnosticHealth diagnostic_health;
   uint32_t observation_reason_mask;

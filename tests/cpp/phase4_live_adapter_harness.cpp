@@ -10,10 +10,14 @@ namespace {
 
 std::string output;
 uint32_t capture_drops = 0u;
+size_t transport_capacity = 4096u;
+bool resource_registry_ok = true;
 
 }  // namespace
 
 uint32_t otis_capture_ring_dropped_count(void) { return capture_drops; }
+bool otis_resource_registry_valid(void) { return resource_registry_ok; }
+bool otis_resource_registry_complete(void) { return resource_registry_ok; }
 
 size_t otis_transport_write_char(char c) {
   output.push_back(c);
@@ -36,7 +40,7 @@ size_t otis_transport_write_uint32(uint32_t value) {
   return text.size();
 }
 
-size_t otis_transport_available_for_write(void) { return 4096u; }
+size_t otis_transport_available_for_write(void) { return transport_capacity; }
 bool otis_transport_begin(uint32_t) { return true; }
 void otis_transport_flush_if_needed(void) {}
 bool otis_transport_ready(void) { return true; }
@@ -61,6 +65,7 @@ int main(int argc, char **argv) {
     final_gate_delta_ticks = (int64_t)kTickHz / 2;
   }
   OtisRuntimeState runtime = {};
+  if (scenario == "resource_failure") resource_registry_ok = false;
   runtime.sequences.estimate_seq = 1u;
   runtime.sequences.control_seq = 1u;
   OtisPhase4LiveDacState dac = {true, 0xA950u};
@@ -74,11 +79,13 @@ int main(int argc, char **argv) {
   do {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());
+  if (scenario == "resource_failure") resource_registry_ok = true;
   otis_phase4_observe_preview_on_reference(
       1u, 2u * kTickHz, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED, &runtime, &dac);
   do {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());
+  if (scenario == "output_backpressure") transport_capacity = 0u;
 
   uint32_t reference_seq = 1u;
   uint32_t last_reference_second = 2u;
@@ -106,11 +113,13 @@ int main(int argc, char **argv) {
           true, temperature, runtime.tcxo.last_gate_close_ticks);
     }
     otis_phase4_observe_preview_on_count(count_seq, &runtime, &dac);
-    do {
+    if (scenario != "output_backpressure") {
+      do {
+        otis_phase4_observe_preview_service_transport();
+      } while (otis_phase4_observe_preview_transport_busy());
+      // The first service may complete a whole frame, leaving busy false.
       otis_phase4_observe_preview_service_transport();
-    } while (otis_phase4_observe_preview_transport_busy());
-    // The first service may complete a whole frame, leaving busy false.
-    otis_phase4_observe_preview_service_transport();
+    }
     if (count_seq == 2u &&
         (scenario == "settling_boundary" ||
          scenario == "settling_straddling")) {
@@ -122,6 +131,11 @@ int main(int argc, char **argv) {
       otis_phase4_observe_preview_on_dac_applied(
           dac.applied_code, change_ticks);
     }
+  }
+  if (scenario == "output_backpressure") {
+    transport_capacity = 4096u;
+    for (uint32_t index = 0u; index < 1000u; ++index)
+      otis_phase4_observe_preview_service_transport();
   }
 
   // Non-PPS-aligned count: the adapter must retain it until the next REF
@@ -160,6 +174,11 @@ int main(int argc, char **argv) {
     otis_phase4_observe_preview_service_transport();
   } while (otis_phase4_observe_preview_transport_busy());
   otis_phase4_observe_preview_service_transport();
+  if (scenario == "output_backpressure") {
+    otis_phase4_observe_preview_poll(1805u * kTickHz, &runtime, &dac);
+    for (uint32_t index = 0u; index < 1000u; ++index)
+      otis_phase4_observe_preview_service_transport();
+  }
 
   std::cout << output;
   return 0;

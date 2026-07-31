@@ -12,6 +12,7 @@
 #define OTIS_OWNER_PPS_WITNESS "pps_witness"
 #define OTIS_OWNER_LOOPBACK_OUTPUT "loopback_output"
 #define OTIS_OWNER_COUNT_OBSERVATION "count_observation"
+#define OTIS_OWNER_PSEUDO_PPS "pseudo_pps_generator"
 #define OTIS_OWNER_I2C_BUS "i2c_bus"
 #define OTIS_OWNER_DAC "dac_ad5693r"
 #define OTIS_OWNER_ENV_SHT4X "environment_sht4x"
@@ -22,6 +23,7 @@ enum class OtisResourceType : uint8_t {
   GpioIrq,
   PioStateMachine,
   PioInstructionMemory,
+  PioIrqFlag,
   DmaChannel,
   Timer,
   Clock,
@@ -77,5 +79,7 @@ bool otis_resource_registry_bind_pio_program(const char *owner,
                                              uint8_t pio_block,
                                              uint8_t offset,
                                              uint8_t length);
+bool otis_resource_registry_bind_dma_channel(const char *owner,
+                                             uint8_t channel);
 
 #endif

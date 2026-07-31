@@ -1,0 +1,41 @@
+.program otis_pps_snapshot
+
+; One state machine owns both oscillator-edge counting and PPS snapshots.
+;
+; PIN 0, relative to IN_BASE: oscillator input.
+; JMP PIN, selected independently by EXECCTRL_JMP_PIN: physical PPS input.
+; X: wrapping 32-bit down-counter, initialised once before the SM is enabled.
+; ISR/autopush: immutable cumulative X snapshot, one word per recognised PPS rise.
+;
+; The host starts the state machine at pps_high_wait_high.  Treating PPS as
+; already high suppresses a false snapshot if acquisition begins during a PPS
+; pulse.  The first observed low arms the next physical rise.
+
+.wrap_target
+pps_low_wait_high:
+    wait 1 pin 0
+    jmp x-- pps_low_check_high
+pps_low_check_high:
+    jmp pin pps_capture_high
+
+pps_low_wait_low:
+    wait 0 pin 0
+    jmp pin pps_capture_low
+    jmp pps_low_wait_high
+
+pps_capture_high:
+    in x, 32
+pps_high_wait_low:
+    wait 0 pin 0
+    jmp pin pps_high_wait_high
+    jmp pps_low_wait_high
+
+pps_capture_low:
+    in x, 32
+pps_high_wait_high:
+    wait 1 pin 0
+    jmp x-- pps_high_check_high
+pps_high_check_high:
+    jmp pin pps_high_wait_low
+    jmp pps_low_wait_low
+.wrap

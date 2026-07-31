@@ -15,75 +15,77 @@ The governing invariant is:
 
 ## Architecture decision
 
-The corrected backend uses the surgical PPS-ISR-owned implementation:
+The production candidate is `pio_wait_cumulative_snapshot_dma_v1`:
 
 ```text
-D14 rising GPIO IRQ
-  -> read one rp2040_timer0 timestamp
-  -> disable/sample/restart the PIO oscillator counter
-  -> publish one OtisPpsCountBoundaryObservation to a bounded SPSC ring
+D8 / GPIO20 oscillator -- WAIT PIN --> one PIO0 state machine -- X--
+D14 / GPIO26 PPS ------- JMP PIN ---> same state machine ------ IN X,32
+                                                               autopush
+                                                                  |
+                                                           joined RX FIFO
+                                                                  |
+                                                         DMA transport only
+                                                                  |
+                                                        128-word SRAM ring
 
-foreground
-  -> pop that atomic observation
-  -> validate sequence, reference interval, counter window and pairing
-  -> emit the corresponding REF, bounded CNT, transition/anomaly STS
+D14 GPIO IRQ --> independent reconstructed REF timestamp/diagnostics
+foreground   --> associate immutable snapshot + REF, difference adjacent X
 ```
 
-A continuous PIO counter with a PPS-triggered hardware latch remains the
-preferred future endpoint. The current five-instruction PIO counter has no
-direct cross-state-machine register snapshot path, and adding a routed
-multi-state-machine/DMA fabric would be disproportionate to this correction.
-The ISR backend removes the confirmed foreground aperture defect without
-changing the higher-level observation semantics.
+The same PIO state machine recognizes oscillator edges and copies its own
+cumulative counter when PPS is high after an armed low. This makes the
+physical aperture hardware-owned. It never stops, samples, resets, reloads, or
+restarts the counter at PPS. ISR, DMA, USB, serial, and foreground latency occur
+after the snapshot and cannot move it.
 
-The ISR path uses only fixed register operations and one fixed-size ring push.
-It contains no allocation, formatting, serial output, floating point,
-estimator work, delay, blocking FIFO call, or other service-plane operation.
-The counter is restarted before the observation is published.
+The edge-driven program alternates oscillator `WAIT` instructions. A stalled
+`WAIT` evaluates every PIO clock; `JMP PIN` independently observes PPS between
+oscillator levels. The checked-in 15-word listing and timing proof are in
+`PPS_PIO_PROOF_AND_VERIFICATION.md`.
 
 ## Atomic observation and bounded transfer
 
-`OtisPpsCountBoundaryObservation` contains:
+The raw `SNP` snapshot plus its associated
+`OtisPpsCountBoundaryObservation` contain:
 
-- a modulo-\(2^{32}\) boundary sequence;
+- a session and modulo-\(2^{32}\) hardware snapshot sequence;
+- the wrapping 32-bit cumulative PIO down-counter value;
+- the independent D14 source sequence;
 - the PPS event's reconstructed `rp2040_timer0` timestamp;
-- the interval edge count captured at that event;
+- the adjacent modulo difference used as the interval edge count;
 - capture flags;
 - physical-aperture flags.
 
-The dedicated ISR-to-foreground ring has seven usable entries by default
-(`OTIS_PPS_COUNT_BOUNDARY_RING_SIZE=8`). Producer and consumer indices have one
-owner each. Compile-time checks require a power-of-two size and bounded
-8-bit indices. A full ring increments a saturating `uint32_t` drop counter;
-the next deliverable observation carries
-`OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW`. Its sequence gap prevents an
-opportunistic join to an older `REF`. A boundary observation is the only source
-for both its `REF` emission and count processing.
+The joined PIO RX FIFO holds eight words. A high-priority RX-DREQ-paced DMA
+channel writes an aligned 128-word circular SRAM ring. DMA's monotonic transfer
+count owns the producer ordinal; foreground alone owns the consumer. A distance
+above 128, PIO `RXSTALL`, DMA AHB error, or unexpected DMA stop is explicit
+continuity loss and starts a new session. The D14 record ring is separate and
+cannot manufacture a hardware snapshot.
 
 For this backend, emitted `CNT.count_seq` equals the closing boundary sequence.
 The first boundary is sequence 0 and has no preceding window; the first clean
 `CNT` therefore normally has sequence 1. A dropped boundary produces an
 auditable `CNT` sequence gap rather than a newly packed foreground sequence.
 
-Sequence continuity uses unsigned arithmetic, so `UINT32_MAX -> 0` is
-continuous. Duplicate and gap relations are explicit. The interval-count
-backend does not expose a cumulative counter wrap in normal one-second use.
-The shared boundary helper nevertheless defines single-wrap unsigned
-cumulative-snapshot subtraction for a future continuous backend; a delta above
-the implementation maximum is `counter_wrap_ambiguous`, not silently valid.
+For down-counter snapshots, `delta = previous_X - current_X mod 2^32`.
+Sequence `UINT32_MAX -> 0` is also continuous. At 16 MHz a full counter wrap is
+268.435456 seconds, while a valid REF interval is at most 1.2 seconds; a gap
+that cannot exclude a full wrap is `counter_wrap_ambiguous`, not silently valid.
 
 ## Startup, missing PPS, and reacquisition
 
-The first PPS starts the physical counter and publishes a boundary with
-`previous_boundary_unavailable` / `physical_aperture_incomplete`; it emits a
-`REF` but no fabricated `CNT`.
+PIO starts in PPS-high state so a mid-pulse enable cannot fabricate a snapshot.
+The first associated snapshot of a session is an anchor and emits no fabricated
+`CNT`. The second clean adjacent snapshot may close the first interval.
 
-When PPS is missing, foreground may report the timeout, but it does not stop or
-restart the counter. Only a later PPS IRQ may close that aperture. The long
-bounded observation is rejected by reference validity, followed by one
-deterministic previous-boundary/reacquisition inhibit. Duplicate, short, long,
-flagged, sequence-gap, overflow, and unavailable-boundary cases similarly
-cannot become clean pairs.
+When PPS is missing but the oscillator continues, PIO keeps counting and D14's
+physical watchdog reports one outage transition. A later long boundary is
+rejected. When the oscillator stops, PIO parks in `WAIT` and D14 continues
+independently; the missing snapshot invalidates association. Resumption starts
+a new session, discards any late recovery word, and requires two fresh
+snapshots. Duplicate, short, long, flagged, sequence-gap, overflow, and
+unavailable-boundary cases cannot become clean pairs.
 
 If a boundary sequence is missing, the delivered interval count cannot be
 honestly associated with the last foreground timestamp. Firmware preserves the
@@ -142,7 +144,7 @@ never suppresses the raw evidence.
 backend metadata. Serial command intake is byte-bounded and processes at most
 one complete command per loop pass. Boundary-ring draining precedes command,
 DAC-sweep, environment, and periodic-status service. None of these service
-paths can alter the IRQ-owned aperture.
+paths can alter the PIO-owned aperture.
 
 The CSV schema remains v1. Added `pps_gate` status keys are additive:
 `boundary_owner`, `aperture_backend`, `backend_qualified`,
@@ -157,11 +159,12 @@ firmware writer.
 
 The backend claims:
 
-- GPIO26 and its GPIO IRQ through the existing `edge_capture` owner, with role
-  `pps_reference_and_count_boundary_irq`;
-- GPIO20, one dynamically allocated PIO0 state machine, and its five-word
+- GPIO26 as a shared read-only PPS input: PIO boundary input and independent
+  D14 GPIO REF observer;
+- GPIO20, one dynamically allocated PIO0 state machine, and its 15-word
   program through `count_observation`;
-- no DMA channel and no additional IRQ.
+- one dynamically allocated high-priority DMA channel and an aligned
+  128-word SRAM snapshot ring.
 
 The PIO and GPIO claims remain conflict-checked and visible through the resource
 registry. A gated build with the CPU-timestamped PIO edge-queue capture backend
@@ -170,13 +173,13 @@ PPS-owned count boundary.
 
 Remaining limitations are explicit:
 
-- the timestamp is read in the GPIO IRQ and carries
-  `TIMESTAMP_RECONSTRUCTED`; it is not a hardware-latched timer capture;
-- ISR entry latency and the bounded stop/sample/restart dead time contribute
-  aperture quantisation;
-- a future continuous hardware snapshot would remove restart dead time;
-- host/unit tests do not qualify those hardware limits.
+- the D14 timestamp is read in the GPIO IRQ and carries
+  `TIMESTAMP_RECONSTRUCTED`; it is gate-time evidence, not the count aperture;
+- direct asynchronous frequency counting has normal boundary quantization of
+  at most one oscillator edge in the proved digital model;
+- stopped-oscillator recovery deliberately sacrifices PPS snapshots and fails
+  closed;
+- host/unit tests do not qualify pad-level waveform and timing margin.
 
-Foreground backlog can now cause an explicit observation-ring overflow, but it
-cannot shorten the physical count aperture or trigger rapid stale
-stop/restart operations.
+Foreground backlog can cause explicit ring overflow, but it cannot shorten the
+physical count aperture or change already-captured PIO words.

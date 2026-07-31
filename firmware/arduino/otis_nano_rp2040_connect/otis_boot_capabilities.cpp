@@ -237,6 +237,8 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "pps_witness";
     case OtisBootCapability::CountBackend:
       return "count_backend";
+    case OtisBootCapability::PseudoPpsGenerator:
+      return "pseudo_pps_generator";
     case OtisBootCapability::Dac:
       return "dac";
     case OtisBootCapability::Sensors:
