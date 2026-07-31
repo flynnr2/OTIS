@@ -1,6 +1,7 @@
 #include "otis_pps_dual_observer.h"
 
 #include <Arduino.h>
+#include <hardware/gpio.h>
 
 #include "otis_config.h"
 #include "otis_timebase.h"
@@ -37,30 +38,31 @@ uint32_t pps_burst_d10_edges = 0;
 uint32_t pps_burst_d10_short = 0;
 uint32_t recent_short_intervals = 0;
 
+void increment_saturating(volatile uint32_t *counter) {
+  if (*counter != UINT32_MAX) {
+    *counter += 1u;
+  }
+}
+
 void push_d10_event_from_isr(const D10WitnessEvent &event) {
   uint8_t next_head =
-      (uint8_t)((d10_event_head + 1u) % OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE);
+      (uint8_t)((d10_event_head + 1u) &
+                (OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE - 1u));
   if (next_head == d10_event_tail) {
-    d10_buffer_overflow_count++;
+    increment_saturating(&d10_buffer_overflow_count);
     return;
   }
   d10_events[d10_event_head] = event;
   d10_event_head = next_head;
-  d10_buffered_event_count++;
+  increment_saturating(&d10_buffered_event_count);
 }
 
 void handle_d10_witness_edge(void) {
-  uint64_t timestamp = otis_capture_ticks_now();
-  int sampled_level = digitalRead(d10_gpio);
-  d10_last_edge_timestamp = timestamp;
-  d10_raw_edge_count++;
-  if (sampled_level) {
-    d10_sampled_high_count++;
-  } else {
-    d10_sampled_low_count++;
-  }
+  uint64_t timestamp = otis_capture_ticks_now_from_isr();
+  bool sampled_high = gpio_get(d10_gpio);
+  increment_saturating(&d10_raw_edge_count);
   push_d10_event_from_isr(
-      {timestamp, (uint8_t)(sampled_level ? 1u : 0u)});
+      {timestamp, (uint8_t)(sampled_high ? 1u : 0u)});
 }
 
 bool pop_d10_event(D10WitnessEvent *out) {
@@ -100,7 +102,13 @@ void otis_pps_dual_observer_service(void) {
   uint8_t processed = 0;
   while (processed < 4u && pop_d10_event(&event)) {
     processed++;
-    d10_consumed_event_count++;
+    increment_saturating(&d10_consumed_event_count);
+    d10_last_edge_timestamp = event.timestamp_ticks;
+    if (event.sampled_high != 0u) {
+      increment_saturating(&d10_sampled_high_count);
+    } else {
+      increment_saturating(&d10_sampled_low_count);
+    }
     uint64_t interval_ticks = 0u;
     if (d10_have_processed_timestamp) {
       interval_ticks = otis_timer0_interval_ticks(
@@ -110,10 +118,10 @@ void otis_pps_dual_observer_service(void) {
           interval_ticks, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
           OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
         case OTIS_PPS_INTERVAL_SHORT:
-          d10_short_interval_count++;
+          increment_saturating(&d10_short_interval_count);
           break;
         case OTIS_PPS_INTERVAL_LONG:
-          d10_long_interval_count++;
+          increment_saturating(&d10_long_interval_count);
           break;
         case OTIS_PPS_INTERVAL_NORMAL:
           break;
@@ -123,11 +131,11 @@ void otis_pps_dual_observer_service(void) {
     d10_have_processed_timestamp = true;
     if (interval_ticks > 0u &&
         interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
-      recent_short_intervals++;
+      increment_saturating(&recent_short_intervals);
       if (!pps_burst_active &&
           recent_short_intervals >= OTIS_PPS_DUAL_OBSERVER_BURST_SHORT_THRESHOLD) {
         pps_burst_active = true;
-        pps_burst_count++;
+        increment_saturating(&pps_burst_count);
         pps_burst_start = event.timestamp_ticks;
         pps_burst_d10_edges = 0;
         pps_burst_d10_short = 0;
@@ -138,10 +146,10 @@ void otis_pps_dual_observer_service(void) {
     }
     if (pps_burst_active) {
       pps_burst_last_event = event.timestamp_ticks;
-      pps_burst_d10_edges++;
+      increment_saturating(&pps_burst_d10_edges);
       if (interval_ticks > 0u &&
           interval_ticks < OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS) {
-        pps_burst_d10_short++;
+        increment_saturating(&pps_burst_d10_short);
       }
     }
   }

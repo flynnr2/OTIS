@@ -204,14 +204,21 @@ def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
         "void handle_tcxo_observation_edge(void)", handler_start
     )
     handler = irq_source[handler_start:handler_end]
-    assert handler.count("otis_capture_ticks_now()") == 1
+    assert handler.count("otis_capture_ticks_now_from_isr()") == 1
+    assert handler.count("gpio_get(capture_gpio)") == 1
     assert "const OtisCapturedEdge captured_event" in handler
     assert "pps_count_boundary_handler" not in handler
     assert "pio_sm_" not in handler
     assert "dma_" not in handler
     assert "otis_capture_ring_push_from_isr(captured_event)" in handler
-    assert "d14_last_raw_timestamp = timestamp" in handler
-    assert "d14_last_accepted_timestamp = timestamp" in handler
+    assert "d14_last_raw_timestamp = timestamp" not in handler
+    assert "d14_last_accepted_timestamp = timestamp" not in handler
+    foreground_start = irq_source.index(
+        "void otis_capture_irq_process_reference_foreground("
+    )
+    foreground = irq_source[foreground_start:]
+    assert "d14_last_raw_timestamp = record.timestamp_ticks" in foreground
+    assert "d14_last_accepted_timestamp = record.timestamp_ticks" in foreground
     assert "otis_capture_ticks_now()" not in ring_source
 
 

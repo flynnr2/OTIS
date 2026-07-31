@@ -133,6 +133,12 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   once; reminder, snapshot absence, foreground backlog, and telemetry
   backpressure are separate diagnostics. A missing snapshot with continued REF
   invalidates association and withholds a clean `CNT`.
+- A narrow malformed D14 pulse can produce a REF without a PIO SNP. Firmware
+  records `association_state=lost` with `ref_without_snapshot`, invalidates the
+  affected interval, rearms into a new session, clears old unread/late words,
+  and requires a fresh anchor plus adjacent snapshot. No CNT bridges the
+  event, and repeated narrow REF glitches do not create duplicate physical
+  outage transitions.
 - Failure to receive the first PPS after backend start also produces an
   explicit missing-PPS fault rather than remaining silently armed.
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the

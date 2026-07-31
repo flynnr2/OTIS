@@ -167,6 +167,14 @@
 #define OTIS_NOMINAL_CAPTURE_CLOCK_HZ 16000000u
 #endif
 
+// Conservative full-wrap exclusion bound for the PPS snapshot counter. The
+// PIO can execute at most one X decrement per 133 MHz system clock, so this is
+// an architectural upper bound on captured edges, not an oscillator estimate
+// or clean-run acceptance tolerance.
+#ifndef OTIS_PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ
+#define OTIS_PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ 133000000u
+#endif
+
 #ifndef OTIS_NOMINAL_TCXO_HZ
 #define OTIS_NOMINAL_TCXO_HZ 16000000u
 #endif
@@ -248,6 +256,13 @@
 
 #ifndef OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE
 #define OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE 16u
+#endif
+
+#if OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE < 2u || \
+    OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE > 128u || \
+    (OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE & \
+     (OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE - 1u)) != 0u
+#error "OTIS_PPS_DUAL_OBSERVER_BUFFER_SIZE must be a power of two from 2 to 128."
 #endif
 
 // Status LED.

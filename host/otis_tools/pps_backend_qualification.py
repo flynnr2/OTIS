@@ -31,6 +31,7 @@ OUTPUT_NAME = "qualification_report_v1.json"
 TOOL_VERSION = "pps_backend_qualification_v1"
 RP2040_TIMER0_TICKS_PER_US = 16
 RP2040_TIMER0_MICROS_MODULUS = 1 << 32
+PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ = 133_000_000.0
 
 REFERENCE_INVALID_FLAGS = (
     (1 << 0)
@@ -661,7 +662,10 @@ def _snapshot_continuity(
     reconstructed = reconstruct_snapshots(
         observations,
         ReconstructionPolicy(
-            max_oscillator_hz=_nominal_frequency(manifest),
+            # One PIO X decrement per system-clock tick is an intentionally
+            # loose architectural ceiling for full-wrap exclusion. It is not
+            # the expected oscillator frequency or an acceptance tolerance.
+            max_oscillator_hz=PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ,
             timestamp_ticks_per_second=_domain_hz(
                 manifest, "rp2040_timer0"
             ),

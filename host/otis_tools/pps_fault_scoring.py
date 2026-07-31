@@ -20,6 +20,30 @@ class GeneratorTruthEvent:
     expected_classification: str | None = None
     scheduled_timestamp_ticks: int | None = None
     time_domain: str | None = None
+    expected_snapshot_observed: bool | None = None
+    expected_association_state: str | None = None
+    expected_cnt_state: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.expected_association_state not in {
+            None,
+            "associated",
+            "associated_invalid",
+            "lost",
+            "quarantined",
+            "anchor",
+            "adjacent",
+            "clean",
+        }:
+            raise ValueError("unsupported expected_association_state")
+        if self.expected_cnt_state not in {
+            None,
+            "valid",
+            "invalid",
+            "absent",
+            "invalid_or_absent",
+        }:
+            raise ValueError("unsupported expected_cnt_state")
 
 
 @dataclass(frozen=True)
@@ -35,9 +59,41 @@ class PhysicalDetection:
 @dataclass(frozen=True)
 class SnapshotValidity:
     event_id: str
-    snapshot_sequence: int
+    snapshot_sequence: int | None
     measurement_valid: bool
     reasons: tuple[str, ...] = ()
+    snapshot_observed: bool = True
+    associated_reference_sequence: int | None = None
+    association_state: str = "associated"
+    cnt_state: str = "unassessed"
+
+    def __post_init__(self) -> None:
+        if self.snapshot_observed != (self.snapshot_sequence is not None):
+            raise ValueError(
+                "snapshot_sequence must be present exactly when snapshot_observed"
+            )
+        if self.association_state not in {
+            "associated",
+            "associated_invalid",
+            "lost",
+            "quarantined",
+            "anchor",
+            "adjacent",
+            "clean",
+        }:
+            raise ValueError("unsupported association_state")
+        if self.cnt_state not in {"valid", "invalid", "absent", "unassessed"}:
+            raise ValueError("unsupported cnt_state")
+        if self.measurement_valid and (
+            not self.snapshot_observed or self.cnt_state == "absent"
+        ):
+            raise ValueError(
+                "a valid measurement requires an observed snapshot and CNT"
+            )
+        if self.cnt_state == "valid" and not self.measurement_valid:
+            raise ValueError("cnt_state=valid requires measurement_valid=true")
+        if any(not reason for reason in self.reasons):
+            raise ValueError("reasons must contain non-empty reason codes")
 
 
 @dataclass(frozen=True)
@@ -60,6 +116,9 @@ class ScoredFaultEvent:
     classification_mismatch_count: int
     duplicate_detection_count: int
     detection_latency_ticks: int | None
+    snapshot_outcome_correct: bool
+    association_outcome_correct: bool
+    cnt_outcome_correct: bool
 
 
 @dataclass(frozen=True)
@@ -80,11 +139,21 @@ class FaultScoreReport:
     classification_mismatch_count: int
     outage_transitions: TransitionScore
     restoration_transitions: TransitionScore
+    association_loss_transitions: TransitionScore
     expected_recovery_count: int
     clean_recovery_count: int
     missing_recovery_count: int
     fault_measurement_invalid_count: int
     fault_events_without_snapshot_assessment: int
+    expected_snapshot_outcome_count: int
+    correct_snapshot_outcome_count: int
+    missing_snapshot_count: int
+    unexpected_snapshot_count: int
+    duplicate_snapshot_assessment_count: int
+    orphan_snapshot_assessment_count: int
+    association_mismatch_count: int
+    cnt_outcome_mismatch_count: int
+    valid_cnt_across_fault_count: int
     generator_truth: tuple[GeneratorTruthEvent, ...]
     physical_detections: tuple[PhysicalDetection, ...]
     snapshot_validity: tuple[SnapshotValidity, ...]
@@ -138,6 +207,69 @@ def _transition_score(
         observed=observed,
         missing=max(0, expected - observed),
         excess=max(0, observed - expected),
+    )
+
+
+def _cnt_state_matches(expected: str | None, observed: str) -> bool:
+    if expected is None:
+        return True
+    if expected == "invalid_or_absent":
+        return observed in {"invalid", "absent"}
+    return observed == expected
+
+
+def _transition_counts(expected: int, observed: int) -> TransitionScore:
+    return TransitionScore(
+        expected=expected,
+        observed=observed,
+        missing=max(0, expected - observed),
+        excess=max(0, observed - expected),
+    )
+
+
+def _snapshot_outcomes(
+    expected: GeneratorTruthEvent,
+    assessments: tuple[SnapshotValidity, ...],
+    *,
+    default_snapshot_observed: bool,
+) -> tuple[bool, bool, bool, bool, bool]:
+    expected_observed = (
+        expected.expected_snapshot_observed
+        if expected.expected_snapshot_observed is not None
+        else default_snapshot_observed
+    )
+    observed = tuple(item for item in assessments if item.snapshot_observed)
+    absent = tuple(item for item in assessments if not item.snapshot_observed)
+    if expected_observed:
+        snapshot_correct = bool(observed)
+        missing = not observed
+        unexpected = False
+    else:
+        # Absence is evidence only when explicitly assessed. Silence in the
+        # aligned file is not proof that the PIO emitted no word.
+        snapshot_correct = not observed and bool(absent)
+        missing = False
+        unexpected = bool(observed)
+    association_correct = (
+        expected.expected_association_state is None
+        or any(
+            item.association_state == expected.expected_association_state
+            for item in assessments
+        )
+    )
+    cnt_correct = (
+        expected.expected_cnt_state is None
+        or any(
+            _cnt_state_matches(expected.expected_cnt_state, item.cnt_state)
+            for item in assessments
+        )
+    )
+    return (
+        snapshot_correct,
+        association_correct,
+        cnt_correct,
+        missing,
+        unexpected,
     )
 
 
@@ -196,12 +328,57 @@ def score_fault_injection(
     mismatch_count = 0
     fault_measurement_invalid = 0
     without_snapshot = 0
+    correct_snapshot_outcome = 0
+    missing_snapshot = 0
+    unexpected_snapshot = 0
+    association_mismatch = 0
+    cnt_outcome_mismatch = 0
+    valid_cnt_across_fault = 0
+    duplicate_snapshot_assessments = sum(
+        max(0, len(items) - 1) for items in snapshot_by_event.values()
+    )
+    orphan_snapshot_assessments = sum(
+        len(items)
+        for event_id, items in snapshot_by_event.items()
+        if event_id not in truth_by_id
+    )
+
+    explicit_snapshot_expectations = tuple(
+        item
+        for item in truth
+        if item.expected_snapshot_observed is not None
+        or item.expected_association_state is not None
+        or item.expected_cnt_state is not None
+    )
+    snapshot_expectations = explicit_snapshot_expectations + tuple(
+        item for item in expected if item not in explicit_snapshot_expectations
+    )
+    for expected_snapshot in snapshot_expectations:
+        outcomes = _snapshot_outcomes(
+            expected_snapshot,
+            tuple(snapshot_by_event.get(expected_snapshot.event_id, ())),
+            default_snapshot_observed=True,
+        )
+        (
+            snapshot_correct,
+            association_correct,
+            cnt_correct,
+            missing,
+            unexpected,
+        ) = outcomes
+        correct_snapshot_outcome += int(snapshot_correct)
+        missing_snapshot += int(missing)
+        unexpected_snapshot += int(unexpected)
+        association_mismatch += int(not association_correct)
+        cnt_outcome_mismatch += int(not cnt_correct)
 
     for expected_event in expected:
         event_detections = tuple(
             detection_by_event.get(expected_event.event_id, ())
         )
-        event_snapshots = tuple(snapshot_by_event.get(expected_event.event_id, ()))
+        event_snapshots = tuple(
+            snapshot_by_event.get(expected_event.event_id, ())
+        )
         event_diagnostics = tuple(
             diagnostic_by_event.get(expected_event.event_id, ())
         )
@@ -214,6 +391,23 @@ def score_fault_injection(
             for item in event_detections
         )
         event_duplicates = max(0, len(event_detections) - 1)
+        (
+            snapshot_outcome_correct,
+            association_outcome_correct,
+            cnt_outcome_correct,
+            _missing_snapshot,
+            _unexpected_snapshot,
+        ) = _snapshot_outcomes(
+            expected_event,
+            event_snapshots,
+            default_snapshot_observed=True,
+        )
+        valid_cnt_across_fault += int(
+            any(
+                item.measurement_valid or item.cnt_state == "valid"
+                for item in event_snapshots
+            )
+        )
         correctly_detected += int(event_correct)
         missed += int(not event_detections)
         mismatch_count += event_mismatches
@@ -236,6 +430,9 @@ def score_fault_injection(
                 detection_latency_ticks=_latency(
                     expected_event, event_detections
                 ),
+                snapshot_outcome_correct=snapshot_outcome_correct,
+                association_outcome_correct=association_outcome_correct,
+                cnt_outcome_correct=cnt_outcome_correct,
             )
         )
 
@@ -243,7 +440,11 @@ def score_fault_injection(
     clean_recovery = 0
     for expected_recovery in recovery_truth:
         valid_snapshot = any(
-            item.measurement_valid
+            item.snapshot_observed
+            and item.measurement_valid
+            and _cnt_state_matches(
+                expected_recovery.expected_cnt_state, item.cnt_state
+            )
             for item in snapshot_by_event.get(expected_recovery.event_id, ())
         )
         recovery_transition = any(
@@ -261,6 +462,10 @@ def score_fault_injection(
         truth_kind="restoration",
         diagnostic_transition="restoration",
     )
+    association_loss = _transition_counts(
+        sum(item.expected_association_state == "lost" for item in truth),
+        sum(item.transition == "association_loss" for item in diagnostics),
+    )
     return FaultScoreReport(
         expected_event_count=len(expected),
         correctly_detected_event_count=correctly_detected,
@@ -270,11 +475,21 @@ def score_fault_injection(
         classification_mismatch_count=mismatch_count,
         outage_transitions=outage,
         restoration_transitions=restoration,
+        association_loss_transitions=association_loss,
         expected_recovery_count=len(recovery_truth),
         clean_recovery_count=clean_recovery,
         missing_recovery_count=max(0, len(recovery_truth) - clean_recovery),
         fault_measurement_invalid_count=fault_measurement_invalid,
         fault_events_without_snapshot_assessment=without_snapshot,
+        expected_snapshot_outcome_count=len(snapshot_expectations),
+        correct_snapshot_outcome_count=correct_snapshot_outcome,
+        missing_snapshot_count=missing_snapshot,
+        unexpected_snapshot_count=unexpected_snapshot,
+        duplicate_snapshot_assessment_count=duplicate_snapshot_assessments,
+        orphan_snapshot_assessment_count=orphan_snapshot_assessments,
+        association_mismatch_count=association_mismatch,
+        cnt_outcome_mismatch_count=cnt_outcome_mismatch,
+        valid_cnt_across_fault_count=valid_cnt_across_fault,
         generator_truth=truth,
         physical_detections=detections,
         snapshot_validity=snapshots,
@@ -320,10 +535,21 @@ def _strict_acceptance(report: FaultScoreReport) -> bool:
         and report.outage_transitions.excess == 0
         and report.restoration_transitions.missing == 0
         and report.restoration_transitions.excess == 0
+        and report.association_loss_transitions.missing == 0
+        and report.association_loss_transitions.excess == 0
         and report.missing_recovery_count == 0
         and report.fault_measurement_invalid_count
         == report.expected_event_count
         and report.fault_events_without_snapshot_assessment == 0
+        and report.correct_snapshot_outcome_count
+        == report.expected_snapshot_outcome_count
+        and report.missing_snapshot_count == 0
+        and report.unexpected_snapshot_count == 0
+        and report.duplicate_snapshot_assessment_count == 0
+        and report.orphan_snapshot_assessment_count == 0
+        and report.association_mismatch_count == 0
+        and report.cnt_outcome_mismatch_count == 0
+        and report.valid_cnt_across_fault_count == 0
     )
 
 

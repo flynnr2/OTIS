@@ -234,6 +234,7 @@ be normalized into a valid sample.
 | Missing/stuck oscillator | The SM parks in `WAIT`; D14 REF events continue independently, missing snapshots invalidate association, and recovery starts a new session with two fresh snapshots before CNT. A snapshot already on the finite post-`WAIT` path when oscillation stops is late/unusable and is never paired retroactively. |
 | PPS held high | Produce exactly one snapshot until a recognized low rearms PPS. |
 | PPS bounce or short/long interval | Retain hardware snapshots for diagnosis, but reject the interval under REF quality rules. |
+| Narrow PPS seen by GPIO but not sampled by PIO | Preserve REF, report `ref_without_snapshot`, invalidate and close association, reject any late/ambiguous word, rearm and clear old transport state, then require a fresh anchor plus adjacent snapshot; never publish a CNT across the event. |
 | PIO/D14 observer sequence disagreement | Invalidate association and rearm; do not guess which event was real. |
 | DMA/ring overflow | Report loss, discard unread data, and require a fresh anchor plus adjacent snapshot. |
 | PIO or DMA restart | Start a new session and require two new snapshots; never bridge a restart. |

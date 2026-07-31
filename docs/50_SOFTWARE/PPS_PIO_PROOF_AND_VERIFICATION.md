@@ -171,10 +171,11 @@ before the opposite wait parks; any resulting or resume-time late snapshot is
 not evidence of a timely PPS boundary.
 
 D14 therefore continues to report REF independently, but an unmatched REF or
-missing snapshot invalidates association. Recovery starts a new session, drops
-all old association state, discards a possible late recovery word, and requires
-two fresh snapshots. A late word must never be paired retroactively with an
-earlier REF.
+missing snapshot invalidates association. Recovery starts a new session and
+drops all old association and unread transport state. The first fresh snapshot
+is an anchor and its adjacent successor is the first CNT candidate. A word that
+appears after an unmatched REF, including one already present when a second REF
+is noticed, must never be paired retroactively with the earlier REF.
 
 ## FIFO, DMA, and memory ownership
 
