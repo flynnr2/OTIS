@@ -3,7 +3,7 @@
 ## Purpose and gate
 
 This runbook first provides a short functional acceptance of the corrected
-PPS-IRQ-owned count boundary. Longer independent-metrology and uncertainty
+single-PIO-state-machine-owned count boundary. Longer independent-metrology and uncertainty
 work may follow as a separate evidence package; it is not a prerequisite for
 accepting that foreground and service load no longer define the aperture. This
 runbook does not authorize DAC steering. Throughout this procedure:
@@ -23,9 +23,10 @@ synthetic checks may run earlier, but they cannot pass the Phase 5 exit gate.
 The v1 profile is
 `profiles/qualification/pps_gated_ratio_v1.json`. It applies to:
 
-- a conditioned 10 MHz CX317 observation on `D8` / GPIO20;
+- the conditioned 16 MHz ECS TCXO observation on `D8` / GPIO20;
 - one authoritative conditioned PPS on `D14` / GPIO26;
-- the GPIO IRQ reference/count-boundary authority and PIO oscillator counter;
+- the PIO `WAIT`/`JMP PIN` cumulative snapshot backend; D14 GPIO IRQ remains
+  an independent REF observer;
 - a nominal one-second PPS interval, accepted over `0.8..1.2 s`;
 - duplicate classification at `<=0.1 s`;
 - a missing-PPS timeout of `2.5 s`;
@@ -51,17 +52,18 @@ qualification limits, not controller thresholds. The profile retains
 independent-bias and uncertainty fields for a later metrology report; those are
 not prerequisites for the focused ownership acceptance.
 
-Counter saturation is outside this applicability envelope: a one-second 10 MHz
-gate is far below the 32-bit terminal count. Saturation arithmetic, flagging,
-and reason typing are therefore synthetic-only v1 checks. A successful bench
-result is reported `qualified_with_limits`, with this limitation retained.
+Full counter wrap is outside this applicability envelope: a one-second 16 MHz
+gate is far below the 268.435456-second 32-bit wrap interval. Ambiguous-wrap
+arithmetic, flagging, and reason typing remain synthetic-only checks. A
+successful bench result is reported `qualified_with_limits`, with any retained
+limitations explicit.
 
 ## Equipment and safe wiring
 
 Required for focused architectural acceptance:
 
 - Arduino Nano RP2040 Connect running the candidate build;
-- repaired H1 CX317 plus SN74LVC1G17 conditioning path;
+- ECS 16 MHz TCXO plus SN74LVC1G17 conditioning path;
 - stable, 3.3 V-safe PPS source;
 
 An independent counter, oscilloscope/logic-analyser marker, or second serial
@@ -73,8 +75,8 @@ Wire:
 ```text
 PPS source -> candidate D14/GPIO26 (authoritative REF)
 PPS source -> candidate D10/GPIO5  (diagnostic witness only)
-CX317 conditioned output -> candidate D8/GPIO20
-CX317 conditioned output -> independent counter input
+ECS TCXO conditioned output -> candidate D8/GPIO20
+ECS TCXO conditioned output -> independent counter input
 all instrument grounds -> common bench ground
 ```
 
@@ -184,10 +186,17 @@ build/compiler=pqt-gcc@5.0.0-9576866/arm-none-eabi-g++@16.1.0
 build/arduino_cli_version=1.4.1
 build/invocation_id=<the generated 64-hex invocation hash>
 pps_gate/backend=pps_gated_ratio
-pps_gate/boundary_owner=pps_gpio_irq
-pps_gate/aperture_backend=pps_isr_stop_sample_restart_v1
+pps_gate/boundary_owner=pio_state_machine
+pps_gate/aperture_backend=pio_wait_cumulative_snapshot_dma_v1
 pps_gate/backend_qualified=false
-pps_gate/boundary_ring_capacity=7
+pps_gate/counter_direction=down
+pps_gate/counter_width_bits=32
+pps_gate/declared_max_oscillator_hz=16000000
+pps_gate/pio_system_clock_hz=133000000
+pps_gate/pio_clock_divider=1.0
+pps_gate/snapshot_rx_fifo_depth=8
+pps_gate/snapshot_ring_capacity=128
+pps_gate/boundary_ring_capacity=127
 pps_gate/duplicate_max_interval_us=100000
 pps_gate/min_interval_us=800000
 pps_gate/max_interval_us=1200000
@@ -201,7 +210,7 @@ build/enable_phase4_observe_preview=0
 phase4_preview/actuation_authorized=false
 resource_registry/valid=true
 resource_registry/complete=true
-resource_registry/dma_claim_count=0
+resource_registry/dma_claim_count=1
 ```
 
 The two uncertainty status values remain `unavailable` until promoted from
@@ -331,7 +340,7 @@ Accept the architectural correction when:
 
 - every emitted `CNT` is traceable to adjacent, sequence-continuous atomic
   boundaries and authoritative `REF` timestamps;
-- clean 10 MHz / 1 Hz windows remain inside the implementation-derived narrow
+- clean 16 MHz / 1 Hz windows remain inside the implementation-derived narrow
   integer-count envelope established by the quiet segment;
 - the loaded segment is statistically and operationally equivalent to quiet
   operation, with no gross partial or zero count accepted;
@@ -349,8 +358,8 @@ prerequisite for accepting this ownership correction.
 ## Separate metrology and uncertainty evidence
 
 If later promoting the backend as quantified metrology, measure or otherwise
-bound ISR/restart aperture quantisation and populate these manifest values only
-from evidence:
+bound asynchronous edge quantisation and the real pad-level phase/duty timing
+margin, and populate these manifest values only from evidence:
 
 - `count_quantization_standard_uncertainty_hz`;
 - `counter_aperture_s_1sigma`;

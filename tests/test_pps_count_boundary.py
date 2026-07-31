@@ -136,27 +136,31 @@ inline void interrupts(void) {}
 #include "otis_pps_count_boundary_ring.h"
 
 static OtisPpsCountBoundaryObservation observation(uint32_t sequence) {
-  return {sequence, (uint64_t)sequence * 16000000ull, 10000000u, 0u, 0u};
+  return {1u, sequence, sequence,
+          (uint64_t)sequence * 16000000ull,
+          0xffffffffu - sequence, 0u, 0u, 0u};
 }
 
 int main(void) {
   otis_pps_count_boundary_ring_reset();
-  assert(otis_pps_count_boundary_ring_capacity() == 7u);
-  for (uint32_t sequence = 0u; sequence < 7u; ++sequence) {
+  uint32_t capacity = otis_pps_count_boundary_ring_capacity();
+  assert(capacity >= 7u);
+  for (uint32_t sequence = 0u; sequence < capacity; ++sequence) {
     assert(otis_pps_count_boundary_ring_push_from_isr(
         observation(sequence)));
   }
-  assert(!otis_pps_count_boundary_ring_push_from_isr(observation(7u)));
+  assert(!otis_pps_count_boundary_ring_push_from_isr(observation(capacity)));
   assert(otis_pps_count_boundary_ring_dropped_count() == 1u);
 
   OtisPpsCountBoundaryObservation popped = {};
   assert(otis_pps_count_boundary_ring_pop(&popped));
   assert(popped.sequence == 0u);
-  assert(otis_pps_count_boundary_ring_push_from_isr(observation(8u)));
+  assert(otis_pps_count_boundary_ring_push_from_isr(
+      observation(capacity + 1u)));
 
   while (otis_pps_count_boundary_ring_pop(&popped)) {
   }
-  assert(popped.sequence == 8u);
+  assert(popped.sequence == capacity + 1u);
   assert((popped.aperture_flags &
           OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u);
   assert(otis_pps_count_boundary_ring_depth() == 0u);
@@ -183,7 +187,7 @@ int main(void) {
     subprocess.run([str(binary)], check=True)
 
 
-def test_irq_critical_path_is_bounded_and_reason_contract_is_explicit() -> None:
+def test_pio_boundary_path_is_hardware_owned_and_reason_contract_is_explicit() -> None:
     source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
@@ -193,31 +197,19 @@ def test_irq_critical_path_is_bounded_and_reason_contract_is_explicit() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
-    start = source.index("void capture_pps_count_boundary_from_isr(")
-    end = source.index("#endif", start)
-    handler = source[start:end]
-    for forbidden in (
-        "_blocking",
-        "emit_",
-        "Serial",
-        "malloc",
-        "new ",
-        "delay(",
-        "frequency_count",
-    ):
-        assert forbidden not in handler
-    assert handler.index(
-        "stop_and_sample_h1_pio_counter_from_pps_isr"
-    ) < handler.index("start_h1_pio_counter_from_pps_isr")
-    assert handler.index(
-        "start_h1_pio_counter_from_pps_isr"
-    ) < handler.index("otis_pps_count_boundary_ring_push_from_isr")
+    backend = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "sm_config_set_jmp_pin(&config, OTIS_PIN_PPS_REFERENCE)" in backend
+    assert "sm_config_set_in_pins(&config, OTIS_GPIO_OSC_OBSERVATION)" in backend
+    assert "sm_config_set_in_shift(&config, true, true, 32u)" in backend
+    assert "stop_and_sample_h1_pio_counter_from_pps_isr" not in source
     irq_start = irq_source.index("void handle_capture_edge(void)")
     irq_end = irq_source.index("void handle_tcxo_observation_edge", irq_start)
     irq_handler = irq_source[irq_start:irq_end]
-    assert irq_handler.index("pps_count_boundary_handler(") < irq_handler.index(
-        "digitalRead("
-    )
+    assert "pps_count_boundary_handler" not in irq_handler
+    assert "pio_sm_" not in irq_handler
+    assert "dma_" not in irq_handler
 
     foreground_start = source.index(
         "bool otis_count_observation_on_pps_boundary("
@@ -227,10 +219,7 @@ def test_irq_critical_path_is_bounded_and_reason_contract_is_explicit() -> None:
     )
     foreground = source[foreground_start:foreground_end]
     assert "!h1_pio_long_gate.initialized || observation" not in foreground
-    assert "OTIS_FLAG_GATE_INCOMPLETE" in sketch[
-        sketch.index("void emit_pps_count_boundary(") :
-        sketch.index("void drain_pps_count_boundary_ring(")
-    ]
+    assert "OTIS_FLAG_GATE_INCOMPLETE" in foreground
 
     required_reasons = {
         "boundary_capture_unavailable",
@@ -262,10 +251,10 @@ def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     )
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
 
-    assert '"pps_reference_and_count_boundary_irq"' in registry
-    assert '"pps_gpio_irq"' in sketch
-    assert '"pps_isr_stop_sample_restart_v1"' in sketch
+    assert '"pps_reference_observer_irq"' in registry
+    assert '"pio_state_machine"' in sketch
+    assert '"pio_wait_cumulative_snapshot_dma_v1"' in sketch
     assert '"config_snapshot", "begin"' in sketch
     assert '"config_snapshot", "end"' in sketch
     assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED 0" in config
-    assert "PPS_GATED_RATIO requires the GPIO IRQ capture backend" in config
+    assert "PPS_GATED_RATIO requires the GPIO IRQ backend for the independent D14 REF observer" in config

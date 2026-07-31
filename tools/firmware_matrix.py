@@ -37,6 +37,7 @@ PROFILE_SELECTOR_NAMES = {
     "OTIS_CAPTURE_BACKEND",
     "OTIS_TCXO_COUNTER_BACKEND",
     "OTIS_ENABLE_PPS_DUAL_OBSERVER",
+    "OTIS_ENABLE_PSEUDO_PPS_GENERATOR",
     "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED",
     "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
     "OTIS_ENABLE_DAC_AD5693R",
@@ -372,8 +373,11 @@ def verify_environment(
             ]
         ).stdout
     )
+    expected_fqbn = str(target["fqbn"])
+    fqbn_parts = expected_fqbn.split(":", 3)
+    expected_board_fqbn = ":".join(fqbn_parts[:3])
     checks = {
-        "FQBN": (target["fqbn"], details.get("fqbn")),
+        "FQBN": (expected_board_fqbn, details.get("fqbn")),
         "core provider": (
             target["core_provider"],
             details.get("package", {}).get("name"),
@@ -393,6 +397,23 @@ def verify_environment(
             raise MatrixError(
                 f"{label} mismatch: expected {expected!r}, found {actual!r}"
             )
+    if len(fqbn_parts) == 4:
+        selected_options = {
+            str(option.get("option")): str(value.get("value"))
+            for option in details.get("config_options", [])
+            for value in option.get("values", [])
+            if value.get("selected") is True
+        }
+        for assignment in fqbn_parts[3].split(","):
+            if "=" not in assignment:
+                raise MatrixError(f"invalid FQBN option {assignment!r}")
+            option, expected_value = assignment.split("=", 1)
+            actual_value = selected_options.get(option)
+            if actual_value != expected_value:
+                raise MatrixError(
+                    f"FQBN option {option!r} mismatch: expected "
+                    f"{expected_value!r}, found {actual_value!r}"
+                )
     if not details.get("properties_id") or not details.get("name"):
         raise MatrixError("board details do not expose generated board identity")
 

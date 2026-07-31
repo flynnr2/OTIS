@@ -48,5 +48,23 @@ void otis_emit_environment(uint32_t env_seq,
                            const char *relative_humidity_pct,
                            const char *pressure_pa,
                            uint32_t flags);
+void otis_emit_pps_snapshot(uint32_t session,
+                            uint32_t snapshot_sequence,
+                            uint32_t cumulative_down_counter,
+                            uint32_t reference_sequence,
+                            uint64_t reference_timestamp_ticks,
+                            uint32_t status,
+                            const char *backend);
+void otis_emit_pseudo_pps_truth(uint32_t truth_seq,
+                                uint32_t generator_session,
+                                const char *profile_id,
+                                uint16_t profile_version,
+                                uint32_t generator_sequence,
+                                const char *event,
+                                const char *intended_class,
+                                uint32_t scheduled_offset_us,
+                                uint32_t scheduled_interval_us,
+                                uint32_t pulse_width_us,
+                                uint32_t flags);
 
 #endif

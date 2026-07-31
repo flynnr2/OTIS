@@ -175,6 +175,20 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
         parsed.dwell_ms != 0u;
   } else if (strncmp(command, "SWEEP", 5) == 0) {
     parsed.kind = OtisSerialCommandKind::SweepOther;
+  } else if (strcmp(command, "PPSGEN PROFILES?") == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenProfilesQuery;
+  } else if (strncmp(command, "PPSGEN ARM ", 11) == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenArm;
+    parsed.text_argument = trim_command(command + 11);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strcmp(command, "PPSGEN START") == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenStart;
+  } else if (strcmp(command, "PPSGEN STOP") == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenStop;
+  } else if (strcmp(command, "PPSGEN?") == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenQuery;
+  } else if (strncmp(command, "PPSGEN", 6) == 0) {
+    parsed.kind = OtisSerialCommandKind::PpsGenOther;
   } else {
     parsed.kind = OtisSerialCommandKind::Unknown;
   }

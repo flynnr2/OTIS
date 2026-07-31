@@ -82,14 +82,15 @@ For TCXO/OCXO observation, the count backend adds:
 | `FC0_GPIN0` | `GPIN0` clock input and frequency counter 0 | `count_observation` |
 | `GPIO_IRQ` | GPIO20 IRQ source; divided inputs only | `count_observation` |
 | `PIO_LONG_GATE` | one dynamically allocated PIO0 SM and five-word instruction range | `count_observation` |
-| `PPS_GATED_RATIO` | one dynamically allocated PIO0 SM and five-word instruction range | `count_observation` |
+| `PPS_GATED_RATIO` | one dynamically allocated PIO0 SM, 15-word instruction range, one DMA channel, and aligned 128-word SRAM snapshot ring | `count_observation` |
 
-The PPS-gated ratio backend does not add a second D14 owner. The existing
-`edge_capture` GPIO26 IRQ claim has the explicit
-`pps_reference_and_count_boundary_irq` role: its callback performs the bounded
-counter stop/sample/restart before publishing the atomic boundary observation.
-The `count_observation` owner retains GPIO20, its PIO0 state machine and its
-five-word program. No DMA channel or additional IRQ is introduced.
+The PPS-gated ratio backend has two read-only D14 consumers with distinct
+roles. `edge_capture` owns the GPIO26 IRQ only as the independent REF observer;
+`count_observation` maps the same input to its PIO state machine as the hardware
+snapshot condition. The PIO state machine alone owns the count boundary. The
+registry also binds the dynamically claimed DMA channel to
+`count_observation`; DMA transports the already-captured word and is not a
+boundary owner.
 
 ## PIO and DMA policy
 
@@ -102,10 +103,10 @@ the same allocation as their own.
 PIO1 is not used. PIO0 state machines and instruction words not returned by the
 SDK allocators are not OTIS-owned.
 
-No production source calls the DMA API. `resource_registry/dma_claim_count=0`
-is therefore the required current state, not missing telemetry. A later
-PIO/DMA capture backend must add its channel claim before enabling the channel;
-this package does not pre-allocate a speculative DMA topology.
+The PPS-gated snapshot backend dynamically claims one DMA channel, binds it in
+the registry before enabling normal operation, and reports the actual channel.
+All profiles not using that backend retain zero DMA claims. No channel number is
+pre-allocated speculatively.
 
 ## Shared I2C ownership
 

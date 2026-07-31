@@ -82,6 +82,14 @@ cause may be the receiver, electrical input, GPIO, PIO, FIFO, DMA, firmware, or
 transport. Until isolated, report the observed symptom and the unresolved fault
 domain honestly.
 
+For PPS-gated measurement, track physical D14 arrival, PIO snapshot production,
+foreground drain, reconstruction, telemetry emission, control consumption,
+backlog, and backpressure as separate progress planes. Only a new physical D14
+event can restore physical PPS presence. A queue backlog or late report is not
+a missing PPS; a snapshot gap or storage overflow is a distinct continuity
+fault. One continuous physical outage raises one outage transition, with any
+periodic reminders counted separately, followed by one restoration transition.
+
 ### Track persistence and recovery
 
 Diagnostics should support debounce, qualification, hysteresis, latching, and

@@ -17,6 +17,7 @@ RECORD_CONTRACTS = {
     "EVT": "raw_events_v1",
     "REF": "raw_events_v1",
     "CNT": "count_observations_v1",
+    "SNP": "pps_snapshots_v1",
     "STS": "health_v1",
     "DAC": "dac_steps_v1",
     "ENV": "environment_v1",
@@ -24,6 +25,7 @@ RECORD_CONTRACTS = {
     "DIAG": "diagnostics_v1",
     "EST": "estimates_v2",
     "CTL": "control_previews_v1",
+    "PGT": "pseudo_pps_truth_v1",
 }
 
 

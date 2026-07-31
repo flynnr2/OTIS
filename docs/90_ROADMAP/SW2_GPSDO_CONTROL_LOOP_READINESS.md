@@ -77,13 +77,17 @@ actuation gate remain incomplete. `status.control_ready=false` and
 
 ## Phase 5 PPS-gated backend qualification readiness
 
-**Result: open / not yet qualified. Bench Run 001 passed all exercised
-post-reset candidate legs; remaining qualification gates are explicit.**
+**Result: open / not yet qualified. The earlier ISR-owned Run 001 remains
+historical evidence for the rejected mechanism and cannot qualify the new
+PIO-owned backend.**
 
 Repository preparation now includes:
 
-- audited reuse of the one authoritative D14 `REF` capture;
-- raw PPS-gated `CNT` boundary traceability, including timer rollover;
+- a proved 15-word single-state-machine `WAIT` snapshot program at pinned
+  133 MHz for the 16 MHz, 35--65% digital envelope;
+- raw cumulative `SNP` evidence and adjacent down-counter reconstruction;
+- an independent D14 `REF` observer with minimal ISR and explicit PIO/D14
+  association;
 - independent `pps_gate/reference_validity` and
   `pps_gate/count_validity`, with typed reasons;
 - startup missing-PPS detection, duplicate/short/long classification, count
@@ -95,7 +99,7 @@ Repository preparation now includes:
   directory;
 - an exact bench runbook and fixed v1 thresholds.
 
-Bench Run 001 captured an authoritative post-reset candidate session containing
+The rejected Run 001 captured a post-reset ISR-owned candidate session containing
 33111 consecutive one-second windows. Startup qualification, qualifying-size
 baseline and serial-status-load segments, missing-PPS inhibition, zero-count
 inhibition, and clean-window recovery passed. The disturbed serial session
@@ -106,8 +110,9 @@ Session-scoped jitter and load-shift analysis, an authorised independent
 comparison, aperture/combined uncertainty, controlled duplicate/short/long PPS
 tests, reconnect evidence, and final sealing remain open. See
 `docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
-The backend is therefore successful candidate bench evidence but not yet
-qualified metrology. `status.control_ready=false` and
+Those results motivated the replacement but are not qualification evidence for
+`pio_wait_cumulative_snapshot_dma_v1`. A new pseudo-PPS and real-signal bench
+campaign is required. `status.control_ready=false` and
 `status.actuation_enabled=false` remain authoritative.
 
 ## H1 Evidence Available

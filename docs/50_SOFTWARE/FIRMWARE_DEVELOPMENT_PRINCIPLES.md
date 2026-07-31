@@ -8,6 +8,18 @@ The controlling rule is:
 
 > Firmware must preserve the distinction between capture correctness, reference authority, discipline quality, and final timing claims.
 
+For physical count measurements, an additional hard rule applies:
+
+> Physical measurement boundaries are hardware-owned. ISRs may transport or
+> annotate already-latched truth but may not define the aperture.
+
+An ISR should read/acknowledge the event, preserve one compact immutable record
+or monotonic marker, and exit. Formatting, serial I/O, floating point,
+diagnostic policy, estimation, control, allocation, retries, blocking loops,
+and multi-stage peripheral choreography belong in bounded foreground service.
+Physical PPS, hardware snapshot, foreground drain, reconstruction, telemetry,
+and control-consumer progress must remain separate state.
+
 A prototype may use modest hardware. The firmware architecture should still be written as if a timing-grade reference, OCXO, laboratory standard, or future FPGA fabric may be substituted later without changing the meaning of raw observations.
 
 ---

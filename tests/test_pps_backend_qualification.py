@@ -155,6 +155,10 @@ def _manifest(
             {"path": "csv/health.csv", "contract": "health_v1"},
         ],
     }
+    if candidate:
+        manifest["files"].append(
+            {"path": "csv/pps_snapshots.csv", "contract": "pps_snapshots_v1"}
+        )
     (run_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -184,11 +188,11 @@ def _health_rows() -> list[list[object]]:
         ("build", "enable_phase4_observe_preview", "0"),
         ("phase4_preview", "actuation_authorized", "false"),
         ("pps_gate", "backend", "pps_gated_ratio"),
-        ("pps_gate", "boundary_owner", "pps_gpio_irq"),
+        ("pps_gate", "boundary_owner", "pio_state_machine"),
         (
             "pps_gate",
             "aperture_backend",
-            "pps_isr_stop_sample_restart_v1",
+            "pio_wait_cumulative_snapshot_dma_v1",
         ),
         ("pps_gate", "backend_qualified", "false"),
         ("pps_gate", "duplicate_max_interval_us", "100000"),
@@ -256,6 +260,13 @@ def _health_rows() -> list[list[object]]:
         ("control_eligible", "true"),
         ("dropped_count", "0"),
         ("pps_count_boundary_dropped_count", "0"),
+        ("snapshot_overwrite_count", "0"),
+        ("snapshot_continuity_loss_count", "0"),
+        ("snapshot_pio_rxstall_count", "0"),
+        ("snapshot_dma_error_count", "0"),
+        ("snapshot_dma_stopped_count", "0"),
+        ("snapshot_backlog_depth", "0"),
+        ("snapshot_backlog_high_water", "2"),
     ):
         component = (
             "capture"
@@ -366,6 +377,34 @@ def _make_candidate(
                 16,
             ]
             for seq in range(1, 7)
+        ],
+    )
+    _write_csv(
+        run_dir / "csv" / "pps_snapshots.csv",
+        [
+            "record_type",
+            "schema_version",
+            "session",
+            "snapshot_sequence",
+            "cumulative_down_counter",
+            "reference_sequence",
+            "reference_timestamp_ticks",
+            "status",
+            "backend",
+        ],
+        [
+            [
+                "SNP",
+                1,
+                1,
+                sequence,
+                (-sequence * 10_000_001) & 0xFFFFFFFF,
+                sequence + 1,
+                ticks,
+                0,
+                "pio_wait_cumulative_snapshot_dma_v1",
+            ]
+            for sequence, ticks in enumerate(reference_ticks)
         ],
     )
     _write_csv(
@@ -555,6 +594,19 @@ def test_synthetic_candidate_and_independent_report_is_deterministic_but_not_qua
     assert report["candidate"]["reference_valid_window_count"] == 6
     assert report["candidate"]["count_valid_window_count"] == 6
     assert report["candidate"]["eligible_window_count"] == 6
+    assert report["candidate"]["official_raw_frequency"]["authoritative"] is True
+    assert (
+        report["candidate"]["diagnostic_timer_normalized_frequency"][
+            "may_override_official_failure"
+        ]
+        is False
+    )
+    assert report["acceptance_checks"][
+        "raw_snapshot_continuity_and_cnt_parity"
+    ] is True
+    assert report["status_planes"]["foreground_backlog"]["maximum"][
+        "pps_gate.snapshot_backlog_high_water"
+    ] == 2
     assert report["comparison"]["bias_hz"] == pytest.approx(0.0)
     assert report["service_plane"]["maximum_absolute_mean_shift_hz"] == 0.0
     assert (
@@ -580,6 +632,33 @@ def test_synthetic_candidate_and_independent_report_is_deterministic_but_not_qua
         if path.is_file() and path.relative_to(candidate).parts[0] != "derived"
     }
     assert before == after
+
+
+def test_raw_snapshot_mismatch_fails_continuity_and_cannot_be_waived(
+    tmp_path: Path,
+) -> None:
+    candidate = _make_candidate(tmp_path)
+    snapshot_path = candidate / "csv" / "pps_snapshots.csv"
+    rows = list(csv.reader(snapshot_path.open(newline="", encoding="utf-8")))
+    rows[3][4] = str((int(rows[3][4]) + 1) & 0xFFFFFFFF)
+    with snapshot_path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle, lineterminator="\n").writerows(rows)
+
+    result = qualify_pps_backend(
+        candidate,
+        independent_run=_make_independent(tmp_path),
+        config_path=_fast_config(tmp_path),
+    )
+    report = _report(result.report_path)
+
+    assert report["candidate"]["official_raw_frequency"]["sample_count"] == 6
+    assert report["candidate"]["snapshot_continuity"][
+        "all_reconstructed_counts_match_cnt"
+    ] is False
+    assert report["acceptance_checks"][
+        "raw_snapshot_continuity_and_cnt_parity"
+    ] is False
+    assert report["acceptance_passed"] is False
 
 
 def test_runtime_backend_configuration_must_corroborate_manifest_typing(

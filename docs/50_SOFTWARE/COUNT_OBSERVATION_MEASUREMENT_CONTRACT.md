@@ -42,7 +42,7 @@ derived products must remain explicit and replayable.
 | `FC0_GPIN0` | firmware gate over `rp2040_timer0` | RP2040 FC0/GPIN0 on `D8` / GPIO20 | accumulated FC0 frequency samples converted to counted edges over the emitted gate | `TIMESTAMP_RECONSTRUCTED`; `fc0` status for samples and validity |
 | `GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe oscillator test input | software IRQ edge count | divided-only warning; not valid for raw MHz oscillator input |
 | `PIO_LONG_GATE` | firmware gate over `rp2040_timer0` | PIO oscillator edge counter on `D8` / GPIO20 | raw PIO-counted rising edges | `TIMESTAMP_RECONSTRUCTED`; long-gate status |
-| `PPS_GATED_RATIO` | D14 GPIO IRQ-owned PPS boundary | PIO oscillator edge counter on `D8` / GPIO20 | raw oscillator rising edges captured by immediate ISR stop/sample/restart | atomic boundary ring, PPS `REF` rows plus `pps_gate` status; `TIMESTAMP_RECONSTRUCTED` |
+| `PPS_GATED_RATIO` | single-PIO-state-machine PPS snapshot; D14 IRQ is a separate REF observer | cumulative PIO down-counter on `D8` / GPIO20 | modulo difference of adjacent PIO-owned cumulative `SNP` values | raw `SNP`, associated D14 `REF`, `pps_gate` continuity/session status; REF time is `TIMESTAMP_RECONSTRUCTED` |
 
 The backend changes how the gate and count are produced. It does not change the
 column semantics of `count_observations_v1.csv`.
@@ -102,6 +102,15 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
 - `gate_open_ticks` and `gate_close_ticks` are accepted PPS edge timestamps in
   `rp2040_timer0`.
 - `counted_edges` is the oscillator rising-edge count between those PPS edges.
+- `SNP.cumulative_down_counter` is raw immutable PIO `X`; it is not an
+  interval. `counted_edges = previous_X - current_X mod 2^32` for adjacent
+  snapshots in one session.
+- The first snapshot of each session is an anchor only. Session change,
+  snapshot/reference sequence loss, RX stall, DMA fault, ring overwrite, or
+  oscillator-outage recovery requires a new anchor and adjacent snapshot.
+- `gate_open_ticks` and `gate_close_ticks` are associated D14 evidence. They
+  validate/reference the interval but do not define the counter's physical
+  aperture.
 - `ratio_available=true` means the bounded row is valid and has nonzero counted
   edges; the ratio itself is still host-derived.
 - `pps_gate/reference_validity` and `pps_gate/count_validity` preserve the two
@@ -120,8 +129,10 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   and flagged with `REFERENCE_VALIDITY_SUSPECT` plus `GATE_INCOMPLETE`;
   `reference_reason` distinguishes duplicate, short, long, and flagged
   boundaries.
-- Missing stop PPS increments `pps_gate/missing_pps_count` and withholds a clean
-  `CNT` row for that gate.
+- One continuous physical outage increments the missing-transition counter
+  once; reminder, snapshot absence, foreground backlog, and telemetry
+  backpressure are separate diagnostics. A missing snapshot with continued REF
+  invalidates association and withholds a clean `CNT`.
 - Failure to receive the first PPS after backend start also produces an
   explicit missing-PPS fault rather than remaining silently armed.
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the

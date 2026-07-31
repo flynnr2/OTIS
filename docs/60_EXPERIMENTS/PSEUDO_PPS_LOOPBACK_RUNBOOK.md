@@ -1,0 +1,70 @@
+# Deterministic Pseudo-PPS Loopback Runbook
+
+This is a test-only source for exercising the real D14 PPS capture and
+PIO/DMA count-snapshot path. Normal firmware profiles compile it out. The
+`pseudo_pps_loopback` build boots with the generator idle and D3 high
+impedance; no waveform starts without explicit `ARM` and `START` commands.
+
+## Wiring and electrical safety
+
+1. Power down the Nano RP2040 Connect and disconnect the real GPS PPS source.
+2. Connect **D3 / GPIO15** through an approximately **1 kOhm series resistor**
+   to **D14 / GPIO26**.
+3. Connect the instrument grounds. Do not drive D14 from any second source.
+4. Flash only the `pseudo_pps_loopback` matrix profile, then power up.
+
+Both pins are 3.3 V GPIO. The resistor limits accidental opposing-drive
+current to roughly 3.3 mA, but it does not make contention acceptable. Stop,
+completion, abort, underflow, and reset all return D3 to input/high-Z.
+
+## Hardware timing contract
+
+The generator owns exactly one PIO0 state machine and one DMA channel. Its PIO
+clock is derived from the validated 133 MHz system clock with a divider of 133,
+giving 1 MHz and 1 microsecond resolution. Each finite profile is compiled into
+at most 96 logical steps and 193 DMA words (two words per physical pulse plus a
+terminal sentinel). The nominal period is 1,000,000 microseconds and nominal
+high width is 100,000 microseconds; fault-profile values are fixed in firmware.
+
+For the first pulse, the low-loop word is `rise_offset_us - 8`. For subsequent
+pulses it is `rise_interval_us - previous_width_us - 7`. The high-loop word is
+`width_us - 3`. These constants account for every PIO instruction between pin
+transitions; host tests decode the assembled words and prove the reconstructed
+rises and widths equal every profile schedule. The first eight words are loaded
+before the state machine is enabled, and DMA refills only through the PIO TX
+DREQ. Foreground execution never supplies a timing word.
+
+The PIO executes `set pins, 0` before either blocking `pull`. An unexpected TX
+stall or DMA bus error therefore latches `underflow`, stops the engine, and
+returns D3 to high-Z without manufacturing an edge. The zero sentinel is
+consumed while low, sets polled PIO IRQ flag 7, and enters a low terminal loop;
+the foreground observes that flag only to publish completion and release D3.
+No ISR, second state machine, or foreground delay owns a waveform edge.
+
+## Commands
+
+Commands use the existing newline-delimited, 63-byte-bounded control framing:
+
+```text
+PPSGEN PROFILES?
+PPSGEN ARM COMPOSITE
+PPSGEN START
+PPSGEN?
+PPSGEN STOP
+```
+
+`ARM` is accepted only while not running and only for a built-in v1 profile.
+`START` is accepted only from `armed`; `STOP` aborts an armed or running
+profile. No command changes a period or width ad hoc.
+
+## Evidence and expected result
+
+Archive `PGT` rows in `csv/pseudo_pps_truth.csv` alongside `REF`, `SNP`, `CNT`,
+`STS`, and diagnostics. `PGT` is intended generator truth, not proof that an
+edge reached D14. Compare it against physical detections and valid hardware
+snapshots. The `COMPOSITE` profile is exactly: 30 clean pulses; one short
+interval; 10 clean; one omission; recovery; a double; a bounce; 30 clean.
+
+Abort the run on `underflow` or `resource_fault`. A `completion` marker is
+valid only after the PIO consumed its terminal sentinel while low. Never infer
+success from host arrival time or from `PGT` alone.
