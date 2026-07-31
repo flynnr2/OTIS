@@ -10,6 +10,7 @@ struct OtisCapturedEdge {
   char edge;
   uint64_t timestamp_ticks;
   uint32_t flags;
+  bool sampled_high;
 };
 
 void otis_capture_ring_reset(void);

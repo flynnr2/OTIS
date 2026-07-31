@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "truth": [
+    {"event_id": "narrow-1", "generator_session": "g1", "generator_sequence": 10, "profile_id": "narrow_glitch_v1", "profile_version": 1, "kind": "fault", "expected_classification": "ref_only_narrow_glitch", "expected_snapshot_observed": false, "expected_association_state": "lost", "expected_cnt_state": "absent"},
+    {"event_id": "narrow-2", "generator_session": "g1", "generator_sequence": 11, "profile_id": "narrow_glitch_v1", "profile_version": 1, "kind": "fault", "expected_classification": "ref_only_narrow_glitch", "expected_snapshot_observed": false, "expected_association_state": "lost", "expected_cnt_state": "absent"},
+    {"event_id": "late-snapshot", "generator_session": "g1", "generator_sequence": 12, "profile_id": "narrow_glitch_v1", "profile_version": 1, "kind": "late_snapshot", "expected_snapshot_observed": true, "expected_association_state": "quarantined", "expected_cnt_state": "absent"},
+    {"event_id": "recovery-anchor", "generator_session": "g1", "generator_sequence": 13, "profile_id": "return_clean_v1", "profile_version": 1, "kind": "recovery_anchor", "expected_snapshot_observed": true, "expected_association_state": "anchor", "expected_cnt_state": "absent"},
+    {"event_id": "recovery-cnt", "generator_session": "g1", "generator_sequence": 14, "profile_id": "return_clean_v1", "profile_version": 1, "kind": "recovery", "expected_snapshot_observed": true, "expected_association_state": "clean", "expected_cnt_state": "valid"}
+  ],
+  "physical_detections": [
+    {"detection_id": "ref-1", "event_id": "narrow-1", "classification": "ref_only_narrow_glitch", "reference_sequence": 50},
+    {"detection_id": "ref-2", "event_id": "narrow-2", "classification": "ref_only_narrow_glitch", "reference_sequence": 51}
+  ],
+  "snapshot_validity": [
+    {"event_id": "narrow-1", "snapshot_sequence": null, "snapshot_observed": false, "measurement_valid": false, "reasons": ["ref_without_snapshot"], "association_state": "lost", "cnt_state": "absent"},
+    {"event_id": "narrow-2", "snapshot_sequence": null, "snapshot_observed": false, "measurement_valid": false, "reasons": ["ref_without_snapshot"], "association_state": "lost", "cnt_state": "absent"},
+    {"event_id": "late-snapshot", "snapshot_sequence": 70, "snapshot_observed": true, "measurement_valid": false, "reasons": ["late_snapshot_quarantined"], "association_state": "quarantined", "cnt_state": "absent"},
+    {"event_id": "recovery-anchor", "snapshot_sequence": 0, "snapshot_observed": true, "measurement_valid": false, "reasons": ["reacquisition_anchor"], "association_state": "anchor", "cnt_state": "absent"},
+    {"event_id": "recovery-cnt", "snapshot_sequence": 1, "snapshot_observed": true, "measurement_valid": true, "reasons": [], "association_state": "clean", "cnt_state": "valid"}
+  ],
+  "diagnostics": [
+    {"diagnostic_id": "assoc-loss", "event_id": "narrow-1", "transition": "association_loss", "reason_code": "ref_without_snapshot"},
+    {"diagnostic_id": "assoc-loss-2", "event_id": "narrow-2", "transition": "association_loss", "reason_code": "ref_without_snapshot"},
+    {"diagnostic_id": "recovery", "event_id": "recovery-cnt", "transition": "recovery", "reason_code": "clean_pair_reacquired"}
+  ]
+}

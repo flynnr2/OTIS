@@ -191,6 +191,23 @@ The additive draft CSV contract is documented in
 remain valid low-level status and migration inputs; draft `DIAG` rows are the
 first-class diagnostic findings used by replay tests.
 
+### PPS REF/SNP association taxonomy
+
+Keep the following conclusions distinct when aligning pseudo-PPS evidence:
+
+| Condition | Required evidence/result |
+|---|---|
+| REF-only narrow glitch | PGT `narrow_glitch`, physical REF observed, explicit SNP absence, `association_state=lost`, `ref_without_snapshot`, no CNT |
+| Extra REF edge | Additional physical REF/sequence evidence; classify cadence separately from whether PIO produced SNP |
+| Missing SNP | Explicit absence assessment; never infer absence merely because an aligned file omitted a row |
+| Association loss | Close old pairing/session state, increment the saturating loss counter, reject late or ambiguous SNP words |
+| Measurement invalidation | No valid CNT may span the affected event; `count_snapshot_absent`/gate-incomplete status remains explicit |
+| Restored clean acquisition | First new-session SNP is `anchor`; the adjacent clean successor changes association to `clean` and is the first CNT candidate |
+
+These are not aliases for `reference_missing_pps`. Multiple REF-only glitches
+while association is already lost must not manufacture repeated physical-outage
+transitions.
+
 ---
 
 ## State and Control Records

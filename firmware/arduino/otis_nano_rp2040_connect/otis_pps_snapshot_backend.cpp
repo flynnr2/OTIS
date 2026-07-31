@@ -50,6 +50,20 @@ BackendState backend = {
     0u,   0u, 0u, 0u,  0u,    0u,
 };
 
+void increment_saturating(uint32_t *counter) {
+  if (*counter != UINT32_MAX) {
+    *counter += 1u;
+  }
+}
+
+void add_saturating(uint32_t *counter, uint32_t value) {
+  if (UINT32_MAX - *counter < value) {
+    *counter = UINT32_MAX;
+  } else {
+    *counter += value;
+  }
+}
+
 uint32_t stable_dma_transfer_count(void) {
   if (backend.dma_channel < 0) {
     return kDmaInitialTransferCount;
@@ -90,7 +104,7 @@ void latch_fatal_fault(uint32_t flag) {
     return;
   }
   backend.fault_latched = true;
-  backend.continuity_loss_count++;
+  increment_saturating(&backend.continuity_loss_count);
   stop_transport();
 }
 
@@ -225,7 +239,7 @@ void otis_pps_snapshot_backend_poll(void) {
   uint sm = static_cast<uint>(backend.sm);
   uint32_t rxstall = (backend.pio->fdebug >> sm) & 1u;
   if (rxstall != 0u) {
-    backend.pio_rxstall_count++;
+    increment_saturating(&backend.pio_rxstall_count);
     latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_PIO_RXSTALL);
     return;
   }
@@ -233,12 +247,12 @@ void otis_pps_snapshot_backend_poll(void) {
   dma_channel_hw_t *channel =
       dma_channel_hw_addr(static_cast<uint>(backend.dma_channel));
   if ((channel->ctrl_trig & DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS) != 0u) {
-    backend.dma_error_count++;
+    increment_saturating(&backend.dma_error_count);
     latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_DMA_ERROR);
     return;
   }
   if (!dma_channel_is_busy(static_cast<uint>(backend.dma_channel))) {
-    backend.dma_stopped_count++;
+    increment_saturating(&backend.dma_stopped_count);
     latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_DMA_STOPPED);
     return;
   }
@@ -249,8 +263,9 @@ void otis_pps_snapshot_backend_poll(void) {
     backend.backlog_high_water = depth;
   }
   if (depth > kSnapshotRingCapacity) {
-    backend.overwrite_count += depth - kSnapshotRingCapacity;
-    backend.continuity_loss_count++;
+    add_saturating(&backend.overwrite_count,
+                   depth - kSnapshotRingCapacity);
+    increment_saturating(&backend.continuity_loss_count);
     backend.consumer_ordinal = produced;
     backend.overwrite_pending = true;
   }

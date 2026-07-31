@@ -68,8 +68,8 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `reference_reason` | typed reference conclusion, including duplicate/short/long/missing/flagged/recovery cases |
 | `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` oscillator-count state |
 | `pps_gate` | `count_reason` | typed count conclusion, including valid/zero/saturated/unavailable cases |
-| `pps_gate` | `boundary_owner` | timing owner, currently `pps_gpio_irq` |
-| `pps_gate` | `aperture_backend` | physical implementation, currently `pps_isr_stop_sample_restart_v1` |
+| `pps_gate` | `boundary_owner` | timing owner, currently `pio_state_machine` |
+| `pps_gate` | `aperture_backend` | physical implementation, currently `pio_wait_cumulative_snapshot_dma_v1` |
 | `pps_gate` | `backend_qualified` | explicit bench-qualification gate for control eligibility |
 | `pps_gate` | `boundary_sequence` | modulo-2^32 atomic boundary sequence |
 | `pps_gate` | `boundary_validity` | independent count-boundary capture conclusion |
@@ -79,6 +79,11 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `observation_pair_validity` | whether two atomic boundaries form a defensible pair |
 | `pps_gate` | `observation_pair_reason` | typed pair/sequence reason |
 | `pps_gate` | `fifo_continuity` | `continuous`, `duplicate`, `gap`, `overflow`, or `unavailable` |
+| `pps_gate` | `association_state` | `awaiting_anchor`, `anchor`, `clean`, sequence-associated `associated_invalid`, or fail-closed `lost` state |
+| `pps_gate` | `association_loss_reason` | `ref_without_snapshot`, snapshot backend fault/timeout, or `none` |
+| `pps_gate` | `association_loss_count` | saturating count of closed REF/SNP associations |
+| `pps_gate` | `association_recovery_count` | saturating count of fresh adjacent clean pairs after association loss |
+| `pps_gate` | `association_loss_reference_sequence` | D14 source sequence that could not be associated; zero until the first loss |
 | `pps_gate` | `boundary_ring_depth` / `boundary_ring_capacity` | bounded ISR-to-foreground queue health |
 | `pps_gate` | `boundary_ring_dropped_count` | atomic observations lost because that queue was full |
 | `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
@@ -93,6 +98,7 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
 | `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
 | `pps_gate` | `count_resolution_edges` | native integer count resolution, currently one edge |
+| `pps_gate` | `declared_max_captured_edge_rate_hz` | conservative PIO/system-clock ceiling used only to exclude an unobservable full counter wrap; not expected oscillator frequency |
 | `pps_gate` | `counter_aperture_uncertainty_ns` | evidence-backed aperture uncertainty or `unavailable` |
 | `pps_gate` | `reference_frequency_uncertainty_ppb` | evidence-backed reference uncertainty or `unavailable` |
 

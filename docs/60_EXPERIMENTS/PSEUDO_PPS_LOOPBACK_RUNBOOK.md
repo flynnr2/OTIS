@@ -68,3 +68,20 @@ interval; 10 clean; one omission; recovery; a double; a bounce; 30 clean.
 Abort the run on `underflow` or `resource_fault`. A `completion` marker is
 valid only after the PIO consumed its terminal sentinel while low. Never infer
 success from host arrival time or from `PGT` alone.
+
+For a clean profile, do not require exactly 16,000,000 edges per nominal
+one-second gate. The generator establishes the gate timing but does not
+calibrate the external oscillator. Score the run with
+`host.otis_tools.pseudo_pps_acceptance` using an independently referenced
+oscillator frequency, a fitted run mean, or a documented nominal value with an
+explicit frequency tolerance. Independently require the proved boundary
+residual/adjacent-difference bound, sequence continuity, no malformed PPS or
+parser loss, and no load-dependent mean or distribution change.
+
+A sufficiently narrow D14 pulse can be observed as REF by the GPIO path while
+the oscillator-edge-driven PIO program never reaches a PPS observation point.
+That is a legitimate malformed-reference outcome: record the REF, explicitly
+assess SNP as absent, invalidate association, publish no valid CNT across the
+event, reject any late/ambiguous word, and reacquire with a fresh anchor
+followed by an adjacent snapshot. Do not demand one SNP for this electrically
+generated malformed pulse.

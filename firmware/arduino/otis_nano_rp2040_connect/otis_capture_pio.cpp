@@ -132,6 +132,7 @@ void otis_capture_pio_service(void) {
         'R',
         otis_capture_ticks_now(),
         OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
+        true,
     };
     if (pio_emit_record != nullptr) {
       pio_emit_record(record);

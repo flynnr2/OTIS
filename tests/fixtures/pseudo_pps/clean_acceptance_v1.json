@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "centre_source": "nominal_with_tolerance",
+    "centre_evidence": "test fixture nominal expectation with explicit +/-10 Hz bound; not bench calibration evidence",
+    "expected_oscillator_hz": 16000000.0,
+    "maximum_centre_offset_hz": 10.0,
+    "maximum_boundary_residual_edges": 1.0,
+    "maximum_adjacent_difference_edges": 2,
+    "maximum_load_mean_shift_hz": 0.25,
+    "require_load_comparison": false,
+    "minimum_intervals_per_load_state": 1
+  },
+  "intervals": [
+    {"session_id": "s1", "snapshot_sequence": 10, "reference_sequence": 40, "counted_edges": 16000004, "load_state": "baseline", "capture_valid": true, "malformed_reference": false, "host_parser_loss": false},
+    {"session_id": "s1", "snapshot_sequence": 11, "reference_sequence": 41, "counted_edges": 16000005, "load_state": "baseline", "capture_valid": true, "malformed_reference": false, "host_parser_loss": false},
+    {"session_id": "s1", "snapshot_sequence": 12, "reference_sequence": 42, "counted_edges": 16000004, "load_state": "baseline", "capture_valid": true, "malformed_reference": false, "host_parser_loss": false},
+    {"session_id": "s1", "snapshot_sequence": 13, "reference_sequence": 43, "counted_edges": 16000003, "load_state": "baseline", "capture_valid": true, "malformed_reference": false, "host_parser_loss": false}
+  ]
+}

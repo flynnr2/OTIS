@@ -26,7 +26,9 @@ void otis_capture_ring_reset(void) {
 bool otis_capture_ring_push_from_isr(const OtisCapturedEdge &record) {
   uint8_t next_head = (uint8_t)((capture_head + 1u) % kCaptureRingSize);
   if (next_head == capture_tail) {
-    capture_dropped_count++;
+    if (capture_dropped_count != UINT32_MAX) {
+      capture_dropped_count++;
+    }
     return false;
   }
 
@@ -36,6 +38,7 @@ bool otis_capture_ring_push_from_isr(const OtisCapturedEdge &record) {
   capture_ring[capture_head].edge = record.edge;
   capture_ring[capture_head].timestamp_ticks = record.timestamp_ticks;
   capture_ring[capture_head].flags = record.flags;
+  capture_ring[capture_head].sampled_high = record.sampled_high;
   capture_head = next_head;
   return true;
 }
@@ -50,6 +53,7 @@ bool otis_capture_ring_pop(OtisCapturedEdge *record) {
     record->edge = capture_ring[capture_tail].edge;
     record->timestamp_ticks = capture_ring[capture_tail].timestamp_ticks;
     record->flags = capture_ring[capture_tail].flags;
+    record->sampled_high = capture_ring[capture_tail].sampled_high;
     capture_tail = (uint8_t)((capture_tail + 1u) % kCaptureRingSize);
     have_record = true;
   }
@@ -58,7 +62,9 @@ bool otis_capture_ring_pop(OtisCapturedEdge *record) {
 }
 
 void otis_capture_ring_note_drop(void) {
-  capture_dropped_count++;
+  if (capture_dropped_count != UINT32_MAX) {
+    capture_dropped_count++;
+  }
 }
 
 uint32_t otis_capture_ring_dropped_count(void) {

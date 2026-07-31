@@ -106,13 +106,36 @@ Ctrl-C, then run:
 python3 -m host.otis_tools.validate_run "$OTIS_PSEUDO_RUN"
 ```
 
+Create a clean-alignment JSON v1 containing an explicit centre source and the
+aligned interval evidence (use
+`tests/fixtures/pseudo_pps/clean_acceptance_v1.json` as the field-shape
+example), then run:
+
+```bash
+python3 -m host.otis_tools.pseudo_pps_acceptance \
+  "$OTIS_PSEUDO_RUN/reports/pseudo_pps_clean_alignment_v1.json" \
+  --output "$OTIS_PSEUDO_RUN/reports/pseudo_pps_clean_score_v1.json" --strict
+```
+
+The checked-in JSON is a test fixture, not a bench threshold. Replace its
+`centre_evidence`, expected rate, and limits with pre-run evidence and reviewed
+limits for the actual oscillator/source combination.
+
 Hard pass criteria are: one physical REF and one raw SNP for every scheduled
-pulse; first SNP is anchor-only; every later adjacent pair produces the
-expected CNT; snapshot and REF sequences are continuous; official raw counts
-are `16,000,000` with only the proved asynchronous boundary quantisation; no
-false physical-missing transition; no FIFO/DMA/ring error or overwrite; no
-parser loss; and completion returns D3 to high impedance. Reporting delay and
-temporary foreground backlog are allowed if captured counts do not change.
+clean pulse; first SNP is anchor-only; every later adjacent pair produces the
+expected CNT; snapshot and REF sequences are continuous; and the fitted count
+centre is consistent with an independently measured/reference oscillator
+frequency, or with a documented nominal expectation and explicit frequency
+tolerance. The pseudo-PPS generator defines the gate duration, not an exact
+16 MHz oscillator frequency. Count residuals and adjacent differences must
+stay inside the proved asynchronous `-1/0/+1` boundary model, with any other
+explicit measurement noise separately bounded. No allowed centre offset may
+waive excess jitter, a load-dependent mean/distribution shift, a count outlier,
+sequence/snapshot loss, malformed PPS, or host/parser loss. There must also be
+no false physical-missing transition, FIFO/DMA/ring error or overwrite; and
+completion must return D3 to high impedance. Reporting delay and temporary
+foreground backlog are allowed only when the official count mean and
+distribution remain within the declared limits.
 
 ## C. Fault-injection acceptance
 
@@ -153,6 +176,17 @@ outage; no duplicate outage transition from reminders; every malformed
 reference period measurement-invalid; no retroactive late association; and two
 fresh clean snapshots before CNT resumes. Any unexplained truth mismatch or
 valid measurement spanning a fault is a hard failure.
+
+For `NARROW_GLITCH`, one legitimate aligned outcome is generator truth plus a
+physical REF but an explicit absent-SNP assessment. That outcome must report
+`association_state=lost`, `cnt_state=absent`, and
+`reason=ref_without_snapshot`. An actual SNP attributed to that narrow event,
+an associated late word, or any valid CNT crossing it is a hard failure. A late
+word may be preserved only as quarantined host evidence; firmware must reject
+it and clear old transport state. The next clean word is the new-session anchor
+and only its adjacent successor may restore CNT. Use
+`tests/fixtures/pseudo_pps/narrow_glitch_scoring_v1.json` as the aligned
+field-shape example.
 
 ## D. Real-GPS quiet smoke, 10–20 minutes
 

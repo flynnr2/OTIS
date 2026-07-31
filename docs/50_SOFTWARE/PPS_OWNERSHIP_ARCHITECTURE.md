@@ -67,9 +67,14 @@ acceptable REF interval/flags, valid snapshot status, and an unambiguous
 counter delta.
 
 If a second D14 REF is waiting while the first has no PIO snapshot, association
-is immediately lost. Firmware rearms the PIO/DMA session, clears old pairing
-state, discards a possible late recovery snapshot, and requires two fresh
-snapshots. No later word is paired retroactively with the unmatched REF.
+is immediately lost, even if a snapshot word has appeared by the time
+foreground notices the second REF. Firmware rearms the PIO/DMA session, clears
+all old transport/pairing state, and requires two fresh snapshots. No later
+word is paired retroactively with the unmatched REF. The first new-session
+snapshot is the anchor and its adjacent successor is the first CNT candidate.
+`pps_gate/association_state`, `association_loss_reason`, and the saturating
+loss/recovery counters expose this transition. The unmatched REF remains raw
+evidence; no synthetic SNP or CNT is created for it.
 
 ## Presence, backlog, and diagnostics
 
@@ -93,6 +98,9 @@ cannot alter captured count values or become `reference_missing_pps`.
   continuity.
 - Missing PPS with a continuing oscillator may produce a later long snapshot;
   reference validity rejects it.
+- A narrow malformed D14 pulse may produce REF without SNP. The event is
+  reported as `ref_without_snapshot`, closes the old association, invalidates
+  the affected interval, and cannot be bridged by a later snapshot.
 - A stopped oscillator parks the PIO state machine in `WAIT`. D14 continues;
   missing snapshot association fails closed and resumption begins a new
   session.

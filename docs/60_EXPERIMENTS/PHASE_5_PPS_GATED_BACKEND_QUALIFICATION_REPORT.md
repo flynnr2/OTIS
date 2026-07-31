@@ -79,6 +79,16 @@ scoring requires zero unexplained missed, false, duplicate, or misclassified
 detections; exact outage/restoration transitions; invalid measurements around
 faults; and clean two-snapshot recovery.
 
+Clean pseudo-PPS scoring also separates oscillator centre frequency from
+boundary quantisation. The centre must be backed by an independent reference,
+a fitted run mean, or a documented nominal expectation with an explicit
+tolerance; it is not required to equal 16,000,000 exactly. The proved boundary
+residual/adjacent-difference limit, quiet/load mean shift, continuity,
+malformed-reference evidence, and parser loss remain independent hard gates.
+For narrow glitches, REF-without-SNP is a legitimate fail-closed outcome only
+when absence, association loss, no crossing CNT, late-word rejection, and
+fresh anchor-plus-adjacent recovery are explicit.
+
 ## Remaining hardware gates
 
 The bench campaign in

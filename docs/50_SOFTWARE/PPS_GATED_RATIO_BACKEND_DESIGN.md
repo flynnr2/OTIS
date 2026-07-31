@@ -83,8 +83,9 @@ When PPS is missing but the oscillator continues, PIO keeps counting and D14's
 physical watchdog reports one outage transition. A later long boundary is
 rejected. When the oscillator stops, PIO parks in `WAIT` and D14 continues
 independently; the missing snapshot invalidates association. Resumption starts
-a new session, discards any late recovery word, and requires two fresh
-snapshots. Duplicate, short, long, flagged, sequence-gap, overflow, and
+a new session, clears old unread transport and pairing state, and requires a
+fresh anchor plus adjacent snapshot. Duplicate, short, long, flagged,
+sequence-gap, overflow, and
 unavailable-boundary cases cannot become clean pairs.
 
 If a boundary sequence is missing, the delivered interval count cannot be

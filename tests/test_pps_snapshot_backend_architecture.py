@@ -66,8 +66,10 @@ def test_d14_and_d10_isrs_only_preserve_compact_events() -> None:
 
     prohibited = (
         "Serial",
+        "digitalRead",
         "delay(",
         "millis(",
+        "otis_capture_ticks_now()",
         "otis_classify_pps_interval_ticks",
         "pio_sm_",
         "dma_",
@@ -76,8 +78,14 @@ def test_d14_and_d10_isrs_only_preserve_compact_events() -> None:
     )
     for body in (d14, d10):
         assert not any(token in body for token in prohibited)
+        assert "otis_capture_ticks_now_from_isr" in body
+        assert "gpio_get" in body
     assert "otis_capture_ring_push_from_isr" in d14
     assert "push_d10_event_from_isr" in d10
+    assert "d14_sampled_high_count" not in d14
+    assert "d14_last_raw_timestamp" not in d14
+    assert "d10_sampled_high_count" not in d10
+    assert "d10_last_edge_timestamp" not in d10
 
 
 def test_d14_isr_has_no_count_aperture_control() -> None:
@@ -95,8 +103,25 @@ def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
     body = _function_body(sketch, "void drain_pps_count_boundary_ring(void)")
     assert "another_reference_waiting" in body
     assert "otis_pps_snapshot_backend_rearm()" in body
-    assert "discard_first_recovery_snapshot = true" in body
-    assert "never paired retroactively" in body
+    assert "paired retroactively" in body
+    assert "discard_first_recovery_snapshot" not in body
+    assert "otis_pps_count_boundary_ring_reset()" in body
+    assert body.index("another_reference_waiting") < body.index(
+        "otis_pps_snapshot_backend_pop"
+    )
+    assert "otis_count_observation_note_association_loss" in body
+    assert '"ref_without_snapshot"' in body
+
+    count_source = (FW / "otis_count_observation.cpp").read_text(
+        encoding="utf-8"
+    )
+    association_loss = _function_body(
+        count_source, "void otis_count_observation_note_association_loss("
+    )
+    assert 'association_state = "lost"' in association_loss
+    assert "have_previous_observation = false" in association_loss
+    assert "kCountReasonSnapshotAbsent" in association_loss
+    assert "OTIS_FLAG_GATE_INCOMPLETE" in association_loss
 
 
 def test_backend_candidate_remains_unqualified_and_old_isr_identity_is_gone() -> None:
@@ -125,3 +150,15 @@ def test_backend_candidate_remains_unqualified_and_old_isr_identity_is_gone() ->
     )
     assert "pps_isr_stop_sample_restart_v1" not in production_sources
     assert "pio_wait_cumulative_snapshot_dma_v1" in production_sources
+
+
+def test_counter_wrap_envelope_does_not_treat_nominal_frequency_as_a_maximum() -> None:
+    config = (FW / "otis_config.h").read_text(encoding="utf-8")
+    count_source = (FW / "otis_count_observation.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OTIS_PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ 133000000u" in config
+    assert "OTIS_PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ" in count_source
+    assert '"declared_max_captured_edge_rate_hz"' in count_source
+    assert '"declared_max_oscillator_hz"' not in count_source

@@ -10,12 +10,16 @@ from host.otis_tools.pps_fault_scoring import (
     GeneratorTruthEvent,
     PhysicalDetection,
     SnapshotValidity,
+    _strict_acceptance,
     score_fault_injection,
     main,
 )
 
 
 SCORING_FIXTURE = Path("tests/fixtures/pseudo_pps/scoring_v1.json")
+NARROW_FIXTURE = Path(
+    "tests/fixtures/pseudo_pps/narrow_glitch_scoring_v1.json"
+)
 PROFILES_FIXTURE = Path("tests/fixtures/pseudo_pps/profiles_v1.json")
 
 
@@ -209,3 +213,182 @@ def test_cli_writes_explicit_failure_disposition_and_strict_exit(
     assert main([str(SCORING_FIXTURE), "--output", str(output)]) == 0
     assert json.loads(output.read_text(encoding="utf-8"))["disposition"] == "fail"
     assert main([str(SCORING_FIXTURE), "--strict"]) == 2
+
+
+def _narrow_glitch_evidence():
+    truth = [
+        GeneratorTruthEvent(
+            "narrow-1", "g1", 10, "narrow_glitch_v1", 1, "fault",
+            "ref_only_narrow_glitch", expected_snapshot_observed=False,
+            expected_association_state="lost", expected_cnt_state="absent",
+        ),
+        GeneratorTruthEvent(
+            "narrow-2", "g1", 11, "narrow_glitch_v1", 1, "fault",
+            "ref_only_narrow_glitch", expected_snapshot_observed=False,
+            expected_association_state="lost", expected_cnt_state="absent",
+        ),
+        GeneratorTruthEvent(
+            "late-snapshot", "g1", 12, "narrow_glitch_v1", 1,
+            "late_snapshot", expected_snapshot_observed=True,
+            expected_association_state="quarantined",
+            expected_cnt_state="absent",
+        ),
+        GeneratorTruthEvent(
+            "recovery-anchor", "g1", 13, "return_clean_v1", 1,
+            "recovery_anchor", expected_snapshot_observed=True,
+            expected_association_state="anchor", expected_cnt_state="absent",
+        ),
+        GeneratorTruthEvent(
+            "recovery-cnt", "g1", 14, "return_clean_v1", 1, "recovery",
+            expected_snapshot_observed=True,
+            expected_association_state="clean",
+            expected_cnt_state="valid",
+        ),
+    ]
+    detections = [
+        PhysicalDetection("ref-1", "narrow-1", "ref_only_narrow_glitch", 50),
+        PhysicalDetection("ref-2", "narrow-2", "ref_only_narrow_glitch", 51),
+    ]
+    snapshots = [
+        SnapshotValidity(
+            "narrow-1", None, False, ("ref_without_snapshot",), False,
+            association_state="lost", cnt_state="absent",
+        ),
+        SnapshotValidity(
+            "narrow-2", None, False, ("ref_without_snapshot",), False,
+            association_state="lost", cnt_state="absent",
+        ),
+        SnapshotValidity(
+            "late-snapshot", 70, False, ("late_snapshot_quarantined",),
+            association_state="quarantined", cnt_state="absent",
+        ),
+        SnapshotValidity(
+            "recovery-anchor", 0, False, ("reacquisition_anchor",),
+            association_state="anchor", cnt_state="absent",
+        ),
+        SnapshotValidity(
+            "recovery-cnt", 1, True, (),
+            association_state="clean", cnt_state="valid",
+        ),
+    ]
+    diagnostics = [
+        DiagnosticObservation(
+            "assoc-loss", "narrow-1", "association_loss",
+            "ref_without_snapshot",
+        ),
+        DiagnosticObservation(
+            "assoc-loss-2", "narrow-2", "association_loss",
+            "ref_without_snapshot",
+        ),
+        DiagnosticObservation(
+            "recovery", "recovery-cnt", "recovery",
+            "clean_pair_reacquired",
+        ),
+    ]
+    return truth, detections, snapshots, diagnostics
+
+
+def test_ref_without_snp_is_an_explicit_correct_fail_closed_outcome() -> None:
+    report = score_fault_injection(*_narrow_glitch_evidence())
+
+    assert report.correctly_detected_event_count == 2
+    assert report.correct_snapshot_outcome_count == 5
+    assert report.fault_measurement_invalid_count == 2
+    assert report.valid_cnt_across_fault_count == 0
+    assert report.association_mismatch_count == 0
+    assert report.cnt_outcome_mismatch_count == 0
+    assert report.outage_transitions.observed == 0
+    assert report.association_loss_transitions.expected == 2
+    assert report.association_loss_transitions.observed == 2
+    assert report.clean_recovery_count == 1
+    assert _strict_acceptance(report)
+
+
+def test_missed_ref_is_distinct_from_correctly_absent_snapshot() -> None:
+    truth, _detections, snapshots, diagnostics = _narrow_glitch_evidence()
+    report = score_fault_injection(truth, (), snapshots, diagnostics)
+
+    assert report.missed_detection_count == 2
+    assert report.unexpected_snapshot_count == 0
+    assert report.correct_snapshot_outcome_count == 5
+    assert not _strict_acceptance(report)
+
+
+def test_unexpected_or_retroactively_paired_late_snapshot_fails() -> None:
+    truth, detections, snapshots, diagnostics = _narrow_glitch_evidence()
+    snapshots[0] = SnapshotValidity(
+        "narrow-1", 69, True, (), association_state="associated",
+        cnt_state="valid",
+    )
+    report = score_fault_injection(truth, detections, snapshots, diagnostics)
+
+    assert report.unexpected_snapshot_count == 1
+    assert report.association_mismatch_count == 1
+    assert report.cnt_outcome_mismatch_count == 1
+    assert report.valid_cnt_across_fault_count == 1
+    assert not _strict_acceptance(report)
+
+
+def test_duplicate_and_orphan_snapshot_assessments_fail() -> None:
+    truth, detections, snapshots, diagnostics = _narrow_glitch_evidence()
+    snapshots.append(snapshots[-1])
+    snapshots.append(
+        SnapshotValidity(
+            "orphan-snapshot", 99, False, ("unmatched_snapshot",),
+            association_state="quarantined", cnt_state="absent",
+        )
+    )
+
+    report = score_fault_injection(truth, detections, snapshots, diagnostics)
+
+    assert report.duplicate_snapshot_assessment_count == 1
+    assert report.orphan_snapshot_assessment_count == 1
+    assert not _strict_acceptance(report)
+
+
+def test_recovery_requires_anchor_then_adjacent_valid_cnt() -> None:
+    truth, detections, snapshots, diagnostics = _narrow_glitch_evidence()
+    without_anchor = [
+        item for item in snapshots if item.event_id != "recovery-anchor"
+    ]
+    no_anchor = score_fault_injection(
+        truth, detections, without_anchor, diagnostics
+    )
+    snapshots[-1] = SnapshotValidity(
+        "recovery-cnt", 1, False, ("still_reacquiring",),
+        association_state="anchor", cnt_state="absent",
+    )
+    no_adjacent_cnt = score_fault_injection(
+        truth, detections, snapshots, diagnostics
+    )
+
+    assert no_anchor.missing_snapshot_count == 1
+    assert no_adjacent_cnt.clean_recovery_count == 0
+    assert no_adjacent_cnt.association_mismatch_count == 1
+    assert no_adjacent_cnt.cnt_outcome_mismatch_count == 1
+
+
+def test_duplicate_association_loss_diagnostic_fails_without_becoming_outage() -> None:
+    truth, detections, snapshots, diagnostics = _narrow_glitch_evidence()
+    diagnostics.append(
+        DiagnosticObservation(
+            "assoc-loss-duplicate", "narrow-2", "association_loss",
+            "ref_without_snapshot",
+        )
+    )
+
+    report = score_fault_injection(truth, detections, snapshots, diagnostics)
+
+    assert report.association_loss_transitions.excess == 1
+    assert report.outage_transitions.observed == 0
+    assert not _strict_acceptance(report)
+
+
+def test_narrow_glitch_fixture_is_a_strict_pass(tmp_path: Path) -> None:
+    output = tmp_path / "score.json"
+
+    assert main([str(NARROW_FIXTURE), "--output", str(output), "--strict"]) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["disposition"] == "pass"
+    assert report["unexpected_snapshot_count"] == 0
+    assert report["valid_cnt_across_fault_count"] == 0

@@ -392,7 +392,6 @@ void emit_pps_count_boundary(
 void drain_pps_count_boundary_ring(void) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   static bool have_pending_reference = false;
-  static bool discard_first_recovery_snapshot = false;
   static OtisPpsCountBoundaryObservation pending_reference = {};
 
   if (!have_pending_reference) {
@@ -403,38 +402,37 @@ void drain_pps_count_boundary_ring(void) {
     return;
   }
 
-  OtisPpsHardwareSnapshot snapshot;
-  if (!otis_pps_snapshot_backend_pop(&snapshot)) {
-    OtisPpsSnapshotBackendStats stats;
-    otis_pps_snapshot_backend_get_stats(&stats);
-    uint64_t pending_age_ticks = otis_timer0_interval_ticks(
-        pending_reference.pps_timestamp_ticks, otis_capture_ticks_now());
-    uint64_t association_timeout_ticks =
-        static_cast<uint64_t>(OTIS_PPS_GATE_MAX_INTERVAL_US) *
-        OTIS_RP2040_TIMER0_TICKS_PER_US;
-    bool another_reference_waiting =
-        otis_pps_count_boundary_ring_depth() != 0u;
-    if (!discard_first_recovery_snapshot &&
-        (stats.fault_latched ||
-         another_reference_waiting ||
-         pending_age_ticks > association_timeout_ticks)) {
-      // A second physical REF with no snapshot for the first is an immediate
-      // association loss.  Queue/foreground delay cannot manufacture a PIO
-      // word, and no later word may be paired retroactively with the first REF.
-      otis_pps_snapshot_backend_rearm();
-      otis_pps_count_boundary_ring_reset();
-      have_pending_reference = false;
-      discard_first_recovery_snapshot = true;
-    }
+  OtisPpsSnapshotBackendStats stats;
+  otis_pps_snapshot_backend_get_stats(&stats);
+  uint64_t pending_age_ticks = otis_timer0_interval_ticks(
+      pending_reference.pps_timestamp_ticks, otis_capture_ticks_now());
+  uint64_t association_timeout_ticks =
+      static_cast<uint64_t>(OTIS_PPS_GATE_MAX_INTERVAL_US) *
+      OTIS_RP2040_TIMER0_TICKS_PER_US;
+  bool another_reference_waiting =
+      otis_pps_count_boundary_ring_depth() != 0u;
+  if (stats.fault_latched || another_reference_waiting ||
+      pending_age_ticks > association_timeout_ticks) {
+    // A second physical REF before the first association closes is immediate
+    // association loss, even if a word has since appeared. Queue/foreground
+    // delay cannot prove that word belongs to the older REF, so it is never
+    // paired retroactively with it.
+    const char *association_reason =
+        stats.fault_latched
+            ? "snapshot_backend_fault"
+            : (another_reference_waiting ? "ref_without_snapshot"
+                                         : "snapshot_association_timeout");
+    otis_count_observation_note_association_loss(
+        &runtime_state, &status_emit_context,
+        pending_reference.reference_sequence, association_reason);
+    otis_pps_snapshot_backend_rearm();
+    otis_pps_count_boundary_ring_reset();
+    have_pending_reference = false;
     return;
   }
 
-  if (discard_first_recovery_snapshot) {
-    // The first post-fault word may have been captured late while an oscillator
-    // outage was ending.  It is never paired retroactively with an older REF.
-    discard_first_recovery_snapshot = false;
-    otis_pps_count_boundary_ring_reset();
-    have_pending_reference = false;
+  OtisPpsHardwareSnapshot snapshot;
+  if (!otis_pps_snapshot_backend_pop(&snapshot)) {
     return;
   }
 

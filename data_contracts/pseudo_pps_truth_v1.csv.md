@@ -33,3 +33,11 @@ no corresponding physical rising edge. `completion` is emitted only after the
 PIO consumes its low-state sentinel. `abort`, `underflow`, and `resource_fault`
 mean the output was returned to high impedance and the remaining plan must not
 be treated as generated.
+
+Generator truth does not imply a one-to-one SNP obligation. In particular, a
+`narrow_glitch` schedule may reach the GPIO/REF observer but fall between the
+oscillator-driven PIO program's PPS observation points. Its correct aligned
+outcome can therefore be `REF observed`, `SNP explicitly absent`, association
+lost, and no valid CNT across the event. The aligned scorer must distinguish
+that outcome from a missed REF, an unexpected SNP, retroactive pairing of a
+late SNP, or a valid CNT that silently bridges the malformed episode.
