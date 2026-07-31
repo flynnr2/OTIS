@@ -94,6 +94,14 @@ The Raspberry Pi Pico 2 is likely the best initial OTIS MVP target because it pr
 - strong tooling ecosystem;
 - broad availability.
 
+The current Nano RP2040 Connect remediation candidate uses D8 / GPIO20 for the
+conditioned 16 MHz oscillator and D14 / GPIO26 for PPS. One PIO state machine
+owns both edge counting and cumulative snapshot timing; DMA only transports
+completed snapshots. The host-visible D3 / GPIO15 pin is reserved as a
+loopback-only pseudo-PPS output in its dedicated test build. It must be wired
+through approximately 1 kΩ to D14 only after the real GPS PPS output is
+disconnected. Normal builds leave D3 high impedance.
+
 ---
 
 # 2. GNSS Timing Receiver

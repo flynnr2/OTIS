@@ -21,7 +21,10 @@ void store_observation(
     volatile OtisPpsCountBoundaryObservation *destination,
     const OtisPpsCountBoundaryObservation &source) {
   destination->sequence = source.sequence;
+  destination->session = source.session;
+  destination->reference_sequence = source.reference_sequence;
   destination->pps_timestamp_ticks = source.pps_timestamp_ticks;
+  destination->cumulative_down_counter = source.cumulative_down_counter;
   destination->interval_count = source.interval_count;
   destination->capture_flags = source.capture_flags;
   destination->aperture_flags = source.aperture_flags;
@@ -31,7 +34,10 @@ void load_observation(
     OtisPpsCountBoundaryObservation *destination,
     const volatile OtisPpsCountBoundaryObservation *source) {
   destination->sequence = source->sequence;
+  destination->session = source->session;
+  destination->reference_sequence = source->reference_sequence;
   destination->pps_timestamp_ticks = source->pps_timestamp_ticks;
+  destination->cumulative_down_counter = source->cumulative_down_counter;
   destination->interval_count = source->interval_count;
   destination->capture_flags = source->capture_flags;
   destination->aperture_flags = source->aperture_flags;

@@ -5,6 +5,7 @@
 
 struct OtisCapturedEdge {
   uint32_t channel_id;
+  uint32_t source_sequence;
   bool reference_record;
   char edge;
   uint64_t timestamp_ticks;
@@ -17,5 +18,6 @@ bool otis_capture_ring_pop(OtisCapturedEdge *record);
 void otis_capture_ring_note_drop(void);
 uint32_t otis_capture_ring_dropped_count(void);
 uint8_t otis_capture_ring_depth(void);
+uint8_t otis_capture_ring_capacity(void);
 
 #endif

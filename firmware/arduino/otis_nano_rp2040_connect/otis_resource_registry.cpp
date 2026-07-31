@@ -11,7 +11,10 @@ constexpr uint8_t kMaxResourceClaims = 32u;
 constexpr uint8_t kRp2040Instance = 0u;
 constexpr uint8_t kPio0Instance = 0u;
 constexpr uint8_t kI2c0Instance = 0u;
-constexpr uint16_t kPioProgramLength = 5u;
+constexpr uint16_t kSparseCapturePioProgramLength = 5u;
+constexpr uint16_t kLongGatePioProgramLength = 5u;
+constexpr uint16_t kPpsSnapshotPioProgramLength = 15u;
+constexpr uint16_t kPseudoPpsPioProgramLength = 13u;
 
 enum ClockResource : uint16_t {
   kClockSystem = 0u,
@@ -66,18 +69,20 @@ bool add_dynamic_claim(OtisResourceType type, uint8_t instance, uint16_t span,
                     false});
 }
 
-void add_pio_owner(const char *owner, const char *role) {
+void add_pio_owner(const char *owner, const char *role,
+                   uint16_t program_length) {
   add_dynamic_claim(OtisResourceType::PioStateMachine, kPio0Instance, 1u, owner,
                     role);
   add_dynamic_claim(OtisResourceType::PioInstructionMemory, kPio0Instance,
-                    kPioProgramLength, owner, role);
+                    program_length, owner, role);
 }
 
 void add_edge_capture_owner(uint16_t gpio, const char *role) {
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance, gpio,
                   OTIS_OWNER_EDGE_CAPTURE, role);
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
-  add_pio_owner(OTIS_OWNER_EDGE_CAPTURE, "sparse_edge_queue");
+  add_pio_owner(OTIS_OWNER_EDGE_CAPTURE, "sparse_edge_queue",
+                kSparseCapturePioProgramLength);
 #else
   add_bound_claim(OtisResourceType::GpioIrq, kRp2040Instance, gpio,
                   OTIS_OWNER_EDGE_CAPTURE, role);
@@ -110,9 +115,30 @@ void add_count_observation_owner(void) {
   add_bound_claim(OtisResourceType::GpioIrq, kRp2040Instance,
                   OTIS_PIN_OSC_OBSERVATION, OTIS_OWNER_COUNT_OBSERVATION,
                   "divided_oscillator_rising");
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE || \
-    OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  add_pio_owner(OTIS_OWNER_COUNT_OBSERVATION, "oscillator_edge_counter");
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
+  add_pio_owner(OTIS_OWNER_COUNT_OBSERVATION, "oscillator_edge_counter",
+                kLongGatePioProgramLength);
+#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  add_pio_owner(OTIS_OWNER_COUNT_OBSERVATION,
+                "pps_dual_input_cumulative_snapshot",
+                kPpsSnapshotPioProgramLength);
+  add_dynamic_claim(OtisResourceType::DmaChannel, kRp2040Instance, 1u,
+                    OTIS_OWNER_COUNT_OBSERVATION,
+                    "pps_snapshot_fifo_transport");
+#endif
+}
+
+void add_pseudo_pps_owner(void) {
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
+                  OTIS_PIN_PSEUDO_PPS_OUTPUT, OTIS_OWNER_PSEUDO_PPS,
+                  "d3_gpio15_test_output");
+  add_pio_owner(OTIS_OWNER_PSEUDO_PPS, "deterministic_waveform",
+                kPseudoPpsPioProgramLength);
+  add_bound_claim(OtisResourceType::PioIrqFlag, kPio0Instance, 7u,
+                  OTIS_OWNER_PSEUDO_PPS, "polled_completion_flag");
+  add_dynamic_claim(OtisResourceType::DmaChannel, kRp2040Instance, 1u,
+                    OTIS_OWNER_PSEUDO_PPS, "finite_schedule_transport");
 #endif
 }
 
@@ -233,7 +259,7 @@ bool otis_resource_registry_begin(void) {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE,
-                         "pps_reference_and_count_boundary_irq");
+                         "pps_reference_observer_irq");
 #else
   add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE, "pps_reference_input");
 #endif
@@ -242,6 +268,7 @@ bool otis_resource_registry_begin(void) {
 #endif
 
   add_h1_i2c_owner();
+  add_pseudo_pps_owner();
   return registry.valid;
 }
 
@@ -300,6 +327,8 @@ const char *otis_resource_type_name(OtisResourceType type) {
       return "pio_sm";
     case OtisResourceType::PioInstructionMemory:
       return "pio_imem";
+    case OtisResourceType::PioIrqFlag:
+      return "pio_irq_flag";
     case OtisResourceType::DmaChannel:
       return "dma";
     case OtisResourceType::Timer:
@@ -327,4 +356,10 @@ bool otis_resource_registry_bind_pio_program(const char *owner,
                                              uint8_t length) {
   return bind_dynamic_claim(OtisResourceType::PioInstructionMemory, owner,
                             pio_block, offset, length);
+}
+
+bool otis_resource_registry_bind_dma_channel(const char *owner,
+                                             uint8_t channel) {
+  return bind_dynamic_claim(OtisResourceType::DmaChannel, owner,
+                            kRp2040Instance, channel, 1u);
 }

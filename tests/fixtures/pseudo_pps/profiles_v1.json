@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "nominal_period_us": 1000000,
+  "nominal_pulse_width_us": 100000,
+  "profiles": [
+    {"id": "clean_nominal_1hz_v1", "fault_classes": [], "returns_to_clean": true},
+    {"id": "one_too_short_interval_v1", "fault_classes": ["too_short_interval"], "returns_to_clean": true},
+    {"id": "one_too_long_interval_v1", "fault_classes": ["too_long_interval"], "returns_to_clean": true},
+    {"id": "one_omitted_pulse_v1", "fault_classes": ["omitted_pulse"], "returns_to_clean": true},
+    {"id": "one_double_pulse_v1", "fault_classes": ["double_pulse"], "returns_to_clean": true},
+    {"id": "bounce_burst_v1", "fault_classes": ["bounce_burst"], "returns_to_clean": true},
+    {"id": "narrow_glitch_v1", "fault_classes": ["narrow_glitch"], "returns_to_clean": true},
+    {"id": "positive_phase_step_v1", "fault_classes": ["positive_phase_step"], "returns_to_clean": true},
+    {"id": "negative_phase_step_v1", "fault_classes": ["negative_phase_step"], "returns_to_clean": true},
+    {"id": "sustained_positive_period_offset_v1", "fault_classes": ["positive_period_offset"], "returns_to_clean": true},
+    {"id": "sustained_negative_period_offset_v1", "fault_classes": ["negative_period_offset"], "returns_to_clean": true},
+    {"id": "repeated_omissions_v1", "fault_classes": ["repeated_omissions"], "returns_to_clean": true},
+    {"id": "mixed_malformed_burst_v1", "fault_classes": ["too_short_interval", "too_long_interval", "omitted_pulse", "double_pulse", "bounce_burst", "narrow_glitch"], "returns_to_clean": true},
+    {
+      "id": "composite_acceptance_v1",
+      "fault_classes": ["too_short_interval", "omitted_pulse", "double_pulse", "bounce_burst"],
+      "returns_to_clean": true,
+      "steps": [
+        {"kind": "clean", "pulse_count": 30},
+        {"kind": "too_short_interval", "count": 1},
+        {"kind": "clean", "pulse_count": 10},
+        {"kind": "omitted_pulse", "count": 1},
+        {"kind": "recovery", "clean_pulse_count": 2},
+        {"kind": "double_or_bounce", "count": 1},
+        {"kind": "clean", "pulse_count": 30}
+      ]
+    }
+  ]
+}

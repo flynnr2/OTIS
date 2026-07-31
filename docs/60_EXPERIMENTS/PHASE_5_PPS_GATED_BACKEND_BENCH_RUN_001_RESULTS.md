@@ -1,9 +1,18 @@
 # Phase 5 PPS-Gated Backend Bench Run 001 Results
 
+> **Superseded architecture evidence.** This run exercised the rejected
+> `pps_isr_stop_sample_restart_v1` boundary and did not record raw `SNP`
+> cumulative snapshots. It is retained as historical diagnostic evidence only.
+> It cannot qualify `pio_wait_cumulative_snapshot_dma_v1`, satisfy the current
+> raw-snapshot continuity gate, or authorize control. References below to a
+> passed leg or `control_eligible=true` describe the old build's telemetry and
+> are not current acceptance claims.
+
 ## Result and scope
 
-**The authoritative post-reset candidate session passed the bench legs that
-were exercised.**
+**Historically, the post-reset ISR-owned candidate session passed the limited
+bench legs that were exercised. The result is not reusable for the current
+PIO-owned candidate.**
 
 This result covers boot acceptance, startup inhibition and recovery, sustained
 candidate observation, quiet-versus-service-load capture, missing-PPS

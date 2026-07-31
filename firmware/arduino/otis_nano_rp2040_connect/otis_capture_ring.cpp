@@ -31,6 +31,7 @@ bool otis_capture_ring_push_from_isr(const OtisCapturedEdge &record) {
   }
 
   capture_ring[capture_head].channel_id = record.channel_id;
+  capture_ring[capture_head].source_sequence = record.source_sequence;
   capture_ring[capture_head].reference_record = record.reference_record;
   capture_ring[capture_head].edge = record.edge;
   capture_ring[capture_head].timestamp_ticks = record.timestamp_ticks;
@@ -44,6 +45,7 @@ bool otis_capture_ring_pop(OtisCapturedEdge *record) {
   noInterrupts();
   if (capture_tail != capture_head) {
     record->channel_id = capture_ring[capture_tail].channel_id;
+    record->source_sequence = capture_ring[capture_tail].source_sequence;
     record->reference_record = capture_ring[capture_tail].reference_record;
     record->edge = capture_ring[capture_tail].edge;
     record->timestamp_ticks = capture_ring[capture_tail].timestamp_ticks;
@@ -64,5 +66,14 @@ uint32_t otis_capture_ring_dropped_count(void) {
 }
 
 uint8_t otis_capture_ring_depth(void) {
-  return kCaptureRingSize;
+  noInterrupts();
+  uint8_t head = capture_head;
+  uint8_t tail = capture_tail;
+  interrupts();
+  return head >= tail ? static_cast<uint8_t>(head - tail)
+                      : static_cast<uint8_t>(kCaptureRingSize - tail + head);
+}
+
+uint8_t otis_capture_ring_capacity(void) {
+  return static_cast<uint8_t>(kCaptureRingSize - 1u);
 }

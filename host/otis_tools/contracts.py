@@ -33,6 +33,18 @@ COUNT_OBSERVATION_FIELDS = [
     "flags",
 ]
 
+PPS_SNAPSHOT_FIELDS = [
+    "record_type",
+    "schema_version",
+    "session",
+    "snapshot_sequence",
+    "cumulative_down_counter",
+    "reference_sequence",
+    "reference_timestamp_ticks",
+    "status",
+    "backend",
+]
+
 HEALTH_FIELDS = [
     "record_type",
     "schema_version",
@@ -73,6 +85,22 @@ ENVIRONMENT_FIELDS = [
     "temperature_c",
     "relative_humidity_pct",
     "pressure_pa",
+    "flags",
+]
+
+PSEUDO_PPS_TRUTH_FIELDS = [
+    "record_type",
+    "schema_version",
+    "truth_seq",
+    "generator_session",
+    "profile_id",
+    "profile_version",
+    "generator_sequence",
+    "event",
+    "intended_class",
+    "scheduled_offset_us",
+    "scheduled_interval_us",
+    "pulse_width_us",
     "flags",
 ]
 
@@ -257,9 +285,11 @@ CONTROL_PREVIEW_V1_FIELDS = [
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
+    "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
+    "pseudo_pps_truth_v1": PSEUDO_PPS_TRUTH_FIELDS,
     "diagnostics_draft_v0": DIAGNOSTICS_DRAFT_V0_FIELDS,
     "diagnostics_v1": DIAGNOSTICS_V1_FIELDS,
     "reference_observations_v1": REFERENCE_OBSERVATION_V1_FIELDS,
@@ -271,9 +301,11 @@ CONTRACT_FIELDS = {
 CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
+    "pps_snapshots_v1": {"SNP"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
+    "pseudo_pps_truth_v1": {"PGT"},
     "diagnostics_draft_v0": {"DIAG"},
     "diagnostics_v1": {"DIAG"},
     "reference_observations_v1": {"RFO"},
@@ -285,9 +317,11 @@ CONTRACT_RECORD_TYPES = {
 CONTRACT_SCHEMA_VERSIONS = {
     "raw_events_v1": 1,
     "count_observations_v1": 1,
+    "pps_snapshots_v1": 1,
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
+    "pseudo_pps_truth_v1": 1,
     "diagnostics_draft_v0": 0,
     "diagnostics_v1": 1,
     "reference_observations_v1": 1,
@@ -299,9 +333,11 @@ CONTRACT_SCHEMA_VERSIONS = {
 SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
+    "pps_snapshots_v1": "snapshot_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
+    "pseudo_pps_truth_v1": "truth_seq",
     "diagnostics_draft_v0": "diagnostic_seq",
     "diagnostics_v1": "diagnostic_seq",
     "reference_observations_v1": "reference_observation_seq",
@@ -313,9 +349,11 @@ SEQUENCE_FIELDS = {
 TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
+    "pps_snapshots_v1": ("reference_timestamp_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
+    "pseudo_pps_truth_v1": (),
     "diagnostics_draft_v0": ("first_seen_ticks", "last_seen_ticks"),
     "diagnostics_v1": ("last_seen_ticks",),
     "reference_observations_v1": ("observation_timestamp_ticks",),
@@ -332,9 +370,11 @@ CHANNEL_FIELDS = {
 DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
+    "pps_snapshots_v1": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
+    "pseudo_pps_truth_v1": (),
     "diagnostics_draft_v0": ("time_domain",),
     "diagnostics_v1": ("time_domain",),
     "reference_observations_v1": ("time_domain",),
@@ -508,6 +548,11 @@ def _check_record_type(contract: str, row: dict[str, str], row_number: int, erro
 def _check_sequence(contract: str, row: dict[str, str], row_number: int, previous: int | None, errors: list[str]) -> int | None:
     field_name = SEQUENCE_FIELDS[contract]
     current = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    # Snapshot ordinals restart at zero when the firmware opens a new capture
+    # session, and wrap modulo 2^32 inside a sufficiently long session.  The
+    # reconstruction layer validates adjacency using both session and ordinal.
+    if contract == "pps_snapshots_v1":
+        return current if current is not None else previous
     if current is not None and previous is not None and current <= previous:
         errors.append(f"row {row_number}: {field_name} must be strictly increasing; previous={previous}, current={current}")
     return current if current is not None else previous
@@ -596,6 +641,23 @@ def _check_count_observation(row: dict[str, str], row_number: int, errors: list[
         _parse_non_negative_int(row.get("counted_edges", ""), "counted_edges", row_number, errors)
 
 
+def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    for field_name in (
+        "session",
+        "snapshot_sequence",
+        "cumulative_down_counter",
+        "reference_sequence",
+        "status",
+    ):
+        value = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+        if value is not None and value > 0xFFFFFFFF:
+            errors.append(
+                f"row {row_number}: {field_name} must fit in an unsigned 32-bit integer"
+            )
+    if not row.get("backend"):
+        errors.append(f"row {row_number}: backend must not be empty")
+
+
 def _check_health(row: dict[str, str], row_number: int, errors: list[str]) -> None:
     if row.get("severity") not in VALID_SEVERITIES:
         errors.append(f"row {row_number}: severity must be one of {sorted(VALID_SEVERITIES)}")
@@ -655,6 +717,46 @@ def _check_environment(row: dict[str, str], row_number: int, errors: list[str]) 
         errors.append(f"row {row_number}: relative_humidity_pct must be between 0 and 100")
     if pressure is not None and pressure <= 0.0:
         errors.append(f"row {row_number}: pressure_pa must be positive")
+
+
+def _check_pseudo_pps_truth(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    valid_events = {
+        "schedule",
+        "start",
+        "completion",
+        "abort",
+        "underflow",
+        "resource_fault",
+    }
+    event = row.get("event", "")
+    if event not in valid_events:
+        errors.append(f"row {row_number}: event must be one of {sorted(valid_events)}")
+    for field_name in (
+        "generator_session",
+        "profile_version",
+        "generator_sequence",
+        "scheduled_offset_us",
+        "scheduled_interval_us",
+        "pulse_width_us",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    for field_name in ("profile_id", "intended_class"):
+        if not row.get(field_name):
+            errors.append(f"row {row_number}: {field_name} must not be empty")
+    if event == "schedule":
+        if row.get("generator_sequence") == "0":
+            errors.append(f"row {row_number}: schedule generator_sequence must be nonzero")
+        if row.get("scheduled_interval_us") == "0":
+            errors.append(f"row {row_number}: schedule interval must be nonzero")
+    else:
+        for field_name in (
+            "generator_sequence",
+            "scheduled_offset_us",
+            "scheduled_interval_us",
+            "pulse_width_us",
+        ):
+            if row.get(field_name) != "0":
+                errors.append(f"row {row_number}: marker {field_name} must be zero")
 
 
 def _check_diagnostics_draft_v0(row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -1217,12 +1319,16 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             _check_edges(context.contract, row, row_count, errors)
             if context.contract == "count_observations_v1":
                 _check_count_observation(row, row_count, errors)
+            if context.contract == "pps_snapshots_v1":
+                _check_pps_snapshot(row, row_count, errors)
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
             if context.contract == "dac_steps_v1":
                 _check_dac_step(row, row_count, errors)
             if context.contract == "environment_v1":
                 _check_environment(row, row_count, errors)
+            if context.contract == "pseudo_pps_truth_v1":
+                _check_pseudo_pps_truth(row, row_count, errors)
             if context.contract == "diagnostics_draft_v0":
                 _check_diagnostics_draft_v0(row, row_count, errors)
             if context.contract == "diagnostics_v1":

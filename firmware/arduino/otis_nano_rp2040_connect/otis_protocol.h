@@ -30,6 +30,8 @@
 #define OTIS_RECORD_ENV "ENV"
 #define OTIS_RECORD_EST "EST"
 #define OTIS_RECORD_CTL "CTL"
+#define OTIS_RECORD_SNP "SNP"
+#define OTIS_RECORD_PGT "PGT"
 
 typedef enum OtisFlagsV1 {
   OTIS_FLAG_NONE = 0u,

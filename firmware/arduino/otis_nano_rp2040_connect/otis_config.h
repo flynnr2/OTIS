@@ -227,6 +227,13 @@
 #define OTIS_ENABLE_PPS_DUAL_OBSERVER 1
 #endif
 
+// Bench-only deterministic pseudo-PPS source. It is disabled in every normal
+// profile, never starts on boot, and only drives D3 after an explicit ARM then
+// START command. Idle, stop, reset, completion, and faults leave D3 high-Z.
+#ifndef OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+#define OTIS_ENABLE_PSEUDO_PPS_GENERATOR 0
+#endif
+
 #ifndef OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS
 #define OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS 8000000ull
 #endif
@@ -258,7 +265,7 @@
 #endif
 
 #ifndef OTIS_PPS_COUNT_BOUNDARY_RING_SIZE
-#define OTIS_PPS_COUNT_BOUNDARY_RING_SIZE 8u
+#define OTIS_PPS_COUNT_BOUNDARY_RING_SIZE 128u
 #endif
 
 #ifndef OTIS_STATUS_PERIOD_MS
@@ -306,7 +313,7 @@
 #define OTIS_PPS_GATE_MISSING_TIMEOUT_US 2500000u
 #endif
 
-// This remains zero until the ISR-owned boundary backend passes the focused
+// This remains zero until the PIO-owned snapshot backend passes the focused
 // bench contract. Raw REF/CNT evidence is still emitted while control
 // eligibility is structurally inhibited.
 #ifndef OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED
@@ -490,7 +497,7 @@
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO && \
     OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ
-#error "PPS_GATED_RATIO requires the GPIO IRQ capture backend so the PPS event owns the count boundary."
+#error "PPS_GATED_RATIO requires the GPIO IRQ backend for the independent D14 REF observer."
 #endif
 
 #if OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_SYNTHETIC_USB && \
@@ -544,6 +551,25 @@
 
 #if OTIS_ENABLE_H1_DAC_SWEEP && !OTIS_ENABLE_DAC_AD5693R
 #error "The H1 DAC sweep requires the explicit AD5693R lab actuator profile."
+#endif
+
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR && \
+    OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#error "The pseudo-PPS generator is supported only by the H1 loopback test profile."
+#endif
+
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR && \
+    (OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
+     OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ || \
+     OTIS_ENABLE_PPS_DUAL_OBSERVER || OTIS_ENABLE_DAC_AD5693R || \
+     OTIS_ENABLE_H1_DAC_SWEEP || OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || \
+     OTIS_ENABLE_ENV_SENSORS)
+#error "The pseudo-PPS generator requires the isolated PPS-gated loopback test profile."
+#endif
+
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR != 0 && \
+    OTIS_ENABLE_PSEUDO_PPS_GENERATOR != 1
+#error "OTIS_ENABLE_PSEUDO_PPS_GENERATOR must be 0 or 1."
 #endif
 
 #if OTIS_H1_DAC_SWEEP_MAX_STEPS < 9u || OTIS_H1_DAC_SWEEP_MAX_STEPS > 32u
@@ -638,6 +664,11 @@
 #error "Generated profile is missing OTIS_ENABLE_PPS_DUAL_OBSERVER."
 #elif OTIS_ENABLE_PPS_DUAL_OBSERVER != OTIS_BUILD_EXPECTED_OTIS_ENABLE_PPS_DUAL_OBSERVER
 #error "Effective OTIS_ENABLE_PPS_DUAL_OBSERVER differs from the generated profile."
+#endif
+#ifndef OTIS_BUILD_EXPECTED_OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+#error "Generated profile is missing OTIS_ENABLE_PSEUDO_PPS_GENERATOR."
+#elif OTIS_ENABLE_PSEUDO_PPS_GENERATOR != OTIS_BUILD_EXPECTED_OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+#error "Effective OTIS_ENABLE_PSEUDO_PPS_GENERATOR differs from the generated profile."
 #endif
 #ifndef OTIS_BUILD_EXPECTED_OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED
 #error "Generated profile is missing OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED."

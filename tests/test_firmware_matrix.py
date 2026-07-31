@@ -62,9 +62,11 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "gps_pps_pio_capture",
         "h1_pio_capture_long_gate",
         "tcxo_gpio_irq_divided",
+        "pseudo_pps_loopback",
+        "invalid_pseudo_pps_nonisolated_resources",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 11
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 3
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 12
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 4
 
 
 def test_config_hash_is_deterministic_and_changes_with_configuration() -> None:
@@ -151,7 +153,7 @@ def test_generated_provenance_contains_exact_source_target_and_toolchain() -> No
         "sha256": "e" * 64,
     }
     assert provenance["target"]["fqbn"] == (
-        "rp2040:rp2040:arduino_nano_connect"
+        "rp2040:rp2040:arduino_nano_connect:freq=133"
     )
     assert provenance["target"]["core_version"] == "6.0.0"
     assert provenance["target"]["board_id"] == "arduino_nano_connect"

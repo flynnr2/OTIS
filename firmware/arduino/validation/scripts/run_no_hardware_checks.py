@@ -65,11 +65,16 @@ def main() -> int:
     args = parser.parse_args()
 
     for command in COMMANDS:
-        printable = " ".join(command)
+        resolved_command = (
+            (sys.executable, *command[1:])
+            if command and command[0] == "python3"
+            else command
+        )
+        printable = " ".join(resolved_command)
         print(f"$ {printable}", flush=True)
         if args.list:
             continue
-        result = subprocess.run(command, cwd=REPO_ROOT)
+        result = subprocess.run(resolved_command, cwd=REPO_ROOT)
         if result.returncode != 0:
             return result.returncode
     return 0

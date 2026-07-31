@@ -85,19 +85,21 @@ oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It still
 emits raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
 frequency, ratio, and ppm. Selecting it must not enable DAC steering.
 
-The corrected implementation requires the GPIO IRQ capture backend. The D14
-PPS IRQ reads one reconstructed `rp2040_timer0` timestamp, immediately
-stops/samples/restarts the PIO oscillator counter, and publishes the timestamp
-and interval count as one sequenced boundary observation. Foreground code only
-validates and emits that object; serial, status, DAC-sweep, environment and
+The corrected implementation uses one PIO0 state machine to alternate
+oscillator `WAIT` instructions, decrement a cumulative 32-bit counter on each
+recognized rise, test PPS through the independent `JMP PIN` mapping, and
+autopush `X` on the PPS boundary. A joined RX FIFO and DMA move immutable
+snapshots into a 128-word ring. The D14 IRQ remains only an independent
+reconstructed REF timestamp observer. Foreground code associates and
+differences adjacent snapshots; serial, status, DAC-sweep, environment and
 capture-backlog service cannot define the physical aperture.
 
 The checked-in candidate sets
 `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`, so raw evidence is emitted while
 control eligibility remains structurally false. Bench validation must still
-bound IRQ/restart quantisation and exercise the focused fault/recovery
-contract. A future continuous PPS-triggered snapshot can replace the ISR
-stop/sample/restart implementation without changing foreground semantics.
+prove the pad-level 16 MHz phase/duty envelope and exercise the focused
+fault/recovery contract. The authoritative digital listing and timing proof are
+in `docs/50_SOFTWARE/PPS_PIO_PROOF_AND_VERIFICATION.md`.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.

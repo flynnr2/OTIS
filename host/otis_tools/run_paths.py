@@ -11,12 +11,14 @@ REPORTS_DIR = "reports"
 RAW_SERIAL_LOG = "serial.log"
 RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
+PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
 HEALTH_CSV = "health.csv"
 ENVIRONMENT_CSV = "environment.csv"
 REFERENCE_OBSERVATIONS_CSV = "reference_observations_v1.csv"
 DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
+PSEUDO_PPS_TRUTH_CSV = "pseudo_pps_truth.csv"
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,10 @@ class RunPaths:
         return self.csv_dir / COUNT_OBSERVATIONS_CSV
 
     @property
+    def pps_snapshots_csv(self) -> Path:
+        return self.csv_dir / PPS_SNAPSHOTS_CSV
+
+    @property
     def health_csv(self) -> Path:
         return self.csv_dir / HEALTH_CSV
 
@@ -59,11 +65,16 @@ class RunPaths:
     def environment_csv(self) -> Path:
         return self.csv_dir / ENVIRONMENT_CSV
 
+    @property
+    def pseudo_pps_truth_csv(self) -> Path:
+        return self.csv_dir / PSEUDO_PPS_TRUTH_CSV
+
 
 def default_csv_files() -> list[dict[str, str]]:
     return [
         {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
+        {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
         {
@@ -86,6 +97,7 @@ def default_csv_files() -> list[dict[str, str]]:
             "contract": "control_previews_v1",
             "optional": True,
         },
+        {"path": f"{CSV_DIR}/{PSEUDO_PPS_TRUTH_CSV}", "contract": "pseudo_pps_truth_v1", "optional": True},
     ]
 
 

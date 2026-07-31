@@ -15,6 +15,11 @@ from typing import Any
 from .contracts import CsvValidationContext, validate_csv
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import COMPLETE_MARKER, RunManifest, load_manifest
+from .pps_snapshot_reconstruction import (
+    ReconstructionPolicy,
+    SnapshotObservation,
+    reconstruct_snapshots,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -285,6 +290,17 @@ class Reference:
     ticks: int
     domain: str
     flags: int
+
+
+@dataclass(frozen=True)
+class RawSnapshot:
+    session: int
+    sequence: int
+    cumulative_down_counter: int
+    reference_sequence: int
+    reference_timestamp_ticks: int
+    status: int
+    backend: str
 
 
 @dataclass(frozen=True)
@@ -598,6 +614,137 @@ def _load_status(manifest: RunManifest) -> tuple[list[dict[str, str]], Path]:
     return _read_rows(path), path
 
 
+def _load_snapshots(manifest: RunManifest) -> tuple[list[RawSnapshot], Path]:
+    path = _contract_path(manifest, "pps_snapshots_v1")
+    _validate_source(path, "pps_snapshots_v1", manifest)
+    rows = [
+        RawSnapshot(
+            session=int(row["session"]),
+            sequence=int(row["snapshot_sequence"]),
+            cumulative_down_counter=int(row["cumulative_down_counter"]),
+            reference_sequence=int(row["reference_sequence"]),
+            reference_timestamp_ticks=int(row["reference_timestamp_ticks"]),
+            status=int(row["status"]),
+            backend=row["backend"],
+        )
+        for row in _read_rows(path)
+    ]
+    if not rows:
+        raise ValueError(f"{manifest.run_id}: PPS snapshot source is empty")
+    return rows, path
+
+
+def _snapshot_continuity(
+    snapshots: list[RawSnapshot],
+    references: list[Reference],
+    counts: list[CountWindow],
+    manifest: RunManifest,
+) -> dict[str, Any]:
+    expected_backend = "pio_wait_cumulative_snapshot_dma_v1"
+    reference_identities = {
+        (reference.seq, reference.ticks) for reference in references
+    }
+    observations = tuple(
+        SnapshotObservation(
+            sequence=snapshot.sequence,
+            session_id=str(snapshot.session),
+            raw_counter_value=snapshot.cumulative_down_counter,
+            reference_timestamp_ticks=snapshot.reference_timestamp_ticks,
+            reference_sequence=snapshot.reference_sequence,
+            capture_valid=snapshot.status == 0,
+            capture_faults=(
+                () if snapshot.status == 0 else ("snapshot_status_nonzero",)
+            ),
+        )
+        for snapshot in snapshots
+    )
+    reconstructed = reconstruct_snapshots(
+        observations,
+        ReconstructionPolicy(
+            max_oscillator_hz=_nominal_frequency(manifest),
+            timestamp_ticks_per_second=_domain_hz(
+                manifest, "rp2040_timer0"
+            ),
+            timestamp_modulus=(1 << 32) * RP2040_TIMER0_TICKS_PER_US,
+        ),
+    )
+    counts_by_sequence = {count.seq: count for count in counts}
+    observations_by_key = {
+        (observation.session_id, observation.sequence): observation
+        for observation in observations
+    }
+    valid_results = [result for result in reconstructed if result.valid]
+    arithmetic_matches = []
+    for result in valid_results:
+        count = counts_by_sequence.get(result.closing_sequence)
+        opening = (
+            observations_by_key.get(
+                (result.session_id, result.opening_sequence)
+            )
+            if result.opening_sequence is not None
+            else None
+        )
+        arithmetic_matches.append(
+            count is not None
+            and count.counted_edges == result.interval_count
+            and opening is not None
+            and count.open_ticks == opening.reference_timestamp_ticks
+            and count.close_ticks
+            == observations_by_key[
+                (result.session_id, result.closing_sequence)
+            ].reference_timestamp_ticks
+        )
+
+    first_sequences_by_session: dict[int, int] = {}
+    for snapshot in snapshots:
+        first_sequences_by_session.setdefault(snapshot.session, snapshot.sequence)
+    anchor_suppressed = all(
+        sequence not in counts_by_sequence
+        for sequence in first_sequences_by_session.values()
+    )
+    reasons = sorted(
+        {reason for result in reconstructed for reason in result.reasons}
+    )
+    invalid_reasons = sorted(
+        {
+            reason
+            for result in reconstructed
+            if result.state == "invalid"
+            for reason in result.reasons
+        }
+    )
+    return {
+        "raw_snapshot_count": len(snapshots),
+        "session_count": len(first_sequences_by_session),
+        "valid_reconstructed_interval_count": len(valid_results),
+        "all_backends_match": all(
+            snapshot.backend == expected_backend for snapshot in snapshots
+        ),
+        "all_capture_status_clear": all(snapshot.status == 0 for snapshot in snapshots),
+        "all_reference_timestamps_present": all(
+            (
+                snapshot.reference_sequence,
+                snapshot.reference_timestamp_ticks,
+            )
+            in reference_identities
+            for snapshot in snapshots
+        ),
+        "first_anchor_suppressed": anchor_suppressed,
+        "all_reconstructed_counts_match_cnt": (
+            len(arithmetic_matches) == len(counts)
+            and all(arithmetic_matches)
+        ),
+        "reconstruction_reasons": reasons,
+        "invalid_reconstruction_reasons": invalid_reasons,
+        "continuous": (
+            len(first_sequences_by_session) == 1
+            and
+            len(valid_results) == len(snapshots) - len(first_sequences_by_session)
+            and not invalid_reasons
+        ),
+    }
+
+
 def _domain_hz(manifest: RunManifest, domain: str) -> float:
     for item in manifest.data.get("domains", []):
         if item.get("name") == domain and isinstance(
@@ -858,14 +1005,22 @@ def _lifecycle_status(rows: list[dict[str, str]]) -> dict[str, bool]:
 
 
 def _capture_integrity(rows: list[dict[str, str]]) -> dict[str, Any]:
-    watched = {
+    required = {
         "capture.dropped_count",
-        "capture.capture_drop_count",
         "capture.pps_count_boundary_dropped_count",
+        "pps_gate.snapshot_overwrite_count",
+        "pps_gate.snapshot_continuity_loss_count",
+        "pps_gate.snapshot_pio_rxstall_count",
+        "pps_gate.snapshot_dma_error_count",
+        "pps_gate.snapshot_dma_stopped_count",
+    }
+    optional = {
+        "capture.capture_drop_count",
         "capture.pio_fifo_overflow_drop_count",
         "capture.parser_error_count",
         "host.dropped_record_count",
     }
+    watched = required | optional
     observed: dict[str, list[int | None]] = {}
     for row in rows:
         name = f"{row['component']}.{row['status_key']}"
@@ -878,7 +1033,8 @@ def _capture_integrity(rows: list[dict[str, str]]) -> dict[str, Any]:
         observed.setdefault(name, []).append(value)
     return {
         "counters": observed,
-        "required_drop_counter_observed": "capture.dropped_count" in observed,
+        "required_counters": sorted(required),
+        "required_drop_counter_observed": required <= set(observed),
         "all_observed_counters_zero": (
             bool(observed)
             and all(
@@ -888,6 +1044,60 @@ def _capture_integrity(rows: list[dict[str, str]]) -> dict[str, Any]:
             )
         ),
     }
+
+
+def _status_plane_metrics(rows: list[dict[str, str]]) -> dict[str, Any]:
+    groups = {
+        "physical_pps": {
+            "pps_gate.missing_pps_count",
+            "pps_gate.pps_interval_anomaly_count",
+        },
+        "capture_storage": {
+            "capture.dropped_count",
+            "capture.pps_count_boundary_dropped_count",
+            "pps_gate.snapshot_overwrite_count",
+            "pps_gate.snapshot_continuity_loss_count",
+            "pps_gate.snapshot_pio_rxstall_count",
+            "pps_gate.snapshot_dma_error_count",
+            "pps_gate.snapshot_dma_stopped_count",
+        },
+        "foreground_backlog": {
+            "pps_gate.snapshot_backlog_depth",
+            "pps_gate.snapshot_backlog_high_water",
+        },
+        "telemetry_parser": {
+            "capture.parser_error_count",
+            "host.dropped_record_count",
+        },
+    }
+    output: dict[str, Any] = {}
+    for group, names in groups.items():
+        values: dict[str, list[int | None]] = {}
+        for row in rows:
+            name = f"{row['component']}.{row['status_key']}"
+            if name not in names:
+                continue
+            try:
+                parsed: int | None = int(row["status_value"], 0)
+            except ValueError:
+                parsed = None
+            values.setdefault(name, []).append(parsed)
+        output[group] = {
+            "counters": values,
+            "latest": {
+                name: observations[-1]
+                for name, observations in values.items()
+            },
+            "maximum": {
+                name: max(
+                    value for value in observations if value is not None
+                )
+                if any(value is not None for value in observations)
+                else None
+                for name, observations in values.items()
+            },
+        }
+    return output
 
 
 def _runtime_backend_identity(
@@ -909,9 +1119,9 @@ def _runtime_backend_identity(
         ("build", "enable_phase4_observe_preview"): "0",
         ("phase4_preview", "actuation_authorized"): "false",
         ("pps_gate", "backend"): "pps_gated_ratio",
-        ("pps_gate", "boundary_owner"): "pps_gpio_irq",
+        ("pps_gate", "boundary_owner"): "pio_state_machine",
         ("pps_gate", "aperture_backend"):
-            "pps_isr_stop_sample_restart_v1",
+            "pio_wait_cumulative_snapshot_dma_v1",
         ("pps_gate", "backend_qualified"): "false",
         ("pps_gate", "duplicate_max_interval_us"): str(
             round(config.duplicate_max_interval_s * 1_000_000.0)
@@ -1172,6 +1382,9 @@ def qualify_pps_backend(
     candidate_references, candidate_reference_path = _load_references(
         candidate_manifest
     )
+    candidate_snapshots, candidate_snapshot_path = _load_snapshots(
+        candidate_manifest
+    )
     status_rows, candidate_status_path = _load_status(candidate_manifest)
     if any(
         count.source_domain != candidate_typing.source_domain
@@ -1201,6 +1414,18 @@ def qualify_pps_backend(
         window.frequency_hz
         for window in candidate_comparison_windows
         if window.frequency_hz is not None
+    ]
+    candidate_counts_by_sequence = {
+        count.seq: count for count in candidate_counts
+    }
+    diagnostic_timer_normalized_values = [
+        candidate_counts_by_sequence[window.seq].counted_edges
+        / window.duration_s
+        for window in candidate_comparison_windows
+        if window.eligible
+        and window.duration_s is not None
+        and window.duration_s > 0
+        and window.seq in candidate_counts_by_sequence
     ]
 
     independent_manifest: RunManifest | None = None
@@ -1266,6 +1491,9 @@ def qualify_pps_backend(
         }
 
     candidate_summary = _summary(candidate_values)
+    diagnostic_timer_normalized_summary = _summary(
+        diagnostic_timer_normalized_values
+    )
     independent_summary = _summary(independent_values)
     bias = (
         float(candidate_summary["mean_hz"])
@@ -1279,8 +1507,15 @@ def qualify_pps_backend(
     )
     lifecycle = _lifecycle_status(status_rows)
     capture_integrity = _capture_integrity(status_rows)
+    status_planes = _status_plane_metrics(status_rows)
     runtime_backend_identity = _runtime_backend_identity(
         status_rows, config, candidate_manifest
+    )
+    snapshot_continuity = _snapshot_continuity(
+        candidate_snapshots,
+        candidate_references,
+        candidate_counts,
+        candidate_manifest,
     )
     service_plane = _service_plane_metrics(
         candidate_typing.service_plane_segments,
@@ -1416,12 +1651,20 @@ def qualify_pps_backend(
         "post_fault_recovery_observed": (
             lifecycle["recovery_after_latest_fault_observed"]
         ),
-        "capture_drop_counters_observed_and_zero": (
+        "capture_storage_counters_observed_and_zero": (
             capture_integrity["required_drop_counter_observed"]
             and capture_integrity["all_observed_counters_zero"]
         ),
         "runtime_backend_identity_and_config_match": (
             runtime_backend_identity["all_required_fields_match"]
+        ),
+        "raw_snapshot_continuity_and_cnt_parity": (
+            snapshot_continuity["all_backends_match"]
+            and snapshot_continuity["all_capture_status_clear"]
+            and snapshot_continuity["all_reference_timestamps_present"]
+            and snapshot_continuity["first_anchor_suppressed"]
+            and snapshot_continuity["all_reconstructed_counts_match_cnt"]
+            and snapshot_continuity["continuous"]
         ),
         "service_plane_shift_within_bound": (
             service_plane["maximum_absolute_mean_shift_hz"] is not None
@@ -1555,8 +1798,15 @@ def qualify_pps_backend(
                     ).as_posix(),
                     "sha256": _sha256_file(candidate_status_path),
                 },
+                "snapshots": {
+                    "path": candidate_snapshot_path.relative_to(
+                        candidate_run
+                    ).as_posix(),
+                    "sha256": _sha256_file(candidate_snapshot_path),
+                },
             },
             "evidence": candidate_evidence,
+            "snapshot_continuity": snapshot_continuity,
             "window_count": len(candidate_windows),
             "comparison_window_count": len(candidate_comparison_windows),
             "traceable_window_count": traceable_count,
@@ -1570,6 +1820,17 @@ def qualify_pps_backend(
             ),
             "ineligible_reason_counts": dict(sorted(reason_counts.items())),
             "frequency": candidate_summary,
+            "official_raw_frequency": {
+                **candidate_summary,
+                "authoritative": True,
+                "estimator": "counted_edges / nominal_reference_interval",
+            },
+            "diagnostic_timer_normalized_frequency": {
+                **diagnostic_timer_normalized_summary,
+                "authoritative": False,
+                "estimator": "counted_edges / reconstructed_timer_interval",
+                "may_override_official_failure": False,
+            },
             "count_resolution_hz": (
                 config.count_resolution_edges
                 / config.nominal_reference_interval_s
@@ -1628,6 +1889,7 @@ def qualify_pps_backend(
         "diagnostics": diagnostics,
         "eligibility_lifecycle": lifecycle,
         "capture_integrity": capture_integrity,
+        "status_planes": status_planes,
         "runtime_backend_identity": runtime_backend_identity,
         "service_plane": service_plane,
         "uncertainty": uncertainty,

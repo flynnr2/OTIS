@@ -19,11 +19,15 @@ enum OtisPpsCountApertureFlags : uint32_t {
   OTIS_PPS_APERTURE_ZERO_COUNT = 1u << 8,
 };
 
-// One ISR-produced object is the provenance boundary. Its timestamp and count
-// always belong to the same accepted PPS interrupt and are never time-joined.
+// Foreground associates one immutable PIO/DMA snapshot with the corresponding
+// independently captured D14 reference observation.  Neither CPU association
+// nor the D14 timestamp defines the oscillator-count boundary.
 struct OtisPpsCountBoundaryObservation {
+  uint32_t session;
   uint32_t sequence;
+  uint32_t reference_sequence;
   uint64_t pps_timestamp_ticks;
+  uint32_t cumulative_down_counter;
   uint32_t interval_count;
   uint32_t capture_flags;
   uint32_t aperture_flags;
@@ -41,6 +45,20 @@ struct OtisCounterSnapshotDelta {
   bool wrap_handled;
   bool wrap_ambiguous;
 };
+
+static inline OtisCounterSnapshotDelta otis_down_counter_snapshot_delta_u32(
+    uint32_t previous_x, uint32_t current_x,
+    uint32_t maximum_window_count) {
+  uint32_t count = previous_x - current_x;
+  bool wrapped = current_x > previous_x;
+  bool ambiguous = count > maximum_window_count;
+  return {
+      count,
+      !ambiguous,
+      wrapped && !ambiguous,
+      wrapped && ambiguous,
+  };
+}
 
 struct OtisPpsCountWindowValidity {
   bool reference_interval_valid;
@@ -62,9 +80,8 @@ otis_boundary_sequence_relation(uint32_t previous, uint32_t current) {
                                   : OtisBoundarySequenceRelation::Gap;
 }
 
-// Helper for a future continuous cumulative-snapshot backend. Unsigned
-// subtraction handles one 32-bit wrap. The implementation-supplied maximum
-// makes a larger, potentially multi-wrap delta explicitly ambiguous.
+// Increasing-counter helper retained for other backends and historical tests.
+// The PPS snapshot backend must use otis_down_counter_snapshot_delta_u32.
 static inline OtisCounterSnapshotDelta otis_counter_snapshot_delta_u32(
     uint32_t previous, uint32_t current, uint32_t maximum_window_count) {
   uint32_t count = current - previous;

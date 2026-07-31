@@ -316,8 +316,10 @@ Expected telemetry:
 
 - `capture,tcxo_counter_backend=pps_gated_ratio`;
 - `pps_gate,backend=pps_gated_ratio`;
-- `pps_gate,boundary_owner=pps_gpio_irq`;
-- `pps_gate,aperture_backend=pps_isr_stop_sample_restart_v1`;
+- `pps_gate,boundary_owner=pio_state_machine`;
+- `pps_gate,aperture_backend=pio_wait_cumulative_snapshot_dma_v1`;
+- raw `SNP` records with one first-session anchor and continuous hardware
+  sequences;
 - `pps_gate,backend_qualified=false` in the qualification candidate;
 - `pps_gate,state` transitions through `armed` / `open` in nominal operation;
 - `pps_gate,valid=true` for bounded clean windows;

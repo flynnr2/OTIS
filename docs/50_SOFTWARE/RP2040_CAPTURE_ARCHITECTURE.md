@@ -56,11 +56,13 @@ Preferred approaches:
 - divider chains;
 - hardware counters with explicit observation windows.
 
-The PPS-gated ratio backend follows this count-observation rule: PPS
-edges on `CH1` define the gate, oscillator edges on `CH2` are counted during the
-gate, PPS edges remain visible as `REF` rows, and firmware emits the raw
-observation as a `CNT` row rather than a calibrated frequency. Host analysis may
-derive oscillator ratio, frequency, and ppm from the `REF` and `CNT` streams.
+The PPS-gated ratio backend follows this count-observation rule: one PIO state
+machine autonomously snapshots its cumulative oscillator-edge counter on PPS,
+PPS edges remain independently visible as `REF` rows, raw cumulative values
+remain visible as `SNP`, and adjacent hardware snapshots produce the raw `CNT`.
+The associated D14 timestamps validate the nominal gate but do not define the
+physical count aperture. Host analysis may derive oscillator ratio, frequency,
+and ppm from the raw streams.
 See `PPS_GATED_RATIO_BACKEND_DESIGN.md` and
 `COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`.
 

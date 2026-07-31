@@ -20,6 +20,8 @@
 #include "otis_phase4_observe_preview.h"
 #include "otis_pps_count_boundary_ring.h"
 #include "otis_pps_dual_observer.h"
+#include "otis_pps_snapshot_backend.h"
+#include "otis_pseudo_pps.h"
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
@@ -144,6 +146,12 @@ void configure_selected_capabilities(void) {
                               OtisBootCapabilityRequirement::Required);
 #endif
 
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::PseudoPpsGenerator,
+                              OtisBootCapabilityRequirement::Required);
+#endif
+
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     OTIS_ENABLE_DAC_AD5693R
   otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Dac,
@@ -208,6 +216,7 @@ void halt_boot(BootFatal fatal, BootPhase failed_phase) {
     emit_protocol_banner_if_serial_ready();
     emit_selected_capability_status();
     emit_resource_ownership_status();
+    otis_pseudo_pps_service();
     emitOtisBootFatal(Serial, fatal, failed_phase);
     fatal_emitted = true;
   }
@@ -217,6 +226,7 @@ void halt_boot(BootFatal fatal, BootPhase failed_phase) {
       emit_protocol_banner_if_serial_ready();
       emit_selected_capability_status();
       emit_resource_ownership_status();
+      otis_pseudo_pps_service();
       emitOtisBootFatal(Serial, fatal, failed_phase);
       fatal_emitted = true;
     }
@@ -285,6 +295,20 @@ void emit_status_u64_decimal(const char *component, const char *key,
 
 void emit_captured_edge(const OtisCapturedEdge &record) {
   if (record.reference_record && record.edge == 'R') {
+    otis_capture_irq_process_reference_foreground(record);
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+    const OtisPpsCountBoundaryObservation pending_reference = {
+        0u,
+        0u,
+        record.source_sequence,
+        record.timestamp_ticks,
+        0u,
+        0u,
+        record.flags,
+        OTIS_PPS_APERTURE_NONE,
+    };
+    otis_pps_count_boundary_ring_push_from_isr(pending_reference);
+#endif
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
     OtisPhase4LiveDacState phase4_dac = {
@@ -315,7 +339,9 @@ const char *edge_string(char edge) {
 }
 
 const char *osc_observation_domain(void) {
-#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  return OTIS_DOMAIN_H0_TCXO_16MHZ;
+#elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   return OTIS_DOMAIN_H1_OCXO_OPEN_LOOP;
 #else
   return OTIS_DOMAIN_H0_TCXO_16MHZ;
@@ -341,72 +367,93 @@ void drain_capture_ring(void) {
 
 void emit_pps_count_boundary(
     const OtisPpsCountBoundaryObservation &observation) {
-  uint32_t reference_flags = observation.capture_flags;
-  constexpr uint32_t kInvalidApertureMask =
-      OTIS_PPS_APERTURE_PREVIOUS_BOUNDARY_UNAVAILABLE |
-      OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE |
-      OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
-      OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
-      OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS |
-      OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE |
-      OTIS_PPS_APERTURE_COUNTER_SATURATED |
-      OTIS_PPS_APERTURE_ZERO_COUNT;
-  if ((observation.aperture_flags & kInvalidApertureMask) != 0u) {
-    // GATE_INCOMPLETE describes count-aperture provenance; it does not make
-    // the independently captured PPS timestamp invalid.
-    reference_flags |= OTIS_FLAG_GATE_INCOMPLETE;
-  }
-  if ((observation.aperture_flags &
-       OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u) {
-    reference_flags |=
-        OTIS_FLAG_CAPTURE_RING_OVERRUN | OTIS_FLAG_EDGE_ORDER_SUSPECT;
-  }
-  if ((observation.aperture_flags &
-       (OTIS_PPS_APERTURE_BOUNDARY_CAPTURE_UNAVAILABLE |
-        OTIS_PPS_APERTURE_COUNTER_SNAPSHOT_INVALID |
-        OTIS_PPS_APERTURE_COUNTER_WRAP_AMBIGUOUS |
-        OTIS_PPS_APERTURE_ZERO_COUNT)) != 0u) {
-    reference_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
-  }
-  if ((observation.aperture_flags &
-       OTIS_PPS_APERTURE_COUNTER_SATURATED) != 0u) {
-    reference_flags |= OTIS_FLAG_COUNT_SATURATED;
-  }
-  OtisDacAd5693rStatus dac_status;
-  otis_dac_ad5693r_get_status(&dac_status);
-  OtisPhase4LiveDacState phase4_dac = {
-      dac_status.last_write_ok &&
-          dac_status.last_requested_code == dac_status.last_applied_code,
-      dac_status.last_applied_code,
-  };
-  otis_phase4_observe_preview_on_reference(
-      runtime_state.sequences.event_seq, observation.pps_timestamp_ticks,
-      reference_flags, &runtime_state, &phase4_dac);
   OtisCountObservationConfig count_config = count_observation_config();
   bool window_completed = otis_count_observation_on_pps_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
   if (window_completed) {
+    OtisDacAd5693rStatus dac_status;
+    otis_dac_ad5693r_get_status(&dac_status);
+    OtisPhase4LiveDacState phase4_dac = {
+        dac_status.last_write_ok &&
+            dac_status.last_requested_code == dac_status.last_applied_code,
+        dac_status.last_applied_code,
+    };
     otis_phase4_observe_preview_on_count(
         runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
+    otis_count_observation_note_control_consumer(observation.session,
+                                                 observation.sequence);
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
     emit_h1_dac_sweep_fc0_window();
 #endif
   }
-  otis_emit_raw_event(
-      OTIS_RECORD_REF, runtime_state.sequences.event_seq++,
-      OTIS_CHANNEL_PPS_REFERENCE, OTIS_EDGE_RISING,
-      observation.pps_timestamp_ticks, OTIS_DOMAIN_RP2040_TIMER0,
-      reference_flags);
-  runtime_state.capture.emitted_event_count++;
 }
 
 void drain_pps_count_boundary_ring(void) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  OtisPpsCountBoundaryObservation observation;
-  while (otis_pps_count_boundary_ring_pop(&observation)) {
-    emit_pps_count_boundary(observation);
+  static bool have_pending_reference = false;
+  static bool discard_first_recovery_snapshot = false;
+  static OtisPpsCountBoundaryObservation pending_reference = {};
+
+  if (!have_pending_reference) {
+    have_pending_reference =
+        otis_pps_count_boundary_ring_pop(&pending_reference);
   }
+  if (!have_pending_reference) {
+    return;
+  }
+
+  OtisPpsHardwareSnapshot snapshot;
+  if (!otis_pps_snapshot_backend_pop(&snapshot)) {
+    OtisPpsSnapshotBackendStats stats;
+    otis_pps_snapshot_backend_get_stats(&stats);
+    uint64_t pending_age_ticks = otis_timer0_interval_ticks(
+        pending_reference.pps_timestamp_ticks, otis_capture_ticks_now());
+    uint64_t association_timeout_ticks =
+        static_cast<uint64_t>(OTIS_PPS_GATE_MAX_INTERVAL_US) *
+        OTIS_RP2040_TIMER0_TICKS_PER_US;
+    bool another_reference_waiting =
+        otis_pps_count_boundary_ring_depth() != 0u;
+    if (!discard_first_recovery_snapshot &&
+        (stats.fault_latched ||
+         another_reference_waiting ||
+         pending_age_ticks > association_timeout_ticks)) {
+      // A second physical REF with no snapshot for the first is an immediate
+      // association loss.  Queue/foreground delay cannot manufacture a PIO
+      // word, and no later word may be paired retroactively with the first REF.
+      otis_pps_snapshot_backend_rearm();
+      otis_pps_count_boundary_ring_reset();
+      have_pending_reference = false;
+      discard_first_recovery_snapshot = true;
+    }
+    return;
+  }
+
+  if (discard_first_recovery_snapshot) {
+    // The first post-fault word may have been captured late while an oscillator
+    // outage was ending.  It is never paired retroactively with an older REF.
+    discard_first_recovery_snapshot = false;
+    otis_pps_count_boundary_ring_reset();
+    have_pending_reference = false;
+    return;
+  }
+
+  OtisPpsCountBoundaryObservation observation = pending_reference;
+  observation.session = snapshot.session;
+  observation.sequence = snapshot.sequence;
+  observation.cumulative_down_counter = snapshot.cumulative_down_counter;
+  if ((snapshot.status & OTIS_PPS_SNAPSHOT_STATUS_OVERWRITE_BEFORE) != 0u) {
+    observation.aperture_flags |=
+        OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
+        OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
+  }
+  otis_emit_pps_snapshot(
+      observation.session, observation.sequence,
+      observation.cumulative_down_counter, observation.reference_sequence,
+      observation.pps_timestamp_ticks, snapshot.status,
+      "pio_wait_cumulative_snapshot_dma_v1");
+  emit_pps_count_boundary(observation);
+  have_pending_reference = false;
 #endif
 }
 
@@ -1619,6 +1666,9 @@ void boot_phase_early_init(void) {
   begin_boot_phase(BootPhase::EarlyInit);
   const bool valid = otis_resource_registry_begin();
   if (!valid) {
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+    otis_pseudo_pps_latch_resource_fault();
+#endif
     otis_boot_capability_record(
         &boot_capabilities, OtisBootCapability::ResourceRegistry,
         OtisBootCapabilityOutcome::FatalConflict);
@@ -1647,6 +1697,9 @@ void boot_phase_gpio_init(void) {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   pinMode(OTIS_PIN_PPS_REFERENCE, INPUT_PULLDOWN);
+#endif
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+  pinMode(OTIS_PIN_PSEUDO_PPS_OUTPUT, INPUT);
 #endif
   complete_boot_phase(BootPhase::GpioInit);
 }
@@ -1678,6 +1731,11 @@ void boot_phase_timer_init(void) {
   const bool ready = otis_count_observation_begin(
       &runtime_state, &status_emit_context, &count_config);
   record_capability_result(OtisBootCapability::CountBackend, ready);
+#endif
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+  const bool pseudo_pps_ready = otis_pseudo_pps_begin();
+  record_capability_result(OtisBootCapability::PseudoPpsGenerator,
+                           pseudo_pps_ready);
 #endif
   complete_boot_phase(BootPhase::TimerInit);
 }
@@ -1978,11 +2036,51 @@ void handle_sweep_add(const OtisParsedSerialCommand &command) {
 }
 #endif
 
+void emit_pseudo_pps_status(void) {
+  OtisPseudoPpsStatus status;
+  otis_pseudo_pps_get_status(&status);
+  emit_status("ppsgen", "state", otis_pseudo_pps_state_name(status.state),
+              status.state == OtisPseudoPpsState::ResourceFault ||
+                      status.state == OtisPseudoPpsState::UnderflowFault
+                  ? OTIS_SEVERITY_ERROR
+                  : OTIS_SEVERITY_INFO,
+              status.state == OtisPseudoPpsState::ResourceFault ||
+                      status.state == OtisPseudoPpsState::UnderflowFault
+                  ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                  : OTIS_FLAG_NONE);
+  emit_status("ppsgen", "profile", status.profile_id, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "profile_version", status.profile_version,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("ppsgen", "session", status.session, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "step_count", status.step_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "truth_emitted", status.truth_emitted,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "output_gpio", OTIS_GPIO_PSEUDO_PPS_OUTPUT,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("ppsgen", "pio_clock_hz", status.pio_clock_hz,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+void emit_pseudo_pps_profiles(void) {
+  for (size_t index = 0u; index < otis_pseudo_pps_profile_count(); ++index) {
+    const OtisPseudoPpsProfile *profile = otis_pseudo_pps_profile_at(index);
+    if (profile != nullptr) {
+      char key[20];
+      snprintf(key, sizeof(key), "profile_%02u", static_cast<unsigned>(index));
+      emit_status("ppsgen", key, profile->id, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+    }
+  }
+}
+
 void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   if (command.kind == OtisSerialCommandKind::Help) {
     emit_status("command", "h1_help",
-                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PROFILES_center_only_tiny_plus_minus_1_tiny_plus_minus_2_slope_center_edge_300s_slope_repeat_300s_HELP",
+                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PPSGEN?_PPSGEN_PROFILES?_PPSGEN_ARM_name_PPSGEN_START_PPSGEN_STOP_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
@@ -1999,10 +2097,10 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 otis_tcxo_counter_backend_name(), OTIS_SEVERITY_INFO,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-    emit_status("pps_gate", "boundary_owner", "pps_gpio_irq",
+    emit_status("pps_gate", "boundary_owner", "pio_state_machine",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("pps_gate", "aperture_backend",
-                "pps_isr_stop_sample_restart_v1", OTIS_SEVERITY_INFO,
+                "pio_wait_cumulative_snapshot_dma_v1", OTIS_SEVERITY_INFO,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("pps_gate", "backend_qualified",
                 OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? "true" : "false",
@@ -2017,6 +2115,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("build", "enable_pps_dual_observer",
                     OTIS_ENABLE_PPS_DUAL_OBSERVER, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_pseudo_pps_generator",
+                    OTIS_ENABLE_PSEUDO_PPS_GENERATOR, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("build", "enable_dac_ad5693r",
                     OTIS_ENABLE_DAC_AD5693R, OTIS_SEVERITY_INFO,
@@ -2074,6 +2175,40 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     }
   } else if (command.kind == OtisSerialCommandKind::Fc0Query) {
     emit_fc0_status();
+#if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
+  } else if (command.kind == OtisSerialCommandKind::PpsGenProfilesQuery) {
+    emit_pseudo_pps_profiles();
+  } else if (command.kind == OtisSerialCommandKind::PpsGenQuery) {
+    emit_pseudo_pps_status();
+  } else if (command.kind == OtisSerialCommandKind::PpsGenArm) {
+    bool armed = command.arguments_valid &&
+                 otis_pseudo_pps_arm(command.text_argument);
+    emit_status("ppsgen", "arm", armed ? "accepted" : "rejected",
+                armed ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+                armed ? OTIS_FLAG_NONE : OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (command.kind == OtisSerialCommandKind::PpsGenStart) {
+    bool started = otis_pseudo_pps_start();
+    emit_status("ppsgen", "start", started ? "accepted" : "rejected",
+                started ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+                started ? OTIS_FLAG_NONE : OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (command.kind == OtisSerialCommandKind::PpsGenStop) {
+    bool stopped = otis_pseudo_pps_stop();
+    emit_status("ppsgen", "stop", stopped ? "accepted" : "rejected",
+                stopped ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+                stopped ? OTIS_FLAG_NONE : OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (command.kind == OtisSerialCommandKind::PpsGenOther) {
+    emit_status("ppsgen", "command", "rejected_unknown", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+#else
+  } else if (command.kind == OtisSerialCommandKind::PpsGenProfilesQuery ||
+             command.kind == OtisSerialCommandKind::PpsGenQuery ||
+             command.kind == OtisSerialCommandKind::PpsGenArm ||
+             command.kind == OtisSerialCommandKind::PpsGenStart ||
+             command.kind == OtisSerialCommandKind::PpsGenStop ||
+             command.kind == OtisSerialCommandKind::PpsGenOther) {
+    emit_status("ppsgen", "command", "rejected_disabled", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
 #if OTIS_ENABLE_H1_DAC_SWEEP
   } else if (command.kind == OtisSerialCommandKind::SweepQuery) {
     emit_sweep_status();
@@ -2212,6 +2347,7 @@ void loop() {
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
   emit_resource_ownership_status();
+  otis_pseudo_pps_service();
   drain_pps_count_boundary_ring();
   drain_capture_ring();
   service_tcxo_gate();

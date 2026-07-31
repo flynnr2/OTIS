@@ -43,6 +43,12 @@ enum class OtisSerialCommandKind : uint8_t {
   SweepClear,
   SweepAdd,
   SweepOther,
+  PpsGenProfilesQuery,
+  PpsGenArm,
+  PpsGenStart,
+  PpsGenStop,
+  PpsGenQuery,
+  PpsGenOther,
   Unknown,
 };
 

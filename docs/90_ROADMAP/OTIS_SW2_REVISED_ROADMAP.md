@@ -1224,18 +1224,17 @@ Port the minimum estimator/state/policy needed for live preview and compare agai
 
 ### Package 8 — PPS-gated ratio backend validation
 
-Repository qualification preparation is complete: the ownership/measurement
-audit, independent reference/count validity telemetry, deterministic negative
-fixtures, explicit source/estimator typing, uncertainty hooks, qualification
-analyser, and bench runbook are present. Concrete rollover, boundary-flag,
-first-PPS-timeout, duplicate-typing, and unavailable-uncertainty defects found
-by the audit were corrected.
+Repository remediation replaces the rejected ISR-owned aperture with the
+single-PIO-state-machine `pio_wait_cumulative_snapshot_dma_v1` candidate. The
+15-word digital proof passes at pinned 133 MHz for 16 MHz and 35--65% duty;
+cumulative snapshot/session contracts, minimal ISR diagnostics, deterministic
+negative fixtures, explicit estimator typing, qualification analysis, and the
+new bench handoff are present.
 
-**Current result: open / not yet qualified.** Bench Run 001 passed the
-authoritative post-reset candidate legs for startup qualification, sustained
-observation, quiet/load operation, missing-PPS inhibition, zero-count
-inhibition, and recovery. Session-scoped jitter/load analysis, independent
-comparison, uncertainty, controlled duplicate/short/long PPS tests, reconnect
+**Current result: open / not yet qualified.** Bench Run 001 exercised the old
+ISR-owned mechanism and is not reusable as passing evidence for the PIO-owned
+replacement. A new 16 MHz phase/duty sweep, pseudo-PPS fault campaign,
+quiet/load comparison, independent comparison, uncertainty review, reconnect
 evidence, and final sealing remain open. See
 `docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
 Do not enable control.

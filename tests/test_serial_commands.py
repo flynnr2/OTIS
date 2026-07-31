@@ -24,6 +24,11 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("sweep stop", "SWEEP STOP"),
         ("sweep step", "SWEEP STEP"),
         ("sweep clear", "SWEEP CLEAR"),
+        ("ppsgen?", "PPSGEN?"),
+        ("ppsgen profiles?", "PPSGEN PROFILES?"),
+        ("ppsgen arm composite", "PPSGEN ARM COMPOSITE"),
+        ("ppsgen start", "PPSGEN START"),
+        ("ppsgen stop", "PPSGEN STOP"),
     ],
 )
 def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normalized: str) -> None:
@@ -39,6 +44,7 @@ def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normali
         "SWEEP LOAD arbitrary",
         "SWEEP ADD 0x8000 5000",
         "RESET",
+        "PPSGEN ARM arbitrary",
     ],
 )
 def test_parse_serial_command_rejects_unknown_or_open_ended_commands(raw: str) -> None:

@@ -2,169 +2,104 @@
 
 ## Decision
 
-**Qualification result: open / not yet qualified. The authoritative post-reset
-session of Bench Run 001 passed every exercised candidate leg; remaining exit
-gates are explicitly open.**
+**Open / not qualified.** The active candidate is
+`pio_wait_cumulative_snapshot_dma_v1`, with the physical boundary owned by one
+PIO state machine. The historic Bench Run 001 exercised the rejected
+`pps_isr_stop_sample_restart_v1` implementation and contains no raw cumulative
+`SNP` evidence. It cannot be reused to qualify this candidate.
 
-Bench Run 001 now supplies physical candidate evidence for boot, startup
-inhibition, sustained observation, service-load operation, missing-PPS
-detection, zero-count detection, and recovery. Controlled duplicate/short/long
-PPS tests, session-scoped jitter and load-shift analysis, independent
-comparison, aperture uncertainty, reconnect testing, and sealed evidence
-remain open. The completed legs are successful; their existence does not by
-itself authorize the final `qualified_with_limits` label.
-
-The authoritative safety state is unchanged:
+The enforced safety state remains:
 
 ```text
+pps_gate/backend_qualified=false
 status.control_ready=false
-status.actuation_enabled=false
+phase4_preview/actuation_authorized=false
 no PPS/count-derived DAC write is authorized
 ```
 
-## Repository audit conclusion
+## Current implementation
 
-The implementation retains one D14 PPS authority and one PIO oscillator-count
-owner. The count backend consumes the same `OtisCapturedEdge` used for the raw
-`REF` row and does not poll or timestamp D14 independently.
+The 133 MHz PIO programme alternates oscillator-level `WAIT` instructions,
+decrements X on each synchronized rising edge, tests PPS through independent
+`JMP PIN` mapping, and autopushes `IN X, 32` once per accepted PPS. PIO owns the
+count and snapshot boundary. DMA owns only completed-word transport into a
+128-word ring. The D14 GPIO IRQ independently preserves physical REF events;
+it does not stop, sample, restart, or otherwise control the counter.
 
-The audit found and corrected these concrete defects:
-
-1. PPS boundary quality flags were preserved on `CNT` but did not invalidate
-   the reference side of the window.
-2. `pps_gate.valid` collapsed reference and oscillator-count validity.
-3. Absence of the first PPS after boot was not timed out.
-4. A rollover-closing `CNT` emitted an extended close value rather than the raw
-   authoritative `REF.timestamp_ticks`.
-5. Duplicate PPS had no physically exercisable classification band.
-6. Aperture and reference-frequency uncertainty had no explicit unavailable
-   hooks.
-7. The counter was restarted only after derived arithmetic and serial status
-   emission, making inter-gate dead time depend on service-plane activity.
-8. A rejected boundary could immediately become the opening boundary of a
-   nominally clean ratio window.
-9. Host comparison admitted an independently named estimator with a
-   mismatched backend, did not require the same source domain, and included
-   valid rows outside the declared UTC comparison interval.
-10. The checked-in Phase 4 live adapter used non-modular raw gate subtraction
-    at rollover, while both live and host replay could collapse a
-    reference-only `CNT` flag into count invalidity.
-
-The corrected additive telemetry exposes:
-
-- `pps_gate/reference_validity` and `pps_gate/reference_reason`;
-- `pps_gate/count_validity` and `pps_gate/count_reason`;
-- `pps_gate/count_resolution_edges=1`;
-- `pps_gate/counter_aperture_uncertainty_ns=unavailable`;
-- `pps_gate/reference_frequency_uncertainty_ppb=unavailable`.
-
-The counter now restarts immediately after stop/read, before calculation or
-reporting. A rejected edge causes one explicit
-`reference_previous_boundary_invalid` re-anchoring window. Phase 4 live and
-host replay use modular PPS-gate arithmetic and preserve independent
-reference/count validity.
-
-No raw bounded observation is suppressed, no PPS authority changed, and no
-actuation path was added.
-
-## Repository evidence
-
-Deterministic repository fixtures cover nominal adjacent boundaries, raw timer
-rollover, duplicate/short/long/missing PPS, boundary flags, zero and saturated
-count arithmetic, startup/recovery telemetry, estimator/backend/source typing,
-independent comparison, service-plane segments, immutable derived output, and
-unavailable uncertainty.
-
-The qualification analyser requires:
-
-- explicit `pps_gated_ratio_count_v1` candidate typing;
-- an authorised, separately typed independent estimator;
-- exact source-domain agreement rather than mixed FC0/PIO/PPS rows;
-- an authorised estimator/backend pair corroborated by boot `STS` identity and
-  interval configuration;
-- exact firmware name/version/config/40-hex commit agreement between boot
-  telemetry and the sealed candidate manifest;
-- exact candidate and independent count-sequence ranges within the shared UTC
-  comparison interval;
-- 100% adjacent authoritative `REF` boundary traceability;
-- separate reference/count validity and their joint measurement eligibility;
-- safe fault reason and inhibition evidence;
-- startup-clear and post-fault recovery evidence;
-- at least 600 eligible observations in every declared baseline/load segment;
-- complete sealed bench evidence;
-- explicit uncertainty components.
-
-Synthetic manifests always produce `repository_validation_only`. A bench run
-with missing or failed gates produces `failed`. Within the v1 10 MHz,
-one-second applicability envelope, a complete passing run produces
-`qualified_with_limits` because 32-bit saturation remains a synthetic-only
-negative case.
-
-## Verification completed
-
-Repository verification on 29 July 2026:
+The raw evidence chain is:
 
 ```text
-python3 -m pytest -q
-215 passed, 2 skipped in 12.56s
-
-python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
-PASS: 215 tests passed, 2 local-Run-020 preflight tests skipped;
-      all three wire fixtures passed;
-      example run validation and reporting completed
+REF: independent physical PPS observation
+SNP: raw cumulative PIO down-counter plus REF association
+CNT: adjacent, same-session modulo difference derived from two clean SNP rows
 ```
 
-The Arduino CLI matrix also compiled successfully for:
+The first snapshot of every session is an anchor. Any reference/snapshot gap,
+association loss, invalid status, FIFO stall, DMA error, ring overwrite,
+oscillator outage, or reset invalidates continuity. Recovery requires two fresh
+snapshots, and no late snapshot may be paired retroactively.
 
-- default H1;
-- Phase 5 PPS-gated candidate;
-- Phase 5 PPS-gated candidate with Phase 4 live preview enabled;
-- synthetic USB;
-- GPIO loopback;
-- GPS PPS IRQ;
-- GPS PPS sparse PIO FIFO;
-- TCXO FC0;
-- H1 PIO long-gate;
-- divided GPIO IRQ count;
-- combined sparse-PIO capture plus PIO long-gate.
+## Digital proof status
 
-Those repository/compile results were subsequently followed by the physical
-candidate session documented in
-`PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
+The checked-in instruction-level proof assembles the actual 15-word programme
+and covers 256 oscillator phases at every integer duty from 35% through 65%:
 
-## Bench evidence and applicability
+```text
+7,936 cases
+55,552 reconstructed intervals
+no missed or double-counted synchronized oscillator rising edge
+boundary error only -1, 0, or +1 edge
+maximum four PIO clocks from completed WAIT to opposite WAIT
+```
 
-Bench Run 001 contains a successful authoritative post-reset candidate session
-covering 33111 consecutive one-second windows, including qualifying-size
-baseline and service-load ranges. Missing-PPS and zero-count inhibition and
-clean-window recovery passed. The original local run also preserves a disturbed
-pre-test serial session caused by IDE port contention; that preamble is
-documented rather than silently removed.
+It also verifies counter wrap, sequence/session semantics, mid-high startup,
+finite oscillator-stop tail, full-FIFO failure, DMA ring capacity/wrap/
+overwrite, installed pin mappings, synchronizers, autopush, PIO0 ownership,
+133 MHz clock, divider 1, and fatal transport faults. This is a no-hardware
+proof, not pad-level timing qualification.
 
-Independent bias, final candidate jitter, service-load mean shift, aperture
-uncertainty, combined uncertainty, and controlled duplicate/short/long fault
-completeness remain open. The boot-reported `1095a16...` firmware identifier
-must also be reconciled with the `0e35bbe...` checkout that committed the
-Arduino IDE candidate defaults before evidence sealing. See
-`PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md` for the scoped evidence
-decision and exact ranges.
+## Host qualification rules
 
-The backend must not yet be described as trusted metrology. The intended
-applicability envelope and exact acceptance procedure are frozen in
-`PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md`.
+The qualification analyser now requires the `pps_snapshots_v1` source and
+checks raw SNP reconstruction against every CNT. The official estimate is:
 
-## Remaining exit-gate work
+```text
+official_raw_frequency = counted_edges / nominal_reference_interval
+```
 
-1. Produce session-scoped, provenance-preserving analysis of the authoritative
-   Bench Run 001 session.
-2. Complete or supply the authorised independent comparison.
-3. Exercise controlled duplicate, short, and long PPS faults plus the separate
-   reconnect run.
-4. Measure aperture behavior and populate only evidence-backed uncertainty.
-5. Seal complete candidate and independent evidence and execute the
-   deterministic qualification analyser.
-6. Review the compact result and update this decision to
-   `qualified_with_limits` or retain `failed`.
+Timer-normalised frequency is retained only as a non-authoritative diagnostic.
+It cannot override failed physical aperture, raw count, or continuity gates.
+Reports separately expose raw jitter, timer-normalised diagnostic jitter,
+quiet/load statistics, mean shift, invalid windows, physical PPS faults,
+capture/storage faults, backlog, and parser/telemetry faults.
 
-Until those steps pass, roadmap/readiness status remains **open / not
-qualified**, and active steering remains prohibited.
+Pseudo-PPS generator truth (`PGT`), physical detection (`REF`), snapshot status
+(`SNP`), and diagnostic policy remain separate evidence planes. Strict fault
+scoring requires zero unexplained missed, false, duplicate, or misclassified
+detections; exact outage/restoration transitions; invalid measurements around
+faults; and clean two-snapshot recovery.
+
+## Remaining hardware gates
+
+The bench campaign in
+`PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md` must still demonstrate:
+
+1. actual D8 waveform duty, threshold integrity, and rise/fall behavior;
+2. a 16 MHz PPS-to-oscillator phase sweep across the complete 62.5 ns period;
+3. clean pseudo-PPS loopback and every required malformed-PPS class;
+4. real-GPS quiet operation without false physical-outage or continuity loss;
+5. alternating quiet/load equivalence using official raw counts;
+6. population jitter no more than 1.5 Hz and quiet/load mean shift no more
+   than 0.05 Hz;
+7. extended resource, wrap, reset/session, and transport stability; and
+8. a newly sealed overnight run directly comparable in procedure, but not in
+   backend identity, to `candidate_20260730T192721Z`.
+
+If the 16 MHz timing envelope fails on the assembled hardware, stop and use the
+documented external counter/capture latch or CPLD fallback. ISR, DMA, or a
+second PIO state machine must not be substituted as boundary owner.
+
+Qualification never changes automatically from one run. Evidence review and a
+deliberate later source change are required before the compile-time gate can be
+set. Until then, the backend is engineering evidence only and control remains
+blocked.

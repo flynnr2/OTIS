@@ -302,26 +302,25 @@ The backend must keep `CNT` semantics stable:
 - `source_domain` identifies the oscillator source;
 - calibrated frequency, ratio, and ppm remain host-derived products.
 
-The corrected implementation requires the GPIO IRQ sparse-capture backend.
-That D14 IRQ timestamps the PPS, immediately stops/samples/restarts the PIO
-oscillator counter, and publishes one atomic sequenced boundary observation.
-Foreground code validates and emits the observation; it never defines the
-physical aperture. PPS-gated `CNT` rows continue to carry reconstructed
-`rp2040_timer0` timestamps until a later hardware-latched snapshot
-implementation is proven.
+The corrected implementation requires the GPIO IRQ sparse-capture backend only
+for the independent D14 `REF` observer. One PIO state machine counts oscillator
+rises and autonomously copies cumulative `X` with `IN X,32` after recognizing
+PPS through its independent `JMP PIN` mapping. A joined RX FIFO and DMA carry
+the already-captured word to a 128-entry ring. Foreground associates D14 and
+PIO sequences and differences adjacent snapshots; it never defines the
+physical aperture. PPS-gated `CNT` rows retain reconstructed
+`rp2040_timer0` gate-time evidence, while raw `SNP` rows preserve the hardware
+counter evidence.
 
 ## Non-Goals For This Stage
 
 This stage does not implement:
 
-- DMA setup or DMA interrupts;
-- hardware-latched timestamp transfer;
+- a hardware-latched RP2040 timer timestamp (D14 time remains reconstructed);
 - multicore capture isolation;
 - output buffering redesign;
-- wire-format changes;
-- new timestamp semantics.
+- active-control authority.
 
-The intended result is a clear target for the next implementation stage: add a
-new backend at the capture backend boundary, keep DMA/timestamp ownership inside
-that backend, and preserve the existing emitter and host-facing contracts until
-a deliberate protocol revision is made.
+The cumulative snapshot and pseudo-PPS truth records are additive contracts.
+The next stage is physical loopback and real-signal qualification; no ISR,
+DMA, or second PIO state machine may replace the single-SM boundary owner.
