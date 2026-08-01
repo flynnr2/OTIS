@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import csv
+import shutil
 import subprocess
 import sys
+
+import pytest
+
+from tools import audit_measurement_semantics
 
 from host.otis_tools.contracts import (
     ESTIMATE_V1_FIELDS,
@@ -244,3 +249,37 @@ def test_repository_wide_measurement_semantics_inventory_is_current() -> None:
         check=True,
         cwd=root,
     )
+
+
+def test_measurement_inventory_respects_git_ignores(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is unavailable")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text(
+        "runs/\n*.egg-info/\n", encoding="utf-8"
+    )
+    (tmp_path / "tracked.md").write_text(
+        "measurement uncertainty\n", encoding="utf-8"
+    )
+    (tmp_path / "host").mkdir()
+    (tmp_path / "host" / "new.md").write_text(
+        "measurement confidence\n", encoding="utf-8"
+    )
+    (tmp_path / "runs").mkdir()
+    (tmp_path / "runs" / "capture.md").write_text(
+        "ignored uncertainty\n", encoding="utf-8"
+    )
+    (tmp_path / "otis.egg-info").mkdir()
+    (tmp_path / "otis.egg-info" / "SOURCES.txt").write_text(
+        "ignored confidence\n", encoding="utf-8"
+    )
+    subprocess.run(
+        ["git", "add", ".gitignore", "tracked.md"], cwd=tmp_path, check=True
+    )
+
+    inventory = audit_measurement_semantics.inventory_bytes(tmp_path).decode()
+
+    assert "tracked.md" in inventory
+    assert "host/new.md" in inventory
+    assert "runs/capture.md" not in inventory
+    assert "otis.egg-info/SOURCES.txt" not in inventory

@@ -256,5 +256,8 @@ def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     assert '"pio_wait_cumulative_snapshot_dma_v1"' in sketch
     assert '"config_snapshot", "begin"' in sketch
     assert '"config_snapshot", "end"' in sketch
+    assert sketch.count("emit_build_provenance_status();") == 2
+    assert "if (!config_query_provenance_emitted)" in sketch
+    assert "config_query_provenance_emitted = true;" in sketch
     assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED 0" in config
     assert "PPS_GATED_RATIO requires the GPIO IRQ backend for the independent D14 REF observer" in config

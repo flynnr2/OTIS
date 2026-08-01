@@ -17,8 +17,9 @@ repository profile edits cannot silently change replay context.
 
 Qualification firmware is produced only by `tools/firmware_matrix.py`. The
 builder verifies pinned Arduino CLI/core/toolchain identities and hashes the
-installed core/toolchain bytes, rejects profile attempts to override generated
-identity or selectors, hashes all sketch/build-definition inputs, and compiles
+functional contents of the installed core and toolchain. It rejects profile
+attempts to override generated identity or selectors, hashes all
+sketch/build-definition inputs, and compiles
 a disposable sketch copy containing a one-use generated profile header. The
 builder rechecks Git/source/configuration state after compilation and artifact
 hashing, rehashes installed core/toolchain bytes around every profile, and then
@@ -27,6 +28,11 @@ pinned across all profiles. A fresh builder session ID must match between the
 one-use header and the compiler flag, so an accidentally retained complete
 header cannot authorize an ordinary raw compile. The firmware has no fallback
 commit, board, or configuration literal.
+
+Installed-tree hashes deliberately exclude package-manager metadata
+(`installed.json`), Finder metadata, and generated Python bytecode caches.
+Those files are not release inputs and vary with installation/runtime context;
+all functional source, library, executable, and symlink bytes remain covered.
 
 For interactive bench bring-up, the same tool can materialize one supported
 profile beside the source sketch with `--prepare-ide --profile <profile_id>`.

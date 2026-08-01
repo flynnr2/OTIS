@@ -6,6 +6,7 @@ namespace {
 
 constexpr OtisPseudoPpsProfile kProfiles[] = {
     {"CLEAN_NOMINAL", OTIS_PSEUDO_PPS_PROFILE_VERSION},
+    {"CLEAN_SOAK_10M", OTIS_PSEUDO_PPS_PROFILE_VERSION},
     {"ONE_SHORT", OTIS_PSEUDO_PPS_PROFILE_VERSION},
     {"ONE_LONG", OTIS_PSEUDO_PPS_PROFILE_VERSION},
     {"ONE_OMIT", OTIS_PSEUDO_PPS_PROFILE_VERSION},
@@ -102,6 +103,8 @@ bool otis_pseudo_pps_compile_profile(const char *profile_id,
 
   if (strcmp(profile_id, "CLEAN_NOMINAL") == 0) {
     clean(&builder, 30u);
+  } else if (strcmp(profile_id, "CLEAN_SOAK_10M") == 0) {
+    clean(&builder, 600u);
   } else if (strcmp(profile_id, "ONE_SHORT") == 0) {
     clean(&builder, 3u);
     append(&builder, 750000u, OTIS_PSEUDO_PPS_NOMINAL_WIDTH_US,

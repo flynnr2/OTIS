@@ -24,6 +24,9 @@ struct OtisPseudoPpsStatus {
   uint16_t step_count;
   uint16_t truth_emitted;
   uint32_t session;
+  uint32_t pin_sample_count;
+  uint32_t output_high_sample_count;
+  uint32_t reference_high_sample_count;
   uint32_t system_clock_hz;
   uint32_t pio_clock_hz;
   int8_t pio_state_machine;

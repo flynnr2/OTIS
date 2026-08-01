@@ -1,6 +1,6 @@
 # PPS PIO Proof and Verification
 
-Status: Stage 1 digital proof passed; hardware timing qualification pending
+Status: Stage 1 digital proof passed; observe-only bench qualification accepted 2026-08-01; physical phase/duty margin not tested
 Mechanism: `pio_wait_cumulative_snapshot_dma_v1`
 Proof date: 2026-07-31
 Proved clock/envelope: RP2040 `clk_sys` and PIO at 133 MHz, oscillator at
@@ -9,11 +9,13 @@ Proved clock/envelope: RP2040 `clk_sys` and PIO at 133 MHz, oscillator at
 ## Decision
 
 The single-state-machine, oscillator-edge-driven `WAIT` implementation passes
-the repository's digital go/no-go gate. Implementation may continue on the
-existing RP2040. This result does not qualify the analog signal path or the
-assembled board; the backend remains compiled with
-`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0` until the phase-sweep bench campaign
-passes.
+the repository's digital go/no-go gate. The later clean, fault, real-GPS,
+service-load, extended, and sealed overnight campaign was accepted on
+2026-08-01 as observe-only measurement-backend qualification. This result does
+not claim pad-level phase/duty margin: the installed ECS fixture cannot control
+that test. Existing evidence builds and the checked-in qualification candidate
+remain compiled with `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; changing an
+operational profile is separate from both evidence acceptance and actuation.
 
 The proof is bound to the checked-in assembled words and to the firmware
 installation. If the program, initial PC, wrap points, pin mappings,
@@ -23,6 +25,11 @@ ring configuration changes, `tools/verify_pio_snapshot.py` fails.
 If a future version fails this gate, implementation stops. The documented
 fallback is an external synchronous counter/latch or CPLD. An ISR, DMA engine,
 or second PIO state machine must not be substituted as the aperture owner.
+
+The later exact-v4-ELF review confirmed that the compiled D14 ISR, DMA, and
+foreground paths remain outside this proved aperture. It found no justified
+capture micro-optimization and established explicit anti-regression rules for
+future firmware in `PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
 
 ## Assembled and annotated listing
 
@@ -223,13 +230,16 @@ The first command must report 7,936 cases, 55,552 intervals, only `-1/0/+1`
 boundary errors, a four-clock maximum, and the installed configuration above.
 The second must compile the backend at the pinned 133 MHz board setting.
 
-## Remaining bench gate
+## Remaining physical characterization
 
-The backend remains unqualified until the target board passes a 16 MHz phase
-sweep with measured pad-level duty cycle and edge quality, 35--65% stress,
-sustained USB/serial/DMA load, long-duration continuity, and deliberate fault
-injection. The supplied TCXO's 40/60 symmetry and conditioned edge specifications
-make this plausible, but the actual waveform at the RP2040 pad is authoritative.
+Sustained USB/serial/DMA load, long-duration continuity, and deliberate fault
+injection have passed in the accepted campaign. A controlled 16 MHz PPS phase
+sweep with measured pad duty/edge quality and 35--65% stress remains not tested
+because the installed ECS fixture cannot generate it. It is a documented,
+non-blocking physical-margin limitation rather than a passed test. The supplied
+TCXO's 40/60 symmetry and conditioned edge specifications make acceptable
+operation plausible, but the actual waveform at the RP2040 pad remains
+authoritative if a capable future fixture tests it.
 
 If the bench test finds missed/double edges, errors beyond the allowed direct
 counting boundary quantization, RX stalls under supported load, or an input

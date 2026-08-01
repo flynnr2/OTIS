@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 constexpr uint16_t OTIS_PSEUDO_PPS_PROFILE_VERSION = 1u;
-constexpr size_t OTIS_PSEUDO_PPS_MAX_STEPS = 96u;
+// The largest immutable profile is the continuous 10-minute clean soak.
+constexpr size_t OTIS_PSEUDO_PPS_MAX_STEPS = 600u;
 constexpr uint32_t OTIS_PSEUDO_PPS_NOMINAL_INTERVAL_US = 1000000u;
 constexpr uint32_t OTIS_PSEUDO_PPS_NOMINAL_WIDTH_US = 100000u;
 constexpr size_t OTIS_PSEUDO_PPS_MAX_DMA_WORDS =

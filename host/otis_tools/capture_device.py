@@ -46,16 +46,73 @@ def _log_event(level: int, event: str, **fields: object) -> None:
     LOGGER.log(level, "event=%s%s", event, f" {details}" if details else "")
 
 
-def _write_marker(raw_handle, event: str, **fields: object) -> None:
+def _marker_bytes(event: str, **fields: object) -> bytes:
     payload = {"event": event, "utc": _utc_now(), **fields}
-    if raw_handle.tell() > 0:
-        raw_handle.seek(-1, 1)
-        last_byte = raw_handle.read(1)
-        raw_handle.seek(0, 2)
+    return HOST_MARKER_PREFIX + b" " + json.dumps(payload, sort_keys=True).encode("utf-8") + b"\n"
+
+
+class RawEvidenceWriter:
+    """Keep host annotations between complete device records.
+
+    Serial reads may end in the middle of a CSV record.  Holding only that
+    final partial record lets command/audit markers wait for its terminating
+    newline instead of being inserted into the device bytes.
+    """
+
+    def __init__(self, handle) -> None:
+        self.handle = handle
+        self.partial = bytearray()
+        self.pending_markers: list[bytes] = []
+
+    def _ensure_line_boundary(self) -> None:
+        if self.handle.tell() == 0:
+            return
+        self.handle.seek(-1, 1)
+        last_byte = self.handle.read(1)
+        self.handle.seek(0, 2)
         if last_byte != b"\n":
-            raw_handle.write(b"\n")
-    raw_handle.write(HOST_MARKER_PREFIX + b" " + json.dumps(payload, sort_keys=True).encode("utf-8") + b"\n")
-    raw_handle.flush()
+            self.handle.write(b"\n")
+
+    def _write_pending_markers(self) -> None:
+        if not self.pending_markers:
+            return
+        for marker in self.pending_markers:
+            self.handle.write(marker)
+        self.pending_markers.clear()
+
+    def write_device(self, data: bytes) -> None:
+        self.partial.extend(data)
+        while True:
+            try:
+                newline_index = self.partial.index(0x0A)
+            except ValueError:
+                break
+            end = newline_index + 1
+            self.handle.write(self.partial[:end])
+            del self.partial[:end]
+            self._write_pending_markers()
+        self.handle.flush()
+
+    def write_marker(self, event: str, **fields: object) -> None:
+        marker = _marker_bytes(event, **fields)
+        if self.partial:
+            self.pending_markers.append(marker)
+        else:
+            self._ensure_line_boundary()
+            self.handle.write(marker)
+            self.handle.flush()
+
+    def drop_partial(self) -> int:
+        dropped = len(self.partial)
+        self.partial.clear()
+        self._ensure_line_boundary()
+        self._write_pending_markers()
+        self.handle.flush()
+        return dropped
+
+
+def _write_marker(raw_writer: RawEvidenceWriter, event: str, **fields: object) -> None:
+    raw_writer.write_marker(event, **fields)
 
 
 def _load_serial_module():
@@ -229,14 +286,14 @@ class CaptureDeviceRunner:
         serial_module = _load_serial_module()
         return (OSError, EOFError, serial_module.SerialException)
 
-    def _process_line(self, line: bytes, splitter: CsvRecordSplitter, raw_handle) -> None:
+    def _process_line(self, line: bytes, splitter: CsvRecordSplitter, raw_writer: RawEvidenceWriter) -> None:
         self.lines_seen += 1
         try:
             text = line.decode("utf-8")
         except UnicodeDecodeError as exc:
             self.malformed_utf8 += 1
             _log_event(logging.WARNING, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
-            _write_marker(raw_handle, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
+            _write_marker(raw_writer, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             return
         contract = splitter.process_line(text)
         if contract is not None:
@@ -246,42 +303,41 @@ class CaptureDeviceRunner:
         self.parser_errors += 1
         _log_event(logging.WARNING, "parser_error", message=message, parser_errors=self.parser_errors)
 
-    def _process_bytes(self, data: bytes, splitter: CsvRecordSplitter, raw_handle) -> None:
-        raw_handle.write(data)
-        raw_handle.flush()
+    def _process_bytes(self, data: bytes, splitter: CsvRecordSplitter, raw_writer: RawEvidenceWriter) -> None:
+        raw_writer.write_device(data)
         self.bytes_written += len(data)
         lines, events = self.framer.feed(data)
         for event in events:
             _log_event(logging.WARNING, event)
-            _write_marker(raw_handle, event)
+            _write_marker(raw_writer, event)
         for line in lines:
-            self._process_line(line, splitter, raw_handle)
+            self._process_line(line, splitter, raw_writer)
 
-    def _send_command(self, raw_command: str, serial_handle, raw_handle) -> None:
+    def _send_command(self, raw_command: str, serial_handle, raw_writer: RawEvidenceWriter) -> None:
         try:
             command = parse_serial_command(raw_command)
         except ValueError as exc:
             self.commands_rejected += 1
             _log_event(logging.WARNING, "host_command_rejected", command=raw_command, reason=str(exc))
-            _write_marker(raw_handle, "host_command_rejected", command=raw_command, reason=str(exc))
+            _write_marker(raw_writer, "host_command_rejected", command=raw_command, reason=str(exc))
             return
 
         payload = (command.normalized + "\n").encode("ascii")
         _log_event(logging.INFO, "host_command_accepted", command=command.normalized)
-        _write_marker(raw_handle, "host_command_accepted", command=command.normalized)
+        _write_marker(raw_writer, "host_command_accepted", command=command.normalized)
         bytes_written = serial_handle.write(payload)
         flush = getattr(serial_handle, "flush", None)
         if flush is not None:
             flush()
         self.commands_sent += 1
         _log_event(logging.INFO, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
-        _write_marker(raw_handle, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
+        _write_marker(raw_writer, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
 
-    def _poll_commands(self, command_fifo: CommandFifo | None, serial_handle, raw_handle) -> None:
+    def _poll_commands(self, command_fifo: CommandFifo | None, serial_handle, raw_writer: RawEvidenceWriter) -> None:
         if command_fifo is None:
             return
         for raw_command in command_fifo.poll():
-            self._send_command(raw_command, serial_handle, raw_handle)
+            self._send_command(raw_command, serial_handle, raw_writer)
 
     def _emit_status(self) -> None:
         _log_event(
@@ -315,9 +371,10 @@ class CaptureDeviceRunner:
             append=True,
             on_parser_error=self._parser_error,
         ) as splitter, command_fifo_context as command_fifo:
-            _write_marker(raw_handle, "capture_started", device=self.config.device, baud=self.config.baud)
+            raw_writer = RawEvidenceWriter(raw_handle)
+            _write_marker(raw_writer, "capture_started", device=self.config.device, baud=self.config.baud)
             if self.config.command_fifo is not None:
-                _write_marker(raw_handle, "command_ingress_opened", path=str(self.config.command_fifo))
+                _write_marker(raw_writer, "command_ingress_opened", path=str(self.config.command_fifo))
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
@@ -327,14 +384,14 @@ class CaptureDeviceRunner:
                         _log_event(logging.INFO, "serial_opening", device=self.config.device, baud=self.config.baud)
                         serial_handle = factory(self.config.device, baudrate=self.config.baud, timeout=self.config.read_timeout_s)
                         _log_event(logging.INFO, "serial_opened", device=self.config.device, baud=self.config.baud)
-                        _write_marker(raw_handle, "serial_opened", device=self.config.device, baud=self.config.baud)
+                        _write_marker(raw_writer, "serial_opened", device=self.config.device, baud=self.config.baud)
                         backoff = self.config.reconnect_initial_s
 
                         while not self.stop_event.is_set():
                             data = serial_handle.read(self.config.read_size)
                             if data:
-                                self._process_bytes(data, splitter, raw_handle)
-                            self._poll_commands(command_fifo, serial_handle, raw_handle)
+                                self._process_bytes(data, splitter, raw_writer)
+                            self._poll_commands(command_fifo, serial_handle, raw_writer)
                             now = time.monotonic()
                             if now >= next_status:
                                 self._emit_status()
@@ -342,6 +399,7 @@ class CaptureDeviceRunner:
                     except serial_exceptions as exc:
                         self.reconnect_count += 1
                         dropped = self.framer.drop_partial()
+                        raw_writer.drop_partial()
                         _log_event(
                             logging.WARNING,
                             "serial_disconnected",
@@ -350,7 +408,7 @@ class CaptureDeviceRunner:
                             error=str(exc),
                         )
                         _write_marker(
-                            raw_handle,
+                            raw_writer,
                             "serial_disconnected",
                             reconnect_count=self.reconnect_count,
                             partial_line_dropped_bytes=dropped,
@@ -359,7 +417,7 @@ class CaptureDeviceRunner:
                         if self.stop_event.is_set():
                             break
                         _log_event(logging.INFO, "reconnecting", delay_s=backoff)
-                        _write_marker(raw_handle, "reconnecting", delay_s=backoff)
+                        _write_marker(raw_writer, "reconnecting", delay_s=backoff)
                         self.sleep(backoff)
                         backoff = min(self.config.reconnect_max_s, backoff * 2)
                     finally:
@@ -370,11 +428,12 @@ class CaptureDeviceRunner:
                                 _log_event(logging.WARNING, "serial_close_error", error=str(exc))
             finally:
                 dropped = self.framer.drop_partial()
+                raw_writer.drop_partial()
                 if dropped:
                     _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                    _write_marker(raw_handle, "partial_line_dropped", bytes=dropped, reason="shutdown")
+                    _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
                 _write_marker(
-                    raw_handle,
+                    raw_writer,
                     "capture_stopped",
                     bytes_written=self.bytes_written,
                     lines_seen=self.lines_seen,

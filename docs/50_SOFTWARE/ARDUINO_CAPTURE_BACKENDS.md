@@ -264,8 +264,8 @@ an observation gate. It is not per-edge timestamping:
   edge paths.
 
 GPIN0/FC0 observation is therefore relevant to oscillator validation and wiring
-confidence, but it does not replace the future PIO/DMA per-edge timestamp
-backend.
+confidence. It is an independent alternative to the PPS-gated PIO-local
+cumulative counter; neither design sends one FIFO record per oscillator edge.
 
 The full count-observation measurement contract across FC0/GPIN0, GPIO IRQ,
 PIO long-gate, and PPS-gated ratio backends is documented in
@@ -322,5 +322,9 @@ This stage does not implement:
 - active-control authority.
 
 The cumulative snapshot and pseudo-PPS truth records are additive contracts.
-The next stage is physical loopback and real-signal qualification; no ISR,
-DMA, or second PIO state machine may replace the single-SM boundary owner.
+Physical loopback, real-GPS, deliberate service-load, extended, and overnight
+qualification completed and was accepted on 2026-08-01 for observe-only
+measurement. The 30/31 width-only fault limitation and unavailable physical
+phase/duty sweep remain explicit. The next stage is integrated live
+estimator/preview use; no ISR, DMA, or second PIO state machine may replace the
+single-SM boundary owner.

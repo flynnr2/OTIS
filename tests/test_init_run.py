@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 from host.otis_tools.init_run import init_run
@@ -78,11 +77,12 @@ def test_init_run_refuses_existing_run(tmp_path: Path, monkeypatch) -> None:
 
 def test_h1_templates_initialize_and_validate(tmp_path: Path, monkeypatch) -> None:
     runs_root = tmp_path / "runs"
-    shutil.copytree(Path("runs/h1_open_loop"), runs_root / "h1_open_loop")
     monkeypatch.setattr("host.otis_tools.init_run.RUNS_ROOT", runs_root)
 
     for capture_type in H1_CAPTURE_TYPES:
-        template_dir = runs_root / "h1_open_loop" / capture_type / "_template"
+        template_dir = (
+            Path("profiles/run_templates/h1_open_loop") / capture_type
+        )
         assert (template_dir / "manifest.json").exists()
         assert (template_dir / "config.env").exists()
         for dirname in ("raw", "csv", "reports", "plots", "derived"):
@@ -111,7 +111,6 @@ def test_h1_templates_initialize_and_validate(tmp_path: Path, monkeypatch) -> No
 
 def test_h1_dac_manual_sweep_init_run(tmp_path: Path, monkeypatch) -> None:
     runs_root = tmp_path / "runs"
-    shutil.copytree(Path("runs/h1_open_loop"), runs_root / "h1_open_loop")
     monkeypatch.setattr("host.otis_tools.init_run.RUNS_ROOT", runs_root)
 
     run_dir = init_run("h1_open_loop", "dac_manual_sweep", "run_pytest")

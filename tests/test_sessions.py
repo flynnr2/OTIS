@@ -80,3 +80,26 @@ def test_boot_mid_run_starts_new_session(tmp_path: Path) -> None:
     assert summary.session_count == 2
     assert summary.reboot_marker_count == 1
     assert summary.sessions[1].start_reason == "firmware_boot_or_header_marker_after_capture_started"
+
+
+def test_delayed_initial_boot_provenance_does_not_split_session(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "delayed_initial_boot"
+    _write_manifest(
+        run_dir,
+        [{"path": "csv/health.csv", "contract": "health_v1"}],
+    )
+    (run_dir / "raw").mkdir()
+    (run_dir / "raw" / "serial.log").write_text(
+        "STS,1,471,1,rp2040_timer0,resource_registry,claim_count,14,INFO,0\n"
+        "BOOT,v=1,boot_count=1,phase=RunMode,prev_valid=0,"
+        "prev_phase=ResetEntry,reset_reason=0x00000001\n"
+        "STS,1,472,2,rp2040_timer0,system,mode,H1,INFO,0\n",
+        encoding="utf-8",
+    )
+
+    summary = detect_run_sessions(load_manifest(run_dir))
+
+    assert summary.session_count == 1
+    assert summary.reboot_marker_count == 1

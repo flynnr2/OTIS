@@ -492,6 +492,23 @@ def test_installed_byte_pin_rejects_mutated_package(tmp_path: Path) -> None:
         _require_installed_hash("test package", package, expected)
 
 
+def test_installed_byte_pin_ignores_package_manager_and_runtime_noise(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "installed"
+    package.mkdir()
+    (package / "compiler").write_bytes(b"pinned bytes")
+    expected = firmware_matrix.installed_tree_hash(package)
+
+    (package / "installed.json").write_text('{"local": true}\n', encoding="utf-8")
+    (package / ".DS_Store").write_bytes(b"finder metadata")
+    cache = package / "tools" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "helper.cpython-314.pyc").write_bytes(b"runtime bytecode")
+
+    assert firmware_matrix.installed_tree_hash(package) == expected
+
+
 def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

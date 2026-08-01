@@ -106,8 +106,9 @@ cannot alter captured count values or become `reference_missing_pps`.
   session.
 - Short, long, duplicate, bounce, glitch, or otherwise malformed PPS evidence
   remains raw and diagnostic, but cannot become control-valid measurement.
-- The checked-in backend remains `backend_qualified=false`, so no PPS-gated
-  observation authorizes actuation.
+- The backend architecture was accepted on 2026-08-01 for observe-only
+  measurement. The checked-in qualification build and sealed evidence remain
+  `backend_qualified=false`, so no PPS-gated observation authorizes actuation.
 
 ## Validation obligations
 

@@ -4,7 +4,6 @@ CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,30,uncertainty,measurement_uncertainty_s
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,36,confidence,confidence_semantics,"state/transition, confidence in the diagnosis, first/last seen, evidence"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,39,uncertainty,measurement_uncertainty_semantics,"uncertainty, model applicability, control eligibility, and diagnostic"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,40,confidence,confidence_semantics,confidence. Do not collapse them into one Boolean or score.
-README.md,145,uncertainty,measurement_uncertainty_semantics,"uncertainty, controlled duplicate/short/long PPS tests, and reconnect evidence"
 data_contracts/diagnostics_draft_v0.csv.md,28,confidence,confidence_semantics,"| `diagnostic_confidence` | decimal/unknown | confidence in this diagnosis, `0.0..1.0`, or `unknown` |"
 data_contracts/diagnostics_draft_v0.csv.md,49,uncertainty,measurement_uncertainty_semantics,- estimate uncertainty;
 data_contracts/diagnostics_draft_v0.csv.md,52,confidence,confidence_semantics,- diagnostic confidence.
@@ -125,9 +124,9 @@ docs/20_TELEMETRY/TELEMETRY_PHILOSOPHY.md,27,uncertainty,measurement_uncertainty
 docs/30_ANALYSIS/PPS_REFERENCE_CHARACTERIZATION.md,46,standard_deviation,sample_dispersion_or_repeatability,"- mean, median, standard deviation, MAD, and robust scale;"
 docs/30_ANALYSIS/PPS_REFERENCE_CHARACTERIZATION.md,74,uncertainty,measurement_uncertainty_semantics,- uncertainty growth when the reference is absent.
 docs/50_SOFTWARE/ARDUINO_CAPTURE_BACKENDS.md,182,uncertainty,measurement_uncertainty_semantics,- uncertainty or overflow flags that apply near the capture.
-docs/50_SOFTWARE/ARDUINO_CAPTURE_BACKENDS.md,267,confidence,confidence_semantics,"confidence, but it does not replace the future PIO/DMA per-edge timestamp"
-docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md,167,uncertainty,measurement_uncertainty_semantics,uncertainty are separate host qualification components. Unknown components are
-docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md,168,uncertainty,measurement_uncertainty_semantics,reported as unavailable and prevent computation of a combined uncertainty.
+docs/50_SOFTWARE/ARDUINO_CAPTURE_BACKENDS.md,267,confidence,confidence_semantics,confidence. It is an independent alternative to the PPS-gated PIO-local
+docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md,177,uncertainty,measurement_uncertainty_semantics,uncertainty are separate host qualification components. Unknown components are
+docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md,178,uncertainty,measurement_uncertainty_semantics,reported as unavailable and prevent computation of a combined uncertainty.
 docs/50_SOFTWARE/FIRMWARE_DEVELOPMENT_PRINCIPLES.md,35,uncertainty,measurement_uncertainty_semantics,- uncertainty;
 docs/50_SOFTWARE/FIRMWARE_DEVELOPMENT_PRINCIPLES.md,41,confidence,confidence_semantics,- time-to-confidence.
 docs/50_SOFTWARE/FIRMWARE_DEVELOPMENT_PRINCIPLES.md,134,uncertainty;confidence,measurement_uncertainty_semantics,"Component quality may affect configuration, health telemetry, uncertainty metadata, and analysis confidence. It must not affect raw capture semantics."
@@ -141,87 +140,102 @@ docs/50_SOFTWARE/PHASE_4_HOST_REPLAY_ENGINEERING_NOTE.md,89,uncertainty;dispersi
 docs/50_SOFTWARE/PHASE_4_HOST_REPLAY_ENGINEERING_NOTE.md,128,dispersion;confidence,sample_dispersion_or_repeatability,"Its confidence is based on configured sample count, dispersion, observation"
 docs/50_SOFTWARE/PHASE_4_HOST_REPLAY_ENGINEERING_NOTE.md,276,uncertainty,measurement_uncertainty_semantics,"| Semantic correction mistaken for aperture qualification | Explicitly separate: estimator consistency is corrected; the aperture diagnostic and incomplete uncertainty budget remain active until physical PPS-gated aperture, latency, and uncertainty evidence is collected. |"
 docs/50_SOFTWARE/PHASE_4_HOST_REPLAY_ENGINEERING_NOTE.md,282,uncertainty,measurement_uncertainty_semantics,"traceable uncertainty, pass the long live measurement gate, or authorize any"
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,30,dispersion,sample_dispersion_or_repeatability,- a bounded arithmetic-mean frequency estimator with population dispersion;
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,35,confidence,confidence_semantics,"- distinct observation validity, diagnostic health, estimator confidence,"
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,51,uncertainty,measurement_uncertainty_semantics,uncertainty remain unknown/unavailable. Cadence alone cannot qualify the
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,122,confidence,confidence_semantics,"- sample count, confidence, and estimator eligibility;"
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,123,dispersion,sample_dispersion_or_repeatability,- frequency error and dispersion;
-docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,219,uncertainty,measurement_uncertainty_semantics,"latency bounds under hardware load, traceable uncertainty, or a control-grade"
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,32,dispersion,sample_dispersion_or_repeatability,- a bounded arithmetic-mean frequency estimator with population dispersion;
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,37,confidence,confidence_semantics,"- distinct observation validity, diagnostic health, estimator confidence,"
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,53,uncertainty,measurement_uncertainty_semantics,uncertainty remain unknown/unavailable. Cadence alone cannot qualify the
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,124,confidence,confidence_semantics,"- sample count, confidence, and estimator eligibility;"
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,125,dispersion,sample_dispersion_or_repeatability,- frequency error and dispersion;
+docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md,222,uncertainty,measurement_uncertainty_semantics,"latency bounds under hardware load, traceable uncertainty, or a control-grade"
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,78,uncertainty,measurement_uncertainty_semantics,and applicability ranges and to contain the crossing uncertainty band.
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,86,uncertainty,measurement_uncertainty_semantics,"| derived | yes | `plant_response.local_slope.uncertainty.{method,hz_per_v_min,hz_per_v_max}` |"
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,87,uncertainty,measurement_uncertainty_semantics,"| derived | for model version 3+ | `plant_response.local_slope.uncertainty.{hz_per_v_stdev,hz_per_v_iqr}` |"
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,88,uncertainty,measurement_uncertainty_semantics,"| historical, derived, deprecated | no | `plant_response.local_slope.uncertainty.{hz_per_v_span,positive_0x0800_hz_per_v,negative_0x0800_hz_per_v,positive_0x1000_hz_per_v,negative_0x1000_hz_per_v}` |"
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,95,uncertainty,measurement_uncertainty_semantics,"| optional, derived | with crossing object | `plant_response.crossing_estimate.{target_frequency_hz,code,code_min,code_max,estimated_voltage_v,estimated_voltage_min_v,estimated_voltage_max_v,method,uncertainty_scope}` |"
 docs/50_SOFTWARE/PLANT_MODEL_CONTRACT_AUTHORITY.md,171,uncertainty,measurement_uncertainty_semantics,"| file `v1`, model version 2 | rejected: undeclared historical fields, legacy commit-name disagreement, current uncertainty requirements | accepted | accepted as valid, then not applicable because it was not model version 4 | not bound |"
-docs/50_SOFTWARE/PPS_HARDWARE_SNAPSHOT_REPLACEMENT_ARCHITECTURE.md,433,uncertainty,measurement_uncertainty_semantics,The smallest remaining uncertainty is not architectural ownership. It is
-docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,336,confidence,confidence_semantics,measurement-confidence baseline preceding `run_019`. It reports 242 count
-docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,408,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
+docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md,147,uncertainty,measurement_uncertainty_semantics,an uncertainty budget.
+docs/50_SOFTWARE/PPS_HARDWARE_SNAPSHOT_REPLACEMENT_ARCHITECTURE.md,458,uncertainty,measurement_uncertainty_semantics,The remaining uncertainty is not architectural ownership. It is the unmeasured
+docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,340,confidence,confidence_semantics,measurement-confidence baseline preceding `run_019`. It reports 242 count
+docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,412,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,51,uncertainty;confidence,measurement_uncertainty_semantics,"conditions, resolution, and an uncertainty or confidence method appropriate"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,100,uncertainty,measurement_uncertainty_semantics,from the ECS datasheet or a completed 16 MHz uncertainty budget.
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,133,confidence,confidence_semantics,not presented as a calculated confidence boundary or an ECS stability limit.
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,138,confidence,confidence_semantics,firmware-jitter number. Firmware-specific confidence instead comes from the
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,172,uncertainty,measurement_uncertainty_semantics,"claim that source drift, PPS noise, or overall measurement uncertainty improve"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,213,uncertainty,measurement_uncertainty_semantics,"That is an exact digitisation statement, not a total-uncertainty claim. Before"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,260,standard_deviation,sample_dispersion_or_repeatability,"| Candidate population standard deviation | 1.5 Hz | blocking firmware architecture screen on total observed spread | Conservative multi-edge detector supported by the `-1/0/+1` modeled interval envelope, 1 Hz count resolution, GPS timing scale, and observed sub-1 Hz populations. It is neither an oscillator specification nor an isolated firmware-jitter measurement. |"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,262,uncertainty,measurement_uncertainty_semantics,"| Absolute bias against independent metrology | 0.05 Hz | provisional reference pending error budget | A defensible accuracy gate requires an authorised independent standard, calibration traceability, simultaneous comparison, and a complete uncertainty budget. |"
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,267,uncertainty,measurement_uncertainty_semantics,"uncertainty, and must not present computed digits as physical accuracy."
+docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,273,standard_deviation,sample_dispersion_or_repeatability,"standard deviation is no more than the 1.5 Hz architecture screen, and all"
 docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,6,uncertainty,measurement_uncertainty_semantics,single-PIO-state-machine-owned count boundary. Longer independent-metrology and uncertainty
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,52,uncertainty,measurement_uncertainty_semantics,independent-bias and uncertainty fields for a later metrology report; those are
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,111,uncertainty,measurement_uncertainty_semantics,- `EST v2` live/replay uncertainty fields match for unavailable and incomplete
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,205,uncertainty,measurement_uncertainty_semantics,pps_gate/counter_aperture_uncertainty_ns=unavailable
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,206,uncertainty,measurement_uncertainty_semantics,pps_gate/reference_frequency_uncertainty_ppb=unavailable
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,216,uncertainty,measurement_uncertainty_semantics,The two uncertainty status values remain `unavailable` until promoted from
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,358,uncertainty,measurement_uncertainty_semantics,## Separate metrology and uncertainty evidence
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,364,uncertainty,measurement_uncertainty_semantics,- `count_quantization_standard_uncertainty_hz`;
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,370,uncertainty,measurement_uncertainty_semantics,compute a combined uncertainty when any required component is unavailable.
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,375,uncertainty,measurement_uncertainty_semantics,"including UTC end, exact sequence segments, uncertainty sources, fault notes,"
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,418,uncertainty,measurement_uncertainty_semantics,- incomplete evidence seal or unavailable required uncertainty.
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,22,uncertainty,measurement_uncertainty_semantics,"measurement, and combined uncertainty remain open."
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,201,uncertainty,measurement_uncertainty_semantics,5. Measure counter aperture and populate evidence-backed uncertainty.
-docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,251,standard_deviation,sample_dispersion_or_repeatability,standard deviation must be no more than 1.5 Hz; maximum quiet/load mean shift
-docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,281,uncertainty,measurement_uncertainty_semantics,"uncertainty, resets, and all integrity counters. Only an explicit reviewed"
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,123,uncertainty,measurement_uncertainty_semantics,- `EST v2` live/replay uncertainty fields match for unavailable and incomplete
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,217,uncertainty,measurement_uncertainty_semantics,pps_gate/counter_aperture_uncertainty_ns=unavailable
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,218,uncertainty,measurement_uncertainty_semantics,pps_gate/reference_frequency_uncertainty_ppb=unavailable
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,228,uncertainty,measurement_uncertainty_semantics,The two uncertainty status values remain `unavailable` until promoted from
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,371,uncertainty,measurement_uncertainty_semantics,## Separate metrology and uncertainty evidence
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,377,uncertainty,measurement_uncertainty_semantics,- `count_quantization_standard_uncertainty_hz`;
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,383,uncertainty,measurement_uncertainty_semantics,compute a combined uncertainty when any required component is unavailable.
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,388,uncertainty,measurement_uncertainty_semantics,"including UTC end, exact sequence segments, uncertainty sources, fault notes,"
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,433,uncertainty,measurement_uncertainty_semantics,unavailable uncertainty component limits metrology claims but does not fail the
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,24,uncertainty,measurement_uncertainty_semantics,"measurement, and combined uncertainty remain open."
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,203,uncertainty,measurement_uncertainty_semantics,5. Measure counter aperture and populate evidence-backed uncertainty.
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_EXTENDED_AND_OVERNIGHT_CAMPAIGN_20260801.md,45,standard_deviation,sample_dispersion_or_repeatability,“Spread” is population standard deviation of the stated segment product. The
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_EXTENDED_AND_OVERNIGHT_CAMPAIGN_20260801.md,168,standard_deviation,sample_dispersion_or_repeatability,"15,999,996.927 Hz, population standard deviation 0.777 Hz, and range"
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,63,standard_deviation,sample_dispersion_or_repeatability,"mean was 15,999,998.308 Hz and population standard deviation was 0.560 Hz."
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,74,standard_deviation,sample_dispersion_or_repeatability,| Segment | Eligible windows | Mean (Hz) | Population standard deviation (Hz) |
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,97,standard_deviation,sample_dispersion_or_repeatability,| Segment | Mean (Hz) | Population standard deviation (Hz) |
+docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,157,uncertainty,measurement_uncertainty_semantics,"width-only glitch case, or create an absolute metrology uncertainty budget."
+docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,256,standard_deviation,sample_dispersion_or_repeatability,"sequence loss, capture/transport fault, or population standard deviation above"
+docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,296,uncertainty,measurement_uncertainty_semantics,"uncertainty, resets, and all integrity counters. Only an explicit reviewed"
 docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md,58,standard_deviation,sample_dispersion_or_repeatability,residual standard deviation = 0.029423806 Hz
 docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md,98,standard_deviation,sample_dispersion_or_repeatability,- standard deviation: 0.043665 Hz
 docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md,79,standard_deviation,sample_dispersion_or_repeatability,"Corrected `0xAE00` return medians span 0.056718 Hz, with standard deviation"
 docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,28,uncertainty,measurement_uncertainty_semantics,uncertainty with provenance.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,199,uncertainty,measurement_uncertainty_semantics,"- phase, frequency, drift and uncertainty estimation;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,329,confidence,confidence_semantics,`run_016` was the first measurement-confidence update after adding the local PPS
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,339,standard_deviation,sample_dispersion_or_repeatability,"standard deviation 3.13 Hz, and span 14.48 Hz."
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,349,confidence,confidence_semantics,the following measurement-confidence update:
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,381,standard_deviation,sample_dispersion_or_repeatability,- final 8.17 h `0x8000` hold with 0.043665 Hz standard deviation.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,440,uncertainty,measurement_uncertainty_semantics,phase state | frequency state | drift state | uncertainty | provenance
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,499,uncertainty,measurement_uncertainty_semantics,- uncertainty and observation age.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,521,confidence,confidence_semantics,- reduce gains as confidence increases;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,606,uncertainty,measurement_uncertainty_semantics,"- per-dwell voltage measurements where practical, or a separately calibrated DAC-voltage model with stated uncertainty;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,626,uncertainty,measurement_uncertainty_semantics,- uncertainty and valid neighbourhood;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,637,uncertainty,measurement_uncertainty_semantics,- slope uncertainty is small enough to choose a conservative update;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,644,dispersion,sample_dispersion_or_repeatability,"estimate and band, repeated-centre dispersion, and a settling bound. The"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,657,confidence,confidence_semantics,"codes, evidence references, persistence, diagnostic confidence, and explicit"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,683,uncertainty,measurement_uncertainty_semantics,- phase estimate and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,684,uncertainty,measurement_uncertainty_semantics,- frequency estimate and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,685,uncertainty,measurement_uncertainty_semantics,"- drift estimate and uncertainty, if available;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,741,dispersion;confidence,sample_dispersion_or_repeatability,"- confidence derived from sample count, dispersion, continuity and age."
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,876,uncertainty,measurement_uncertainty_semantics,- maximum code delta derived from slope uncertainty and noise floor;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,908,confidence,confidence_semantics,- confidence thresholds;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,934,uncertainty,measurement_uncertainty_semantics,- phase uncertainty and outlier handling;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,960,uncertainty,measurement_uncertainty_semantics,- increase phase/frequency uncertainty with time;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,967,uncertainty,measurement_uncertainty_semantics,- choose re-entry through acquisition or settling based on error and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,978,confidence,confidence_semantics,- confidence-weighted model selection.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,997,uncertainty,measurement_uncertainty_semantics,- uncertainty/quality;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1005,uncertainty,measurement_uncertainty_semantics,- conceal network latency or uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1025,uncertainty,measurement_uncertainty_semantics,- uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1059,uncertainty;confidence,measurement_uncertainty_semantics,- confidence/uncertainty.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1150,uncertainty,measurement_uncertainty_semantics,- uncertainties;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1208,confidence,confidence_semantics,"Completed: frequency estimation and distinct validity, diagnostic, confidence,"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1237,uncertainty,measurement_uncertainty_semantics,"quiet/load comparison, independent comparison, uncertainty review, reconnect"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1296,confidence,confidence_semantics,- source quality and confidence;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1313,uncertainty,measurement_uncertainty_semantics,- model peer/network information as another observation source with latency and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1355,uncertainty,measurement_uncertainty_semantics,- slope sign/magnitude and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1405,uncertainty,measurement_uncertainty_semantics,- uncertainty tracked.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1423,uncertainty,measurement_uncertainty_semantics,4. estimate frequency and phase with uncertainty and provenance;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1443,uncertainty,measurement_uncertainty_semantics,"2. Complete the authorised independent comparison, aperture uncertainty, and"
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,40,dispersion,sample_dispersion_or_repeatability,"age, continuity, dispersion, and startup/recovery clean windows;"
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,95,uncertainty,measurement_uncertainty_semantics,- explicit unavailable aperture/reference uncertainty hooks;
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,110,uncertainty,measurement_uncertainty_semantics,"comparison, aperture/combined uncertainty, controlled duplicate/short/long PPS"
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,212,standard_deviation,sample_dispersion_or_repeatability,"median 0.007 Hz, standard deviation 3.13 Hz, and span 14.48 Hz, confirming"
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,263,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,324,uncertainty,measurement_uncertainty_semantics,| DMM voltage fit                              | about 37.8905 uV/code                                      | `run_018` operator readings             | Useful calibration model; uncertainty and direct Run 019 DMM trace are absent. |
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,327,uncertainty,measurement_uncertainty_semantics,| Local gain                                   | `0.0001559..0.0001876 Hz/code`; 4.11..4.95 Hz/V            | Run 020 drift-cancelled brackets       | Versioned observe-only gain and uncertainty. |
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,398,uncertainty,measurement_uncertainty_semantics,- Crossing uncertainty: `0xA840..0xAA00`.
-docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,647,uncertainty,measurement_uncertainty_semantics,explicit conservative uncertainty treatment;
-firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1024,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_ns"", ""unavailable"","
-firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1027,uncertainty,measurement_uncertainty_semantics,"""reference_frequency_uncertainty_ppb"", ""unavailable"","
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,220,uncertainty,measurement_uncertainty_semantics,"- phase, frequency, drift and uncertainty estimation;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,356,confidence,confidence_semantics,`run_016` was the first measurement-confidence update after adding the local PPS
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,366,standard_deviation,sample_dispersion_or_repeatability,"standard deviation 3.13 Hz, and span 14.48 Hz."
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,376,confidence,confidence_semantics,the following measurement-confidence update:
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,408,standard_deviation,sample_dispersion_or_repeatability,- final 8.17 h `0x8000` hold with 0.043665 Hz standard deviation.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,467,uncertainty,measurement_uncertainty_semantics,phase state | frequency state | drift state | uncertainty | provenance
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,526,uncertainty,measurement_uncertainty_semantics,- uncertainty and observation age.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,548,confidence,confidence_semantics,- reduce gains as confidence increases;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,633,uncertainty,measurement_uncertainty_semantics,"- per-dwell voltage measurements where practical, or a separately calibrated DAC-voltage model with stated uncertainty;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,653,uncertainty,measurement_uncertainty_semantics,- uncertainty and valid neighbourhood;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,664,uncertainty,measurement_uncertainty_semantics,- slope uncertainty is small enough to choose a conservative update;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,671,dispersion,sample_dispersion_or_repeatability,"estimate and band, repeated-centre dispersion, and a settling bound. The"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,684,confidence,confidence_semantics,"codes, evidence references, persistence, diagnostic confidence, and explicit"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,710,uncertainty,measurement_uncertainty_semantics,- phase estimate and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,711,uncertainty,measurement_uncertainty_semantics,- frequency estimate and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,712,uncertainty,measurement_uncertainty_semantics,"- drift estimate and uncertainty, if available;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,769,dispersion;confidence,sample_dispersion_or_repeatability,"- confidence derived from sample count, dispersion, continuity and age."
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,928,uncertainty,measurement_uncertainty_semantics,- maximum code delta derived from slope uncertainty and noise floor;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,960,confidence,confidence_semantics,- confidence thresholds;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,986,uncertainty,measurement_uncertainty_semantics,- phase uncertainty and outlier handling;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1012,uncertainty,measurement_uncertainty_semantics,- increase phase/frequency uncertainty with time;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1019,uncertainty,measurement_uncertainty_semantics,- choose re-entry through acquisition or settling based on error and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1030,confidence,confidence_semantics,- confidence-weighted model selection.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1049,uncertainty,measurement_uncertainty_semantics,- uncertainty/quality;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1057,uncertainty,measurement_uncertainty_semantics,- conceal network latency or uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1077,uncertainty,measurement_uncertainty_semantics,- uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1111,uncertainty;confidence,measurement_uncertainty_semantics,- confidence/uncertainty.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1202,uncertainty,measurement_uncertainty_semantics,- uncertainties;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1260,confidence,confidence_semantics,"Completed: frequency estimation and distinct validity, diagnostic, confidence,"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1354,confidence,confidence_semantics,- source quality and confidence;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1371,uncertainty,measurement_uncertainty_semantics,- model peer/network information as another observation source with latency and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1413,uncertainty,measurement_uncertainty_semantics,- slope sign/magnitude and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1448,uncertainty,measurement_uncertainty_semantics,their available uncertainty rather than invented as a digital-backend gate.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1472,uncertainty,measurement_uncertainty_semantics,- uncertainty tracked.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1490,uncertainty,measurement_uncertainty_semantics,4. estimate frequency and phase with uncertainty and provenance;
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,42,dispersion,sample_dispersion_or_repeatability,"age, continuity, dispersion, and startup/recovery clean windows;"
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,100,uncertainty,measurement_uncertainty_semantics,- explicit unavailable aperture/reference uncertainty hooks;
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,122,uncertainty,measurement_uncertainty_semantics,metrology and a complete uncertainty budget also remain outside this
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,235,standard_deviation,sample_dispersion_or_repeatability,"median 0.007 Hz, standard deviation 3.13 Hz, and span 14.48 Hz, confirming"
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,286,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,347,uncertainty,measurement_uncertainty_semantics,| DMM voltage fit                              | about 37.8905 uV/code                                      | `run_018` operator readings             | Useful calibration model; uncertainty and direct Run 019 DMM trace are absent. |
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,350,uncertainty,measurement_uncertainty_semantics,| Local gain                                   | `0.0001559..0.0001876 Hz/code`; 4.11..4.95 Hz/V            | Run 020 drift-cancelled brackets       | Versioned observe-only gain and uncertainty. |
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,421,uncertainty,measurement_uncertainty_semantics,- Crossing uncertainty: `0xA840..0xAA00`.
+docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,674,uncertainty,measurement_uncertainty_semantics,explicit conservative uncertainty treatment;
+firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1026,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_ns"", ""unavailable"","
+firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1029,uncertainty,measurement_uncertainty_semantics,"""reference_frequency_uncertainty_ppb"", ""unavailable"","
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_engine.cpp,89,dispersion,sample_dispersion_or_repeatability,const double dispersion =
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_engine.cpp,96,dispersion,sample_dispersion_or_repeatability,decision->dispersion_hz = dispersion;
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_engine.cpp,102,dispersion,sample_dispersion_or_repeatability,dispersion > engine->config.maximum_dispersion_hz)
@@ -238,13 +252,13 @@ firmware/arduino/otis_nano_rp2040_connect/otis_phase4_engine.h,152,confidence,co
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_engine.h,191,confidence,confidence_semantics,const char *otis_phase4_confidence_name(OtisPhase4Confidence confidence);
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,54,uncertainty,measurement_uncertainty_semantics,constexpr char kUncertaintyModelRef[] =
 firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,55,uncertainty,measurement_uncertainty_semantics,"""phase4_uncertainty_budget_v1#sha256:"""
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,608,uncertainty,measurement_uncertainty_semantics,const char *uncertainty_status =
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,610,uncertainty,measurement_uncertainty_semantics,const char *uncertainty_reasons =
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,612,uncertainty,measurement_uncertainty_semantics,"? ""count_quantization_model_unavailable;counter_aperture_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable;model_uncertainty_unavailable"""
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,673,confidence,confidence_semantics,"otis_phase4_confidence_name(decision.confidence),"
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,675,uncertainty,measurement_uncertainty_semantics,"uncertainty_status, uncertainty_reasons, kUncertaintyModelRef,"
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,948,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n"");"
-firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,952,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,reference_observation_seq,reference_observation_id,observation_timestamp_ticks,time_domain,source_identity_epoch,source_reference_first_seq,source_reference_last_seq,source_reference_refs,source_metadata_refs,receiver_identity,receiver_firmware,cadence_state,capture_path_state,receiver_authority_state,utc_traceability_state,metadata_freshness,timing_mode,fix_holdover_state,antenna_state,leap_state,sawtooth_correction_ns,cable_delay_ns,pulse_configuration,calibration_ref,reference_standard_uncertainty_s,qualification_state,qualification_reason_codes,algorithm_version,config_hash\r\n"");"
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,610,uncertainty,measurement_uncertainty_semantics,const char *uncertainty_status =
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,612,uncertainty,measurement_uncertainty_semantics,const char *uncertainty_reasons =
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,614,uncertainty,measurement_uncertainty_semantics,"? ""count_quantization_model_unavailable;counter_aperture_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable;model_uncertainty_unavailable"""
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,675,confidence,confidence_semantics,"otis_phase4_confidence_name(decision.confidence),"
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,677,uncertainty,measurement_uncertainty_semantics,"uncertainty_status, uncertainty_reasons, kUncertaintyModelRef,"
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,950,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n"");"
+firmware/arduino/otis_nano_rp2040_connect/otis_phase4_observe_preview.cpp,954,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,reference_observation_seq,reference_observation_id,observation_timestamp_ticks,time_domain,source_identity_epoch,source_reference_first_seq,source_reference_last_seq,source_reference_refs,source_metadata_refs,receiver_identity,receiver_firmware,cadence_state,capture_path_state,receiver_authority_state,utc_traceability_state,metadata_freshness,timing_mode,fix_holdover_state,antenna_state,leap_state,sawtooth_correction_ns,cable_delay_ns,pulse_configuration,calibration_ref,reference_standard_uncertainty_s,qualification_state,qualification_reason_codes,algorithm_version,config_hash\r\n"");"
 firmware/arduino/validation/END_TO_END_VALIDATION_PLAN.md,293,uncertainty,measurement_uncertainty_semantics,"source typing, uncertainty requirements, sealing steps, and disposition rules"
 host/otis_tools/contracts.py,183,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_s"","
 host/otis_tools/contracts.py,221,uncertainty,measurement_uncertainty_semantics,"""frequency_uncertainty_hz"","
@@ -345,37 +359,39 @@ host/otis_tools/plant_model.py,487,uncertainty,measurement_uncertainty_semantics
 host/otis_tools/plant_model.py,643,uncertainty,measurement_uncertainty_semantics,"uncertainty = data[""plant_response""][""local_slope""][""uncertainty""]"
 host/otis_tools/plant_model.py,651,uncertainty,measurement_uncertainty_semantics,if field in uncertainty and not historical_allowed:
 host/otis_tools/plant_model.py,653,uncertainty,measurement_uncertainty_semantics,"""plant_response.local_slope.uncertainty."""
-host/otis_tools/pps_backend_qualification.py,271,uncertainty,measurement_uncertainty_semantics,"uncertainty: dict[str, float | None]"
-host/otis_tools/pps_backend_qualification.py,403,uncertainty,measurement_uncertainty_semantics,"""uncertainty"","
-host/otis_tools/pps_backend_qualification.py,417,uncertainty,measurement_uncertainty_semantics,"uncertainty = metadata[""uncertainty""]"
-host/otis_tools/pps_backend_qualification.py,418,uncertainty,measurement_uncertainty_semantics,"if not isinstance(uncertainty, dict):"
-host/otis_tools/pps_backend_qualification.py,419,uncertainty,measurement_uncertainty_semantics,"raise ValueError(f""{manifest.run_id}: uncertainty must be an object"")"
-host/otis_tools/pps_backend_qualification.py,420,uncertainty,measurement_uncertainty_semantics,allowed_uncertainty = {
-host/otis_tools/pps_backend_qualification.py,421,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
-host/otis_tools/pps_backend_qualification.py,426,uncertainty,measurement_uncertainty_semantics,if set(uncertainty) - allowed_uncertainty:
-host/otis_tools/pps_backend_qualification.py,428,uncertainty,measurement_uncertainty_semantics,"f""{manifest.run_id}: unsupported uncertainty fields """
-host/otis_tools/pps_backend_qualification.py,429,uncertainty,measurement_uncertainty_semantics,"f""{sorted(set(uncertainty) - allowed_uncertainty)}"""
-host/otis_tools/pps_backend_qualification.py,431,uncertainty,measurement_uncertainty_semantics,"parsed_uncertainty: dict[str, float | None] = {}"
-host/otis_tools/pps_backend_qualification.py,432,uncertainty,measurement_uncertainty_semantics,for key in sorted(allowed_uncertainty):
-host/otis_tools/pps_backend_qualification.py,433,uncertainty,measurement_uncertainty_semantics,raw = uncertainty.get(key)
-host/otis_tools/pps_backend_qualification.py,435,uncertainty,measurement_uncertainty_semantics,parsed_uncertainty[key] = None
-host/otis_tools/pps_backend_qualification.py,442,uncertainty,measurement_uncertainty_semantics,parsed_uncertainty[key] = float(raw)
-host/otis_tools/pps_backend_qualification.py,445,uncertainty,measurement_uncertainty_semantics,"f""{manifest.run_id}: uncertainty {key} must be positive or null"""
-host/otis_tools/pps_backend_qualification.py,569,uncertainty,measurement_uncertainty_semantics,"uncertainty=parsed_uncertainty,"
-host/otis_tools/pps_backend_qualification.py,1253,uncertainty,measurement_uncertainty_semantics,def _uncertainty(
-host/otis_tools/pps_backend_qualification.py,1260,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ("
-host/otis_tools/pps_backend_qualification.py,1261,uncertainty,measurement_uncertainty_semantics,candidate_typing.uncertainty[
-host/otis_tools/pps_backend_qualification.py,1262,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"""
-host/otis_tools/pps_backend_qualification.py,1269,uncertainty,measurement_uncertainty_semantics,"aperture_s = candidate_typing.uncertainty[""counter_aperture_s_1sigma""]"
-host/otis_tools/pps_backend_qualification.py,1274,uncertainty,measurement_uncertainty_semantics,reference_fractional = candidate_typing.uncertainty[
-host/otis_tools/pps_backend_qualification.py,1283,uncertainty,measurement_uncertainty_semantics,independent_typing.uncertainty[
-host/otis_tools/pps_backend_qualification.py,1298,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": combined,"
-host/otis_tools/pps_backend_qualification.py,1300,uncertainty,measurement_uncertainty_semantics,"""expanded_uncertainty_hz"": 2.0 * combined"
-host/otis_tools/pps_backend_qualification.py,1529,uncertainty,measurement_uncertainty_semantics,uncertainty = _uncertainty(
-host/otis_tools/pps_backend_qualification.py,1681,uncertainty,measurement_uncertainty_semantics,"""uncertainty_complete"": not uncertainty[""unavailable_components""],"
-host/otis_tools/pps_backend_qualification.py,1701,uncertainty,measurement_uncertainty_semantics,"if uncertainty[""unavailable_components""]:"
-host/otis_tools/pps_backend_qualification.py,1702,uncertainty,measurement_uncertainty_semantics,"limitations.append(""uncertainty_components_unavailable"")"
-host/otis_tools/pps_backend_qualification.py,1899,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": uncertainty,"
+host/otis_tools/pps_backend_qualification.py,346,uncertainty,measurement_uncertainty_semantics,"uncertainty: dict[str, float | None]"
+host/otis_tools/pps_backend_qualification.py,478,uncertainty,measurement_uncertainty_semantics,"""uncertainty"","
+host/otis_tools/pps_backend_qualification.py,492,uncertainty,measurement_uncertainty_semantics,"uncertainty = metadata[""uncertainty""]"
+host/otis_tools/pps_backend_qualification.py,493,uncertainty,measurement_uncertainty_semantics,"if not isinstance(uncertainty, dict):"
+host/otis_tools/pps_backend_qualification.py,494,uncertainty,measurement_uncertainty_semantics,"raise ValueError(f""{manifest.run_id}: uncertainty must be an object"")"
+host/otis_tools/pps_backend_qualification.py,495,uncertainty,measurement_uncertainty_semantics,allowed_uncertainty = {
+host/otis_tools/pps_backend_qualification.py,496,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
+host/otis_tools/pps_backend_qualification.py,501,uncertainty,measurement_uncertainty_semantics,if set(uncertainty) - allowed_uncertainty:
+host/otis_tools/pps_backend_qualification.py,503,uncertainty,measurement_uncertainty_semantics,"f""{manifest.run_id}: unsupported uncertainty fields """
+host/otis_tools/pps_backend_qualification.py,504,uncertainty,measurement_uncertainty_semantics,"f""{sorted(set(uncertainty) - allowed_uncertainty)}"""
+host/otis_tools/pps_backend_qualification.py,506,uncertainty,measurement_uncertainty_semantics,"parsed_uncertainty: dict[str, float | None] = {}"
+host/otis_tools/pps_backend_qualification.py,507,uncertainty,measurement_uncertainty_semantics,for key in sorted(allowed_uncertainty):
+host/otis_tools/pps_backend_qualification.py,508,uncertainty,measurement_uncertainty_semantics,raw = uncertainty.get(key)
+host/otis_tools/pps_backend_qualification.py,510,uncertainty,measurement_uncertainty_semantics,parsed_uncertainty[key] = None
+host/otis_tools/pps_backend_qualification.py,517,uncertainty,measurement_uncertainty_semantics,parsed_uncertainty[key] = float(raw)
+host/otis_tools/pps_backend_qualification.py,520,uncertainty,measurement_uncertainty_semantics,"f""{manifest.run_id}: uncertainty {key} must be positive or null"""
+host/otis_tools/pps_backend_qualification.py,644,uncertainty,measurement_uncertainty_semantics,"uncertainty=parsed_uncertainty,"
+host/otis_tools/pps_backend_qualification.py,1489,uncertainty,measurement_uncertainty_semantics,def _uncertainty(
+host/otis_tools/pps_backend_qualification.py,1496,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ("
+host/otis_tools/pps_backend_qualification.py,1497,uncertainty,measurement_uncertainty_semantics,candidate_typing.uncertainty[
+host/otis_tools/pps_backend_qualification.py,1498,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"""
+host/otis_tools/pps_backend_qualification.py,1505,uncertainty,measurement_uncertainty_semantics,"aperture_s = candidate_typing.uncertainty[""counter_aperture_s_1sigma""]"
+host/otis_tools/pps_backend_qualification.py,1510,uncertainty,measurement_uncertainty_semantics,reference_fractional = candidate_typing.uncertainty[
+host/otis_tools/pps_backend_qualification.py,1519,uncertainty,measurement_uncertainty_semantics,independent_typing.uncertainty[
+host/otis_tools/pps_backend_qualification.py,1534,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": combined,"
+host/otis_tools/pps_backend_qualification.py,1536,uncertainty,measurement_uncertainty_semantics,"""expanded_uncertainty_hz"": 2.0 * combined"
+host/otis_tools/pps_backend_qualification.py,1783,uncertainty,measurement_uncertainty_semantics,uncertainty = _uncertainty(
+host/otis_tools/pps_backend_qualification.py,1935,uncertainty,measurement_uncertainty_semantics,"""uncertainty_complete"": not uncertainty[""unavailable_components""],"
+host/otis_tools/pps_backend_qualification.py,1944,uncertainty,measurement_uncertainty_semantics,"""uncertainty_complete"": checks[""uncertainty_complete""],"
+host/otis_tools/pps_backend_qualification.py,1950,uncertainty,measurement_uncertainty_semantics,"""uncertainty_complete"","
+host/otis_tools/pps_backend_qualification.py,1984,uncertainty,measurement_uncertainty_semantics,"if uncertainty[""unavailable_components""]:"
+host/otis_tools/pps_backend_qualification.py,1985,uncertainty,measurement_uncertainty_semantics,"limitations.append(""uncertainty_components_unavailable"")"
+host/otis_tools/pps_backend_qualification.py,2219,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": uncertainty,"
 host/otis_tools/reference_quality.py,71,uncertainty,measurement_uncertainty_semantics,reference_standard_uncertainty_s: float | None = None
 host/otis_tools/reference_quality.py,164,uncertainty,measurement_uncertainty_semantics,reference_standard_uncertainty_s=optional_float(
 host/otis_tools/reference_quality.py,165,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_s"""
@@ -436,111 +452,6 @@ profiles/run_templates/phase5_independent_long_gate_v1/run_manifest.json,81,unce
 profiles/run_templates/phase5_pps_gated_candidate_v1/run_manifest.json,97,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
 profiles/run_templates/phase5_pps_gated_candidate_v1/run_manifest.json,98,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": null,"
 profiles/run_templates/phase5_pps_gated_candidate_v1/run_manifest.json,108,uncertainty,measurement_uncertainty_semantics,"""Unknown uncertainty components remain null until measured or supplied by authorised calibration evidence."""
-runs/h0_sw1/gpio_loopback/run_001/reports/summary.md,32,standard_deviation,sample_dispersion_or_repeatability,"- CH0 intervals ticks: count=165, min=3995216.000, max=4020784.000, mean=4000096.970, stddev=2722.520"
-runs/h0_sw1/gps_pps/run_001/reports/summary.md,32,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=26, min=15999792.000, max=16000016.000, mean=15999975.385, stddev=40.2407"
-runs/h0_sw1/gps_pps/run_001/reports/summary.md,36,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=26, mean=15999975.385 ticks / 0.999998 s, min=0.999987 s, max=1 s, stddev=2.51504e-06 s, ppm_error_vs_1s=-1.538 ppm; using manifest nominal_hz"
-runs/h0_sw1/synthetic_usb/run_001/reports/summary.md,34,standard_deviation,sample_dispersion_or_repeatability,"- CH0 intervals ticks: count=1, min=638, max=638, mean=638, stddev=not computed"
-runs/h0_sw1/synthetic_usb/run_001/reports/summary.md,35,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=1, min=16000000.000, max=16000000.000, mean=16000000.000, stddev=not computed"
-runs/h0_sw1/synthetic_usb/run_001/reports/summary.md,39,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=1, mean=16000000.000 ticks / 1 s, min=1 s, max=1 s, stddev=not computed s, ppm_error_vs_1s=0.000 ppm; using manifest nominal_hz"
-runs/h0_sw1/tcxo_observe/run_001/reports/summary.md,34,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=78, min=15999968.000, max=16000032.000, mean=15999992.000, stddev=14.662"
-runs/h0_sw1/tcxo_observe/run_001/reports/summary.md,38,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=78, mean=15999992.000 ticks / 1 s, min=0.999998 s, max=1 s, stddev=9.16375e-07 s, ppm_error_vs_1s=-0.500 ppm; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_005/reports/summary.json,253,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 16.724519211811202,"
-runs/h1_open_loop/dac_manual_sweep/run_005/reports/summary.md,57,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=4273, min=15999664.000, max=15999984.000, mean=15999913.458, stddev=16.7245, wrap_count=0"
-runs/h1_open_loop/dac_manual_sweep/run_005/reports/summary.md,61,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=4273, mean=15999913.458 ticks / 0.999995 s, min=0.999979 s, max=0.999999 s, stddev=1.04528e-06 s, ppm_error_vs_1s=-5.409 ppm, wrap_count=0; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_006/reports/summary.md,56,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=724, min=15999904.000, max=31999648.000, mean=16022035.624, stddev=594213.798"
-runs/h1_open_loop/dac_manual_sweep/run_006/reports/summary.md,60,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=724, mean=16022035.624 ticks / 1.00138 s, min=0.999994 s, max=1.99998 s, stddev=0.0371384 s, ppm_error_vs_1s=1377.227 ppm; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_007/reports/summary.json,268,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 87830.0440036222,"
-runs/h1_open_loop/dac_manual_sweep/run_007/reports/summary.md,58,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=17188, min=6482304.000, max=16000016.000, mean=15998984.413, stddev=87830.044, wrap_count=4"
-runs/h1_open_loop/dac_manual_sweep/run_007/reports/summary.md,62,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=17188, mean=15998984.413 ticks / 0.999937 s, min=0.405144 s, max=1 s, stddev=0.00548938 s, ppm_error_vs_1s=-63.474 ppm, wrap_count=4; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_008/reports/anomalies.md,16,standard_deviation,sample_dispersion_or_repeatability,"- These rows distort aggregate mean/stddev values. Across all count windows the mean is 9,998,232.400 Hz with 24,331.899 Hz population stddev; filtering only rows below 9,999,900 Hz leaves 208 windows with median 10,000,047.807 Hz, mean 10,000,047.684 Hz, and 2.910 Hz population stddev."
-runs/h1_open_loop/dac_manual_sweep/run_008/reports/anomalies.md,17,standard_deviation,sample_dispersion_or_repeatability,"- The final long MID dwell (`step_8_111`) is affected in its mean/stddev, but its median/MAD remain useful."
-runs/h1_open_loop/dac_manual_sweep/run_008/reports/summary.json,270,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 107214378.22558515,"
-runs/h1_open_loop/dac_manual_sweep/run_008/reports/summary.md,58,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=63348, min=-26969030576.000, max=16000016.000, mean=15573939.109, stddev=107214378.226, wrap_count=14"
-runs/h1_open_loop/dac_manual_sweep/run_008/reports/summary.md,62,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=63348, mean=15573939.109 ticks / 0.973371 s, min=-1685.564 s, max=1 s, stddev=6.7009 s, ppm_error_vs_1s=-26628.806 ppm, wrap_count=14; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_009/reports/h1_characterization_summary.md,69,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=-0.0815262, stddev=3.08602, span=16.8867"
-runs/h1_open_loop/dac_manual_sweep/run_009/reports/summary.json,302,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 43498987.29616843,"
-runs/h1_open_loop/dac_manual_sweep/run_009/reports/summary.md,60,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=89949, min=-13014852432.000, max=31999760.000, mean=15848231.359, stddev=43498987.296, wrap_count=20"
-runs/h1_open_loop/dac_manual_sweep/run_009/reports/summary.md,64,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=89949, mean=15848231.359 ticks / 0.990514 s, min=-813.428 s, max=1.99998 s, stddev=2.71869 s, ppm_error_vs_1s=-9485.540 ppm, wrap_count=20; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_010/reports/summary.json,283,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 259593.06461007128,"
-runs/h1_open_loop/dac_manual_sweep/run_010/reports/summary.md,66,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=68377, min=15999808.000, max=79999696.000, mean=16001333.944, stddev=259593.065, wrap_count=15"
-runs/h1_open_loop/dac_manual_sweep/run_010/reports/summary.md,70,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=68377, mean=16001333.944 ticks / 1.00008 s, min=0.999988 s, max=4.99998 s, stddev=0.0162246 s, ppm_error_vs_1s=83.372 ppm, wrap_count=15; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_011/reports/h1_characterization_summary.md,65,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.832676, stddev=4.30573, span=33.7072"
-runs/h1_open_loop/dac_manual_sweep/run_011/reports/summary.json,241,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 42750.705520830874,"
-runs/h1_open_loop/dac_manual_sweep/run_011/reports/summary.md,67,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=202249, min=1089712.000, max=16000064.000, mean=15999753.094, stddev=42750.706, wrap_count=47"
-runs/h1_open_loop/dac_manual_sweep/run_011/reports/summary.md,71,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=202249, mean=15999753.094 ticks / 0.999985 s, min=0.068107 s, max=1 s, stddev=0.00267192 s, ppm_error_vs_1s=-15.432 ppm, wrap_count=47; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_012/reports/h1_characterization_summary.md,65,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=-0.0063671, stddev=5.13907, span=30.2224"
-runs/h1_open_loop/dac_manual_sweep/run_013/reports/h1_characterization_summary.md,65,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.00389028, stddev=2.81629, span=9.28014"
-runs/h1_open_loop/dac_manual_sweep/run_013/reports/summary.json,241,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 932818.2868781418,"
-runs/h1_open_loop/dac_manual_sweep/run_013/reports/summary.md,67,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=7354, min=15999824.000, max=95999632.000, mean=16010803.879, stddev=932818.287, wrap_count=1"
-runs/h1_open_loop/dac_manual_sweep/run_013/reports/summary.md,71,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=7354, mean=16010803.879 ticks / 1.00068 s, min=0.999989 s, max=5.99998 s, stddev=0.0583011 s, ppm_error_vs_1s=675.242 ppm, wrap_count=1; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_014/reports/h1_characterization_summary.md,64,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=23.5411, stddev=3.7331, span=17.7668"
-runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.json,239,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 2654432.568854097,"
-runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.md,70,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=87736, min=1168.000, max=16000192.000, mean=15526129.802, stddev=2654432.569, wrap_count=19"
-runs/h1_open_loop/dac_manual_sweep/run_014/reports/summary.md,74,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=87736, mean=15526129.802 ticks / 0.970383 s, min=7.3e-05 s, max=1.00001 s, stddev=0.165902 s, ppm_error_vs_1s=-29616.887 ppm, wrap_count=19; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_015/notes.md,323,uncertainty,measurement_uncertainty_semantics,- slope magnitude and uncertainty can be bounded inside the local
-runs/h1_open_loop/dac_manual_sweep/run_015/notes.md,328,uncertainty,measurement_uncertainty_semantics,"valid DAC-code interval, settling discard/cadence, uncertainty, and reference"
-runs/h1_open_loop/dac_manual_sweep/run_015/reports/h1_characterization_summary.md,64,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=45.8973, stddev=2.11722, span=9.47276"
-runs/h1_open_loop/dac_manual_sweep/run_015/reports/summary.json,230,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 101130.00142594511,"
-runs/h1_open_loop/dac_manual_sweep/run_015/reports/summary.md,70,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=20729, min=1518640.000, max=16000048.000, mean=15999132.289, stddev=101130.001, wrap_count=4"
-runs/h1_open_loop/dac_manual_sweep/run_015/reports/summary.md,74,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=20729, mean=15999132.289 ticks / 0.999946 s, min=0.094915 s, max=1 s, stddev=0.00632063 s, ppm_error_vs_1s=-54.232 ppm, wrap_count=4; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_016/notes.md,352,uncertainty,measurement_uncertainty_semantics,- slope magnitude and uncertainty can be bounded inside the local
-runs/h1_open_loop/dac_manual_sweep/run_016/notes.md,357,uncertainty,measurement_uncertainty_semantics,"valid DAC-code interval, settling discard/cadence, uncertainty, and reference"
-runs/h1_open_loop/dac_manual_sweep/run_016/reports/h1_characterization_summary.md,63,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.00700176, stddev=3.13328, span=14.4793"
-runs/h1_open_loop/dac_manual_sweep/run_016/reports/summary.json,229,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 16.31853690754026,"
-runs/h1_open_loop/dac_manual_sweep/run_016/reports/summary.md,70,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=45917, min=15999760.000, max=16000096.000, mean=15999908.172, stddev=16.3185, wrap_count=10"
-runs/h1_open_loop/dac_manual_sweep/run_016/reports/summary.md,74,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=45917, mean=15999908.172 ticks / 0.999994 s, min=0.999985 s, max=1.00001 s, stddev=1.01991e-06 s, ppm_error_vs_1s=-5.739 ppm, wrap_count=10; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_017/reports/h1_characterization_summary.md,63,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=-0.235944, stddev=4.88826, span=21.6397"
-runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.json,252,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 28.2412679632422,"
-runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md,71,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=72409, min=15999808.000, max=16000064.000, mean=15999920.679, stddev=28.2413, wrap_count=16"
-runs/h1_open_loop/dac_manual_sweep/run_017/reports/summary.md,75,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=72409, mean=15999920.679 ticks / 0.999995 s, min=0.999988 s, max=1 s, stddev=1.76508e-06 s, ppm_error_vs_1s=-4.958 ppm, wrap_count=16; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_018/reports/h1_characterization_summary.md,67,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.541543, stddev=2.50278, span=9.45506"
-runs/h1_open_loop/dac_manual_sweep/run_019/OPERATOR.md,71,uncertainty,measurement_uncertainty_semantics,Crossing-code uncertainty:
-runs/h1_open_loop/dac_manual_sweep/run_019/manifest.json,160,uncertainty,measurement_uncertainty_semantics,"""The closeout states the highest code below 10 MHz, lowest code above 10 MHz, interpolated crossing code, uncertainty/applicability, and whether another confirmation is required."","
-runs/h1_open_loop/dac_manual_sweep/run_019/notes.md,15,uncertainty,measurement_uncertainty_semantics,- estimate the 10 MHz crossing code and its uncertainty;
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/h1_characterization_summary.md,63,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.366146, stddev=3.17307, span=17.4399"
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/h1_characterization_summary_settling_900s.md,63,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=0.366146, stddev=3.17307, span=17.4399"
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/run_019_analysis_precis.md,15,standard_deviation,sample_dispersion_or_repeatability,standard deviation.
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/run_019_analysis_precis.md,29,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974 Hz, standard deviation 0.0437 Hz, and fitted drift"
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.json,256,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 22.611123045097482,"
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md,70,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=46394, min=15999808.000, max=16000032.000, mean=15999916.948, stddev=22.6111, wrap_count=10"
-runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md,74,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=46394, mean=15999916.948 ticks / 0.999995 s, min=0.999988 s, max=1 s, stddev=1.4132e-06 s, ppm_error_vs_1s=-5.191 ppm, wrap_count=10; using manifest nominal_hz"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/anomalies.md,27,standard_deviation,sample_dispersion_or_repeatability,which inflates that dwell's mean and standard deviation and makes the final
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/anomalies.md,30,standard_deviation,sample_dispersion_or_repeatability,"10,000,000.188079 Hz and standard deviation is 0.025141 Hz. Excluding sequence"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/h1_characterization_summary.md,60,standard_deviation,sample_dispersion_or_repeatability,"- local_vs_legacy_difference_hz: median=-0.221261, stddev=2.70448, span=13.5015"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md,75,uncertainty,measurement_uncertainty_semantics,between-run environmental or calibration uncertainty. The Run 018 voltage fit
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md,80,standard_deviation,sample_dispersion_or_repeatability,"Corrected `0xAE00` return medians span 0.056718 Hz, with standard deviation"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md,107,uncertainty,measurement_uncertainty_semantics,"uncertainty, retain all validity gates, and define fail-static, update-size,"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/summary.json,272,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 22.847517045325745,"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/summary.md,68,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=23250, min=15999712.000, max=16000128.000, mean=15999918.009, stddev=22.8475, wrap_count=5"
-runs/h1_open_loop/dac_manual_sweep/run_020/reports/summary.md,72,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=23250, mean=15999918.009 ticks / 0.999995 s, min=0.999982 s, max=1.00001 s, stddev=1.42797e-06 s, ppm_error_vs_1s=-5.124 ppm, wrap_count=5; using manifest nominal_hz"
-runs/h1_open_loop/dac_output_verify/run_001/reports/summary.md,54,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=247, min=15999904.000, max=31999872.000, mean=16064722.138, stddev=1015988.047"
-runs/h1_open_loop/dac_output_verify/run_001/reports/summary.md,58,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=247, mean=16064722.138 ticks / 1.00405 s, min=0.999994 s, max=1.99999 s, stddev=0.0634993 s, ppm_error_vs_1s=4045.134 ppm; using manifest nominal_hz"
-runs/h1_open_loop/ocxo_free_run/run_001/reports/summary.md,54,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=59999, min=-68703476848.000, max=16000016.000, mean=948722.697, stddev=1012195068.162"
-runs/h1_open_loop/ocxo_free_run/run_001/reports/summary.md,58,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=59999, mean=948722.697 ticks / 0.0592952 s, min=-4293.967 s, max=1 s, stddev=63.2622 s, ppm_error_vs_1s=-940704.831 ppm; using manifest nominal_hz"
-runs/h1_open_loop/ocxo_free_run/run_002/reports/summary.json,217,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 51583.483972284375,"
-runs/h1_open_loop/ocxo_free_run/run_002/reports/summary.md,55,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=96204, min=15999872.000, max=31999536.000, mean=16000089.145, stddev=51583.484, wrap_count=22"
-runs/h1_open_loop/ocxo_free_run/run_002/reports/summary.md,59,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=96204, mean=16000089.145 ticks / 1.00001 s, min=0.999992 s, max=1.99997 s, stddev=0.00322397 s, ppm_error_vs_1s=5.572 ppm, wrap_count=22; using manifest nominal_hz"
-runs/h1_open_loop/ocxo_free_run/run_003/reports/summary.json,238,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 17303100.556387007,"
-runs/h1_open_loop/ocxo_free_run/run_003/reports/summary.md,55,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=26089, min=-2677716144.000, max=79999632.000, mean=15872525.163, stddev=17303100.556, wrap_count=6"
-runs/h1_open_loop/ocxo_free_run/run_003/reports/summary.md,59,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=26089, mean=15872525.163 ticks / 0.992033 s, min=-167.357 s, max=4.99998 s, stddev=1.08144 s, ppm_error_vs_1s=-7967.177 ppm, wrap_count=6; using manifest nominal_hz"
-runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md,47,standard_deviation,sample_dispersion_or_repeatability,"- The H1 characterization summary includes one startup partial-zero row in broad all-count statistics; use median/clean-window conclusions for this MID run, not the all-count mean/stddev."
-runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.json,234,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 15.625684730124597,"
-runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md,55,standard_deviation,sample_dispersion_or_repeatability,"- CH1 intervals ticks: count=36864, min=15999744.000, max=15999984.000, mean=15999913.846, stddev=15.6257, wrap_count=8"
-runs/h1_open_loop/ocxo_free_run/run_004/reports/summary.md,59,standard_deviation,sample_dispersion_or_repeatability,"- rp2040_timer0: intervals=36864, mean=15999913.846 ticks / 0.999995 s, min=0.999984 s, max=0.999999 s, stddev=9.76605e-07 s, ppm_error_vs_1s=-5.385 ppm, wrap_count=8; using manifest nominal_hz"
-runs/phase5_pps_backend/candidate_20260730T192721Z/run_manifest.json,93,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
-runs/phase5_pps_backend/candidate_20260730T192721Z/run_manifest.json,94,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": null,"
-runs/phase5_pps_backend/candidate_20260730T192721Z/run_manifest.json,103,uncertainty,measurement_uncertainty_semantics,"""Unknown uncertainty components remain null until measured or supplied by authorised calibration evidence."""
-runs/phase5_pps_backend/candidate_run_001/reports/summary.json,196,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_ns"": 1,"
-runs/phase5_pps_backend/candidate_run_001/reports/summary.json,273,uncertainty,measurement_uncertainty_semantics,"""reference_frequency_uncertainty_ppb"": 1,"
-runs/phase5_pps_backend/candidate_run_001/reports/summary.json,333,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": 66858345.15029368,"
-runs/phase5_pps_backend/candidate_run_001/reports/summary.json,341,standard_deviation,sample_dispersion_or_repeatability,"""stddev"": null,"
-runs/phase5_pps_backend/candidate_run_001/reports/summary.json,478,uncertainty,measurement_uncertainty_semantics,"""Unknown uncertainty components remain null until measured or supplied by authorised calibration evidence."""
-runs/phase5_pps_backend/candidate_run_001/run_manifest.json,72,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
-runs/phase5_pps_backend/candidate_run_001/run_manifest.json,73,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": null,"
-runs/phase5_pps_backend/candidate_run_001/run_manifest.json,82,uncertainty,measurement_uncertainty_semantics,"""Unknown uncertainty components remain null until measured or supplied by authorised calibration evidence."""
-runs/phase5_pps_backend/independent_run_001/run_manifest.json,71,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
-runs/phase5_pps_backend/independent_run_001/run_manifest.json,72,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": null,"
-runs/phase5_pps_backend/independent_run_001/run_manifest.json,81,uncertainty,measurement_uncertainty_semantics,"""Unknown uncertainty components remain null rather than zero."""
 schemas/plant_model_v1.schema.json,217,uncertainty,measurement_uncertainty_semantics,"""required"": [""hz_per_v"", ""ppm_per_v"", ""hz_per_code"", ""ppm_per_code"", ""sign"", ""sample_count"", ""uncertainty""],"
 schemas/plant_model_v1.schema.json,225,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
 schemas/plant_model_v1.schema.json,335,uncertainty,measurement_uncertainty_semantics,"""uncertainty_scope"","
@@ -549,46 +460,50 @@ tests/cpp/phase4_engine_harness.cpp,44,confidence,confidence_semantics,"<< ""sta
 tests/cpp/phase4_engine_harness.cpp,89,confidence,confidence_semantics,"<< ',' << otis_phase4_confidence_name(decision.confidence) << ','"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,38,uncertainty,measurement_uncertainty_semantics,"""expected"": [""bias_hz"", ""combined_uncertainty_hz""]"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,45,uncertainty,measurement_uncertainty_semantics,"""id"": ""unavailable_uncertainty"","
-tests/test_measurement_semantics.py,14,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
-tests/test_measurement_semantics.py,15,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
-tests/test_measurement_semantics.py,46,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
-tests/test_measurement_semantics.py,47,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""counter_aperture_unavailable"","
-tests/test_measurement_semantics.py,49,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""unavailable:uncertainty_model"","
-tests/test_measurement_semantics.py,52,uncertainty,measurement_uncertainty_semantics,"""eligibility_reason_codes"": ""uncertainty_incomplete"","
-tests/test_measurement_semantics.py,65,uncertainty,measurement_uncertainty_semantics,def test_zero_dispersion_does_not_imply_zero_uncertainty(tmp_path: Path) -> None:
-tests/test_measurement_semantics.py,79,uncertainty,measurement_uncertainty_semantics,def test_nonzero_dispersion_is_not_promoted_to_uncertainty(
-tests/test_measurement_semantics.py,84,uncertainty,measurement_uncertainty_semantics,"row[""uncertainty_status""] = ""incomplete"""
-tests/test_measurement_semantics.py,96,uncertainty,measurement_uncertainty_semantics,"assert row[""combined_standard_uncertainty_hz""] == """""
-tests/test_measurement_semantics.py,100,uncertainty,measurement_uncertainty_semantics,"result = evaluate_uncertainty({}, estimate_available=True)"
-tests/test_measurement_semantics.py,103,uncertainty,measurement_uncertainty_semantics,"assert ""reference_uncertainty_unavailable"" in result.reason_codes"
-tests/test_measurement_semantics.py,104,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz is None
-tests/test_measurement_semantics.py,107,uncertainty,measurement_uncertainty_semantics,def test_incomplete_uncertainty_cannot_claim_combined_value(tmp_path: Path) -> None:
-tests/test_measurement_semantics.py,109,uncertainty,measurement_uncertainty_semantics,"row[""combined_standard_uncertainty_hz""] = ""0"""
-tests/test_measurement_semantics.py,121,uncertainty,measurement_uncertainty_semantics,"""incomplete or unavailable uncertainty must not claim a combined value"""
-tests/test_measurement_semantics.py,131,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""available"","
-tests/test_measurement_semantics.py,132,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""uncertainty_complete"","
-tests/test_measurement_semantics.py,133,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ""0.288675"","
-tests/test_measurement_semantics.py,134,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": ""0.288675"","
-tests/test_measurement_semantics.py,136,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""fixture:quantization_only_v1"","
-tests/test_measurement_semantics.py,153,uncertainty,measurement_uncertainty_semantics,result = evaluate_uncertainty(
-tests/test_measurement_semantics.py,154,uncertainty,measurement_uncertainty_semantics,"{""count_quantization_standard_uncertainty_hz"": 0.5},"
-tests/test_measurement_semantics.py,156,uncertainty,measurement_uncertainty_semantics,"required_components=(""count_quantization_standard_uncertainty_hz"",),"
-tests/test_measurement_semantics.py,159,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz == 0.5
-tests/test_measurement_semantics.py,162,uncertainty,measurement_uncertainty_semantics,"""phase4_uncertainty_budget_v1#sha256:"""
-tests/test_measurement_semantics.py,167,uncertainty,measurement_uncertainty_semantics,result = evaluate_uncertainty(
-tests/test_measurement_semantics.py,169,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": 3.0,"
-tests/test_measurement_semantics.py,170,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"": 4.0,"
-tests/test_measurement_semantics.py,174,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
-tests/test_measurement_semantics.py,175,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"","
-tests/test_measurement_semantics.py,180,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz == 5.0
-tests/test_measurement_semantics.py,181,uncertainty,measurement_uncertainty_semantics,assert result.expanded_uncertainty_hz == 10.0
-tests/test_measurement_semantics.py,191,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""available"","
-tests/test_measurement_semantics.py,192,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""uncertainty_complete"","
-tests/test_measurement_semantics.py,193,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ""3"","
-tests/test_measurement_semantics.py,194,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"": ""4"","
-tests/test_measurement_semantics.py,195,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": ""7"","
-tests/test_measurement_semantics.py,197,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""fixture:correlated_v1"","
-tests/test_measurement_semantics.py,219,uncertainty,measurement_uncertainty_semantics,"row[""frequency_uncertainty_hz""] = row[""dispersion_hz""]"
+tests/test_measurement_semantics.py,19,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
+tests/test_measurement_semantics.py,20,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
+tests/test_measurement_semantics.py,51,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
+tests/test_measurement_semantics.py,52,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""counter_aperture_unavailable"","
+tests/test_measurement_semantics.py,54,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""unavailable:uncertainty_model"","
+tests/test_measurement_semantics.py,57,uncertainty,measurement_uncertainty_semantics,"""eligibility_reason_codes"": ""uncertainty_incomplete"","
+tests/test_measurement_semantics.py,70,uncertainty,measurement_uncertainty_semantics,def test_zero_dispersion_does_not_imply_zero_uncertainty(tmp_path: Path) -> None:
+tests/test_measurement_semantics.py,84,uncertainty,measurement_uncertainty_semantics,def test_nonzero_dispersion_is_not_promoted_to_uncertainty(
+tests/test_measurement_semantics.py,89,uncertainty,measurement_uncertainty_semantics,"row[""uncertainty_status""] = ""incomplete"""
+tests/test_measurement_semantics.py,101,uncertainty,measurement_uncertainty_semantics,"assert row[""combined_standard_uncertainty_hz""] == """""
+tests/test_measurement_semantics.py,105,uncertainty,measurement_uncertainty_semantics,"result = evaluate_uncertainty({}, estimate_available=True)"
+tests/test_measurement_semantics.py,108,uncertainty,measurement_uncertainty_semantics,"assert ""reference_uncertainty_unavailable"" in result.reason_codes"
+tests/test_measurement_semantics.py,109,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz is None
+tests/test_measurement_semantics.py,112,uncertainty,measurement_uncertainty_semantics,def test_incomplete_uncertainty_cannot_claim_combined_value(tmp_path: Path) -> None:
+tests/test_measurement_semantics.py,114,uncertainty,measurement_uncertainty_semantics,"row[""combined_standard_uncertainty_hz""] = ""0"""
+tests/test_measurement_semantics.py,126,uncertainty,measurement_uncertainty_semantics,"""incomplete or unavailable uncertainty must not claim a combined value"""
+tests/test_measurement_semantics.py,136,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""available"","
+tests/test_measurement_semantics.py,137,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""uncertainty_complete"","
+tests/test_measurement_semantics.py,138,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ""0.288675"","
+tests/test_measurement_semantics.py,139,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": ""0.288675"","
+tests/test_measurement_semantics.py,141,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""fixture:quantization_only_v1"","
+tests/test_measurement_semantics.py,158,uncertainty,measurement_uncertainty_semantics,result = evaluate_uncertainty(
+tests/test_measurement_semantics.py,159,uncertainty,measurement_uncertainty_semantics,"{""count_quantization_standard_uncertainty_hz"": 0.5},"
+tests/test_measurement_semantics.py,161,uncertainty,measurement_uncertainty_semantics,"required_components=(""count_quantization_standard_uncertainty_hz"",),"
+tests/test_measurement_semantics.py,164,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz == 0.5
+tests/test_measurement_semantics.py,167,uncertainty,measurement_uncertainty_semantics,"""phase4_uncertainty_budget_v1#sha256:"""
+tests/test_measurement_semantics.py,172,uncertainty,measurement_uncertainty_semantics,result = evaluate_uncertainty(
+tests/test_measurement_semantics.py,174,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": 3.0,"
+tests/test_measurement_semantics.py,175,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"": 4.0,"
+tests/test_measurement_semantics.py,179,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
+tests/test_measurement_semantics.py,180,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"","
+tests/test_measurement_semantics.py,185,uncertainty,measurement_uncertainty_semantics,assert result.combined_standard_uncertainty_hz == 5.0
+tests/test_measurement_semantics.py,186,uncertainty,measurement_uncertainty_semantics,assert result.expanded_uncertainty_hz == 10.0
+tests/test_measurement_semantics.py,196,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""available"","
+tests/test_measurement_semantics.py,197,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""uncertainty_complete"","
+tests/test_measurement_semantics.py,198,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ""3"","
+tests/test_measurement_semantics.py,199,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"": ""4"","
+tests/test_measurement_semantics.py,200,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"": ""7"","
+tests/test_measurement_semantics.py,202,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""fixture:correlated_v1"","
+tests/test_measurement_semantics.py,224,uncertainty,measurement_uncertainty_semantics,"row[""frequency_uncertainty_hz""] = row[""dispersion_hz""]"
+tests/test_measurement_semantics.py,262,uncertainty,measurement_uncertainty_semantics,"""measurement uncertainty\n"", encoding=""utf-8"""
+tests/test_measurement_semantics.py,266,confidence,confidence_semantics,"""measurement confidence\n"", encoding=""utf-8"""
+tests/test_measurement_semantics.py,270,uncertainty,measurement_uncertainty_semantics,"""ignored uncertainty\n"", encoding=""utf-8"""
+tests/test_measurement_semantics.py,274,confidence,confidence_semantics,"""ignored confidence\n"", encoding=""utf-8"""
 tests/test_phase4_firmware_parity.py,456,confidence,confidence_semantics,"assert live[""confidence""] == estimate[""estimator_confidence""]"
 tests/test_phase4_firmware_parity.py,854,uncertainty,measurement_uncertainty_semantics,def test_live_and_replay_est2_uncertainty_semantics_match(
 tests/test_phase4_firmware_parity.py,873,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"","
@@ -612,56 +527,35 @@ tests/test_plant_model.py,47,uncertainty,measurement_uncertainty_semantics,"asse
 tests/test_plant_model.py,88,uncertainty,measurement_uncertainty_semantics,"assert slope[""uncertainty""][""hz_per_v_min""] == pytest.approx(4.114661261287408)"
 tests/test_plant_model.py,89,uncertainty,measurement_uncertainty_semantics,"assert slope[""uncertainty""][""hz_per_v_max""] == pytest.approx(4.9513614382035)"
 tests/test_plant_model.py,155,uncertainty,measurement_uncertainty_semantics,def test_rejects_range_that_does_not_contain_crossing_uncertainty() -> None:
-tests/test_pps_backend_qualification.py,56,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
-tests/test_pps_backend_qualification.py,58,uncertainty,measurement_uncertainty_semantics,uncertainty = {
-tests/test_pps_backend_qualification.py,59,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ("
-tests/test_pps_backend_qualification.py,60,uncertainty,measurement_uncertainty_semantics,0.288675 if uncertainty_complete and candidate else None
-tests/test_pps_backend_qualification.py,63,uncertainty,measurement_uncertainty_semantics,1e-9 if uncertainty_complete and candidate else None
-tests/test_pps_backend_qualification.py,66,uncertainty,measurement_uncertainty_semantics,1e-11 if uncertainty_complete and candidate else None
-tests/test_pps_backend_qualification.py,69,uncertainty,measurement_uncertainty_semantics,0.01 if uncertainty_complete and not candidate else None
-tests/test_pps_backend_qualification.py,90,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": uncertainty,"
-tests/test_pps_backend_qualification.py,116,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
-tests/test_pps_backend_qualification.py,147,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete=uncertainty_complete,"
-tests/test_pps_backend_qualification.py,298,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
-tests/test_pps_backend_qualification.py,308,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete=uncertainty_complete,"
-tests/test_pps_backend_qualification.py,553,uncertainty,measurement_uncertainty_semantics,"""unavailable_uncertainty"","
-tests/test_pps_backend_qualification.py,618,uncertainty,measurement_uncertainty_semantics,"assert report[""uncertainty""][""unavailable_components""] == []"
-tests/test_pps_backend_qualification.py,964,uncertainty,measurement_uncertainty_semantics,def test_unavailable_uncertainty_remains_null_and_blocks_acceptance(
-tests/test_pps_backend_qualification.py,967,uncertainty,measurement_uncertainty_semantics,"candidate = _make_candidate(tmp_path, uncertainty_complete=False)"
-tests/test_pps_backend_qualification.py,971,uncertainty,measurement_uncertainty_semantics,"value[""phase5_pps_backend_qualification""][""uncertainty""]["
-tests/test_pps_backend_qualification.py,984,uncertainty,measurement_uncertainty_semantics,"assert report[""acceptance_checks""][""uncertainty_complete""] is False"
-tests/test_pps_backend_qualification.py,985,uncertainty,measurement_uncertainty_semantics,"assert report[""uncertainty""][""combined_standard_uncertainty_hz""] is None"
-tests/test_pps_backend_qualification.py,986,uncertainty,measurement_uncertainty_semantics,"assert len(report[""uncertainty""][""unavailable_components""]) == 4"
+tests/test_pps_backend_qualification.py,62,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
+tests/test_pps_backend_qualification.py,64,uncertainty,measurement_uncertainty_semantics,uncertainty = {
+tests/test_pps_backend_qualification.py,65,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"": ("
+tests/test_pps_backend_qualification.py,66,uncertainty,measurement_uncertainty_semantics,0.288675 if uncertainty_complete and candidate else None
+tests/test_pps_backend_qualification.py,69,uncertainty,measurement_uncertainty_semantics,1e-9 if uncertainty_complete and candidate else None
+tests/test_pps_backend_qualification.py,72,uncertainty,measurement_uncertainty_semantics,1e-11 if uncertainty_complete and candidate else None
+tests/test_pps_backend_qualification.py,75,uncertainty,measurement_uncertainty_semantics,0.01 if uncertainty_complete and not candidate else None
+tests/test_pps_backend_qualification.py,96,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": uncertainty,"
+tests/test_pps_backend_qualification.py,122,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
+tests/test_pps_backend_qualification.py,153,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete=uncertainty_complete,"
+tests/test_pps_backend_qualification.py,304,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete: bool = True,"
+tests/test_pps_backend_qualification.py,314,uncertainty,measurement_uncertainty_semantics,"uncertainty_complete=uncertainty_complete,"
+tests/test_pps_backend_qualification.py,559,uncertainty,measurement_uncertainty_semantics,"""unavailable_uncertainty"","
+tests/test_pps_backend_qualification.py,720,uncertainty,measurement_uncertainty_semantics,"assert report[""uncertainty""][""unavailable_components""] == []"
+tests/test_pps_backend_qualification.py,1066,uncertainty,measurement_uncertainty_semantics,def test_unavailable_uncertainty_remains_null_and_is_characterization_in_v2(
+tests/test_pps_backend_qualification.py,1069,uncertainty,measurement_uncertainty_semantics,"candidate = _make_candidate(tmp_path, uncertainty_complete=False)"
+tests/test_pps_backend_qualification.py,1073,uncertainty,measurement_uncertainty_semantics,"value[""phase5_pps_backend_qualification""][""uncertainty""]["
+tests/test_pps_backend_qualification.py,1086,uncertainty,measurement_uncertainty_semantics,"assert ""uncertainty_complete"" not in report[""acceptance_checks""]"
+tests/test_pps_backend_qualification.py,1087,uncertainty,measurement_uncertainty_semantics,"assert report[""characterization_checks""][""uncertainty_complete""] is False"
+tests/test_pps_backend_qualification.py,1088,uncertainty,measurement_uncertainty_semantics,"assert report[""uncertainty""][""combined_standard_uncertainty_hz""] is None"
+tests/test_pps_backend_qualification.py,1089,uncertainty,measurement_uncertainty_semantics,"assert len(report[""uncertainty""][""unavailable_components""]) == 4"
 tests/test_pps_gate_math.py,105,uncertainty,measurement_uncertainty_semantics,def test_pps_backend_exposes_independent_validity_and_unavailable_uncertainty() -> None:
 tests/test_pps_gate_math.py,114,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_ns"","
 tests/test_pps_gate_math.py,115,uncertainty,measurement_uncertainty_semantics,"""reference_frequency_uncertainty_ppb"","
-tools/audit_measurement_semantics.py,36,uncertainty,measurement_uncertainty_semantics,"(""uncertainty"", re.compile(r""uncertaint"", re.IGNORECASE)),"
-tools/audit_measurement_semantics.py,37,dispersion,sample_dispersion_or_repeatability,"(""dispersion"", re.compile(r""\bdispersion\b"", re.IGNORECASE)),"
-tools/audit_measurement_semantics.py,41,confidence,confidence_semantics,"(""confidence"", re.compile(r""\bconfidence\b"", re.IGNORECASE)),"
-tools/audit_measurement_semantics.py,48,uncertainty,measurement_uncertainty_semantics,"if ""frequency_uncertainty_hz"" in line and ("
-tools/audit_measurement_semantics.py,55,uncertainty,measurement_uncertainty_semantics,"if ""uncertainty"" in matched:"
-tools/audit_measurement_semantics.py,56,uncertainty,measurement_uncertainty_semantics,"return ""measurement_uncertainty_semantics"""
-tools/audit_measurement_semantics.py,57,dispersion,sample_dispersion_or_repeatability,"if ""dispersion"" in matched or ""standard_deviation"" in matched:"
-tools/audit_measurement_semantics.py,59,confidence,confidence_semantics,"if ""confidence"" in matched:"
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/04_first_class_diagnostics_live_replay.md,10,confidence,confidence_semantics,"Support stable diagnostic ID, raise/update/clear, severity, confidence, persistence/hysteresis, first/latest evidence ranges, exact source references, algorithm/config identity, effects on measurement validity/model applicability/control eligibility, and explicit clearing reason."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,1,uncertainty;dispersion,measurement_uncertainty_semantics,# OTIS — Separate Dispersion from Measurement Uncertainty
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,7,uncertainty;dispersion,measurement_uncertainty_semantics,Stop emitting sample dispersion as `frequency_uncertainty_hz`. Define honest uncertainty semantics without inventing precision.
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,10,uncertainty;dispersion;standard_deviation;confidence;error_bound,measurement_uncertainty_semantics,"Inventory every use of uncertainty, dispersion, standard deviation, confidence, and error bounds. Distinguish:"
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,11,dispersion,sample_dispersion_or_repeatability,- sample dispersion;
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,12,uncertainty,measurement_uncertainty_semantics,- statistical standard uncertainty;
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,18,uncertainty,measurement_uncertainty_semantics,- combined uncertainty;
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,19,confidence;coverage_factor,confidence_semantics,- coverage factor/confidence meaning;
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,22,standard_deviation,sample_dispersion_or_repeatability,"If evidence is insufficient, emit unavailable—not zero and not sample standard deviation."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,27,dispersion,sample_dispersion_or_repeatability,"Constant samples with unknown systematics, nonzero dispersion, quantization-only case, unavailable aperture/reference contribution, correlation policy, host/live parity where applicable, and historical compatibility."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,30,dispersion,sample_dispersion_or_repeatability,Do not invent new control thresholds or imply qualification from low dispersion.
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/05_measurement_uncertainty_semantics.md,33,uncertainty;dispersion,measurement_uncertainty_semantics,No field named uncertainty merely duplicates sample dispersion unless the contract explicitly says so.
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/06_reference_source_qualification_architecture.md,7,uncertainty,measurement_uncertainty_semantics,"Separate cadence plausibility, capture-path health, receiver/reference authority, UTC traceability, and reference uncertainty."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/06_reference_source_qualification_architecture.md,20,uncertainty,measurement_uncertainty_semantics,- quality and uncertainty;
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/08_pps_gated_aperture_qualification_campaign.md,23,uncertainty,measurement_uncertainty_semantics,"Use a demonstrably superior independent path: calibrated counter, suitable oscilloscope/time-interval measurement, adequate logic analyzer, parallel hardware-gated method, or external latch. Document its uncertainty. Do not use the candidate backend as its own reference."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/08_pps_gated_aperture_qualification_campaign.md,29,uncertainty,measurement_uncertainty_semantics,"Predefine quantitative pass/fail criteria. Report bias, jitter, uncertainty components, load dependence, fault behavior, usable envelope, and unresolved limitations."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/08_pps_gated_aperture_qualification_campaign.md,37,uncertainty,measurement_uncertainty_semantics,"Qualification requires quantitative bench evidence for bias, jitter, aperture, recovery, load sensitivity, and uncertainty."
-xxx/OTIS_Remaining_Issues_Staged_Codex_Prompts/README.md,18,uncertainty,measurement_uncertainty_semantics,6. `05_measurement_uncertainty_semantics.md`
-xxx/codex_prompts/00_REPLACEMENT_MEASUREMENT_ARCHITECTURE.md,148,uncertainty,measurement_uncertainty_semantics,- the smallest remaining uncertainty;
-xxx/codex_prompts/00_REPLACEMENT_MEASUREMENT_ARCHITECTURE.md,149,uncertainty,measurement_uncertainty_semantics,- whether that uncertainty blocks implementation or only later qualification.
-xxx/codex_prompts/20_HARDWARE_OWNED_CAPTURE_BACKEND.md,114,uncertainty,measurement_uncertainty_semantics,- remaining bench-only uncertainty.
-xxx/codex_prompts/60_DOCUMENTATION_AND_NO_HARDWARE_VALIDATION.md,20,confidence,confidence_semantics,- diagnostics and confidence architecture;
+tools/audit_measurement_semantics.py,37,uncertainty,measurement_uncertainty_semantics,"(""uncertainty"", re.compile(r""uncertaint"", re.IGNORECASE)),"
+tools/audit_measurement_semantics.py,38,dispersion,sample_dispersion_or_repeatability,"(""dispersion"", re.compile(r""\bdispersion\b"", re.IGNORECASE)),"
+tools/audit_measurement_semantics.py,42,confidence,confidence_semantics,"(""confidence"", re.compile(r""\bconfidence\b"", re.IGNORECASE)),"
+tools/audit_measurement_semantics.py,77,uncertainty,measurement_uncertainty_semantics,"if ""frequency_uncertainty_hz"" in line and ("
+tools/audit_measurement_semantics.py,84,uncertainty,measurement_uncertainty_semantics,"if ""uncertainty"" in matched:"
+tools/audit_measurement_semantics.py,85,uncertainty,measurement_uncertainty_semantics,"return ""measurement_uncertainty_semantics"""
+tools/audit_measurement_semantics.py,86,dispersion,sample_dispersion_or_repeatability,"if ""dispersion"" in matched or ""standard_deviation"" in matched:"
+tools/audit_measurement_semantics.py,88,confidence,confidence_semantics,"if ""confidence"" in matched:"

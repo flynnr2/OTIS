@@ -7,6 +7,11 @@
 `CNT` evidence; frequency, ratio, ppm, estimation, and actuation remain outside
 this backend.
 
+Qualification status: accepted on 2026-08-01 for observe-only measurement
+after the Phase 5 clean, fault, real-GPS, load, extended, and sealed overnight
+campaign. The accepted limitations are the rising-edge-only width fault and
+the physical phase/duty sweep that the installed ECS fixture cannot perform.
+
 The governing invariant is:
 
 > Foreground execution never defines the physical count aperture. A reference
@@ -37,6 +42,13 @@ cumulative counter when PPS is high after an armed low. This makes the
 physical aperture hardware-owned. It never stops, samples, resets, reloads, or
 restarts the counter at PPS. ISR, DMA, USB, serial, and foreground latency occur
 after the snapshot and cannot move it.
+
+This separation was checked against the exact qualification-v4 ELF after the
+sealed campaign. The resulting decision is not to optimize the aperture
+speculatively: the PIO count/snapshot path is at the practical useful limit of
+the integer-edge architecture, while the non-minimal D14 ISR is diagnostic
+only. `PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md` is the normative regression
+record for later firmware changes.
 
 The edge-driven program alternates oscillator `WAIT` instructions. A stalled
 `WAIT` evaluates every PIO clock; `JMP PIN` independently observes PPS between
@@ -107,10 +119,12 @@ Foreground derives and reports these conclusions independently:
 | backend qualification | `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1` |
 
 Measurement validity requires the first five dimensions. Control eligibility
-additionally requires backend qualification plus the existing startup,
-recovery, and clean-window gates. The checked-in qualification candidate sets
-`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; therefore it can produce bench
-evidence but cannot authorize control.
+additionally requires a build/profile that reflects backend qualification plus
+the existing startup, recovery, and clean-window gates. The checked-in
+qualification candidate and all sealed campaign evidence set
+`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; they remain immutable and cannot
+authorize control. The later acceptance decision does not retroactively change
+those artifacts or authorize DAC actuation.
 
 Typed reasons include:
 

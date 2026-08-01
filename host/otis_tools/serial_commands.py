@@ -21,6 +21,7 @@ KNOWN_SWEEP_PROFILES = frozenset(
 KNOWN_PSEUDO_PPS_PROFILES = frozenset(
     {
         "CLEAN_NOMINAL",
+        "CLEAN_SOAK_10M",
         "ONE_SHORT",
         "ONE_LONG",
         "ONE_OMIT",

@@ -7,6 +7,7 @@ import json
 import sys
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
+from .capture_serial import RECORD_CONTRACTS
 from .evidence import validate_evidence_snapshot
 from .pps_diagnostics import classify_pps_interval
 from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
@@ -31,6 +32,51 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return []
     with path.open("r", newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _validate_raw_serial_framing(run_dir: Path) -> list[str]:
+    path = run_dir / "raw" / "serial.log"
+    if not path.exists():
+        return []
+    failures: list[str] = []
+    violation_count = 0
+
+    def record_failure(message: str) -> None:
+        nonlocal violation_count
+        violation_count += 1
+        if len(failures) < 20:
+            failures.append(message)
+
+    with path.open("rb") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.rstrip(b"\r\n")
+            if not line or line.startswith(b"# OTIS_HOST "):
+                continue
+            if line.startswith(b","):
+                record_failure(
+                    f"raw/serial.log: line {line_number} is an orphaned device-record continuation; "
+                    "a host marker may have interrupted the raw record"
+                )
+                continue
+            try:
+                text = line.decode("utf-8")
+                row = next(csv.reader([text]))
+            except (UnicodeDecodeError, csv.Error):
+                continue
+            if not row or row[0] not in RECORD_CONTRACTS:
+                continue
+            contract = RECORD_CONTRACTS[row[0]]
+            expected_columns = len(CONTRACT_FIELDS[contract])
+            if len(row) != expected_columns:
+                record_failure(
+                    f"raw/serial.log: line {line_number} {row[0]} record has {len(row)} columns; "
+                    f"expected {expected_columns}; raw device record may be interrupted"
+                )
+    if violation_count > len(failures):
+        failures.append(
+            f"raw/serial.log: {violation_count - len(failures)} additional framing violations omitted"
+        )
+    return failures
 
 
 def _int(value: str) -> int:
@@ -221,6 +267,11 @@ def _validate_count_sanity(count_rows: list[dict[str, str]], manifest, template:
             for domain in manifest.data.get("domains", [])
             if str(domain.get("name", "")).startswith("h1_")
         }
+        qualification = manifest.data.get("phase5_pps_backend_qualification")
+        if isinstance(qualification, dict):
+            declared_source_domain = str(qualification.get("source_domain", ""))
+            if declared_source_domain in manifest.known_domains:
+                allowed_source_domains.add(declared_source_domain)
         phase_label = "H1"
     else:
         allowed_source_domains = KNOWN_H0_COUNT_SOURCE_DOMAINS
@@ -262,6 +313,7 @@ def validate_run(run_dir: Path) -> int:
         return 1
 
     failures: list[str] = _validate_manifest(run_dir, manifest)
+    failures.extend(_validate_raw_serial_framing(run_dir))
     warnings: list[str] = _manifest_warnings(manifest) + _run_state_warnings(run_dir, manifest)
     evidence_failures, evidence_warnings = validate_evidence_snapshot(run_dir, manifest)
     failures.extend(evidence_failures)

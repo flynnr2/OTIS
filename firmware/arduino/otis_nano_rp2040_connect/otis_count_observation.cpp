@@ -201,6 +201,7 @@ uint32_t stop_h1_pio_long_gate_counter(void) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 struct PpsGatedRatioBackend {
   PpsGateState state;
+  bool initialized_ok;
   uint64_t waiting_since_ticks;
   OtisPpsCountBoundaryObservation previous_observation;
   bool have_previous_observation;
@@ -918,6 +919,7 @@ bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                              otis_capture_ticks_now());
   pps_gated_ratio.state = counter_ok ? PpsGateState::Armed
                                      : PpsGateState::Fault;
+  pps_gated_ratio.initialized_ok = counter_ok;
   pps_gated_ratio.waiting_since_ticks = otis_capture_ticks_now();
   pps_gated_ratio.previous_observation = {};
   pps_gated_ratio.have_previous_observation = false;
@@ -1636,7 +1638,6 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   uint32_t now_ms = millis();
   update_startup_inhibit(runtime_state, config, now_ms);
-  uint64_t now_ticks = otis_capture_ticks_now();
   OtisCaptureIrqReferenceStats reference_stats;
   otis_capture_irq_get_reference_stats(&reference_stats);
   OtisPpsDiagnosticsTransition transition = OtisPpsDiagnosticsTransition::None;
@@ -1645,6 +1646,11 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
         &pps_diagnostics, reference_stats.d14_raw_edge_count - 1u,
         reference_stats.d14_last_raw_timestamp);
   }
+  // Sample "now" only after copying/noting the IRQ mailbox. If a PPS arrives
+  // between an earlier now-sample and the mailbox copy, its timestamp is newer
+  // than "now" and the modulo interval appears almost one full micros() wrap,
+  // manufacturing a false physical-missing transition.
+  uint64_t now_ticks = otis_capture_ticks_now();
   if (transition == OtisPpsDiagnosticsTransition::None) {
     transition = otis_pps_diagnostics_poll(&pps_diagnostics, now_ticks);
   }
@@ -1750,6 +1756,38 @@ void otis_count_observation_emit_status(
               OTIS_FLAG_PROFILE_ASSUMPTION);
 #else
   (void)runtime_state;
+  (void)status_context;
+#endif
+}
+
+void otis_count_observation_emit_configuration_status(
+    OtisStatusEmitContext *status_context) {
+#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  emit_status(status_context, "capture", "tcxo_counter_backend",
+              "pps_gated_ratio", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "capture", "pps_gated_ratio_init",
+              pps_gated_ratio.initialized_ok ? "ok" : "failed",
+              pps_gated_ratio.initialized_ok ? OTIS_SEVERITY_INFO
+                                             : OTIS_SEVERITY_ERROR,
+              pps_gated_ratio.initialized_ok
+                  ? OTIS_FLAG_PROFILE_ASSUMPTION
+                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32(status_context, "pps_gate", "min_interval_us",
+                  OTIS_PPS_GATE_MIN_INTERVAL_US, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "duplicate_max_interval_us",
+                  OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "max_interval_us",
+                  OTIS_PPS_GATE_MAX_INTERVAL_US, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "missing_timeout_us",
+                  OTIS_PPS_GATE_MISSING_TIMEOUT_US, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "count_resolution_edges", 1u,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
   (void)status_context;
 #endif
 }

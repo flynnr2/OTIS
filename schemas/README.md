@@ -17,7 +17,10 @@ inventory and historical-reader policy.
 The PPS-gated ratio backend does not require a new raw-row schema: `CNT` rows
 still use `count_observations_v1`, and `pps_gate` telemetry is ordinary
 `health_v1` / `STS` status. The Phase 5 host qualification profile is separately
-validated by `pps_backend_qualification_config_v1.schema.json`. The
+validated by `pps_backend_qualification_config_v2.schema.json`. Version 2
+separates blocking digital-architecture screens from non-blocking metrology
+characterization references. The v1 schema remains for reproduction of
+historical reports. The
 authoritative raw-contract notes live in
 `data_contracts/count_observations_v1.csv.md`,
 `data_contracts/health_v1.csv.md`, and

@@ -5,7 +5,7 @@
 #include "otis_pseudo_pps_schedule.h"
 
 int main() {
-  assert(otis_pseudo_pps_profile_count() == 15u);
+  assert(otis_pseudo_pps_profile_count() == 16u);
   for (size_t profile_index = 0u;
        profile_index < otis_pseudo_pps_profile_count(); ++profile_index) {
     const OtisPseudoPpsProfile *profile =
@@ -62,6 +62,15 @@ int main() {
                                           &count));
   assert(!otis_pseudo_pps_compile_profile("NOT_A_PROFILE", tiny, 1u,
                                           &count));
+
+  OtisPseudoPpsStep soak[OTIS_PSEUDO_PPS_MAX_STEPS] = {};
+  assert(otis_pseudo_pps_compile_profile(
+      "CLEAN_SOAK_10M", soak, OTIS_PSEUDO_PPS_MAX_STEPS, &count));
+  assert(count == 600u);
+  for (size_t index = 0u; index < count; ++index) {
+    assert(strcmp(soak[index].intended_class, "clean") == 0);
+    assert(soak[index].emits_pulse);
+  }
 
   OtisPseudoPpsStep clean[OTIS_PSEUDO_PPS_MAX_STEPS] = {};
   assert(otis_pseudo_pps_compile_profile(

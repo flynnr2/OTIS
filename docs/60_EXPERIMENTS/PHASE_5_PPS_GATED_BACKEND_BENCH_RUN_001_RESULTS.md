@@ -6,7 +6,9 @@
 > It cannot qualify `pio_wait_cumulative_snapshot_dma_v1`, satisfy the current
 > raw-snapshot continuity gate, or authorize control. References below to a
 > passed leg or `control_eligible=true` describe the old build's telemetry and
-> are not current acceptance claims.
+> are not current acceptance claims. The replacement PIO-owned campaign was
+> accepted on 2026-08-01; see
+> `PHASE_5_PPS_GATED_BACKEND_QUALIFICATION_REPORT.md`.
 
 ## Result and scope
 
@@ -186,7 +188,7 @@ manual disconnect/reconnect fault work outside the declared stable comparison.
 They are retained as raw evidence but are not promoted to the controlled
 duplicate/short/long fault legs.
 
-## Open work
+## Work that was open for this rejected mechanism
 
 The following items remain open and are not failures of the completed legs:
 
@@ -208,3 +210,8 @@ The following items remain open and are not failures of the completed legs:
 Until those gates are complete, this run is correctly described as a
 **successful scoped candidate bench test with open qualification work**, not as
 final `qualified_with_limits` metrology.
+
+These items are retained as the Run 001 historical disposition. The replacement
+campaign, not a reinterpretation of Run 001, subsequently supplied the accepted
+clean/fault/real-GPS/load/extended/overnight evidence. Independent absolute
+metrology and physical phase/duty margin remain separate limitations.

@@ -24,11 +24,11 @@ from .pps_snapshot_reconstruction import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = (
-    REPO_ROOT / "profiles" / "qualification" / "pps_gated_ratio_v1.json"
+    REPO_ROOT / "profiles" / "qualification" / "pps_gated_ratio_v2.json"
 )
-OUTPUT_DIR = Path("derived/phase5_pps_backend_qualification_v1")
-OUTPUT_NAME = "qualification_report_v1.json"
-TOOL_VERSION = "pps_backend_qualification_v1"
+OUTPUT_DIR = Path("derived/phase5_pps_backend_qualification_v2")
+OUTPUT_NAME = "qualification_report_v2.json"
+TOOL_VERSION = "pps_backend_qualification_v2"
 RP2040_TIMER0_TICKS_PER_US = 16
 RP2040_TIMER0_MICROS_MODULUS = 1 << 32
 PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ = 133_000_000.0
@@ -72,6 +72,9 @@ INDEPENDENT_COUNT_INVALID_FLAGS = (
 
 @dataclass(frozen=True)
 class QualificationConfig:
+    schema_version: int
+    acceptance_scope: str
+    criteria_rationale_document: str
     candidate_estimator_type: str
     expected_candidate_backend: str
     allowed_independent_paths: tuple[tuple[str, str], ...]
@@ -86,12 +89,15 @@ class QualificationConfig:
     maximum_absolute_bias_hz: float
     maximum_candidate_jitter_hz: float
     maximum_service_plane_mean_shift_hz: float
+    absolute_bias_disposition: str
+    candidate_population_jitter_disposition: str
+    service_plane_mean_shift_disposition: str
     required_fault_reason_codes: tuple[str, ...]
     synthetic_only_fault_reason_codes: tuple[str, ...]
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> "QualificationConfig":
-        expected = {
+        common = {
             "schema_version",
             "candidate_estimator_type",
             "expected_candidate_backend",
@@ -104,20 +110,81 @@ class QualificationConfig:
             "minimum_stable_duration_s",
             "minimum_eligible_windows",
             "minimum_service_plane_windows_per_segment",
-            "maximum_absolute_bias_hz",
-            "maximum_candidate_jitter_hz",
-            "maximum_service_plane_mean_shift_hz",
             "required_fault_reason_codes",
             "synthetic_only_fault_reason_codes",
         }
+        schema_version = value.get("schema_version")
+        if schema_version == 1:
+            expected = common | {
+                "maximum_absolute_bias_hz",
+                "maximum_candidate_jitter_hz",
+                "maximum_service_plane_mean_shift_hz",
+            }
+            acceptance_scope = "legacy_full_metrology"
+            criteria_rationale_document = ""
+            absolute_bias_key = "maximum_absolute_bias_hz"
+            candidate_jitter_key = "maximum_candidate_jitter_hz"
+            service_shift_key = "maximum_service_plane_mean_shift_hz"
+            absolute_bias_disposition = "acceptance_gate"
+            candidate_jitter_disposition = "acceptance_gate"
+            service_shift_disposition = "acceptance_gate"
+        elif schema_version == 2:
+            expected = common | {
+                "acceptance_scope",
+                "criteria_rationale_document",
+                "absolute_bias_reference_hz",
+                "candidate_population_jitter_reference_hz",
+                "service_plane_mean_shift_reference_hz",
+                "absolute_bias_disposition",
+                "candidate_population_jitter_disposition",
+                "service_plane_mean_shift_disposition",
+            }
+            acceptance_scope = str(value["acceptance_scope"])
+            criteria_rationale_document = str(
+                value["criteria_rationale_document"]
+            )
+            absolute_bias_key = "absolute_bias_reference_hz"
+            candidate_jitter_key = "candidate_population_jitter_reference_hz"
+            service_shift_key = "service_plane_mean_shift_reference_hz"
+            absolute_bias_disposition = str(value["absolute_bias_disposition"])
+            candidate_jitter_disposition = str(
+                value["candidate_population_jitter_disposition"]
+            )
+            service_shift_disposition = str(
+                value["service_plane_mean_shift_disposition"]
+            )
+        else:
+            raise ValueError(
+                "qualification config schema_version must be 1 or 2"
+            )
         if set(value) != expected:
             missing = sorted(expected - set(value))
             extra = sorted(set(value) - expected)
             raise ValueError(
                 f"qualification config fields differ; missing={missing}, extra={extra}"
             )
-        if value["schema_version"] != 1:
-            raise ValueError("qualification config schema_version must be 1")
+        if acceptance_scope not in {
+            "legacy_full_metrology",
+            "digital_architecture",
+        }:
+            raise ValueError("unsupported acceptance_scope")
+        if schema_version == 2:
+            if not criteria_rationale_document:
+                raise ValueError("criteria_rationale_document must be non-empty")
+            if absolute_bias_disposition != "characterization_only":
+                raise ValueError(
+                    "v2 absolute_bias_disposition must be characterization_only"
+                )
+            if candidate_jitter_disposition != "blocking_architecture_screen":
+                raise ValueError(
+                    "v2 candidate_population_jitter_disposition must be "
+                    "blocking_architecture_screen"
+                )
+            if service_shift_disposition != "characterization_only":
+                raise ValueError(
+                    "v2 service_plane_mean_shift_disposition must be "
+                    "characterization_only"
+                )
         candidate_type = str(value["candidate_estimator_type"])
         if candidate_type != "pps_gated_ratio_count_v1":
             raise ValueError(
@@ -139,9 +206,9 @@ class QualificationConfig:
                 raise ValueError(f"{key} must be finite and positive")
         numeric_nonnegative = (
             "reference_interval_tolerance_s",
-            "maximum_absolute_bias_hz",
-            "maximum_candidate_jitter_hz",
-            "maximum_service_plane_mean_shift_hz",
+            absolute_bias_key,
+            candidate_jitter_key,
+            service_shift_key,
         )
         for key in numeric_nonnegative:
             if (
@@ -226,6 +293,9 @@ class QualificationConfig:
                 "synthetic_only_fault_reason_codes must contain strings"
             )
         return cls(
+            schema_version=int(schema_version),
+            acceptance_scope=acceptance_scope,
+            criteria_rationale_document=criteria_rationale_document,
             candidate_estimator_type=candidate_type,
             expected_candidate_backend=str(value["expected_candidate_backend"]),
             allowed_independent_paths=allowed_pairs,
@@ -245,13 +315,18 @@ class QualificationConfig:
             minimum_service_plane_windows_per_segment=int(
                 value["minimum_service_plane_windows_per_segment"]
             ),
-            maximum_absolute_bias_hz=float(value["maximum_absolute_bias_hz"]),
+            maximum_absolute_bias_hz=float(value[absolute_bias_key]),
             maximum_candidate_jitter_hz=float(
-                value["maximum_candidate_jitter_hz"]
+                value[candidate_jitter_key]
             ),
             maximum_service_plane_mean_shift_hz=float(
-                value["maximum_service_plane_mean_shift_hz"]
+                value[service_shift_key]
             ),
+            absolute_bias_disposition=absolute_bias_disposition,
+            candidate_population_jitter_disposition=(
+                candidate_jitter_disposition
+            ),
+            service_plane_mean_shift_disposition=service_shift_disposition,
             required_fault_reason_codes=tuple(required_reasons),
             synthetic_only_fault_reason_codes=tuple(synthetic_reasons),
         )
@@ -642,9 +717,7 @@ def _snapshot_continuity(
     manifest: RunManifest,
 ) -> dict[str, Any]:
     expected_backend = "pio_wait_cumulative_snapshot_dma_v1"
-    reference_identities = {
-        (reference.seq, reference.ticks) for reference in references
-    }
+    reference_timestamps = {reference.ticks for reference in references}
     observations = tuple(
         SnapshotObservation(
             sequence=snapshot.sequence,
@@ -726,11 +799,7 @@ def _snapshot_continuity(
         ),
         "all_capture_status_clear": all(snapshot.status == 0 for snapshot in snapshots),
         "all_reference_timestamps_present": all(
-            (
-                snapshot.reference_sequence,
-                snapshot.reference_timestamp_ticks,
-            )
-            in reference_identities
+            snapshot.reference_timestamp_ticks in reference_timestamps
             for snapshot in snapshots
         ),
         "first_anchor_suppressed": anchor_suppressed,
@@ -905,6 +974,69 @@ def _summary(values: list[float]) -> dict[str, float | int | None]:
         "min_hz": min(values) if values else None,
         "max_hz": max(values) if values else None,
     }
+
+
+def _multi_span_frequency_metrics(
+    windows: list[CandidateWindow],
+    *,
+    nominal_reference_interval_s: float,
+    count_resolution_edges: int,
+    spans: tuple[int, ...] = (1, 10, 60),
+) -> list[dict[str, Any]]:
+    """Summarise non-overlapping clean, sequence-contiguous count spans.
+
+    Averaging official one-boundary frequencies is equivalent to differencing
+    the cumulative counter endpoints because every included interval has the
+    same declared nominal reference duration.  Resetting the block at every
+    ineligible or missing sequence prevents a longer estimate from spanning a
+    malformed reference, snapshot gap, or session discontinuity.
+    """
+
+    ordered = sorted(windows, key=lambda item: item.seq)
+    output: list[dict[str, Any]] = []
+    for span in spans:
+        if span <= 0:
+            raise ValueError("multi-span frequency spans must be positive")
+        blocks: list[float] = []
+        pending: list[float] = []
+        previous_seq: int | None = None
+        eligible_windows = 0
+        for window in ordered:
+            contiguous = (
+                previous_seq is not None
+                and window.seq == previous_seq + 1
+            )
+            if (
+                not window.eligible
+                or window.frequency_hz is None
+                or (previous_seq is not None and not contiguous)
+            ):
+                pending.clear()
+            if window.eligible and window.frequency_hz is not None:
+                if not contiguous:
+                    pending.clear()
+                pending.append(float(window.frequency_hz))
+                eligible_windows += 1
+                if len(pending) == span:
+                    blocks.append(statistics.fmean(pending))
+                    pending.clear()
+            previous_seq = window.seq
+        output.append(
+            {
+                "span_windows": span,
+                "nominal_span_s": span * nominal_reference_interval_s,
+                "frequency_quantum_hz": (
+                    count_resolution_edges
+                    / (span * nominal_reference_interval_s)
+                ),
+                "eligible_window_count": eligible_windows,
+                "unused_eligible_window_count": (
+                    eligible_windows - len(blocks) * span
+                ),
+                **_summary(blocks),
+            }
+        )
+    return output
 
 
 def _status_reason_evidence(
@@ -1190,6 +1322,8 @@ def _service_plane_metrics(
     segments: tuple[dict[str, Any], ...],
     windows: list[CandidateWindow],
     minimum_windows_per_segment: int,
+    nominal_reference_interval_s: float = 1.0,
+    count_resolution_edges: int = 1,
 ) -> dict[str, Any]:
     by_seq = {
         window.seq: window.frequency_hz
@@ -1197,7 +1331,7 @@ def _service_plane_metrics(
         if window.frequency_hz is not None
     }
     summaries: list[dict[str, Any]] = []
-    for segment in segments:
+    for segment in sorted(segments, key=lambda item: int(item["first_count_seq"])):
         required = {"label", "mode", "first_count_seq", "last_count_seq"}
         if not required <= set(segment):
             raise ValueError(
@@ -1215,28 +1349,130 @@ def _service_plane_metrics(
             {
                 "label": str(segment["label"]),
                 "mode": str(segment["mode"]),
+                "first_count_seq": int(segment["first_count_seq"]),
+                "last_count_seq": int(segment["last_count_seq"]),
                 **_summary(values),
+                "multi_span_frequency": _multi_span_frequency_metrics(
+                    [
+                        window
+                        for window in windows
+                        if int(segment["first_count_seq"])
+                        <= window.seq
+                        <= int(segment["last_count_seq"])
+                    ],
+                    nominal_reference_interval_s=(
+                        nominal_reference_interval_s
+                    ),
+                    count_resolution_edges=count_resolution_edges,
+                ),
             }
         )
-    baseline = [
-        item["mean_hz"]
-        for item in summaries
-        if item["mode"] == "baseline" and item["mean_hz"] is not None
-    ]
-    loaded = [
-        item["mean_hz"]
-        for item in summaries
-        if item["mode"] == "load" and item["mean_hz"] is not None
-    ]
+    latest_baseline: dict[str, Any] | None = None
+    pairs: list[dict[str, Any]] = []
+    load_count = 0
+    for item in summaries:
+        if item["mode"] == "baseline":
+            if item["mean_hz"] is not None:
+                latest_baseline = item
+            continue
+        load_count += 1
+        if item["mean_hz"] is None or latest_baseline is None:
+            continue
+        mean_shift_hz = float(item["mean_hz"]) - float(latest_baseline["mean_hz"])
+        item["paired_baseline_label"] = latest_baseline["label"]
+        item["mean_shift_hz"] = mean_shift_hz
+        pairs.append(
+            {
+                "baseline_label": latest_baseline["label"],
+                "load_label": item["label"],
+                "mean_shift_hz": mean_shift_hz,
+            }
+        )
+    all_load_segments_paired = bool(pairs) and len(pairs) == load_count
     shift = (
-        max(abs(value - statistics.fmean(baseline)) for value in loaded)
-        if baseline and loaded
+        max(abs(float(item["mean_shift_hz"])) for item in pairs)
+        if all_load_segments_paired
+        else None
+    )
+    bracketed_pairs: list[dict[str, Any]] = []
+    for index, item in enumerate(summaries):
+        if item["mode"] != "load" or item["mean_hz"] is None:
+            continue
+        preceding = next(
+            (
+                candidate
+                for candidate in reversed(summaries[:index])
+                if candidate["mode"] == "baseline"
+                and candidate["mean_hz"] is not None
+            ),
+            None,
+        )
+        following = next(
+            (
+                candidate
+                for candidate in summaries[index + 1 :]
+                if candidate["mode"] == "baseline"
+                and candidate["mean_hz"] is not None
+            ),
+            None,
+        )
+        if preceding is None or following is None:
+            continue
+        preceding_center = (
+            int(preceding["first_count_seq"])
+            + int(preceding["last_count_seq"])
+        ) / 2.0
+        load_center = (
+            int(item["first_count_seq"])
+            + int(item["last_count_seq"])
+        ) / 2.0
+        following_center = (
+            int(following["first_count_seq"])
+            + int(following["last_count_seq"])
+        ) / 2.0
+        span = following_center - preceding_center
+        if span <= 0 or not preceding_center < load_center < following_center:
+            continue
+        interpolation_fraction = (load_center - preceding_center) / span
+        interpolated_baseline_hz = float(preceding["mean_hz"]) + (
+            interpolation_fraction
+            * (float(following["mean_hz"]) - float(preceding["mean_hz"]))
+        )
+        bracketed_pairs.append(
+            {
+                "preceding_baseline_label": preceding["label"],
+                "load_label": item["label"],
+                "following_baseline_label": following["label"],
+                "interpolation_fraction": interpolation_fraction,
+                "interpolated_baseline_hz": interpolated_baseline_hz,
+                "bracketed_mean_shift_hz": (
+                    float(item["mean_hz"]) - interpolated_baseline_hz
+                ),
+            }
+        )
+    maximum_absolute_bracketed_shift_hz = (
+        max(
+            abs(float(item["bracketed_mean_shift_hz"]))
+            for item in bracketed_pairs
+        )
+        if bracketed_pairs
         else None
     )
     return {
         "segments": summaries,
+        "comparison_method": "load_minus_immediately_preceding_baseline",
+        "pairs": pairs,
+        "all_load_segments_paired": all_load_segments_paired,
         "maximum_absolute_mean_shift_hz": shift,
-        "comparison_available": shift is not None,
+        "bracketed_comparison_method": (
+            "load_minus_linearly_interpolated_preceding_and_following_"
+            "baseline_means_at_segment_center"
+        ),
+        "bracketed_pairs": bracketed_pairs,
+        "maximum_absolute_bracketed_mean_shift_hz": (
+            maximum_absolute_bracketed_shift_hz
+        ),
+        "comparison_available": all_load_segments_paired,
         "minimum_windows_per_segment": minimum_windows_per_segment,
         "minimum_windows_met": (
             bool(summaries)
@@ -1515,16 +1751,34 @@ def qualify_pps_backend(
     runtime_backend_identity = _runtime_backend_identity(
         status_rows, config, candidate_manifest
     )
+    comparison_snapshots = [
+        snapshot
+        for snapshot in candidate_snapshots
+        if candidate_typing.comparison_first_count_seq - 1
+        <= snapshot.sequence
+        <= candidate_typing.comparison_last_count_seq
+    ]
+    comparison_counts = [
+        count
+        for count in candidate_counts
+        if candidate_typing.comparison_first_count_seq
+        <= count.seq
+        <= candidate_typing.comparison_last_count_seq
+    ]
     snapshot_continuity = _snapshot_continuity(
-        candidate_snapshots,
+        comparison_snapshots,
         candidate_references,
-        candidate_counts,
+        comparison_counts,
         candidate_manifest,
     )
     service_plane = _service_plane_metrics(
         candidate_typing.service_plane_segments,
         candidate_windows,
         config.minimum_service_plane_windows_per_segment,
+        nominal_reference_interval_s=(
+            config.nominal_reference_interval_s
+        ),
+        count_resolution_edges=config.count_resolution_edges,
     )
     uncertainty = _uncertainty(
         candidate_typing,
@@ -1542,7 +1796,7 @@ def qualify_pps_backend(
     )
 
     traceable_count = sum(
-        1 for window in candidate_windows if window.traceable
+        1 for window in candidate_comparison_windows if window.traceable
     )
     eligible_count = len(candidate_values)
     stable_duration_s = sum(
@@ -1556,7 +1810,7 @@ def qualify_pps_backend(
     ).total_seconds()
     reason_counts = Counter(
         reason
-        for window in candidate_windows
+        for window in candidate_comparison_windows
         for reason in window.reasons
     )
     checks = {
@@ -1585,8 +1839,8 @@ def qualify_pps_backend(
             and independent_evidence["snapshot_valid"]
         ),
         "all_candidate_windows_traceable": (
-            bool(candidate_windows)
-            and traceable_count == len(candidate_windows)
+            bool(candidate_comparison_windows)
+            and traceable_count == len(candidate_comparison_windows)
         ),
         "candidate_comparison_range_endpoints_present": (
             any(
@@ -1680,11 +1934,40 @@ def qualify_pps_backend(
         ),
         "uncertainty_complete": not uncertainty["unavailable_components"],
     }
+    characterization_checks = {
+        "absolute_bias_within_historical_reference": checks[
+            "independent_bias_within_bound"
+        ],
+        "service_plane_mean_shift_within_historical_reference": checks[
+            "service_plane_shift_within_bound"
+        ],
+        "uncertainty_complete": checks["uncertainty_complete"],
+    }
+    if config.acceptance_scope == "digital_architecture":
+        for characterization_key in (
+            "independent_bias_within_bound",
+            "service_plane_shift_within_bound",
+            "uncertainty_complete",
+        ):
+            del checks[characterization_key]
+        for metrology_key in (
+            "independent_evidence_present",
+            "independent_evidence_is_bench",
+            "independent_manifest_is_observe_only",
+            "independent_evidence_complete_and_sealed",
+            "independent_comparison_range_endpoints_present",
+            "independent_stable_duration",
+            "independent_duration_matches_declared_interval",
+            "independent_reference_and_count_validity_observed",
+        ):
+            del checks[metrology_key]
     acceptance_passed = all(checks.values())
-    bench_inputs = (
-        candidate_typing.evidence_kind == "bench"
-        and independent_typing is not None
-        and independent_typing.evidence_kind == "bench"
+    bench_inputs = candidate_typing.evidence_kind == "bench" and (
+        config.acceptance_scope == "digital_architecture"
+        or (
+            independent_typing is not None
+            and independent_typing.evidence_kind == "bench"
+        )
     )
     qualification_state = (
         (
@@ -1711,6 +1994,16 @@ def qualify_pps_backend(
             "counter_saturation_outside_10_mhz_one_second_applicability_"
             "and_covered_synthetically"
         )
+    if config.acceptance_scope == "digital_architecture":
+        limitations.extend(
+            [
+                "candidate_population_jitter_is_a_blocking_architecture_"
+                "screen_not_a_component_limit",
+                "service_plane_mean_shift_is_characterization_only",
+                "absolute_bias_is_characterization_only_pending_system_"
+                "error_budget",
+            ]
+        )
 
     report = {
         "schema_version": 1,
@@ -1726,7 +2019,12 @@ def qualify_pps_backend(
         "config": {
             "path": config_path.name,
             "sha256": sha256(config_bytes).hexdigest(),
-            "thresholds": {
+            "schema_version": config.schema_version,
+            "acceptance_scope": config.acceptance_scope,
+            "criteria_rationale_document": (
+                config.criteria_rationale_document or None
+            ),
+            "protocol_requirements": {
                 "minimum_stable_duration_s": config.minimum_stable_duration_s,
                 "minimum_eligible_windows": config.minimum_eligible_windows,
                 "minimum_service_plane_windows_per_segment": (
@@ -1737,11 +2035,24 @@ def qualify_pps_backend(
                 ),
                 "missing_timeout_s": config.missing_timeout_s,
                 "count_resolution_edges": config.count_resolution_edges,
-                "maximum_absolute_bias_hz": config.maximum_absolute_bias_hz,
-                "maximum_candidate_jitter_hz": config.maximum_candidate_jitter_hz,
-                "maximum_service_plane_mean_shift_hz": (
-                    config.maximum_service_plane_mean_shift_hz
-                ),
+            },
+            "architecture_screens": {
+                "candidate_population_jitter_hz": {
+                    "value": config.maximum_candidate_jitter_hz,
+                    "disposition": (
+                        config.candidate_population_jitter_disposition
+                    ),
+                },
+            },
+            "characterization_references": {
+                "absolute_bias_hz": {
+                    "value": config.maximum_absolute_bias_hz,
+                    "disposition": config.absolute_bias_disposition,
+                },
+                "service_plane_mean_shift_hz": {
+                    "value": config.maximum_service_plane_mean_shift_hz,
+                    "disposition": config.service_plane_mean_shift_disposition,
+                },
             },
             "required_bench_fault_reason_codes": list(
                 config.required_fault_reason_codes
@@ -1829,6 +2140,15 @@ def qualify_pps_backend(
                 "authoritative": True,
                 "estimator": "counted_edges / nominal_reference_interval",
             },
+            "multi_span_official_raw_frequency": (
+                _multi_span_frequency_metrics(
+                    candidate_comparison_windows,
+                    nominal_reference_interval_s=(
+                        config.nominal_reference_interval_s
+                    ),
+                    count_resolution_edges=config.count_resolution_edges,
+                )
+            ),
             "diagnostic_timer_normalized_frequency": {
                 **diagnostic_timer_normalized_summary,
                 "authoritative": False,
@@ -1898,6 +2218,7 @@ def qualify_pps_backend(
         "service_plane": service_plane,
         "uncertainty": uncertainty,
         "acceptance_checks": checks,
+        "characterization_checks": characterization_checks,
         "limitations": limitations,
     }
 

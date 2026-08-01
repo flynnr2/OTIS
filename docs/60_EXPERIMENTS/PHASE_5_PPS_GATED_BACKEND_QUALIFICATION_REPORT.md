@@ -2,13 +2,19 @@
 
 ## Decision
 
-**Open / not qualified.** The active candidate is
+**Accepted on 2026-08-01 as the qualified observe-only PPS-gated measurement
+backend, with the documented limitations below.** The active candidate is
 `pio_wait_cumulative_snapshot_dma_v1`, with the physical boundary owned by one
-PIO state machine. The historic Bench Run 001 exercised the rejected
-`pps_isr_stop_sample_restart_v1` implementation and contains no raw cumulative
-`SNP` evidence. It cannot be reused to qualify this candidate.
+PIO state machine. Its clean, fault-injection, real-GPS, alternating-load,
+extended, and newly sealed overnight evidence supports progression to live
+estimator/preview integration. This acceptance qualifies capture and
+measurement semantics; it does not authorize DAC actuation. The historic Bench
+Run 001 exercised the rejected `pps_isr_stop_sample_restart_v1` implementation
+and contains no raw
+cumulative `SNP` evidence; it was not reused.
 
-The enforced safety state remains:
+The accepted evidence build and current checked-in qualification profile retain
+this enforced safety state:
 
 ```text
 pps_gate/backend_qualified=false
@@ -38,6 +44,33 @@ The first snapshot of every session is an anchor. Any reference/snapshot gap,
 association loss, invalid status, FIFO stall, DMA error, ring overwrite,
 oscillator outage, or reset invalidates continuity. Recovery requires two fresh
 snapshots, and no late snapshot may be paired retroactively.
+
+## Post-qualification latency and jitter audit
+
+The exact v4 ELF used by the sealed overnight campaign was inspected after the
+evidence review. The ELF contains the expected 15 PIO words, and its relevant
+build-copied sources match the current PIO backend, D14 IRQ, capture ring,
+boundary ring, and count-observation sources apart from generated `#line`
+directives. The D14 callback timestamps first; its GPIO sampling, event
+construction, diagnostics, and ring copy follow. The Arduino shared GPIO
+dispatcher, XIP execution, non-inlined `micros()` call, and default IRQ priority
+mean that this auxiliary REF timestamp is not an absolute minimum-latency GPIO
+capture. None of those details lies inside the official PIO-owned count
+aperture.
+
+The overnight data reinforces that separation. Across 16,798 windows, the
+correlation between reconstructed D14 interval variation and raw count was
+approximately 0.004. Quiet/load distributions were similar and all transport
+and continuity counters remained clean. At longer cumulative spans the proved
+one-edge digital endpoint contribution falls as one edge per span, while the
+observed block-to-block variation remains materially larger. The remaining
+spread is therefore retained as end-to-end ECS/GPS/input/environmental
+characterization, not reported as isolated firmware jitter.
+
+No capture-firmware change was accepted from this audit. Future firmware must
+preserve the anti-regression invariants in
+`../50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`; a shorter ISR may
+improve diagnostic REF timing but must not be claimed to improve raw `CNT`.
 
 ## Digital proof status
 
@@ -89,27 +122,43 @@ For narrow glitches, REF-without-SNP is a legitimate fail-closed outcome only
 when absence, association loss, no crossing CNT, late-word rejection, and
 fresh anchor-plus-adjacent recovery are explicit.
 
-## Remaining hardware gates
+## Hardware evidence disposition
 
-The bench campaign in
-`PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md` must still demonstrate:
+The planned evidence in `PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md` is complete:
 
-1. actual D8 waveform duty, threshold integrity, and rise/fall behavior;
-2. a 16 MHz PPS-to-oscillator phase sweep across the complete 62.5 ns period;
-3. clean pseudo-PPS loopback and every required malformed-PPS class;
-4. real-GPS quiet operation without false physical-outage or continuity loss;
-5. alternating quiet/load equivalence using official raw counts;
-6. population jitter no more than 1.5 Hz and quiet/load mean shift no more
-   than 0.05 Hz;
-7. extended resource, wrap, reset/session, and transport stability; and
-8. a newly sealed overnight run directly comparable in procedure, but not in
-   backend identity, to `candidate_20260730T192721Z`.
+1. clean pseudo-PPS loopback passes; malformed-PPS scoring is 30/31 strict,
+   with the sole 10 microsecond width-only glitch miss accepted and documented
+   as a rising-edge-only observability limitation;
+2. real-GPS quiet operation passes without false physical outage or continuity
+   loss;
+3. sequential and bracketed quiet/load runs pass digital/load integrity, with
+   mean shifts retained only as characterization;
+4. every declared short, extended, and overnight segment remains below the
+   1.5 Hz coarse architecture-spread screen;
+5. extended operation crosses timer wrap while resource, DMA, ring, transport,
+   parser, and session counters remain clean; and
+6. the newly sealed overnight v4 run contributes 16,798 exact windows across
+   14 guarded quiet/load pairs, with zero loss or continuity fault.
 
-If the 16 MHz timing envelope fails on the assembled hardware, stop and use the
+The overnight v2 report's aggregate `failed` state is expected for a standalone
+nominal run: only its fault-detection and post-fault-recovery checks fail
+because no faults were injected there. All other acceptance checks pass. The
+separate pseudo-PPS evidence supplies fault classification and recovery; the
+campaign conclusion is therefore based on the evidence set, not on pretending
+that one quiet run exercised every mode.
+
+Actual D8 waveform measurement and the controlled phase/duty sweep are not
+supported by the current ECS fixture and are recorded as not tested and
+non-blocking. If a later capable fixture shows
+that the 16 MHz timing envelope fails on the assembled hardware, stop and use the
 documented external counter/capture latch or CPLD fallback. ISR, DMA, or a
 second PIO state machine must not be substituted as boundary owner.
 
-Qualification never changes automatically from one run. Evidence review and a
-deliberate later source change are required before the compile-time gate can be
-set. Until then, the backend is engineering evidence only and control remains
-blocked.
+Qualification never changes automatically from one run. The deliberate review
+was completed and accepted on 2026-08-01. Existing sealed artifacts remain
+immutable and therefore continue to report `backend_qualified=false`; the
+checked-in qualification build also remains fail-safe. Reflecting acceptance
+in a future operational build is a separate, reviewed source/profile change.
+Even then, backend qualification alone must not make a `CTL` row actionable or
+authorize a DAC write: control remains blocked until the guarded-actuation gate
+is separately approved.

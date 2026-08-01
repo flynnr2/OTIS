@@ -46,6 +46,22 @@ PIO FIFO is for sparse event observation only: PPS, GPIO loopback, and future
 low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
 FC0/gated-count style observation, not PIO FIFO edge logging.
 
+The later PPS-gated high-rate measurement path is also qualified for
+observe-only use. On 2026-08-01 the
+`pio_wait_cumulative_snapshot_dma_v1` evidence campaign was accepted after
+clean pseudo-PPS, fault, real-GPS, quiet/load, extended, and sealed overnight
+testing. This closes roadmap Stage SW2-3 with a documented 30/31 width-only
+fault limitation and physical phase/duty sweep recorded as not tested and
+non-blocking. It does not authorize DAC actuation.
+
+The follow-up exact-ELF latency/jitter audit closes speculative capture-path
+optimization for this accepted mechanism. Subsequent stages must preserve the
+single-PIO-state-machine count/snapshot aperture and its proof-bound
+configuration; ISR, DMA, service-plane, and core-placement changes must not
+move the boundary back into software or be claimed as raw-count improvements.
+The normative checklist is
+`docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
+
 ### Stage 1A — PPS Capture
 
 Capture GNSS PPS edges and emit canonical raw records.
@@ -82,8 +98,10 @@ manual open-loop oscillator observation and DAC steering limits; Stage 2 should
 not be used as a reason to add DAC control-loop firmware before that evidence
 exists.
 
-H1 is now in open-loop characterization, while SW2 active actuation is not
-started and remains appropriately deferred. Completed H1 bring-up evidence now
+H1 open-loop characterization and the SW2-3 PPS-gated measurement-backend gate
+are complete enough to proceed to live observe-only estimator/preview
+integration. SW2 active actuation is not started and remains appropriately
+deferred. Completed H1 bring-up evidence now
 includes AD5693R DAC I2C initialization, configurable characterization clamps,
 manual `DAC SET` voltage checks, scripted `SWEEP LOAD` /
 `SWEEP START` telemetry, parser extraction of `dac_steps_v1`, environmental
