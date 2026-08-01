@@ -23,7 +23,11 @@ PI/PID control, holdover, or closed-loop GPSDO behavior.
    qualitative thermal behavior.
 4. Confirm the oscillator output exists at the measurement point before routing
    it toward OTIS.
-5. Initialize a run from `ocxo_power_warmup/_template` and record warm-up notes.
+5. Initialize a run from the tracked
+   `profiles/run_templates/h1_open_loop/ocxo_power_warmup` scaffold and record
+   warm-up notes. `host.otis_tools.init_run` still accepts a legacy local
+   `runs/.../_template` when present, but tracked profiles are the portable
+   source for fresh clones and tests.
 
 ## 2. DAC I2C And Voltage Verification
 

@@ -7,6 +7,12 @@ adding oscillator steering or GPSDO control loops.
 
 Stage 1 is not primarily a GPSDO. It is a deterministic timestamp and reference observation platform.
 
+Qualification status: the cumulative single-PIO-state-machine PPS-gated
+measurement backend was accepted on 2026-08-01 for observe-only use after
+clean, fault, real-GPS, load, extended, and sealed overnight testing. Physical
+phase/duty margin remains not tested on the installed ECS fixture, and active
+oscillator steering remains outside Stage 1.
+
 ## Goals
 
 - capture GNSS PPS as a reference event;
@@ -21,9 +27,10 @@ Stage 1 is not primarily a GPSDO. It is a deterministic timestamp and reference 
 The RP2040 board clock remains the implementation clock for firmware, USB, DMA, and PIO execution. Stage 1 does **not** require feeding a TCXO or OCXO into the RP2040 system clock input.
 
 Reference oscillators enter Stage 1 as conditioned GPIO signals observed by the
-appropriate RP2040 counting/capture machinery. Sparse edges may use the PIO
-edge-capture path; raw 10 MHz / 16 MHz CXO input on GPIN0 must use
-FC0/gated-count style observation.
+appropriate RP2040 counting/capture machinery. Sparse edges may use a PIO
+edge-capture path. A raw 10 MHz / 16 MHz CXO may use FC0/GPIN0 long-gate
+observation or a proved PIO-local counter that transports only cumulative gate
+snapshots, never one FIFO record per oscillator edge.
 
 ```text
 RP2040 board clock
@@ -32,7 +39,8 @@ RP2040 board clock
 TCXO / OCXO / oscillator under test
   -> buffer / level conditioning
   -> D8 / GPIO20 / GPIN0
-  -> FC0 / gated count observation
+  -> FC0 long-gate observation, or
+  -> PIO-local edge count with cumulative PPS snapshots
 
 GNSS PPS
   -> RP2040 GPIO / PIO
@@ -43,9 +51,12 @@ See `docs/10_REFERENCE_ARCHITECTURE/REFERENCE_SIGNAL_MODEL.md`.
 
 ## Timing Fabric
 
-The RP2040 PIO subsystem is initially envisioned as part of the sparse-edge
-timing fabric. It is not the abstraction for representing every edge of a raw
-10 MHz / 16 MHz oscillator.
+The RP2040 PIO subsystem is part of the timing fabric. A high-rate oscillator
+must not be represented as one PIO FIFO item per edge. It may nevertheless be
+counted inside one state machine when instruction timing, input synchronization,
+snapshot ownership, FIFO/DMA transport, and fault paths are proved for the
+target frequency. Only the sparse cumulative snapshots leave the state
+machine.
 
 PIO responsibilities may include:
 
@@ -162,7 +173,7 @@ The current H0 bench path is:
 1. USB synthetic sanity with `SW1_SYNTHETIC_USB`.
 2. GPIO loopback with `SW1_GPIO_LOOPBACK`, `D7` jumpered to `D10` / `CH0`.
 3. GPS PPS capture with `SW1_GPS_PPS`, Adafruit Ultimate GPS PPS wired to `D14` / `CH1`.
-4. TCXO observation with `SW1_TCXO_OBSERVE`, conditioned ECS-TXO-5032-160-TR output wired to `D8` / `GPIO20` / `GPIN0` / `CH2` and observed through FC0/gated-count style `CNT` windows.
+4. TCXO observation with `SW1_TCXO_OBSERVE`, conditioned ECS-TXO-5032-160-TR output wired to `D8` / `GPIO20` / `GPIN0` / `CH2` and observed through a selected raw-count backend.
 5. Combined PPS + TCXO real run using `examples/h0_pps_tcxo_real/` as the manifest template.
 
 Expected serial output is line-oriented CSV records using the existing `STS`,
@@ -183,8 +194,11 @@ Capture GNSS PPS edges and emit raw records with monotonically increasing sequen
 Feed the available TCXO through the buffer into `D8` / `GPIO20` / `GPIN0`.
 Count the reference signal against gated windows so the host can estimate
 frequency error, jitter, missing counts, and interval stability. Do not model a
-raw 10 MHz / 16 MHz oscillator as one PIO FIFO event per edge; PIO FIFO is for
-sparse event edges such as PPS and slow GPIO loopback.
+raw 10 MHz / 16 MHz oscillator as one PIO FIFO event per edge. The current
+PPS-gated candidate instead counts oscillator rises in PIO X and pushes one
+immutable cumulative snapshot per recognised PPS. FC0 remains an independent
+long-gate option; backend identity and evidence must say which mechanism made
+each `CNT`.
 
 ### Stage 1C — Generic Event Capture
 

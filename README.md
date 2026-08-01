@@ -28,8 +28,10 @@ directories outside `runs/`.
 
 ## Current Status
 
-This repository has completed enough **H0 / SW1** bring-up to move into **H1**
-open-loop OCXO/DAC characterization:
+This repository has completed **H0 / SW1** bring-up, the H1 observe-only plant
+model, and the SW2-3 PPS-gated measurement-backend qualification. The active
+next step is integrated live observe-only estimator/preview validation; active
+DAC control remains deferred:
 
 - the architecture, terminology, and first data contracts are being made explicit;
 - the host-side tooling validates synthetic fixtures and captured run directories;
@@ -137,24 +139,37 @@ low-rate event edges. Raw TCXO/OCXO input on `D8` / `GPIO20` / `GPIN0` must use
 FC0/gated-count style observation, not PIO FIFO edge logging.
 
 H1 OCXO/DAC characterization, Phase 4 host replay, and deterministic
-host/firmware engine parity are complete. Phase 5 Bench Run 001 subsequently
-passed its authoritative post-reset candidate legs: startup qualification,
-33111 consecutive stable windows, qualifying-size quiet/load segments,
-missing-PPS inhibition, zero-count inhibition, and clean-window recovery.
-Session-scoped jitter/load analysis, independent comparison, aperture
-uncertainty, controlled duplicate/short/long PPS tests, and reconnect evidence
-remain open. PPS- or count-error-derived DAC writes remain prohibited until the
-later reviewed guarded-actuation gate.
+host/firmware engine parity are complete. The replacement Phase 5
+`pio_wait_cumulative_snapshot_dma_v1` backend was accepted on 2026-08-01 as the
+qualified observe-only PPS-gated measurement architecture. Its campaign covers
+clean pseudo-PPS, 30/31 strict fault cases with one accepted rising-edge-only
+width-blind limitation, real-GPS quiet/load operation, 11,388-window extended
+evidence, and a newly sealed 16,798-window overnight run with exact raw
+snapshot reconstruction and zero capture/PIO/DMA/ring/session fault. Physical
+phase/duty margin remains not tested because the ECS fixture cannot control it;
+this is recorded as non-blocking rather than passed. PPS- or
+count-error-derived DAC writes remain prohibited until the later reviewed
+guarded-actuation gate.
+
+An exact qualification-v4 ELF and source audit subsequently confirmed that the
+authoritative aperture contains no CPU/ISR, DMA, USB, serial, foreground, or
+core-scheduling latency. The PIO state machine owns both edge counting and the
+cumulative PPS snapshot. The remaining measured spread is retained as
+end-to-end ECS/GPS/capture characterization, not isolated firmware jitter.
+This conclusion is now a regression constraint documented in
+`docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
 
 ## Quick Host Scaffold Check
 
 From the repository root:
 
 ```bash
-python3 -m pip install -e ".[dev]"
-python3 -m pytest
-python3 -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
-python3 -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
+python3 -m venv .venv
+.venv/bin/python -m pip config --site set global.cache-dir .cache/pip
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pytest
+.venv/bin/python -m host.otis_tools.validate_run examples/h0_pps_tcxo_synthetic
+.venv/bin/python -m host.otis_tools.report_run examples/h0_pps_tcxo_synthetic
 ```
 
 Header-only hardware run templates are available under:

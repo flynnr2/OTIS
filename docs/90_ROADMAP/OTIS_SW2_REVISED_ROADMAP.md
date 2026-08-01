@@ -172,27 +172,48 @@ The current 300-second long-gate FC0 path is useful for:
 
 It is probably too slow and too disconnected from individual PPS intervals to be the sole live discipline observation.
 
-The repository already anticipates a **PPS-gated ratio backend**. That should be treated as the preferred SW2 live frequency-observation path, subject to bench validation. It should produce canonical `CNT` observations whose gate is defined by accepted PPS edges, while preserving both PPS validity and oscillator-count validity.
+The repository implements the **PPS-gated ratio backend** as the preferred SW2
+live frequency-observation path. Its
+`pio_wait_cumulative_snapshot_dma_v1` architecture was accepted for
+observe-only use on 2026-08-01 after clean, fault, real-GPS, load, extended, and
+sealed overnight testing. It produces canonical `CNT` observations whose gate
+is defined by accepted PPS edges while preserving PPS validity and
+oscillator-count validity separately. The accepted width-only fault limitation
+and unavailable physical phase/duty sweep remain explicit; neither authorizes
+actuation.
+
+The subsequent exact-ELF and source audit concludes that this measurement path
+is already at the practical useful latency/jitter limit of the selected
+integer-edge RP2040 architecture. The D14 IRQ is not a cycle-minimal timestamp
+path, but it is diagnostic and cannot move the raw count aperture. Future
+firmware must preserve the ownership and proof invariants in
+`../50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`; routine ISR,
+multicore, DMA, USB, or telemetry refactoring must not be presented as a raw
+count-resolution improvement.
 
 The 300-second H1 path remains valuable as an independent metrology and validation channel.
 
-### 2.5 Preserve a dual-core timing-plane/service-plane architecture
+### 2.5 Preserve a hardware-timing-plane/service-plane architecture
 
-SW2 should use the RP2040's two cores as an explicit architectural boundary:
+The PIO/DMA capture fabric is the timing plane below both CPU cores. SW2 may use
+the RP2040's two cores as an additional service/estimation boundary, but core
+placement must not redefine the already autonomous count aperture:
 
 ```text
 As per Earle Philhower's advices that  Core 0 handles USB and should generally perform Wi-Fi operations
 Core 0 — service, I/O and application plane
-Core 1 — protected timing and discipline plane
+Core 1 — protected snapshot-consumption, estimation and discipline plane
 ```
 
 This does not mean that SW2 should begin with a disruptive multicore rewrite before the H1 evidence gates are closed. It does mean that new SW2 interfaces, queues and ownership rules must be designed so the intended partition is clear and can be enforced incrementally.
 
 #### Core 1 responsibilities
 
-Core 1 should own work whose delay, ordering or jitter can affect measurement or discipline integrity:
+Core 1 should own work whose delay, ordering or jitter can affect snapshot
+consumption, estimation or discipline integrity. PIO retains physical capture
+ownership:
 
-- PPS and oscillator capture completion;
+- timely consumption of immutable PPS/oscillator snapshots;
 - monotonic timing and sequence ownership;
 - construction and validation of canonical raw timing observations;
 - reference-age and continuity tracking;
@@ -257,7 +278,10 @@ Timing observations, actuator acknowledgements and critical state changes must n
 
 #### Isolation requirement
 
-A stalled or overloaded service plane must not corrupt the timing plane. SW2 testing should deliberately block USB output, delay non-critical I²C activity, overload telemetry and temporarily stall Core 1 while verifying that Core 0 continues to:
+A stalled or overloaded service plane must not corrupt the timing plane. SW2
+testing should deliberately block USB output, delay non-critical I2C activity,
+overload telemetry, and temporarily stall Core 0 while verifying that the
+PIO/DMA fabric and protected Core 1 path continue to:
 
 - capture expected timing events;
 - maintain monotonic sequencing;
@@ -266,9 +290,12 @@ A stalled or overloaded service plane must not corrupt the timing plane. SW2 tes
 - account for lost service-plane telemetry;
 - enter a defined fault or degraded state if a non-droppable cross-core channel cannot be serviced.
 
-The dual-core boundary is therefore part of the SW2 platform architecture,
-even though its implementation should be staged so that it does not obscure
-the completed H1 evidence boundary or the next observe-only work.
+Separately stalling Core 1 should demonstrate bounded PIO/DMA buffering followed
+by explicit fail-closed backlog/overflow behavior; Core 0 must not take over or
+fabricate the timing observation. The hardware/core boundary is therefore part
+of the SW2 platform architecture, even though its implementation should be
+staged so that it does not obscure the completed H1 evidence boundary or the
+next observe-only work.
 
 ---
 
@@ -714,9 +741,10 @@ fault/repeatability fixtures are implemented. Derived products are confined to
 the supplied run's `derived/phase4_replay_v3/` directory and source evidence is
 content-hashed before and after.
 
-This status includes native host/firmware estimator parity but does not claim
-physical gate-aperture qualification, live PPS-gated measurement
-qualification, or active actuation. Every Phase 4 CTL remains preview-only,
+This status includes native host/firmware estimator parity. Physical
+gate-aperture and live PPS-gated measurement qualification were subsequently
+accepted by the separate Phase 5 campaign on 2026-08-01. Stage SW2-1 itself
+still makes no active-actuation claim: every Phase 4 CTL remains preview-only,
 unauthorized, and non-actionable.
 
 ### Required components
@@ -778,9 +806,11 @@ The checked-in default keeps the preview disabled. All preview authorization
 and actionability fields remain false. The default, preview, PPS-gated,
 alternative sparse-capture, FC0, and divided-signal GPIO count builds compile.
 
-No target board was attached for upload, service-plane load/reconnect testing,
-or a long observe-only run. Therefore this stage does not yet pass its exit
-gate and no later actuation gate is affected.
+The target board has since completed Phase 5 PPS-gated capture qualification,
+including service-plane load and long-duration runs. Those runs used the
+qualification build rather than the live Phase 4 preview build. Stage SW2-2
+therefore still needs one integrated long live preview/parity run before its
+exit gate passes; no actuation gate is affected.
 
 ### Operating states
 
@@ -821,6 +851,22 @@ A long live run demonstrates that observe-only SW2 remains stable, does not dist
 
 **Purpose:** establish the preferred live frequency observation for the discipline loop.
 
+### Status
+
+**Complete and accepted for observe-only measurement on 2026-08-01.** The
+single-PIO-state-machine backend passed exact raw `SNP`/`CNT` reconstruction,
+real-GPS continuity, deliberate service load, timer rollovers, extended and
+sealed overnight operation. The final overnight comparison contains 16,798
+eligible windows across 14 quiet/load pairs with zero capture, PIO, DMA, ring,
+parser, or session-continuity fault. The fault campaign scored 30/31 strict;
+the sole 10 microsecond width-only miss is an accepted rising-edge-only
+observability limitation. Physical phase/duty margin is not tested because the
+ECS fixture cannot control it and is recorded as non-blocking, not passed.
+
+This closes the measurement-backend gate only. Existing qualification evidence
+retains `backend_qualified=false`, and all actuation authorization remains
+false pending a separate operational-profile and guarded-control decision.
+
 ### Requirements
 
 - define the count gate from accepted PPS edges;
@@ -848,7 +894,13 @@ no relevant capture fault
 
 ### Exit gate
 
-The backend has clean bench evidence and host validation. It does not itself authorise DAC movement.
+**Passed with the documented limitations.** The backend has clean bench
+evidence and host validation. It does not itself authorise DAC movement.
+
+The post-qualification latency/jitter audit also passed as an architecture
+review: no CPU/ISR path lies inside the official aperture, the exact v4 ELF
+matches the proved PIO mechanism, and no capture code change is justified.
+This conclusion is now a regression constraint for every later SW2 stage.
 
 ---
 
@@ -1220,7 +1272,10 @@ future guarded-actuation concern.
 
 ### Package 7 — Firmware observe-only parity
 
-Port the minimum estimator/state/policy needed for live preview and compare against host fixtures. No PPS/count-derived DAC writes.
+Implementation and deterministic fixture parity are complete. Run the
+integrated preview build live with the accepted PPS-gated backend under
+service-plane load and long-duration observation. No PPS/count-derived DAC
+writes.
 
 ### Package 8 — PPS-gated ratio backend validation
 
@@ -1231,13 +1286,16 @@ cumulative snapshot/session contracts, minimal ISR diagnostics, deterministic
 negative fixtures, explicit estimator typing, qualification analysis, and the
 new bench handoff are present.
 
-**Current result: open / not yet qualified.** Bench Run 001 exercised the old
-ISR-owned mechanism and is not reusable as passing evidence for the PIO-owned
-replacement. A new 16 MHz phase/duty sweep, pseudo-PPS fault campaign,
-quiet/load comparison, independent comparison, uncertainty review, reconnect
-evidence, and final sealing remain open. See
-`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
-Do not enable control.
+**Current result: complete and accepted for observe-only measurement on
+2026-08-01.** Bench Run 001 remains historical evidence for the rejected
+ISR-owned mechanism. The replacement campaign supplies clean pseudo-PPS,
+30/31 strict fault, real-GPS quiet/load, 11,388-window extended, and sealed
+16,798-window overnight evidence with exact SNP/CNT reconstruction and zero
+capture/PIO/DMA/ring/session fault. The 10 microsecond width-only miss is an
+accepted rising-edge observability limitation. Controlled physical phase/duty
+margin is not tested because the ECS fixture cannot perform it and is recorded
+as non-blocking, not passed. Independent absolute metrology remains future
+characterization, not a reopened digital-backend gate. Do not enable control.
 
 ### Package 9 — First-actuation experiment plan
 
@@ -1368,8 +1426,8 @@ unresolved-condition bounds. It is not an active-control authority.
 - host estimator/state machine/preview;
 - deterministic replay.
 
-**Status:** passed for host replay. Firmware parity and every actuation gate
-remain open.
+**Status:** passed for host replay. Firmware parity is implemented; the
+integrated long live preview gate and every actuation gate remain open.
 
 ### M3 — Live observe-only parity and core isolation
 
@@ -1379,10 +1437,19 @@ remain open.
 - droppable and non-droppable queue policies are tested and observable;
 - no automatic actuation path exists.
 
+**Status:** implementation and deterministic parity are complete; the
+integrated long live preview run remains open.
+
 ### M4 — Live discipline measurement validated
 
 - PPS-gated ratio or authorised alternative works cleanly;
-- independent metrology agrees within understood limits.
+- exact capture/continuity and load invariants pass;
+- absolute bias and independent metrology remain separately characterized with
+  their available uncertainty rather than invented as a digital-backend gate.
+
+**Status:** passed for observe-only measurement on 2026-08-01 with the accepted
+width-only limitation and physical phase/duty item not tested/non-blocking. It
+does not authorize actuation.
 
 ### M5 — Guarded frequency actuation
 
@@ -1438,12 +1505,17 @@ At that point OTIS is both a credible GPSDO and a credible foundation for broade
 
 ## 15. Immediate next actions
 
-1. Produce provenance-preserving, session-scoped jitter and service-load
-   analysis for Phase 5 Bench Run 001.
-2. Complete the authorised independent comparison, aperture uncertainty, and
-   controlled duplicate/short/long PPS fault legs.
-3. Perform the separate reconnect run, seal complete evidence, and execute the
-   deterministic PPS-gated qualification analyser.
-4. Keep active DAC steering blocked until its separate policy, cadence,
+1. Run the integrated live Phase 4 estimator/preview build with the accepted
+   PPS-gated backend under deliberate service load and long-duration
+   observation; keep every actionability field false.
+2. Use the accepted backend evidence and CX317 plant model to characterize the
+   estimator span, noise floor, and preview cadence without inventing an
+   isolated firmware-jitter number.
+   Preserve one-second raw snapshots and evaluate cumulative endpoint spans;
+   approximately 60--120 seconds is an evidence-supported exploration range,
+   not a frozen controller constant.
+3. Prepare the separately reviewed guarded-actuation policy: safe operational
+   profile, update size, cadence, abort, fail-static, and recovery rules.
+4. Keep active DAC steering blocked until that separate policy, cadence,
    maximum-update, abort, and guarded-actuation gate is explicitly reviewed and
    reopened.

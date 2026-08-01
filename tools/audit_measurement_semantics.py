@@ -5,6 +5,7 @@ import argparse
 import csv
 import io
 import re
+import subprocess
 
 
 OUTPUT = Path("derived/measurement_semantics_usage_inventory.csv")
@@ -44,6 +45,34 @@ TERMS = (
 )
 
 
+def _candidate_paths(root: Path) -> list[Path]:
+    """Return tracked and non-ignored working-tree files when Git is available."""
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+            check=False,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        result = None
+    if result is not None and result.returncode == 0:
+        return [
+            root / entry.decode("utf-8", errors="surrogateescape")
+            for entry in result.stdout.split(b"\0")
+            if entry
+        ]
+    return list(root.rglob("*"))
+
+
 def _classification(path: Path, line: str, matched: list[str]) -> str:
     if "frequency_uncertainty_hz" in line and (
         "estimates_v1" in path.as_posix()
@@ -66,7 +95,7 @@ def _classification(path: Path, line: str, matched: list[str]) -> str:
 def inventory_bytes(root: Path) -> bytes:
     rows: list[dict[str, str]] = []
     output_path = root / OUTPUT
-    for path in sorted(root.rglob("*")):
+    for path in sorted(_candidate_paths(root)):
         if (
             not path.is_file()
             or path == output_path

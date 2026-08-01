@@ -67,6 +67,7 @@ bool resource_ownership_status_emitted = false;
 bool boot_capability_status_emitted = false;
 bool run_mode_status_emitted = false;
 bool transport_started = false;
+bool config_query_provenance_emitted = false;
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -455,9 +456,48 @@ void drain_pps_count_boundary_ring(void) {
 #endif
 }
 
-void emit_common_boot_status(void) {
+void emit_build_provenance_status(void) {
   emit_status("build", "provenance_format", OTIS_BUILD_PROVENANCE_FORMAT,
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "git_commit", OTIS_FIRMWARE_GIT_COMMIT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "source_state", OTIS_BUILD_SOURCE_STATE,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "source_hash", OTIS_BUILD_SOURCE_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "config_hash", OTIS_BUILD_CONFIG_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "board", OTIS_TARGET_BOARD, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "board_name", OTIS_TARGET_BOARD_NAME,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "fqbn", OTIS_BUILD_FQBN, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_provider", OTIS_BUILD_CORE_PROVIDER,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_version", OTIS_BUILD_CORE_VERSION,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("system", "arduino_core_installed_hash",
+              OTIS_BUILD_CORE_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "profile_id", OTIS_BUILD_PROFILE_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "toolchain", OTIS_BUILD_TOOLCHAIN,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "compiler", OTIS_BUILD_COMPILER, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "toolchain_installed_hash",
+              OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "arduino_cli_version",
+              OTIS_BUILD_ARDUINO_CLI_VERSION, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "invocation_id", OTIS_BUILD_INVOCATION_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+void emit_common_boot_status(void) {
+  emit_build_provenance_status();
   emit_status("system", "boot", "true", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("protocol", "schema_version", OTIS_SCHEMA_VERSION_V1,
@@ -2056,6 +2096,14 @@ void emit_pseudo_pps_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("ppsgen", "truth_emitted", status.truth_emitted,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "pin_sample_count", status.pin_sample_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "output_high_sample_count",
+                  status.output_high_sample_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("ppsgen", "reference_high_sample_count",
+                  status.reference_high_sample_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
   emit_status_u32("ppsgen", "output_gpio", OTIS_GPIO_PSEUDO_PPS_OUTPUT,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("ppsgen", "pio_clock_hz", status.pio_clock_hz,
@@ -2083,6 +2131,15 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
   } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    // A capture opened after the boot banner still needs one complete
+    // provenance block for evidence sealing.  Do not repeat the relatively
+    // large block at CONFIG? service-load rates.
+    if (!config_query_provenance_emitted) {
+      emit_build_provenance_status();
+      otis_count_observation_emit_configuration_status(
+          &status_emit_context);
+      config_query_provenance_emitted = true;
+    }
     emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
                 OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("firmware", "config_id", OTIS_FIRMWARE_CONFIG_ID,

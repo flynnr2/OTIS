@@ -567,8 +567,10 @@ def verify_dma_ring_model() -> dict[str, object]:
 def run_phase_sweep(duties: Iterable[int] = range(35, 66)) -> dict[str, object]:
     duties = tuple(duties)
     error_histogram: dict[int, int] = {}
+    span_error_histogram: dict[int, int] = {}
     case_count = 0
     interval_count = 0
+    maximum_span_intervals = 0
     for duty in duties:
         for phase in range(256):
             errors = simulate_case(phase_index=phase, duty_percent=duty)
@@ -576,14 +578,38 @@ def run_phase_sweep(duties: Iterable[int] = range(35, 66)) -> dict[str, object]:
             interval_count += len(errors)
             for error in errors:
                 error_histogram[error] = error_histogram.get(error, 0) + 1
+            # Cumulative snapshots make a multi-PPS measurement an endpoint
+            # difference. Summing adjacent reconstruction errors therefore
+            # must not turn boundary quantisation into an error that grows
+            # with the number of clean intervals.
+            for span_intervals in range(1, len(errors) + 1):
+                maximum_span_intervals = max(
+                    maximum_span_intervals, span_intervals
+                )
+                for start in range(len(errors) - span_intervals + 1):
+                    span_error = sum(
+                        errors[start : start + span_intervals]
+                    )
+                    span_error_histogram[span_error] = (
+                        span_error_histogram.get(span_error, 0) + 1
+                    )
     if not set(error_histogram).issubset({-1, 0, 1}):
         raise ProofFailure(f"boundary error exceeded one oscillator edge: {error_histogram}")
+    if not set(span_error_histogram).issubset({-1, 0, 1}):
+        raise ProofFailure(
+            "multi-interval boundary error accumulated beyond one "
+            f"oscillator edge: {span_error_histogram}"
+        )
     return {
         "cases": case_count,
         "intervals": interval_count,
         "duty_percent": list(duties),
         "phase_offsets": 256,
         "boundary_error_edges": dict(sorted(error_histogram.items())),
+        "multi_interval_boundary_error_edges": dict(
+            sorted(span_error_histogram.items())
+        ),
+        "maximum_tested_span_intervals": maximum_span_intervals,
     }
 
 

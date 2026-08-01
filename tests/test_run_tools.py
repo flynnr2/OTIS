@@ -21,7 +21,7 @@ TEMPLATE_EXAMPLES = [
     Path("examples/h0_gps_pps"),
     Path("examples/h0_pps_tcxo_real"),
 ]
-H1_TEMPLATE = Path("runs/h1_open_loop/dac_manual_sweep/_template")
+H1_TEMPLATE = Path("profiles/run_templates/h1_open_loop/dac_manual_sweep")
 
 
 def _copy_example(tmp_path: Path) -> Path:
@@ -58,6 +58,22 @@ def test_validate_example_run() -> None:
     assert validate_run(EXAMPLE) == 0
 
 
+def test_validate_run_rejects_host_marker_inside_raw_device_record(tmp_path: Path, capsys) -> None:
+    run_dir = _copy_example(tmp_path)
+    raw_dir = run_dir / "raw"
+    raw_dir.mkdir(exist_ok=True)
+    (raw_dir / "serial.log").write_bytes(
+        b"CNT,1,7,2,1,16000001\n"
+        b'# OTIS_HOST {"event":"host_command_sent"}\n'
+        b",rp2040_timer0,16000000,R,h0_tcxo_16mhz,16\n"
+    )
+
+    assert validate_run(run_dir) == 1
+    errors = capsys.readouterr().err
+    assert "raw device record may be interrupted" in errors
+    assert "orphaned device-record continuation" in errors
+
+
 def test_validate_bringup_templates() -> None:
     for run_dir in TEMPLATE_EXAMPLES:
         assert validate_run(run_dir) == 0
@@ -80,6 +96,30 @@ def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
             [
                 "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
                 "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+
+
+def test_validate_run_accepts_phase5_declared_h0_source_in_h1_stage(tmp_path: Path) -> None:
+    run_dir = tmp_path / "phase5_h0_source"
+    shutil.copytree(H1_TEMPLATE, run_dir)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["run_id"] = "phase5_h0_source_test"
+    manifest["template"] = False
+    manifest["domains"].append({"name": "h0_tcxo_16mhz", "nominal_hz": 16_000_000})
+    manifest["phase5_pps_backend_qualification"] = {"source_domain": "h0_tcxo_16mhz"}
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "manifest.json").unlink()
+    (run_dir / "csv" / "cnt.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,15999998,R,h0_tcxo_16mhz,16",
                 "",
             ]
         ),

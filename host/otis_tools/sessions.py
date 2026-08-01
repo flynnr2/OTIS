@@ -91,9 +91,16 @@ def _raw_log_markers(path: Path) -> tuple[int, int, list[SessionInfo]]:
                         )
                     )
                 continue
-            if "BOOT" in text or text.startswith("BOOT,") or text.startswith("HDR,"):
+            is_boot_marker = text.startswith("BOOT,") or text.startswith("BOOT ")
+            if is_boot_marker or text.startswith("HDR,"):
                 boots += 1
-                if seen_data:
+                initial_boot_provenance = (
+                    is_boot_marker
+                    and text.startswith("BOOT,")
+                    and "boot_count=1" in text
+                    and "prev_valid=0" in text
+                )
+                if seen_data and not initial_boot_provenance:
                     session_index += 1
                     sessions.append(
                         SessionInfo(

@@ -27,6 +27,7 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("ppsgen?", "PPSGEN?"),
         ("ppsgen profiles?", "PPSGEN PROFILES?"),
         ("ppsgen arm composite", "PPSGEN ARM COMPOSITE"),
+        ("ppsgen arm clean_soak_10m", "PPSGEN ARM CLEAN_SOAK_10M"),
         ("ppsgen start", "PPSGEN START"),
         ("ppsgen stop", "PPSGEN STOP"),
     ],

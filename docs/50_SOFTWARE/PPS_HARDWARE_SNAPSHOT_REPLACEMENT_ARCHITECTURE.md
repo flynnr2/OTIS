@@ -1,8 +1,8 @@
 # PPS Hardware-Snapshot Replacement Architecture
 
-Status: selected for implementation; Stage 1 digital proof passed, bench qualification pending
+Status: implemented; digital proof passed; observe-only bench qualification accepted 2026-08-01 with documented limitations
 Decision date: 2026-07-31
-Scope: replacement architecture for the failed PPS-gated ratio aperture; no firmware implementation is made by this note
+Scope: decision record for the replacement architecture; implementation and bench disposition are recorded by later linked evidence
 
 ## Decision
 
@@ -17,13 +17,23 @@ recognizes PPS also snapshots its own counter state. CPU interrupt latency, USB
 load, and DMA bus latency occur after the snapshot and cannot move the
 measurement aperture.
 
+The exact qualification-v4 ELF and the accepted overnight evidence were
+subsequently audited specifically for latency and jitter. That review found no
+evidence-backed capture change to make: the official count path is already at
+the practical useful limit of this integer-edge architecture. The D14
+reconstructed timestamp path is not cycle-minimal, but optimizing it would not
+improve the PIO-owned raw count. The audit, compiled-code findings, spread
+disposition, and normative anti-regression rules are recorded in
+`PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
+
 The selected program is edge-driven: `WAIT PIN` blocks on the oscillator level,
 while the independently selected `JMP PIN` path observes PPS. A stalled `WAIT`
 evaluates its input every PIO clock, so the oscillator is not sampled only once
 per complete control loop. The assembled program has passed the Stage 1 static
 cycle analysis and exhaustive instruction-level phase/duty sweep at an
 explicitly pinned 133 MHz `clk_sys`. The declared digital envelope is now
-16 MHz with 35--65% duty cycle. Analog board qualification remains mandatory.
+16 MHz with 35--65% duty cycle. Pad-level phase/duty margin remains a separate
+physical characterization item and was not tested by the installed ECS fixture.
 
 If the program cannot meet that timing gate, stop. The acceptable fallback is an
 external synchronous counter/latch or small CPLD clocked by the oscillator and
@@ -86,6 +96,13 @@ It must not be reclassified after this replacement is introduced.
 
 Neither the D14 ISR nor DMA may stop, reset, reload, read, or otherwise alter the
 PIO counter. Input synchronizers remain enabled for both asynchronous inputs.
+
+This ownership is a regression invariant, not merely a description of the
+current implementation. A later multicore partition, ISR refactor, DMA change,
+telemetry feature, or estimator integration must preserve the PIO snapshot as
+the immutable aperture boundary. Any proof-bound PIO, clock, pin,
+synchronizer, FIFO, or DMA-publication change requires renewed proof and
+proportionate evidence before it can replace the accepted mechanism identity.
 
 ## PIO counter and edge semantics
 
@@ -174,13 +191,16 @@ offsets. The two distinct gates are:
    explicitly unbounded fault path, not part of the valid timing envelope. This
    gate passed for 7,936 cases and 55,552 adjacent PPS intervals; interval error
    was confined to -1, 0, or +1 oscillator edge.
-2. **Before qualification:** measure input duty cycle, synchronizer behavior,
-   phase sweep, and temperature/voltage margin on the target board.
+2. **Physical margin characterization:** measure input duty cycle, synchronizer
+   behavior, phase sweep, and temperature/voltage margin on a capable target
+   fixture.
 
-The first gate is sufficient to continue implementation and has passed. The
-second requires hardware. Until it passes, the backend remains explicitly
-unqualified. The proof and immutable assembled listing are recorded in
-`PPS_PIO_PROOF_AND_VERIFICATION.md`.
+The first gate passed and remains the blocking digital-architecture proof. The
+installed ECS fixture cannot perform the second gate. The completed campaign
+therefore records physical phase/duty margin as not tested and non-blocking;
+the backend was accepted on 2026-08-01 for observe-only measurement without
+misreporting that physical item as passed. The proof and immutable assembled
+listing are recorded in `PPS_PIO_PROOF_AND_VERIFICATION.md`.
 
 ## FIFO, DMA, and SRAM ring
 
@@ -401,26 +421,30 @@ These tests can establish the digital state-machine semantics and demonstrate
 that software delay is no longer in the boundary path. They cannot establish
 analog input integrity or the real board's timing margin.
 
-## Bench questions that remain
+## Bench disposition and remaining questions
 
-- What oscillator high/low pulse widths reach the synchronized GPIO across
-  voltage and temperature?
-- Does a phase sweep between the 16 MHz oscillator and PPS ever produce a
-  missed/double edge or violate the declared simultaneous-edge convention?
-- Does PPS input rise time, ringing, or front-end conditioning create additional
-  PIO-recognized transitions?
-- Does sustained USB/serial load produce any FIFO stall or DMA error telemetry?
-- Does the system remain lossless across the intended run duration, and does
-  deliberate DMA starvation fail closed?
-- Whether the selected D3 pseudo-PPS path is electrically safe on the assembled board, and
-  is the real PPS source isolated before loopback drive?
+- Physical oscillator pulse-width, threshold, voltage/temperature, and
+  PPS-relative phase margin remain not tested on a capable fixture.
+- PPS input rise time, ringing, and front-end margin remain physical
+  characterization questions; the real-GPS runs showed no additional
+  PIO-recognized transition or continuity fault.
+- Sustained USB/serial command load passed with zero FIFO stall, DMA error,
+  ring loss, or reconstruction mismatch.
+- Extended and overnight operation remained lossless across 28,186 declared
+  windows in total and crossed six RP2040 timer rollovers cleanly.
+- D3-to-D14 pseudo-PPS loopback was exercised through the series resistor with
+  the real GPS source isolated. This establishes functional campaign use, not a
+  general pad electrical qualification.
+- Synthetic starvation/overflow cases remain the fail-closed evidence for
+  transport exhaustion; the supported live workload produced no starvation.
 
 ## Go/no-go checkpoint
 
 **Go** for the coordinated replacement implementation. The assembled-program
 digital proof passed for the declared 16 MHz, 35--65% duty envelope because PPS
 recognition and the counter snapshot occur in the same PIO state machine,
-before DMA or CPU service. This is not yet a bench qualification result.
+before DMA or CPU service. This proof alone was not a bench qualification
+result; the later Phase 5 campaign supplies the accepted observe-only result.
 
 **No-go** for:
 
@@ -428,13 +452,14 @@ before DMA or CPU service. This is not yet a bench qualification result.
 - any build that does not explicitly pin and report the proven PIO/system clock;
 - calling the D14 IRQ, DMA, PWM, or a second PIO state machine the aperture
   owner; or
-- qualification before the bench timing-margin questions are closed.
+- claiming measured physical phase/duty margin before those questions are
+  tested on a capable fixture.
 
-The smallest remaining uncertainty is not architectural ownership. It is
-whether the Nano RP2040 Connect pad actually receives a waveform inside the
-proved duty/rise/fall envelope across the intended conditions. Stage 1 resolves
-the digital half; the 16 MHz phase-sweep bench campaign resolves the electrical
-half.
+The remaining uncertainty is not architectural ownership. It is the unmeasured
+pad-level phase/duty and threshold margin across intended conditions. The
+accepted qualification explicitly carries that limitation; a future capable
+fixture can resolve the electrical margin without reopening the already clean
+digital continuity and load evidence unless it finds a contradiction.
 
 ## Primary references
 

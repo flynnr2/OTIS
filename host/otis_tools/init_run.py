@@ -9,6 +9,7 @@ import shutil
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNS_ROOT = REPO_ROOT / "runs"
+TEMPLATES_ROOT = REPO_ROOT / "profiles" / "run_templates"
 
 
 def _utc_now() -> str:
@@ -59,9 +60,18 @@ def _rewrite_config(path: Path, capture_type: str, run_id: str) -> None:
 
 
 def init_run(stage: str, capture_type: str, run_id: str, force: bool = False) -> Path:
-    template_dir = RUNS_ROOT / stage / capture_type / "_template"
+    legacy_template_dir = RUNS_ROOT / stage / capture_type / "_template"
+    tracked_template_dir = TEMPLATES_ROOT / stage / capture_type
+    template_dir = (
+        legacy_template_dir
+        if legacy_template_dir.exists()
+        else tracked_template_dir
+    )
     if not template_dir.exists():
-        raise FileNotFoundError(f"template directory does not exist: {template_dir}")
+        raise FileNotFoundError(
+            "template directory does not exist: "
+            f"{legacy_template_dir} or {tracked_template_dir}"
+        )
 
     run_dir = RUNS_ROOT / stage / capture_type / run_id
     if run_dir.exists():

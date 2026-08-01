@@ -39,6 +39,8 @@ PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_PPS_DUAL_OBSERVER",
     "OTIS_ENABLE_PSEUDO_PPS_GENERATOR",
     "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED",
+    "OTIS_PPS_GATE_MIN_INTERVAL_US",
+    "OTIS_PPS_GATE_MAX_INTERVAL_US",
     "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
     "OTIS_ENABLE_DAC_AD5693R",
     "OTIS_ENABLE_H1_DAC_SWEEP",
@@ -47,6 +49,7 @@ PROFILE_SELECTOR_NAMES = {
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
+INSTALLATION_NOISE_NAMES = {".DS_Store", "installed.json"}
 
 
 class MatrixError(RuntimeError):
@@ -297,12 +300,26 @@ def source_input_hash(
 
 
 def installed_tree_hash(root: Path) -> str:
-    """Hash installed file and symlink bytes independently of metadata."""
+    """Hash functional installed bytes independently of local runtime noise."""
     root = root.resolve()
     if not root.is_dir():
         raise MatrixError(f"installed package path is not a directory: {root}")
+
+    def is_functional_package_path(path: Path) -> bool:
+        relative = path.relative_to(root)
+        return (
+            path.name not in INSTALLATION_NOISE_NAMES
+            and "__pycache__" not in relative.parts
+            and path.suffix not in {".pyc", ".pyo"}
+        )
+
     paths = sorted(
-        (path for path in root.rglob("*") if path.is_file() or path.is_symlink()),
+        (
+            path
+            for path in root.rglob("*")
+            if (path.is_file() or path.is_symlink())
+            and is_functional_package_path(path)
+        ),
         key=lambda path: path.relative_to(root).as_posix(),
     )
     if not paths:

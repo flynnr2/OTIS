@@ -8,17 +8,23 @@ import json
 import pytest
 
 from host.otis_tools.pps_backend_qualification import (
+    CandidateWindow,
     QualificationConfig,
+    _multi_span_frequency_metrics,
+    _service_plane_metrics,
     qualify_pps_backend,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = (
-    ROOT / "profiles" / "qualification" / "pps_gated_ratio_v1.json"
+    ROOT / "profiles" / "qualification" / "pps_gated_ratio_v2.json"
 )
 CONFIG_SCHEMA = (
-    ROOT / "schemas" / "pps_backend_qualification_config_v1.schema.json"
+    ROOT / "schemas" / "pps_backend_qualification_config_v2.schema.json"
+)
+LEGACY_CONFIG = (
+    ROOT / "profiles" / "qualification" / "pps_gated_ratio_v1.json"
 )
 SCENARIOS = (
     ROOT
@@ -563,8 +569,104 @@ def test_default_config_and_schema_are_closed_and_versioned() -> None:
         "pio_long_gate_timer_frequency_v1",
         "OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE",
     )
+    assert config.schema_version == 2
+    assert config.acceptance_scope == "digital_architecture"
+    assert config.service_plane_mean_shift_disposition == "characterization_only"
+    assert (
+        config.candidate_population_jitter_disposition
+        == "blocking_architecture_screen"
+    )
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == set(value)
+
+
+def test_legacy_v1_config_remains_readable_for_historical_reports() -> None:
+    config = QualificationConfig.from_mapping(
+        json.loads(LEGACY_CONFIG.read_text(encoding="utf-8"))
+    )
+    assert config.schema_version == 1
+    assert config.acceptance_scope == "legacy_full_metrology"
+    assert config.service_plane_mean_shift_disposition == "acceptance_gate"
+
+
+def test_service_plane_pairs_each_load_with_immediately_preceding_baseline() -> None:
+    segments = (
+        {"label": "quiet_1", "mode": "baseline", "first_count_seq": 1, "last_count_seq": 2},
+        {"label": "load_1", "mode": "load", "first_count_seq": 3, "last_count_seq": 4},
+        {"label": "quiet_2", "mode": "baseline", "first_count_seq": 5, "last_count_seq": 6},
+        {"label": "load_2", "mode": "load", "first_count_seq": 7, "last_count_seq": 8},
+    )
+    frequencies = (100.0, 100.0, 100.03, 100.03, 99.0, 99.0, 99.02, 99.02)
+    windows = [
+        CandidateWindow(
+            seq=index,
+            frequency_hz=frequency,
+            duration_s=1.0,
+            reference_valid=True,
+            count_valid=True,
+            eligible=True,
+            traceable=True,
+            reasons=(),
+        )
+        for index, frequency in enumerate(frequencies, start=1)
+    ]
+
+    metrics = _service_plane_metrics(segments, windows, minimum_windows_per_segment=2)
+
+    assert metrics["comparison_method"] == "load_minus_immediately_preceding_baseline"
+    assert metrics["all_load_segments_paired"] is True
+    assert metrics["maximum_absolute_mean_shift_hz"] == pytest.approx(0.03)
+    assert metrics["pairs"] == [
+        {"baseline_label": "quiet_1", "load_label": "load_1", "mean_shift_hz": pytest.approx(0.03)},
+        {"baseline_label": "quiet_2", "load_label": "load_2", "mean_shift_hz": pytest.approx(0.02)},
+    ]
+    assert metrics["bracketed_pairs"] == [
+        {
+            "preceding_baseline_label": "quiet_1",
+            "load_label": "load_1",
+            "following_baseline_label": "quiet_2",
+            "interpolation_fraction": pytest.approx(0.5),
+            "interpolated_baseline_hz": pytest.approx(99.5),
+            "bracketed_mean_shift_hz": pytest.approx(0.53),
+        }
+    ]
+
+
+def test_multi_span_frequency_resets_at_ineligible_and_sequence_gap() -> None:
+    windows = [
+        CandidateWindow(
+            seq=seq,
+            frequency_hz=frequency,
+            duration_s=1.0,
+            reference_valid=eligible,
+            count_valid=eligible,
+            eligible=eligible,
+            traceable=True,
+            reasons=() if eligible else ("reference_invalid",),
+        )
+        for seq, frequency, eligible in (
+            (1, 10.0, True),
+            (2, 12.0, True),
+            (3, None, False),
+            (4, 20.0, True),
+            (6, 30.0, True),
+            (7, 32.0, True),
+        )
+    ]
+
+    metrics = _multi_span_frequency_metrics(
+        windows,
+        nominal_reference_interval_s=1.0,
+        count_resolution_edges=1,
+        spans=(1, 2),
+    )
+
+    assert metrics[0]["sample_count"] == 5
+    assert metrics[0]["frequency_quantum_hz"] == 1.0
+    assert metrics[1]["sample_count"] == 2
+    assert metrics[1]["frequency_quantum_hz"] == 0.5
+    assert metrics[1]["mean_hz"] == pytest.approx(21.0)
+    assert metrics[1]["unused_eligible_window_count"] == 1
 
 
 def test_synthetic_candidate_and_independent_report_is_deterministic_but_not_qualified(
@@ -961,7 +1063,7 @@ def test_non_observe_only_manifest_cannot_pass_acceptance(
     assert report["acceptance_passed"] is False
 
 
-def test_unavailable_uncertainty_remains_null_and_blocks_acceptance(
+def test_unavailable_uncertainty_remains_null_and_is_characterization_in_v2(
     tmp_path: Path,
 ) -> None:
     candidate = _make_candidate(tmp_path, uncertainty_complete=False)
@@ -981,7 +1083,8 @@ def test_unavailable_uncertainty_remains_null_and_blocks_acceptance(
         config_path=_fast_config(tmp_path),
     )
     report = _report(result.report_path)
-    assert report["acceptance_checks"]["uncertainty_complete"] is False
+    assert "uncertainty_complete" not in report["acceptance_checks"]
+    assert report["characterization_checks"]["uncertainty_complete"] is False
     assert report["uncertainty"]["combined_standard_uncertainty_hz"] is None
     assert len(report["uncertainty"]["unavailable_components"]) == 4
     assert report["qualification_state"] == "repository_validation_only"

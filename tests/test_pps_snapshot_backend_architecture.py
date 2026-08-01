@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from tools.verify_pio_snapshot import (
+    run_phase_sweep,
     verify_dma_ring_model,
     verify_fault_paths,
     verify_program_structure,
@@ -42,6 +43,12 @@ def test_checked_in_pio_program_and_installed_configuration_match_proof() -> Non
     assert installed["in_base_gpio"] == 20
     assert installed["jmp_pin_gpio"] == 26
     assert installed["input_synchronizers"] == "enabled"
+
+
+def test_boundary_quantisation_does_not_accumulate_across_clean_spans() -> None:
+    sweep = run_phase_sweep()
+    assert sweep["maximum_tested_span_intervals"] == 7
+    assert set(sweep["multi_interval_boundary_error_edges"]) <= {-1, 0, 1}
 
 
 def test_stop_onset_full_fifo_startup_and_counter_wrap_fail_closed() -> None:
@@ -87,13 +94,26 @@ def test_d14_and_d10_isrs_only_preserve_compact_events() -> None:
     assert "d10_sampled_high_count" not in d10
     assert "d10_last_edge_timestamp" not in d10
 
+    timestamp = d14.index("otis_capture_ticks_now_from_isr()")
+    sampled_level = d14.index("gpio_get(capture_gpio)")
+    ring_publish = d14.index("otis_capture_ring_push_from_isr")
+    assert timestamp < sampled_level < ring_publish
+
 
 def test_d14_isr_has_no_count_aperture_control() -> None:
     capture = (FW / "otis_capture_irq.cpp").read_text(encoding="utf-8")
-    assert "pps_boundary_callback" not in capture
-    assert "stop_h1_pio" not in capture
-    assert "start_h1_pio" not in capture
-    assert "sample_h1_pio" not in capture
+    d14 = _function_body(capture, "void handle_capture_edge(void)")
+    prohibited = (
+        "pps_boundary_callback",
+        "stop_h1_pio",
+        "start_h1_pio",
+        "sample_h1_pio",
+        "otis_pps_snapshot_backend",
+        "otis_pps_count_boundary",
+        "pio_sm_",
+        "dma_",
+    )
+    assert not any(token in d14 for token in prohibited)
 
 
 def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:

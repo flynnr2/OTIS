@@ -7,9 +7,11 @@ implementation is complete and passes deterministic host/firmware fixture
 parity. The firmware implementation is still opt-in and structurally
 non-actuating.
 
-The Stage SW2-2 exit gate is not yet passed because no Nano RP2040 Connect was
-attached for upload, deliberate USB-load testing, reconnect testing, or a long
-live observe-only run.
+The Stage SW2-2 exit gate is not yet passed because no integrated Phase 4
+preview build has completed deliberate USB-load/reconnect testing and a long
+live observe-only run. The Nano RP2040 Connect subsequently completed those
+capture-side stresses with the Phase 5 qualification build, which qualifies
+the measurement backend but does not substitute for preview telemetry parity.
 
 The authoritative boundary remains:
 
@@ -210,9 +212,10 @@ endpoints were present. No upload or hardware claim is made.
 | Candidate range is mistaken for permission | CTL and model flags remain false/non-actionable; no actuation callback exists. |
 
 This change completes the implementation and deterministic-parity portion of
-roadmap Stage SW2-2. It does not pass the Stage SW2-2 long-live-run exit gate,
-qualify the PPS-gated measurement backend, or authorize any active-control
-milestone.
+roadmap Stage SW2-2. It does not pass the Stage SW2-2 long-live-run exit gate or
+authorize any active-control milestone. The separate Phase 5 campaign later
+qualified the PPS-gated measurement backend for observe-only use on
+2026-08-01.
 
 Correct estimator semantics and physical aperture qualification are separate.
 This implementation does not establish PPS-gated capture aperture, target
@@ -231,4 +234,5 @@ unsaturated oscillator count invalid solely because the same row carries
 
 Regression tests bind both behaviors. They do not change estimator state,
 preview policy, model applicability, or any actuation flag. The Phase 4 live
-bench exit gate therefore remains open exactly as stated above.
+preview exit gate therefore remains open exactly as stated above, while the
+separate capture-backend gate is now accepted.

@@ -94,11 +94,13 @@ static_assert(
     OTIS_H1_LONG_GATE_PERIOD_US / OTIS_PPS_GATE_MIN_INTERVAL_US + 4u <=
         OTIS_PHASE4_PPS_SUPPORT_CAPACITY,
     "Phase 4 PPS support capacity is too small for the H1 long gate");
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 static_assert(
     OTIS_PPS_GATE_MIN_INTERVAL_US == 800000u &&
         OTIS_PPS_GATE_MAX_INTERVAL_US == 1200000u &&
         OTIS_PHASE4_REFERENCE_MAX_AGE_US == 1500000u,
     "reference-quality thresholds changed; regenerate its configuration hash");
+#endif
 
 struct TelemetryFrame {
   char data[kFrameCapacity];

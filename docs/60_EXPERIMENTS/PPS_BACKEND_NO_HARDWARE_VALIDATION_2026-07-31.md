@@ -1,5 +1,10 @@
 # PPS Backend No-Hardware Validation — 2026-07-31
 
+> **Historical pre-bench status.** The later Phase 5 hardware campaign was
+> accepted on 2026-08-01 for observe-only measurement with documented
+> limitations. Statements below that qualification was pending describe the
+> state on 2026-07-31 and are retained as provenance, not current roadmap state.
+
 ## Disposition
 
 No-hardware validation passes for the implemented candidate. Hardware
@@ -149,4 +154,5 @@ If the phase/duty bench proof fails, stop and recommend the external
 counter/capture latch or CPLD fallback. Do not substitute ISR, DMA, or a second
 PIO state machine as aperture owner.
 
-**Qualification remains pending explicit hardware evidence and review.**
+**At the time of this no-hardware report, qualification remained pending
+explicit hardware evidence and review. That later review is now complete.**

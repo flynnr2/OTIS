@@ -2,9 +2,11 @@
 
 This is the executable hardware handoff for
 `pio_wait_cumulative_snapshot_dma_v1`. No step in this runbook authorizes
-control. The backend remains unqualified until the evidence from all required
-stages is deliberately reviewed and a later source change updates the sealed
-qualification gate.
+control. The required campaign was completed and deliberately reviewed on
+2026-08-01; the backend is accepted for observe-only measurement with the
+documented width-only and physical phase/duty limitations. Existing evidence
+builds remain sealed with `backend_qualified=false`, and no actuation gate is
+changed by this disposition.
 
 ## A. Preflight
 
@@ -89,18 +91,19 @@ python3 -m host.otis_tools.capture_device \
   --command-fifo "$OTIS_PSEUDO_RUN/commands.fifo"
 ```
 
-In terminal 2, inspect the available immutable profiles, then run clean blocks
-until at least 10 minutes have been captured:
+In terminal 2, inspect the available immutable profiles, then run the continuous
+10-minute clean schedule:
 
 ```bash
 python3 -m host.otis_tools.send_command --fifo "$OTIS_PSEUDO_RUN/commands.fifo" 'PPSGEN PROFILES?'
-python3 -m host.otis_tools.send_command --fifo "$OTIS_PSEUDO_RUN/commands.fifo" 'PPSGEN ARM CLEAN_NOMINAL'
+python3 -m host.otis_tools.send_command --fifo "$OTIS_PSEUDO_RUN/commands.fifo" 'PPSGEN ARM CLEAN_SOAK_10M'
 python3 -m host.otis_tools.send_command --fifo "$OTIS_PSEUDO_RUN/commands.fifo" 'PPSGEN START'
 python3 -m host.otis_tools.send_command --fifo "$OTIS_PSEUDO_RUN/commands.fifo" 'PPSGEN?'
 ```
 
-Repeat the ARM/START pair after each 30-pulse completion. Stop capture with
-Ctrl-C, then run:
+The 600-pulse schedule avoids artificial gaps and false outage/recovery events
+caused by host re-arm latency between 30-pulse blocks. Stop capture after its
+completion marker with Ctrl-C, then run:
 
 ```bash
 python3 -m host.otis_tools.validate_run "$OTIS_PSEUDO_RUN"
@@ -177,16 +180,19 @@ reference period measurement-invalid; no retroactive late association; and two
 fresh clean snapshots before CNT resumes. Any unexplained truth mismatch or
 valid measurement spanning a fault is a hard failure.
 
-For `NARROW_GLITCH`, one legitimate aligned outcome is generator truth plus a
-physical REF but an explicit absent-SNP assessment. That outcome must report
-`association_state=lost`, `cnt_state=absent`, and
-`reason=ref_without_snapshot`. An actual SNP attributed to that narrow event,
-an associated late word, or any valid CNT crossing it is a hard failure. A late
-word may be preserved only as quarantined host evidence; firmware must reject
-it and clear old transport state. The next clean word is the new-session anchor
-and only its adjacent successor may restore CNT. Use
-`tests/fixtures/pseudo_pps/narrow_glitch_scoring_v1.json` as the aligned
-field-shape example.
+The rising-edge-only D14 backend cannot distinguish the `NARROW_GLITCH`
+profile's 10 microsecond high time when its next rising edge remains exactly on
+the nominal cadence. Keep that strict-score miss visible as a known width-blind
+limitation. Closing it requires falling-edge/pulse-width capture and delayed
+validity, not a wider or narrower cadence threshold; defer that architecture
+unless the real GPS-PPS fault model makes pulse-width qualification necessary.
+
+For an electrically narrower pulse that produces REF but no SNP, the required
+fail-closed outcome remains `association_state=lost`, `cnt_state=absent`, and
+`reason=ref_without_snapshot`. Any valid CNT crossing it or retroactive late
+association is a hard failure. Preserve a late word only as quarantined host
+evidence; the next clean word is the new-session anchor and only its adjacent
+successor may restore CNT.
 
 ## D. Real-GPS quiet smoke, 10–20 minutes
 
@@ -242,27 +248,34 @@ touch "$OTIS_REAL_RUN/COMPLETE"
 python3 -m host.otis_tools.evidence "$OTIS_REAL_RUN"
 python3 -m host.otis_tools.pps_backend_qualification \
   "$OTIS_REAL_RUN" --independent-run "$OTIS_INDEPENDENT_RUN" \
-  --config profiles/qualification/pps_gated_ratio_v1.json
+  --config profiles/qualification/pps_gated_ratio_v2.json
 ```
 
-The principal gate is: load may change reporting latency and backlog, but must
-not materially change the official raw captured-count distribution or mean.
-Every quiet and load segment needs at least 60 eligible windows; population
-standard deviation must be no more than 1.5 Hz; maximum quiet/load mean shift
-must be no more than 0.05 Hz; raw SNP/CNT parity and continuity must be exact;
-and all invalid windows and physical/capture/transport faults must be reported
-separately. Stop on any load-sensitive official count effect. A quieter timer-
-normalised diagnostic does not rescue a failure.
+The principal firmware gate is that load may change reporting latency and
+backlog but must not cause an invalid boundary, reconstruction mismatch,
+sequence loss, capture/transport fault, or population standard deviation above
+the 1.5 Hz architecture screen. Every quiet and load segment needs at least 60
+eligible windows. Report quiet/load means and a bracketed or otherwise
+drift-aware load estimate as characterization; the historical 0.05 Hz
+reference is not a pass/fail limit. A quieter timer-normalised diagnostic does
+not override an official raw-count or integrity failure.
 
-As a separate waveform gate, sweep PPS relative to the 16 MHz oscillator over
+As a separate waveform characterization, sweep PPS relative to the 16 MHz oscillator over
 at least one complete 62.5 ns period, including threshold-adjacent phase points.
 Test the observed nominal duty and controlled 35%, 40%, 50%, 60%, and 65% duty
 conditions where the bench source permits. At each point require no missed or
 double-counted synchronized oscillator edge and boundary error confined to
-`-1/0/+1`. Stop and select the external counter/latch or CPLD fallback if this
-cannot be established.
+`-1/0/+1`. The current ECS fixture/source cannot perform this controlled phase
+and duty sweep. Record it as not tested and non-blocking; do not report a pass.
 
 ## F. Extended and overnight sequence
+
+Campaign disposition: **complete and accepted for observe-only measurement**.
+The extended run contains 11,388 exact windows; the newly sealed overnight run
+contains 16,798 exact windows across 14 guarded quiet/load pairs, with zero
+capture, PIO, DMA, ring, parser, or session-continuity fault. See
+`PHASE_5_REAL_GPS_EXTENDED_AND_OVERNIGHT_CAMPAIGN_20260801.md` for hashes and
+statistics. The procedure below is retained as the reproducible runbook.
 
 Only after A–E pass, run several hours with alternating service load. Inspect
 counter/sequence/timer wrap handling, DMA and ring high-water marks, physical
@@ -272,14 +285,18 @@ a new run; do not splice sessions.
 Only after the extended run passes, repeat an overnight run in a form directly
 comparable to `candidate_20260730T192721Z`, but using this PIO identity, raw SNP
 contract, 16 MHz source typing, and exact quiet/load segment provenance. Seal
-both candidate and authorised independent evidence with `COMPLETE`, validate,
-and generate evidence snapshots before qualification analysis.
+the candidate and any available authorised independent evidence with
+`COMPLETE`, validate, and generate evidence snapshots before qualification
+analysis. Independent absolute metrology is a separate characterization
+package and is not required to accept the digital ownership/integrity result.
 
 An overnight run never changes firmware qualification automatically. Review
-the proof, phase sweep, waveform measurements, fault score, raw snapshot
-continuity, official jitter, mean load shift, independent comparison,
+the proof, the documented not-tested phase/duty item, fault score, raw snapshot
+continuity, official jitter, characterized mean load shift, independent comparison,
 uncertainty, resets, and all integrity counters. Only an explicit reviewed
-source change may set a future qualification gate.
+source change may set a future qualification gate. That review was completed
+and the observe-only measurement backend was accepted on 2026-08-01; changing
+an operational compile-time gate remains separate from actuation authority.
 
 ## Troubleshooting decision tree
 

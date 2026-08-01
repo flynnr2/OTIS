@@ -6,6 +6,7 @@
 #include <hardware/dma.h>
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
+#include <hardware/pio_instructions.h>
 #include <hardware/regs/dma.h>
 #include <hardware/regs/pio.h>
 
@@ -46,6 +47,9 @@ struct GeneratorState {
   size_t truth_cursor;
   uint32_t truth_seq;
   uint32_t session;
+  uint32_t pin_sample_count;
+  uint32_t output_high_sample_count;
+  uint32_t reference_high_sample_count;
   uint32_t system_clock_hz;
   const char *profile_id;
   PendingMarker pending_marker;
@@ -54,7 +58,7 @@ struct GeneratorState {
 
 GeneratorState generator = {
     pio0, -1, -1, -1, OtisPseudoPpsState::Disabled, {}, {}, {}, 0u, 0u,
-    0u,   0u, 0u, 0u,  nullptr, PendingMarker::None, false,
+    0u,   0u, 0u, 0u, 0u, 0u, 0u, nullptr, PendingMarker::None, false,
 };
 
 void make_output_high_impedance(void) {
@@ -120,6 +124,12 @@ bool prepare_hardware(void) {
   dma_channel_abort(dma_channel);
   pio_sm_clear_fifos(generator.pio, sm);
   pio_sm_restart(generator.pio, sm);
+  // pio_sm_restart() clears the SM's internal execution state but deliberately
+  // leaves its program counter unchanged. A completed schedule is parked in
+  // the terminal halt loop, so every new ARM/START must explicitly return the
+  // SM to the program entry before it can consume the next schedule.
+  pio_sm_exec(generator.pio, sm,
+              pio_encode_jmp(static_cast<uint>(generator.program_offset)));
   pio_sm_clkdiv_restart(generator.pio, sm);
   pio_interrupt_clear(generator.pio, kCompletionIrqFlag);
   generator.pio->fdebug = 1u << (PIO_FDEBUG_TXSTALL_LSB + sm);
@@ -272,6 +282,9 @@ bool otis_pseudo_pps_arm(const char *profile_id) {
   generator.step_count = step_count;
   generator.word_count = word_count;
   generator.truth_cursor = 0u;
+  generator.pin_sample_count = 0u;
+  generator.output_high_sample_count = 0u;
+  generator.reference_high_sample_count = 0u;
   generator.pending_marker = PendingMarker::None;
   generator.start_marker_emitted = false;
   generator.state = OtisPseudoPpsState::Armed;
@@ -324,6 +337,19 @@ void otis_pseudo_pps_latch_resource_fault(void) {
 void otis_pseudo_pps_service(void) {
 #if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
   if (generator.state == OtisPseudoPpsState::Running) {
+    // These CPU samples are diagnostic witnesses only. PIO remains the sole
+    // waveform owner and the PPS snapshot backend remains authoritative.
+    if (generator.pin_sample_count != UINT32_MAX) {
+      generator.pin_sample_count++;
+    }
+    if (gpio_get(OTIS_PIN_PSEUDO_PPS_OUTPUT) &&
+        generator.output_high_sample_count != UINT32_MAX) {
+      generator.output_high_sample_count++;
+    }
+    if (gpio_get(OTIS_PIN_PPS_REFERENCE) &&
+        generator.reference_high_sample_count != UINT32_MAX) {
+      generator.reference_high_sample_count++;
+    }
     uint sm = static_cast<uint>(generator.sm);
     if (pio_interrupt_get(generator.pio, kCompletionIrqFlag)) {
       pio_interrupt_clear(generator.pio, kCompletionIrqFlag);
@@ -381,6 +407,9 @@ void otis_pseudo_pps_get_status(OtisPseudoPpsStatus *status) {
       static_cast<uint16_t>(generator.step_count),
       static_cast<uint16_t>(generator.truth_cursor),
       generator.session,
+      generator.pin_sample_count,
+      generator.output_high_sample_count,
+      generator.reference_high_sample_count,
       generator.system_clock_hz,
       kPioClockHz,
       static_cast<int8_t>(generator.sm),

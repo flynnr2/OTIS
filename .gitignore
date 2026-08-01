@@ -48,6 +48,8 @@ Nano.Every/build
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
+*.egg-info/
 
 #######################################
 # Arduino / local build outputs

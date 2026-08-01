@@ -12,7 +12,7 @@ from .run_loader import load_manifest
 from .validate_run import _validate_count_sanity, _validate_manifest
 
 
-DEFAULT_TEMPLATE = Path("runs/h1_open_loop/dac_manual_sweep/_template")
+DEFAULT_TEMPLATE = Path("profiles/run_templates/h1_open_loop/dac_manual_sweep")
 DEFAULT_RUN_DIR = Path("runs/h1_open_loop/dac_manual_sweep/run_001")
 DEFAULT_RUN_ID = "h1_dac_manual_001"
 

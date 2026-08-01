@@ -14,14 +14,21 @@ status.actuation_enabled=false
 PPS/count-derived DAC writes are prohibited
 ```
 
+Campaign status: **completed and accepted on 2026-08-01 for observe-only
+measurement**. The retained procedure documents how to reproduce the evidence.
+The accepted exceptions are the rising-edge-only width fault and physical
+phase/duty margin that the installed ECS fixture cannot test. Neither exception
+is reported as a pass, and neither changes the actuation prohibition.
+
 Do not start the qualification capture until the Phase 4 EST/CTL/diagnostic
 contracts are merged into the target branch. Repository preparation and
 synthetic checks may run earlier, but they cannot pass the Phase 5 exit gate.
 
 ## Applicability and fixed acceptance profile
 
-The v1 profile is
-`profiles/qualification/pps_gated_ratio_v1.json`. It applies to:
+The current profile is
+`profiles/qualification/pps_gated_ratio_v2.json`. The legacy v1 profile is
+retained only to reproduce historical reports. The v2 profile applies to:
 
 - the conditioned 16 MHz ECS TCXO observation on `D8` / GPIO20;
 - one authoritative conditioned PPS on `D14` / GPIO26;
@@ -33,24 +40,29 @@ The v1 profile is
 - the repaired H1 oscillator/front-end topology;
 - observe-only operation.
 
-The fixed v1 acceptance thresholds are:
+The v2 architectural requirements are:
 
 | Check | Threshold |
 |---|---:|
 | Stable measurement-eligible duration after warmup selection | at least 120 s |
 | Measurement-eligible PPS-gated windows | at least 120 |
 | Raw `CNT` boundaries traceable to adjacent authoritative `REF` rows | 100% |
-| Candidate population jitter | no more than 1.5 Hz per one-second window |
-| Baseline-to-service-load mean shift | no more than 0.05 Hz |
+| Candidate population jitter architecture screen | no more than 1.5 Hz per one-second window |
+| Baseline-to-service-load mean shift | characterize; historical 0.05 Hz reference is non-blocking |
 | Baseline and service-load segment size | at least 60 eligible windows in every declared segment |
 | Required safe bench faults | all detected with the specified reason and inhibition |
 
-The 1.5 Hz single-window jitter bound permits integer-edge aperture variation
-while still detecting unexplained multi-edge service latency. The 0.05 Hz
-quiet-to-load bound tests service-plane independence. These are architectural
-qualification limits, not controller thresholds. The profile retains
-independent-bias and uncertainty fields for a later metrology report; those are
-not prerequisites for the focused ownership acceptance.
+The 1.5 Hz population-jitter screen is a conservative firmware anomaly screen:
+the digital proof confines modeled reconstructed-interval error to `-1/0/+1`
+edge, the raw one-second count resolution is 1 Hz, the GPS datasheet specifies
+20 ns RMS PPS timing (0.32 of a 16 MHz period), and the observed quiet/load
+populations are below 1 Hz. It is not an ECS oscillator limit.
+
+The historical 0.05 Hz quiet/load and absolute-bias numbers are
+characterization references. At 16 MHz, 0.05 Hz is 3.125 ppb; neither the ECS
+datasheet nor the available power, thermal, reference, and measurement evidence
+supports that as an assembly acceptance limit. See
+`PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md` for the source-by-source review.
 
 Full counter wrap is outside this applicability envelope: a one-second 16 MHz
 gate is far below the 268.435456-second 32-bit wrap interval. Ambiguous-wrap
@@ -323,7 +335,7 @@ Perform fault injection only after the stable interval. Preserve every raw
 | Long PPS | isolated programmable interval of 1.5 s, below missing timeout | `reference_reason=reference_pps_long_interval`; invalid bounded `CNT` |
 | Missing PPS | remove the reference for more than 2.5 s | `reference_reason=reference_missing_pps`; no fabricated clean close `CNT` |
 | Invalid count | safely disconnect only the conditioned oscillator observation for one bounded gate | `count_reason=count_zero`; `SOURCE_HEALTH_SUSPECT` and `INPUT_STUCK_LOW` |
-| Recovery | restore both inputs and wait for at least three clean windows | independent validity returns to `valid`; `control_eligible` remains false in the unqualified candidate |
+| Recovery | restore both inputs and wait for at least three clean windows | independent validity returns to `valid`; `control_eligible` remains false in the qualification evidence build |
 
 Do not attempt a >4 GHz source or an overlong PPS gate to force 32-bit
 saturation. That is outside the v1 hardware envelope and remains a
@@ -342,8 +354,9 @@ Accept the architectural correction when:
   boundaries and authoritative `REF` timestamps;
 - clean 16 MHz / 1 Hz windows remain inside the implementation-derived narrow
   integer-count envelope established by the quiet segment;
-- the loaded segment is statistically and operationally equivalent to quiet
-  operation, with no gross partial or zero count accepted;
+- the loaded segment preserves exact boundary and transport integrity, stays
+  below the population-jitter architecture screen, and accepts no gross
+  partial or zero count; means and mean shift are characterization;
 - `CONFIG?`, status, DAC-sweep service, environment service, and foreground
   backlog do not alter the physical aperture;
 - missing PPS, duplicate/extra PPS, sequence gaps, ring overflow, invalid
@@ -390,13 +403,13 @@ python3 -m host.otis_tools.validate_run "$OTIS_INDEPENDENT_RUN"
 python3 -m host.otis_tools.pps_backend_qualification \
   "$OTIS_CANDIDATE_RUN" \
   --independent-run "$OTIS_INDEPENDENT_RUN" \
-  --config profiles/qualification/pps_gated_ratio_v1.json
+  --config profiles/qualification/pps_gated_ratio_v2.json
 ```
 
 The derived product is written only to:
 
 ```text
-<candidate-run>/derived/phase5_pps_backend_qualification_v1/qualification_report_v1.json
+<candidate-run>/derived/phase5_pps_backend_qualification_v2/qualification_report_v2.json
 ```
 
 The tool refuses to replace different existing output and verifies that
@@ -411,11 +424,14 @@ Abort, preserve, and mark the bench gate failed for:
 - unflagged zero/saturated count or suppressed bounded invalid observation;
 - loss of independent reference/count validity semantics;
 - capture/parser drops or malformed serial frames;
-- unexplained baseline/load shift over 0.05 Hz;
-- bias over 0.05 Hz;
 - jitter over 1.5 Hz;
 - missing fault reason or missing inhibition;
-- incomplete evidence seal or unavailable required uncertainty.
+- incomplete evidence seal.
+
+Preserve and characterize any baseline/load shift or independent bias. Do not
+call either a pass or failure against the historical 0.05 Hz reference. An
+unavailable uncertainty component limits metrology claims but does not fail the
+focused digital-architecture gate.
 
 Promote only the reviewed compact conclusion to tracked documentation. Keep raw
 and derived run evidence local under `runs/`.

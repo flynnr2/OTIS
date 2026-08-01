@@ -19,7 +19,8 @@ practical route to PIO-backed capture while retaining an Arduino entrypoint.
 
 All evidentiary builds use `tools/firmware_matrix.py`. The builder verifies the
 pinned Arduino CLI, core archive metadata, and deterministic hashes of the
-installed core and compiler-toolchain bytes; derives board identity from
+functional installed core and compiler-toolchain bytes (excluding only local
+package-manager/Finder metadata and Python bytecode caches); derives board identity from
 `arduino-cli board details`; computes the exact Git commit, clean/dirty state,
 canonical build-input and profile configuration hashes, and invocation
 identity; and writes `firmware_build_manifest.json` next to each successful
@@ -96,10 +97,25 @@ capture-backlog service cannot define the physical aperture.
 
 The checked-in candidate sets
 `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`, so raw evidence is emitted while
-control eligibility remains structurally false. Bench validation must still
-prove the pad-level 16 MHz phase/duty envelope and exercise the focused
-fault/recovery contract. The authoritative digital listing and timing proof are
-in `docs/50_SOFTWARE/PPS_PIO_PROOF_AND_VERIFICATION.md`.
+control eligibility remains structurally false. The observe-only measurement
+campaign was accepted on 2026-08-01 after clean, fault, real-GPS, load,
+extended, and sealed overnight evidence. The accepted limitations are one
+width-only rising-edge fault miss and an untested physical phase/duty sweep on
+the incapable ECS fixture. Reflecting acceptance in an operational profile is
+a separate reviewed change and must not authorize DAC actuation. The
+authoritative digital listing and timing proof are in
+`docs/50_SOFTWARE/PPS_PIO_PROOF_AND_VERIFICATION.md`.
+
+The exact qualification-v4 ELF was also audited for CPU/ISR latency and
+compiled call ordering. The conclusion is intentionally stronger than a coding
+style preference: the PIO state machine is the only count-aperture owner, DMA
+is transport only, and the D14 ISR is diagnostic only. Later firmware must not
+move counter stop/read/reset/snapshot work into an IRQ, another core, DMA, or a
+second state machine. It must not disable the asynchronous input synchronizers
+to save latency. See
+`../../../docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md` for the
+proof-bound regression checklist and the distinction between diagnostic REF
+timestamp optimization and raw-count improvement.
 
 SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
 validation and protocol bring-up, not final PIO/DMA metrology.
@@ -554,6 +570,15 @@ arduino-cli upload -p /dev/cu.usbmodemXXXX \
   --fqbn rp2040:rp2040:arduino_nano_connect \
   --input-dir build/firmware_matrix/phase5_qualification/artifacts
 ```
+
+Sandboxed automation must be granted access to both the USB serial device and
+the temporary `/Volumes/RPI-RP2` BOOTSEL volume. The core's `uf2conv.py`
+silently ignores serial-open exceptions; without device permission it may print
+`Resetting ...` followed by `No drive to deploy` even though no reset occurred.
+Retry with explicit device/volume access before diagnosing the cable or
+bootloader. To remove artifact-directory ambiguity during interactive bring-up,
+`arduino-cli upload --input-file <exact.uf2>` is also supported; preserve the
+matching `firmware_build_manifest.json` separately when using that form.
 
 Capture serial into a run directory by piping monitor output through the host
 splitter:

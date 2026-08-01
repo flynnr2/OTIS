@@ -120,8 +120,11 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   `observation_pair_validity`, and `fifo_continuity` independently expose the
   physical boundary, counter window, pairing, and transfer conclusions.
 - Control eligibility additionally requires
-  `pps_gate/backend_qualified=true`; the checked-in candidate keeps this false
-  until the corrected backend passes its focused bench contract.
+  `pps_gate/backend_qualified=true`; the checked-in qualification candidate and
+  sealed campaign evidence keep this false. The corrected backend's
+  observe-only bench contract was accepted on 2026-08-01, but reflecting that
+  decision in an operational profile and authorizing actuation are separate
+  changes.
 - A reference-only flag on a PPS-gated `CNT` does not by itself rewrite a
   nonzero, unsaturated oscillator count as count-invalid. Joint eligibility
   still fails because the reference side is invalid.
@@ -155,17 +158,30 @@ For `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE`, a counter that reaches its
 flagged `COUNT_SATURATED`, rejected as an invalid observation, and reported by
 `capture/pio_long_gate_count_saturated_count`.
 
-The current firmware implementation captures the counter boundary in the D14
-PPS GPIO IRQ and queues one atomic timestamp/count object. Foreground performs
-validation and emission only; it never stops or restarts the PPS-gated counter.
-PPS-gated `CNT` rows still carry reconstructed `rp2040_timer0` timestamps until
-a later hardware-latched timer/snapshot implementation proves a stronger
-timing contract.
+The current firmware implementation captures the counter boundary inside the
+same PIO state machine that counts oscillator edges. It emits one immutable
+cumulative `SNP` word per recognized PPS rise; DMA transports that completed
+word and foreground associates it with the independent D14 `REF`. The D14 GPIO
+IRQ queues only its reconstructed timestamp and compact reference event. It
+never stops, restarts, reads, or otherwise defines the PPS-gated counter
+aperture.
+
+PPS-gated `CNT` rows still carry associated reconstructed `rp2040_timer0`
+timestamps. Those timestamps provide reference-cadence and gate-time evidence,
+but they do not normalize or rewrite the authoritative adjacent-snapshot count.
+The accepted latency/jitter disposition and regression invariants are recorded
+in `PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
 
 The native resolution is one oscillator edge per gate. Counter-aperture,
 reference-frequency, independent-instrument, and quantization-distribution
 uncertainty are separate host qualification components. Unknown components are
 reported as unavailable and prevent computation of a combined uncertainty.
+
+For a clean multi-PPS estimate, consumers should difference the cumulative
+opening and closing snapshots directly rather than sum independently rounded
+one-second frequency values. The proved digital endpoint error is bounded by
+one edge over each tested contiguous span; this does not authorize inventing a
+component tolerance for the remaining end-to-end ECS/GPS/capture spread.
 
 ## Compatibility Notes
 

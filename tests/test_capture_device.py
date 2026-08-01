@@ -5,7 +5,7 @@ import json
 import shutil
 import threading
 
-from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner, LineFramer
+from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner, LineFramer, RawEvidenceWriter
 from host.otis_tools.run_paths import RunPaths, default_csv_files
 
 
@@ -150,7 +150,7 @@ def test_capture_device_reconnect_drops_partial_without_truncating(tmp_path: Pat
     assert runner.run() == 0
     raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
 
-    assert b"REF,1,1000" in raw
+    assert b"REF,1,1000" not in raw
     assert b"serial_disconnected" in raw
     assert b"partial_line_dropped_bytes" in raw
     assert runner.reconnect_count == 1
@@ -214,7 +214,10 @@ def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
 def test_capture_device_uses_h1_manifest_split_targets(tmp_path: Path) -> None:
     stop_event = threading.Event()
     run_dir = tmp_path / "h1_run"
-    shutil.copytree("runs/h1_open_loop/dac_manual_sweep/_template", run_dir)
+    shutil.copytree(
+        "profiles/run_templates/h1_open_loop/dac_manual_sweep",
+        run_dir,
+    )
     config = _config(tmp_path)
     config = CaptureDeviceConfig(
         device=config.device,
@@ -250,7 +253,7 @@ def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> Non
     assert runner.run() == 0
 
     raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
-    assert b"STS,1,partial" in raw
+    assert b"STS,1,partial" not in raw
     assert b"partial_line_dropped" in raw
     assert "partial" not in RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
 
@@ -264,7 +267,7 @@ def test_capture_device_sends_audited_atomic_command_without_polluting_raw_strea
     paths = RunPaths(config.run_dir)
     paths.raw_dir.mkdir(parents=True)
     with paths.raw_serial_log.open("a+b") as raw_handle:
-        runner._send_command("dac mid", serial, raw_handle)
+        runner._send_command("dac mid", serial, RawEvidenceWriter(raw_handle))
 
     raw = paths.raw_serial_log.read_bytes()
     assert serial.writes == [b"DAC MID\n"]
@@ -283,9 +286,40 @@ def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
     paths = RunPaths(config.run_dir)
     paths.raw_dir.mkdir(parents=True)
     with paths.raw_serial_log.open("a+b") as raw_handle:
-        runner._send_command("SWEEP ADD 0x8000 5000", serial, raw_handle)
+        runner._send_command("SWEEP ADD 0x8000 5000", serial, RawEvidenceWriter(raw_handle))
 
     raw = paths.raw_serial_log.read_bytes()
     assert serial.writes == []
     assert b"host_command_rejected" in raw
     assert runner.commands_rejected == 1
+
+
+def test_raw_evidence_writer_defers_host_marker_until_partial_device_line_completes(tmp_path: Path) -> None:
+    path = tmp_path / "serial.log"
+    with path.open("a+b") as raw_handle:
+        writer = RawEvidenceWriter(raw_handle)
+        writer.write_device(b"CNT,1,2700,2,43227335024,43243335024")
+        writer.write_marker("host_command_sent", command="CONFIG?", bytes_written=8)
+        writer.write_device(b",rp2040_timer0,15999997,R,h0_tcxo_16mhz,16\n")
+
+    lines = path.read_bytes().splitlines()
+    assert lines[0] == (
+        b"CNT,1,2700,2,43227335024,43243335024,"
+        b"rp2040_timer0,15999997,R,h0_tcxo_16mhz,16"
+    )
+    assert lines[1].startswith(b"# OTIS_HOST ")
+    assert b"host_command_sent" in lines[1]
+
+
+def test_raw_evidence_writer_drops_partial_device_line_before_pending_markers(tmp_path: Path) -> None:
+    path = tmp_path / "serial.log"
+    with path.open("a+b") as raw_handle:
+        writer = RawEvidenceWriter(raw_handle)
+        writer.write_device(b"REF,1,4131,1,R,50125319056,rp")
+        writer.write_marker("partial_line_dropped", bytes=29, reason="shutdown")
+        assert writer.drop_partial() == 29
+
+    lines = path.read_bytes().splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith(b"# OTIS_HOST ")
+    assert b"REF,1,4131" not in lines[0]

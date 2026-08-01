@@ -22,8 +22,8 @@ completion, abort, underflow, and reset all return D3 to input/high-Z.
 The generator owns exactly one PIO0 state machine and one DMA channel. Its PIO
 clock is derived from the validated 133 MHz system clock with a divider of 133,
 giving 1 MHz and 1 microsecond resolution. Each finite profile is compiled into
-at most 96 logical steps and 193 DMA words (two words per physical pulse plus a
-terminal sentinel). The nominal period is 1,000,000 microseconds and nominal
+at most 600 logical steps and 1,201 DMA words (two words per physical pulse plus
+a terminal sentinel). The nominal period is 1,000,000 microseconds and nominal
 high width is 100,000 microseconds; fault-profile values are fixed in firmware.
 
 For the first pulse, the low-loop word is `rise_offset_us - 8`. For subsequent
@@ -47,7 +47,7 @@ Commands use the existing newline-delimited, 63-byte-bounded control framing:
 
 ```text
 PPSGEN PROFILES?
-PPSGEN ARM COMPOSITE
+PPSGEN ARM CLEAN_SOAK_10M
 PPSGEN START
 PPSGEN?
 PPSGEN STOP
@@ -55,7 +55,15 @@ PPSGEN STOP
 
 `ARM` is accepted only while not running and only for a built-in v1 profile.
 `START` is accepted only from `armed`; `STOP` aborts an armed or running
-profile. No command changes a period or width ad hoc.
+profile. No command changes a period or width ad hoc. `CLEAN_SOAK_10M` is one
+continuous 600-pulse schedule; use it for the clean acceptance run so host
+command latency cannot create artificial outages between short blocks.
+
+The isolated loopback matrix profile tightens the reference-acceptance band to
+999,500–1,000,500 microseconds. Production profiles retain their own configured
+band. The strict test-only band is wide relative to the observed clean hardware
+jitter while ensuring the ±100 ms phase steps and sustained ±1 ms offsets are
+invalidated instead of being admitted as clean count windows.
 
 ## Evidence and expected result
 
@@ -85,3 +93,15 @@ assess SNP as absent, invalidate association, publish no valid CNT across the
 event, reject any late/ambiguous word, and reacquire with a fresh anchor
 followed by an adjacent snapshot. Do not demand one SNP for this electrically
 generated malformed pulse.
+
+## Known width-only limitation
+
+The D14 qualification path observes rising-edge cadence; it does not measure
+the high time of every reference pulse. A pulse with a 10 microsecond high time
+and otherwise nominal one-second rising-edge spacing is therefore intentionally
+retained as a capability probe, but it is not distinguishable from a nominal
+reference by this backend. Detecting and invalidating that case would require a
+falling-edge/pulse-width capture path and a delayed validity decision. Do not
+relabel the event as detected or weaken strict scoring. Record the miss as an
+explicit width-blind limitation unless the reference threat model justifies
+that additional architecture.

@@ -21,13 +21,15 @@ burst and provides clean reference/capture evidence for the repaired topology,
 but its small-step DAC response was not sign-stable enough by itself.
 
 The current state supports SW2 design work, telemetry contracts, safety gates,
-manual nominal restore, observe-only firmware scaffolding, and now deterministic
-host `EST`/`CTL` replay with a model-v3 correction preview. It does **not**
+manual nominal restore, observe-only firmware scaffolding, deterministic host
+`EST`/`CTL` replay with a model-v3 correction preview, and an accepted
+observe-only PPS-gated measurement backend. It does **not**
 support automatic DAC actuation from PPS or count error. Phase 3 has frozen the
 local evidence, crossing band, applicability, and disabled candidate envelope;
 Phase 4 host replay enforces those bounds and preserves source hashes. The next
-gate is firmware observe-only parity and live measurement/diagnostic
-qualification, not active steering.
+gate is integrated live estimator/preview operation using the qualified
+measurement backend, followed by a separately reviewed guarded-actuation
+policy—not active steering by implication.
 
 ## Phase 4 host replay readiness
 
@@ -45,9 +47,10 @@ The host-only M2 gate is passed:
 - no firmware, serial command, DAC write, arming, PI/PID/Kalman, thermal, or
   holdover-prediction path was added.
 
-This passes deterministic host replay and native estimator parity only.
-Physical aperture and PPS-gated backend bench qualification, active-control
-policy approval, and guarded actuation are still incomplete.
+This passes deterministic host replay and native estimator parity. Physical
+aperture and PPS-gated backend bench qualification were subsequently accepted
+by the Phase 5 campaign on 2026-08-01. Active-control policy approval and
+guarded actuation remain incomplete.
 
 ## Phase 4 live observe-only parity readiness
 
@@ -69,19 +72,21 @@ complete:
 - default H1, explicit preview, PPS-gated, alternative capture, FC0, and GPIO
   count selector builds compile.
 
-M3 is not passed because no target board was attached for upload, deliberate
-USB/telemetry load and reconnect tests, or the required long live observe-only
-run. PPS-gated metrology qualification, firmware active control, and every
-actuation gate remain incomplete. `status.control_ready=false` and
+The target board has since completed deliberate service-plane load and
+long-duration testing with the Phase 5 qualification build. M3 is still not
+passed because the required integrated long live run used no Phase 4 preview
+telemetry. PPS-gated metrology qualification is now accepted; firmware active
+control and every actuation gate remain incomplete. `status.control_ready=false` and
 `status.actuation_enabled=false` remain authoritative.
 
 ## Phase 5 PPS-gated backend qualification readiness
 
-**Result: open / not yet qualified. The earlier ISR-owned Run 001 remains
-historical evidence for the rejected mechanism and cannot qualify the new
+**Result: accepted on 2026-08-01 as the qualified observe-only measurement
+backend, with documented limitations. The earlier ISR-owned Run 001 remains
+historical evidence for the rejected mechanism and did not qualify the new
 PIO-owned backend.**
 
-Repository preparation now includes:
+The accepted replacement evidence includes:
 
 - a proved 15-word single-state-machine `WAIT` snapshot program at pinned
   133 MHz for the 16 MHz, 35--65% digital envelope;
@@ -97,7 +102,7 @@ Repository preparation now includes:
 - explicit candidate and independent estimator/backend/source typing;
 - a deterministic qualification report under the local run's `derived/`
   directory;
-- an exact bench runbook and fixed v1 thresholds.
+- an exact bench runbook and data-driven v2 criteria.
 
 The rejected Run 001 captured a post-reset ISR-owned candidate session containing
 33111 consecutive one-second windows. Startup qualification, qualifying-size
@@ -106,14 +111,32 @@ inhibition, and clean-window recovery passed. The disturbed serial session
 before the authoritative BOOT is preserved and documented separately from the
 declared comparison range.
 
-Session-scoped jitter and load-shift analysis, an authorised independent
-comparison, aperture/combined uncertainty, controlled duplicate/short/long PPS
-tests, reconnect evidence, and final sealing remain open. See
-`docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md`.
-Those results motivated the replacement but are not qualification evidence for
-`pio_wait_cumulative_snapshot_dma_v1`. A new pseudo-PPS and real-signal bench
-campaign is required. `status.control_ready=false` and
-`status.actuation_enabled=false` remain authoritative.
+The new campaign—not Run 001—supplies clean pseudo-PPS evidence, 30/31 strict
+fault classification, real-GPS quiet/load evidence, 11,388 extended windows,
+and a sealed 16,798-window overnight comparison across 14 pairs. Every accepted
+overnight `CNT` reconstructs exactly from adjacent raw `SNP` boundaries and all
+capture/PIO/DMA/ring/parser/session counters remain clean. The one missed
+10 microsecond width-only fault is an accepted rising-edge-only limitation.
+Physical phase/duty margin is not tested because the ECS fixture cannot control
+it; this is non-blocking and is not called a pass. Independent absolute
+metrology and a complete uncertainty budget also remain outside this
+qualification.
+
+The follow-up exact-ELF and source latency/jitter audit found no measurement-
+path optimization to make. PIO owns both the oscillator count and cumulative
+PPS snapshot; the D14 ISR is an independent reconstructed REF observer, and
+DMA/foreground/service work occurs after the immutable snapshot. The observed
+spread must remain described as end-to-end ECS/GPS/input/environmental
+characterization rather than isolated firmware jitter. The anti-regression
+requirements are normative for subsequent estimator and control work; see
+`../50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
+
+See `PHASE_5_PPS_GATED_BACKEND_QUALIFICATION_REPORT.md` and
+`PHASE_5_REAL_GPS_EXTENDED_AND_OVERNIGHT_CAMPAIGN_20260801.md`.
+Existing evidence/runtime status remains `backend_qualified=false`,
+`status.control_ready=false`, and `status.actuation_enabled=false`; reflecting
+backend acceptance in an operational profile and authorizing actuation are
+separate future changes.
 
 ## H1 Evidence Available
 
@@ -303,10 +326,10 @@ Missing or insufficient evidence for active SW2 control:
 - PPS/reference anomalies remain present in the completed `run_014`, but they
   are explicitly gated rather than an unclassified validation failure.
   `run_016`, `run_017`, and `run_019` do not repeat that anomaly in their
-  analysed REF streams. SW2 must still treat anomalous
-  reference windows as not control-eligible and must fix or account for the
-  rollover-sensitive D14 long-reject diagnostic before relying on that counter
-  as a control gate.
+  analysed REF streams. SW2 must still treat anomalous reference windows as not
+  control-eligible. The modular D14 interval fix subsequently crossed six
+  timer rollovers cleanly across the Phase 5 extended and overnight runs;
+  historical rollover-sensitive counters remain qualified as historical data.
 
 ## Measured Plant Model
 
@@ -330,7 +353,7 @@ Current measured model:
 | REF/PPS anomaly gate                         | 2719 short intervals explicitly gated as diagnostic-only and not control-eligible | `run_014` manifest and anomaly report   | Root cause remains unresolved; do not use anomalous REF/PPS windows for control. |
 | D10 PPS witness                              | final D14 and D10 raw counts both 72970; no D10 short, overflow, or burst rows | `run_017` summary and status analysis   | Good evidence that the main run did not reproduce the earlier PPS burst. |
 | Rollover diagnostic caveat                   | Historical `run_017` D14 `rejected_long_count=16`, matching 16 raw timestamp rollovers | `run_017` summary and firmware review   | Preserved raw artefact; firmware diagnostics now classify intervals with modular timer arithmetic, but historical counts remain qualified by host-unwrapped REF analysis. |
-| Current bench next step                      | Replayable observe-only estimator and correction preview  | Plant model v3                          | No hardware write or periodic actuation. |
+| Current bench next step                      | Integrated live observe-only estimator and correction preview using the accepted PPS-gated backend | Phase 4/Phase 5 accepted evidence | No hardware write or periodic actuation. |
 
 The local model is now available, but actuation remains blocked because the
 candidate envelope is not a control policy and earlier reference/diagnostic
@@ -368,9 +391,9 @@ delete or suppress startup CNT/REF rows in capture artifacts.
 
 ## PPS-Gated Ratio Backend Readiness
 
-The PPS-gated ratio backend may improve the raw evidence available to future
-SW2 design, but it does not make active GPSDO steering ready by itself.
-The backend should produce raw PPS-gated `CNT` observations and explicit
+The PPS-gated ratio backend is accepted as the preferred observe-only live
+measurement path, but it does not make active GPSDO steering ready by itself.
+The backend produces raw PPS-gated `CNT` observations and explicit
 `pps_gate` / count-observation `STS` telemetry. Host tools may derive
 frequency, ratio, and ppm from those observations.
 
@@ -636,13 +659,17 @@ exists before the guarded actuation stage.
 Run 020 and Phase 3 satisfy the observe-only plant-model gate. Revisit guarded
 actuation only after the remaining policy and verification work provides:
 
+- one integrated long live estimator/preview run using the accepted PPS-gated
+  backend, with actionability and actuation remaining false;
 - populated safe DAC code and tune-voltage limits in the run manifest;
 - connected tune-voltage measurements bound to DAC dwell points or equivalent
   calibrated telemetry;
 - an explicitly approved update size and cadence derived from the recorded
   local gain and settling evidence;
 - a full warmup or thermal run that meets or supersedes the 1800 s target;
-- short-term FC0 noise floor measured with the same estimator SW2 will use;
+- short-term PPS-gated noise floor measured with the same estimator and span
+  SW2 will use, with FC0 retained as an independent long-gate comparison where
+  available;
 - endpoint hysteresis bounds adequate for the proposed update size, or an
   explicit conservative uncertainty treatment;
 - no post-inhibit zero-count windows or equivalent invalid count-observation
