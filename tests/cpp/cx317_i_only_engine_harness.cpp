@@ -66,6 +66,18 @@ int main() {
   evaluate(&fault, "fault", recovery);
   evaluate(&fault, "fault", valid_input(4200u, 0.02));
 
+  OtisCx317IOnlyEngine model_hold;
+  otis_cx317_i_only_engine_init(&model_hold, 0u);
+  evaluate(&model_hold, "model_hold", valid_input(0u, 0.02));
+  evaluate(&model_hold, "model_hold", valid_input(1800u, 0.02));
+  evaluate(&model_hold, "model_hold", valid_input(2400u, 0.02));
+  OtisCx317PreviewInput outside_model = valid_input(3000u, 0.02);
+  outside_model.model_applicable = false;
+  outside_model.temperature_available = false;
+  evaluate(&model_hold, "model_hold", outside_model);
+  evaluate(&model_hold, "model_hold", valid_input(3600u, 0.02));
+  evaluate(&model_hold, "model_hold", valid_input(4200u, 0.02));
+
   OtisCx317IOnlyEngine abort;
   otis_cx317_i_only_engine_init(&abort, 0u);
   OtisCx317PreviewInput stop = valid_input(0u, 0.02);

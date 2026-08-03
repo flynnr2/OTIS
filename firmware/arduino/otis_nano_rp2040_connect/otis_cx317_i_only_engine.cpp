@@ -4,15 +4,13 @@
 
 namespace {
 
-// CX317_PPS_GATED_I_ONLY_PREVIEW_V1. Each numerical value is bound to the
-// provenance table in profiles/discipline/cx317_pps_gated_i_only_preview_v1.json.
+// CX317_PPS_GATED_I_ONLY_PREVIEW_V2. Each numerical value is bound to the
+// provenance table in profiles/discipline/cx317_pps_gated_i_only_preview_v2.json.
 constexpr uint32_t kStartupWarmupS = 1800u;
 constexpr uint32_t kEstimatorSpanS = 600u;
 constexpr uint32_t kFullHistoryResetS = 1500u;
 constexpr uint32_t kRecoveryFreshSupportS = 600u;
 constexpr uint32_t kDecisionCadenceS = 600u;
-constexpr double kTemperatureMinC = 27.259;
-constexpr double kTemperatureMaxC = 30.245;
 constexpr double kErrorDeadbandHz = 0.006249995628992717;
 constexpr double kIntegratorGainCodesPerHz = 2884.5027706464516;
 constexpr int32_t kIntegratorLimitCodes = 21;
@@ -59,16 +57,11 @@ const char *fault_reason(const OtisCx317PreviewInput &input) {
   if (!input.reference_valid) return "reference_invalid";
   if (!input.estimator_valid) return "estimator_invalid_or_snapshot_gap";
   if (!input.count_valid) return "count_invalid";
-  if (!input.model_applicable) return "plant_model_mismatch";
   if (!input.applied_code_matches) return "requested_applied_mismatch";
   if (!input.i2c_ok) return "i2c_failure";
   if (input.current_code < kDacMinimumCode ||
       input.current_code > kDacMaximumCode)
     return "current_code_outside_clamp";
-  if (!input.temperature_available) return "temperature_unavailable";
-  if (!isfinite(input.temperature_c) || input.temperature_c < kTemperatureMinC ||
-      input.temperature_c > kTemperatureMaxC)
-    return "temperature_model_mismatch";
   return nullptr;
 }
 
@@ -130,6 +123,23 @@ void otis_cx317_i_only_engine_evaluate(
     engine->reason = "explicit_recovery_fresh_support";
     engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
     engine->integrator_codes = 0.0;
+    fill_common(*engine, previous, *input, decision);
+    return;
+  }
+  if (!input->model_applicable) {
+    engine->state = OtisCx317PreviewState::OutOfModelHold;
+    engine->reason = "plant_model_inapplicable_hold";
+    engine->integrator_codes = 0.0;
+    engine->have_last_decision = false;
+    fill_common(*engine, previous, *input, decision);
+    return;
+  }
+  if (engine->state == OtisCx317PreviewState::OutOfModelHold) {
+    engine->state = OtisCx317PreviewState::Qualifying;
+    engine->reason = "model_reapplicable_fresh_support";
+    engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
+    engine->integrator_codes = 0.0;
+    engine->have_last_decision = false;
     fill_common(*engine, previous, *input, decision);
     return;
   }
@@ -227,6 +237,8 @@ const char *otis_cx317_preview_state_name(OtisCx317PreviewState state) {
       return "SETTLE_PREVIEW";
     case OtisCx317PreviewState::Tracking:
       return "LOCKED_PREVIEW";
+    case OtisCx317PreviewState::OutOfModelHold:
+      return "OUT_OF_MODEL_HOLD";
     case OtisCx317PreviewState::Fault:
     case OtisCx317PreviewState::Aborted:
       return "FAULT";

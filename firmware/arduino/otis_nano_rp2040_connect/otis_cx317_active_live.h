@@ -31,6 +31,9 @@ struct OtisCx317ActiveLiveDecision {
   int32_t requested_delta_codes;
   uint16_t requested_code;
   double frequency_error_hz;
+  bool measurement_valid;
+  bool model_applicable;
+  bool control_eligible;
   bool preview_available;
 };
 

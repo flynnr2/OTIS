@@ -49,8 +49,10 @@ Read first:
 - `docs/50_SOFTWARE/CX317_PPS_GATED_SELECTED_ESTIMATOR.md`
 - `docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md`
 - `profiles/estimators/cx317_pps_gated_selected_v1.json`
-- `profiles/plant_models/cx317_pps_gated_v1.json`
-- `profiles/discipline/cx317_pps_gated_i_only_preview_v1.json`
+- `profiles/plant_models/cx317_pps_gated_v2.json`
+- `profiles/discipline/cx317_pps_gated_i_only_preview_v2.json`
+- `profiles/discipline/cx317_response_classification_v2.json`
+- `profiles/discipline/cx317_bounded_active_v2.json`
 - `docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md`
 - every prompt in this programme folder.
 
@@ -70,7 +72,17 @@ Every active correction is simultaneously:
 
 An indeterminate single small-step response near estimator resolution is not
 automatically a fault. Wrong-sign response, growing error, broken identity,
-loss of eligibility, or a failed actuator transaction is a fault.
+loss of measurement integrity or a failed actuator transaction is a fault.
+Measurement validity, code-domain model applicability and control eligibility
+are separate decisions. Preserve and classify every valid response even when
+the model is inapplicable. Model inapplicability enters fail-static
+`OUT_OF_MODEL_HOLD`; it is not rewritten as a measurement fault.
+
+SHT41 nearby-air temperature is a labelled telemetry covariate. The observed
+range is not a demonstrated CX317 case/oven-temperature limit and is not an
+actuation veto for this non-temperature-dependent plant model. Missing, stale
+or out-of-context SHT41 data must be recorded honestly but does not invalidate
+an otherwise healthy frequency observation, model or control decision.
 
 Do not weaken a gate after live evidence begins. Preserve failed or stopped
 runs as diagnostic evidence.
@@ -141,8 +153,8 @@ Active authority must be explicit and short-lived:
 - the default and preview profiles remain non-actuating;
 - only a dedicated programme profile may set `actuation_enabled=true`;
 - `actuation_authorized=true` is permitted only after exact run/build/profile,
-  GNSS, estimator, plant, temperature, applied-code, capture-owner and abort
-  gates pass;
+  GNSS, estimator, code-domain plant-model, applied-code, capture-owner and
+  abort gates pass;
 - `actionable=true` may exist only for the one decision being transacted;
 - authority clears immediately after the request is accepted or on any fault;
 - a new correction requires a new full eligibility decision;
@@ -165,7 +177,9 @@ if any of these occurs:
 - D14/D10 disagreement when the run declares both connected to the same PPS;
 - snapshot sequence gap, association loss, zero/saturated count, FIFO/DMA/ring
   fault, parser loss or transport discontinuity;
-- estimator, plant model, temperature or code-range inapplicability;
+- estimator invalidity or loss of required fresh estimator support;
+- code outside the hard electrical range or any attempt to extrapolate a write
+  outside it;
 - DAC request/accepted/applied mismatch, stale request, I2C failure, missing
   acknowledgement or application timeout;
 - correction magnitude, cumulative budget, correction count or cadence limit
@@ -182,6 +196,13 @@ On a fault:
 - emit and preserve the stopping reason and complete step capsule;
 - close and seal the run as stopped/diagnostic when possible;
 - require explicit recovery in a new run or a stage-defined recovery leg.
+
+If measurement evidence is valid but the code-domain plant model is
+inapplicable, do not label the measurement as faulty. Preserve its numerical
+response classification, clear actionability and integrator state, retain the
+last confirmed applied code, continue telemetry in `OUT_OF_MODEL_HOLD`, and
+require an applicable model plus fresh contiguous estimator support before a
+new correction. An out-of-context SHT41 value alone cannot enter this hold.
 
 ## Response classification
 

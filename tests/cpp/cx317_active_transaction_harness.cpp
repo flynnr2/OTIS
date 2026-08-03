@@ -72,7 +72,7 @@ void happy_transaction() {
   assert(transaction.dac_epoch == 1u);
 
   OtisCx317ResponseResult response;
-  assert(otis_cx317_active_record_response(&transaction, 0.0165, true,
+  assert(otis_cx317_active_record_response(&transaction, 0.0165, true, true,
                                            &response));
   assert(response.classification == OtisCx317ResponseClass::HealthyDetected);
   assert(transaction.state == OtisCx317ActiveState::Disarmed);
@@ -160,10 +160,52 @@ void bounds_abort_and_response_stops() {
       1u, 2400u, true, false, false};
   assert(otis_cx317_active_acknowledge_application(&transaction, &applied));
   OtisCx317ResponseResult response;
-  assert(!otis_cx317_active_record_response(&transaction, 0.024, true,
+  assert(!otis_cx317_active_record_response(&transaction, 0.024, true, true,
                                             &response));
   assert(response.classification == OtisCx317ResponseClass::WrongSign);
   assert(transaction.state == OtisCx317ActiveState::Fault);
+}
+
+void temperature_covariate_and_out_of_model_hold() {
+  const auto expected = binding();
+  auto eligibility = healthy();
+  eligibility.temperature_valid = false;
+  assert(otis_cx317_active_arm_eligibility_valid(&eligibility));
+  assert(otis_cx317_active_eligibility_valid(&eligibility));
+  assert(otis_cx317_active_response_measurement_valid(&eligibility));
+
+  OtisCx317ActiveTransaction transaction;
+  otis_cx317_active_transaction_init(&transaction, &expected);
+  auto authorization = arm(expected);
+  assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                               2400u));
+  auto numerical = decision(transaction.applied_code);
+  OtisCx317ActionableRequest request;
+  assert(otis_cx317_active_make_request(&transaction, &numerical,
+                                        &eligibility, 2400u, &request));
+  OtisCx317AcceptedRequest accepted;
+  assert(otis_cx317_active_accept(&transaction, &request, 2400u, &accepted));
+  OtisCx317AppliedAck applied = {
+      request.request_sequence, request.authorization_sequence, request.nonce,
+      request.requested_code, accepted.accepted_code, request.requested_code,
+      1u, 2400u, true, false, false};
+  assert(otis_cx317_active_acknowledge_application(&transaction, &applied));
+  OtisCx317ResponseResult response;
+  assert(otis_cx317_active_record_response(&transaction, 0.0165, true, false,
+                                           &response));
+  assert(response.classification == OtisCx317ResponseClass::HealthyDetected);
+  assert(transaction.state == OtisCx317ActiveState::OutOfModelHold);
+  assert(!transaction.have_request);
+
+  eligibility.model_applicable = false;
+  authorization = arm(expected, 2u, 4200u);
+  assert(!otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                                4200u));
+  assert(transaction.state == OtisCx317ActiveState::OutOfModelHold);
+  eligibility.model_applicable = true;
+  assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                               4200u));
+  assert(transaction.state == OtisCx317ActiveState::Armed);
 }
 
 }  // namespace
@@ -173,5 +215,6 @@ int main() {
   binding_and_health_fail_closed();
   acknowledgement_failure_never_retries_or_restores();
   bounds_abort_and_response_stops();
+  temperature_covariate_and_out_of_model_hold();
   return 0;
 }

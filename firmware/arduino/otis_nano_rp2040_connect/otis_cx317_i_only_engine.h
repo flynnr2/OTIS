@@ -8,6 +8,7 @@ enum class OtisCx317PreviewState : uint8_t {
   Qualifying,
   SettlingInhibit,
   Tracking,
+  OutOfModelHold,
   Fault,
   Aborted,
 };

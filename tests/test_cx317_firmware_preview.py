@@ -112,6 +112,15 @@ def _python_rows() -> dict[str, list[dict[str, object]]]:
     rows.append(fault.process(base(4200)))
     output["fault"] = rows
 
+    model = IOnlyPreviewEngine(policy)
+    rows = [model.process(base(t)) for t in (0, 1800, 2400)]
+    rows.append(model.process(Observation(
+        3000, 0.02, policy.fail_static_code, None, model_applicable=False
+    )))
+    rows.append(model.process(base(3600)))
+    rows.append(model.process(base(4200)))
+    output["model_hold"] = rows
+
     abort = IOnlyPreviewEngine(policy)
     output["abort"] = [
         abort.process(Observation(0, 0.02, policy.fail_static_code, 29.0, operator_abort=True)),
@@ -127,7 +136,7 @@ def test_cpp_controller_matches_host_replay(cx317_engine_harness: Path) -> None:
     positions = {key: 0 for key in expected}
     state_names = {
         0: "WARMUP_INHIBIT", 1: "QUALIFYING", 2: "SETTLING_INHIBIT",
-        3: "TRACKING", 4: "FAULT", 5: "ABORTED",
+        3: "TRACKING", 4: "OUT_OF_MODEL_HOLD", 5: "FAULT", 6: "ABORTED",
     }
     for row in cpp_rows:
         scenario = row["scenario"]

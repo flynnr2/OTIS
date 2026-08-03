@@ -18,8 +18,8 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v1.json"
-TOOL_VERSION = "cx317_bounded_active_reference_v1"
+DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json"
+TOOL_VERSION = "cx317_bounded_active_reference_v2"
 
 
 class ActiveError(RuntimeError):
@@ -32,6 +32,7 @@ class ActiveState(str, Enum):
     REQUEST_PENDING = "request_pending"
     ACCEPTED_AWAITING_APPLICATION = "accepted_awaiting_application"
     AWAITING_RESPONSE = "awaiting_response"
+    OUT_OF_MODEL_HOLD = "out_of_model_hold"
     FAULT = "fault"
     ABORTED = "aborted"
 
@@ -76,6 +77,7 @@ class ActivePolicy:
     model_hash: str
     numerical_policy_hash: str
     response_hash: str
+    response_policy_path: Path
     minimum_code: int
     maximum_code: int
     maximum_step_codes: int
@@ -95,7 +97,11 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActivePolicy:
     value = _read_object(path)
     if value.get("schema_version") != 1:
         raise ValueError("active policy schema_version must be 1")
-    if value.get("policy_id") != "CX317_BOUNDED_ACTIVE_I_ONLY_V1":
+    policy_id = value.get("policy_id")
+    if policy_id not in {
+        "CX317_BOUNDED_ACTIVE_I_ONLY_V1",
+        "CX317_BOUNDED_ACTIVE_I_ONLY_V2",
+    }:
         raise ValueError("unsupported active policy identity")
     bindings = value.get("bindings")
     parameters = value.get("parameters")
@@ -125,10 +131,21 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActivePolicy:
         "exact_run_build_profile_estimator_model_policy_response_bindings_required": True,
         "gnss_metadata_and_identity_required": True,
         "raw_reference_and_count_required": True,
-        "temperature_and_model_applicability_required": True,
         "confirmed_applied_code_required": True,
         "capture_owner_lease_and_abort_health_required": True,
     }
+    if policy_id == "CX317_BOUNDED_ACTIVE_I_ONLY_V1":
+        required_authority["temperature_and_model_applicability_required"] = True
+    else:
+        required_authority.update(
+            {
+                "model_applicability_required_for_new_request": True,
+                "temperature_context_required_for_measurement": False,
+                "temperature_context_required_for_control": False,
+                "measurement_validity_and_control_eligibility_separate": True,
+                "out_of_model_is_fail_static_hold": True,
+            }
+        )
     if {key: authority.get(key) for key in required_authority} != required_authority:
         raise ValueError("active authority invariants differ")
     if transaction.get("controller_type") != "incremental_I_only_frequency_control":
@@ -202,6 +219,7 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActivePolicy:
         model_hash=str(bindings["plant_model_sha256"]),
         numerical_policy_hash=str(bindings["numerical_preview_policy_sha256"]),
         response_hash=str(bindings["response_policy_sha256"]),
+        response_policy_path=REPO_ROOT / str(bindings["response_policy_path"]),
         minimum_code=integer_fields["dac_min_code"],
         maximum_code=integer_fields["dac_max_code"],
         maximum_step_codes=integer_fields["maximum_update_codes"],
@@ -246,6 +264,32 @@ class Eligibility:
             key
             for key, value in asdict(self).items()
             if value is not True
+        )
+
+    def arm_reasons(self) -> tuple[str, ...]:
+        """Identity/transport preconditions needed to accept a short-lived arm."""
+        excluded = {"estimator_valid", "model_applicable", "temperature_valid"}
+        return tuple(
+            key
+            for key, value in asdict(self).items()
+            if key not in excluded and value is not True
+        )
+
+    def control_reasons(self) -> tuple[str, ...]:
+        """Preconditions needed to turn a fresh estimate into a request."""
+        return tuple(
+            key
+            for key, value in asdict(self).items()
+            if key != "temperature_valid" and value is not True
+        )
+
+    def response_measurement_reasons(self) -> tuple[str, ...]:
+        """Evidence needed to classify a response, independent of model context."""
+        excluded = {"model_applicable", "temperature_valid"}
+        return tuple(
+            key
+            for key, value in asdict(self).items()
+            if key not in excluded and value is not True
         )
 
 
@@ -348,10 +392,13 @@ class StepCapsule:
 class ResponseClassifier:
     def __init__(self, response_path: Path | None = None) -> None:
         response_path = response_path or (
-            REPO_ROOT / "profiles/discipline/cx317_response_classification_v1.json"
+            REPO_ROOT / "profiles/discipline/cx317_response_classification_v2.json"
         )
         value = _read_object(response_path)
-        if value.get("policy_id") != "CX317_BOUNDED_RESPONSE_CLASSIFICATION_V1":
+        if value.get("policy_id") not in {
+            "CX317_BOUNDED_RESPONSE_CLASSIFICATION_V1",
+            "CX317_BOUNDED_RESPONSE_CLASSIFICATION_V2",
+        }:
             raise ValueError("unsupported response policy")
         p = value["parameters"]
         self.gain_min = float(p["gain_min_hz_per_code"])
@@ -525,11 +572,10 @@ class ActiveTransactionEngine:
         self.arm_spec: ArmSpec | None = None
         self.pending: StepCapsule | None = None
         self.capsules: list[StepCapsule] = []
-        self.response_classifier = ResponseClassifier()
+        self.response_classifier = ResponseClassifier(policy.response_policy_path)
 
     @staticmethod
-    def _require_health(health: Eligibility) -> None:
-        reasons = health.reasons()
+    def _require_health(reasons: tuple[str, ...]) -> None:
         if reasons:
             raise ActiveError("eligibility failed: " + ",".join(reasons))
 
@@ -576,11 +622,20 @@ class ActiveTransactionEngine:
     def arm(self, spec: ArmSpec, health: Eligibility, now_s: int) -> None:
         if self.state in {ActiveState.FAULT, ActiveState.ABORTED}:
             raise ActiveError(f"cannot arm latched state {self.state.value}")
+        if self.state is ActiveState.OUT_OF_MODEL_HOLD:
+            reasons = health.control_reasons()
+            if reasons:
+                raise ActiveError(
+                    "out-of-model hold requires applicable model and fresh support: "
+                    + ",".join(reasons)
+                )
+            self.state = ActiveState.DISARMED
+            self.reason = "out_of_model_hold_requalified"
         if self.state is not ActiveState.DISARMED or self.pending is not None:
             self._fault("arm_while_not_disarmed")
             raise ActiveError(self.reason)
         try:
-            self._require_health(health)
+            self._require_health(health.arm_reasons())
         except ActiveError:
             self._fault("arm_eligibility_failed")
             raise
@@ -620,7 +675,7 @@ class ActiveTransactionEngine:
         spec = self.arm_spec
         self.arm_spec = None
         try:
-            self._require_health(health)
+            self._require_health(health.control_reasons())
         except ActiveError:
             self._fault("request_eligibility_failed")
             raise
@@ -758,7 +813,9 @@ class ActiveTransactionEngine:
         self,
         *,
         post_error_hz: float,
-        evidence_healthy: bool = True,
+        evidence_healthy: bool | None = None,
+        measurement_healthy: bool | None = None,
+        control_eligible_after_response: bool = True,
     ) -> ResponseResult:
         if (
             self.state is not ActiveState.AWAITING_RESPONSE
@@ -768,6 +825,12 @@ class ActiveTransactionEngine:
             self._fault("response_without_applied_transaction")
             raise ActiveError(self.reason)
         request = self.pending.request
+        if measurement_healthy is None:
+            measurement_healthy = (
+                True if evidence_healthy is None else evidence_healthy
+            )
+        elif evidence_healthy is not None and evidence_healthy != measurement_healthy:
+            raise ValueError("conflicting response evidence flags")
         result = self.response_classifier.classify(
             pre_error_hz=request.pre_error_hz,
             post_error_hz=post_error_hz,
@@ -775,7 +838,7 @@ class ActiveTransactionEngine:
             current_code=self.applied_code,
             minimum_code=self.policy.minimum_code,
             maximum_code=self.policy.maximum_code,
-            evidence_healthy=evidence_healthy,
+            evidence_healthy=measurement_healthy,
         )
         self.pending.response = result
         self.capsules.append(self.pending)
@@ -787,6 +850,10 @@ class ActiveTransactionEngine:
             ResponseClass.MEASUREMENT_OR_ACTUATOR_FAULT,
         }:
             self._fault("response_stop:" + result.classification.value)
+        elif not control_eligible_after_response:
+            self.state = ActiveState.OUT_OF_MODEL_HOLD
+            self.reason = "response_valid_out_of_model_hold"
+            self.arm_spec = None
         else:
             self.state = ActiveState.DISARMED
             self.reason = "response_accepted_new_arm_required"

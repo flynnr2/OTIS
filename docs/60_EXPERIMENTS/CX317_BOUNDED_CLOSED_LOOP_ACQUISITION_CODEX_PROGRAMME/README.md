@@ -18,6 +18,11 @@ qualification item as a reason to repeat long observe-only runs. It separates:
 - evidence required to claim calibrated frequency accuracy, UTC traceability,
   physical input margin, holdover performance, or a finished GPSDO.
 
+It also separates measurement validity from control eligibility. A valid
+response remains evidence if the plant model later becomes inapplicable; new
+writes then stop in `OUT_OF_MODEL_HOLD`. Nearby-air SHT41 temperature is a
+recorded covariate, not a demonstrated oscillator-temperature safety bound.
+
 ## Execution order
 
 1. `00_MASTER_UNATTENDED_PROMPT.md`

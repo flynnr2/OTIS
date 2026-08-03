@@ -173,7 +173,7 @@ bool otis_cx317_active_eligibility_valid(
          value->gnss_identity_stable && value->gnss_3d_evidence &&
          value->raw_pps_valid && value->count_valid &&
          value->estimator_valid && value->model_applicable &&
-         value->temperature_valid && value->applied_code_confirmed &&
+         value->applied_code_confirmed &&
          value->capture_owner_live && value->abort_path_live &&
          value->transaction_evidence_available;
 }
@@ -187,9 +187,22 @@ bool otis_cx317_active_arm_eligibility_valid(
          value->session_continuous && value->gnss_metadata_valid &&
          value->gnss_identity_stable && value->gnss_3d_evidence &&
          value->raw_pps_valid && value->count_valid &&
-         value->temperature_valid && value->applied_code_confirmed &&
+         value->applied_code_confirmed &&
          value->capture_owner_live && value->abort_path_live &&
          value->transaction_evidence_available;
+}
+
+bool otis_cx317_active_response_measurement_valid(
+    const OtisCx317ActiveEligibility *value) {
+  return value != nullptr && value->run_identity_matches &&
+         value->build_identity_matches && value->profile_identity_matches &&
+         value->estimator_identity_matches && value->model_identity_matches &&
+         value->policy_identity_matches && value->response_identity_matches &&
+         value->session_continuous && value->gnss_metadata_valid &&
+         value->gnss_identity_stable && value->gnss_3d_evidence &&
+         value->raw_pps_valid && value->count_valid && value->estimator_valid &&
+         value->applied_code_confirmed && value->capture_owner_live &&
+         value->abort_path_live && value->transaction_evidence_available;
 }
 
 void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
@@ -219,6 +232,10 @@ bool otis_cx317_active_arm(OtisCx317ActiveTransaction *transaction,
   if (transaction->state == OtisCx317ActiveState::Fault ||
       transaction->state == OtisCx317ActiveState::Aborted)
     return false;
+  if (transaction->state == OtisCx317ActiveState::OutOfModelHold) {
+    if (!otis_cx317_active_eligibility_valid(eligibility)) return false;
+    disarm(transaction, "out_of_model_hold_requalified");
+  }
   if (transaction->state != OtisCx317ActiveState::Disarmed ||
       transaction->have_request) {
     otis_cx317_active_fault(transaction, "arm_while_not_disarmed");
@@ -430,7 +447,8 @@ bool otis_cx317_active_acknowledge_application(
 
 bool otis_cx317_active_record_response(
     OtisCx317ActiveTransaction *transaction, double post_error_hz,
-    bool evidence_healthy, OtisCx317ResponseResult *result) {
+    bool measurement_healthy, bool control_eligible_after_response,
+    OtisCx317ResponseResult *result) {
   if (transaction == nullptr || result == nullptr) return false;
   if (transaction->state != OtisCx317ActiveState::AwaitingResponse ||
       !transaction->have_application) {
@@ -442,7 +460,7 @@ bool otis_cx317_active_record_response(
       &transaction->response_classifier, transaction->request.pre_error_hz,
       post_error_hz, transaction->request.requested_delta_codes,
       transaction->applied_code, transaction->expected_binding.minimum_code,
-      transaction->expected_binding.maximum_code, evidence_healthy);
+      transaction->expected_binding.maximum_code, measurement_healthy);
   transaction->have_request = false;
   transaction->have_acceptance = false;
   transaction->have_application = false;
@@ -454,6 +472,12 @@ bool otis_cx317_active_record_response(
       otis_cx317_active_fault(transaction, result->reason);
       return false;
     default:
+      if (!control_eligible_after_response) {
+        transaction->state = OtisCx317ActiveState::OutOfModelHold;
+        transaction->reason = "response_valid_out_of_model_hold";
+        transaction->have_arm = false;
+        return true;
+      }
       disarm(transaction, "response_accepted_new_arm_required");
       return true;
   }
@@ -478,6 +502,8 @@ const char *otis_cx317_active_state_name(OtisCx317ActiveState state) {
       return "ACCEPTED_AWAITING_APPLICATION";
     case OtisCx317ActiveState::AwaitingResponse:
       return "AWAITING_RESPONSE";
+    case OtisCx317ActiveState::OutOfModelHold:
+      return "OUT_OF_MODEL_HOLD";
     case OtisCx317ActiveState::Fault:
       return "FAULT";
     case OtisCx317ActiveState::Aborted:

@@ -13,13 +13,13 @@ namespace {
 constexpr char kEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kModelHash[] =
-    "d8fbc3539759be1de60d6b4507a50f029b3eaf830952b65ddb4c9849992ef8dd";
+    "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
 constexpr char kNumericalPolicyHash[] =
-    "19cddd7cb169c4c733b7cfd69085f9ecc087ad77a874f265c4c7c0f053aced43";
+    "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
-    "657df688c8e6b1bce1ac8280b46e5388ee1d6dfbe31e34735611c933ca4f261e";
+    "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42";
 constexpr char kResponsePolicyHash[] =
-    "0a7ec7b8f569da4a233c03e56c42bd7bd522ca1c27e97d4028b6c52a2ecfe963";
+    "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec";
 constexpr uint32_t kCaptureLeaseMaximumAgeS = 30u;
 constexpr uint32_t kEvidenceAcknowledgementMaximumAgeS = 30u;
 constexpr size_t kFrameCapacity = 1536u;
@@ -473,14 +473,19 @@ void otis_cx317_active_live_on_decision(
   OtisCx317ActiveEligibility health = eligibility(decision->timestamp_s);
   // The completed selected estimate is created in this boundary callback;
   // the periodic health snapshot necessarily trails it by one service loop.
-  health.estimator_valid = decision->preview_available;
-  health.model_applicable = decision->preview_available;
+  health.estimator_valid = decision->measurement_valid;
+  health.model_applicable = decision->model_applicable;
   if (transaction.state == OtisCx317ActiveState::AwaitingResponse) {
     OtisCx317ResponseResult response;
+    const bool measurement_healthy =
+        decision->measurement_valid &&
+        otis_cx317_active_response_measurement_valid(&health);
+    const bool control_eligible_after_response =
+        decision->control_eligible &&
+        otis_cx317_active_eligibility_valid(&health);
     const bool accepted = otis_cx317_active_record_response(
         &transaction, decision->frequency_error_hz,
-        decision->preview_available &&
-            otis_cx317_active_eligibility_valid(&health),
+        measurement_healthy, control_eligible_after_response,
         &response);
     outcome->response_recorded = true;
     outcome->response_class = response.classification;
@@ -508,7 +513,7 @@ void otis_cx317_active_live_on_decision(
       decision->frequency_error_hz,
   };
   OtisCx317ActionableRequest request;
-  if (!decision->preview_available ||
+  if (!decision->control_eligible ||
       !otis_cx317_active_make_request(&transaction, &request_input, &health,
                                       decision->timestamp_s, &request)) {
     outcome->faulted = transaction.state == OtisCx317ActiveState::Fault;

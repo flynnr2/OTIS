@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX317_BOUNDED_ACTIVE_I_ONLY_V2",
+  "status": "refrozen_after_campaign_a_temperature_context_diagnostic_and_rapid_characterization",
+  "bindings": {
+    "plant_model_path": "profiles/plant_models/cx317_pps_gated_v2.json",
+    "plant_model_sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1",
+    "selected_estimator_path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+    "selected_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "numerical_preview_policy_path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
+    "numerical_preview_policy_sha256": "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521",
+    "response_policy_path": "profiles/discipline/cx317_response_classification_v2.json",
+    "response_policy_sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec",
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+    "snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+    "estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"
+  },
+  "parameters": {
+    "nominal_frequency_hz": 10000000,
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "error_deadband_hz": 0.006249995628992717,
+    "maximum_update_codes": 21,
+    "dac_min_code": 43008,
+    "dac_max_code": 43776,
+    "minimum_applied_correction_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 600,
+    "full_history_reset_s": 1500,
+    "startup_warmup_s": 1800,
+    "temperature_min_c": 27.259,
+    "temperature_max_c": 30.851,
+    "temperature_role": "nearby_air_telemetry_covariate_only",
+    "temperature_required_for_measurement": false,
+    "temperature_required_for_model_applicability": false,
+    "temperature_required_for_control_eligibility": false,
+    "arming_maximum_lifetime_s": 120,
+    "capture_lease_maximum_age_s": 30,
+    "one_request_outstanding": true,
+    "automatic_retry": false,
+    "automatic_restore": false
+  },
+  "campaigns": {
+    "A": {
+      "firmware_profile": "cx317_bounded_active_campaign_a",
+      "run_binding_tag": 3170001,
+      "start_code": 43344,
+      "maximum_corrections": 16,
+      "maximum_cumulative_movement_codes": 336
+    },
+    "B": {
+      "firmware_profile": "cx317_bounded_active_campaign_b",
+      "run_binding_tag": 3170002,
+      "start_code": 43008,
+      "maximum_corrections": 8,
+      "maximum_cumulative_movement_codes": 168
+    }
+  },
+  "authority": {
+    "default_profiles_actuation_enabled": false,
+    "dedicated_profiles_actuation_enabled": true,
+    "arming_required": true,
+    "arming_consumed_by_one_request": true,
+    "actionable_only_during_request_handoff": true,
+    "actionable_cleared_on_acceptance_or_fault": true,
+    "reboot_or_session_change_clears_arming": true,
+    "exact_run_build_profile_estimator_model_policy_response_bindings_required": true,
+    "gnss_metadata_and_identity_required": true,
+    "raw_reference_and_count_required": true,
+    "model_applicability_required_for_new_request": true,
+    "temperature_context_required_for_measurement": false,
+    "temperature_context_required_for_control": false,
+    "measurement_validity_and_control_eligibility_separate": true,
+    "out_of_model_is_fail_static_hold": true,
+    "confirmed_applied_code_required": true,
+    "capture_owner_lease_and_abort_health_required": true
+  },
+  "transaction": {
+    "controller_type": "incremental_I_only_frequency_control",
+    "request_is_not_applied_code": true,
+    "accepted_and_applied_acknowledgements_distinct": true,
+    "duplicate_stale_reordered_or_consumed_request": "latch_fault_without_write",
+    "missing_or_ambiguous_acknowledgement": "latch_fault_without_retry",
+    "i2c_failure": "latch_fault_at_last_confirmed_applied_code",
+    "successful_application": "increment_dac_epoch_reset_estimator_history_and_disarm",
+    "valid_response_with_model_inapplicable": "preserve_response_classification_enter_OUT_OF_MODEL_HOLD_clear_actionability_and_integrator_continue_telemetry",
+    "hold_recovery": "require_applicable_code_domain_model_plus_fresh_contiguous_estimator_support_before_new_request",
+    "abort": "latch_fail_static_without_restoration_write"
+  },
+  "forbidden_terms": [
+    "phase_control",
+    "proportional_term",
+    "derivative_term",
+    "adaptive_gain",
+    "kalman_filter",
+    "thermal_compensation",
+    "predictive_holdover",
+    "automatic_restore",
+    "uncontrolled_retry"
+  ]
+}

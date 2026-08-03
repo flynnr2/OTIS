@@ -16,17 +16,15 @@ namespace {
 constexpr char kEstimatorMethod[] = "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1";
 constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
-constexpr char kPolicyId[] = "CX317_PPS_GATED_I_ONLY_PREVIEW_V1";
+constexpr char kPolicyId[] = "CX317_PPS_GATED_I_ONLY_PREVIEW_V2";
 constexpr char kPolicyHash[] =
-    "19cddd7cb169c4c733b7cfd69085f9ecc087ad77a874f265c4c7c0f053aced43";
+    "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
 constexpr char kPlantModelHash[] =
-    "d8fbc3539759be1de60d6b4507a50f029b3eaf830952b65ddb4c9849992ef8dd";
+    "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
 constexpr char kTimeDomain[] = "rp2040_timer0";
 constexpr double kNominalFrequencyHz = 10000000.0;
 constexpr double kNominalGainHzPerCode = 0.00017008467693813145;
-constexpr double kTemperatureMinC = 27.259;
-constexpr double kTemperatureMaxC = 30.245;
 constexpr uint32_t kStartupWarmupS = 1800u;
 constexpr uint32_t kSettlingExclusionS = 900u;
 constexpr int32_t kActiveLiveUpdateCodes = 0;
@@ -82,9 +80,8 @@ bool code_context_valid(const OtisCx317StaticCodeState *code) {
          code->applied_code <= 0xAB00u;
 }
 
-bool temperature_context_valid(void) {
-  return temperature_available && isfinite(temperature_c) &&
-         temperature_c >= kTemperatureMinC && temperature_c <= kTemperatureMaxC;
+bool temperature_telemetry_valid(void) {
+  return temperature_available && isfinite(temperature_c);
 }
 
 OtisCx317PreviewInput controller_input(
@@ -101,7 +98,7 @@ OtisCx317PreviewInput controller_input(
       reference_valid,
       estimator_valid,
       count_valid,
-      code_context_valid(code) && temperature_context_valid(),
+      code_context_valid(code),
       code_present && code->requested_applied_match,
       code != nullptr && code->i2c_ok,
       temperature_available,
@@ -117,8 +114,6 @@ const char *model_reason(const OtisCx317StaticCodeState *code) {
   if (!code->i2c_ok) return "i2c_failure";
   if (code->applied_code < 0xA800u || code->applied_code > 0xAB00u)
     return "current_code_outside_characterized_range";
-  if (!temperature_available) return "temperature_unavailable";
-  if (!temperature_context_valid()) return "temperature_model_mismatch";
   return "model_applicable_observe_only";
 }
 
@@ -131,7 +126,7 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
                                   : span.diagnostic_first_sequence;
   const uint32_t samples = selected ? OTIS_CX317_SELECTED_SPAN_INTERVALS
                                     : OTIS_CX317_DIAGNOSTIC_SPAN_INTERVALS;
-  const bool applicable = code_context_valid(code) && temperature_context_valid();
+  const bool applicable = code_context_valid(code);
   char frame[kFrameCapacity];
   const uint32_t seq = estimate_seq++;
   int used = snprintf(
@@ -181,11 +176,11 @@ void emit_control(const OtisCx317PreviewDecision &decision,
   }
   char frame[kFrameCapacity];
   const uint32_t seq = control_seq++;
-  const bool applicable = code_context_valid(code) && temperature_context_valid();
+  const bool applicable = code_context_valid(code);
   int used = snprintf(
       frame, sizeof(frame),
       "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:selected600:%06lu,"
-      "profile:plant_models/cx317_pps_gated_v1.json,%s,1,%s,%s,%s,%s,%s,%s,%s,"
+      "profile:plant_models/cx317_pps_gated_v2.json,%s,2,%s,%s,%s,%s,%s,%s,%s,"
       "%s,%s,healthy,%s,%s,%u,%s,%.15g,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
       static_cast<unsigned long>(seq), static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
@@ -314,15 +309,14 @@ void otis_cx317_preview_live_on_boundary(
   if (span.selected_available) {
     const uint32_t selected_estimate_seq = estimate_seq;
     emit_estimate(true, span, static_code, observation->pps_timestamp_ticks);
-    const bool applicable = code_context_valid(static_code) &&
-                            temperature_context_valid();
+    const bool applicable = code_context_valid(static_code);
     OtisCx317PreviewInput input = controller_input(
         uptime_s, span.selected_frequency_hz - kNominalFrequencyHz, true,
         true, true, true, static_code);
     input.model_applicable = applicable;
     OtisCx317PreviewDecision decision;
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
-    selected_estimator_valid = decision.preview_available;
+    selected_estimator_valid = true;
     selected_model_applicable = applicable;
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
     OtisCx317ActiveLiveDecision active_decision = {
@@ -334,6 +328,9 @@ void otis_cx317_preview_live_on_boundary(
         decision.limited_delta_codes,
         decision.proposed_code,
         decision.frequency_error_hz,
+        true,
+        applicable,
+        decision.preview_available,
         decision.preview_available,
     };
     OtisCx317ActiveLiveOutcome local_active_outcome;
@@ -380,7 +377,7 @@ void otis_cx317_preview_live_get_authority_state(
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   state->estimator_valid = selected_estimator_valid;
   state->model_applicable = selected_model_applicable;
-  state->temperature_valid = temperature_context_valid();
+  state->temperature_valid = temperature_telemetry_valid();
   state->selected_interval_count = estimator.selected_count;
 #else
   *state = {};

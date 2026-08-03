@@ -72,6 +72,11 @@ Test cumulative evidence across steps so one near-resolution result can remain
 healthy/indeterminate while persistent absence, confidently wrong sign,
 excessive response or growing error stops the campaign.
 
+Classify measurement-valid response evidence before evaluating eligibility for
+the next request. Model inapplicability enters `OUT_OF_MODEL_HOLD` without
+erasing the response. Nearby-air SHT41 data remains a recorded covariate and is
+not a measurement, model-applicability or control gate.
+
 ## Mandatory replay and fault injection
 
 Replay both Campaign A and Campaign B and at least:
@@ -82,7 +87,10 @@ Replay both Campaign A and Campaign B and at least:
 - initial indeterminate response followed by cumulative detection;
 - wrong-sign plant;
 - excessive gain;
-- drift and temperature boundary;
+- drift and temperature context, including missing and out-of-observed-context
+  SHT41 data without a temperature-derived veto;
+- valid response followed by model inapplicability, fail-static hold and fresh
+  requalification;
 - GNSS fix invalid/stale/recovery;
 - missing/malformed PPS and snapshot/count faults;
 - requested/accepted/applied disagreement;
@@ -98,8 +106,10 @@ Add tests that fail if:
 
 - any non-programme profile gains controller-to-DAC reachability;
 - active parameters differ from the bound profile;
-- an actionable decision bypasses GNSS/reference/count/model/temperature,
+- an actionable decision bypasses GNSS/reference/count/code-domain-model,
   applied-code, capture-owner or abort eligibility;
+- model inapplicability can erase a valid response or produce a new write
+  before fresh requalification;
 - any fault causes automatic restore or uncontrolled retry;
 - `actionable` remains true after request consumption;
 - telemetry formatting can mutate controller state.

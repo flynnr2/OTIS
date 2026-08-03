@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX317_BOUNDED_RESPONSE_CLASSIFICATION_V2",
+  "status": "refrozen_after_campaign_a_temperature_context_diagnostic",
+  "bindings": {
+    "plant_model_path": "profiles/plant_models/cx317_pps_gated_v2.json",
+    "plant_model_sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1",
+    "preview_policy_path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
+    "preview_policy_sha256": "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521",
+    "selected_estimator_path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+    "selected_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+    "estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"
+  },
+  "parameters": {
+    "gain_min_hz_per_code": 0.00016357422282453626,
+    "gain_nominal_hz_per_code": 0.00017008467693813145,
+    "gain_max_hz_per_code": 0.00017334010044578463,
+    "empirical_detection_floor_hz": 0.0033333317438761396,
+    "maximum_observed_hysteresis_hz": 0.0012499988079071045,
+    "centre_repeatability_span_hz": 0.0016666650772094727,
+    "error_deadband_hz": 0.006249995628992717,
+    "wrong_sign_minimum_hz": 0.0033333317438761396,
+    "growing_error_margin_hz": 0.006249995628992717,
+    "excess_response_additive_margin_hz": 0.006249995628992717,
+    "maximum_consecutive_indeterminate": 2,
+    "maximum_step_codes": 21,
+    "maximum_step_expected_response_min_hz": 0.0034350586793152615,
+    "maximum_step_expected_response_nominal_hz": 0.0035717782157007605,
+    "maximum_step_expected_response_max_hz": 0.003640142109361477,
+    "maximum_step_excess_response_threshold_hz": 0.009890137738354194,
+    "diagnostic_span_s": 60,
+    "authoritative_span_s": 600
+  },
+  "classification_order": [
+    "measurement_or_actuator_fault",
+    "inside_deadband",
+    "limit_reached",
+    "wrong_sign",
+    "growing_error",
+    "excess_response",
+    "healthy_detected",
+    "healthy_indeterminate_near_resolution"
+  ],
+  "rules": {
+    "measurement_or_actuator_fault": "Any invalid frequency source, reference authority, estimator support, identity, transaction, acknowledgement, applied-code association or non-finite response; also a third consecutive indeterminate response after cumulative expected movement is at least two empirical detection floors. Plant-model applicability and SHT41 context are evaluated separately and cannot erase an otherwise valid observed response.",
+    "inside_deadband": "Absolute post-response frequency error is no greater than the frozen error deadband.",
+    "limit_reached": "The current code is at a hard range endpoint and the I-only correction sign would request movement beyond it.",
+    "wrong_sign": "The observed frequency change is opposite the positive plant-gain direction by at least the empirical detection floor.",
+    "growing_error": "Absolute error increased by more than the frozen deadband margin after a commanded step.",
+    "excess_response": "Absolute observed change exceeds abs(delta)*gain_max plus the additive empirical floor+hysteresis+repeatability margin.",
+    "healthy_detected": "Observed change has the commanded sign, is at least the empirical detection floor, and is no greater than the excess-response threshold.",
+    "healthy_indeterminate_near_resolution": "All evidence is healthy but the observed and cumulative signed response remain below the empirical detection floor; at most two consecutive steps may continue.",
+    "cumulative_evidence": "Cumulative response is measured from the pre-series baseline and compared with the sign of cumulative applied code movement; it never substitutes for a healthy current transaction.",
+    "diagnostic_trajectory": "The 60 s trajectory may corroborate onset/sign only and is never command-authoritative.",
+    "measurement_control_separation": "Classify every response from measurement-valid evidence first. If the measurement is valid but the plant model is inapplicable, preserve the numerical response and enter OUT_OF_MODEL_HOLD with no new actionable request.",
+    "temperature_context": "Finite SHT41 nearby-air observations are retained as a covariate. Missing, stale or outside-observed-context temperature is not measurement_or_actuator_fault and is not a control veto for this non-temperature-dependent plant model."
+  },
+  "authority": {
+    "thresholds_mutable_during_live_campaign": false,
+    "automatic_restore": false,
+    "indeterminate_may_continue_once": true,
+    "persistent_indeterminate_must_stop": true,
+    "out_of_model_is_fail_static_hold_not_measurement_fault": true,
+    "temperature_context_required_for_response_classification": false,
+    "temperature_context_required_for_control_eligibility": false,
+    "calibrated_accuracy_claim": false
+  }
+}

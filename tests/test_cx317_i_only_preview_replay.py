@@ -110,6 +110,32 @@ def test_fault_is_fail_static_and_requires_explicit_fresh_recovery() -> None:
     assert all(not row["actionable"] for row in (fault, held, reset, recovered))
 
 
+def test_model_inapplicability_holds_without_erasing_measurement_and_requalifies() -> None:
+    policy = load_policy()
+    engine = IOnlyPreviewEngine(policy)
+    _ready(engine)
+    held = engine.process(
+        Observation(
+            3000, 0.02, policy.fail_static_code, None,
+            model_applicable=False,
+        )
+    )
+    requalifying = engine.process(
+        Observation(3600, 0.02, policy.fail_static_code, None)
+    )
+    recovered = engine.process(
+        Observation(4200, 0.02, policy.fail_static_code,
+                    policy.temperature_max_c + 10.0)
+    )
+
+    assert held["state"] == "OUT_OF_MODEL_HOLD"
+    assert held["frequency_error_hz"] == 0.02
+    assert not held["preview_available"]
+    assert requalifying["state"] == "QUALIFYING"
+    assert recovered["preview_available"]
+    assert not recovered["actionable"]
+
+
 def test_complete_required_replay_matrix_passes() -> None:
     scenarios = run_scenarios(load_policy())
 

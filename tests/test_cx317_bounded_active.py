@@ -148,8 +148,15 @@ def test_happy_transaction_consumes_actionability_and_requires_response() -> Non
     assert active.capsules[0].response == response
 
 
-@pytest.mark.parametrize("field", list(Eligibility.__dataclass_fields__))
-def test_every_eligibility_gate_blocks_arming(field: str) -> None:
+@pytest.mark.parametrize(
+    "field",
+    [
+        field
+        for field in Eligibility.__dataclass_fields__
+        if field not in {"estimator_valid", "model_applicable", "temperature_valid"}
+    ],
+)
+def test_every_arm_eligibility_gate_blocks_arming(field: str) -> None:
     active = engine()
     health = replace(Eligibility(), **{field: False})
     spec = active.expected_arm_spec(
@@ -160,6 +167,66 @@ def test_every_eligibility_gate_blocks_arming(field: str) -> None:
         active.arm(spec, health, 2400)
     assert active.state is ActiveState.FAULT
     assert active.applied_code == 0xA950
+
+
+@pytest.mark.parametrize("field", ["estimator_valid", "model_applicable"])
+def test_estimator_and_model_gate_request_but_not_prearm(field: str) -> None:
+    active = engine()
+    health = replace(Eligibility(), **{field: False})
+    spec = active.expected_arm_spec(
+        authorization_sequence=1, nonce=1, expires_s=2460
+    )
+    active.arm(spec, health, 2400)
+    assert active.state is ActiveState.ARMED
+    with pytest.raises(ActiveError, match="eligibility"):
+        active.request(decision(active, 2400), health, 2400)
+    assert active.state is ActiveState.FAULT
+
+
+def test_temperature_is_covariate_not_arm_request_or_response_gate() -> None:
+    active = engine()
+    health = replace(Eligibility(), temperature_valid=False)
+    spec = active.expected_arm_spec(
+        authorization_sequence=1, nonce=1, expires_s=2460
+    )
+    active.arm(spec, health, 2400)
+    request, accepted = active.transact_decision(
+        decision(active, 2400), health, 2400
+    )
+    apply(active, request, accepted, 2400)
+    response = active.record_response(post_error_hz=0.0165)
+    assert response.classification is ResponseClass.HEALTHY_DETECTED
+    assert active.state is ActiveState.DISARMED
+
+
+def test_valid_response_is_preserved_in_out_of_model_hold() -> None:
+    active = engine()
+    arm(active, 2400)
+    request, accepted = active.transact_decision(
+        decision(active, 2400), Eligibility(), 2400
+    )
+    apply(active, request, accepted, 2400)
+    response = active.record_response(
+        post_error_hz=0.0165,
+        measurement_healthy=True,
+        control_eligible_after_response=False,
+    )
+    assert response.classification is ResponseClass.HEALTHY_DETECTED
+    assert active.state is ActiveState.OUT_OF_MODEL_HOLD
+    assert not active.status()["actionable"]
+
+    next_spec = active.expected_arm_spec(
+        authorization_sequence=2, nonce=2, expires_s=4260
+    )
+    with pytest.raises(ActiveError, match="applicable model"):
+        active.arm(
+            next_spec,
+            replace(Eligibility(), model_applicable=False),
+            4200,
+        )
+    assert active.state is ActiveState.OUT_OF_MODEL_HOLD
+    active.arm(next_spec, Eligibility(), 4200)
+    assert active.state is ActiveState.ARMED
 
 
 def test_exact_binding_expiry_duplicate_and_session_change_fail_closed() -> None:

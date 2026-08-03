@@ -28,7 +28,7 @@ from .serial_commands import send_command_to_fifo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-POLICY_PATH = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v1.json"
+POLICY_PATH = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json"
 ACTIVE_CSV = Path("csv/active_transactions_v1.csv")
 HEALTH_CSV = Path("csv/health.csv")
 SUPERVISOR_STATE = Path("reports/cx317_active_supervisor_state.json")
@@ -374,6 +374,7 @@ class ActiveCampaignSupervisor:
             elif event == "response":
                 classification = row["response_class"]
                 correction_count = int(row["correction_count"])
+                active_state = row["active_state"]
                 self._event(
                     "response_classified",
                     request_sequence=int(row["request_sequence"]),
@@ -381,7 +382,14 @@ class ActiveCampaignSupervisor:
                     post_error_hz=float(row["post_error_hz"]),
                     observed_response_hz=float(row["observed_response_hz"]),
                 )
-                if classification in {"inside_deadband", "limit_reached"}:
+                if active_state == "OUT_OF_MODEL_HOLD":
+                    self.state["terminal"] = {
+                        "result": "held",
+                        "reason": "out_of_model_hold",
+                        "response_class": classification,
+                        "utc": _utc_now(),
+                    }
+                elif classification in {"inside_deadband", "limit_reached"}:
                     self.state["terminal"] = {
                         "result": "healthy_stop",
                         "reason": classification,
@@ -420,6 +428,15 @@ class ActiveCampaignSupervisor:
             raise ValueError(f"device active state faulted: {reason}")
         if state == "ABORTED":
             raise ValueError(f"device active state aborted: {reason}")
+        if state == "OUT_OF_MODEL_HOLD":
+            self.state["terminal"] = {
+                "result": "held",
+                "reason": reason or "out_of_model_hold",
+                "utc": _utc_now(),
+            }
+            self._save()
+            self._event("campaign_fail_static_hold", reason=reason)
+            return
 
         manual_confirmed = health.get(
             ("cx317_active", "manual_start_confirmed")
@@ -505,7 +522,12 @@ class ActiveCampaignSupervisor:
                 self._process_transactions()
                 if self.state["terminal"] is not None:
                     self._event("campaign_terminal", **self.state["terminal"])
-                    return 0 if self.state["terminal"]["result"] == "healthy_stop" else 2
+                    return (
+                        0
+                        if self.state["terminal"]["result"]
+                        in {"healthy_stop", "held"}
+                        else 2
+                    )
                 health = _latest_health(self.run_dir / HEALTH_CSV)
                 self._maybe_start_or_arm(health)
                 time.sleep(0.2)

@@ -290,7 +290,8 @@
           "required": ["min_c", "max_c"],
           "properties": {
             "min_c": { "$ref": "#/$defs/nullable_number" },
-            "max_c": { "$ref": "#/$defs/nullable_number" }
+            "max_c": { "$ref": "#/$defs/nullable_number" },
+            "role": { "type": "string", "minLength": 1 }
           }
         },
         "warmup_drift": {
@@ -451,7 +452,29 @@
               "required": ["min_c", "max_c"],
               "properties": {
                 "min_c": { "type": "number" },
-                "max_c": { "type": "number" }
+                "max_c": { "type": "number" },
+                "role": { "type": "string", "minLength": 1 }
+              }
+            },
+            "temperature_policy": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "required_for_frequency_measurement",
+                "required_for_model_applicability",
+                "required_for_control_eligibility",
+                "out_of_observed_context_action",
+                "basis"
+              ],
+              "properties": {
+                "required_for_frequency_measurement": { "type": "boolean" },
+                "required_for_model_applicability": { "type": "boolean" },
+                "required_for_control_eligibility": { "type": "boolean" },
+                "out_of_observed_context_action": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "basis": { "type": "string", "minLength": 1 }
               }
             },
             "excluded_count_sequences": {

@@ -16,7 +16,7 @@ def _hash(relative: str) -> str:
 
 
 def test_live_firmware_embeds_every_exact_frozen_identity() -> None:
-    policy_path = "profiles/discipline/cx317_bounded_active_v1.json"
+    policy_path = "profiles/discipline/cx317_bounded_active_v2.json"
     policy = json.loads((ROOT / policy_path).read_text(encoding="utf-8"))
     source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
@@ -120,41 +120,55 @@ def test_manual_path_is_exact_start_once_and_faults_other_active_commands() -> N
     assert 'otis_cx317_active_live_abort("nonprogramme_manual_dac_command")' in handler
 
 
-def test_every_authority_gate_reaches_both_arm_and_request() -> None:
+def test_measurement_model_control_and_arm_gates_are_separate() -> None:
     transaction = (FIRMWARE / "otis_cx317_active_transaction.cpp").read_text(
         encoding="utf-8"
     )
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
     )
-    fields = [
+    common_fields = [
         "gnss_metadata_valid",
         "gnss_identity_stable",
         "gnss_3d_evidence",
         "raw_pps_valid",
         "count_valid",
-        "estimator_valid",
-        "model_applicable",
-        "temperature_valid",
         "applied_code_confirmed",
         "capture_owner_live",
         "abort_path_live",
         "transaction_evidence_available",
     ]
-    eligibility = transaction[
+    control_eligibility = transaction[
         transaction.index("bool otis_cx317_active_eligibility_valid") :
-        transaction.index("void otis_cx317_active_fault")
+        transaction.index("bool otis_cx317_active_arm_eligibility_valid")
     ]
-    for field in fields:
-        assert f"value->{field}" in eligibility
-    assert transaction.count("otis_cx317_active_eligibility_valid(eligibility)") == 1
+    for field in common_fields + ["estimator_valid", "model_applicable"]:
+        assert f"value->{field}" in control_eligibility
+    assert "value->temperature_valid" not in control_eligibility
+    # One check gates a request; the other releases OUT_OF_MODEL_HOLD only
+    # after the full control eligibility set is healthy again.
+    assert transaction.count("otis_cx317_active_eligibility_valid(eligibility)") == 2
     assert transaction.count("otis_cx317_active_arm_eligibility_valid(eligibility)") == 1
     arm_eligibility = transaction[
         transaction.index("bool otis_cx317_active_arm_eligibility_valid") :
-        transaction.index("void otis_cx317_active_fault")
+        transaction.index("bool otis_cx317_active_response_measurement_valid")
     ]
+    for field in common_fields:
+        assert f"value->{field}" in arm_eligibility
     assert "value->estimator_valid" not in arm_eligibility
     assert "value->model_applicable" not in arm_eligibility
+    assert "value->temperature_valid" not in arm_eligibility
+    response_eligibility = transaction[
+        transaction.index("bool otis_cx317_active_response_measurement_valid") :
+        transaction.index("void otis_cx317_active_fault")
+    ]
+    for field in common_fields + ["estimator_valid"]:
+        assert f"value->{field}" in response_eligibility
+    assert "value->model_applicable" not in response_eligibility
+    assert "value->temperature_valid" not in response_eligibility
+    assert "decision->measurement_valid" in live
+    assert "decision->model_applicable" in live
+    assert "decision->control_eligible" in live
     assert "latest_health.applied_code == transaction.applied_code" in live
 
 

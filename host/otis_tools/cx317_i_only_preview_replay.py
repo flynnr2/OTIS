@@ -15,8 +15,8 @@ from .cx317_pps_plant_characterize import PROVENANCE_FIELDS, _markdown_table
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_pps_gated_i_only_preview_v1.json"
-TOOL_VERSION = "cx317_i_only_preview_replay_v1"
+DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json"
+TOOL_VERSION = "cx317_i_only_preview_replay_v2"
 
 
 def _sha256_file(path: Path) -> str:
@@ -82,6 +82,8 @@ class Policy:
     fail_static_code: int
     temperature_min_c: float
     temperature_max_c: float
+    temperature_required_for_control: bool
+    out_of_model_hold: bool
     recovery_support_s: int
     provenance: tuple[dict[str, Any], ...]
 
@@ -93,7 +95,10 @@ def load_policy(path: Path = DEFAULT_POLICY) -> Policy:
         "rules", "authority", "tolerance_provenance",
     }:
         raise ValueError("I-only policy top-level fields differ")
-    if value["schema_version"] != 1 or value["status"] != "selected_observe_only":
+    if value["schema_version"] != 1 or value["status"] not in {
+        "selected_observe_only",
+        "selected_observe_only_with_temperature_covariate",
+    }:
         raise ValueError("unsupported or non-observe-only I-only policy")
     authority = value["authority"]
     expected_authority = {
@@ -189,6 +194,10 @@ def load_policy(path: Path = DEFAULT_POLICY) -> Policy:
         fail_static_code=int(parameters["fail_static_code"]),
         temperature_min_c=float(parameters["temperature_min_c"]),
         temperature_max_c=float(parameters["temperature_max_c"]),
+        temperature_required_for_control=bool(
+            parameters.get("temperature_required_for_control_eligibility", True)
+        ),
+        out_of_model_hold=value["policy_id"] == "CX317_PPS_GATED_I_ONLY_PREVIEW_V2",
         recovery_support_s=int(parameters["recovery_fresh_support_s"]),
         provenance=tuple(dict(row) for row in provenance),
     )
@@ -258,12 +267,11 @@ class IOnlyPreviewEngine:
                 (not observation.reference_valid, "reference_invalid"),
                 (not observation.estimator_valid, "estimator_invalid_or_snapshot_gap"),
                 (not observation.count_valid, "count_invalid"),
-                (not observation.model_applicable, "plant_model_mismatch"),
                 (not observation.applied_code_matches, "requested_applied_mismatch"),
                 (not observation.i2c_ok, "i2c_failure"),
                 (not self.policy.minimum_code <= observation.current_code <= self.policy.maximum_code, "current_code_outside_clamp"),
-                (observation.temperature_c is None, "temperature_unavailable"),
-                (observation.temperature_c is not None and not self.policy.temperature_min_c <= observation.temperature_c <= self.policy.temperature_max_c, "temperature_model_mismatch"),
+                (self.policy.temperature_required_for_control and observation.temperature_c is None, "temperature_unavailable"),
+                (self.policy.temperature_required_for_control and observation.temperature_c is not None and not self.policy.temperature_min_c <= observation.temperature_c <= self.policy.temperature_max_c, "temperature_model_mismatch"),
             ) if active), None
         )
         if fault_reason is not None:
@@ -276,6 +284,23 @@ class IOnlyPreviewEngine:
             self.qualifying_since_s = observation.timestamp_s
             self.inhibit_until_s = observation.timestamp_s + self.policy.recovery_support_s
             self.integrator_codes = 0.0
+            return self._result(observation)
+        if not observation.model_applicable:
+            if self.policy.out_of_model_hold:
+                self.state = "OUT_OF_MODEL_HOLD"
+                self.latched_reason = "plant_model_inapplicable_hold"
+            else:
+                self.state = "FAULT"
+                self.latched_reason = "plant_model_mismatch"
+            self.integrator_codes = 0.0
+            self.last_decision_s = None
+            return self._result(observation)
+        if self.state == "OUT_OF_MODEL_HOLD":
+            self.state, self.latched_reason = "QUALIFYING", "model_reapplicable_fresh_support"
+            self.qualifying_since_s = observation.timestamp_s
+            self.inhibit_until_s = observation.timestamp_s + self.policy.recovery_support_s
+            self.integrator_codes = 0.0
+            self.last_decision_s = None
             return self._result(observation)
         if observation.dac_epoch:
             self.state, self.latched_reason = "SETTLING_INHIBIT", "dac_epoch_full_history_reset"
@@ -385,7 +410,27 @@ def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
         fault = engine.process(Observation(3000, 0.02, policy.fail_static_code, 29.0, **values))
         recovery = engine.process(Observation(3600, 0.02, policy.fail_static_code, 29.0, recovery_requested=True))
         recovered = engine.process(Observation(3600 + policy.recovery_support_s, 0.02, policy.fail_static_code, 29.0))
-        scenarios.append(_scenario(identifier, "fault_recovery", fault["state"] == "FAULT" and recovery["state"] == "QUALIFYING" and recovered["preview_available"], [fault, recovery, recovered]))
+        initial_state = (
+            "OUT_OF_MODEL_HOLD"
+            if identifier == "model_mismatch" and policy.out_of_model_hold
+            else "FAULT"
+        )
+        scenarios.append(_scenario(identifier, "fault_recovery", fault["state"] == initial_state and recovery["state"] == "QUALIFYING" and recovered["preview_available"], [fault, recovery, recovered]))
+    if not policy.temperature_required_for_control:
+        missing_engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
+        missing = missing_engine.process(
+            Observation(3000, 0.02, policy.fail_static_code, None)
+        )
+        outside_engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
+        outside = outside_engine.process(
+            Observation(3000, 0.02, policy.fail_static_code,
+                        policy.temperature_max_c + 10.0)
+        )
+        scenarios.append(_scenario(
+            "temperature_covariate_not_gate", "environment",
+            missing["preview_available"] and outside["preview_available"],
+            [missing, outside],
+        ))
     engine, _ = _prime(policy, code=policy.maximum_code, error=-1.0)
     clamp = engine.process(Observation(3000, -1.0, policy.maximum_code, 29.0))
     scenarios.append(_scenario("dac_clamp_slew_and_anti_windup", "limits", clamp["preview_available"] and clamp["range_clamped"] and clamp["proposed_code"] == policy.maximum_code and clamp["integrator_codes"] == 0.0, clamp))

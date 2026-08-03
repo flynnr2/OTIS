@@ -124,6 +124,7 @@ def _step(
     post_error_hz: float | None = None,
     delta: int | None = None,
     evidence_healthy: bool = True,
+    control_eligible_after_response: bool = True,
 ):
     if delta is None:
         delta = 21 if active.limits.name == "B" else -21
@@ -141,7 +142,9 @@ def _step(
     )
     _ack(active, request, accepted, now_s)
     return active.record_response(
-        post_error_hz=post_error_hz, evidence_healthy=evidence_healthy
+        post_error_hz=post_error_hz,
+        evidence_healthy=evidence_healthy,
+        control_eligible_after_response=control_eligible_after_response,
     )
 
 
@@ -189,10 +192,7 @@ def _happy_response(campaign: str, scenario: str, post: float) -> ReplayResult:
 
 def replay_campaign(campaign: str) -> list[ReplayResult]:
     policy = load_policy()
-    gain = json.loads(
-        (Path(__file__).resolve().parents[2]
-         / "profiles/discipline/cx317_response_classification_v1.json").read_text()
-    )["parameters"]
+    gain = json.loads(policy.response_policy_path.read_text())["parameters"]
     gain_min = float(gain["gain_min_hz_per_code"])
     gain_max = float(gain["gain_max_hz_per_code"])
     results = [
@@ -283,17 +283,78 @@ def replay_campaign(campaign: str) -> list[ReplayResult]:
         ("gnss_fix_stale", {"gnss_identity_stable": False}),
         ("missing_pps", {"raw_pps_valid": False}),
         ("malformed_pps", {"raw_pps_valid": False}),
-        ("snapshot_fault", {"estimator_valid": False}),
         ("count_fault", {"count_valid": False}),
         ("capture_owner_loss", {"capture_owner_live": False}),
         ("abort_path_loss", {"abort_path_live": False}),
         ("lost_transaction_evidence", {"transaction_evidence_available": False}),
-        ("temperature_outside_boundary", {"temperature_valid": False}),
     ):
         def reject(active, changes=health_change):
             _arm(active, 2400, 1, replace(Eligibility(), **changes))
 
         results.append(_expect_error(campaign, scenario, reject))
+
+    def reject_invalid_estimator_at_request(active):
+        health = replace(Eligibility(), estimator_valid=False)
+        _arm(active, 2400, 1, health)
+        active.request(_decision(active, 2400, 1), health, 2400)
+
+    results.append(
+        _expect_error(
+            campaign, "snapshot_fault", reject_invalid_estimator_at_request
+        )
+    )
+
+    active = _engine(campaign)
+    temperature_context_only = replace(Eligibility(), temperature_valid=False)
+    _arm(active, 2400, 1, temperature_context_only)
+    request, accepted = active.transact_decision(
+        _decision(active, 2400, 1), temperature_context_only, 2400
+    )
+    _ack(active, request, accepted, 2400)
+    response = active.record_response(post_error_hz=error_sign * 0.0165)
+    results.append(
+        _result(
+            campaign,
+            "temperature_outside_observed_context",
+            active,
+            response.classification is ResponseClass.HEALTHY_DETECTED
+            and active.state is ActiveState.DISARMED,
+            "temperature retained as covariate without measurement/control veto",
+        )
+    )
+
+    active = _engine(campaign)
+    response = _step(
+        active,
+        2400,
+        1,
+        post_error_hz=error_sign * 0.0165,
+        control_eligible_after_response=False,
+    )
+    held = active.state is ActiveState.OUT_OF_MODEL_HOLD
+    try:
+        _arm(
+            active,
+            4200,
+            2,
+            replace(Eligibility(), model_applicable=False),
+        )
+    except ActiveError:
+        pass
+    stayed_held = active.state is ActiveState.OUT_OF_MODEL_HOLD
+    _arm(active, 4200, 2, Eligibility())
+    results.append(
+        _result(
+            campaign,
+            "valid_response_out_of_model_hold_and_requalification",
+            active,
+            response.classification is ResponseClass.HEALTHY_DETECTED
+            and held
+            and stayed_held
+            and active.state is ActiveState.ARMED,
+            "valid response preserved; hold required applicable fresh support",
+        )
+    )
 
     active = _engine(campaign)
     try:

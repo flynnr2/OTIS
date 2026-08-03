@@ -42,7 +42,8 @@ This is one capped campaign, not a series of human-approved single-step runs.
 
 For each decision:
 
-1. assert every eligibility and budget field;
+1. assert measurement validity, code-domain model/control eligibility and every
+   budget field separately;
 2. persist the pre-decision evidence capsule;
 3. create one bounded request;
 4. clear `actionable` as the request is consumed;
@@ -50,13 +51,18 @@ For each decision:
 6. record the DAC epoch and reset all estimator/control history;
 7. collect the 60 s diagnostic trajectory without giving it authority;
 8. wait for full exclusion and fresh authoritative support;
-9. classify the response using the frozen policy;
+9. classify every measurement-valid response using the frozen policy before
+   deciding eligibility for another request;
 10. continue automatically if healthy, indeterminate within its cumulative
     allowance, or outside deadband with no stop reason.
 
 The commissioning interpretation applies only to the first response: a clean
 near-resolution indeterminate result may continue; a confidently wrong sign,
 actuator fault, eligibility fault or excessive response stops immediately.
+If the response is valid but the model becomes inapplicable, preserve the
+classification and stop new writes in `OUT_OF_MODEL_HOLD`; this is a defined
+fail-static hold, not a measurement fault. SHT41 context alone cannot trigger
+the hold.
 
 Stop successfully when the error is inside the evidence deadband for the
 pre-frozen consecutive-decision requirement, the correction limit is reached,

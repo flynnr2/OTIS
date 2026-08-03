@@ -9,6 +9,7 @@ enum class OtisCx317ActiveState : uint8_t {
   RequestPending,
   AcceptedAwaitingApplication,
   AwaitingResponse,
+  OutOfModelHold,
   Fault,
   Aborted,
 };
@@ -170,6 +171,8 @@ bool otis_cx317_active_eligibility_valid(
     const OtisCx317ActiveEligibility *eligibility);
 bool otis_cx317_active_arm_eligibility_valid(
     const OtisCx317ActiveEligibility *eligibility);
+bool otis_cx317_active_response_measurement_valid(
+    const OtisCx317ActiveEligibility *eligibility);
 bool otis_cx317_active_arm(OtisCx317ActiveTransaction *transaction,
                           const OtisCx317ArmRequest *arm,
                           const OtisCx317ActiveEligibility *eligibility,
@@ -188,7 +191,8 @@ bool otis_cx317_active_acknowledge_application(
     const OtisCx317AppliedAck *acknowledgement);
 bool otis_cx317_active_record_response(
     OtisCx317ActiveTransaction *transaction, double post_error_hz,
-    bool evidence_healthy, OtisCx317ResponseResult *result);
+    bool measurement_healthy, bool control_eligible_after_response,
+    OtisCx317ResponseResult *result);
 void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
                              const char *reason);
 void otis_cx317_active_abort(OtisCx317ActiveTransaction *transaction,

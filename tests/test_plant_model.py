@@ -159,6 +159,7 @@ def test_every_committed_model_is_structurally_and_semantically_valid() -> None:
         Path("profiles/plant_models/cx317_h1_bench_v2.json"),
         Path("profiles/plant_models/cx317_h1_bench_v3.json"),
         Path("profiles/plant_models/cx317_pps_gated_v1.json"),
+        Path("profiles/plant_models/cx317_pps_gated_v2.json"),
     ]
     for path in paths:
         data = json.loads(path.read_text(encoding="utf-8"))
