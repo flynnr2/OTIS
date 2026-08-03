@@ -109,3 +109,22 @@ def test_act_contract_rejects_actionable_or_wrong_evidence_phase(tmp_path: Path)
     )
     assert any("must never be actionable" in error for error in result.errors)
     assert any("requires evidence_state=request_pending" in error for error in result.errors)
+
+
+def test_act_contract_accepts_durable_out_of_model_hold_response(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "active_transactions_v1.csv"
+    row = _row(4, "response", "response_pending")
+    row["active_state"] = "OUT_OF_MODEL_HOLD"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V1_FIELDS)
+        writer.writeheader()
+        writer.writerow(row)
+
+    result = validate_csv(
+        path,
+        CsvValidationContext("active_transactions_v1", frozenset(), frozenset()),
+    )
+    assert result.row_count == 1
+    assert result.errors == ()

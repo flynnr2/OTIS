@@ -480,8 +480,11 @@ void otis_cx317_active_live_on_decision(
     const bool measurement_healthy =
         decision->measurement_valid &&
         otis_cx317_active_response_measurement_valid(&health);
+    // A selected response can arrive while the preview engine is still in its
+    // post-DAC SETTLE_PREVIEW state.  preview actionability gates a new request,
+    // not acceptance of an already-completed response.  The full live health
+    // and model-applicability contract is the post-response eligibility gate.
     const bool control_eligible_after_response =
-        decision->control_eligible &&
         otis_cx317_active_eligibility_valid(&health);
     const bool accepted = otis_cx317_active_record_response(
         &transaction, decision->frequency_error_hz,

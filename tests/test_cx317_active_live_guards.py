@@ -172,6 +172,23 @@ def test_measurement_model_control_and_arm_gates_are_separate() -> None:
     assert "latest_health.applied_code == transaction.applied_code" in live
 
 
+def test_completed_response_is_not_gated_by_preview_actionability() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    response = live[
+        live.index(
+            "if (transaction.state == OtisCx317ActiveState::AwaitingResponse)"
+        ) : live.index(
+            "if (transaction.state != OtisCx317ActiveState::Armed)"
+        )
+    ]
+
+    assert "otis_cx317_active_eligibility_valid(&health)" in response
+    assert "decision->control_eligible" not in response
+    assert "decision->control_eligible" in live[live.index(response) + len(response) :]
+
+
 def test_status_formatting_cannot_mutate_controller_state() -> None:
     source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
