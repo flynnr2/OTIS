@@ -17,6 +17,7 @@
 #define OTIS_OWNER_DAC "dac_ad5693r"
 #define OTIS_OWNER_ENV_SHT4X "environment_sht4x"
 #define OTIS_OWNER_ENV_BMP280 "environment_bmp280"
+#define OTIS_OWNER_GNSS_RECEIVER "gnss_receiver"
 
 enum class OtisResourceType : uint8_t {
   Gpio,
@@ -29,6 +30,7 @@ enum class OtisResourceType : uint8_t {
   Clock,
   I2cController,
   I2cAddress,
+  UartController,
 };
 
 constexpr uint16_t kOtisResourceDynamicIndex = UINT16_MAX;

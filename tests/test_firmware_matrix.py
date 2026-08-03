@@ -55,6 +55,8 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx317_fixed_code_baseline",
         "cx317_pps_gated_open_loop",
         "cx317_pps_gated_i_only_preview",
+        "cx317_pps_gated_gnss_smoke",
+        "cx317_pps_gated_gnss_actuator_preflight",
         "phase4_observe_only",
         "h1_characterization",
         "h1_lab_actuator",
@@ -67,9 +69,10 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "tcxo_gpio_irq_divided",
         "pseudo_pps_loopback",
         "invalid_pseudo_pps_nonisolated_resources",
+        "invalid_gnss_uart_tx_enabled",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 15
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 4
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 17
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 5
 
 
 def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:
@@ -115,6 +118,25 @@ def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:
     header = provenance_header(provenance)
     assert "#define OTIS_BUILD_EXPECTED_OTIS_DAC_MIN_CODE 0xA800u" in header
     assert "#define OTIS_BUILD_EXPECTED_OTIS_DAC_MAX_CODE 0xAB00u" in header
+
+
+def test_cx317_stage2_gnss_profiles_are_rx_only_and_intentionally_actuating() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    smoke = _profile(matrix, "cx317_pps_gated_gnss_smoke")["defines"]
+    preflight = _profile(
+        matrix, "cx317_pps_gated_gnss_actuator_preflight"
+    )["defines"]
+
+    for defines in (smoke, preflight):
+        assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
+        assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
+        assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+        assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
+        assert defines["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
+    assert smoke["OTIS_ENABLE_DAC_AD5693R"] == "0"
+    assert preflight["OTIS_ENABLE_DAC_AD5693R"] == "1"
+    assert preflight["OTIS_DAC_MIN_CODE"] == "0xA800u"
+    assert preflight["OTIS_DAC_MAX_CODE"] == "0xAB00u"
 
 
 def test_config_hash_is_deterministic_and_changes_with_configuration() -> None:

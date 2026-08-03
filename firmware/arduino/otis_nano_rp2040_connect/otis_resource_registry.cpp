@@ -11,6 +11,7 @@ constexpr uint8_t kMaxResourceClaims = 32u;
 constexpr uint8_t kRp2040Instance = 0u;
 constexpr uint8_t kPio0Instance = 0u;
 constexpr uint8_t kI2c0Instance = 0u;
+constexpr uint8_t kUart0Instance = 0u;
 constexpr uint16_t kSparseCapturePioProgramLength = 5u;
 constexpr uint16_t kLongGatePioProgramLength = 5u;
 constexpr uint16_t kPpsSnapshotPioProgramLength = 15u;
@@ -171,6 +172,19 @@ void add_h1_i2c_owner(void) {
 #endif
 }
 
+void add_gnss_receiver_owner(void) {
+#if OTIS_ENABLE_GNSS_RECEIVER
+  add_bound_claim(OtisResourceType::UartController, kUart0Instance, 0u,
+                  OTIS_OWNER_GNSS_RECEIVER, "serial1_uart0_rx_only");
+  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
+                  OTIS_PIN_GNSS_RX, OTIS_OWNER_GNSS_RECEIVER,
+                  "gps_tx_to_nano_d0_gpio1_uart0_rx");
+  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
+                  OTIS_PIN_GNSS_TX_SILENT, OTIS_OWNER_GNSS_RECEIVER,
+                  "nano_d1_gpio0_reserved_silent_input");
+#endif
+}
+
 bool bind_dynamic_claim(OtisResourceType type, const char *owner,
                         uint8_t instance, uint16_t index, uint16_t span) {
   if (!registry.initialized || owner == nullptr || span == 0u) {
@@ -268,6 +282,7 @@ bool otis_resource_registry_begin(void) {
 #endif
 
   add_h1_i2c_owner();
+  add_gnss_receiver_owner();
   add_pseudo_pps_owner();
   return registry.valid;
 }
@@ -339,6 +354,8 @@ const char *otis_resource_type_name(OtisResourceType type) {
       return "i2c_controller";
     case OtisResourceType::I2cAddress:
       return "i2c_address";
+    case OtisResourceType::UartController:
+      return "uart_controller";
   }
   return "unknown";
 }

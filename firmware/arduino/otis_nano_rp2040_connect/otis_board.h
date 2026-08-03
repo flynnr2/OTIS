@@ -13,6 +13,8 @@
 
 #define OTIS_GPIO_OSC_OBSERVATION 20u
 #define OTIS_GPIO_PSEUDO_PPS_OUTPUT 15u
+#define OTIS_GPIO_GNSS_RX 1u
+#define OTIS_GPIO_GNSS_TX_SILENT 0u
 
 enum OtisNanoRp2040Pins : uint8_t {
   OTIS_PIN_GENERIC_EVENT = D10,
@@ -22,9 +24,15 @@ enum OtisNanoRp2040Pins : uint8_t {
   OTIS_PIN_PSEUDO_PPS_OUTPUT = D3,             // GPIO15, test-only output
   OTIS_PIN_INTERNAL_CLOCK_VISIBILITY = D9,    // GPIO21 / CLOCK GPOUT0
   OTIS_PIN_SECONDARY_DIAGNOSTIC_CLOCK = D2,   // GPIO25 / CLOCK GPOUT3
+  OTIS_PIN_GNSS_RX = PIN_SERIAL1_RX,           // D0 / GPIO1 / UART0 RX
+  OTIS_PIN_GNSS_TX_SILENT = PIN_SERIAL1_TX,    // D1 / GPIO0, never UART-mapped
 };
 
 static_assert(OTIS_PIN_PSEUDO_PPS_OUTPUT == OTIS_GPIO_PSEUDO_PPS_OUTPUT,
               "Nano RP2040 Connect D3 must map to RP2040 GPIO15");
+static_assert(OTIS_PIN_GNSS_RX == OTIS_GPIO_GNSS_RX,
+              "Nano RP2040 Connect Serial1 RX/D0 must map to GPIO1");
+static_assert(OTIS_PIN_GNSS_TX_SILENT == OTIS_GPIO_GNSS_TX_SILENT,
+              "Nano RP2040 Connect Serial1 TX/D1 must map to GPIO0");
 
 #endif

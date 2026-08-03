@@ -33,6 +33,10 @@
 #define OTIS_ENABLE_CX317_I_ONLY_PREVIEW 0
 #endif
 
+#ifndef OTIS_ENABLE_GNSS_RECEIVER
+#define OTIS_ENABLE_GNSS_RECEIVER 0
+#endif
+
 // Firmware provenance is supplied by the pinned matrix builder or its explicit
 // Arduino IDE profile generator. A hand-maintained source literal is not
 // evidence of the tree or toolchain that produced a binary. Host-only C++
@@ -132,6 +136,8 @@
 #ifndef OTIS_FIRMWARE_VERSION
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #define OTIS_FIRMWARE_VERSION "CX317_PPS_GATED_I_ONLY_PREVIEW_V1"
+#elif OTIS_ENABLE_GNSS_RECEIVER
+#define OTIS_FIRMWARE_VERSION "CX317_PPS_GATED_GNSS_SMOKE_V1"
 #elif OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #define OTIS_FIRMWARE_VERSION "SW2_PHASE4_OBSERVE_PREVIEW"
 #else
@@ -405,6 +411,29 @@
 #define OTIS_ENABLE_DAC_AD5693R 0
 #endif
 
+// Stage 2 GNSS metadata is deliberately receive-only. The exact installed
+// Nano variant maps Serial1 RX to D0/GPIO1 and Serial1 TX to D1/GPIO0. The
+// implementation maps only UART0 RX; TX remains a high-impedance input.
+#ifndef OTIS_GNSS_UART_TX_ENABLED
+#define OTIS_GNSS_UART_TX_ENABLED 0
+#endif
+
+#ifndef OTIS_GNSS_UART_BAUD
+#define OTIS_GNSS_UART_BAUD 9600u
+#endif
+
+#ifndef OTIS_GNSS_SERVICE_BYTE_BUDGET
+#define OTIS_GNSS_SERVICE_BYTE_BUDGET 32u
+#endif
+
+#ifndef OTIS_GNSS_METADATA_MAX_AGE_MS
+#define OTIS_GNSS_METADATA_MAX_AGE_MS 3000u
+#endif
+
+#ifndef OTIS_GNSS_RECONNECT_GAP_MS
+#define OTIS_GNSS_RECONNECT_GAP_MS 10000u
+#endif
+
 #ifndef OTIS_DAC_AD5693R_I2C_ADDRESS
 #define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
 #endif
@@ -570,6 +599,33 @@
 #error "AD5693R lab actuation is supported only in H1 OCXO observe mode."
 #endif
 
+#if OTIS_ENABLE_GNSS_RECEIVER && \
+    OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#error "The GNSS metadata receiver is supported only in H1 OCXO observe mode."
+#endif
+
+#if OTIS_GNSS_UART_TX_ENABLED
+#error "The bounded GNSS programme requires Nano TX to remain electrically silent."
+#endif
+
+#if OTIS_GNSS_UART_BAUD != 9600u
+#error "The Stage 2 receiver profile is frozen at 9600 baud."
+#endif
+
+#if OTIS_GNSS_SERVICE_BYTE_BUDGET < 1u || \
+    OTIS_GNSS_SERVICE_BYTE_BUDGET > 64u
+#error "OTIS_GNSS_SERVICE_BYTE_BUDGET must be between 1 and 64 bytes."
+#endif
+
+#if OTIS_GNSS_METADATA_MAX_AGE_MS < 1000u || \
+    OTIS_GNSS_METADATA_MAX_AGE_MS > 10000u
+#error "OTIS_GNSS_METADATA_MAX_AGE_MS must be between 1 and 10 seconds."
+#endif
+
+#if OTIS_GNSS_RECONNECT_GAP_MS <= OTIS_GNSS_METADATA_MAX_AGE_MS
+#error "GNSS reconnect gap must exceed the metadata freshness limit."
+#endif
+
 #if OTIS_ENABLE_H1_DAC_SWEEP && !OTIS_ENABLE_DAC_AD5693R
 #error "The H1 DAC sweep requires the explicit AD5693R lab actuator profile."
 #endif
@@ -584,7 +640,7 @@
      OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ || \
      OTIS_ENABLE_PPS_DUAL_OBSERVER || OTIS_ENABLE_DAC_AD5693R || \
      OTIS_ENABLE_H1_DAC_SWEEP || OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || \
-     OTIS_ENABLE_ENV_SENSORS)
+     OTIS_ENABLE_ENV_SENSORS || OTIS_ENABLE_GNSS_RECEIVER)
 #error "The pseudo-PPS generator requires the isolated PPS-gated loopback test profile."
 #endif
 
@@ -729,6 +785,16 @@
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #error "Effective OTIS_ENABLE_CX317_I_ONLY_PREVIEW differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_GNSS_RECEIVER
+#if OTIS_ENABLE_GNSS_RECEIVER != OTIS_BUILD_EXPECTED_OTIS_ENABLE_GNSS_RECEIVER
+#error "Effective OTIS_ENABLE_GNSS_RECEIVER differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_GNSS_UART_TX_ENABLED
+#if OTIS_GNSS_UART_TX_ENABLED != OTIS_BUILD_EXPECTED_OTIS_GNSS_UART_TX_ENABLED
+#error "Effective OTIS_GNSS_UART_TX_ENABLED differs from the generated profile."
 #endif
 #endif
 #ifndef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DAC_AD5693R

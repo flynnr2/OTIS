@@ -17,6 +17,7 @@
 #include "otis_dac_ad5693r.h"
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
+#include "otis_gnss_receiver.h"
 #include "otis_modes.h"
 #include "otis_phase4_observe_preview.h"
 #include "otis_pps_count_boundary_ring.h"
@@ -164,6 +165,11 @@ void configure_selected_capabilities(void) {
     (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
   otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Sensors,
                               OtisBootCapabilityRequirement::Optional);
+#endif
+#if OTIS_ENABLE_GNSS_RECEIVER
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::GnssReceiver,
+                              OtisBootCapabilityRequirement::Required);
 #endif
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   otis_boot_capability_select(&boot_capabilities,
@@ -636,6 +642,8 @@ void emit_common_boot_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_env_bmp280", OTIS_ENABLE_ENV_BMP280,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_gnss_receiver", OTIS_ENABLE_GNSS_RECEIVER,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("environment", "sample_period_ms", OTIS_ENV_SAMPLE_PERIOD_MS,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("environment", "sht4x_i2c_address",
@@ -716,6 +724,142 @@ void emit_env_sensor_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("environment", "primary_temperature_role", "vcocxo_near",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+}
+
+void emit_gnss_receiver_status(uint32_t now_ms) {
+  OtisGnssReceiverSnapshot status;
+  otis_gnss_receiver_get_snapshot(now_ms, &status);
+  bool raw_pps_control_eligible = false;
+#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
+  OtisCaptureIrqReferenceStats pps_status;
+  otis_capture_irq_get_reference_stats(&pps_status);
+  raw_pps_control_eligible =
+      runtime_state.tcxo.valid_for_control &&
+      pps_status.d14_accepted_pps_count > 0u &&
+      pps_status.d14_rejected_short_count == 0u &&
+      pps_status.d14_rejected_long_count == 0u &&
+      otis_capture_ring_dropped_count() == 0u &&
+      otis_pps_count_boundary_ring_dropped_count() == 0u;
+#endif
+  const bool combined_control_eligible =
+      status.control_eligible && raw_pps_control_eligible;
+  const uint32_t health_flags = status.control_eligible
+                                    ? OTIS_FLAG_NONE
+                                    : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT;
+  const char *health_severity =
+      status.control_eligible ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN;
+  emit_status("gnss_receiver", "enabled",
+              OTIS_ENABLE_GNSS_RECEIVER ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "initialized",
+              status.initialized ? "true" : "false",
+              status.initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              status.initialized ? OTIS_FLAG_NONE
+                                 : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("gnss_receiver", "receiver_identity",
+              "nmea_rmc_gga_model_unavailable", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "uart_configuration", "uart0_9600_8n1",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "rx_pin", "D0_GPIO1_UART0_RX",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "tx_pin", "D1_GPIO0_high_impedance_input",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "rx_only",
+              status.rx_only ? "true" : "false",
+              status.rx_only ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+              status.rx_only ? OTIS_FLAG_NONE
+                             : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("gnss_receiver", "talker",
+              status.talker[0] == '\0' ? "unavailable" : status.talker,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "rmc_seen",
+              status.rmc_seen ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "rmc_valid",
+              status.rmc_valid ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "gga_seen",
+              status.gga_seen ? "true" : "false", health_severity,
+              health_flags);
+  emit_status_u32("gnss_receiver", "gga_fix_quality", status.fix_quality,
+                  health_severity, health_flags);
+  emit_status_u32("gnss_receiver", "satellite_count", status.satellites,
+                  health_severity, health_flags);
+  emit_status("gnss_receiver", "hdop",
+              status.hdop[0] == '\0' ? "unavailable" : status.hdop,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "utc_available",
+              status.utc_available ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "date_available",
+              status.date_available ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "utc",
+              status.utc[0] == '\0' ? "unavailable" : status.utc,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "date",
+              status.date[0] == '\0' ? "unavailable" : status.date,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  if (status.metadata_age_ms == UINT32_MAX) {
+    emit_status("gnss_receiver", "metadata_age_ms", "unavailable",
+                health_severity, health_flags);
+  } else {
+    emit_status_u32("gnss_receiver", "metadata_age_ms",
+                    status.metadata_age_ms, health_severity, health_flags);
+  }
+  emit_status("gnss_receiver", "metadata_fresh",
+              status.metadata_fresh ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "checksum_requalified",
+              status.checksum_requalified ? "true" : "false",
+              health_severity, health_flags);
+  emit_status("gnss_receiver", "identity_stable",
+              status.identity_stable ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "disconnected",
+              status.disconnected ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "metadata_control_eligible",
+              status.control_eligible ? "true" : "false", health_severity,
+              health_flags);
+  emit_status("gnss_receiver", "raw_pps_control_eligible",
+              raw_pps_control_eligible ? "true" : "false",
+              raw_pps_control_eligible ? OTIS_SEVERITY_INFO
+                                       : OTIS_SEVERITY_WARN,
+              raw_pps_control_eligible ? OTIS_FLAG_NONE
+                                       : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status("gnss_receiver", "control_eligible",
+              combined_control_eligible ? "true" : "false",
+              combined_control_eligible ? OTIS_SEVERITY_INFO
+                                        : OTIS_SEVERITY_WARN,
+              combined_control_eligible ? OTIS_FLAG_NONE
+                                        : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status_u32("gnss_receiver", "identity_epoch", status.identity_epoch,
+                  health_severity, health_flags);
+  emit_status_u32("gnss_receiver", "checksum_valid_count",
+                  status.checksum_valid_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "checksum_failure_count",
+                  status.checksum_failure_count,
+                  status.checksum_failure_count ? OTIS_SEVERITY_WARN
+                                                : OTIS_SEVERITY_INFO,
+                  status.checksum_failure_count ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                                                : OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "parser_drop_count",
+                  status.parser_drop_count,
+                  status.parser_drop_count ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+                  status.parser_drop_count ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                                           : OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "truncated_count", status.truncated_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "oversize_count", status.oversize_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "rmc_count", status.rmc_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "gga_count", status.gga_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 }
 
 void emit_h0_pin_status(void) {
@@ -950,6 +1094,9 @@ void emit_periodic_status(void) {
   otis_count_observation_emit_status(&runtime_state, &status_emit_context);
   otis_phase4_observe_preview_emit_status(&status_emit_context);
   otis_cx317_preview_live_emit_status(&status_emit_context);
+#if OTIS_ENABLE_GNSS_RECEIVER
+  emit_gnss_receiver_status(now_ms);
+#endif
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
   OtisCaptureIrqReferenceStats d14_stats;
   otis_capture_irq_get_reference_stats(&d14_stats);
@@ -1638,6 +1785,9 @@ void configure_h1_ocxo_observe_mode(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
   emit_env_sensor_status();
+#if OTIS_ENABLE_GNSS_RECEIVER
+  emit_gnss_receiver_status(millis());
+#endif
 #if OTIS_ENABLE_H1_DAC_SWEEP
   emit_sweep_status();
 #endif
@@ -1882,6 +2032,11 @@ void boot_phase_peripherals_init(void) {
     (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
   const bool sensors_ready = otis_env_sensors_begin();
   record_capability_result(OtisBootCapability::Sensors, sensors_ready);
+#endif
+#if OTIS_ENABLE_GNSS_RECEIVER
+  const bool gnss_receiver_ready = otis_gnss_receiver_begin();
+  record_capability_result(OtisBootCapability::GnssReceiver,
+                           gnss_receiver_ready);
 #endif
   complete_boot_phase(BootPhase::PeripheralsInit);
 }
@@ -2242,6 +2397,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("build", "enable_env_bmp280", OTIS_ENABLE_ENV_BMP280,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_gnss_receiver",
+                    OTIS_ENABLE_GNSS_RECEIVER, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("sweep", "default_dwell_ms",
                     OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -2427,7 +2585,8 @@ void setup() {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     (OTIS_ENABLE_DAC_AD5693R ||                                   \
      (OTIS_ENABLE_ENV_SENSORS &&                                 \
-      (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)))
+      (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)) ||       \
+     OTIS_ENABLE_GNSS_RECEIVER)
   boot_phase_peripherals_init();
 #endif
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
@@ -2463,6 +2622,7 @@ void loop() {
   otis_pseudo_pps_service();
   drain_pps_count_boundary_ring();
   drain_capture_ring();
+  otis_gnss_receiver_service(millis());
   service_tcxo_gate();
   service_serial_commands();
   service_loopback_output();

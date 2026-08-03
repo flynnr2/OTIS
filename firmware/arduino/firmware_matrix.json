@@ -101,6 +101,50 @@
       }
     },
     {
+      "id": "cx317_pps_gated_gnss_smoke",
+      "purpose": "Stage 2 receive-only GNSS metadata and PPS/load smoke with every DAC path compiled out.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_GNSS_RECEIVER": "1",
+        "OTIS_GNSS_UART_TX_ENABLED": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
+      "id": "cx317_pps_gated_gnss_actuator_preflight",
+      "purpose": "Stage 2 receive-only GNSS qualification plus predetermined manual-only DAC topology checks inside the A800-AB00 clamp.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_GNSS_RECEIVER": "1",
+        "OTIS_GNSS_UART_TX_ENABLED": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_DAC_MIN_CODE": "0xA800u",
+        "OTIS_DAC_MAX_CODE": "0xAB00u",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
       "id": "phase4_observe_only",
       "purpose": "Live Phase 4 estimator/control-preview telemetry with actuation structurally disabled.",
       "expect": "pass",
@@ -386,6 +430,28 @@
         "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
         "OTIS_ENABLE_H1_DAC_SWEEP": "1",
+        "OTIS_ENABLE_ENV_SENSORS": "0"
+      }
+    },
+    {
+      "id": "invalid_gnss_uart_tx_enabled",
+      "purpose": "Prove the bounded programme cannot compile a GNSS UART transmit path.",
+      "expect": "fail",
+      "expected_error": "The bounded GNSS programme requires Nano TX to remain electrically silent.",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_GNSS_RECEIVER": "1",
+        "OTIS_GNSS_UART_TX_ENABLED": "1",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
         "OTIS_ENABLE_ENV_SENSORS": "0"
       }
     }

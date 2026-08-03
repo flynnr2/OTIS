@@ -16,6 +16,7 @@ enum class OtisBootCapability : uint8_t {
   PseudoPpsGenerator,
   Dac,
   Sensors,
+  GnssReceiver,
   Phase4Preview,
   Transport,
   HostConnection,

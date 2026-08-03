@@ -243,6 +243,8 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "dac";
     case OtisBootCapability::Sensors:
       return "sensors";
+    case OtisBootCapability::GnssReceiver:
+      return "gnss_receiver";
     case OtisBootCapability::Phase4Preview:
       return "phase4_preview";
     case OtisBootCapability::Transport:
