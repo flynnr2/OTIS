@@ -13,11 +13,13 @@ RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
 HEALTH_CSV = "health.csv"
+DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
 REFERENCE_OBSERVATIONS_CSV = "reference_observations_v1.csv"
 DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
+ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
 PSEUDO_PPS_TRUTH_CSV = "pseudo_pps_truth.csv"
 
 
@@ -66,8 +68,16 @@ class RunPaths:
         return self.csv_dir / ENVIRONMENT_CSV
 
     @property
+    def dac_steps_csv(self) -> Path:
+        return self.csv_dir / DAC_STEPS_CSV
+
+    @property
     def pseudo_pps_truth_csv(self) -> Path:
         return self.csv_dir / PSEUDO_PPS_TRUTH_CSV
+
+    @property
+    def active_transactions_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_TRANSACTIONS_CSV
 
 
 def default_csv_files() -> list[dict[str, str]]:
@@ -76,6 +86,7 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},
+        {"path": f"{CSV_DIR}/{DAC_STEPS_CSV}", "contract": "dac_steps_v1", "optional": True},
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
         {
             "path": f"{CSV_DIR}/{REFERENCE_OBSERVATIONS_CSV}",
@@ -95,6 +106,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {
             "path": f"{CSV_DIR}/{CONTROL_PREVIEWS_CSV}",
             "contract": "control_previews_v1",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_CSV}",
+            "contract": "active_transactions_v1",
             "optional": True,
         },
         {"path": f"{CSV_DIR}/{PSEUDO_PPS_TRUTH_CSV}", "contract": "pseudo_pps_truth_v1", "optional": True},

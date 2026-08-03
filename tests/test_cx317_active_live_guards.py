@@ -56,6 +56,32 @@ def test_only_actuator_owner_has_controller_to_dac_call_and_no_retry() -> None:
     assert '"automatic_restore", "false"' in active
 
 
+def test_prewrite_capsule_requires_exact_phase_ack_before_single_i2c_attempt() -> None:
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    decision = active[
+        active.index("void otis_cx317_active_live_on_decision") :
+        active.index("bool otis_cx317_active_live_take_application_outcome")
+    ]
+    acknowledgement = active[
+        active.index("bool otis_cx317_active_live_acknowledge_evidence") :
+        active.index("bool otis_cx317_active_live_manual_start_allowed")
+    ]
+
+    assert 'queue_frame("request_accepted"' in decision
+    assert "otis_cx317_active_actuator_apply_once" not in decision
+    assert acknowledgement.index("phase_sequence !=") < acknowledgement.index(
+        "otis_cx317_active_actuator_apply_once"
+    )
+    assert acknowledgement.index("frame.length != 0u") < acknowledgement.index(
+        "otis_cx317_active_actuator_apply_once"
+    )
+    assert acknowledgement.count("otis_cx317_active_actuator_apply_once") == 1
+    assert "EvidencePhase::Application" in acknowledgement
+    assert "evidence_acknowledgement_timeout" in active
+
+
 def test_active_commands_cannot_supply_feedback_code_or_actionability() -> None:
     parser = (FIRMWARE / "otis_serial_command.cpp").read_text(encoding="utf-8")
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
@@ -121,7 +147,14 @@ def test_every_authority_gate_reaches_both_arm_and_request() -> None:
     ]
     for field in fields:
         assert f"value->{field}" in eligibility
-    assert transaction.count("otis_cx317_active_eligibility_valid(eligibility)") == 2
+    assert transaction.count("otis_cx317_active_eligibility_valid(eligibility)") == 1
+    assert transaction.count("otis_cx317_active_arm_eligibility_valid(eligibility)") == 1
+    arm_eligibility = transaction[
+        transaction.index("bool otis_cx317_active_arm_eligibility_valid") :
+        transaction.index("void otis_cx317_active_fault")
+    ]
+    assert "value->estimator_valid" not in arm_eligibility
+    assert "value->model_applicable" not in arm_eligibility
     assert "latest_health.applied_code == transaction.applied_code" in live
 
 
@@ -135,7 +168,7 @@ def test_status_formatting_cannot_mutate_controller_state() -> None:
     ]
 
     assert not re.search(r"transaction\.[A-Za-z_]+\s*=(?!=)", emitter)
-    assert "otis_cx317_active_arm" not in emitter
+    assert "otis_cx317_active_arm(" not in emitter
     assert "otis_cx317_active_make_request" not in emitter
     assert "otis_cx317_active_actuator_apply_once" not in emitter
 

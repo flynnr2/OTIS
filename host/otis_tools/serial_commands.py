@@ -56,6 +56,8 @@ SIMPLE_COMMANDS = frozenset(
         "PPSGEN PROFILES?",
         "PPSGEN START",
         "PPSGEN STOP",
+        "ACTIVE?",
+        "ACTIVE ABORT",
     }
 )
 
@@ -109,6 +111,36 @@ def parse_serial_command(text: str) -> SerialCommand:
                 f"PPSGEN ARM profile must be one of {sorted(KNOWN_PSEUDO_PPS_PROFILES)}"
             )
         return SerialCommand(f"PPSGEN ARM {profile}")
+
+    if command.startswith("ACTIVE LEASE "):
+        value = command[len("ACTIVE LEASE ") :]
+        if not re.fullmatch(r"[1-9][0-9]*", value) or int(value, 10) > 0xFFFFFFFF:
+            raise ValueError("ACTIVE LEASE requires one non-zero uint32 sequence")
+        return SerialCommand(f"ACTIVE LEASE {int(value, 10)}")
+
+    if command.startswith("ACTIVE ARM "):
+        fields = command[len("ACTIVE ARM ") :].split()
+        if len(fields) != 3 or any(
+            not re.fullmatch(r"[1-9][0-9]*", field) or int(field, 10) > 0xFFFFFFFF
+            for field in fields
+        ):
+            raise ValueError("ACTIVE ARM requires three non-zero uint32 values")
+        return SerialCommand("ACTIVE ARM " + " ".join(str(int(field, 10)) for field in fields))
+
+    if command.startswith("ACTIVE EVIDENCE "):
+        fields = command[len("ACTIVE EVIDENCE ") :].split()
+        if len(fields) != 2 or any(
+            not re.fullmatch(r"[1-9][0-9]*", field) or int(field, 10) > 0xFFFFFFFF
+            for field in fields
+        ):
+            raise ValueError(
+                "ACTIVE EVIDENCE requires non-zero request and phase sequences"
+            )
+        if int(fields[1], 10) not in {1, 2, 3}:
+            raise ValueError("ACTIVE EVIDENCE phase sequence must be 1, 2, or 3")
+        return SerialCommand(
+            f"ACTIVE EVIDENCE {int(fields[0], 10)} {int(fields[1], 10)}"
+        )
 
     raise ValueError("unknown or unsupported command")
 

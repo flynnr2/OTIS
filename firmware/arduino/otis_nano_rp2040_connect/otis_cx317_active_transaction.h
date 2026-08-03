@@ -168,6 +168,8 @@ void otis_cx317_active_transaction_init(
     const OtisCx317ActiveBinding *binding);
 bool otis_cx317_active_eligibility_valid(
     const OtisCx317ActiveEligibility *eligibility);
+bool otis_cx317_active_arm_eligibility_valid(
+    const OtisCx317ActiveEligibility *eligibility);
 bool otis_cx317_active_arm(OtisCx317ActiveTransaction *transaction,
                           const OtisCx317ArmRequest *arm,
                           const OtisCx317ActiveEligibility *eligibility,

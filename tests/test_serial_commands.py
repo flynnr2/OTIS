@@ -30,6 +30,13 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("ppsgen arm clean_soak_10m", "PPSGEN ARM CLEAN_SOAK_10M"),
         ("ppsgen start", "PPSGEN START"),
         ("ppsgen stop", "PPSGEN STOP"),
+        ("active?", "ACTIVE?"),
+        ("active lease 17", "ACTIVE LEASE 17"),
+        ("active arm 8 1234 2500", "ACTIVE ARM 8 1234 2500"),
+        ("active evidence 2 1", "ACTIVE EVIDENCE 2 1"),
+        ("active evidence 2 2", "ACTIVE EVIDENCE 2 2"),
+        ("active evidence 2 3", "ACTIVE EVIDENCE 2 3"),
+        ("active abort", "ACTIVE ABORT"),
     ],
 )
 def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normalized: str) -> None:
@@ -46,6 +53,12 @@ def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normali
         "SWEEP ADD 0x8000 5000",
         "RESET",
         "PPSGEN ARM arbitrary",
+        "ACTIVE LEASE 0",
+        "ACTIVE ARM 1 2",
+        "ACTIVE ARM 1 0 3",
+        "ACTIVE EVIDENCE 1",
+        "ACTIVE EVIDENCE 1 4",
+        "ACTIVE SET 0xA950",
     ],
 )
 def test_parse_serial_command_rejects_unknown_or_open_ended_commands(raw: str) -> None:

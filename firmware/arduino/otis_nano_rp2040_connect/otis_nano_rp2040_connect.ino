@@ -417,6 +417,7 @@ void service_cx317_active_health(void) {
       applied_confirmed,
       dac.last_applied_code,
       otis_transport_ready(),
+      preview.selected_interval_count,
   };
   otis_cx317_active_live_update_health(&health, now_ms / 1000u);
   otis_cx317_active_live_service(now_ms / 1000u);
@@ -476,7 +477,7 @@ void emit_pps_count_boundary(
       // a numerically zero flag word.
       window_completed && runtime_state.tcxo.last_observation_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
-  if (active_outcome.request_sequence != 0u) {
+  if (active_outcome.application_attempted) {
     otis_emit_dac_step(
         runtime_state.sequences.dac_seq++, millis(),
         static_cast<int32_t>(active_outcome.request_sequence),
@@ -503,6 +504,26 @@ void emit_pps_count_boundary(
     emit_h1_dac_sweep_fc0_window();
 #endif
   }
+}
+
+void service_cx317_active_application_outcome(void) {
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  OtisCx317ActiveLiveOutcome active_outcome;
+  if (!otis_cx317_active_live_take_application_outcome(&active_outcome)) return;
+  otis_emit_dac_step(
+      runtime_state.sequences.dac_seq++, millis(),
+      static_cast<int32_t>(active_outcome.request_sequence),
+      active_outcome.requested_code, active_outcome.applied_code, false, "", "",
+      0u, active_outcome.applied ? "active_apply" : "active_write_failed",
+      active_outcome.applied ? OTIS_FLAG_NONE
+                             : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  if (active_outcome.applied)
+    otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
+                                           millis() / 1000u);
+  otis_cx317_active_live_complete_application_evidence(
+      active_outcome.request_sequence, active_outcome.applied,
+      millis() / 1000u);
+#endif
 }
 
 void drain_pps_count_boundary_ring(void) {
@@ -2604,12 +2625,13 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status("cx317_active", "abort", "accepted", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::ActiveEvidence) {
-    uint32_t values[1];
+    uint32_t values[2];
     const bool parsed = command.arguments_valid &&
                         parse_active_u32_fields(command.text_argument, values,
-                                                1u);
+                                                2u);
     const bool accepted =
-        parsed && otis_cx317_active_live_acknowledge_evidence(values[0]);
+        parsed && otis_cx317_active_live_acknowledge_evidence(
+                      values[0], values[1], millis() / 1000u);
     emit_status("cx317_active", "evidence_ack",
                 accepted ? "accepted" : "rejected", accepted
                     ? OTIS_SEVERITY_INFO
@@ -2819,6 +2841,7 @@ void loop() {
   service_tcxo_gate();
   service_cx317_active_health();
   service_serial_commands();
+  service_cx317_active_application_outcome();
   service_loopback_output();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE

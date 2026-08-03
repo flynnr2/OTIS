@@ -178,6 +178,20 @@ bool otis_cx317_active_eligibility_valid(
          value->transaction_evidence_available;
 }
 
+bool otis_cx317_active_arm_eligibility_valid(
+    const OtisCx317ActiveEligibility *value) {
+  return value != nullptr && value->run_identity_matches &&
+         value->build_identity_matches && value->profile_identity_matches &&
+         value->estimator_identity_matches && value->model_identity_matches &&
+         value->policy_identity_matches && value->response_identity_matches &&
+         value->session_continuous && value->gnss_metadata_valid &&
+         value->gnss_identity_stable && value->gnss_3d_evidence &&
+         value->raw_pps_valid && value->count_valid &&
+         value->temperature_valid && value->applied_code_confirmed &&
+         value->capture_owner_live && value->abort_path_live &&
+         value->transaction_evidence_available;
+}
+
 void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
                              const char *reason) {
   if (transaction == nullptr) return;
@@ -210,7 +224,7 @@ bool otis_cx317_active_arm(OtisCx317ActiveTransaction *transaction,
     otis_cx317_active_fault(transaction, "arm_while_not_disarmed");
     return false;
   }
-  if (!otis_cx317_active_eligibility_valid(eligibility)) {
+  if (!otis_cx317_active_arm_eligibility_valid(eligibility)) {
     otis_cx317_active_fault(transaction, "arm_eligibility_failed");
     return false;
   }
@@ -365,7 +379,9 @@ bool otis_cx317_active_accept(OtisCx317ActiveTransaction *transaction,
                false};
   transaction->request.actionable = false;
   transaction->accepted = *accepted;
+  transaction->applied = {};
   transaction->have_acceptance = true;
+  transaction->have_application = false;
   transaction->state = OtisCx317ActiveState::AcceptedAwaitingApplication;
   transaction->reason = "request_consumed_actionable_cleared";
   return true;

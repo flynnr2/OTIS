@@ -26,6 +26,7 @@ RECORD_CONTRACTS = {
     "EST": "estimates_v2",
     "CTL": "control_previews_v1",
     "PGT": "pseudo_pps_truth_v1",
+    "ACT": "active_transactions_v1",
 }
 
 

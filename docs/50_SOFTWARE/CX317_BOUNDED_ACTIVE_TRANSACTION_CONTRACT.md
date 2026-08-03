@@ -96,8 +96,10 @@ The active serial surface is deliberately code-free:
   one short-lived authorization; expiry must be no more than 120 s away;
 - `ACTIVE ABORT` latches the device-side abort without consulting estimator
   health and without writing the DAC;
-- `ACTIVE EVIDENCE <request_sequence>` acknowledges receipt of non-droppable
-  transaction evidence;
+- `ACTIVE EVIDENCE <request_sequence> <phase_sequence>` acknowledges receipt
+  of non-droppable transaction evidence, where phase 1 is
+  `request_accepted`, phase 2 is `application`/`application_fault`, and phase
+  3 is `response`;
 - `ACTIVE?` reports the current read-only state.
 
 No active command accepts a DAC code, error, delta, or `actionable` value.
@@ -130,17 +132,35 @@ For each step:
    count and cumulative gate is evaluated;
 3. one request becomes actionable;
 4. exact acceptance consumes it and clears actionability;
-5. the actuator owner validates the accepted identity and attempts one write;
-6. exact requested/accepted/applied agreement increments correction count,
+5. the firmware emits `request_accepted` with the immutable decision/source
+   capsule and waits for exact phase-1 evidence acknowledgement;
+6. only that acknowledgement lets the actuator owner validate the accepted
+   identity and attempt one write;
+7. exact requested/accepted/applied agreement increments correction count,
    cumulative movement and DAC epoch;
-7. estimator and controller history are reset;
-8. the next authoritative estimate after exclusion plus fresh support is used
+8. estimator and controller history are reset before the application record
+   is emitted;
+9. the next authoritative estimate after exclusion plus fresh support is used
    only to classify the response;
-9. a fresh authorization is required for a later correction.
+10. a fresh authorization is required for a later correction.
 
-An ACT application record and ACT response record are independently evidence
-gated. Until the capture owner acknowledges the current request sequence, a
-new arm fails eligibility.
+The ACT `request_accepted`, application, and response records are independently
+evidence-gated. Duplicate or out-of-phase acknowledgements cannot advance the
+transaction. A phase-1 acknowledgement is rejected unless the complete
+request frame has left the firmware transport and every critical continuity
+gate is still healthy. Missing acknowledgement for any phase faults after 30
+s. Until the capture owner acknowledges the current phase, a new arm fails
+eligibility.
+
+The host capture owner writes every `ACT` row to
+`active_transactions_v1.csv` and flushes it before issuing the matching
+evidence acknowledgement. The serialized row is always `actionable=false`.
+The phase-1 row contains the decision and source ranges, pre-error, current
+confirmed code, requested delta/code, exact identities, authorization, and
+budgets. The application row adds accepted/applied codes, timestamp, single
+I2C outcome, DAC epoch, and explicit estimator-history reset. The response row
+ties post-error and observed/cumulative response classification back to the
+same immutable request.
 
 ## Fail-static behavior
 

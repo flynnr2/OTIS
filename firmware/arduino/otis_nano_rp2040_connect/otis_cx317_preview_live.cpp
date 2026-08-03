@@ -340,9 +340,6 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_active_live_on_decision(&active_decision,
                                        &local_active_outcome);
     if (active_outcome != nullptr) *active_outcome = local_active_outcome;
-    if (local_active_outcome.applied)
-      otis_cx317_preview_live_on_dac_applied(local_active_outcome.applied_code,
-                                             uptime_s);
 #endif
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  selected_estimate_seq);
@@ -384,6 +381,7 @@ void otis_cx317_preview_live_get_authority_state(
   state->estimator_valid = selected_estimator_valid;
   state->model_applicable = selected_model_applicable;
   state->temperature_valid = temperature_context_valid();
+  state->selected_interval_count = estimator.selected_count;
 #else
   *state = {};
 #endif

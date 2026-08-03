@@ -16,6 +16,7 @@ def test_live_interpreted_products_are_split_without_touching_raw_evidence(
             "diagnostics_v1",
             "estimates_v2",
             "control_previews_v1",
+            "active_transactions_v1",
         )
     }
     record_types = {
@@ -23,6 +24,7 @@ def test_live_interpreted_products_are_split_without_touching_raw_evidence(
         "diagnostics_v1": "DIAG",
         "estimates_v2": "EST",
         "control_previews_v1": "CTL",
+        "active_transactions_v1": "ACT",
     }
     with CsvRecordSplitter(targets) as splitter:
         for contract, record_type in record_types.items():

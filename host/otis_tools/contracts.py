@@ -282,6 +282,56 @@ CONTROL_PREVIEW_V1_FIELDS = [
     "decision_reason_code",
 ]
 
+ACTIVE_TRANSACTION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "transaction_record_sequence",
+    "event",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "session_id",
+    "authorization_sequence",
+    "nonce",
+    "request_sequence",
+    "decision_sequence",
+    "source_first_sequence",
+    "source_last_sequence",
+    "decision_timestamp_s",
+    "current_applied_code",
+    "requested_delta_codes",
+    "requested_code",
+    "correction_ordinal",
+    "cumulative_after_codes",
+    "pre_error_hz",
+    "accepted_code",
+    "accepted_timestamp_s",
+    "applied_code",
+    "application_sequence",
+    "application_timestamp_s",
+    "i2c_ok",
+    "clamped",
+    "ambiguous",
+    "dac_epoch",
+    "estimator_history_reset",
+    "correction_count",
+    "cumulative_movement_codes",
+    "post_error_hz",
+    "observed_response_hz",
+    "cumulative_response_hz",
+    "consecutive_indeterminate",
+    "active_state",
+    "response_class",
+    "reason",
+    "estimator_sha256",
+    "model_sha256",
+    "active_policy_sha256",
+    "response_policy_sha256",
+    "numerical_policy_sha256",
+    "actionable",
+    "evidence_state",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
@@ -296,6 +346,7 @@ CONTRACT_FIELDS = {
     "estimates_v1": ESTIMATE_V1_FIELDS,
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
+    "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -312,6 +363,7 @@ CONTRACT_RECORD_TYPES = {
     "estimates_v1": {"EST"},
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
+    "active_transactions_v1": {"ACT"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -328,6 +380,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "estimates_v1": 1,
     "estimates_v2": 2,
     "control_previews_v1": 1,
+    "active_transactions_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -344,6 +397,7 @@ SEQUENCE_FIELDS = {
     "estimates_v1": "estimate_seq",
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
+    "active_transactions_v1": "transaction_record_sequence",
 }
 
 TIMESTAMP_FIELDS = {
@@ -360,6 +414,7 @@ TIMESTAMP_FIELDS = {
     "estimates_v1": ("estimator_timestamp_ticks",),
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
+    "active_transactions_v1": (),
 }
 
 CHANNEL_FIELDS = {
@@ -381,6 +436,7 @@ DOMAIN_FIELDS = {
     "estimates_v1": ("time_domain",),
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
+    "active_transactions_v1": (),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -487,6 +543,40 @@ VALID_CONTROL_STATES = {
     "RECOVER_PREVIEW",
     "MANUAL_OPEN_LOOP",
     "FAULT",
+}
+
+VALID_ACTIVE_TRANSACTION_EVENTS = {
+    "manual_start",
+    "request_accepted",
+    "application",
+    "application_fault",
+    "response",
+}
+VALID_ACTIVE_STATES = {
+    "DISARMED",
+    "ARMED",
+    "REQUEST_PENDING",
+    "ACCEPTED_AWAITING_APPLICATION",
+    "AWAITING_RESPONSE",
+    "FAULT",
+    "ABORTED",
+}
+VALID_ACTIVE_RESPONSE_CLASSES = {
+    "unavailable",
+    "healthy_detected",
+    "healthy_indeterminate_near_resolution",
+    "inside_deadband",
+    "limit_reached",
+    "wrong_sign",
+    "excess_response",
+    "growing_error",
+    "measurement_or_actuator_fault",
+}
+VALID_ACTIVE_EVIDENCE_STATES = {
+    "evidence_clear",
+    "request_pending",
+    "application_pending",
+    "response_pending",
 }
 
 
@@ -1263,6 +1353,143 @@ def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list
         errors.append(f"row {row_number}: inhibited preview must not contain proposed_dac_code")
 
 
+def _check_active_transaction_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "event",
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "active_state",
+            "response_class",
+            "reason",
+            "estimator_sha256",
+            "model_sha256",
+            "active_policy_sha256",
+            "response_policy_sha256",
+            "numerical_policy_sha256",
+            "evidence_state",
+        ),
+    )
+    event = row.get("event")
+    if event not in VALID_ACTIVE_TRANSACTION_EVENTS:
+        errors.append(
+            f"row {row_number}: event must be one of {sorted(VALID_ACTIVE_TRANSACTION_EVENTS)}"
+        )
+    if row.get("active_state") not in VALID_ACTIVE_STATES:
+        errors.append(
+            f"row {row_number}: active_state must be one of {sorted(VALID_ACTIVE_STATES)}"
+        )
+    if row.get("response_class") not in VALID_ACTIVE_RESPONSE_CLASSES:
+        errors.append(
+            f"row {row_number}: response_class must be one of "
+            f"{sorted(VALID_ACTIVE_RESPONSE_CLASSES)}"
+        )
+    if row.get("evidence_state") not in VALID_ACTIVE_EVIDENCE_STATES:
+        errors.append(
+            f"row {row_number}: evidence_state must be one of "
+            f"{sorted(VALID_ACTIVE_EVIDENCE_STATES)}"
+        )
+    for field_name in (
+        "i2c_ok",
+        "clamped",
+        "ambiguous",
+        "estimator_history_reset",
+        "actionable",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("actionable") != "false":
+        errors.append(
+            f"row {row_number}: serialized transaction evidence must never be actionable"
+        )
+
+    for field_name in (
+        "session_id",
+        "authorization_sequence",
+        "nonce",
+        "request_sequence",
+        "decision_sequence",
+        "source_first_sequence",
+        "source_last_sequence",
+        "decision_timestamp_s",
+        "current_applied_code",
+        "requested_code",
+        "correction_ordinal",
+        "cumulative_after_codes",
+        "accepted_code",
+        "accepted_timestamp_s",
+        "applied_code",
+        "application_sequence",
+        "application_timestamp_s",
+        "dac_epoch",
+        "correction_count",
+        "cumulative_movement_codes",
+        "consecutive_indeterminate",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    _parse_int(row.get("requested_delta_codes", ""), "requested_delta_codes", row_number, errors)
+    for field_name in (
+        "pre_error_hz",
+        "post_error_hz",
+        "observed_response_hz",
+        "cumulative_response_hz",
+    ):
+        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+
+    for field_name in (
+        "estimator_sha256",
+        "model_sha256",
+        "active_policy_sha256",
+        "response_policy_sha256",
+        "numerical_policy_sha256",
+    ):
+        value = row.get(field_name, "")
+        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+            errors.append(f"row {row_number}: {field_name} must be a lowercase SHA-256")
+
+    request_sequence = _parse_non_negative_int(
+        row.get("request_sequence", ""), "request_sequence", row_number, []
+    )
+    if event == "manual_start":
+        if request_sequence != 0 or row.get("evidence_state") != "evidence_clear":
+            errors.append(
+                f"row {row_number}: manual_start must have request_sequence=0 and evidence_clear"
+            )
+    else:
+        if request_sequence in (None, 0):
+            errors.append(f"row {row_number}: {event} requires a non-zero request_sequence")
+        expected_evidence = {
+            "request_accepted": "request_pending",
+            "application": "application_pending",
+            "application_fault": "application_pending",
+            "response": "response_pending",
+        }.get(event)
+        if expected_evidence and row.get("evidence_state") != expected_evidence:
+            errors.append(
+                f"row {row_number}: {event} requires evidence_state={expected_evidence}"
+            )
+    if event == "request_accepted" and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
+        errors.append(
+            f"row {row_number}: request_accepted requires ACCEPTED_AWAITING_APPLICATION"
+        )
+    if event == "application" and (
+        row.get("i2c_ok") != "true"
+        or row.get("clamped") != "false"
+        or row.get("ambiguous") != "false"
+        or row.get("estimator_history_reset") != "true"
+    ):
+        errors.append(
+            f"row {row_number}: application requires exact I2C success and estimator reset"
+        )
+    if event == "response" and row.get("response_class") == "unavailable":
+        errors.append(f"row {row_number}: response requires a response classification")
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1341,6 +1568,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_estimate_v2(row, row_count, errors)
             if context.contract == "control_previews_v1":
                 _check_control_preview_v1(row, row_count, errors)
+            if context.contract == "active_transactions_v1":
+                _check_active_transaction_v1(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")

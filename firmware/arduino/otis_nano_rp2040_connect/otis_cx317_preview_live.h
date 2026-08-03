@@ -18,6 +18,7 @@ struct OtisCx317PreviewAuthorityState {
   bool estimator_valid;
   bool model_applicable;
   bool temperature_valid;
+  uint16_t selected_interval_count;
 };
 
 bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s);

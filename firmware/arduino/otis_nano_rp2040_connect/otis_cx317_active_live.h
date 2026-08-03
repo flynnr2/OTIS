@@ -19,6 +19,7 @@ struct OtisCx317ActiveLiveHealth {
   bool applied_code_confirmed;
   uint16_t applied_code;
   bool abort_path_live;
+  uint16_t selected_interval_count;
 };
 
 struct OtisCx317ActiveLiveDecision {
@@ -34,6 +35,8 @@ struct OtisCx317ActiveLiveDecision {
 };
 
 struct OtisCx317ActiveLiveOutcome {
+  bool request_created;
+  bool application_attempted;
   bool applied;
   bool response_recorded;
   bool faulted;
@@ -55,7 +58,9 @@ bool otis_cx317_active_live_arm(uint32_t authorization_sequence,
                                uint32_t nonce, uint32_t expires_s,
                                uint32_t now_s);
 void otis_cx317_active_live_abort(const char *reason);
-bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence);
+bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
+                                                 uint32_t phase_sequence,
+                                                 uint32_t now_s);
 bool otis_cx317_active_live_manual_start_allowed(uint16_t requested_code);
 void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
                                               bool i2c_ok,
@@ -63,6 +68,10 @@ void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
 void otis_cx317_active_live_on_decision(
     const OtisCx317ActiveLiveDecision *decision,
     OtisCx317ActiveLiveOutcome *outcome);
+bool otis_cx317_active_live_take_application_outcome(
+    OtisCx317ActiveLiveOutcome *outcome);
+bool otis_cx317_active_live_complete_application_evidence(
+    uint32_t request_sequence, bool estimator_history_reset, uint32_t now_s);
 bool otis_cx317_active_live_transport_busy(void);
 void otis_cx317_active_live_service_transport(void);
 void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
