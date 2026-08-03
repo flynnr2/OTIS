@@ -22,8 +22,8 @@ Suggested first-pass division:
 
 | Core | Responsibility |
 |---|---|
-| Core 0 | timing capture, DMA/ring ownership, timestamp-domain integrity |
-| Core 1 | USB/serial transport, status emission, host commands |
+| Core 0 | USB/serial transport, status emission, host commands and service I/O |
+| Core 1 | timing capture, DMA/ring ownership, timestamp-domain integrity and discipline |
 
 The exact split may evolve, but timing capture must remain isolated from non-deterministic host/service work.
 

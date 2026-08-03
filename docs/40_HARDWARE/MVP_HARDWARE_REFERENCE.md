@@ -305,14 +305,14 @@ Preferred conceptual partitioning:
 
 ```text
 PIO / DMA          deterministic timing fabric
-Core 0             timing and discipline core
-Core 1             instrumentation-service core
+Core 1             protected timing and discipline core
+Core 0             instrumentation-service and I/O core
 OTIS Host          archival, replay, dashboards, analysis
 ```
 
 Optional service peripherals should preferably execute on:
 
-- Core 1;
+- Core 0;
 - dedicated low-priority queues;
 - bounded service loops.
 

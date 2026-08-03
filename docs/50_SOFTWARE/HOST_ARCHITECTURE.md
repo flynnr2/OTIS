@@ -15,8 +15,8 @@ The preferred OTIS architecture preserves a strong separation between:
 
 ```text
 PIO / DMA          deterministic timing fabric
-Core 0             timing and discipline core
-Core 1             instrumentation services
+Core 1             protected timing and discipline core
+Core 0             instrumentation and I/O services
 OTIS Host          archival, replay, dashboards, analysis
 ```
 
@@ -100,7 +100,7 @@ These should remain architecturally separated from:
 
 - the timing fabric;
 - deterministic capture;
-- Core 0 timing work.
+- Core 1 timing work.
 
 ---
 

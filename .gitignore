@@ -78,6 +78,7 @@ dist/
 
 secrets.h
 *.env
+!profiles/run_templates/h1_open_loop/*/config.env
 
 compile_commands.json
 .clangd/

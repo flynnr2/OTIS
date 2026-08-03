@@ -104,7 +104,7 @@ input |  hardware capture latch      |                 |  serial / USB reader   
                       | capture records                                |
                       v                                                | telemetry
       +------------------------------+                 +---------------+--------------+
-      |      Core 0 Timing Service   |                 |   Core 1 Instrument Service  |
+      |      Core 1 Timing Service   |                 |   Core 0 Instrument Service  |
       |                              |                 |                              |
       |  drain capture rings         |                 |  format / package records    |
       |  maintain ordering           |                 |  optional display updates    |
@@ -127,7 +127,7 @@ input |  hardware capture latch      |                 |  serial / USB reader   
 
 ### Design Intent
 
-Core 0 should be able to continue preserving timing semantics even when displays,
+Core 1 should be able to continue preserving timing semantics even when displays,
 filesystems, dashboards, network services, or hosts fall behind.
 
 ---

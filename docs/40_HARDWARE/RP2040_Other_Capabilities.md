@@ -114,7 +114,7 @@ PIO is far more interesting to OTIS than WiFi or ML features.
 
 A plausible long-term architecture:
 
-## Core 0 — Sacred Timing
+## Core 1 — Protected Timing
 Responsibilities:
 - PPS capture
 - edge timestamping
@@ -123,7 +123,7 @@ Responsibilities:
 - deterministic acquisition
 - minimal interrupt latency
 
-## Core 1 — Disposable Services
+## Core 0 — Sheddable Services
 Responsibilities:
 - DSP
 - UI

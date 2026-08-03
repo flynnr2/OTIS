@@ -28,8 +28,8 @@ The CPU does **not** create event time.
 
 ```text
 PIO / DMA          deterministic timing fabric
-Core 0             timing and discipline core
-Core 1             service and instrumentation core
+Core 1             protected timing and discipline core
+Core 0             service, I/O and instrumentation core
 OTIS Host          archival, replay, dashboards, analysis
 ```
 
@@ -64,9 +64,9 @@ The timing fabric should operate independently of:
 
 ---
 
-# Core 0 — Timing and Discipline Core
+# Core 1 — Protected Timing and Discipline Core
 
-Core 0 should be treated as timing-critical infrastructure.
+Core 1 should be treated as timing-critical infrastructure.
 
 ## Responsibilities
 
@@ -78,7 +78,7 @@ Core 0 should be treated as timing-critical infrastructure.
 | telemetry classification        | timing-aware record generation          |
 | queue management                | bounded deterministic behavior          |
 
-## Core 0 Should Avoid
+## Core 1 Should Avoid
 
 | Avoid                             | Reason                                 |
 |-----------------------------------|----------------------------------------|
@@ -89,7 +89,7 @@ Core 0 should be treated as timing-critical infrastructure.
 | blocking serial writes            | backpressure risk                      |
 | heap-heavy allocation             | determinism and fragmentation concerns |
 
-Core 0 should remain:
+Core 1 should remain:
 
 - deterministic;
 - bounded;
@@ -98,9 +98,10 @@ Core 0 should remain:
 
 ---
 
-# Core 1 — Instrument Service Core
+# Core 0 — Instrument Service and I/O Core
 
-Core 1 may host optional instrument-service functionality.
+Core 0 hosts the Arduino/USB foreground and may host optional
+instrument-service functionality.
 
 ## Potential Responsibilities
 
@@ -115,16 +116,16 @@ Core 1 may host optional instrument-service functionality.
 
 ## Important Constraints
 
-Core 1 may:
+Core 0 may:
 
 - fall behind;
 - shed non-critical work;
 - drop telemetry with explicit flags;
 - reduce display update rates.
 
-Core 1 must **never**:
+Core 0 must **never**:
 
-- stall Core 0;
+- stall Core 1;
 - compromise deterministic capture;
 - redefine timing truth.
 
@@ -210,9 +211,9 @@ PIO / DMA timing fabric
     ↓
 hardware-latched event timestamps
     ↓
-Core 0 timing semantics and discipline
+Core 1 timing semantics and discipline
     ↓
-Core 1 instrumentation services
+Core 0 instrumentation and I/O services
     ↓
 OTIS Host archival and analysis
 ```

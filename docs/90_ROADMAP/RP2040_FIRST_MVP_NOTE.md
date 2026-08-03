@@ -24,8 +24,8 @@ discipline:
 
 - timing-critical work remains isolated;
 - service functionality remains secondary;
-- Core 0 remains timing-focused;
-- Core 1 remains service-focused.
+- Core 0 remains service- and I/O-focused;
+- Core 1 remains timing-focused.
 
 Potential later reference-appliance directions may include:
 
