@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/pps_cumulative_snapshot_span_config_v1.schema.json",
+  "title": "OTIS cumulative PPS snapshot span estimator configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "method_id",
+    "expected_snapshot_backend",
+    "counter_direction",
+    "counter_width_bits",
+    "accumulator_width_bits",
+    "nominal_reference_interval_s",
+    "timer_domain",
+    "timer_nominal_hz",
+    "maximum_captured_edge_rate_hz",
+    "candidate_spans_s",
+    "output_modes",
+    "uncertainty_policy",
+    "criteria_rationale_document"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "method_id": { "const": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1" },
+    "expected_snapshot_backend": { "const": "pio_wait_cumulative_snapshot_dma_v1" },
+    "counter_direction": { "const": "down" },
+    "counter_width_bits": { "const": 32 },
+    "accumulator_width_bits": { "type": "integer", "minimum": 64 },
+    "nominal_reference_interval_s": { "type": "number", "exclusiveMinimum": 0 },
+    "timer_domain": { "type": "string", "minLength": 1 },
+    "timer_nominal_hz": { "type": "number", "exclusiveMinimum": 0 },
+    "maximum_captured_edge_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+    "candidate_spans_s": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "output_modes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["non_overlapping", "overlapping"] }
+    },
+    "uncertainty_policy": { "const": "unknown_components_unavailable" },
+    "criteria_rationale_document": { "type": "string", "minLength": 1 }
+  }
+}

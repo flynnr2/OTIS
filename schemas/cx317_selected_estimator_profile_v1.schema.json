@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/cx317_selected_estimator_profile_v1.schema.json",
+  "title": "OTIS CX317 selected observe-only estimator profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "method_id",
+    "base_estimator",
+    "expected_snapshot_backend",
+    "authoritative_denominator",
+    "authoritative_policy",
+    "diagnostic_policy",
+    "invalidation_policy",
+    "authority",
+    "selection_evidence",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx317_pps_gated_selected_v1"},
+    "status": {"const": "selected_observe_only"},
+    "method_id": {"const": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"},
+    "base_estimator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"const": "profiles/estimators/pps_cumulative_snapshot_span_v1.json"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "expected_snapshot_backend": {"const": "pio_wait_cumulative_snapshot_dma_v1"},
+    "authoritative_denominator": {"const": "nominal_accepted_pps_interval_count"},
+    "authoritative_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "span_s",
+        "output_mode",
+        "output_cadence_s",
+        "boxcar_group_delay_s",
+        "boxcar_minus_3db_bandwidth_hz",
+        "boxcar_first_null_hz",
+        "clean_time_to_first_estimate_s",
+        "fresh_support_recovery_time_s",
+        "count_increment_hz",
+        "stage3_population_stddev_hz",
+        "stage3_nonoverlapping_range_hz",
+        "empirical_detection_floor_hz",
+        "stage3_independent_estimate_count",
+        "future_control_decision_epoch_s",
+        "calibrated_resolution_status"
+      ],
+      "properties": {
+        "span_s": {"const": 600},
+        "output_mode": {"const": "non_overlapping"},
+        "output_cadence_s": {"const": 600},
+        "boxcar_group_delay_s": {"const": 300},
+        "boxcar_minus_3db_bandwidth_hz": {"type": "number", "exclusiveMinimum": 0},
+        "boxcar_first_null_hz": {"const": 0.0016666666666666668},
+        "clean_time_to_first_estimate_s": {"const": 600},
+        "fresh_support_recovery_time_s": {"const": 600},
+        "count_increment_hz": {"const": 0.0016666666666666668},
+        "stage3_population_stddev_hz": {"type": "number", "minimum": 0},
+        "stage3_nonoverlapping_range_hz": {"type": "number", "minimum": 0},
+        "empirical_detection_floor_hz": {"type": "number", "exclusiveMinimum": 0},
+        "stage3_independent_estimate_count": {"type": "integer", "minimum": 1},
+        "future_control_decision_epoch_s": {"const": 600},
+        "calibrated_resolution_status": {"const": "unavailable"}
+      }
+    },
+    "diagnostic_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spans_s", "output_mode", "output_cadence_s", "decision_authority"],
+      "properties": {
+        "spans_s": {"const": [60]},
+        "output_mode": {"const": "overlapping"},
+        "output_cadence_s": {"const": 1},
+        "decision_authority": {"const": false}
+      }
+    },
+    "invalidation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reset_on", "dac_epoch_policy", "settling_policy", "recovery_policy"],
+      "properties": {
+        "reset_on": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "dac_epoch_policy": {"const": "no_span_crosses_a_dac_control_epoch"},
+        "settling_policy": {"const": "no_span_crosses_a_declared_settling_exclusion"},
+        "recovery_policy": {"const": "fresh_contiguous_support_required_for_each_span"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observe_only", "actuation_authorized", "actionable", "diagnostic_bypass_permitted", "controller_ported_to_firmware"],
+      "properties": {
+        "observe_only": {"const": true},
+        "actuation_authorized": {"const": false},
+        "actionable": {"const": false},
+        "diagnostic_bypass_permitted": {"const": false},
+        "controller_ported_to_firmware": {"const": false}
+      }
+    },
+    "selection_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage3_evidence_manifest_sha256", "stage3_analysis_sha256", "evaluation_sha256", "historical_prior_model_sha256", "historical_gain_comparison"],
+      "properties": {
+        "stage3_evidence_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "stage3_analysis_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "evaluation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "historical_prior_model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "historical_gain_comparison": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimum_hz_per_code", "maximum_hz_per_code", "conditional_smallest_resolvable_step_codes", "control_authority"],
+          "properties": {
+            "minimum_hz_per_code": {"type": "number", "exclusiveMinimum": 0},
+            "maximum_hz_per_code": {"type": "number", "exclusiveMinimum": 0},
+            "conditional_smallest_resolvable_step_codes": {"type": "integer", "minimum": 1},
+            "control_authority": {"const": false}
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

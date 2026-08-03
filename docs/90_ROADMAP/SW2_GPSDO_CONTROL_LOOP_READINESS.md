@@ -4,6 +4,29 @@
 
 SW2 active GPSDO steering is **not ready**.
 
+The completed CX317 PPS-gated estimator/control programme reached the narrower
+decision **`ready_for_more_observe_only_testing`** on 2026-08-03. This is a
+positive observe-only result, not an actuation approval. The authoritative
+review is
+`../60_EXPERIMENTS/CX317_PPS_GATED_ESTIMATOR_CONTROL_FINAL_READINESS.md`.
+
+The sealed replacement Stage 6 run used the exact preserved firmware artifact,
+held the independently applied DAC code at `0xA950`, captured 22,200 continuous
+PPS-gated `REF`/`SNP`/`CNT` rows, produced 34 selected 600 s estimates and 34
+explainable I-only previews, and passed all 17 live analyzer checks. The one
+bounded service exercise sent exactly 60 non-actuating `CONFIG?` requests.
+Control readiness, enablement, authorization and actionability stayed false;
+active live update stayed zero. Four Stage 1/3/5/6 evidence snapshots and the
+final software/firmware verification all revalidate.
+
+Active steering remains blocked by unavailable calibrated combined frequency
+uncertainty, unavailable measured CX317 `t95`, unavailable fresh connected
+low/centre/high `Vc` characterization with accepted voltage uncertainty,
+untested D8 duty/rise/fall/phase margin, and unavailable GNSS
+fix/lock/UTC/PPS-quality qualification. Historical Run 020 timing and voltage
+evidence remains useful context but is not substituted for these current
+same-backend evidence gaps.
+
 The repo now contains useful H1 evidence for DAC I2C operation, DAC clamping,
 connected tune-voltage sanity checks, scripted long-gate open-loop sweeps,
 PPS/reference telemetry, environmental telemetry, session-aware host reporting,
@@ -22,14 +45,15 @@ but its small-step DAC response was not sign-stable enough by itself.
 
 The current state supports SW2 design work, telemetry contracts, safety gates,
 manual nominal restore, observe-only firmware scaffolding, deterministic host
-`EST`/`CTL` replay with a model-v3 correction preview, and an accepted
+`EST`/`CTL` replay, an exact live non-actionable I-only preview, and an accepted
 observe-only PPS-gated measurement backend. It does **not**
 support automatic DAC actuation from PPS or count error. Phase 3 has frozen the
 local evidence, crossing band, applicability, and disabled candidate envelope;
 Phase 4 host replay enforces those bounds and preserves source hashes. The next
-gate is integrated live estimator/preview operation using the qualified
-measurement backend, followed by a separately reviewed guarded-actuation
-policy—not active steering by implication.
+gate is a separately authorized **observe-only evidence-closure campaign**,
+beginning static at `0xA950`. Exact future step codes, sample cadence and dwell
+remain unavailable until derived from the missing physical evidence; no
+guarded-actuation policy is eligible for review yet.
 
 ## Phase 4 host replay readiness
 
@@ -72,12 +96,14 @@ complete:
 - default H1, explicit preview, PPS-gated, alternative capture, FC0, and GPIO
   count selector builds compile.
 
-The target board has since completed deliberate service-plane load and
-long-duration testing with the Phase 5 qualification build. M3 is still not
-passed because the required integrated long live run used no Phase 4 preview
-telemetry. PPS-gated metrology qualification is now accepted; firmware active
-control and every actuation gate remain incomplete. `status.control_ready=false` and
-`status.actuation_enabled=false` remain authoritative.
+M3 observe-only integration is now passed by the sealed 2026-08-02/03 CX317
+replacement run. The live estimator and preview remained numerically aligned
+with host replay across five RP2040 timer wraps, the service-plane load caused
+no capture or preview loss, and the DAC remained static at `0xA950`. This closes
+the integrated live-preview milestone only. Firmware active control and every
+actuation gate remain incomplete; `status.control_ready=false`,
+`status.actuation_enabled=false`, `actuation_authorized=false`,
+`actionable=false`, and `active_live_update_codes=0` remain authoritative.
 
 ## Phase 5 PPS-gated backend qualification readiness
 

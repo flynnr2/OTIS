@@ -164,6 +164,37 @@ def test_validate_run_accepts_h1_rp2040_timer_wrap(tmp_path: Path) -> None:
     assert validate_run(run_dir) == 0
     summary = build_summary(run_dir)
     assert summary["reference_pps_summary"]["domains"]["rp2040_timer0"]["timestamp_wrap_count"] == 1
+    assert summary["count_observation_summary"]["row_count"] == 2
+    assert summary["count_observation_summary"]["mean_window_seconds"] == 0.0625
+    assert not summary["anomalies"]
+
+
+def test_report_run_uses_manifest_nominal_interval_for_pps_gated_counts(tmp_path: Path) -> None:
+    run_dir = tmp_path / "pps_gated"
+    shutil.copytree(H1_TEMPLATE, run_dir)
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["run_id"] = "pps_gated_report_test"
+    manifest["template"] = False
+    manifest["phase5_pps_backend_qualification"] = {
+        "nominal_reference_interval_s": 1.0,
+    }
+    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "manifest.json").unlink()
+    (run_dir / "csv" / "cnt.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+                "CNT,1,1,2,16000000,31999920,rp2040_timer0,9999993,R,h1_ocxo_open_loop,16",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    summary = build_summary(run_dir)
+    counts = summary["count_observation_summary"]
+    assert counts["mean_observed_frequency_hz"] == 9_999_993.0
+    assert "manifest-declared nominal reference interval" in counts["frequency_note"]
 
 
 def test_h1_dac_sweep_profiles_are_conservative() -> None:
@@ -276,6 +307,20 @@ def test_validate_run_accepts_sw1_5a_pio_capture_mode(tmp_path: Path) -> None:
     assert summary["health_status_summary"]["latest_capture_status"]["pio_init"] == "ok"
     assert "SW1.5a capture mode: pio_fifo_cpu_timestamped" in report
     assert "latest_capture_status" in report
+
+
+def test_report_identifies_pps_gated_cumulative_snapshot_mode(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["capture_mode"] = "pio_wait_cumulative_snapshot_with_independent_gpio_ref"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = render_report(run_dir)
+
+    assert "PPS-gated cumulative snapshot mode" in report
+    assert "PIO owns the count boundary" in report
+    assert "SW1 capture mode: irq_reconstructed" not in report
 
 
 def test_capture_serial_splits_records(tmp_path: Path, monkeypatch) -> None:

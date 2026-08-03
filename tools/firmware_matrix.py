@@ -46,6 +46,11 @@ PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_H1_DAC_SWEEP",
     "OTIS_ENABLE_ENV_SENSORS",
 }
+OPTIONAL_PROFILE_SELECTOR_NAMES = {
+    "OTIS_DAC_MIN_CODE",
+    "OTIS_DAC_MAX_CODE",
+    "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
+}
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
@@ -203,7 +208,9 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 raise MatrixError(
                     f"profile {profile_id} has unsafe define value for {name}: {value!r}"
                 )
-        unknown_selectors = set(defines) - PROFILE_SELECTOR_NAMES
+        unknown_selectors = set(defines) - (
+            PROFILE_SELECTOR_NAMES | OPTIONAL_PROFILE_SELECTOR_NAMES
+        )
         missing_selectors = PROFILE_SELECTOR_NAMES - set(defines)
         if unknown_selectors or missing_selectors:
             raise MatrixError(

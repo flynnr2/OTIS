@@ -99,6 +99,35 @@ def test_snapshot_is_deterministic_and_covers_profile_and_declared_evidence(tmp_
     assert validate_run(first) == 0
 
 
+def test_snapshot_covers_explicit_non_csv_evidence_artifacts(tmp_path: Path) -> None:
+    run_dir = _completed_run(tmp_path)
+    report = run_dir / "reports" / "decision.md"
+    report.parent.mkdir()
+    report.write_text("# Decision\n\npass\n", encoding="utf-8")
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["evidence_artifacts"] = ["reports/decision.md"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    create_evidence_snapshot(run_dir)
+
+    artifacts = {entry["path"]: entry for entry in _snapshot(run_dir)["artifacts"]}
+    assert artifacts["reports/decision.md"]["role"] == "declared_artifact"
+    report.write_text("# Decision\n\nchanged\n", encoding="utf-8")
+    assert validate_run(run_dir) == 1
+
+
+def test_snapshot_requires_explicit_non_csv_evidence_artifacts(tmp_path: Path) -> None:
+    run_dir = _completed_run(tmp_path)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["evidence_artifacts"] = ["reports/missing.md"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(EvidenceError, match="declared evidence artifact is missing"):
+        create_evidence_snapshot(run_dir)
+
+
 def test_snapshot_captures_exact_emitted_firmware_build_provenance(
     tmp_path: Path,
 ) -> None:

@@ -22,7 +22,7 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 | `SW1.5a` | PIO sparse-edge validation | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough                     |
 | `A0`     | Basic replay/report        | validate runs and derive simple intervals/frequency estimates                                     | active/usable                       |
 | `H1`     | Steerable oscillator prep  | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware                 | active/open-loop characterization   |
-| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and control                                              | active at observe-only integration; actuation deferred |
+| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and control                                              | live observe-only integration accepted; further observe-only evidence required; actuation blocked |
 
 ## Validated H0/SW1 State
 
@@ -88,15 +88,21 @@ rows, all `CNT` rows flagged `16`, no host capture drops, and
 local gain `0.0001559..0.0001876 Hz/code`. Model version 3 records
 observe-only applicability over `0xA800..0xB400` and a disabled candidate
 range `0xA800..0xAB00`. The hardware evidence gate is complete for
-observe-only; active actuation remains a later policy and safety stage.
+observe-only. The subsequent sealed CX317 PPS-gated programme completed the
+22,200 s integrated live estimator/preview run with 34 selected estimates, 34
+non-actionable previews, static `0xA950`, zero authority and all 17 live checks
+passing. Its readiness decision is `ready_for_more_observe_only_testing`;
+active actuation remains blocked by the explicit uncertainty, settling,
+connected-`Vc`, D8-waveform and GNSS-quality evidence gaps.
 
 The PPS-gated measurement substage `SW2-3` is also complete. The accepted
 2026-08-01 campaign for `pio_wait_cumulative_snapshot_dma_v1` includes exact
 clean and fault evidence, real-GPS quiet/load testing, 11,388 extended windows,
 and a sealed 16,798-window overnight run. Its 30/31 width-only fault limitation
-and unavailable physical phase/duty sweep are recorded exceptions. The next
-software gate is an integrated long live Phase 4 estimator/preview run using
-the qualified backend; this does not authorize `SW2-4` actuation.
+and unavailable physical phase/duty sweep are recorded exceptions. The
+integrated long live estimator/preview gate is now complete. The next software
+and bench gate is a separately authorized observe-only evidence-closure run;
+this does not authorize `SW2-4` actuation.
 
 The follow-up source and exact-ELF latency/jitter audit closes speculative
 capture micro-optimization for this mechanism. PIO owns both count and snapshot;

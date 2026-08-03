@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+  "counter_direction": "down",
+  "counter_width_bits": 32,
+  "accumulator_width_bits": 64,
+  "nominal_reference_interval_s": 1.0,
+  "timer_domain": "rp2040_timer0",
+  "timer_nominal_hz": 16000000,
+  "maximum_captured_edge_rate_hz": 133000000,
+  "candidate_spans_s": [1, 5, 10, 30, 60, 120, 300, 600],
+  "output_modes": ["non_overlapping", "overlapping"],
+  "uncertainty_policy": "unknown_components_unavailable",
+  "criteria_rationale_document": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"
+}

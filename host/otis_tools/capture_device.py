@@ -29,12 +29,14 @@ class CaptureDeviceConfig:
     baud: int
     run_dir: Path
     command_fifo: Path | None = None
+    manifest_template: Path | None = None
     read_size: int = 4096
     read_timeout_s: float = 1.0
     reconnect_initial_s: float = 1.0
     reconnect_max_s: float = 30.0
     status_interval_s: float = 60.0
     max_line_bytes: int = 65536
+    duration_s: float | None = None
 
 
 def _utc_now() -> str:
@@ -130,9 +132,39 @@ def _detect_single_device() -> str:
     return candidates[0]
 
 
-def _create_manifest_if_missing(run_dir: Path, device: str, baud: int) -> None:
+def _create_manifest_if_missing(
+    run_dir: Path,
+    device: str,
+    baud: int,
+    manifest_template: Path | None = None,
+) -> None:
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is not None:
+        return
+    if manifest_template is not None:
+        with manifest_template.open("r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema_version") != 1
+            or manifest.get("template") is not True
+            or not isinstance(manifest.get("files"), list)
+            or not manifest["files"]
+        ):
+            raise ValueError("capture manifest template is invalid")
+        now = _utc_now()
+        manifest["run_id"] = run_dir.name
+        manifest["created_utc"] = now
+        manifest["started_at_utc"] = now
+        manifest["template"] = False
+        host = manifest.setdefault("host", {})
+        if not isinstance(host, dict):
+            raise ValueError("capture manifest template host field is invalid")
+        host["serial_device"] = device
+        host["baud"] = baud
+        with (run_dir / "run_manifest.json").open("x", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2)
+            handle.write("\n")
         return
     manifest = {
         "schema_version": 1,
@@ -355,12 +387,22 @@ class CaptureDeviceRunner:
 
     def run(self) -> int:
         paths = ensure_run_layout(self.config.run_dir)
-        _create_manifest_if_missing(self.config.run_dir, self.config.device, self.config.baud)
+        _create_manifest_if_missing(
+            self.config.run_dir,
+            self.config.device,
+            self.config.baud,
+            self.config.manifest_template,
+        )
         file_by_contract, file_by_record_type = _split_targets(self.config.run_dir)
         in_progress = self.config.run_dir / CAPTURE_IN_PROGRESS_FLAG
         in_progress.touch(exist_ok=True)
         backoff = self.config.reconnect_initial_s
         next_status = time.monotonic() + self.config.status_interval_s
+        capture_deadline = (
+            time.monotonic() + self.config.duration_s
+            if self.config.duration_s is not None
+            else None
+        )
 
         command_fifo_context = (
             CommandFifo(self.config.command_fifo) if self.config.command_fifo is not None else nullcontext(None)
@@ -393,6 +435,19 @@ class CaptureDeviceRunner:
                                 self._process_bytes(data, splitter, raw_writer)
                             self._poll_commands(command_fifo, serial_handle, raw_writer)
                             now = time.monotonic()
+                            if capture_deadline is not None and now >= capture_deadline:
+                                _log_event(
+                                    logging.INFO,
+                                    "planned_duration_complete",
+                                    duration_s=self.config.duration_s,
+                                )
+                                _write_marker(
+                                    raw_writer,
+                                    "planned_duration_complete",
+                                    duration_s=self.config.duration_s,
+                                )
+                                self.stop_event.set()
+                                break
                             if now >= next_status:
                                 self._emit_status()
                                 next_status = now + self.config.status_interval_s
@@ -459,13 +514,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status-interval", type=float, default=60.0, help="Seconds between health log lines.")
     parser.add_argument("--read-size", type=int, default=4096, help="Bytes per serial read.")
     parser.add_argument("--max-line-bytes", type=int, default=65536, help="Maximum buffered partial line size.")
+    parser.add_argument(
+        "--duration-s",
+        type=float,
+        help="Optional positive planned capture duration; closes normally when elapsed.",
+    )
     parser.add_argument("--command-fifo", type=Path, help="Optional run-local FIFO for validated atomic host commands.")
+    parser.add_argument(
+        "--manifest-template",
+        type=Path,
+        help="Optional immutable JSON template used only when the run has no manifest; run_id is the run-directory name.",
+    )
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    if args.duration_s is not None and args.duration_s <= 0:
+        parser.error("--duration-s must be positive")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     device = _detect_single_device() if args.auto_detect else args.device
     config = CaptureDeviceConfig(
@@ -473,9 +540,11 @@ def main() -> None:
         baud=args.baud,
         run_dir=args.run_dir,
         command_fifo=args.command_fifo,
+        manifest_template=args.manifest_template,
         read_size=args.read_size,
         status_interval_s=args.status_interval,
         max_line_bytes=args.max_line_bytes,
+        duration_s=args.duration_s,
     )
     runner = CaptureDeviceRunner(config)
     signal.signal(signal.SIGINT, lambda signum, _frame: runner.request_stop(signum))

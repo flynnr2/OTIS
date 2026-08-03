@@ -563,6 +563,17 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "source_hashes": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "minProperties": 1
+        },
         "source_commits": {
           "type": "object",
           "additionalProperties": false,

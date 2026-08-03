@@ -245,6 +245,7 @@ def assess_evidence_availability(
     unavailable: list[str] = []
     errors: list[str] = []
     artifacts = model.data["source_evidence"]["source_artifacts"]
+    source_hashes = model.data["source_evidence"].get("source_hashes", {})
     for artifact in artifacts:
         candidate = (root / artifact).resolve()
         try:
@@ -253,6 +254,12 @@ def assess_evidence_availability(
             errors.append(f"source artifact escapes repository root: {artifact}")
             continue
         if candidate.is_file():
+            expected_hash = source_hashes.get(artifact)
+            if expected_hash is not None:
+                actual_hash = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                if actual_hash != expected_hash:
+                    errors.append(f"source artifact hash mismatch: {artifact}")
+                    continue
             available.append(artifact)
         else:
             unavailable.append(artifact)
@@ -608,6 +615,14 @@ def _validate_model_envelopes(
 def _validate_source_evidence(
     source_evidence: dict[str, Any], errors: list[str]
 ) -> None:
+    source_hashes = source_evidence.get("source_hashes")
+    if source_hashes is not None:
+        artifacts = set(source_evidence["source_artifacts"])
+        hashed = set(source_hashes)
+        if artifacts != hashed:
+            errors.append(
+                "source_evidence.source_hashes keys must exactly match source_artifacts"
+            )
     commits = source_evidence["source_commits"]
     if not any(value is not None for value in commits.values()):
         errors.append("source_evidence.source_commits must contain a known commit")

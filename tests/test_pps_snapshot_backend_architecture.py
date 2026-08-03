@@ -144,7 +144,7 @@ def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
     assert "OTIS_FLAG_GATE_INCOMPLETE" in association_loss
 
 
-def test_backend_candidate_remains_unqualified_and_old_isr_identity_is_gone() -> None:
+def test_only_stage6_profile_consumes_accepted_backend_qualification() -> None:
     matrix = json.loads(
         (ROOT / "firmware/arduino/firmware_matrix.json").read_text(
             encoding="utf-8"
@@ -158,9 +158,16 @@ def test_backend_candidate_remains_unqualified_and_old_isr_identity_is_gone() ->
         and profile["expect"] == "pass"
     ]
     assert candidate_profiles
+    qualified = [
+        profile["id"]
+        for profile in candidate_profiles
+        if profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "1"
+    ]
+    assert qualified == ["cx317_pps_gated_i_only_preview"]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
         for profile in candidate_profiles
+        if profile["id"] != "cx317_pps_gated_i_only_preview"
     )
 
     production_sources = "\n".join(

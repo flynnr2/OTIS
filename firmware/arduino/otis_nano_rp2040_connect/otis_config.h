@@ -29,6 +29,10 @@
 #define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 0
 #endif
 
+#ifndef OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#define OTIS_ENABLE_CX317_I_ONLY_PREVIEW 0
+#endif
+
 // Firmware provenance is supplied by the pinned matrix builder or its explicit
 // Arduino IDE profile generator. A hand-maintained source literal is not
 // evidence of the tree or toolchain that produced a binary. Host-only C++
@@ -126,7 +130,9 @@
 #endif
 
 #ifndef OTIS_FIRMWARE_VERSION
-#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#define OTIS_FIRMWARE_VERSION "CX317_PPS_GATED_I_ONLY_PREVIEW_V1"
+#elif OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #define OTIS_FIRMWARE_VERSION "SW2_PHASE4_OBSERVE_PREVIEW"
 #else
 #define OTIS_FIRMWARE_VERSION "SW1"
@@ -613,6 +619,21 @@
 #error "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW must be 0 or 1."
 #endif
 
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW != 0 && \
+    OTIS_ENABLE_CX317_I_ONLY_PREVIEW != 1
+#error "OTIS_ENABLE_CX317_I_ONLY_PREVIEW must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW && OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#error "The CX317 selected preview and legacy Phase 4 preview are mutually exclusive."
+#endif
+
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW && \
+    (OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
+     !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || !OTIS_ENABLE_ENV_SENSORS)
+#error "The CX317 preview requires the qualified PPS-gated backend and environment context."
+#endif
+
 #if OTIS_PHASE4_PREVIEW_QUEUE_DEPTH < 2u || \
     OTIS_PHASE4_PREVIEW_QUEUE_DEPTH > 8u
 #error "OTIS_PHASE4_PREVIEW_QUEUE_DEPTH must be between 2 and 8."
@@ -705,10 +726,25 @@
 #elif OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #error "Effective OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW differs from the generated profile."
 #endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#error "Effective OTIS_ENABLE_CX317_I_ONLY_PREVIEW differs from the generated profile."
+#endif
+#endif
 #ifndef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DAC_AD5693R
 #error "Generated profile is missing OTIS_ENABLE_DAC_AD5693R."
 #elif OTIS_ENABLE_DAC_AD5693R != OTIS_BUILD_EXPECTED_OTIS_ENABLE_DAC_AD5693R
 #error "Effective OTIS_ENABLE_DAC_AD5693R differs from the generated profile."
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_DAC_MIN_CODE
+#if OTIS_DAC_MIN_CODE != OTIS_BUILD_EXPECTED_OTIS_DAC_MIN_CODE
+#error "Effective OTIS_DAC_MIN_CODE differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_DAC_MAX_CODE
+#if OTIS_DAC_MAX_CODE != OTIS_BUILD_EXPECTED_OTIS_DAC_MAX_CODE
+#error "Effective OTIS_DAC_MAX_CODE differs from the generated profile."
+#endif
 #endif
 #ifndef OTIS_BUILD_EXPECTED_OTIS_ENABLE_H1_DAC_SWEEP
 #error "Generated profile is missing OTIS_ENABLE_H1_DAC_SWEEP."

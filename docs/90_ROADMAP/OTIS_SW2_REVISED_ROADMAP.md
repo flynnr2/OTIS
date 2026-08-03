@@ -1,19 +1,21 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Status:** revised against completed `run_020` evidence, the Phase 3
-observe-only plant model, and the completed Phase 4 host replay vertical slice
-on 29 July 2026
+**Status:** revised through the completed and sealed CX317 PPS-gated
+estimator/control programme on 3 August 2026; decision
+`ready_for_more_observe_only_testing`, with actuation still disabled
 
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding
 
-**Current evidence caveat:** `run_019` remains the broad CX317/AD5693R
-response reference. The completed and sealed `run_020` supplies the focused
-crossing-region evidence and supports the versioned observe-only model
-`profiles/plant_models/cx317_h1_bench_v3.json` (model version 4). Its applicability is local to
-`0xA800..0xB400`; the narrower `0xA800..0xAB00` automatic range is a recorded
-candidate only. Endpoint hysteresis, a direct `run_020` DAC-voltage
-measurement, and an independently identifiable temperature model remain
-unresolved, so automatic actuation remains disabled.
+**Current evidence caveat:** `run_019` and sealed `run_020` remain historical
+FC0/long-gate plant references, not CX317 specifications. The current
+same-topology PPS-gated programme selected a 600 s non-overlapping estimator,
+characterized a local finite-run gain of
+`0.000163574222825..0.000173340100446 Hz/code`, and completed a 22,200 s live
+non-actionable I-only preview at static `0xA950`. Its hard reviewed clamp is
+`0xA800..0xAB00`, but that range and every proposed controller parameter remain
+observe-only values. Calibrated combined uncertainty, measured `t95`, fresh
+connected `Vc`, D8 waveform/phase and GNSS-quality evidence remain unresolved,
+so automatic actuation remains disabled.
 
 ---
 
@@ -74,12 +76,26 @@ The recommended path is:
 1. use the completed, versioned H1 plant model as an observe-only input;
 2. make the measurement backend suitable for live discipline;
 3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
-4. validate live observe-only parity and model-applicability diagnostics;
-5. define and review a deliberately limited, very slow frequency-control experiment;
-6. conduct guarded actuation only after its separate policy and safety gate passes;
-7. add phase-aware hybrid behaviour only after frequency control is understood;
-8. add holdover and recovery;
-9. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic, or the DAC driver.
+4. validate live observe-only parity and model-applicability diagnostics — **complete**;
+5. close the enumerated metrology/model-applicability gaps in a new separately
+   authorized observe-only experiment, with no convenient placeholder step,
+   cadence or dwell values;
+6. define and review a deliberately limited frequency-control experiment only
+   after those evidence gaps close;
+7. conduct guarded actuation only after its separate policy and safety gate passes;
+8. add phase-aware hybrid behaviour only after frequency control is understood;
+9. add holdover and recovery;
+10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic, or the DAC driver.
+
+### 2026-08-03 observe-only milestone
+
+The CX317 PPS-gated programme completed Stages 1 through 7 with four valid
+evidence seals and a 16/16 final-readiness gate pass. The final integrated
+verification recorded 594 passed tests, 2 expected Run 020 skips, 15/15
+positive firmware profiles, 4/4 guarded negative profiles, three passing wire
+fixtures and passing synthetic validate/report checks. The resulting decision
+is deliberately capped at `ready_for_more_observe_only_testing`; no feedback-
+derived DAC command was issued and no actuation authority was created.
 
 The architectural objective remains larger than a GPSDO:
 

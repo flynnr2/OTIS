@@ -9,6 +9,7 @@ struct OtisDacAd5693rStatus {
   bool enabled;
   bool initialized;
   bool last_write_ok;
+  bool applied_code_known;
   uint8_t i2c_address;
   uint16_t min_code;
   uint16_t max_code;

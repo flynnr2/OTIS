@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "model_id": "cx317_pps_gated_bench",
+  "model_version": 1,
+  "status": {
+    "control_ready": false,
+    "actuation_enabled": false,
+    "readiness": "pps_gated_stage5_characterized_observe_only"
+  },
+  "oscillator": {
+    "part": "CX317 VCOCXO",
+    "type": "vcocxo",
+    "nominal_frequency_hz": 10000000,
+    "supply_voltage_v": 3.292,
+    "control_voltage_range_v": {
+      "min_v": 0,
+      "max_v": 3.3
+    },
+    "pinout_source": "CX317 manufacturer datasheet p. 2; pin 4 Vc and direct assembled-rig rail measurement"
+  },
+  "hardware_topology": {
+    "topology_id": "cx317_run020_g17_d8_pps_gated_ratio_v1",
+    "board": "arduino_nano_rp2040_connect",
+    "power_path": {
+      "description": "USB-C breakout to Adafruit TPS62827 3.3 V buck, then stated 120 ohm ferrite bead to the common-ground CX317/SN74LVC1G17 rail",
+      "dirty_supply_source": "USB-C source through the documented breakout; source identity and input margin unavailable",
+      "clean_supply_node": "shared CX317 and SN74LVC1G17 rail after the installed power path",
+      "filtering": "operator-stated 120 ohm ferrite bead; exact part, DCR and ripple response unavailable",
+      "measured_dirty_voltage_v": null,
+      "measured_clean_voltage_v": 3.292,
+      "measured_clean_ripple_mvpp": null
+    },
+    "conditioning": {
+      "oscillator_output_conditioner": "SN74LVC1G17 from CX317 output into the accepted PPS-gated cumulative-snapshot observation path",
+      "rp2040_pin": "D8/GPIO20",
+      "logic_voltage_v": 3.292
+    }
+  },
+  "dac": {
+    "part": "AD5693R",
+    "resolution_bits": 16,
+    "interface": "i2c",
+    "i2c_address": "0x4C",
+    "reference_voltage_v": 2.5,
+    "gain_mode": "1x manufacturer power-up default",
+    "nominal_code": 43344,
+    "manual_safe_range_codes": {
+      "min": 43008,
+      "max": 43776
+    },
+    "automatic_control_range_codes": {
+      "min": 43008,
+      "max": 43776
+    },
+    "manual_preview_max_step_codes": 0
+  },
+  "control_path": {
+    "network": "AD5693R output through the unchanged passive series network to CX317 pin 4 Vc on a common ground",
+    "measured_control_voltage_at_nominal_v": null,
+    "measured_connected_voltage_span_v": {
+      "min_v": null,
+      "max_v": null
+    },
+    "estimated_v_per_code": 0.00003814697265625,
+    "voltage_model": "Nominal AD5693R internal-reference/gain-1 transfer 2.5 V/65536 codes only. Manufacturer TUE plus the unchanged passive topology supplied the pre-command safety envelope; no fresh connected low/centre/high voltage calibration is claimed."
+  },
+  "plant_response": {
+    "local_slope": {
+      "hz_per_v": null,
+      "ppm_per_v": null,
+      "hz_per_code": 0.00017008467693813145,
+      "ppm_per_code": 0.000017008467693813145,
+      "sign": "positive",
+      "sample_count": 6,
+      "uncertainty": {
+        "method": "Stage 5 six drift-cancelled same-code brackets observed 0.00016357422282453626 to 0.00017334010044578463 Hz/code; finite-run characterization only, with calibrated and combined uncertainty unavailable",
+        "hz_per_v_stdev": null,
+        "hz_per_v_iqr": null,
+        "hz_per_v_min": null,
+        "hz_per_v_max": null
+      }
+    },
+    "valid_neighborhood": {
+      "basis": "Exact Stage 5 bidirectional A950,A850,A800,A850,A950,AA50,AB00,AA50,A950 campaign; 2400 s dwells, 900 s exclusion and selected 600 s estimator",
+      "center_code": 43070,
+      "target_codes": [43008, 43088, 43344, 43600, 43776],
+      "voltage_span_v": {
+        "min_v": null,
+        "max_v": null
+      }
+    },
+    "settling_evidence": {
+      "characterized": true,
+      "method": "The 900 s exclusion plus fresh 600 s selected-estimator support produced at least two outputs per dwell and maximum within-dwell range 0.0016666669398546219 Hz, below the sealed same-backend Stage 3 empirical floor 0.0033333317438761396 Hz. No sub-resolution t95 is claimed.",
+      "settling_discard_s": 900,
+      "t95_s_min": null,
+      "t95_s_max": null,
+      "selected_control_cadence_s": null
+    },
+    "temperature_range_c": {
+      "min_c": 27.259,
+      "max_c": 30.245
+    },
+    "warmup_drift": {
+      "warmup_s": 1800,
+      "drift_after_warmup_ppm_per_hour": 0.00003122245821427368
+    },
+    "crossing_estimate": {
+      "target_frequency_hz": 10000000,
+      "code": 43070,
+      "code_min": 43031,
+      "code_max": 43108,
+      "estimated_voltage_v": null,
+      "estimated_voltage_min_v": null,
+      "estimated_voltage_max_v": null,
+      "method": "Nominal 43069.627035 codes from the Stage 5 drift-adjusted bracket and median gain. Observe-only replay envelope adds full conservative components: Stage 3 empirical floor/minimum measured gain 20.3781 codes, maximum observed interior hysteresis 7.3493 codes, and centre raw visit span/minimum measured gain 10.1890 codes; total 37.9164 codes rounded outward to 38.",
+      "uncertainty_scope": "Conservative finite-run replay envelope only; not calibrated, traceable, statistical coverage or actuation authority",
+      "observed_bracket": {
+        "below_code": 43008,
+        "below_frequency_hz": 9999999.990416644,
+        "above_code": 43088,
+        "above_frequency_hz": 10000000.004166644
+      }
+    },
+    "repeatability_evidence": {
+      "center_code": 43344,
+      "clean_center_dwell_count": 3,
+      "center_median_min_hz": 10000000.045833334,
+      "center_median_max_hz": 10000000.0475,
+      "center_span_hz": 0.0016666650772094727,
+      "center_stdev_hz": 0.0006804131685465895,
+      "up_down_center_delta_hz": 0.0016666650772094727,
+      "endpoint_bidirectional_hysteresis_measured": false
+    },
+    "applicability": {
+      "mode": "observe_only",
+      "dac_code_range": {
+        "min": 43008,
+        "max": 43776
+      },
+      "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+      "gate_duration_s": 600,
+      "settling_exclusion_s": 900,
+      "temperature_range_c": {
+        "min_c": 27.259,
+        "max_c": 30.245
+      },
+      "excluded_count_sequences": [],
+      "limitations": [
+        "Applicability is code-domain and observe-only; fresh connected low/centre/high Vc measurements and calibrated voltage uncertainty are unavailable.",
+        "The 27.259 to 30.245 C SHT41 range is nearby-air context and a conservative no-extrapolation bound, not a demonstrated CX317 temperature sensitivity or internal/case temperature.",
+        "A 900 s exclusion passed only at the selected 600 s estimator resolution; t95 and a controller cadence remain unavailable.",
+        "Interior bidirectional hysteresis was 7.3493 and 2.4500 equivalent codes; endpoint bidirectional hysteresis and population bounds are unavailable.",
+        "Counter-aperture, GPS reference, calibration and combined uncertainty remain unavailable; no calibrated absolute accuracy or isolated firmware-jitter claim is made.",
+        "D8 duty, rise/fall, physical phase/duty margin, supply ripple/transient and installed ferrite identity remain untested or unavailable.",
+        "D10 is a general auxiliary edge input; same-PPS agreement applies only when the run manifest declares that connection.",
+        "The model is invalid for holdover, thermal compensation, phase discipline, adaptive control or active steering."
+      ],
+      "estimator_method_contract": {
+        "boundary_interpolation": "none_cumulative_snapshot_difference_at_accepted_pps_boundaries",
+        "count_window_semantics": "64_bit_reconstructed_cumulative_down_counter_difference_over_nominal_accepted_pps_interval_count",
+        "estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+        "extrapolation_policy": "prohibited",
+        "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "method_definition_hash": "7664e76a8d739705bf802bea67be304f5d9b38dff217b95afcb43efee5c6f4ad",
+        "reference_acceptance": "snapshot_status_zero_backend_exact_contiguous_session_sequence_reference_association_and_zero_global_health_reasons",
+        "reference_interval_max_s": 1.2,
+        "reference_interval_min_s": 0.8,
+        "reference_invalid_flag_mask": 0,
+        "reference_time_mapping": "nominal_accepted_pps_interval_count_denominator_with_raw_reference_ticks_diagnostic_only",
+        "required_timing_domain": "rp2040_timer0"
+      }
+    }
+  },
+  "source_evidence": {
+    "source_run_ids": [
+      "cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z"
+    ],
+    "source_artifacts": [
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/evidence_manifest.json",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/run_manifest.json",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/reports/PLANT_CHARACTERIZATION.md",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_preparation/physical_safety_gate_evaluation_v1.json",
+      "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+      "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "profiles/estimators/pps_cumulative_snapshot_span_v1.json"
+    ],
+    "source_hashes": {
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/evidence_manifest.json": "9b7dedf7eb972b1852cd843faaccb2892cfd5be482da4e8ef1e6ab2d1611c976",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/run_manifest.json": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/reports/PLANT_CHARACTERIZATION.md": "5a44c54510a43ddfa8c09717ce4bc913c1fb9be9582d90abfc62612e6e9757f5",
+      "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_preparation/physical_safety_gate_evaluation_v1.json": "28377345556e027239b8afbfbd99d3486294f6b590d7670a8580e5690c0dc401",
+      "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+      "profiles/estimators/cx317_pps_gated_selected_v1.json": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+      "profiles/estimators/pps_cumulative_snapshot_span_v1.json": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+    },
+    "source_commits": {
+      "model_created_from_repo_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+      "run_manifest_host_git_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+      "run_manifest_firmware_git_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52"
+    },
+    "source_versions": {
+      "run_manifest_host_tool_version": "0",
+      "run_manifest_firmware_version": "SW1"
+    }
+  },
+  "invalidation_conditions": [
+    "Any change to CX317, AD5693R address/reference/gain, DAC-to-Vc network, shared power path, SN74LVC1G17 conditioner, D8/GPIO20 connection, PPS source path or RP2040 board.",
+    "Any measurement backend other than OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO or snapshot backend other than pio_wait_cumulative_snapshot_dma_v1.",
+    "Any estimator contract/hash/span other than PPS_CUMULATIVE_SNAPSHOT_SPAN_V1 with the bound 600 s non-overlapping authority policy.",
+    "Any code outside 0xA800..0xAB00 or temperature observation outside 27.259..30.245 C without new same-topology evidence.",
+    "Any span crossing a DAC epoch, settling exclusion, invalid interval, session boundary, sequence discontinuity, reference-association failure, snapshot/counter/FIFO/DMA/ring fault, parser/transport loss or reset evidence.",
+    "Any use before 900 s exclusion plus 600 s fresh contiguous estimator history after a DAC change.",
+    "Any same-PPS run declaring D10 comparison that observes D14/D10 disagreement; another D10 source requires its own declared health policy.",
+    "Any use of the nominal AD5693R transfer as a fresh connected-voltage measurement or calibrated voltage model.",
+    "Any use for active steering while status.control_ready or status.actuation_enabled is false."
+  ],
+  "unresolved_fields": [
+    "hardware_topology.power_path.measured_dirty_voltage_v",
+    "hardware_topology.power_path.measured_clean_ripple_mvpp",
+    "control_path.measured_control_voltage_at_nominal_v",
+    "control_path.measured_connected_voltage_span_v",
+    "plant_response.local_slope.hz_per_v",
+    "plant_response.local_slope.ppm_per_v",
+    "plant_response.local_slope.traceable_combined_uncertainty",
+    "plant_response.settling_evidence.t95_s_min",
+    "plant_response.settling_evidence.t95_s_max",
+    "plant_response.settling_evidence.selected_control_cadence_s",
+    "plant_response.thermal_sensitivity",
+    "plant_response.repeatability_evidence.endpoint_bidirectional_hysteresis",
+    "control_policy.maximum_update_codes",
+    "control_policy.integrator_gain_and_anti_windup"
+  ]
+}

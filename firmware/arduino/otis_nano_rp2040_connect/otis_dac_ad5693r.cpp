@@ -15,8 +15,9 @@ constexpr uint16_t kDacMaxCode = static_cast<uint16_t>(OTIS_DAC_MAX_CODE);
 
 bool dac_initialized = false;
 bool dac_last_write_ok = false;
+bool dac_applied_code_known = false;
 uint16_t dac_last_requested_code = 0u;
-uint16_t dac_last_applied_code = kDacMinCode;
+uint16_t dac_last_applied_code = 0u;
 
 void fill_status(OtisDacAd5693rStatus *out) {
   if (out == nullptr) {
@@ -26,13 +27,15 @@ void fill_status(OtisDacAd5693rStatus *out) {
   out->enabled = otis_dac_ad5693r_is_enabled();
   out->initialized = dac_initialized;
   out->last_write_ok = dac_last_write_ok;
+  out->applied_code_known = dac_applied_code_known;
   out->i2c_address = kDacAddress;
   out->min_code = kDacMinCode;
   out->max_code = kDacMaxCode;
   out->last_requested_code = dac_last_requested_code;
   out->last_applied_code = dac_last_applied_code;
-  out->gain_mode = "1x";
-  out->reference_mode = "external_or_breakout_default";
+  out->gain_mode = "1x_power_up_default_control_register_unwritten";
+  out->reference_mode =
+      "internal_2p5v_power_up_default_control_register_unwritten";
 }
 
 }  // namespace
@@ -42,16 +45,22 @@ bool otis_dac_ad5693r_begin(void) {
   if (!otis_i2c_bus_begin()) {
     dac_initialized = false;
     dac_last_write_ok = false;
+    dac_applied_code_known = false;
     return false;
   }
   Wire.beginTransmission(kDacAddress);
   uint8_t result = Wire.endTransmission();
   dac_initialized = (result == 0u);
-  dac_last_write_ok = dac_initialized;
+  // An address acknowledgement proves presence only.  It does not prove the
+  // power-up/retained DAC register value, so no applied code is known until a
+  // successful explicit write in this firmware session.
+  dac_last_write_ok = false;
+  dac_applied_code_known = false;
   return dac_initialized;
 #else
   dac_initialized = false;
   dac_last_write_ok = false;
+  dac_applied_code_known = false;
   return false;
 #endif
 }
@@ -65,9 +74,13 @@ bool otis_dac_ad5693r_reset(void) {
   if (dac_last_write_ok) {
     delay(1);
   }
+  // A general-call reset changes device state without a clamp-qualified
+  // explicit code write.  Never infer an applied code from it.
+  dac_applied_code_known = false;
   return dac_last_write_ok;
 #else
   dac_last_write_ok = false;
+  dac_applied_code_known = false;
   return false;
 #endif
 }
@@ -100,11 +113,13 @@ bool otis_dac_ad5693r_set_raw(uint16_t code) {
   dac_last_write_ok = (result == 0u);
   if (dac_last_write_ok) {
     dac_last_applied_code = clamped_code;
+    dac_applied_code_known = true;
   }
   return dac_last_write_ok;
 #else
   (void)clamped_code;
   dac_last_write_ok = false;
+  dac_applied_code_known = false;
   return false;
 #endif
 }
