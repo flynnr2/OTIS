@@ -52,6 +52,9 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
 
     assert {
         "phase5_qualification",
+        "cx317_fixed_code_baseline",
+        "cx317_pps_gated_open_loop",
+        "cx317_pps_gated_i_only_preview",
         "phase4_observe_only",
         "h1_characterization",
         "h1_lab_actuator",
@@ -65,8 +68,53 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "pseudo_pps_loopback",
         "invalid_pseudo_pps_nonisolated_resources",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 12
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 15
     assert sum(item["expect"] == "fail" for item in profiles.values()) == 4
+
+
+def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    defines = _profile(matrix, "cx317_fixed_code_baseline")["defines"]
+
+    assert defines["OTIS_TCXO_COUNTER_BACKEND"] == (
+        "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
+    )
+    assert defines["OTIS_ENABLE_PPS_DUAL_OBSERVER"] == "1"
+    assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
+    assert defines["OTIS_ENABLE_DAC_AD5693R"] == "0"
+    assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
+    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+
+
+def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    defines = _profile(matrix, "cx317_pps_gated_open_loop")["defines"]
+
+    assert defines["OTIS_TCXO_COUNTER_BACKEND"] == (
+        "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
+    )
+    assert defines["OTIS_CAPTURE_BACKEND"] == "OTIS_CAPTURE_BACKEND_IRQ"
+    assert defines["OTIS_ENABLE_PPS_DUAL_OBSERVER"] == "1"
+    assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
+    assert defines["OTIS_ENABLE_DAC_AD5693R"] == "1"
+    assert defines["OTIS_DAC_MIN_CODE"] == "0xA800u"
+    assert defines["OTIS_DAC_MAX_CODE"] == "0xAB00u"
+    assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
+    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+
+    profile = _profile(matrix, "cx317_pps_gated_open_loop")
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="dirty",
+        source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
+    )
+    header = provenance_header(provenance)
+    assert "#define OTIS_BUILD_EXPECTED_OTIS_DAC_MIN_CODE 0xA800u" in header
+    assert "#define OTIS_BUILD_EXPECTED_OTIS_DAC_MAX_CODE 0xAB00u" in header
 
 
 def test_config_hash_is_deterministic_and_changes_with_configuration() -> None:

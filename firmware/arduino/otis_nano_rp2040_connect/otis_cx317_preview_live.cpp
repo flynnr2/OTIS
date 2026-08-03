@@ -1,0 +1,403 @@
+#include "otis_cx317_preview_live.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "otis_config.h"
+#include "otis_cx317_i_only_engine.h"
+#include "otis_cx317_snapshot_estimator.h"
+#include "otis_protocol.h"
+#include "otis_transport_serial.h"
+
+namespace {
+
+constexpr char kEstimatorMethod[] = "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1";
+constexpr char kSelectedEstimatorHash[] =
+    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+constexpr char kPolicyId[] = "CX317_PPS_GATED_I_ONLY_PREVIEW_V1";
+constexpr char kPolicyHash[] =
+    "19cddd7cb169c4c733b7cfd69085f9ecc087ad77a874f265c4c7c0f053aced43";
+constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
+constexpr char kPlantModelHash[] =
+    "d8fbc3539759be1de60d6b4507a50f029b3eaf830952b65ddb4c9849992ef8dd";
+constexpr char kTimeDomain[] = "rp2040_timer0";
+constexpr double kNominalFrequencyHz = 10000000.0;
+constexpr double kNominalGainHzPerCode = 0.00017008467693813145;
+constexpr double kTemperatureMinC = 27.259;
+constexpr double kTemperatureMaxC = 30.245;
+constexpr uint32_t kStartupWarmupS = 1800u;
+constexpr uint32_t kSettlingExclusionS = 900u;
+constexpr int32_t kActiveLiveUpdateCodes = 0;
+constexpr uint8_t kQueueDepth = 4u;
+constexpr size_t kFrameCapacity = 1536u;
+constexpr size_t kTransportChunkLimit = 192u;
+
+struct Frame {
+  char data[kFrameCapacity];
+  uint16_t length;
+  uint16_t sent;
+};
+
+OtisCx317SnapshotEstimator estimator;
+OtisCx317IOnlyEngine controller;
+Frame queue[kQueueDepth];
+uint8_t queue_head = 0u;
+uint8_t queue_tail = 0u;
+uint8_t queue_count = 0u;
+uint8_t queue_high_water = 0u;
+uint32_t dropped_frames = 0u;
+uint32_t estimate_seq = 0u;
+uint32_t control_seq = 0u;
+uint32_t startup_s = 0u;
+uint32_t settling_until_s = 0u;
+bool initialized = false;
+bool warmup_boundary_seen = false;
+bool temperature_available = false;
+double temperature_c = 0.0;
+
+bool enqueue(const char *data, size_t length) {
+  if (data == nullptr || length == 0u || length >= kFrameCapacity ||
+      queue_count >= kQueueDepth) {
+    if (dropped_frames < UINT32_MAX) dropped_frames++;
+    return false;
+  }
+  Frame &frame = queue[queue_tail];
+  memcpy(frame.data, data, length);
+  frame.data[length] = '\0';
+  frame.length = static_cast<uint16_t>(length);
+  frame.sent = 0u;
+  queue_tail = static_cast<uint8_t>((queue_tail + 1u) % kQueueDepth);
+  queue_count++;
+  if (queue_count > queue_high_water) queue_high_water = queue_count;
+  return true;
+}
+
+bool code_context_valid(const OtisCx317StaticCodeState *code) {
+  return code != nullptr && code->available && code->requested_applied_match &&
+         code->i2c_ok && code->applied_code >= 0xA800u &&
+         code->applied_code <= 0xAB00u;
+}
+
+bool temperature_context_valid(void) {
+  return temperature_available && isfinite(temperature_c) &&
+         temperature_c >= kTemperatureMinC && temperature_c <= kTemperatureMaxC;
+}
+
+OtisCx317PreviewInput controller_input(
+    uint32_t uptime_s, double error_hz, bool frequency_available,
+    bool reference_valid, bool estimator_valid, bool count_valid,
+    const OtisCx317StaticCodeState *code) {
+  const bool code_present = code != nullptr && code->available;
+  return {
+      uptime_s,
+      error_hz,
+      static_cast<uint16_t>(code_present ? code->applied_code : 0u),
+      temperature_c,
+      frequency_available,
+      reference_valid,
+      estimator_valid,
+      count_valid,
+      code_context_valid(code) && temperature_context_valid(),
+      code_present && code->requested_applied_match,
+      code != nullptr && code->i2c_ok,
+      temperature_available,
+      false,
+      false,
+      false,
+  };
+}
+
+const char *model_reason(const OtisCx317StaticCodeState *code) {
+  if (code == nullptr || !code->available) return "static_dac_code_unavailable";
+  if (!code->requested_applied_match) return "requested_applied_mismatch";
+  if (!code->i2c_ok) return "i2c_failure";
+  if (code->applied_code < 0xA800u || code->applied_code > 0xAB00u)
+    return "current_code_outside_characterized_range";
+  if (!temperature_available) return "temperature_unavailable";
+  if (!temperature_context_valid()) return "temperature_model_mismatch";
+  return "model_applicable_observe_only";
+}
+
+void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
+                   const OtisCx317StaticCodeState *code,
+                   uint64_t timestamp_ticks) {
+  const double frequency =
+      selected ? span.selected_frequency_hz : span.diagnostic_frequency_hz;
+  const uint32_t first = selected ? span.selected_first_sequence
+                                  : span.diagnostic_first_sequence;
+  const uint32_t samples = selected ? OTIS_CX317_SELECTED_SPAN_INTERVALS
+                                    : OTIS_CX317_DIAGNOSTIC_SPAN_INTERVALS;
+  const bool applicable = code_context_valid(code) && temperature_context_valid();
+  char frame[kFrameCapacity];
+  const uint32_t seq = estimate_seq++;
+  int used = snprintf(
+      frame, sizeof(frame),
+      "EST,2,%lu,est:cx317:%s:%06lu,%llu,%s,%lu,live:CNT:%lu,%lu,%lu,"
+      "live:STS:pps_gate,live:DAC:static,firmware_config:%s,%s,%s,"
+      "valid,contiguous_snapshot_span,valid,0,true,valid,0,true,healthy,"
+      "diagnostic_healthy,%.12f,%lu,unavailable,%.12f,%.12f,,unavailable,"
+      "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
+      ",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n",
+      static_cast<unsigned long>(seq), selected ? "selected600" : "diagnostic60",
+      static_cast<unsigned long>(seq),
+      static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
+      static_cast<unsigned long>(span.last_sequence),
+      static_cast<unsigned long>(span.last_sequence),
+      static_cast<unsigned long>(first),
+      static_cast<unsigned long>(span.last_sequence), OTIS_FIRMWARE_CONFIG_ID,
+      selected ? "cx317_selected_600s_nonoverlap_v1"
+               : "cx317_diagnostic_60s_overlap_v1",
+      kSelectedEstimatorHash, frequency, static_cast<unsigned long>(samples),
+      frequency, frequency - kNominalFrequencyHz,
+      selected && applicable ? "true" : "false",
+      selected ? (applicable ? "preview_input_observe_only"
+                             : model_reason(code))
+               : "diagnostic_non_authoritative");
+  if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
+    enqueue(frame, static_cast<size_t>(used));
+  else if (dropped_frames < UINT32_MAX)
+    dropped_frames++;
+}
+
+void emit_control(const OtisCx317PreviewDecision &decision,
+                  const OtisCx317StaticCodeState *code,
+                  uint64_t timestamp_ticks, uint32_t source_estimate_seq) {
+  char frequency_error[32] = "";
+  char raw_delta[32] = "";
+  char limited_delta[24] = "";
+  char proposed[16] = "";
+  if (decision.frequency_available)
+    snprintf(frequency_error, sizeof(frequency_error), "%.12f",
+             decision.frequency_error_hz);
+  if (decision.preview_available) {
+    snprintf(raw_delta, sizeof(raw_delta), "%.12f", decision.raw_delta_codes);
+    snprintf(limited_delta, sizeof(limited_delta), "%ld",
+             static_cast<long>(decision.limited_delta_codes));
+    snprintf(proposed, sizeof(proposed), "%u", decision.proposed_code);
+  }
+  char frame[kFrameCapacity];
+  const uint32_t seq = control_seq++;
+  const bool applicable = code_context_valid(code) && temperature_context_valid();
+  int used = snprintf(
+      frame, sizeof(frame),
+      "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:selected600:%06lu,"
+      "profile:plant_models/cx317_pps_gated_v1.json,%s,1,%s,%s,%s,%s,%s,%s,%s,"
+      "%s,%s,healthy,%s,%s,%u,%s,%.15g,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
+      static_cast<unsigned long>(seq), static_cast<unsigned long>(seq),
+      static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
+      static_cast<unsigned long>(source_estimate_seq), kPlantModelId,
+      kPlantModelHash, kPolicyId, kPolicyHash,
+      otis_cx317_preview_state_name(decision.state),
+      otis_cx317_preview_state_name(decision.previous_state),
+      decision.state_transition ? "true" : "false", decision.reason,
+      decision.preview_available ? "true" : "false",
+      decision.preview_available ? "preview_available_observe_only"
+                                 : decision.reason,
+      applicable ? "applicable" : "not_applicable", model_reason(code),
+      decision.current_code, frequency_error, kNominalGainHzPerCode, raw_delta,
+      limited_delta, proposed, decision.step_limited ? "true" : "false",
+      decision.range_clamped ? "true" : "false",
+      decision.preview_available ? "true" : "false", decision.reason);
+  if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
+    enqueue(frame, static_cast<size_t>(used));
+  else if (dropped_frames < UINT32_MAX)
+    dropped_frames++;
+}
+
+}  // namespace
+
+bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  otis_cx317_snapshot_estimator_init(&estimator);
+  otis_cx317_i_only_engine_init(&controller, startup_uptime_s);
+  startup_s = startup_uptime_s;
+  settling_until_s = startup_uptime_s;
+  initialized = true;
+  return true;
+#else
+  (void)startup_uptime_s;
+  return true;
+#endif
+}
+
+void otis_cx317_preview_live_emit_headers(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  otis_transport_write_cstr(
+      "record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n");
+  otis_transport_write_cstr(
+      "record_type,schema_version,control_seq,decision_id,decision_timestamp_ticks,time_domain,est_input_ref,plant_model_ref,plant_model_id,plant_model_version,plant_model_hash,policy_version,config_hash,control_state,previous_control_state,state_transition,transition_reason_code,preview_eligibility,eligibility_reason_codes,diagnostic_health,model_applicability,model_reason_codes,current_dac_code,frequency_error_hz,hz_per_code,raw_delta_codes,limited_delta_codes,proposed_dac_code,step_limited,range_clamped,preview_available,preview_only,actuation_authorized,actionable,decision_reason_code\r\n");
+#endif
+}
+
+void otis_cx317_preview_live_on_temperature(bool available,
+                                            float value_c,
+                                            uint32_t uptime_s) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  (void)uptime_s;
+  temperature_available = available && isfinite(value_c);
+  temperature_c = static_cast<double>(value_c);
+#else
+  (void)available;
+  (void)value_c;
+  (void)uptime_s;
+#endif
+}
+
+void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
+                                           uint32_t uptime_s) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  (void)applied_code;
+  otis_cx317_snapshot_estimator_reset(&estimator);
+  settling_until_s = uptime_s + kSettlingExclusionS;
+  otis_cx317_i_only_engine_note_dac_epoch(&controller, uptime_s);
+#else
+  (void)applied_code;
+  (void)uptime_s;
+#endif
+}
+
+void otis_cx317_preview_live_on_boundary(
+    const OtisPpsCountBoundaryObservation *observation,
+    uint32_t interval_count, bool interval_valid, uint32_t uptime_s,
+    const OtisCx317StaticCodeState *static_code) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  if (!initialized || observation == nullptr) return;
+  const uint32_t warmup_complete_s = startup_s + kStartupWarmupS;
+  if (!warmup_boundary_seen && uptime_s >= warmup_complete_s) {
+    warmup_boundary_seen = true;
+    otis_cx317_snapshot_estimator_reset(&estimator);
+    if (settling_until_s <= warmup_complete_s)
+      otis_cx317_i_only_engine_init(&controller, startup_s);
+    OtisCx317PreviewInput input = controller_input(
+        uptime_s, 0.0, false, interval_valid, interval_valid, interval_valid,
+        static_code);
+    OtisCx317PreviewDecision decision;
+    otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+                 estimate_seq);
+    return;
+  }
+  if (uptime_s < warmup_complete_s || uptime_s < settling_until_s) {
+    otis_cx317_snapshot_estimator_reset(&estimator);
+    return;
+  }
+  OtisCx317SpanEstimate span;
+  otis_cx317_snapshot_estimator_ingest(
+      &estimator, observation->sequence, interval_count, interval_valid, &span);
+  if (!interval_valid) {
+    OtisCx317PreviewInput input = controller_input(
+        uptime_s, 0.0, false, false, false, false, static_code);
+    OtisCx317PreviewDecision decision;
+    otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+                 estimate_seq);
+    return;
+  }
+  if (span.diagnostic_available)
+    emit_estimate(false, span, static_code, observation->pps_timestamp_ticks);
+  if (span.selected_available) {
+    const uint32_t selected_estimate_seq = estimate_seq;
+    emit_estimate(true, span, static_code, observation->pps_timestamp_ticks);
+    const bool applicable = code_context_valid(static_code) &&
+                            temperature_context_valid();
+    OtisCx317PreviewInput input = controller_input(
+        uptime_s, span.selected_frequency_hz - kNominalFrequencyHz, true,
+        true, true, true, static_code);
+    input.model_applicable = applicable;
+    OtisCx317PreviewDecision decision;
+    otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+                 selected_estimate_seq);
+  }
+#else
+  (void)observation;
+  (void)interval_count;
+  (void)interval_valid;
+  (void)uptime_s;
+  (void)static_code;
+#endif
+}
+
+void otis_cx317_preview_live_on_capture_fault(
+    const char *reason, uint32_t uptime_s,
+    const OtisCx317StaticCodeState *static_code) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  (void)reason;
+  otis_cx317_snapshot_estimator_reset(&estimator);
+  OtisCx317PreviewInput input = controller_input(
+      uptime_s, 0.0, false, false, false, false, static_code);
+  OtisCx317PreviewDecision decision;
+  otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+  emit_control(decision, static_code, 0u, estimate_seq);
+#else
+  (void)reason;
+  (void)uptime_s;
+  (void)static_code;
+#endif
+}
+
+void otis_cx317_preview_live_service_transport(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  if (queue_count == 0u) return;
+  size_t available = otis_transport_available_for_write();
+  if (available == 0u) return;
+  Frame &frame = queue[queue_head];
+  size_t remaining = static_cast<size_t>(frame.length - frame.sent);
+  size_t chunk = remaining < available ? remaining : available;
+  if (chunk > kTransportChunkLimit) chunk = kTransportChunkLimit;
+  size_t written = otis_transport_write_bytes(
+      reinterpret_cast<const uint8_t *>(frame.data) + frame.sent, chunk);
+  frame.sent = static_cast<uint16_t>(frame.sent + written);
+  if (frame.sent == frame.length) {
+    queue_head = static_cast<uint8_t>((queue_head + 1u) % kQueueDepth);
+    queue_count--;
+  }
+#endif
+}
+
+bool otis_cx317_preview_live_transport_busy(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  return queue_count > 0u && queue[queue_head].sent > 0u;
+#else
+  return false;
+#endif
+}
+
+void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  otis_status_emit(context, "cx317_preview", "estimator_method",
+                   kEstimatorMethod, OTIS_SEVERITY_INFO,
+                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "policy_hash", kPolicyHash,
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "plant_model_hash",
+                   kPlantModelHash, OTIS_SEVERITY_INFO,
+                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "control_ready", "false",
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "actuation_enabled", "false",
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "actuation_authorized", "false",
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_status_emit(context, "cx317_preview", "actionable", "false",
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  char value[16];
+  snprintf(value, sizeof(value), "%ld",
+           static_cast<long>(kActiveLiveUpdateCodes));
+  otis_status_emit(context, "cx317_preview", "active_live_update_codes", value,
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(dropped_frames));
+  otis_status_emit(context, "cx317_preview", "telemetry_dropped_frames", value,
+                   dropped_frames == 0u ? OTIS_SEVERITY_INFO
+                                        : OTIS_SEVERITY_WARN,
+                   dropped_frames == 0u ? OTIS_FLAG_NONE
+                                        : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  snprintf(value, sizeof(value), "%u", queue_high_water);
+  otis_status_emit(context, "cx317_preview", "queue_high_water", value,
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#else
+  (void)context;
+#endif
+}

@@ -27,7 +27,7 @@ from .validate_run import (
     _validate_manifest,
     _validate_pps_cadence,
 )
-from .timebase import unwrap_ticks
+from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS, unwrap_ticks
 
 
 RAW_CONTRACT = "raw_events_v1"
@@ -363,7 +363,12 @@ def _summarize_reference(reads: list[CsvReadResult], nominal_hz_by_domain: dict[
     return {"edge_count": len(rows), "domains": domains}, anomalies
 
 
-def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str, float]) -> tuple[dict, list[str]]:
+def _summarize_counts(
+    reads: list[CsvReadResult],
+    nominal_hz_by_domain: dict[str, float],
+    *,
+    nominal_count_interval_s: float | None = None,
+) -> tuple[dict, list[str]]:
     rows = [row for read in reads for row in read.rows]
     anomalies: list[str] = []
     frequencies: list[float] = []
@@ -387,6 +392,12 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
             if flags:
                 flagged_zero_count_rows += 1
         window_ticks = gate_close - gate_open
+        if (
+            window_ticks < 0
+            and gate_domain == "rp2040_timer0"
+            and gate_open - gate_close > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+        ):
+            window_ticks += RP2040_TIMER0_MICROS_WRAP_TICKS
         if window_ticks <= 0:
             anomalies.append(f"count_observations_v1: row {index} has non-positive gate window")
             continue
@@ -394,7 +405,8 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
         if window_seconds is None:
             continue
         windows_seconds.append(window_seconds)
-        frequency = counted_edges / window_seconds
+        frequency_interval_s = nominal_count_interval_s or window_seconds
+        frequency = counted_edges / frequency_interval_s
         frequencies.append(frequency)
         if counted_edges > 0 and not (flags & COUNT_INVALID_FLAG_MASK):
             unflagged_frequencies.append(frequency)
@@ -424,7 +436,10 @@ def _summarize_counts(reads: list[CsvReadResult], nominal_hz_by_domain: dict[str
             "min_window_seconds": min(windows_seconds) if windows_seconds else None,
             "max_window_seconds": max(windows_seconds) if windows_seconds else None,
             "frequency_note": (
-                f"nominal source frequency from {source_domains[0]}"
+                "counted edges divided by the manifest-declared nominal reference interval; "
+                "RP2040 timer windows are diagnostic only"
+                if nominal_count_interval_s is not None
+                else f"nominal source frequency from {source_domains[0]}"
                 if nominal_source_hz
                 else f"source nominal not computed: source_domain values {source_domains} not declared with nominal_hz"
             ),
@@ -544,7 +559,19 @@ def build_summary(run_dir: Path) -> dict:
     malformed = [message for read in reads for message in read.malformed_rows]
     raw_summary, raw_anomalies = _summarize_raw(reads_by_contract.get(RAW_CONTRACT, []), nominal_hz_by_domain)
     ref_summary, ref_anomalies = _summarize_reference(reads_by_contract.get(RAW_CONTRACT, []), nominal_hz_by_domain)
-    count_summary, count_anomalies = _summarize_counts(reads_by_contract.get(COUNT_CONTRACT, []), nominal_hz_by_domain)
+    phase5 = manifest.data.get("phase5_pps_backend_qualification", {})
+    nominal_count_interval_s = (
+        float(phase5["nominal_reference_interval_s"])
+        if isinstance(phase5, dict)
+        and isinstance(phase5.get("nominal_reference_interval_s"), (int, float))
+        and float(phase5["nominal_reference_interval_s"]) > 0
+        else None
+    )
+    count_summary, count_anomalies = _summarize_counts(
+        reads_by_contract.get(COUNT_CONTRACT, []),
+        nominal_hz_by_domain,
+        nominal_count_interval_s=nominal_count_interval_s,
+    )
     health_summary, health_anomalies = _summarize_health(reads_by_contract.get(HEALTH_CONTRACT, []))
     anomalies = malformed + raw_anomalies + ref_anomalies + count_anomalies + health_anomalies
 
@@ -683,7 +710,15 @@ def render_report(run_dir: Path) -> str:
         )
 
     lines.extend(["", "## SW1 Boundary"])
-    if identity["capture_mode"] in ("pio_fifo", "pio_fifo_cpu_timestamped"):
+    if identity["capture_mode"] == "pio_wait_cumulative_snapshot_with_independent_gpio_ref":
+        lines.append(
+            "- PPS-gated cumulative snapshot mode: "
+            "pio_wait_cumulative_snapshot_with_independent_gpio_ref. "
+            "PIO owns the count boundary and DMA transfers cumulative counter snapshots; "
+            "the independent GPIO reference path is diagnostic. Aperture/reference/calibration "
+            "uncertainty remains unavailable unless separately established."
+        )
+    elif identity["capture_mode"] in ("pio_fifo", "pio_fifo_cpu_timestamped"):
         lines.append(f"- {SW1_5A_LIMITATION_TEXT}")
     else:
         lines.append(f"- {SW1_LIMITATION_TEXT}")

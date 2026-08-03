@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from host.otis_tools.plant_model import (
 
 LEGACY_MODEL = Path("profiles/plant_models/cx317_h1_bench_v1.json")
 MODEL = Path("profiles/plant_models/cx317_h1_bench_v3.json")
+PPS_GATED_MODEL = Path("profiles/plant_models/cx317_pps_gated_v1.json")
 SCHEMA = Path("schemas/plant_model_v1.schema.json")
 
 
@@ -124,12 +126,39 @@ def test_schema_and_canonical_source_references_are_present() -> None:
     assert "runs/" in Path(".gitignore").read_text(encoding="utf-8")
 
 
+def test_loads_stage5_pps_gated_observe_only_plant_model() -> None:
+    model = load_plant_model(PPS_GATED_MODEL)
+
+    assert model.model_id == "cx317_pps_gated_bench"
+    assert model.model_version == 1
+    assert model.nominal_code == 0xA950
+    assert model.crossing_code == 0xA83E
+    assert model.automatic_control_range == (0xA800, 0xAB00)
+    assert model.applicability_range == (0xA800, 0xAB00)
+    assert not model.control_ready
+    assert not model.actuation_enabled
+
+    slope = model.data["plant_response"]["local_slope"]
+    assert slope["sign"] == "positive"
+    assert slope["hz_per_code"] == pytest.approx(0.00017008467693813145)
+    assert slope["hz_per_v"] is None
+
+    applicability = model.data["plant_response"]["applicability"]
+    assert applicability["gate_duration_s"] == 600
+    assert applicability["settling_exclusion_s"] == 900
+    assert applicability["estimator_method_contract"]["estimator_method_id"] == (
+        "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"
+    )
+    assert model.data["control_path"]["measured_control_voltage_at_nominal_v"] is None
+
+
 def test_every_committed_model_is_structurally_and_semantically_valid() -> None:
     paths = sorted(Path("profiles/plant_models").glob("*.json"))
     assert paths == [
         Path("profiles/plant_models/cx317_h1_bench_v1.json"),
         Path("profiles/plant_models/cx317_h1_bench_v2.json"),
         Path("profiles/plant_models/cx317_h1_bench_v3.json"),
+        Path("profiles/plant_models/cx317_pps_gated_v1.json"),
     ]
     for path in paths:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -285,6 +314,35 @@ def test_provenance_fields_are_structurally_and_semantically_enforced() -> None:
     semantic = validate_plant_model_semantics(changed)
     assert not semantic.valid
     assert "must contain a known commit" in semantic.errors[0]
+
+    changed = copy.deepcopy(load_plant_model(PPS_GATED_MODEL).data)
+    changed["source_evidence"]["source_hashes"].pop(
+        changed["source_evidence"]["source_artifacts"][0]
+    )
+    assert validate_plant_model_structure(changed).valid
+    semantic = validate_plant_model_semantics(changed)
+    assert not semantic.valid
+    assert any("keys must exactly match" in error for error in semantic.errors)
+
+
+def test_source_hashes_are_verified_when_present(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.txt"
+    evidence_path.write_text("sealed evidence\n", encoding="utf-8")
+    changed = copy.deepcopy(load_plant_model(PPS_GATED_MODEL).data)
+    changed["source_evidence"]["source_artifacts"] = ["evidence.txt"]
+    changed["source_evidence"]["source_hashes"] = {
+        "evidence.txt": hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+    }
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps(changed), encoding="utf-8")
+    model = load_plant_model(model_path)
+
+    assert assess_evidence_availability(model, tmp_path).available
+
+    evidence_path.write_text("changed\n", encoding="utf-8")
+    result = assess_evidence_availability(model, tmp_path)
+    assert not result.available
+    assert result.errors == ("source artifact hash mismatch: evidence.txt",)
 
 
 def test_evolved_estimator_is_valid_but_not_applicable_to_current_execution(

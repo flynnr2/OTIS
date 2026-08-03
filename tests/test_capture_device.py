@@ -5,7 +5,12 @@ import json
 import shutil
 import threading
 
-from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner, LineFramer, RawEvidenceWriter
+from host.otis_tools.capture_device import (
+    CaptureDeviceConfig,
+    CaptureDeviceRunner,
+    LineFramer,
+    RawEvidenceWriter,
+)
 from host.otis_tools.run_paths import RunPaths, default_csv_files
 
 
@@ -209,6 +214,37 @@ def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
     assert paths.reports_dir.exists()
     assert manifest["files"] == default_csv_files()
     assert not (config.run_dir / "capture_in_progress.flag").exists()
+
+
+def test_capture_device_instantiates_exact_manifest_template(tmp_path: Path) -> None:
+    stop_event = threading.Event()
+    run_dir = tmp_path / "stage5_open_loop_20260802T120000Z"
+    config = CaptureDeviceConfig(
+        device="/dev/cu.usbmodemTEST",
+        baud=115200,
+        run_dir=run_dir,
+        manifest_template=Path(
+            "profiles/run_templates/cx317_pps_gated_open_loop_v1/manifest.json"
+        ),
+        reconnect_initial_s=0.001,
+        reconnect_max_s=0.001,
+        status_interval_s=999,
+    )
+    serial = FakeSerial([], stop_event=stop_event)
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_id"] == run_dir.name
+    assert manifest["template"] is False
+    assert manifest["host"]["serial_device"] == config.device
+    assert manifest["firmware"]["config_id"] == "cx317_pps_gated_open_loop"
+    assert (run_dir / "csv" / "dac_steps.csv").exists()
 
 
 def test_capture_device_uses_h1_manifest_split_targets(tmp_path: Path) -> None:

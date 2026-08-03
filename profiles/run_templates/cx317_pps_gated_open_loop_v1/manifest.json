@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "template": true,
+  "run_id": "template",
+  "stage": "CX317_PPS_GATED_OPEN_LOOP",
+  "h_phase": "H1",
+  "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
+  "control_mode": "predetermined_open_loop_characterization",
+  "closed_loop_control": false,
+  "actionable": false,
+  "actuation_authorized": false,
+  "board": "arduino_nano_rp2040_connect",
+  "started_at_utc": "",
+  "ended_at_utc": "",
+  "firmware": {
+    "name": "otis_nano_rp2040_connect",
+    "version": "SW1",
+    "config_id": "cx317_pps_gated_open_loop",
+    "git_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "source_state": "dirty",
+    "source_sha256": "754dde950004a586be9d40cb023ed6289ffcd42caee2c029f6a863c06dd98835",
+    "configuration_sha256": "4a6ab7595dddbb9c5856cfab51c15985b09a0b53720ad6730db82343764186d4",
+    "uf2_sha256": "d3484d05d3a2d75c90a84426d8487c9371aa0ff6b43876c8bee37947a2d10459",
+    "uf2_size_bytes": 231424,
+    "build_provenance_required": true
+  },
+  "host": {
+    "tool": "host.otis_tools.capture_device",
+    "version": "0",
+    "git_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "serial_device": "",
+    "baud": 115200
+  },
+  "gps_reference": {
+    "part": "Adafruit Ultimate GPS breakout",
+    "pps_path": "PPS to authoritative D14/GPIO26; the general D10 auxiliary edge input is connected to the same PPS only for this run",
+    "uart_wiring": "GPS TX to Nano RX/RP2040 GPIO1; GPS RX to Nano TX/RP2040 GPIO0",
+    "uart_firmware_use": "none",
+    "gnss_fix_lock_status": "unavailable; PPS presence only"
+  },
+  "auxiliary_edge_input": {
+    "pin": "D10",
+    "architectural_role": "general_edge_timestamp_input",
+    "current_connection": "same_gps_pps_as_d14_for_current_run",
+    "current_run_health_policy": "require_match_to_d14",
+    "scope": "run-specific comparison only; D10 is not inherently a PPS input and may observe an oscillator, pendulum or other edge source in another declared topology"
+  },
+  "oscillator": {
+    "part": "CX317 VCOCXO",
+    "nominal_frequency_hz": 10000000.0,
+    "connected_path": "CX317 through unchanged Run 020 SN74LVC1G17 conditioner to D8/GPIO20",
+    "measured_vdd_v": 3.292,
+    "pre_campaign_measured_vc_v": 0.005
+  },
+  "dac": {
+    "part": "AD5693R",
+    "i2c_address": "0x4C",
+    "reference": "internal 2.5 V manufacturer power-up default",
+    "gain": "1x manufacturer power-up default",
+    "ldac": "tied low on Adafruit breakout",
+    "min_code": 43008,
+    "max_code": 43776,
+    "write_policy": "only exact codes in bound predetermined campaign through capture-owned FIFO"
+  },
+  "plant_campaign": {
+    "plan_id": "CX317_PPS_GATED_OPEN_LOOP_V1",
+    "path": "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+    "sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+    "config_sha256": "4be0876176e67cefb6b9e8921a9366b84001a682dd1635e2e5bd3070d1fabe05",
+    "frequency_error_used_for_commands": false,
+    "automatic_restore": false,
+    "final_safe_code": 43344
+  },
+  "selected_estimator": {
+    "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+    "profile_path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+    "profile_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "authoritative_span_s": 600,
+    "authority": "offline characterization only; no command generation"
+  },
+  "domains": [
+    {"name": "rp2040_timer0", "nominal_hz": 16000000},
+    {"name": "h0_tcxo_16mhz", "nominal_hz": 10000000}
+  ],
+  "channels": [
+    {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},
+    {"channel_id": 2, "role": "pps_gated_oscillator_count", "record_family": "count_observations_v1"}
+  ],
+  "environment_sources": [
+    {"source": "sht4x", "role": "vcocxo_near", "primary_temperature": true},
+    {"source": "bmp280", "role": "pressure_reference", "primary_temperature": false}
+  ],
+  "files": [
+    {"path": "csv/ref.csv", "contract": "raw_events_v1"},
+    {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
+    {"path": "csv/snp.csv", "contract": "pps_snapshots_v1"},
+    {"path": "csv/health.csv", "contract": "health_v1"},
+    {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1"},
+    {"path": "csv/environment.csv", "contract": "environment_v1"},
+    {"path": "csv/reference_observations_v1.csv", "contract": "reference_observations_v1", "optional": true},
+    {"path": "csv/diagnostics_v1.csv", "contract": "diagnostics_v1", "optional": true},
+    {"path": "csv/estimates_v2.csv", "contract": "estimates_v2", "optional": true},
+    {"path": "csv/control_previews_v1.csv", "contract": "control_previews_v1", "optional": true}
+  ],
+  "expected_artifacts": [
+    "csv/ref.csv",
+    "csv/cnt.csv",
+    "csv/snp.csv",
+    "csv/health.csv",
+    "csv/dac_steps.csv",
+    "csv/environment.csv",
+    "reports/summary.md",
+    "reports/validate_report.md",
+    "reports/anomalies.md"
+  ],
+  "phase5_pps_backend_qualification": {
+    "evidence_kind": "bench",
+    "estimator_type": "pps_gated_ratio_count_v1",
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+    "source_domain": "h0_tcxo_16mhz",
+    "nominal_reference_interval_s": 1.0,
+    "uncertainty": {
+      "count_quantization_standard_uncertainty_hz": null,
+      "counter_aperture_s_1sigma": null,
+      "reference_fractional_1sigma": null,
+      "independent_frequency_hz_1sigma": null
+    }
+  },
+  "physical_measurements": {
+    "instrument": "Fluke 117 in normal autoranging DC-volts mode; calibration applicability expired/unavailable",
+    "common_ground_confirmed": true,
+    "cx317_vdd_v": 3.292,
+    "conditioner_vcc_v": 3.292,
+    "pre_campaign_cx317_vc_v": 0.005,
+    "fresh_code_voltage_measurements": "required by separate physical gate before first command and at dwell visits",
+    "near_cx317_temperature_source": "SHT41 no more than approximately 1 cm away; nearby-air proxy only",
+    "d8_scope_measurement": "not tested; no scope available"
+  },
+  "known_limitations": [
+    "Predetermined open-loop characterization only; no frequency, estimator or controller value can create a DAC command.",
+    "Every DAC command requires one exact structured acknowledgement and the separate independent abort path; failure is static with no automatic restore.",
+    "Connected Vc readings, accepted electrical uncertainty and the final operator gate must be recorded in the actual run evidence; template values do not authorize hardware.",
+    "The emitted source_domain h0_tcxo_16mhz is a historical wire label; the physically connected source is the CX317 at nominal 10 MHz.",
+    "SHT41 measures nearby air, not CX317 internal oven or case temperature; the cardboard cover is a draft shield, not a chamber.",
+    "D8 duty, rise/fall and physical phase/duty margin remain not tested without a scope.",
+    "D10 is architecturally a general auxiliary edge input; D14 comparison is enabled only because this run explicitly declares D10 connected to the same PPS source.",
+    "No calibrated absolute accuracy or isolated firmware jitter is claimed."
+  ]
+}

@@ -139,6 +139,18 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
         if entry.get("contract"):
             metadata["contract"] = str(entry["contract"])
         sources[rel_path] = metadata
+
+    evidence_artifacts = manifest.data.get("evidence_artifacts", [])
+    if not isinstance(evidence_artifacts, list):
+        raise EvidenceError("manifest evidence_artifacts must be a list")
+    for entry in evidence_artifacts:
+        rel_path = _safe_relative_path(entry)
+        path = _artifact_path(run_dir, rel_path)
+        if not path.is_file():
+            raise EvidenceError(
+                f"required declared evidence artifact is missing: {rel_path}"
+            )
+        sources[rel_path] = {"role": "declared_artifact"}
     return sources
 
 

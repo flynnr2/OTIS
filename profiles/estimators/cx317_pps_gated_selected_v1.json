@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx317_pps_gated_selected_v1",
+  "status": "selected_observe_only",
+  "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+  "base_estimator": {
+    "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
+    "sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+  },
+  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+  "authoritative_denominator": "nominal_accepted_pps_interval_count",
+  "authoritative_policy": {
+    "span_s": 600,
+    "output_mode": "non_overlapping",
+    "output_cadence_s": 600,
+    "boxcar_group_delay_s": 300,
+    "boxcar_minus_3db_bandwidth_hz": 0.000738244117815754,
+    "boxcar_first_null_hz": 0.0016666666666666668,
+    "clean_time_to_first_estimate_s": 600,
+    "fresh_support_recovery_time_s": 600,
+    "count_increment_hz": 0.0016666666666666668,
+    "stage3_population_stddev_hz": 0.0008216769640397602,
+    "stage3_nonoverlapping_range_hz": 0.0016666650772094727,
+    "empirical_detection_floor_hz": 0.0033333317438761396,
+    "stage3_independent_estimate_count": 72,
+    "future_control_decision_epoch_s": 600,
+    "calibrated_resolution_status": "unavailable"
+  },
+  "diagnostic_policy": {
+    "spans_s": [60],
+    "output_mode": "overlapping",
+    "output_cadence_s": 1,
+    "decision_authority": false
+  },
+  "invalidation_policy": {
+    "reset_on": [
+      "invalid_adjacent_interval",
+      "session_boundary",
+      "sequence_discontinuity",
+      "reference_association_failure",
+      "snapshot_fault",
+      "counter_zero_or_saturation",
+      "fifo_dma_or_ring_fault",
+      "parser_or_transport_loss",
+      "reset_evidence",
+      "dac_control_epoch",
+      "declared_settling_exclusion"
+    ],
+    "dac_epoch_policy": "no_span_crosses_a_dac_control_epoch",
+    "settling_policy": "no_span_crosses_a_declared_settling_exclusion",
+    "recovery_policy": "fresh_contiguous_support_required_for_each_span"
+  },
+  "authority": {
+    "observe_only": true,
+    "actuation_authorized": false,
+    "actionable": false,
+    "diagnostic_bypass_permitted": false,
+    "controller_ported_to_firmware": false
+  },
+  "selection_evidence": {
+    "stage3_evidence_manifest_sha256": "489d0b5812c99beaccce338f9d5d5fe68dccf11c1f7d09a92ace5774b57dcdad",
+    "stage3_analysis_sha256": "00e401edb0854ddf50511e8898de64340baa7007128a20d23eda671660909c7a",
+    "evaluation_sha256": "7968ef726fabb416c941aad009665e700f7fd6d8639217925e0d6777c1f4beb8",
+    "historical_prior_model_sha256": "900af6b2ec325f99798db043df964a28a36ac2a2209669c7f4b7d569efbf161d",
+    "historical_gain_comparison": {
+      "minimum_hz_per_code": 0.00015590657252081053,
+      "maximum_hz_per_code": 0.0001876095605742497,
+      "conditional_smallest_resolvable_step_codes": 22,
+      "control_authority": false
+    }
+  },
+  "limitations": [
+    "Counter-aperture, reference, calibration and combined uncertainty remain unavailable.",
+    "The gain and coarse t95 comparison is sealed Run 020 characterization on a different backend and estimator method; fresh Stage 5 gain and settling evidence must supersede it.",
+    "The 60 s overlapping output is diagnostic only and cannot bypass the 600 s non-overlapping authority policy.",
+    "This profile selects no DAC step and authorizes no controller or actuation."
+  ]
+}

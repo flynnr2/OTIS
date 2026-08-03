@@ -39,6 +39,68 @@
       }
     },
     {
+      "id": "cx317_fixed_code_baseline",
+      "purpose": "CX317 fixed-code PPS-gated baseline with environment telemetry and no actuator or preview.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "0",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
+      "id": "cx317_pps_gated_open_loop",
+      "purpose": "Stage 5 CX317 PPS-gated manual/predeclared open-loop DAC instrument; no firmware sweep or control preview.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "0",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_DAC_MIN_CODE": "0xA800u",
+        "OTIS_DAC_MAX_CODE": "0xAB00u",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
+      "id": "cx317_pps_gated_i_only_preview",
+      "purpose": "Stage 6 CX317 selected cumulative estimator and I-only observe-only preview; DAC ownership remains manual-command-only.",
+      "expect": "pass",
+      "defines": {
+        "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+        "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+        "OTIS_TCXO_COUNTER_BACKEND": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+        "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "1",
+        "OTIS_PPS_GATE_MIN_INTERVAL_US": "800000",
+        "OTIS_PPS_GATE_MAX_INTERVAL_US": "1200000",
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_CX317_I_ONLY_PREVIEW": "1",
+        "OTIS_ENABLE_DAC_AD5693R": "1",
+        "OTIS_DAC_MIN_CODE": "0xA800u",
+        "OTIS_DAC_MAX_CODE": "0xAB00u",
+        "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+        "OTIS_ENABLE_ENV_SENSORS": "1"
+      }
+    },
+    {
       "id": "phase4_observe_only",
       "purpose": "Live Phase 4 estimator/control-preview telemetry with actuation structurally disabled.",
       "expect": "pass",
