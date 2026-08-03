@@ -73,3 +73,26 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert loop.index("drain_capture_ring()") < loop.index(
         "otis_gnss_receiver_service(millis())"
     )
+
+
+def test_status_output_interleaves_bounded_gnss_service() -> None:
+    receiver_source = (FIRMWARE / "otis_gnss_receiver.cpp").read_text(
+        encoding="utf-8"
+    )
+    status_source = (FIRMWARE / "otis_status_emit.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "bool live_receiver_started = false;" in receiver_source
+    service = receiver_source[
+        receiver_source.index("void otis_gnss_receiver_service") :
+    ]
+    assert service.index("if (!live_receiver_started) return;") < service.index(
+        "OTIS_GNSS_SERVICE_BYTE_BUDGET"
+    )
+
+    emitter = status_source[status_source.index("void otis_status_emit(") :]
+    assert emitter.index("otis_emit_health(") < emitter.index(
+        "otis_gnss_receiver_service(millis())"
+    )
+    assert "#if OTIS_ENABLE_GNSS_RECEIVER" in emitter

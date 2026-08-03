@@ -43,6 +43,11 @@ identifies itself as updated 2025-07-23.
 - Fixed receiver state; no heap allocation.
 - Fixed 96-byte line buffer, including sentence start and terminator space.
 - At most 32 UART bytes consumed per main-loop service call.
+- Every complete synchronous STS record invokes one additional instance of
+  that same 32-byte-bounded service. This prevents periodic health and
+  `CONFIG?` output bursts from starving UART0 without weakening capture-first
+  main-loop ordering or creating an unbounded drain. A startup guard makes the
+  interleave a no-op until the RX-only UART is initialized.
 - RMC requires a checksum-valid sentence, status `A`, syntactically valid UTC,
   and a six-digit date.
 - GGA requires a checksum-valid sentence, non-zero fix quality, non-zero
@@ -107,4 +112,5 @@ timestamps.
 - a long disconnect, receiver identity epoch increment and continued inhibit;
 - source-level proof that GPIO0 is never UART-mapped and no UART write API is
   present; and
-- capture-first, statically bounded service ordering.
+- capture-first, statically bounded service ordering, including bounded
+  receiver interleaving between synchronous STS records.

@@ -315,6 +315,7 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
 
 namespace {
 OtisGnssReceiver live_receiver = {};
+bool live_receiver_started = false;
 }
 
 bool otis_gnss_receiver_begin(void) {
@@ -323,6 +324,7 @@ bool otis_gnss_receiver_begin(void) {
   // PIN_SERIAL1_RX/D0/GPIO1 and PIN_SERIAL1_TX/D1/GPIO0. Configure only the
   // receive pin for UART. The TX pin remains high-impedance SIO input, and this
   // module exposes no write function.
+  live_receiver_started = false;
   uart_init(uart0, OTIS_GNSS_UART_BAUD);
   uart_set_format(uart0, 8u, 1u, UART_PARITY_NONE);
   uart_set_hw_flow(uart0, false, false);
@@ -333,6 +335,7 @@ bool otis_gnss_receiver_begin(void) {
   gpio_set_function(OTIS_PIN_GNSS_RX, GPIO_FUNC_UART);
   gpio_disable_pulls(OTIS_PIN_GNSS_RX);
   otis_gnss_receiver_reset(&live_receiver, millis());
+  live_receiver_started = true;
   return true;
 #else
   return false;
@@ -341,6 +344,7 @@ bool otis_gnss_receiver_begin(void) {
 
 void otis_gnss_receiver_service(uint32_t now_ms) {
 #if OTIS_ENABLE_GNSS_RECEIVER
+  if (!live_receiver_started) return;
   otis_gnss_receiver_note_time(&live_receiver, now_ms,
                                OTIS_GNSS_RECONNECT_GAP_MS);
   uint8_t remaining = OTIS_GNSS_SERVICE_BYTE_BUDGET;
