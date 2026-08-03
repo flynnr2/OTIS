@@ -163,11 +163,15 @@ def test_only_stage6_profile_consumes_accepted_backend_qualification() -> None:
         for profile in candidate_profiles
         if profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "1"
     ]
-    assert qualified == ["cx317_pps_gated_i_only_preview"]
+    assert qualified == [
+        "cx317_pps_gated_i_only_preview",
+        "cx317_bounded_active_campaign_a",
+        "cx317_bounded_active_campaign_b",
+    ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
         for profile in candidate_profiles
-        if profile["id"] != "cx317_pps_gated_i_only_preview"
+        if profile["id"] not in qualified
     )
 
     production_sources = "\n".join(

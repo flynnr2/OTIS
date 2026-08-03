@@ -128,6 +128,22 @@ bool parse_gga(OtisGnssReceiver *receiver, char **fields, size_t count,
   return true;
 }
 
+bool parse_gsa(OtisGnssReceiver *receiver, char **fields, size_t count,
+               uint32_t now_ms) {
+  if (count < 3u || strlen(fields[0]) < 5u) return false;
+  uint8_t fix_dimension = 0u;
+  if (!parse_u8(fields[2], 3u, &fix_dimension) || fix_dimension < 1u)
+    return false;
+  // GSA Mode 2 is the explicit no-fix/2D/3D dimension. It is deliberately
+  // kept distinct from GGA fix quality and from the one-pulse-per-second pin.
+  receiver->gsa_seen = true;
+  receiver->gsa_count++;
+  receiver->last_gsa_ms = now_ms;
+  receiver->gsa_repair_epoch = receiver->parser_fault_epoch;
+  receiver->fix_dimension = fix_dimension;
+  return true;
+}
+
 void parse_complete_line(OtisGnssReceiver *receiver, uint32_t now_ms) {
   receiver->line[receiver->line_length] = '\0';
   if (receiver->line_length < 7u || receiver->line[0] != '$') {
@@ -174,6 +190,8 @@ void parse_complete_line(OtisGnssReceiver *receiver, uint32_t now_ms) {
     parsed = parse_rmc(receiver, fields, field_count, now_ms);
   } else if (strcmp(type, "GGA") == 0) {
     parsed = parse_gga(receiver, fields, field_count, now_ms);
+  } else if (strcmp(type, "GSA") == 0) {
+    parsed = parse_gsa(receiver, fields, field_count, now_ms);
   } else {
     return;
   }
@@ -252,10 +270,12 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
   snapshot->disconnected = receiver->disconnected;
   snapshot->rmc_seen = receiver->rmc_seen;
   snapshot->gga_seen = receiver->gga_seen;
+  snapshot->gsa_seen = receiver->gsa_seen;
   snapshot->rmc_valid = receiver->rmc_valid;
   snapshot->utc_available = receiver->utc_available;
   snapshot->date_available = receiver->date_available;
   snapshot->fix_quality = receiver->fix_quality;
+  snapshot->fix_dimension = receiver->fix_dimension;
   snapshot->satellites = receiver->satellites;
   copy_field(snapshot->talker, sizeof(snapshot->talker), receiver->talker);
   copy_field(snapshot->utc, sizeof(snapshot->utc), receiver->utc);
@@ -269,6 +289,7 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
   snapshot->oversize_count = receiver->oversize_count;
   snapshot->rmc_count = receiver->rmc_count;
   snapshot->gga_count = receiver->gga_count;
+  snapshot->gsa_count = receiver->gsa_count;
 
   const bool rmc_fresh = receiver->rmc_seen &&
                          !elapsed_at_least(now_ms, receiver->last_rmc_ms,
@@ -276,6 +297,13 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
   const bool gga_fresh = receiver->gga_seen &&
                          !elapsed_at_least(now_ms, receiver->last_gga_ms,
                                            maximum_age_ms + 1u);
+  snapshot->gsa_fresh =
+      receiver->gsa_seen &&
+      !elapsed_at_least(now_ms, receiver->last_gsa_ms, maximum_age_ms + 1u);
+  snapshot->gsa_3d = snapshot->gsa_fresh && receiver->fix_dimension == 3u;
+  snapshot->gsa_checksum_requalified =
+      receiver->gsa_seen &&
+      receiver->gsa_repair_epoch == receiver->parser_fault_epoch;
   snapshot->metadata_fresh = rmc_fresh && gga_fresh && !receiver->disconnected;
   snapshot->checksum_requalified =
       receiver->rmc_repair_epoch == receiver->parser_fault_epoch &&

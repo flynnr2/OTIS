@@ -32,6 +32,8 @@ const char *kValidRmc =
     "GPRMC,091626.000,A,2236.2791,N,12017.2818,E,0.32,172.25,160418,,,A";
 const char *kValidGga =
     "GPGGA,091626.000,2236.2791,N,12017.2818,E,1,10,1.00,8.8,M,18.7,M,,";
+const char *kValidGsa =
+    "GPGSA,A,3,04,05,09,12,24,25,29,31,,,,,1.8,1.0,1.5";
 
 void test_valid_and_message_order_variation() {
   OtisGnssReceiver receiver;
@@ -124,6 +126,30 @@ void test_invalid_utc_and_reconnect_identity_epoch() {
   assert(!value.control_eligible);
 }
 
+void test_gsa_dimension_is_separate_and_fresh_for_active_authority() {
+  OtisGnssReceiver receiver;
+  otis_gnss_receiver_reset(&receiver, 0u);
+  feed(&receiver, sentence(kValidRmc), 100u);
+  feed(&receiver, sentence(kValidGga), 100u);
+  OtisGnssReceiverSnapshot value = snapshot(receiver, 100u);
+  assert(value.control_eligible);
+  assert(!value.gsa_seen && !value.gsa_3d);
+
+  feed(&receiver, sentence(kValidGsa), 200u);
+  value = snapshot(receiver, 200u);
+  assert(value.gsa_seen && value.gsa_fresh && value.gsa_3d);
+  assert(value.fix_dimension == 3u);
+  assert(value.fix_quality == 1u);
+  assert(value.gsa_checksum_requalified);
+  assert(value.gsa_count == 1u);
+
+  feed(&receiver, sentence("GPGSA,A,2,,,,,,,,,,,,,9.9,9.9,9.9"), 400u);
+  value = snapshot(receiver, 400u);
+  assert(value.gsa_fresh && !value.gsa_3d && value.fix_dimension == 2u);
+  assert(value.control_eligible);
+  assert(!snapshot(receiver, 3401u).gsa_fresh);
+}
+
 }  // namespace
 
 int main() {
@@ -132,5 +158,6 @@ int main() {
   test_truncated_and_oversize_input();
   test_stale_and_short_fix_loss_return();
   test_invalid_utc_and_reconnect_identity_epoch();
+  test_gsa_dimension_is_separate_and_fresh_for_active_authority();
   return 0;
 }

@@ -143,6 +143,24 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.arguments_valid = parse_u16_code(command + 8, &parsed.code);
   } else if (strcmp(command, "FC0?") == 0) {
     parsed.kind = OtisSerialCommandKind::Fc0Query;
+  } else if (strcmp(command, "ACTIVE?") == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveQuery;
+  } else if (strncmp(command, "ACTIVE LEASE ", 13) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveLease;
+    parsed.text_argument = trim_command(command + 13);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "ACTIVE ARM ", 11) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveArm;
+    parsed.text_argument = trim_command(command + 11);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strcmp(command, "ACTIVE ABORT") == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveAbort;
+  } else if (strncmp(command, "ACTIVE EVIDENCE ", 16) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveEvidence;
+    parsed.text_argument = trim_command(command + 16);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "ACTIVE", 6) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveOther;
   } else if (strcmp(command, "SWEEP?") == 0) {
     parsed.kind = OtisSerialCommandKind::SweepQuery;
   } else if (strncmp(command, "SWEEP LOAD ", 11) == 0) {

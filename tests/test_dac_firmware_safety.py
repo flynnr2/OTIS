@@ -35,7 +35,7 @@ def test_preview_and_status_fail_unavailable_before_explicit_write() -> None:
         encoding="utf-8"
     )
 
-    assert sketch.count("applied_code_known &&") == 5
+    assert sketch.count("applied_code_known &&") == 6
     assert "OtisCx317StaticCodeState cx317_static_code_state" in sketch
     assert 'emit_status(component, "applied_code_known"' in sketch
     assert 'emit_status(component, "last_applied_code", "unavailable"' in sketch

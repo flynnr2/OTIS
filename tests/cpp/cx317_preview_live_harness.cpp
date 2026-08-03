@@ -50,7 +50,7 @@ int main() {
         1u, second, second, second * kTicksPerSecond, counter, 10000000u, 0u, 0u,
     };
     otis_cx317_preview_live_on_boundary(
-        &observation, 10000000u, true, second, &code);
+        &observation, 10000000u, true, second, &code, nullptr);
     for (uint8_t drain = 0u; drain < 16u; ++drain) {
       otis_cx317_preview_live_service_transport();
     }

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "otis_config.h"
+#include "otis_cx317_active_live.h"
 #include "otis_cx317_i_only_engine.h"
 #include "otis_cx317_snapshot_estimator.h"
 #include "otis_protocol.h"
@@ -55,6 +56,8 @@ bool initialized = false;
 bool warmup_boundary_seen = false;
 bool temperature_available = false;
 double temperature_c = 0.0;
+bool selected_estimator_valid = false;
+bool selected_model_applicable = false;
 
 bool enqueue(const char *data, size_t length) {
   if (data == nullptr || length == 0u || length >= kFrameCapacity ||
@@ -214,6 +217,8 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   startup_s = startup_uptime_s;
   settling_until_s = startup_uptime_s;
   initialized = true;
+  selected_estimator_valid = false;
+  selected_model_applicable = false;
   return true;
 #else
   (void)startup_uptime_s;
@@ -249,6 +254,8 @@ void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   (void)applied_code;
   otis_cx317_snapshot_estimator_reset(&estimator);
+  selected_estimator_valid = false;
+  selected_model_applicable = false;
   settling_until_s = uptime_s + kSettlingExclusionS;
   otis_cx317_i_only_engine_note_dac_epoch(&controller, uptime_s);
 #else
@@ -260,13 +267,17 @@ void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
 void otis_cx317_preview_live_on_boundary(
     const OtisPpsCountBoundaryObservation *observation,
     uint32_t interval_count, bool interval_valid, uint32_t uptime_s,
-    const OtisCx317StaticCodeState *static_code) {
+    const OtisCx317StaticCodeState *static_code,
+    OtisCx317ActiveLiveOutcome *active_outcome) {
+  if (active_outcome != nullptr) *active_outcome = {};
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   if (!initialized || observation == nullptr) return;
   const uint32_t warmup_complete_s = startup_s + kStartupWarmupS;
   if (!warmup_boundary_seen && uptime_s >= warmup_complete_s) {
     warmup_boundary_seen = true;
     otis_cx317_snapshot_estimator_reset(&estimator);
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
     if (settling_until_s <= warmup_complete_s)
       otis_cx317_i_only_engine_init(&controller, startup_s);
     OtisCx317PreviewInput input = controller_input(
@@ -280,12 +291,16 @@ void otis_cx317_preview_live_on_boundary(
   }
   if (uptime_s < warmup_complete_s || uptime_s < settling_until_s) {
     otis_cx317_snapshot_estimator_reset(&estimator);
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
     return;
   }
   OtisCx317SpanEstimate span;
   otis_cx317_snapshot_estimator_ingest(
       &estimator, observation->sequence, interval_count, interval_valid, &span);
   if (!interval_valid) {
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
     OtisCx317PreviewInput input = controller_input(
         uptime_s, 0.0, false, false, false, false, static_code);
     OtisCx317PreviewDecision decision;
@@ -307,6 +322,28 @@ void otis_cx317_preview_live_on_boundary(
     input.model_applicable = applicable;
     OtisCx317PreviewDecision decision;
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    selected_estimator_valid = decision.preview_available;
+    selected_model_applicable = applicable;
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+    OtisCx317ActiveLiveDecision active_decision = {
+        control_seq,
+        span.selected_first_sequence,
+        span.last_sequence,
+        uptime_s,
+        decision.current_code,
+        decision.limited_delta_codes,
+        decision.proposed_code,
+        decision.frequency_error_hz,
+        decision.preview_available,
+    };
+    OtisCx317ActiveLiveOutcome local_active_outcome;
+    otis_cx317_active_live_on_decision(&active_decision,
+                                       &local_active_outcome);
+    if (active_outcome != nullptr) *active_outcome = local_active_outcome;
+    if (local_active_outcome.applied)
+      otis_cx317_preview_live_on_dac_applied(local_active_outcome.applied_code,
+                                             uptime_s);
+#endif
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  selected_estimate_seq);
   }
@@ -316,6 +353,7 @@ void otis_cx317_preview_live_on_boundary(
   (void)interval_valid;
   (void)uptime_s;
   (void)static_code;
+  (void)active_outcome;
 #endif
 }
 
@@ -325,6 +363,8 @@ void otis_cx317_preview_live_on_capture_fault(
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   (void)reason;
   otis_cx317_snapshot_estimator_reset(&estimator);
+  selected_estimator_valid = false;
+  selected_model_applicable = false;
   OtisCx317PreviewInput input = controller_input(
       uptime_s, 0.0, false, false, false, false, static_code);
   OtisCx317PreviewDecision decision;
@@ -334,6 +374,18 @@ void otis_cx317_preview_live_on_capture_fault(
   (void)reason;
   (void)uptime_s;
   (void)static_code;
+#endif
+}
+
+void otis_cx317_preview_live_get_authority_state(
+    OtisCx317PreviewAuthorityState *state) {
+  if (state == nullptr) return;
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  state->estimator_valid = selected_estimator_valid;
+  state->model_applicable = selected_model_applicable;
+  state->temperature_valid = temperature_context_valid();
+#else
+  *state = {};
 #endif
 }
 

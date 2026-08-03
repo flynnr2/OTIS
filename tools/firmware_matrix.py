@@ -52,6 +52,11 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
     "OTIS_ENABLE_GNSS_RECEIVER",
     "OTIS_GNSS_UART_TX_ENABLED",
+    "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
+    "OTIS_CX317_ACTIVE_CAMPAIGN",
+    "OTIS_CX317_ACTIVE_START_CODE",
+    "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
+    "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES",
 }
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
@@ -219,6 +224,19 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 f"profile {profile_id} selector set mismatch: "
                 f"missing {sorted(missing_selectors)}, "
                 f"unsupported {sorted(unknown_selectors)}"
+            )
+        if (
+            expectation == "pass"
+            and defines.get("OTIS_ENABLE_CX317_BOUNDED_ACTIVE", "0") == "1"
+            and profile_id
+            not in {
+                "cx317_bounded_active_campaign_a",
+                "cx317_bounded_active_campaign_b",
+            }
+        ):
+            raise MatrixError(
+                "bounded controller-to-DAC reachability is restricted to "
+                "the two dedicated programme profiles"
             )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(

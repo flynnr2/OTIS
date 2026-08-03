@@ -55,6 +55,8 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx317_fixed_code_baseline",
         "cx317_pps_gated_open_loop",
         "cx317_pps_gated_i_only_preview",
+        "cx317_bounded_active_campaign_a",
+        "cx317_bounded_active_campaign_b",
         "cx317_pps_gated_gnss_smoke",
         "cx317_pps_gated_gnss_actuator_preflight",
         "phase4_observe_only",
@@ -70,9 +72,37 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "pseudo_pps_loopback",
         "invalid_pseudo_pps_nonisolated_resources",
         "invalid_gnss_uart_tx_enabled",
+        "invalid_active_campaign_a_parameters",
+        "invalid_active_missing_gnss",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 17
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 5
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 19
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 7
+
+
+def test_only_exact_programme_profiles_have_active_controller_reachability() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    active = {
+        profile["id"]: profile["defines"]
+        for profile in matrix["profiles"]
+        if profile["expect"] == "pass"
+        and profile["defines"].get("OTIS_ENABLE_CX317_BOUNDED_ACTIVE") == "1"
+    }
+
+    assert set(active) == {
+        "cx317_bounded_active_campaign_a",
+        "cx317_bounded_active_campaign_b",
+    }
+    assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA950u"
+    assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "16u"
+    assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "336u"
+    assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
+    assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "8u"
+    assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "168u"
+    for defines in active.values():
+        assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
+        assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
+        assert defines["OTIS_DAC_MIN_CODE"] == "0xA800u"
+        assert defines["OTIS_DAC_MAX_CODE"] == "0xAB00u"
 
 
 def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:

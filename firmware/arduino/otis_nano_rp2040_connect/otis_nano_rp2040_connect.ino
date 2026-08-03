@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "otis_config.h"
@@ -13,6 +15,7 @@
 #include "otis_capture_pio.h"
 #include "otis_capture_ring.h"
 #include "otis_count_observation.h"
+#include "otis_cx317_active_live.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_dac_ad5693r.h"
 #include "otis_emit.h"
@@ -70,6 +73,24 @@ bool boot_capability_status_emitted = false;
 bool run_mode_status_emitted = false;
 bool transport_started = false;
 bool config_query_provenance_emitted = false;
+
+bool parse_active_u32_fields(char *text, uint32_t *values, uint8_t count) {
+  if (text == nullptr || values == nullptr || count == 0u) return false;
+  char *cursor = text;
+  for (uint8_t index = 0u; index < count; ++index) {
+    while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
+      cursor++;
+    if (*cursor == '\0') return false;
+    char *end = nullptr;
+    unsigned long value = strtoul(cursor, &end, 0);
+    if (end == cursor) return false;
+    values[index] = static_cast<uint32_t>(value);
+    cursor = end;
+  }
+  while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
+    cursor++;
+  return *cursor == '\0';
+}
 
 void enter_boot_phase(BootPhase next_phase) {
   runtime_state.boot.phase = next_phase;
@@ -349,6 +370,59 @@ OtisCx317StaticCodeState cx317_static_code_state(void) {
   };
 }
 
+void service_cx317_active_health(void) {
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  const uint32_t now_ms = millis();
+  OtisGnssReceiverSnapshot gnss;
+  otis_gnss_receiver_get_snapshot(now_ms, &gnss);
+  OtisPpsSnapshotBackendStats snapshot;
+  otis_pps_snapshot_backend_get_stats(&snapshot);
+  OtisCaptureIrqReferenceStats d14;
+  otis_capture_irq_get_reference_stats(&d14);
+  OtisPpsDualObserverStats d10;
+  otis_pps_dual_observer_get_stats(&d10);
+  const uint32_t edge_difference =
+      d14.d14_raw_edge_count > d10.d10_raw_edge_count
+          ? d14.d14_raw_edge_count - d10.d10_raw_edge_count
+          : d10.d10_raw_edge_count - d14.d14_raw_edge_count;
+  const bool raw_pps_valid =
+      d14.d14_accepted_pps_count > 0u &&
+      d14.d14_rejected_short_count == 0u &&
+      d14.d14_rejected_long_count == 0u && d10.d10_raw_edge_count > 0u &&
+      d10.d10_short_interval_count == 0u &&
+      d10.d10_long_interval_count == 0u &&
+      d10.d10_buffer_overflow_count == 0u && edge_difference <= 1u &&
+      otis_capture_ring_dropped_count() == 0u &&
+      otis_pps_count_boundary_ring_dropped_count() == 0u &&
+      !snapshot.fault_latched && snapshot.continuity_loss_count == 0u;
+  OtisCx317PreviewAuthorityState preview;
+  otis_cx317_preview_live_get_authority_state(&preview);
+  OtisDacAd5693rStatus dac;
+  otis_dac_ad5693r_get_status(&dac);
+  const bool applied_confirmed =
+      dac.initialized && dac.applied_code_known && dac.last_write_ok &&
+      dac.last_requested_code == dac.last_applied_code;
+  const OtisCx317ActiveLiveHealth health = {
+      snapshot.session,
+      gnss.control_eligible && gnss.gsa_checksum_requalified,
+      gnss.identity_stable,
+      gnss.gsa_3d,
+      raw_pps_valid,
+      runtime_state.tcxo.valid_for_control &&
+          runtime_state.tcxo.last_observation_valid &&
+          !runtime_state.tcxo.fault_after_startup,
+      preview.estimator_valid,
+      preview.model_applicable,
+      preview.temperature_valid,
+      applied_confirmed,
+      dac.last_applied_code,
+      otis_transport_ready(),
+  };
+  otis_cx317_active_live_update_health(&health, now_ms / 1000u);
+  otis_cx317_active_live_service(now_ms / 1000u);
+#endif
+}
+
 const char *edge_string(char edge) {
   if (edge == 'R') {
     return OTIS_EDGE_RISING;
@@ -392,6 +466,7 @@ void emit_pps_count_boundary(
   bool window_completed = otis_count_observation_on_pps_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
   const OtisCx317StaticCodeState cx317_code = cx317_static_code_state();
+  OtisCx317ActiveLiveOutcome active_outcome;
   otis_cx317_preview_live_on_boundary(
       &observation,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
@@ -400,7 +475,17 @@ void emit_pps_count_boundary(
       // Use the backend's completed validity assessment instead of requiring
       // a numerically zero flag word.
       window_completed && runtime_state.tcxo.last_observation_valid,
-      millis() / 1000u, &cx317_code);
+      millis() / 1000u, &cx317_code, &active_outcome);
+  if (active_outcome.request_sequence != 0u) {
+    otis_emit_dac_step(
+        runtime_state.sequences.dac_seq++, millis(),
+        static_cast<int32_t>(active_outcome.request_sequence),
+        active_outcome.requested_code, active_outcome.applied_code, false, "",
+        "", 0u,
+        active_outcome.applied ? "active_apply" : "active_write_failed",
+        active_outcome.applied ? OTIS_FLAG_NONE
+                               : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  }
   if (window_completed) {
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
@@ -632,6 +717,9 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_cx317_i_only_preview",
                   OTIS_ENABLE_CX317_I_ONLY_PREVIEW, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_cx317_bounded_active",
+                  OTIS_ENABLE_CX317_BOUNDED_ACTIVE, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("phase4_preview", "actuation_authorized", "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_h1_dac_sweep", OTIS_ENABLE_H1_DAC_SWEEP,
@@ -786,6 +874,23 @@ void emit_gnss_receiver_status(uint32_t now_ms) {
                   health_severity, health_flags);
   emit_status_u32("gnss_receiver", "satellite_count", status.satellites,
                   health_severity, health_flags);
+  emit_status("gnss_receiver", "gsa_seen",
+              status.gsa_seen ? "true" : "false", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "gsa_fix_dimension",
+                  status.fix_dimension, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "gsa_3d_fresh",
+              status.gsa_3d ? "true" : "false",
+              status.gsa_3d ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              status.gsa_3d ? OTIS_FLAG_NONE
+                            : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status("gnss_receiver", "gsa_checksum_requalified",
+              status.gsa_checksum_requalified ? "true" : "false",
+              status.gsa_checksum_requalified ? OTIS_SEVERITY_INFO
+                                              : OTIS_SEVERITY_WARN,
+              status.gsa_checksum_requalified
+                  ? OTIS_FLAG_NONE
+                  : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
   emit_status("gnss_receiver", "hdop",
               status.hdop[0] == '\0' ? "unavailable" : status.hdop,
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -859,6 +964,8 @@ void emit_gnss_receiver_status(uint32_t now_ms) {
   emit_status_u32("gnss_receiver", "rmc_count", status.rmc_count,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("gnss_receiver", "gga_count", status.gga_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "gsa_count", status.gsa_count,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 }
 
@@ -1049,6 +1156,7 @@ void emit_protocol_banner_if_serial_ready(void) {
   otis_emit_csv_headers();
   otis_phase4_observe_preview_emit_headers();
   otis_cx317_preview_live_emit_headers();
+  otis_cx317_active_live_emit_headers();
   runtime_state.boot.protocol_banner_emitted = true;
 }
 
@@ -1094,6 +1202,7 @@ void emit_periodic_status(void) {
   otis_count_observation_emit_status(&runtime_state, &status_emit_context);
   otis_phase4_observe_preview_emit_status(&status_emit_context);
   otis_cx317_preview_live_emit_status(&status_emit_context);
+  otis_cx317_active_live_emit_status(&status_emit_context, now_ms / 1000u);
 #if OTIS_ENABLE_GNSS_RECEIVER
   emit_gnss_receiver_status(now_ms);
 #endif
@@ -2049,7 +2158,8 @@ void boot_phase_preview_init(void) {
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
 #elif OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   const bool preview_ready =
-      otis_cx317_preview_live_begin(millis() / 1000u);
+      otis_cx317_preview_live_begin(millis() / 1000u) &&
+      otis_cx317_active_live_begin();
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
 #endif
   complete_boot_phase(BootPhase::PreviewInit);
@@ -2239,6 +2349,14 @@ void emit_fc0_status(void) {
 void handle_dac_set(uint16_t requested_code) {
   emit_status_u16_hex("dac", "requested_code", requested_code,
                       OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  if (!otis_cx317_active_live_manual_start_allowed(requested_code)) {
+    otis_cx317_active_live_abort("nonprogramme_manual_dac_command");
+    emit_status("dac", "set", "rejected_active_profile_start_only",
+                OTIS_SEVERITY_ERROR, OTIS_FLAG_PROFILE_ASSUMPTION);
+    return;
+  }
+#endif
   if (!otis_dac_ad5693r_is_enabled()) {
     emit_status("dac", "set", "rejected_disabled", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
@@ -2258,6 +2376,10 @@ void handle_dac_set(uint16_t requested_code) {
     return;
   }
   bool ok = otis_dac_ad5693r_set_raw(requested_code);
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  otis_cx317_active_live_note_manual_start(requested_code, ok,
+                                           millis() / 1000u);
+#endif
   if (ok) {
     otis_phase4_observe_preview_on_dac_applied(
         requested_code, otis_capture_ticks_now());
@@ -2337,7 +2459,7 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   if (command.kind == OtisSerialCommandKind::Help) {
     emit_status("command", "h1_help",
-                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_SWEEP?_SWEEP_LOAD_name_SWEEP_START_SWEEP_STOP_SWEEP_STEP_SWEEP_CLEAR_SWEEP_ADD_code_dwell_ms_PPSGEN?_PPSGEN_PROFILES?_PPSGEN_ARM_name_PPSGEN_START_PPSGEN_STOP_HELP",
+                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_ACTIVE?_ACTIVE_LEASE_seq_ACTIVE_ARM_seq_nonce_expiry_ACTIVE_ABORT_ACTIVE_EVIDENCE_request_SWEEP?_PPSGEN?_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
@@ -2400,6 +2522,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status_u32("build", "enable_gnss_receiver",
                     OTIS_ENABLE_GNSS_RECEIVER, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_cx317_bounded_active",
+                    OTIS_ENABLE_CX317_BOUNDED_ACTIVE, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("sweep", "default_dwell_ms",
                     OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -2444,6 +2569,65 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     }
   } else if (command.kind == OtisSerialCommandKind::Fc0Query) {
     emit_fc0_status();
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  } else if (command.kind == OtisSerialCommandKind::ActiveQuery) {
+    otis_cx317_active_live_emit_status(&status_emit_context,
+                                       millis() / 1000u);
+  } else if (command.kind == OtisSerialCommandKind::ActiveLease) {
+    uint32_t values[1];
+    const bool parsed = command.arguments_valid &&
+                        parse_active_u32_fields(command.text_argument, values,
+                                                1u);
+    const bool accepted =
+        parsed && otis_cx317_active_live_capture_lease(values[0],
+                                                       millis() / 1000u);
+    emit_status("cx317_active", "capture_lease",
+                accepted ? "accepted" : "rejected", accepted
+                    ? OTIS_SEVERITY_INFO
+                    : OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+  } else if (command.kind == OtisSerialCommandKind::ActiveArm) {
+    uint32_t values[3];
+    const bool parsed = command.arguments_valid &&
+                        parse_active_u32_fields(command.text_argument, values,
+                                                3u);
+    const bool accepted =
+        parsed && otis_cx317_active_live_arm(values[0], values[1], values[2],
+                                             millis() / 1000u);
+    emit_status("cx317_active", "arm",
+                accepted ? "accepted" : "rejected", accepted
+                    ? OTIS_SEVERITY_INFO
+                    : OTIS_SEVERITY_ERROR,
+                OTIS_FLAG_NONE);
+  } else if (command.kind == OtisSerialCommandKind::ActiveAbort) {
+    otis_cx317_active_live_abort("device_abort_command");
+    emit_status("cx317_active", "abort", "accepted", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+  } else if (command.kind == OtisSerialCommandKind::ActiveEvidence) {
+    uint32_t values[1];
+    const bool parsed = command.arguments_valid &&
+                        parse_active_u32_fields(command.text_argument, values,
+                                                1u);
+    const bool accepted =
+        parsed && otis_cx317_active_live_acknowledge_evidence(values[0]);
+    emit_status("cx317_active", "evidence_ack",
+                accepted ? "accepted" : "rejected", accepted
+                    ? OTIS_SEVERITY_INFO
+                    : OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
+  } else if (command.kind == OtisSerialCommandKind::ActiveOther) {
+    emit_status("cx317_active", "command", "rejected_unknown",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
+#else
+  } else if (command.kind == OtisSerialCommandKind::ActiveQuery ||
+             command.kind == OtisSerialCommandKind::ActiveLease ||
+             command.kind == OtisSerialCommandKind::ActiveArm ||
+             command.kind == OtisSerialCommandKind::ActiveAbort ||
+             command.kind == OtisSerialCommandKind::ActiveEvidence ||
+             command.kind == OtisSerialCommandKind::ActiveOther) {
+    emit_status("cx317_active", "command", "rejected_disabled",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
 #if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
   } else if (command.kind == OtisSerialCommandKind::PpsGenProfilesQuery) {
     emit_pseudo_pps_profiles();
@@ -2608,10 +2792,19 @@ void loop() {
   // bytes into that CSV frame; IRQ/PIO capture continues into its own ring.
   otis_pps_dual_observer_service();
   otis_capture_backend_service();
+  if (otis_cx317_active_live_transport_busy()) {
+    otis_cx317_active_live_service_transport();
+    otis_gnss_receiver_service(millis());
+    otis_cx317_active_live_service(millis() / 1000u);
+    otis_status_led_poll(millis());
+    return;
+  }
   if (otis_phase4_observe_preview_transport_busy() ||
       otis_cx317_preview_live_transport_busy()) {
     otis_phase4_observe_preview_service_transport();
     otis_cx317_preview_live_service_transport();
+    otis_gnss_receiver_service(millis());
+    otis_cx317_active_live_service(millis() / 1000u);
     otis_status_led_poll(millis());
     return;
   }
@@ -2624,6 +2817,7 @@ void loop() {
   drain_capture_ring();
   otis_gnss_receiver_service(millis());
   service_tcxo_gate();
+  service_cx317_active_health();
   service_serial_commands();
   service_loopback_output();
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
@@ -2644,6 +2838,9 @@ void loop() {
   service_environment_sensors();
   emit_periodic_status();
   otis_phase4_observe_preview_service_transport();
-  otis_cx317_preview_live_service_transport();
+  if (otis_cx317_active_live_transport_busy())
+    otis_cx317_active_live_service_transport();
+  else
+    otis_cx317_preview_live_service_transport();
   otis_status_led_poll(millis());
 }

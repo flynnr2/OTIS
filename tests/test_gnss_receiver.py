@@ -67,12 +67,17 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert loop.index("otis_capture_backend_service()") < loop.index(
         "otis_gnss_receiver_service(millis())"
     )
-    assert loop.index("drain_pps_count_boundary_ring()") < loop.index(
+    main_path = loop[loop.index("emit_protocol_banner_if_serial_ready()") :]
+    assert main_path.index("drain_pps_count_boundary_ring()") < main_path.index(
         "otis_gnss_receiver_service(millis())"
     )
-    assert loop.index("drain_capture_ring()") < loop.index(
+    assert main_path.index("drain_capture_ring()") < main_path.index(
         "otis_gnss_receiver_service(millis())"
     )
+    assert "otis_gnss_receiver_service(millis())" in loop[
+        loop.index("if (otis_cx317_active_live_transport_busy())") :
+        loop.index("emit_protocol_banner_if_serial_ready()")
+    ]
 
 
 def test_status_output_interleaves_bounded_gnss_service() -> None:
