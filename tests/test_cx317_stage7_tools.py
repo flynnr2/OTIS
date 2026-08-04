@@ -21,6 +21,7 @@ from host.otis_tools.cx317_stage7_shadow_monitor import (
 from host.otis_tools.cx317_stage7_supervisor import (
     PART_B_DURATION_S,
     Stage7Supervisor,
+    _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
 )
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
@@ -291,6 +292,31 @@ def test_stage7_supervisor_stops_on_partition_or_transport_loss(
                 ("dual_core", "telemetry_dropped"): "1",
             }
         )
+
+
+def test_stage7_arms_only_for_the_next_cadence_eligible_interval(
+    tmp_path: Path,
+) -> None:
+    controls = tmp_path / "control_previews_v1.csv"
+    header = "decision_timestamp_ticks,preview_available,decision_reason_code\n"
+    controls.write_text(header, encoding="utf-8")
+    assert not _next_selected_interval_is_cadence_eligible(controls)
+
+    with controls.open("a", encoding="utf-8") as handle:
+        handle.write("28800000000,false,fresh_estimator_support\n")
+    assert _next_selected_interval_is_cadence_eligible(controls)
+
+    with controls.open("a", encoding="utf-8") as handle:
+        handle.write("38400000000,true,inside_evidence_deadband\n")
+    assert not _next_selected_interval_is_cadence_eligible(controls)
+
+    with controls.open("a", encoding="utf-8") as handle:
+        handle.write("48000000000,false,decision_cadence_hold\n")
+    assert not _next_selected_interval_is_cadence_eligible(controls)
+
+    with controls.open("a", encoding="utf-8") as handle:
+        handle.write("57600000000,false,decision_cadence_hold\n")
+    assert _next_selected_interval_is_cadence_eligible(controls)
 
 
 def test_frozen_shadow_exactly_replays_sealed_campaign_a_and_b() -> None:

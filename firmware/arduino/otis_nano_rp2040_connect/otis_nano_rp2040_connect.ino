@@ -952,8 +952,7 @@ void service_dual_core_outputs(void) {
 }
 
 bool dual_core_evidence_transport_busy(void) {
-  return dual_core_evidence_transport_active &&
-         dual_core_evidence_transport_sent > 0u;
+  return dual_core_evidence_transport_active;
 }
 
 void service_dual_core_evidence_transport(void) {
@@ -3890,6 +3889,13 @@ void loop() {
   }
   service_dual_core_outputs();
   service_dual_core_evidence_transport();
+  // The call above can start a multi-chunk EST/CTL/ACT frame in this same
+  // loop iteration.  Re-check before any status or command producer writes to
+  // USB, otherwise its STS bytes can split the newly-started evidence record.
+  if (dual_core_evidence_transport_busy()) {
+    otis_status_led_poll(millis());
+    return;
+  }
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
   emit_resource_ownership_status();

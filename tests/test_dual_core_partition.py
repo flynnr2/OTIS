@@ -154,6 +154,23 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
     ):
         assert interleaving_writer not in busy_guard
 
+    evidence_start = dual_core0.index(
+        "service_dual_core_evidence_transport();", ordinary_writers_start
+    )
+    banner_start = dual_core0.index(
+        "emit_protocol_banner_if_serial_ready();", evidence_start
+    )
+    newly_started_frame_guard = dual_core0[evidence_start:banner_start]
+    assert "if (dual_core_evidence_transport_busy())" in newly_started_frame_guard
+    assert "return;" in newly_started_frame_guard
+
+    evidence_busy = sketch[
+        sketch.index("bool dual_core_evidence_transport_busy(void)") :
+        sketch.index("void service_dual_core_evidence_transport(void)")
+    ]
+    assert "return dual_core_evidence_transport_active;" in evidence_busy
+    assert "dual_core_evidence_transport_sent > 0u" not in evidence_busy
+
 
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(

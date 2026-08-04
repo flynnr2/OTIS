@@ -42,6 +42,9 @@ PART_B_DURATION_S = 24 * 60 * 60
 PART_A_SERVICE_LOAD_QUERIES = 60
 PART_B_SERVICE_LOAD_STARTS_S = (3600, 25200, 46800, 68400)
 PART_B_SERVICE_LOAD_QUERIES = 60
+CAPTURE_TICKS_PER_SECOND = 16_000_000
+SELECTED_INTERVAL_S = 600
+DECISION_CADENCE_S = 1800
 
 
 def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str, str]]:
@@ -83,6 +86,34 @@ def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str
 def _latest_preview(path: Path) -> dict[str, str] | None:
     rows = _read_csv(path)
     return rows[-1] if rows else None
+
+
+def _next_selected_interval_is_cadence_eligible(path: Path) -> bool:
+    """Conservatively predict whether an arm can be consumed next interval.
+
+    The device only consumes an authorization when the controller evaluates an
+    eligible decision.  Selected estimates arrive every 600 seconds, while the
+    frozen controller decision cadence is 1800 seconds.  Arming before either
+    intervening cadence-hold interval leaves the one-shot authorization unused
+    and therefore correctly faults when its short lifetime expires.
+    """
+    rows = _read_csv(path)
+    if not rows:
+        return False
+    eligible = [row for row in rows if row.get("preview_available") == "true"]
+    if not eligible:
+        return True
+    try:
+        latest_ticks = int(rows[-1]["decision_timestamp_ticks"])
+        last_eligible_ticks = int(eligible[-1]["decision_timestamp_ticks"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    next_selected_ticks = latest_ticks + (
+        SELECTED_INTERVAL_S * CAPTURE_TICKS_PER_SECOND
+    )
+    return next_selected_ticks - last_eligible_ticks >= (
+        DECISION_CADENCE_S * CAPTURE_TICKS_PER_SECOND
+    )
 
 
 def _parse_utc_epoch(value: str) -> float:
@@ -438,6 +469,9 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             and arm_eligible
             and evidence_clear
             and progress >= ARM_PROGRESS_THRESHOLD
+            and _next_selected_interval_is_cadence_eligible(
+                self.run_dir / CONTROL_CSV
+            )
         ):
             uptime = int(health[("cx317_active", "uptime_s")])
             self.state["authorization_sequence"] += 1
