@@ -40,6 +40,7 @@ def _validate_raw_serial_framing(run_dir: Path) -> list[str]:
         return []
     failures: list[str] = []
     violation_count = 0
+    protocol_started = False
 
     def record_failure(message: str) -> None:
         nonlocal violation_count
@@ -53,6 +54,15 @@ def _validate_raw_serial_framing(run_dir: Path) -> list[str]:
             if not line or line.startswith(b"# OTIS_HOST "):
                 continue
             if line.startswith(b","):
+                # Opening a USB CDC port can begin in the middle of a
+                # bootloader/core diagnostic that was already buffered by the
+                # device.  Before the first OTIS protocol header or record,
+                # that leading acquisition fragment cannot have interrupted
+                # an OTIS record in this raw log.  Once the protocol stream has
+                # started, however, the same shape is an orphaned continuation
+                # and remains a hard framing failure.
+                if not protocol_started:
+                    continue
                 record_failure(
                     f"raw/serial.log: line {line_number} is an orphaned device-record continuation; "
                     "a host marker may have interrupted the raw record"
@@ -63,8 +73,12 @@ def _validate_raw_serial_framing(run_dir: Path) -> list[str]:
                 row = next(csv.reader([text]))
             except (UnicodeDecodeError, csv.Error):
                 continue
+            if row and row[0] == "record_type":
+                protocol_started = True
+                continue
             if not row or row[0] not in RECORD_CONTRACTS:
                 continue
+            protocol_started = True
             contract = RECORD_CONTRACTS[row[0]]
             expected_columns = len(CONTRACT_FIELDS[contract])
             if len(row) != expected_columns:

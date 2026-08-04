@@ -74,6 +74,23 @@ def test_validate_run_rejects_host_marker_inside_raw_device_record(tmp_path: Pat
     assert "orphaned device-record continuation" in errors
 
 
+def test_validate_run_accepts_fragment_acquired_before_protocol_start(
+    tmp_path: Path, capsys
+) -> None:
+    run_dir = _copy_example(tmp_path)
+    raw_dir = run_dir / "raw"
+    raw_dir.mkdir(exist_ok=True)
+    (raw_dir / "serial.log").write_bytes(
+        b'# OTIS_HOST {"event":"serial_opened"}\n'
+        b",wd_s3=0x00010100,clk_ref_ctrl=0x00000002\n"
+        b"record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags\n"
+        b"STS,1,1,1,rp2040_timer0,system,state,ready,INFO,0\n"
+    )
+
+    assert validate_run(run_dir) == 0
+    assert "orphaned device-record continuation" not in capsys.readouterr().err
+
+
 def test_validate_bringup_templates() -> None:
     for run_dir in TEMPLATE_EXAMPLES:
         assert validate_run(run_dir) == 0
