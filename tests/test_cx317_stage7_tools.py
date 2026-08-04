@@ -8,6 +8,7 @@ import pytest
 
 from host.otis_tools.cx317_stage7_analyze import (
     _historical_shadow_replays,
+    _latest_health_rows,
     _series_metrics,
 )
 from host.otis_tools.cx317_stage7_manifest import create_stage7_manifest
@@ -191,6 +192,36 @@ def test_stage7_time_series_metrics_do_not_assume_independence() -> None:
     assert metrics["successive_estimates_assumed_independent"] is False
     assert 0 < metrics["effective_sample_size_initial_positive_acf"] <= 6
     assert metrics["authoritative_boundary_crossings"] == 2
+
+
+def test_stage7_analyzer_uses_run_manifest_validation_sets() -> None:
+    source = Path("host/otis_tools/cx317_stage7_analyze.py").read_text(
+        encoding="utf-8"
+    )
+    assert "manifest.known_channels" in source
+    assert "manifest.known_domains" in source
+    assert "manifest.channels" not in source
+    assert "manifest.domains" not in source
+
+
+def test_stage7_analyzer_reduces_loaded_health_rows() -> None:
+    latest = _latest_health_rows(
+        [
+            {
+                "record_type": "STS",
+                "component": "dual_core",
+                "status_key": "telemetry_dropped",
+                "status_value": "0",
+            },
+            {
+                "record_type": "STS",
+                "component": "dual_core",
+                "status_key": "telemetry_dropped",
+                "status_value": "7",
+            },
+        ]
+    )
+    assert latest[("dual_core", "telemetry_dropped")] == "7"
 
 
 def _supervisor(tmp_path: Path) -> Stage7Supervisor:

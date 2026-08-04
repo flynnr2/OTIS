@@ -142,6 +142,31 @@ void bounded_core0_stall_preserves_raw_evidence() {
   assert(!otis_dual_core_take_observation(&empty));
 }
 
+void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST; ++sequence) {
+    const OtisTelemetryMessage summary = telemetry(sequence);
+    assert(otis_dual_core_publish_telemetry(&summary));
+  }
+
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(!stats.fail_static);
+  assert(stats.telemetry_depth ==
+         OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST);
+  assert(stats.telemetry_high_water ==
+         OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST);
+  assert(stats.telemetry_dropped == 0u);
+
+  for (uint32_t expected = 1u;
+       expected <= OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST; ++expected) {
+    OtisTelemetryMessage actual = {};
+    assert(otis_dual_core_take_telemetry(&actual));
+    assert(actual.sequence == expected);
+  }
+}
+
 void complete_evidence_frames_cross_by_value_in_order() {
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u; sequence <= OTIS_EVIDENCE_QUEUE_DEPTH;
@@ -335,6 +360,7 @@ void stale_ack_and_timeout_fault_without_retry() {
 int main() {
   full_build_identity_crosses_telemetry_queue_without_truncation();
   bounded_core0_stall_preserves_raw_evidence();
+  stage7_concurrent_health_and_active_query_burst_does_not_drop();
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();
   non_droppable_exhaustion_is_fail_static();

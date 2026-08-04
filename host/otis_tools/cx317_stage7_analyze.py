@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
-from .cx317_active_campaign import _latest_health, _read_csv, validate_transaction_row
+from .cx317_active_campaign import _read_csv, validate_transaction_row
 from .cx317_i_only_preview_replay import IOnlyPreviewEngine, Observation, load_post_campaign_policy
 from .cx317_stage6_dual_core_analyze import _estimator_parity, _rows_for
 from .cx317_stage6_live_analyze import (
@@ -105,6 +105,18 @@ def _bool(value: str) -> bool:
     if value not in {"true", "false"}:
         raise ValueError(f"invalid serialized bool {value!r}")
     return value == "true"
+
+
+def _latest_health_rows(
+    rows: list[dict[str, str]],
+) -> dict[tuple[str, str], str]:
+    latest: dict[tuple[str, str], str] = {}
+    for row in rows:
+        if row.get("record_type") == "STS":
+            latest[(row.get("component", ""), row.get("status_key", ""))] = (
+                row.get("status_value", "")
+            )
+    return latest
 
 
 def _mapped_state(value: str) -> str:
@@ -1101,8 +1113,8 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             path,
             CsvValidationContext(
                 str(entry["contract"]),
-                frozenset(channel.channel_id for channel in manifest.channels),
-                frozenset(domain.name for domain in manifest.domains),
+                manifest.known_channels,
+                manifest.known_domains,
             ),
         )
         if result.errors:
@@ -1150,7 +1162,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
 
-    latest = _latest_health(health_rows)
+    latest = _latest_health_rows(health_rows)
     queue_ok = (
         latest.get(("dual_core", "partition_fault")) == "none"
         and latest.get(("dual_core", "fail_static")) == "false"

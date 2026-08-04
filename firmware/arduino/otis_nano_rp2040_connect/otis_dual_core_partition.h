@@ -9,7 +9,15 @@ constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
-constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 96u;
+// The Stage 7 timing-health publication reaches a measured 93-message burst.
+// ACTIVE? independently publishes 22 active-status messages from Core 1.  The
+// two clocks can align during endurance, so keep enough space for both bursts
+// plus margin while Core 0 is occupied with the serial transport.
+constexpr uint32_t OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST = 115u;
+constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 128u;
+static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
+                  OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
+              "telemetry queue must absorb concurrent health and ACTIVE? bursts");
 
 enum class OtisPartitionFault : uint8_t {
   None,
