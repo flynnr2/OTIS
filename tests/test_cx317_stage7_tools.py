@@ -337,6 +337,72 @@ def test_stage7_arms_only_for_the_next_cadence_eligible_interval(
     assert _next_selected_interval_is_cadence_eligible(controls, estimates)
 
 
+def test_stage7_does_not_rearm_from_stale_high_progress_after_control(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    estimates = supervisor.run_dir / "csv/estimates_v2.csv"
+    controls.write_text(
+        "decision_timestamp_ticks,preview_available,decision_reason_code,"
+        "est_input_ref,decision_id,limited_delta_codes\n"
+        "38427843600,true,inside_evidence_deadband,est:1,ctl:1,0\n"
+        "48027796864,false,decision_cadence_hold,est:2,ctl:2,\n"
+        "57627748416,false,decision_cadence_hold,est:3,ctl:3,\n",
+        encoding="utf-8",
+    )
+    estimates.write_text(
+        "estimate_id,source_count_seq\n"
+        "est:1,2399\n"
+        "est:2,2999\n"
+        "est:3,3599\n",
+        encoding="utf-8",
+    )
+    supervisor.state.update(
+        {
+            "arm_pending": False,
+            "duration_elapsed": False,
+            "manual_start_sent": True,
+            "authorization_sequence": 1,
+        }
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "true",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "arm_eligible"): "true",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "selected_interval_count"): "598",
+        ("cx317_active", "uptime_s"): "3600",
+    }
+
+    # This is the exact V5 race: CTL3 is new but ACTIVE? still reports the
+    # previous estimator epoch's high-water progress.  It must not arm.
+    supervisor._maybe_start_or_arm(health)
+    assert commands == []
+    assert supervisor.state["authorization_sequence"] == 1
+
+    # Observe the reset for the epoch after CTL3, then arm only once genuine
+    # progress reaches the frozen threshold near CTL4.
+    health[("cx317_active", "selected_interval_count")] = "0"
+    supervisor._maybe_start_or_arm(health)
+    assert commands == []
+    health[("cx317_active", "selected_interval_count")] = "519"
+    supervisor._maybe_start_or_arm(health)
+    assert commands == []
+    health[("cx317_active", "selected_interval_count")] = "520"
+    health[("cx317_active", "uptime_s")] = "4120"
+    supervisor._maybe_start_or_arm(health)
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE ARM 2 ")
+    assert supervisor.state["arm_pending"] is True
+
+
 def test_frozen_shadow_exactly_replays_sealed_campaign_a_and_b() -> None:
     check, replays = _historical_shadow_replays()
     assert check.passed

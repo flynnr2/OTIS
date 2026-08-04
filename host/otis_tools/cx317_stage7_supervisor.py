@@ -134,6 +134,8 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         super().__init__(**kwargs)
         self.part = part
         self._last_arm_monotonic: float | None = None
+        self._arm_progress_control_ref: str | None = None
+        self._arm_progress_reset_seen = False
         self._next_service_command_monotonic = 0.0
         self.state.setdefault("stage7_part", part)
         self.state.setdefault("response_count", 0)
@@ -148,6 +150,29 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self.state.setdefault("duration_elapsed", False)
         self.state.setdefault("arm_sent_at_utc", None)
         self._save()
+
+    def _arm_progress_epoch_ready(
+        self, preview: dict[str, str] | None, progress: int
+    ) -> bool:
+        """Require a fresh estimator-progress reset after every control row.
+
+        CTL transport and ACTIVE? health transport are independent.  A newly
+        received CTL can therefore be paired briefly with the preceding
+        selected_interval_count=598 status.  Treating that stale high-water
+        value as progress toward the *next* selected estimate arms just after
+        the decision instead of just before the following one.  A low progress
+        observation after the latest CTL proves that the next estimator epoch
+        has actually begun; fail conservatively until that reset is observed.
+        """
+        control_ref = None
+        if preview is not None:
+            control_ref = preview.get("decision_id") or preview.get("control_seq")
+        if control_ref != self._arm_progress_control_ref:
+            self._arm_progress_control_ref = control_ref
+            self._arm_progress_reset_seen = False
+        if progress < ARM_PROGRESS_THRESHOLD:
+            self._arm_progress_reset_seen = True
+        return self._arm_progress_reset_seen
 
     def _process_transactions(self) -> None:
         path = self.run_dir / ACTIVE_CSV
@@ -459,6 +484,12 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         if correction_count >= self.spec.correction_limit:
             return
         preview = _latest_preview(self.run_dir / CONTROL_CSV)
+        progress = int(
+            health.get(("cx317_active", "selected_interval_count"), "0")
+        )
+        arm_progress_epoch_ready = self._arm_progress_epoch_ready(
+            preview, progress
+        )
         if preview is not None:
             try:
                 limited_delta = int(preview.get("limited_delta_codes") or "0")
@@ -466,9 +497,6 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                 limited_delta = 0
             if preview.get("preview_available") == "true" and limited_delta == 0:
                 return
-        progress = int(
-            health.get(("cx317_active", "selected_interval_count"), "0")
-        )
         arm_eligible = health.get(("cx317_active", "arm_eligible")) == "true"
         evidence_clear = (
             health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
@@ -478,6 +506,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             and arm_eligible
             and evidence_clear
             and progress >= ARM_PROGRESS_THRESHOLD
+            and arm_progress_epoch_ready
             and _next_selected_interval_is_cadence_eligible(
                 self.run_dir / CONTROL_CSV,
                 self.run_dir / ESTIMATES_CSV,
