@@ -193,13 +193,20 @@ struct OtisEvidenceFrameMessage {
   char data[OTIS_EVIDENCE_FRAME_CAPACITY];
 };
 
+// A Stage 7 build identity is two full SHA-256 digests separated by a colon:
+// 64 + 1 + 64 characters, plus the terminating NUL.  Keep telemetry values
+// large enough to carry that identity across cores without truncation.
+constexpr uint16_t OTIS_TELEMETRY_VALUE_CAPACITY = 160u;
+static_assert(OTIS_TELEMETRY_VALUE_CAPACITY >= 130u,
+              "telemetry value must preserve a full build identity");
+
 struct OtisTelemetryMessage {
   uint32_t sequence;
   uint64_t timestamp_ticks;
   uint32_t flags;
   char component[24];
   char key[32];
-  char value[96];
+  char value[OTIS_TELEMETRY_VALUE_CAPACITY];
   char severity[12];
 };
 

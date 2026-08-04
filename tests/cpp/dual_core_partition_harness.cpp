@@ -29,6 +29,31 @@ OtisTelemetryMessage telemetry(uint32_t sequence) {
   return value;
 }
 
+void full_build_identity_crosses_telemetry_queue_without_truncation() {
+  static const char kBuildIdentity[] =
+      "73881e344f102ce8b66668f703d12fb453204c63aadc3746efcb9f3de2729aa1:"
+      "f3e4ebac336bf6892064f662b77d54698f8c2b5d3c03113749f7a63d843e23f0";
+  static_assert(sizeof(kBuildIdentity) == 130u,
+                "fixture must contain two SHA-256 digests and a colon");
+  static_assert(OTIS_TELEMETRY_VALUE_CAPACITY >= sizeof(kBuildIdentity),
+                "telemetry contract cannot carry the build identity");
+
+  otis_dual_core_partition_reset();
+  OtisTelemetryMessage published = {};
+  published.sequence = 1u;
+  strcpy(published.component, "cx317_active");
+  strcpy(published.key, "build_identity");
+  const int used = snprintf(published.value, sizeof(published.value), "%s",
+                            kBuildIdentity);
+  assert(used == 129);
+  strcpy(published.severity, "INFO");
+  assert(otis_dual_core_publish_telemetry(&published));
+
+  OtisTelemetryMessage received = {};
+  assert(otis_dual_core_take_telemetry(&received));
+  assert(strcmp(received.value, kBuildIdentity) == 0);
+}
+
 OtisEvidenceFrameMessage evidence(uint32_t sequence) {
   OtisEvidenceFrameMessage value = {};
   value.sequence = sequence;
@@ -308,6 +333,7 @@ void stale_ack_and_timeout_fault_without_retry() {
 }  // namespace
 
 int main() {
+  full_build_identity_crosses_telemetry_queue_without_truncation();
   bounded_core0_stall_preserves_raw_evidence();
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();

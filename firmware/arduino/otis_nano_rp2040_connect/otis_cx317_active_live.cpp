@@ -1004,7 +1004,11 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->arm_eligible =
       otis_cx317_active_arm_eligibility_valid(&current_eligibility);
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-  status->fail_static = otis_dual_core_fail_static();
+  status->fail_static =
+      otis_dual_core_fail_static() ||
+      (transaction_bound &&
+       (transaction.state == OtisCx317ActiveState::Fault ||
+        transaction.state == OtisCx317ActiveState::Aborted));
 #else
   status->fail_static = transaction_bound &&
                         (transaction.state == OtisCx317ActiveState::Fault ||

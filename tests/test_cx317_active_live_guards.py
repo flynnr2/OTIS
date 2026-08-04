@@ -210,6 +210,30 @@ def test_status_formatting_cannot_mutate_controller_state() -> None:
     assert "otis_cx317_active_actuator_apply_once" not in emitter
 
 
+def test_cross_core_status_preserves_full_build_identity_and_aborted_state() -> None:
+    contract = (FIRMWARE / "otis_dual_core_contract.h").read_text(
+        encoding="utf-8"
+    )
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    capacity_match = re.search(
+        r"OTIS_TELEMETRY_VALUE_CAPACITY\s*=\s*(\d+)u", contract
+    )
+
+    assert capacity_match is not None
+    assert int(capacity_match.group(1)) >= 130
+    assert "char value[OTIS_TELEMETRY_VALUE_CAPACITY]" in contract
+    assert "telemetry value must preserve a full build identity" in contract
+
+    status = live[live.index("void otis_cx317_active_live_get_status") :]
+    dual_start = status.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION")
+    dual_status = status[dual_start : status.index("#else", dual_start)]
+    assert "otis_dual_core_fail_static()" in dual_status
+    assert "OtisCx317ActiveState::Fault" in dual_status
+    assert "OtisCx317ActiveState::Aborted" in dual_status
+
+
 def test_stage7_dual_core_authority_has_four_durable_phases_and_one_owner() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
