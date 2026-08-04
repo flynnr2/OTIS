@@ -5,6 +5,8 @@ from pathlib import Path
 
 from host.otis_tools.cx317_stage6_dual_core_supervisor import (
     EXPECTED_CODE,
+    EXPECTED_LIVE_IDENTITY,
+    _exact_live_identity,
     _exact_state_ack,
 )
 
@@ -17,7 +19,7 @@ def test_stage6_live_manifest_is_exact_non_actionable_contract() -> None:
     value = json.loads(TEMPLATE.read_text(encoding="utf-8"))
     assert value["template"] is True
     assert value["stage"] == "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW"
-    assert value["firmware"]["git_commit"] == "5d67715373b26a9d49defb84e481413062260909"
+    assert value["firmware"]["git_commit"] == "3862d4b457b50bb4df3e96798389aa37c2482ae5"
     assert value["firmware"]["source_state"] == "clean"
     assert value["controller_preview"]["active_live_update_codes"] == 0
     assert value["actionable"] is False
@@ -44,6 +46,19 @@ def test_state_ack_requires_one_exact_idempotent_a82a_row(tmp_path: Path) -> Non
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"DAC,1,2,dac:2,2,rp2040_timer0,manual_apply,{EXPECTED_CODE},{EXPECTED_CODE},0,0,,,0\n")
     assert not _exact_state_ack(path)
+
+
+def test_preflight_requires_exact_firmware_build_and_gnss_identity(tmp_path: Path) -> None:
+    path = tmp_path / "health.csv"
+    header = "record_type,schema_version,status_seq,timestamp_ticks,time_domain,component,status_key,status_value,severity,flags\n"
+    rows = [
+        f"STS,1,{index},{index},rp2040_timer0,{component},{key},{value},info,0"
+        for index, ((component, key), value) in enumerate(EXPECTED_LIVE_IDENTITY.items())
+    ]
+    path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
+    assert _exact_live_identity(path)
+    path.write_text(header + "\n".join(rows[:-1]) + "\n", encoding="utf-8")
+    assert not _exact_live_identity(path)
 
 
 def test_stage6_supervisor_has_only_one_predetermined_dac_command() -> None:

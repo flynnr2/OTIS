@@ -16,6 +16,22 @@ from .serial_commands import send_command_to_fifo
 
 
 EXPECTED_CODE = 0xA82A
+EXPECTED_LIVE_IDENTITY = {
+    ("firmware", "version"): "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1",
+    ("firmware", "config_id"): "cx317_pps_gated_i_only_preview",
+    ("firmware", "git_commit"): "3862d4b457b50bb4df3e96798389aa37c2482ae5",
+    ("firmware", "source_state"): "clean",
+    ("firmware", "source_hash"): "ff549b27f52e520ac6cfa9974b1667c50b329b82d88a94fd1179e4ad7582a6e0",
+    ("firmware", "config_hash"): "a2d4e934e612682cc47db261a24dc0b50561ca6013338e161f265b5c94b67705",
+    ("build", "profile_id"): "cx317_pps_gated_i_only_preview",
+    ("build", "tcxo_counter_backend"): "pps_gated_ratio",
+    ("gnss_receiver", "rx_only"): "true",
+    ("gnss_receiver", "gsa_3d_fresh"): "true",
+    ("gnss_receiver", "gsa_checksum_requalified"): "true",
+    ("gnss_receiver", "identity_stable"): "true",
+    ("gnss_receiver", "metadata_control_eligible"): "true",
+    ("gnss_receiver", "control_eligible"): "true",
+}
 
 
 def _utc_now() -> str:
@@ -52,6 +68,18 @@ def _read_dac_rows(path: Path) -> list[dict[str, str]]:
         return []
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _exact_live_identity(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    latest = {
+        (row["component"], row["status_key"]): row["status_value"]
+        for row in rows
+    }
+    return all(latest.get(key) == value for key, value in EXPECTED_LIVE_IDENTITY.items())
 
 
 def _exact_state_ack(path: Path) -> bool:
@@ -99,10 +127,14 @@ def run(command_fifo: Path, run_dir: Path, abort_fifo: Path, schedule: Schedule)
         audit.write("supervisor_started", authority="non_actuating_predetermined_only")
         send_command_to_fifo(command_fifo, "CONFIG?")
         audit.write("command_scheduled", command="CONFIG?", purpose="exact_live_identity")
-        time.sleep(3.0)
-        if _abort_requested(abort_fd):
-            audit.write("aborted_fail_static", commands_after_abort=0)
-            return 2
+        identity_deadline = time.monotonic() + 15.0
+        health_path = run_dir / "csv" / "health.csv"
+        while not _exact_live_identity(health_path):
+            if _abort_requested(abort_fd) or time.monotonic() >= identity_deadline:
+                audit.write("live_identity_failed_fail_static")
+                return 4
+            time.sleep(0.25)
+        audit.write("live_identity_exact", required_fields=len(EXPECTED_LIVE_IDENTITY))
         send_command_to_fifo(command_fifo, f"DAC SET 0x{EXPECTED_CODE:04X}")
         audit.write(
             "command_scheduled", command=f"DAC SET 0x{EXPECTED_CODE:04X}",
