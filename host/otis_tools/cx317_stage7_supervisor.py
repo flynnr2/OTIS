@@ -37,12 +37,12 @@ from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json"
 CONTROL_CSV = Path("csv/control_previews_v1.csv")
+ESTIMATES_CSV = Path("csv/estimates_v2.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
 PART_B_DURATION_S = 24 * 60 * 60
 PART_A_SERVICE_LOAD_QUERIES = 60
 PART_B_SERVICE_LOAD_STARTS_S = (3600, 25200, 46800, 68400)
 PART_B_SERVICE_LOAD_QUERIES = 60
-CAPTURE_TICKS_PER_SECOND = 16_000_000
 SELECTED_INTERVAL_S = 600
 DECISION_CADENCE_S = 1800
 
@@ -88,31 +88,40 @@ def _latest_preview(path: Path) -> dict[str, str] | None:
     return rows[-1] if rows else None
 
 
-def _next_selected_interval_is_cadence_eligible(path: Path) -> bool:
+def _next_selected_interval_is_cadence_eligible(
+    controls_path: Path, estimates_path: Path
+) -> bool:
     """Conservatively predict whether an arm can be consumed next interval.
 
     The device only consumes an authorization when the controller evaluates an
     eligible decision.  Selected estimates arrive every 600 seconds, while the
     frozen controller decision cadence is 1800 seconds.  Arming before either
     intervening cadence-hold interval leaves the one-shot authorization unused
-    and therefore correctly faults when its short lifetime expires.
+    and therefore correctly faults when its short lifetime expires.  Use the
+    selected estimate's integer boundary sequence because that is the uptime
+    value evaluated by firmware; raw edge ticks include harmless sub-second
+    sampling jitter and are not the cadence clock.
     """
-    rows = _read_csv(path)
+    rows = _read_csv(controls_path)
     if not rows:
         return False
     eligible = [row for row in rows if row.get("preview_available") == "true"]
     if not eligible:
         return True
+    estimates = {
+        row.get("estimate_id", ""): row for row in _read_csv(estimates_path)
+    }
     try:
-        latest_ticks = int(rows[-1]["decision_timestamp_ticks"])
-        last_eligible_ticks = int(eligible[-1]["decision_timestamp_ticks"])
+        latest_uptime_s = int(
+            estimates[rows[-1]["est_input_ref"]]["source_count_seq"]
+        )
+        last_eligible_uptime_s = int(
+            estimates[eligible[-1]["est_input_ref"]]["source_count_seq"]
+        )
     except (KeyError, TypeError, ValueError):
         return False
-    next_selected_ticks = latest_ticks + (
-        SELECTED_INTERVAL_S * CAPTURE_TICKS_PER_SECOND
-    )
-    return next_selected_ticks - last_eligible_ticks >= (
-        DECISION_CADENCE_S * CAPTURE_TICKS_PER_SECOND
+    return latest_uptime_s + SELECTED_INTERVAL_S - last_eligible_uptime_s >= (
+        DECISION_CADENCE_S
     )
 
 
@@ -470,7 +479,8 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             and evidence_clear
             and progress >= ARM_PROGRESS_THRESHOLD
             and _next_selected_interval_is_cadence_eligible(
-                self.run_dir / CONTROL_CSV
+                self.run_dir / CONTROL_CSV,
+                self.run_dir / ESTIMATES_CSV,
             )
         ):
             uptime = int(health[("cx317_active", "uptime_s")])

@@ -298,25 +298,43 @@ def test_stage7_arms_only_for_the_next_cadence_eligible_interval(
     tmp_path: Path,
 ) -> None:
     controls = tmp_path / "control_previews_v1.csv"
-    header = "decision_timestamp_ticks,preview_available,decision_reason_code\n"
+    estimates = tmp_path / "estimates_v2.csv"
+    header = (
+        "decision_timestamp_ticks,preview_available,decision_reason_code,"
+        "est_input_ref\n"
+    )
     controls.write_text(header, encoding="utf-8")
-    assert not _next_selected_interval_is_cadence_eligible(controls)
+    estimates.write_text(
+        "estimate_id,source_count_seq\n"
+        "est:0,1799\n"
+        "est:1,2399\n"
+        "est:2,2999\n"
+        "est:3,3599\n",
+        encoding="utf-8",
+    )
+    assert not _next_selected_interval_is_cadence_eligible(
+        controls, estimates
+    )
 
     with controls.open("a", encoding="utf-8") as handle:
-        handle.write("28800000000,false,fresh_estimator_support\n")
-    assert _next_selected_interval_is_cadence_eligible(controls)
+        handle.write("28827892112,false,fresh_estimator_support,est:0\n")
+    assert _next_selected_interval_is_cadence_eligible(controls, estimates)
 
     with controls.open("a", encoding="utf-8") as handle:
-        handle.write("38400000000,true,inside_evidence_deadband\n")
-    assert not _next_selected_interval_is_cadence_eligible(controls)
+        handle.write("38427843600,true,inside_evidence_deadband,est:1\n")
+    assert not _next_selected_interval_is_cadence_eligible(
+        controls, estimates
+    )
 
     with controls.open("a", encoding="utf-8") as handle:
-        handle.write("48000000000,false,decision_cadence_hold\n")
-    assert not _next_selected_interval_is_cadence_eligible(controls)
+        handle.write("48027796864,false,decision_cadence_hold,est:2\n")
+    assert not _next_selected_interval_is_cadence_eligible(
+        controls, estimates
+    )
 
     with controls.open("a", encoding="utf-8") as handle:
-        handle.write("57600000000,false,decision_cadence_hold\n")
-    assert _next_selected_interval_is_cadence_eligible(controls)
+        handle.write("57627748416,false,decision_cadence_hold,est:3\n")
+    assert _next_selected_interval_is_cadence_eligible(controls, estimates)
 
 
 def test_frozen_shadow_exactly_replays_sealed_campaign_a_and_b() -> None:
