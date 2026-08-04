@@ -5,6 +5,7 @@ import json
 import shutil
 import threading
 
+import host.otis_tools.capture_device as capture_device_module
 from host.otis_tools.capture_device import (
     CaptureDeviceConfig,
     CaptureDeviceRunner,
@@ -22,9 +23,13 @@ class FakeSerial:
         self.closed = False
         self.writes: list[bytes] = []
 
-    def read(self, _size: int) -> bytes:
+    def read(self, size: int) -> bytes:
         if self.chunks:
-            return self.chunks.pop(0)
+            chunk = self.chunks.pop(0)
+            if len(chunk) > size:
+                self.chunks.insert(0, chunk[size:])
+                return chunk[:size]
+            return chunk
         if self.fail_after is not None:
             raise self.fail_after
         if self.stop_event is not None:
@@ -292,6 +297,48 @@ def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> Non
     assert b"STS,1,partial" not in raw
     assert b"partial_line_dropped" in raw
     assert "partial" not in RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
+
+
+def test_planned_duration_stops_after_completing_partial_device_line(
+    tmp_path: Path, monkeypatch
+) -> None:
+    clock_ticks = iter(range(1000))
+    monkeypatch.setattr(
+        capture_device_module.time,
+        "monotonic",
+        lambda: float(next(clock_ticks)),
+    )
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+        duration_s=1.0,
+    )
+    serial = FakeSerial(
+        [
+            b"STS,1,1,1,rp2040_timer0,system,mode",
+            b",SW1_GPS_PPS,INFO,32768\n"
+            b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+        ]
+    )
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    paths = RunPaths(config.run_dir)
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n" in raw
+    assert b"REF,1,1001" not in raw
+    assert b"planned_duration_complete" in raw
+    assert b"partial_line_dropped" not in raw
+    assert runner.parser_errors == 0
 
 
 def test_capture_device_sends_audited_atomic_command_without_polluting_raw_stream(tmp_path: Path) -> None:

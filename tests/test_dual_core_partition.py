@@ -122,6 +122,38 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
     assert "bool core1_separate_stack = true;" in sketch
 
 
+def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    loop0 = sketch[sketch.index("void loop()") :]
+    dual_core0 = loop0[
+        loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
+        loop0.index("#endif", loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+    ]
+    busy_guard_start = dual_core0.index(
+        "if (otis_phase4_observe_preview_transport_busy()"
+    )
+    ordinary_writers_start = dual_core0.index("service_dual_core_outputs();")
+    busy_guard = dual_core0[busy_guard_start:ordinary_writers_start]
+
+    assert busy_guard_start < ordinary_writers_start
+    assert "otis_phase4_observe_preview_service_transport();" in busy_guard
+    assert "otis_cx317_preview_live_service_transport();" in busy_guard
+    assert "otis_status_led_poll(millis());" in busy_guard
+    assert "return;" in busy_guard
+    for interleaving_writer in (
+        "service_dual_core_outputs();",
+        "emit_protocol_banner_if_serial_ready();",
+        "emit_run_mode_status_if_ready();",
+        "emit_resource_ownership_status();",
+        "service_serial_commands();",
+        "service_environment_sensors();",
+        "emit_periodic_status();",
+    ):
+        assert interleaving_writer not in busy_guard
+
+
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"

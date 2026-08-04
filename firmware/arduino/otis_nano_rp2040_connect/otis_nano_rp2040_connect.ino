@@ -3431,6 +3431,17 @@ void loop() {
   }
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+  // A preview frame may require several bounded USB writes.  Once the first
+  // chunk has been sent, finish that frame before allowing any other Core 0
+  // record producer to write to the shared serial transport.  Core 1 timing
+  // capture continues independently into the cross-core queues.
+  if (otis_phase4_observe_preview_transport_busy() ||
+      otis_cx317_preview_live_transport_busy()) {
+    otis_phase4_observe_preview_service_transport();
+    otis_cx317_preview_live_service_transport();
+    otis_status_led_poll(millis());
+    return;
+  }
   service_dual_core_outputs();
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
