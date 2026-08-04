@@ -141,6 +141,25 @@ def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_manual_dac_ack_never_mutates_core1_preview_from_core0() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    start = sketch.index("void handle_dac_set(")
+    end = sketch.index("void emit_pseudo_pps_status(", start)
+    handler = sketch[start:end]
+    preview_call = "otis_cx317_preview_live_on_dac_applied(requested_code"
+
+    assert preview_call in handler
+    guard = handler.rindex("#if !OTIS_ENABLE_DUAL_CORE_PARTITION", 0, handler.index(preview_call))
+    assert handler.index("#endif", handler.index(preview_call)) > guard
+    service_start = sketch.index("void service_dual_core_timing_inputs(")
+    service_end = sketch.index("void service_dual_core_outputs(", service_start)
+    service = sketch[service_start:service_end]
+    assert "OtisServiceMessageKind::AppliedDacState" in service
+    assert "otis_cx317_preview_live_on_dac_applied(" in service
+
+
 def test_core1_status_never_bypasses_cross_core_transport() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"

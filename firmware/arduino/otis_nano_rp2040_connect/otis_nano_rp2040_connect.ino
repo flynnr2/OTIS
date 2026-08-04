@@ -2874,7 +2874,9 @@ void handle_dac_set(uint16_t requested_code) {
   if (ok) {
     otis_phase4_observe_preview_on_dac_applied(
         requested_code, otis_capture_ticks_now());
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION
     otis_cx317_preview_live_on_dac_applied(requested_code, millis() / 1000u);
+#endif
   }
   otis_emit_dac_step(
       runtime_state.sequences.dac_seq++, millis(), -1, requested_code,
