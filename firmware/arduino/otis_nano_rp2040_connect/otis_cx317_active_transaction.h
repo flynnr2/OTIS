@@ -41,6 +41,7 @@ struct OtisCx317ActiveBinding {
   uint16_t maximum_step_codes;
   uint16_t correction_limit;
   uint16_t cumulative_limit_codes;
+  bool prospective_dither_stop_enabled;
 };
 
 struct OtisCx317ActiveEligibility {
@@ -162,6 +163,8 @@ struct OtisCx317ActiveTransaction {
   bool have_request;
   bool have_acceptance;
   bool have_application;
+  int8_t recent_applied_directions[3];
+  uint8_t recent_applied_direction_count;
 };
 
 void otis_cx317_active_transaction_init(

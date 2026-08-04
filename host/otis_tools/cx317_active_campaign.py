@@ -167,7 +167,9 @@ def validate_transaction_row(
         raise ValueError("requested code/delta violates the immutable step relation")
     if not spec.minimum_code <= requested <= spec.maximum_code:
         raise ValueError("requested code is outside the immutable range")
-    if accepted != requested:
+    if event == "request_created" and accepted != 0:
+        raise ValueError("unaccepted cross-core request has a non-zero accepted code")
+    if event != "request_created" and accepted != requested:
         raise ValueError("accepted code differs from the immutable request")
     if not 1 <= ordinal <= spec.correction_limit:
         raise ValueError("correction ordinal exceeds the campaign limit")

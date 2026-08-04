@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "otis_cx317_active_transaction.h"
+#include "otis_dual_core_contract.h"
 #include "otis_status_emit.h"
 
 struct OtisCx317ActiveLiveHealth {
@@ -50,6 +51,32 @@ struct OtisCx317ActiveLiveOutcome {
   const char *reason;
 };
 
+struct OtisCx317ActiveLiveStatus {
+  const char *run_identity;
+  const char *build_identity;
+  const char *profile_identity;
+  const char *estimator_sha256;
+  const char *model_sha256;
+  const char *active_policy_sha256;
+  const char *response_policy_sha256;
+  const char *numerical_policy_sha256;
+  const char *state;
+  const char *reason;
+  const char *evidence_state;
+  uint32_t session_id;
+  uint32_t evidence_request_sequence;
+  uint32_t uptime_s;
+  uint16_t applied_code;
+  uint16_t correction_count;
+  uint16_t cumulative_movement_codes;
+  uint16_t selected_interval_count;
+  bool transaction_bound;
+  bool capture_lease_live;
+  bool manual_start_confirmed;
+  bool arm_eligible;
+  bool fail_static;
+};
+
 bool otis_cx317_active_live_begin(void);
 void otis_cx317_active_live_emit_headers(void);
 void otis_cx317_active_live_update_health(
@@ -64,6 +91,8 @@ void otis_cx317_active_live_abort(const char *reason);
 bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
                                                  uint32_t phase_sequence,
                                                  uint32_t now_s);
+bool otis_cx317_active_live_on_cross_core_ack(
+    const OtisCrossCoreActuatorAck *acknowledgement, uint32_t now_s);
 bool otis_cx317_active_live_manual_start_allowed(uint16_t requested_code);
 void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
                                               bool i2c_ok,
@@ -79,6 +108,8 @@ bool otis_cx317_active_live_transport_busy(void);
 void otis_cx317_active_live_service_transport(void);
 void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
                                         uint32_t now_s);
+void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
+                                       uint32_t now_s);
 const char *otis_cx317_active_live_run_identity(void);
 uint16_t otis_cx317_active_live_start_code(void);
 

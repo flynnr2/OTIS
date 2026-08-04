@@ -42,7 +42,9 @@ bool binding_equal(const OtisCx317ActiveBinding &left,
          left.maximum_code == right.maximum_code &&
          left.maximum_step_codes == right.maximum_step_codes &&
          left.correction_limit == right.correction_limit &&
-         left.cumulative_limit_codes == right.cumulative_limit_codes;
+         left.cumulative_limit_codes == right.cumulative_limit_codes &&
+         left.prospective_dither_stop_enabled ==
+             right.prospective_dither_stop_enabled;
 }
 
 bool request_equal(const OtisCx317ActionableRequest &left,
@@ -342,6 +344,30 @@ bool otis_cx317_active_make_request(
                            "cumulative_movement_limit_exceeded");
     return false;
   }
+  if (transaction->expected_binding.prospective_dither_stop_enabled) {
+    const int8_t proposed_direction = delta > 0 ? 1 : -1;
+    if (transaction->recent_applied_direction_count >= 3u &&
+        transaction->recent_applied_directions[0] !=
+            transaction->recent_applied_directions[1] &&
+        transaction->recent_applied_directions[1] !=
+            transaction->recent_applied_directions[2] &&
+        transaction->recent_applied_directions[2] != proposed_direction) {
+      otis_cx317_active_fault(
+          transaction, "prospective_third_consecutive_reversal_dither_stop");
+      return false;
+    }
+    const int32_t prospective_net =
+        static_cast<int32_t>(decision->requested_code) -
+        static_cast<int32_t>(transaction->expected_binding.start_code);
+    const uint32_t absolute_net =
+        prospective_net < 0 ? static_cast<uint32_t>(-prospective_net)
+                            : static_cast<uint32_t>(prospective_net);
+    if (cumulative >= 168u && absolute_net * 4u <= cumulative) {
+      otis_cx317_active_fault(
+          transaction, "prospective_low_net_excess_path_dither_stop");
+      return false;
+    }
+  }
   if (transaction->have_last_application &&
       now_s - transaction->last_application_s < kMinimumCadenceS) {
     otis_cx317_active_fault(transaction,
@@ -440,6 +466,18 @@ bool otis_cx317_active_acknowledge_application(
   transaction->last_application_s = ack->application_timestamp_s;
   transaction->have_last_application = true;
   transaction->dac_epoch++;
+  const int8_t applied_direction =
+      transaction->request.requested_delta_codes > 0 ? 1 : -1;
+  if (transaction->recent_applied_direction_count < 3u) {
+    transaction->recent_applied_directions[
+        transaction->recent_applied_direction_count++] = applied_direction;
+  } else {
+    transaction->recent_applied_directions[0] =
+        transaction->recent_applied_directions[1];
+    transaction->recent_applied_directions[1] =
+        transaction->recent_applied_directions[2];
+    transaction->recent_applied_directions[2] = applied_direction;
+  }
   transaction->state = OtisCx317ActiveState::AwaitingResponse;
   transaction->reason = "applied_history_reset_response_required";
   return true;

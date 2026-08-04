@@ -65,6 +65,7 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
         "ServiceToTimingExhausted",
         "ObservationExhausted",
         "CriticalExhausted",
+        "EvidenceExhausted",
         "ActuatorTimeout",
         "ActuatorAcknowledgementMismatch",
     ):

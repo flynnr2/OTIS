@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "otis_dual_core_partition.h"
@@ -25,6 +26,17 @@ OtisTelemetryMessage telemetry(uint32_t sequence) {
   strcpy(value.key, "duplicate_summary");
   strcpy(value.value, "healthy");
   strcpy(value.severity, "INFO");
+  return value;
+}
+
+OtisEvidenceFrameMessage evidence(uint32_t sequence) {
+  OtisEvidenceFrameMessage value = {};
+  value.sequence = sequence;
+  const int used = snprintf(value.data, sizeof(value.data),
+                            "ACT,1,%lu,fixture\r\n",
+                            static_cast<unsigned long>(sequence));
+  assert(used > 0);
+  value.length = static_cast<uint16_t>(used);
   return value;
 }
 
@@ -103,6 +115,28 @@ void bounded_core0_stall_preserves_raw_evidence() {
   }
   OtisObservationMessage empty = {};
   assert(!otis_dual_core_take_observation(&empty));
+}
+
+void complete_evidence_frames_cross_by_value_in_order() {
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u; sequence <= OTIS_EVIDENCE_QUEUE_DEPTH;
+       ++sequence) {
+    const OtisEvidenceFrameMessage frame = evidence(sequence);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth == OTIS_EVIDENCE_QUEUE_DEPTH);
+  assert(stats.evidence_high_water == OTIS_EVIDENCE_QUEUE_DEPTH);
+  assert(!stats.fail_static);
+  for (uint32_t sequence = 1u; sequence <= OTIS_EVIDENCE_QUEUE_DEPTH;
+       ++sequence) {
+    OtisEvidenceFrameMessage frame = {};
+    assert(otis_dual_core_take_evidence(&frame));
+    assert(frame.sequence == sequence);
+    assert(frame.length > 0u);
+    assert(strncmp(frame.data, "ACT,1,", 6u) == 0);
+  }
 }
 
 void service_plane_load_matrix_preserves_timing_state() {
@@ -208,6 +242,19 @@ void every_non_droppable_queue_exhaustion_is_fail_static() {
   otis_dual_core_get_stats(&stats);
   assert(stats.fail_static);
   assert(stats.fault == OtisPartitionFault::CriticalExhausted);
+
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u; sequence <= OTIS_EVIDENCE_QUEUE_DEPTH;
+       ++sequence) {
+    const OtisEvidenceFrameMessage frame = evidence(sequence);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  const OtisEvidenceFrameMessage evidence_overflow =
+      evidence(OTIS_EVIDENCE_QUEUE_DEPTH + 1u);
+  assert(!otis_dual_core_publish_evidence(&evidence_overflow));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.fail_static);
+  assert(stats.fault == OtisPartitionFault::EvidenceExhausted);
 }
 
 void actuator_transaction_requires_exact_two_phase_ack() {
@@ -263,6 +310,7 @@ void stale_ack_and_timeout_fault_without_retry() {
 int main() {
   bounded_core0_stall_preserves_raw_evidence();
   service_plane_load_matrix_preserves_timing_state();
+  complete_evidence_frames_cross_by_value_in_order();
   non_droppable_exhaustion_is_fail_static();
   every_non_droppable_queue_exhaustion_is_fail_static();
   actuator_transaction_requires_exact_two_phase_ack();

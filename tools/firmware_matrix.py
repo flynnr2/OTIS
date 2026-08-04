@@ -233,11 +233,13 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
             not in {
                 "cx317_bounded_active_campaign_a",
                 "cx317_bounded_active_campaign_b",
+                "cx317_dual_core_active_part_a",
+                "cx317_dual_core_active_endurance_part_b",
             }
         ):
             raise MatrixError(
                 "bounded controller-to-DAC reachability is restricted to "
-                "the two dedicated programme profiles"
+                "the four dedicated programme profiles"
             )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(

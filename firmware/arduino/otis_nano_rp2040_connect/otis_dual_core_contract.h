@@ -12,6 +12,7 @@ enum class OtisServiceMessageKind : uint8_t {
   Environment,
   AppliedDacState,
   RunControl,
+  ActuatorAcknowledgement,
 };
 
 enum class OtisRunControlKind : uint8_t {
@@ -21,6 +22,9 @@ enum class OtisRunControlKind : uint8_t {
   Recover,
   Abort,
   SyntheticReceiverInvalidation,
+  CaptureLease,
+  EvidenceRelease,
+  StatusQuery,
 };
 
 struct OtisReceiverQualificationMessage {
@@ -64,8 +68,33 @@ struct OtisRunControlMessage {
   uint32_t authorization_sequence;
   uint32_t nonce;
   uint32_t duration_ms;
+  uint32_t capture_lease_sequence;
+  uint32_t request_sequence;
+  uint32_t evidence_phase;
+  uint32_t expires_s;
   OtisRunControlKind kind;
   bool asserted;
+};
+
+enum class OtisActuatorAckKind : uint8_t {
+  Accepted,
+  Rejected,
+  Applied,
+};
+
+struct OtisCrossCoreActuatorAck {
+  uint32_t request_sequence;
+  uint32_t decision_sequence;
+  uint32_t authorization_sequence;
+  uint32_t nonce;
+  uint64_t acknowledgement_ticks;
+  uint16_t requested_code;
+  uint16_t accepted_code;
+  uint16_t applied_code;
+  OtisActuatorAckKind kind;
+  bool i2c_ok;
+  bool clamped;
+  bool ambiguous;
 };
 
 struct OtisServiceMessage {
@@ -74,6 +103,7 @@ struct OtisServiceMessage {
   OtisEnvironmentMessage environment;
   OtisAppliedDacStateMessage dac;
   OtisRunControlMessage run_control;
+  OtisCrossCoreActuatorAck actuator_acknowledgement;
 };
 
 enum class OtisObservationMessageKind : uint8_t {
@@ -122,6 +152,7 @@ enum class OtisCriticalMessageKind : uint8_t {
   ActuatorAccepted,
   ActuatorRejected,
   ActuatorApplied,
+  ActuatorExecute,
   Fault,
   StateTransition,
 };
@@ -135,30 +166,12 @@ struct OtisCrossCoreActuatorRequest {
   uint64_t deadline_ticks;
   uint32_t authorization_sequence;
   uint32_t nonce;
+  uint32_t session_id;
+  int32_t requested_delta_codes;
+  uint16_t correction_ordinal;
   uint16_t current_applied_code;
   uint16_t requested_code;
   bool actionable;
-};
-
-enum class OtisActuatorAckKind : uint8_t {
-  Accepted,
-  Rejected,
-  Applied,
-};
-
-struct OtisCrossCoreActuatorAck {
-  uint32_t request_sequence;
-  uint32_t decision_sequence;
-  uint32_t authorization_sequence;
-  uint32_t nonce;
-  uint64_t acknowledgement_ticks;
-  uint16_t requested_code;
-  uint16_t accepted_code;
-  uint16_t applied_code;
-  OtisActuatorAckKind kind;
-  bool i2c_ok;
-  bool clamped;
-  bool ambiguous;
 };
 
 struct OtisCriticalRecordMessage {
@@ -170,6 +183,14 @@ struct OtisCriticalRecordMessage {
   char reason[64];
   OtisCrossCoreActuatorRequest request;
   OtisCrossCoreActuatorAck acknowledgement;
+};
+
+constexpr uint16_t OTIS_EVIDENCE_FRAME_CAPACITY = 1536u;
+
+struct OtisEvidenceFrameMessage {
+  uint32_t sequence;
+  uint16_t length;
+  char data[OTIS_EVIDENCE_FRAME_CAPACITY];
 };
 
 struct OtisTelemetryMessage {

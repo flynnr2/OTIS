@@ -12,6 +12,8 @@ OtisSpscQueue<OtisObservationMessage, OTIS_OBSERVATION_QUEUE_DEPTH>
     observation_to_service;
 OtisSpscQueue<OtisCriticalRecordMessage, OTIS_CRITICAL_QUEUE_DEPTH>
     critical_to_service;
+OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>
+    evidence_to_service;
 OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>
     telemetry_to_service;
 
@@ -51,6 +53,7 @@ void otis_dual_core_partition_reset(void) {
   service_to_timing.reset();
   observation_to_service.reset();
   critical_to_service.reset();
+  evidence_to_service.reset();
   telemetry_to_service.reset();
   __atomic_store_n(&telemetry_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&partition_fault,
@@ -101,6 +104,20 @@ bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message) {
   return critical_to_service.try_pop(message);
 }
 
+bool otis_dual_core_publish_evidence(
+    const OtisEvidenceFrameMessage *message) {
+  if (message != nullptr && message->length > 0u &&
+      message->length < OTIS_EVIDENCE_FRAME_CAPACITY &&
+      evidence_to_service.try_push(*message))
+    return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  return false;
+}
+
+bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message) {
+  return evidence_to_service.try_pop(message);
+}
+
 bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message) {
   if (message != nullptr && telemetry_to_service.try_push(*message)) return true;
   increment_saturating(&telemetry_dropped);
@@ -133,6 +150,8 @@ void otis_dual_core_get_stats(OtisDualCoreQueueStats *stats) {
       observation_to_service.high_water(),
       critical_to_service.depth(),
       critical_to_service.high_water(),
+      evidence_to_service.depth(),
+      evidence_to_service.high_water(),
       telemetry_to_service.depth(),
       telemetry_to_service.high_water(),
       __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE),
@@ -152,6 +171,8 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
       return "raw_observation_queue_exhausted";
     case OtisPartitionFault::CriticalExhausted:
       return "critical_queue_exhausted";
+    case OtisPartitionFault::EvidenceExhausted:
+      return "evidence_queue_exhausted";
     case OtisPartitionFault::ActuatorTimeout:
       return "actuator_acknowledgement_timeout";
     case OtisPartitionFault::ActuatorAcknowledgementMismatch:

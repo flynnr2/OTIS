@@ -547,6 +547,8 @@ VALID_CONTROL_STATES = {
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
+    "request_created",
+    "core0_accepted",
     "request_accepted",
     "application",
     "application_fault",
@@ -576,6 +578,7 @@ VALID_ACTIVE_RESPONSE_CLASSES = {
 VALID_ACTIVE_EVIDENCE_STATES = {
     "evidence_clear",
     "request_pending",
+    "acceptance_pending",
     "application_pending",
     "response_pending",
 }
@@ -1465,6 +1468,8 @@ def _check_active_transaction_v1(
         if request_sequence in (None, 0):
             errors.append(f"row {row_number}: {event} requires a non-zero request_sequence")
         expected_evidence = {
+            "request_created": "request_pending",
+            "core0_accepted": "acceptance_pending",
             "request_accepted": "request_pending",
             "application": "application_pending",
             "application_fault": "application_pending",
@@ -1474,9 +1479,13 @@ def _check_active_transaction_v1(
             errors.append(
                 f"row {row_number}: {event} requires evidence_state={expected_evidence}"
             )
-    if event == "request_accepted" and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
+    if event == "request_created" and row.get("active_state") != "REQUEST_PENDING":
         errors.append(
-            f"row {row_number}: request_accepted requires ACCEPTED_AWAITING_APPLICATION"
+            f"row {row_number}: request_created requires REQUEST_PENDING"
+        )
+    if event in {"request_accepted", "core0_accepted"} and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
+        errors.append(
+            f"row {row_number}: {event} requires ACCEPTED_AWAITING_APPLICATION"
         )
     if event == "application" and (
         row.get("i2c_ok") != "true"

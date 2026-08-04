@@ -40,9 +40,10 @@
 #define OTIS_ENABLE_DUAL_CORE_PARTITION 0
 #endif
 
-// Stage 3+ bounded active control is structurally available only in the two
-// dedicated programme profiles. Existing/default/preview profiles leave this
-// disabled and therefore have no controller-to-DAC call path.
+// Bounded active control is structurally available only in the exact Stage 5
+// single-core and Stage 7 dual-core programme profiles. Existing/default/
+// preview profiles leave this disabled and therefore have no controller-to-DAC
+// call path.
 #ifndef OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_ENABLE_CX317_BOUNDED_ACTIVE 0
 #endif
@@ -50,6 +51,8 @@
 #define OTIS_CX317_ACTIVE_CAMPAIGN_NONE 0
 #define OTIS_CX317_ACTIVE_CAMPAIGN_A 1
 #define OTIS_CX317_ACTIVE_CAMPAIGN_B 2
+#define OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A 3
+#define OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B 4
 
 #ifndef OTIS_CX317_ACTIVE_CAMPAIGN
 #define OTIS_CX317_ACTIVE_CAMPAIGN OTIS_CX317_ACTIVE_CAMPAIGN_NONE
@@ -168,7 +171,9 @@
 #endif
 
 #ifndef OTIS_FIRMWARE_VERSION
-#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+#if OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+#define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_ACTIVE_I_ONLY_V1"
+#elif OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
 #elif OTIS_ENABLE_DUAL_CORE_PARTITION
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1"
@@ -723,9 +728,20 @@
 #error "OTIS_ENABLE_DUAL_CORE_PARTITION must be 0 or 1."
 #endif
 
-#if OTIS_ENABLE_DUAL_CORE_PARTITION && \
-    (!OTIS_ENABLE_CX317_I_ONLY_PREVIEW || OTIS_ENABLE_CX317_BOUNDED_ACTIVE)
-#error "The Stage 6 dual-core profile requires I-only preview and structurally prohibits bounded active control."
+#if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#error "The dual-core partition requires the selected I-only preview/estimator."
+#endif
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B
+#error "Dual-core bounded authority is restricted to the exact Stage 7 profiles."
+#endif
+
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    (OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A || \
+     OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B)
+#error "Stage 7 bounded authority requires the dual-core partition."
 #endif
 
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW && OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
@@ -773,9 +789,28 @@
 #endif
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A && \
+    (OTIS_CX317_ACTIVE_START_CODE != 0xA82Au || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 4u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 84u)
+#error "Stage 7 Part A parameters differ from the immutable programme envelope."
+#endif
+
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B && \
+    (OTIS_CX317_ACTIVE_START_CODE < 0xA800u || \
+     OTIS_CX317_ACTIVE_START_CODE > 0xAB00u || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 32u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 672u)
+#error "Stage 7 Part B parameters differ from the immutable programme envelope."
+#endif
+
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
     OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_A && \
-    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_B
-#error "Bounded active control requires exact Campaign A or Campaign B identity."
+    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_B && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B
+#error "Bounded active control requires an exact programme campaign identity."
 #endif
 
 #if OTIS_PHASE4_PREVIEW_QUEUE_DEPTH < 2u || \

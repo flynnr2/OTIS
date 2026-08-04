@@ -8,6 +8,7 @@
 constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
+constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
 constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 96u;
 
 enum class OtisPartitionFault : uint8_t {
@@ -15,6 +16,7 @@ enum class OtisPartitionFault : uint8_t {
   ServiceToTimingExhausted,
   ObservationExhausted,
   CriticalExhausted,
+  EvidenceExhausted,
   ActuatorTimeout,
   ActuatorAcknowledgementMismatch,
 };
@@ -26,6 +28,8 @@ struct OtisDualCoreQueueStats {
   uint32_t observation_high_water;
   uint32_t critical_depth;
   uint32_t critical_high_water;
+  uint32_t evidence_depth;
+  uint32_t evidence_high_water;
   uint32_t telemetry_depth;
   uint32_t telemetry_high_water;
   uint32_t telemetry_dropped;
@@ -50,6 +54,11 @@ bool otis_dual_core_take_observation(OtisObservationMessage *message);
 // non-droppable.
 bool otis_dual_core_publish_critical(const OtisCriticalRecordMessage *message);
 bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message);
+
+// Core 1 producer / Core 0 consumer. Complete EST/CTL/ACT frames are
+// non-droppable; no mutable formatter buffer is shared between cores.
+bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message);
+bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message);
 
 // Core 1 producer / Core 0 consumer. Duplicate summaries may drop, always
 // with an explicit saturating counter.

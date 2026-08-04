@@ -5,6 +5,7 @@
 
 #include "otis_config.h"
 #include "otis_cx317_active_actuator.h"
+#include "otis_dual_core_partition.h"
 #include "otis_protocol.h"
 #include "otis_transport_serial.h"
 
@@ -22,6 +23,7 @@ constexpr char kResponsePolicyHash[] =
     "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec";
 constexpr uint32_t kCaptureLeaseMaximumAgeS = 30u;
 constexpr uint32_t kEvidenceAcknowledgementMaximumAgeS = 30u;
+constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
 constexpr size_t kFrameCapacity = 1536u;
 constexpr size_t kTransportChunkLimit = 192u;
 
@@ -31,6 +33,13 @@ constexpr char kExpectedProfile[] = "cx317_bounded_active_campaign_a";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_B
 constexpr char kRunIdentity[] = "cx317_bounded_campaign_b:3170002";
 constexpr char kExpectedProfile[] = "cx317_bounded_active_campaign_b";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A
+constexpr char kRunIdentity[] = "cx317_stage7_part_a:3170003";
+constexpr char kExpectedProfile[] = "cx317_dual_core_active_part_a";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B
+constexpr char kRunIdentity[] = "cx317_stage7_part_b:3170004";
+constexpr char kExpectedProfile[] =
+    "cx317_dual_core_active_endurance_part_b";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -52,8 +61,14 @@ struct TransportFrame {
 enum class EvidencePhase : uint8_t {
   None = 0u,
   Request = 1u,
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  Acceptance = 2u,
+  Application = 3u,
+  Response = 4u,
+#else
   Application = 2u,
   Response = 3u,
+#endif
 };
 
 OtisCx317ActiveTransaction transaction;
@@ -76,6 +91,9 @@ OtisCx317ActiveLiveOutcome deferred_application_outcome = {};
 bool deferred_application_outcome_valid = false;
 bool last_application_acknowledged = false;
 bool estimator_history_reset = false;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+OtisActuatorTransactionGuard timing_actuator_guard = {};
+#endif
 
 bool capture_lease_live(uint32_t now_s) {
   return have_capture_lease &&
@@ -100,6 +118,11 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
       21u,
       static_cast<uint16_t>(OTIS_CX317_ACTIVE_CORRECTION_LIMIT),
       static_cast<uint16_t>(OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES),
+#if OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B
+      true,
+#else
+      false,
+#endif
   };
 }
 
@@ -151,6 +174,10 @@ const char *evidence_state_name(void) {
   switch (evidence_phase) {
     case EvidencePhase::Request:
       return "request_pending";
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    case EvidencePhase::Acceptance:
+      return "acceptance_pending";
+#endif
     case EvidencePhase::Application:
       return "application_pending";
     case EvidencePhase::Response:
@@ -160,6 +187,51 @@ const char *evidence_state_name(void) {
   }
   return "evidence_clear";
 }
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+OtisCrossCoreActuatorRequest cross_core_request(
+    const OtisCx317ActionableRequest &request, uint32_t now_s) {
+  OtisCrossCoreActuatorRequest cross = {};
+  cross.request_sequence = request.request_sequence;
+  cross.decision_sequence = request.decision_sequence;
+  cross.source_first_sequence = request.source_first_sequence;
+  cross.source_last_sequence = request.source_last_sequence;
+  cross.decision_reference_ticks =
+      static_cast<uint64_t>(request.timestamp_s) * kCaptureTicksPerSecond;
+  cross.deadline_ticks =
+      static_cast<uint64_t>(now_s + kEvidenceAcknowledgementMaximumAgeS) *
+      kCaptureTicksPerSecond;
+  cross.authorization_sequence = request.authorization_sequence;
+  cross.nonce = request.nonce;
+  cross.session_id = request.session_id;
+  cross.correction_ordinal = request.correction_ordinal;
+  cross.current_applied_code = request.current_applied_code;
+  cross.requested_code = request.requested_code;
+  cross.requested_delta_codes = request.requested_delta_codes;
+  cross.actionable = request.actionable;
+  return cross;
+}
+
+bool publish_cross_core_actuator_message(OtisCriticalMessageKind kind,
+                                         uint32_t now_s) {
+  if (!pending_actionable_request_valid) return false;
+  OtisCriticalRecordMessage message = {};
+  message.kind = kind;
+  message.sequence = pending_actionable_request.request_sequence;
+  message.timestamp_ticks =
+      static_cast<uint64_t>(now_s) * kCaptureTicksPerSecond;
+  snprintf(message.component, sizeof(message.component), "%s",
+           "cx317_actuator");
+  snprintf(message.reason, sizeof(message.reason), "%s",
+           kind == OtisCriticalMessageKind::ActuatorRequest
+               ? "durable_request_released_to_core0"
+               : "durable_acceptance_released_for_single_application");
+  message.request = kind == OtisCriticalMessageKind::ActuatorRequest
+                        ? cross_core_request(pending_actionable_request, now_s)
+                        : timing_actuator_guard.pending;
+  return otis_dual_core_publish_critical(&message);
+}
+#endif
 
 bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
                  double post_error_hz) {
@@ -210,6 +282,17 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
   }
   frame.length = static_cast<uint16_t>(used);
   frame.sent = 0u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisEvidenceFrameMessage message = {};
+  message.sequence = next_record_sequence;
+  message.length = frame.length;
+  memcpy(message.data, frame.data, frame.length + 1u);
+  if (!otis_dual_core_publish_evidence(&message)) {
+    frame = {};
+    return false;
+  }
+  frame = {};
+#endif
   transaction_record_sequence = next_record_sequence;
   return true;
 }
@@ -242,6 +325,17 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s) {
   }
   frame.length = static_cast<uint16_t>(used);
   frame.sent = 0u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisEvidenceFrameMessage message = {};
+  message.sequence = next_record_sequence;
+  message.length = frame.length;
+  memcpy(message.data, frame.data, frame.length + 1u);
+  if (!otis_dual_core_publish_evidence(&message)) {
+    frame = {};
+    return false;
+  }
+  frame = {};
+#endif
   transaction_record_sequence = next_record_sequence;
   return true;
 }
@@ -249,6 +343,7 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s) {
 void fault_if_active_continuity_lost(uint32_t now_s) {
   if (!transaction_bound) return;
   if ((transaction.state == OtisCx317ActiveState::Armed ||
+       transaction.state == OtisCx317ActiveState::RequestPending ||
        transaction.state ==
            OtisCx317ActiveState::AcceptedAwaitingApplication ||
        transaction.state == OtisCx317ActiveState::AwaitingResponse) &&
@@ -275,6 +370,9 @@ bool otis_cx317_active_live_begin(void) {
   deferred_application_outcome_valid = false;
   last_application_acknowledged = false;
   estimator_history_reset = false;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_actuator_guard_init(&timing_actuator_guard);
+#endif
   frame = {};
   return true;
 #else
@@ -323,6 +421,15 @@ void otis_cx317_active_live_service(uint32_t now_s) {
           kEvidenceAcknowledgementMaximumAgeS)
     otis_cx317_active_fault(&transaction,
                             "transaction_evidence_acknowledgement_timeout");
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (transaction_bound &&
+      (!otis_actuator_guard_check_deadline(
+           &timing_actuator_guard,
+           static_cast<uint64_t>(now_s) * kCaptureTicksPerSecond) ||
+       otis_dual_core_fail_static()))
+    otis_cx317_active_fault(&transaction,
+                            "cross_core_partition_or_actuator_guard_fault");
+#endif
 #else
   (void)now_s;
 #endif
@@ -381,6 +488,31 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
       frame.length != 0u)
     return false;
   if (evidence_phase == EvidencePhase::Request) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    if (!transaction_bound || !pending_actionable_request_valid ||
+        transaction.state != OtisCx317ActiveState::RequestPending ||
+        !critical_continuity_healthy(now_s)) {
+      if (transaction_bound)
+        otis_cx317_active_fault(
+            &transaction, "pre_acceptance_evidence_or_continuity_invalid");
+      pending_actionable_request_valid = false;
+      return false;
+    }
+    const OtisCrossCoreActuatorRequest request =
+        cross_core_request(pending_actionable_request, now_s);
+    if (!otis_actuator_guard_start(&timing_actuator_guard, &request,
+                                   request.decision_reference_ticks) ||
+        !publish_cross_core_actuator_message(
+            OtisCriticalMessageKind::ActuatorRequest, now_s)) {
+      otis_cx317_active_fault(&transaction,
+                              "cross_core_actuator_request_queue_fault");
+      pending_actionable_request_valid = false;
+      return false;
+    }
+    evidence_phase = EvidencePhase::None;
+    evidence_pending_since_s = 0u;
+    return true;
+#else
     if (!transaction_bound || !pending_actionable_request_valid ||
         transaction.state !=
             OtisCx317ActiveState::AcceptedAwaitingApplication ||
@@ -415,7 +547,28 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
     evidence_phase = EvidencePhase::Application;
     evidence_pending_since_s = now_s;
     return true;
+#endif
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (evidence_phase == EvidencePhase::Acceptance) {
+    if (!transaction_bound || !pending_actionable_request_valid ||
+        transaction.state !=
+            OtisCx317ActiveState::AcceptedAwaitingApplication ||
+        timing_actuator_guard.state !=
+            OtisActuatorGuardState::AwaitingApplication ||
+        !critical_continuity_healthy(now_s) ||
+        !publish_cross_core_actuator_message(
+            OtisCriticalMessageKind::ActuatorExecute, now_s)) {
+      otis_cx317_active_fault(
+          &transaction, "cross_core_application_release_or_continuity_fault");
+      pending_actionable_request_valid = false;
+      return false;
+    }
+    evidence_phase = EvidencePhase::None;
+    evidence_pending_since_s = 0u;
+    return true;
+  }
+#endif
   evidence_phase = EvidencePhase::None;
   evidence_request_sequence = 0u;
   evidence_pending_since_s = 0u;
@@ -423,6 +576,90 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
 #else
   (void)request_sequence;
   (void)phase_sequence;
+  (void)now_s;
+  return false;
+#endif
+}
+
+bool otis_cx317_active_live_on_cross_core_ack(
+    const OtisCrossCoreActuatorAck *acknowledgement, uint32_t now_s) {
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (acknowledgement == nullptr || !transaction_bound ||
+      !pending_actionable_request_valid) {
+    if (transaction_bound)
+      otis_cx317_active_fault(
+          &transaction, "cross_core_actuator_acknowledgement_invalid");
+    return false;
+  }
+  const bool guard_acknowledged = otis_actuator_guard_acknowledge(
+      &timing_actuator_guard, acknowledgement);
+  if (acknowledgement->kind == OtisActuatorAckKind::Accepted) {
+    if (!guard_acknowledged) {
+      otis_cx317_active_fault(
+          &transaction, "cross_core_acceptance_acknowledgement_invalid");
+      return false;
+    }
+    OtisCx317AcceptedRequest accepted;
+    if (!otis_cx317_active_accept(&transaction,
+                                  &pending_actionable_request, now_s,
+                                  &accepted))
+      return false;
+    evidence_phase = EvidencePhase::Acceptance;
+    evidence_request_sequence = pending_actionable_request.request_sequence;
+    evidence_pending_since_s = now_s;
+    if (!queue_frame("core0_accepted", nullptr, 0.0)) {
+      otis_cx317_active_fault(&transaction,
+                              "acceptance_evidence_queue_fault");
+      return false;
+    }
+    return true;
+  }
+  if (acknowledgement->kind != OtisActuatorAckKind::Applied) {
+    otis_cx317_active_fault(&transaction,
+                            "cross_core_actuator_rejected_or_bad_phase");
+    return false;
+  }
+  const OtisCx317AppliedAck applied = {
+      acknowledgement->request_sequence,
+      acknowledgement->authorization_sequence,
+      acknowledgement->nonce,
+      acknowledgement->requested_code,
+      acknowledgement->accepted_code,
+      acknowledgement->applied_code,
+      pending_actionable_request.correction_ordinal,
+      now_s,
+      acknowledgement->i2c_ok,
+      acknowledgement->clamped,
+      acknowledgement->ambiguous,
+  };
+  const bool transaction_acknowledged =
+      otis_cx317_active_acknowledge_application(&transaction, &applied);
+  const bool acknowledged = guard_acknowledged && transaction_acknowledged;
+  if (!guard_acknowledged)
+    otis_cx317_active_fault(
+        &transaction, "cross_core_application_acknowledgement_invalid");
+  deferred_application_outcome = {};
+  deferred_application_outcome.application_attempted = true;
+  deferred_application_outcome.request_sequence =
+      acknowledgement->request_sequence;
+  deferred_application_outcome.requested_code =
+      acknowledgement->requested_code;
+  deferred_application_outcome.applied_code = acknowledgement->applied_code;
+  deferred_application_outcome.applied = acknowledged;
+  deferred_application_outcome.faulted = !acknowledged;
+  deferred_application_outcome.reason = transaction.reason;
+  deferred_application_outcome_valid = true;
+  last_application_acknowledged = acknowledged;
+  if (acknowledged) {
+    latest_health.applied_code = transaction.applied_code;
+    latest_health.applied_code_confirmed = true;
+  }
+  pending_actionable_request_valid = false;
+  evidence_phase = EvidencePhase::Application;
+  evidence_pending_since_s = now_s;
+  return acknowledged;
+#else
+  (void)acknowledgement;
   (void)now_s;
   return false;
 #endif
@@ -524,6 +761,10 @@ void otis_cx317_active_live_on_decision(
     return;
   }
   OtisCx317AcceptedRequest accepted;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  pending_actionable_request = request;
+  pending_actionable_request_valid = true;
+#else
   if (!otis_cx317_active_accept(&transaction, &request, decision->timestamp_s,
                                 &accepted)) {
     outcome->faulted = true;
@@ -532,6 +773,7 @@ void otis_cx317_active_live_on_decision(
   }
   pending_actionable_request = request;
   pending_actionable_request_valid = true;
+#endif
   estimator_history_reset = false;
   outcome->request_created = true;
   outcome->request_sequence = request.request_sequence;
@@ -543,7 +785,13 @@ void otis_cx317_active_live_on_decision(
   evidence_phase = EvidencePhase::Request;
   evidence_request_sequence = request.request_sequence;
   evidence_pending_since_s = decision->timestamp_s;
-  if (!queue_frame("request_accepted", nullptr, 0.0)) {
+  if (!queue_frame(
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+          "request_created",
+#else
+          "request_accepted",
+#endif
+          nullptr, 0.0)) {
     pending_actionable_request_valid = false;
     otis_cx317_active_fault(&transaction, "request_evidence_queue_fault");
     outcome->faulted = true;
@@ -604,6 +852,9 @@ bool otis_cx317_active_live_transport_busy(void) {
 
 void otis_cx317_active_live_service_transport(void) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return;
+#else
   if (frame.length == 0u) return;
   size_t available = otis_transport_available_for_write();
   if (available == 0u) return;
@@ -615,6 +866,7 @@ void otis_cx317_active_live_service_transport(void) {
                        reinterpret_cast<const uint8_t *>(frame.data) + frame.sent,
                        chunk));
   if (frame.sent == frame.length) frame = {};
+#endif
 #endif
 }
 
@@ -712,6 +964,57 @@ void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
 #else
   (void)context;
   (void)now_s;
+#endif
+}
+
+void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
+                                       uint32_t now_s) {
+  if (status == nullptr) return;
+  *status = {};
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+  const OtisCx317ActiveEligibility current_eligibility = eligibility(now_s);
+  status->run_identity = kRunIdentity;
+  status->build_identity = kBuildIdentity;
+  status->profile_identity = OTIS_BUILD_PROFILE_ID;
+  status->estimator_sha256 = kEstimatorHash;
+  status->model_sha256 = kModelHash;
+  status->active_policy_sha256 = kActivePolicyHash;
+  status->response_policy_sha256 = kResponsePolicyHash;
+  status->numerical_policy_sha256 = kNumericalPolicyHash;
+  status->state = transaction_bound
+                      ? otis_cx317_active_state_name(transaction.state)
+                      : "UNBOUND";
+  status->reason = transaction_bound ? transaction.reason : "session_unbound";
+  status->evidence_state = evidence_state_name();
+  status->session_id = transaction_bound
+                           ? transaction.expected_binding.session_id
+                           : 0u;
+  status->evidence_request_sequence = evidence_request_sequence;
+  status->uptime_s = now_s;
+  status->applied_code = transaction_bound ? transaction.applied_code : 0u;
+  status->correction_count =
+      transaction_bound ? transaction.correction_count : 0u;
+  status->cumulative_movement_codes =
+      transaction_bound ? transaction.cumulative_movement_codes : 0u;
+  status->selected_interval_count =
+      have_health ? latest_health.selected_interval_count : 0u;
+  status->transaction_bound = transaction_bound;
+  status->capture_lease_live = capture_lease_live(now_s);
+  status->manual_start_confirmed = manual_start_confirmed;
+  status->arm_eligible =
+      otis_cx317_active_arm_eligibility_valid(&current_eligibility);
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  status->fail_static = otis_dual_core_fail_static();
+#else
+  status->fail_static = transaction_bound &&
+                        (transaction.state == OtisCx317ActiveState::Fault ||
+                         transaction.state == OtisCx317ActiveState::Aborted);
+#endif
+#else
+  (void)now_s;
+  status->state = "DISABLED";
+  status->reason = "active_control_compiled_out";
+  status->evidence_state = "evidence_clear";
 #endif
 }
 

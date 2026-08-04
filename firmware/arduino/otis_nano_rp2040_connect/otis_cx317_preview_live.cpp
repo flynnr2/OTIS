@@ -46,6 +46,7 @@ OtisSpscQueue<Frame, kQueueDepth> queue;
 Frame transport_frame = {};
 bool transport_frame_active = false;
 uint32_t dropped_frames = 0u;
+uint32_t evidence_frame_sequence = 0u;
 uint32_t estimate_seq = 0u;
 uint32_t control_seq = 0u;
 uint32_t startup_s = 0u;
@@ -74,7 +75,18 @@ bool enqueue(const char *data, size_t length) {
   frame.data[length] = '\0';
   frame.length = static_cast<uint16_t>(length);
   frame.sent = 0u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisEvidenceFrameMessage message = {};
+  message.sequence = evidence_frame_sequence + 1u;
+  message.length = frame.length;
+  memcpy(message.data, frame.data, frame.length + 1u);
+  if (otis_dual_core_publish_evidence(&message)) {
+    evidence_frame_sequence = message.sequence;
+    return true;
+  }
+#else
   if (queue.try_push(frame)) return true;
+#endif
   uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
   while (observed != UINT32_MAX &&
          !__atomic_compare_exchange_n(&dropped_frames, &observed,
@@ -243,6 +255,7 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   settling_until_s = startup_uptime_s;
   initialized = true;
   queue.reset();
+  evidence_frame_sequence = 0u;
   transport_frame = {};
   transport_frame_active = false;
   __atomic_store_n(&dropped_frames, 0u, __ATOMIC_RELAXED);
@@ -446,6 +459,9 @@ void otis_cx317_preview_live_get_authority_state(
 
 void otis_cx317_preview_live_service_transport(void) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return;
+#else
   if (!transport_frame_active) {
     if (!queue.try_pop(&transport_frame)) return;
     transport_frame_active = true;
@@ -464,11 +480,16 @@ void otis_cx317_preview_live_service_transport(void) {
     transport_frame = {};
   }
 #endif
+#endif
 }
 
 bool otis_cx317_preview_live_transport_busy(void) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return false;
+#else
   return transport_frame_active && transport_frame.sent > 0u;
+#endif
 #else
   return false;
 #endif
@@ -504,8 +525,14 @@ void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context) {
                    dropped == 0u ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
                    dropped == 0u ? OTIS_FLAG_NONE
                                   : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  uint32_t queue_high_water = queue.high_water();
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisDualCoreQueueStats queue_stats = {};
+  otis_dual_core_get_stats(&queue_stats);
+  queue_high_water = queue_stats.evidence_high_water;
+#endif
   snprintf(value, sizeof(value), "%lu",
-           static_cast<unsigned long>(queue.high_water()));
+           static_cast<unsigned long>(queue_high_water));
   otis_status_emit(context, "cx317_preview", "queue_high_water", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 #else

@@ -167,6 +167,8 @@ def test_only_stage6_profile_consumes_accepted_backend_qualification() -> None:
         "cx317_pps_gated_i_only_preview",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
+        "cx317_dual_core_active_part_a",
+        "cx317_dual_core_active_endurance_part_b",
     ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
