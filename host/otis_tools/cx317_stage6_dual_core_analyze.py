@@ -36,11 +36,11 @@ from .timebase import unwrap_ticks
 
 EXPECTED_STAGE = "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW"
 EXPECTED_CODE = 0xA82A
-EXPECTED_COMMIT = "3862d4b457b50bb4df3e96798389aa37c2482ae5"
-EXPECTED_SOURCE = "ff549b27f52e520ac6cfa9974b1667c50b329b82d88a94fd1179e4ad7582a6e0"
+EXPECTED_COMMIT = "6ac3ae66861fedf3a90930b16332e5d0368c6dbb"
+EXPECTED_SOURCE = "7e7175422c9c8aac9d61672dd6867d202127eec347f815eec3c43ad4b9ac6fbf"
 EXPECTED_CONFIG = "a2d4e934e612682cc47db261a24dc0b50561ca6013338e161f265b5c94b67705"
-EXPECTED_UF2 = "3809a63b8333e6f38af93675a12405bd4c511b501c86f051c0f37cff4819fd10"
-EXPECTED_BUILD_MANIFEST = "039c1f8dc39a74bcebf0f00987cd64674ed85d85e29601f0c55e6689ccc2ef67"
+EXPECTED_UF2 = "ed6f726a56a6efe166208902b96194e300ed8ebe5029d4be727bebbe7d216bd2"
+EXPECTED_BUILD_MANIFEST = "2a2a0e7c756335556d02100bb9aee85e2b83bc3d3ad1e0f409c0ce531c1f3a85"
 
 
 @dataclass(frozen=True)
@@ -282,12 +282,24 @@ def analyze(
         "DUALCORE INVALIDATE_GNSS": 1, "DUALCORE RECOVER": 1, "DUALCORE?": 1,
     }
     commands_ok = len(sent) == sum(expected_counts.values()) and all(sent.count(command) == count for command, count in expected_counts.items())
+    partial_line_drops = [
+        row for row in markers if row.get("event") == "partial_line_dropped"
+    ]
     duration = _utc_seconds(str(stopped["utc"])) - _utc_seconds(str(started["utc"]))
-    transport_ok = commands_ok and duration >= 4790 and all(
-        int(stopped.get(key, -1)) == 0 for key in
-        ("malformed_utf8", "parser_errors", "reconnect_count", "commands_rejected")
+    transport_ok = (
+        commands_ok
+        and duration >= 4790
+        and not partial_line_drops
+        and all(
+            int(stopped.get(key, -1)) == 0 for key in
+            ("malformed_utf8", "parser_errors", "reconnect_count", "commands_rejected")
+        )
     )
-    checks.append(Check("predetermined_schedule_and_transport", transport_ok, f"{len(sent)} exact commands; capture {duration:.0f} s"))
+    checks.append(Check(
+        "predetermined_schedule_and_transport",
+        transport_ok,
+        f"{len(sent)} exact commands; capture {duration:.0f} s; partial-line drops {len(partial_line_drops)}",
+    ))
 
     latest = _latest_health(health)
     critical_reasons = {

@@ -3,6 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from host.otis_tools.cx317_stage6_dual_core_analyze import (
+    EXPECTED_BUILD_MANIFEST,
+    EXPECTED_COMMIT,
+    EXPECTED_CONFIG,
+    EXPECTED_SOURCE,
+    EXPECTED_UF2,
+)
 from host.otis_tools.cx317_stage6_dual_core_supervisor import (
     EXPECTED_CODE,
     EXPECTED_LIVE_IDENTITY,
@@ -17,10 +24,19 @@ TEMPLATE = ROOT / "profiles/run_templates/cx317_dual_core_post_campaign_preview_
 
 def test_stage6_live_manifest_is_exact_non_actionable_contract() -> None:
     value = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    firmware = value["firmware"]
     assert value["template"] is True
     assert value["stage"] == "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW"
-    assert value["firmware"]["git_commit"] == "3862d4b457b50bb4df3e96798389aa37c2482ae5"
-    assert value["firmware"]["source_state"] == "clean"
+    assert firmware["git_commit"] == EXPECTED_COMMIT
+    assert firmware["source_state"] == "clean"
+    assert firmware["source_sha256"] == EXPECTED_SOURCE
+    assert firmware["configuration_sha256"] == EXPECTED_CONFIG
+    assert firmware["build_manifest_sha256"] == EXPECTED_BUILD_MANIFEST
+    assert firmware["uf2_sha256"] == EXPECTED_UF2
+    assert value["host"]["firmware_build_parent"] == EXPECTED_COMMIT
+    assert EXPECTED_LIVE_IDENTITY[("firmware", "git_commit")] == EXPECTED_COMMIT
+    assert EXPECTED_LIVE_IDENTITY[("firmware", "source_hash")] == EXPECTED_SOURCE
+    assert EXPECTED_LIVE_IDENTITY[("firmware", "config_hash")] == EXPECTED_CONFIG
     assert value["controller_preview"]["active_live_update_codes"] == 0
     assert value["actionable"] is False
     assert value["actuation_authorized"] is False

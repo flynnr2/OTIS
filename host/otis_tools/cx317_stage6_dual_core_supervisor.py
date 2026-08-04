@@ -19,9 +19,9 @@ EXPECTED_CODE = 0xA82A
 EXPECTED_LIVE_IDENTITY = {
     ("firmware", "version"): "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1",
     ("firmware", "config_id"): "cx317_pps_gated_i_only_preview",
-    ("firmware", "git_commit"): "3862d4b457b50bb4df3e96798389aa37c2482ae5",
+    ("firmware", "git_commit"): "6ac3ae66861fedf3a90930b16332e5d0368c6dbb",
     ("firmware", "source_state"): "clean",
-    ("firmware", "source_hash"): "ff549b27f52e520ac6cfa9974b1667c50b329b82d88a94fd1179e4ad7582a6e0",
+    ("firmware", "source_hash"): "7e7175422c9c8aac9d61672dd6867d202127eec347f815eec3c43ad4b9ac6fbf",
     ("firmware", "config_hash"): "a2d4e934e612682cc47db261a24dc0b50561ca6013338e161f265b5c94b67705",
     ("build", "profile_id"): "cx317_pps_gated_i_only_preview",
     ("build", "tcxo_counter_backend"): "pps_gated_ratio",
