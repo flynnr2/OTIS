@@ -134,6 +134,8 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.kind = OtisSerialCommandKind::DualCoreQuery;
   } else if (strcmp(command, "DUALCORE INVALIDATE_GNSS") == 0) {
     parsed.kind = OtisSerialCommandKind::DualCoreInvalidateGnss;
+  } else if (strcmp(command, "DUALCORE RECOVER") == 0) {
+    parsed.kind = OtisSerialCommandKind::DualCoreRecover;
   } else if (strncmp(command, "DUALCORE", 8) == 0) {
     parsed.kind = OtisSerialCommandKind::DualCoreOther;
   } else if (strcmp(command, "DAC?") == 0) {

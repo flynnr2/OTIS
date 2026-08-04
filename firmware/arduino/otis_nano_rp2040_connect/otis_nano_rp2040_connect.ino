@@ -367,6 +367,21 @@ uint16_t dual_core_hdop_hundredths(const char *text) {
   return scaled >= 65535.0 ? 65535u : static_cast<uint16_t>(scaled + 0.5);
 }
 
+bool dual_core_receiver_qualified_for_control(void) {
+  if (dual_core_receiver.published_ticks == 0u) return false;
+  const uint64_t local_age_ticks =
+      otis_capture_ticks_now() - dual_core_receiver.published_ticks;
+  const uint64_t maximum_age_ticks =
+      static_cast<uint64_t>(OTIS_GNSS_METADATA_MAX_AGE_MS) * 1000ull *
+      OTIS_RP2040_TIMER0_TICKS_PER_US;
+  return dual_core_receiver.control_eligible &&
+         dual_core_receiver.identity_stable &&
+         dual_core_receiver.gsa_checksum_requalified &&
+         dual_core_receiver.gsa_3d &&
+         dual_core_receiver.metadata_age_ms <= OTIS_GNSS_METADATA_MAX_AGE_MS &&
+         local_age_ticks <= maximum_age_ticks;
+}
+
 void publish_dual_core_timing_status(const char *component, const char *key,
                                      const char *value,
                                      const char *severity, uint32_t flags) {
@@ -544,23 +559,34 @@ void service_dual_core_timing_inputs(void) {
       }
       continue;
     }
-    if (message.kind == OtisServiceMessageKind::RunControl &&
-        message.run_control.kind ==
-            OtisRunControlKind::SyntheticReceiverInvalidation) {
-      dual_core_receiver.control_eligible = false;
-      dual_core_receiver.gsa_3d = false;
-      dual_core_receiver_fixture_invalid = true;
-      dual_core_receiver_invalidation_until_ms =
-          millis() + message.run_control.duration_ms;
+    if (message.kind == OtisServiceMessageKind::RunControl) {
       OtisCriticalRecordMessage transition = {};
       transition.kind = OtisCriticalMessageKind::StateTransition;
       transition.sequence = message.run_control.sequence;
       transition.timestamp_ticks = message.run_control.published_ticks;
-      snprintf(transition.component, sizeof(transition.component), "%s",
-               "gnss_qualification");
-      snprintf(transition.reason, sizeof(transition.reason), "%s",
-               "controlled_fixture_invalidation");
-      otis_dual_core_publish_critical(&transition);
+      if (message.run_control.kind ==
+          OtisRunControlKind::SyntheticReceiverInvalidation) {
+        dual_core_receiver.control_eligible = false;
+        dual_core_receiver.gsa_3d = false;
+        dual_core_receiver_fixture_invalid = true;
+        dual_core_receiver_invalidation_until_ms =
+            millis() + message.run_control.duration_ms;
+        snprintf(transition.component, sizeof(transition.component), "%s",
+                 "gnss_qualification");
+        snprintf(transition.reason, sizeof(transition.reason), "%s",
+                 "controlled_fixture_invalidation");
+        otis_dual_core_publish_critical(&transition);
+      } else if (message.run_control.kind == OtisRunControlKind::Recover) {
+        const bool accepted =
+            dual_core_receiver_qualified_for_control() &&
+            otis_cx317_preview_live_request_recovery();
+        snprintf(transition.component, sizeof(transition.component), "%s",
+                 "cx317_preview");
+        snprintf(transition.reason, sizeof(transition.reason), "%s",
+                 accepted ? "explicit_recovery_accepted_fresh_support_required"
+                          : "explicit_recovery_rejected_not_qualified_or_not_faulted");
+        otis_dual_core_publish_critical(&transition);
+      }
     }
   }
 }
@@ -791,6 +817,12 @@ void emit_pps_count_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
   const OtisCx317StaticCodeState cx317_code = cx317_static_code_state();
   OtisCx317ActiveLiveOutcome active_outcome;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  const bool preview_receiver_valid =
+      dual_core_receiver_qualified_for_control();
+#else
+  const bool preview_receiver_valid = true;
+#endif
   otis_cx317_preview_live_on_boundary(
       &observation,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
@@ -798,7 +830,8 @@ void emit_pps_count_boundary(
       // OTIS_FLAG_TIMESTAMP_RECONSTRUCTED as provenance on a valid CNT row.
       // Use the backend's completed validity assessment instead of requiring
       // a numerically zero flag word.
-      window_completed && runtime_state.tcxo.last_observation_valid,
+      window_completed && runtime_state.tcxo.last_observation_valid &&
+          preview_receiver_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
   if (active_outcome.application_attempted) {
     otis_emit_dac_step(
@@ -3063,6 +3096,28 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status("dual_core", "gnss_fixture_invalidation",
                 "rejected_disabled", OTIS_SEVERITY_WARN,
                 OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  } else if (command.kind == OtisSerialCommandKind::DualCoreRecover) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisServiceMessage recovery = {};
+    recovery.kind = OtisServiceMessageKind::RunControl;
+    recovery.run_control.sequence = dual_core_service_sequence++;
+    recovery.run_control.published_ticks = otis_capture_ticks_now();
+    recovery.run_control.authorization_sequence =
+        recovery.run_control.sequence;
+    recovery.run_control.nonce =
+        0xD617A000u ^ recovery.run_control.sequence;
+    recovery.run_control.kind = OtisRunControlKind::Recover;
+    recovery.run_control.asserted = true;
+    const bool published = otis_dual_core_publish_service(&recovery);
+    emit_status("dual_core", "preview_recovery",
+                published ? "queued" : "rejected_queue_fault",
+                published ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+                published ? OTIS_FLAG_PROFILE_ASSUMPTION
+                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#else
+    emit_status("dual_core", "preview_recovery", "rejected_disabled",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
   } else if (command.kind == OtisSerialCommandKind::DualCoreOther) {
     emit_status("dual_core", "command", "rejected_unknown",

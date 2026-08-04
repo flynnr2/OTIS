@@ -56,6 +56,7 @@ bool temperature_available = false;
 double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
+bool recovery_requested = false;
 
 bool enqueue(const char *data, size_t length) {
   if (data == nullptr || length == 0u || length >= kFrameCapacity) {
@@ -247,6 +248,7 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   __atomic_store_n(&dropped_frames, 0u, __ATOMIC_RELAXED);
   selected_estimator_valid = false;
   selected_model_applicable = false;
+  recovery_requested = false;
   return true;
 #else
   (void)startup_uptime_s;
@@ -321,6 +323,20 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;
+    return;
+  }
+  if (recovery_requested && interval_valid) {
+    otis_cx317_snapshot_estimator_reset(&estimator);
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
+    OtisCx317PreviewInput input = controller_input(
+        uptime_s, 0.0, false, true, true, true, static_code);
+    input.recovery_requested = true;
+    OtisCx317PreviewDecision decision;
+    otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    recovery_requested = false;
+    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+                 estimate_seq);
     return;
   }
   OtisCx317SpanEstimate span;
@@ -401,6 +417,17 @@ void otis_cx317_preview_live_on_capture_fault(
   (void)reason;
   (void)uptime_s;
   (void)static_code;
+#endif
+}
+
+bool otis_cx317_preview_live_request_recovery(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  if (!initialized || controller.state != OtisCx317PreviewState::Fault)
+    return false;
+  recovery_requested = true;
+  return true;
+#else
+  return false;
 #endif
 }
 

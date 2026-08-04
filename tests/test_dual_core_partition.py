@@ -178,3 +178,29 @@ def test_live_receiver_invalidation_fixture_is_bounded_and_non_actuating() -> No
     assert "otis_dac_ad5693r_set_raw" not in branch
     assert "handle_dac_set" not in branch
     assert "active" not in branch.lower()
+
+    boundary_start = sketch.index("void emit_pps_count_boundary(")
+    boundary_end = sketch.index("void drain_pps_count_boundary_ring(", boundary_start)
+    boundary = sketch[boundary_start:boundary_end]
+    assert "dual_core_receiver_qualified_for_control()" in boundary
+    assert "preview_receiver_valid" in boundary
+
+
+def test_live_receiver_recovery_is_explicit_qualified_and_non_actuating() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    start = sketch.index("OtisSerialCommandKind::DualCoreRecover")
+    end = sketch.index("OtisSerialCommandKind::DualCoreOther", start)
+    branch = sketch[start:end]
+
+    assert "OtisRunControlKind::Recover" in branch
+    assert "otis_dual_core_publish_service" in branch
+    assert "otis_dac_ad5693r_set_raw" not in branch
+    assert "handle_dac_set" not in branch
+    service_start = sketch.index("void service_dual_core_timing_inputs(")
+    service_end = sketch.index("void service_dual_core_outputs(", service_start)
+    service = sketch[service_start:service_end]
+    assert "dual_core_receiver_qualified_for_control()" in service
+    assert "otis_cx317_preview_live_request_recovery()" in service
+    assert "explicit_recovery_accepted_fresh_support_required" in service

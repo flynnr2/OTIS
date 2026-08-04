@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -36,7 +37,8 @@ void otis_status_emit(OtisStatusEmitContext *, const char *, const char *,
 void otis_status_emit_u32(OtisStatusEmitContext *, const char *, const char *,
                           uint32_t, const char *, uint32_t) {}
 
-int main() {
+int main(int argc, char **argv) {
+  const bool recovery_mode = argc == 2 && std::string(argv[1]) == "recovery";
   constexpr uint64_t kTicksPerSecond = 16000000ull;
   otis_cx317_preview_live_begin(0u);
   otis_cx317_preview_live_emit_headers();
@@ -54,6 +56,25 @@ int main() {
     for (uint8_t drain = 0u; drain < 16u; ++drain) {
       otis_cx317_preview_live_service_transport();
     }
+  }
+  if (recovery_mode) {
+    otis_cx317_preview_live_on_capture_fault(
+        "controlled_metadata_invalidation", 2401u, &code);
+    assert(otis_cx317_preview_live_request_recovery());
+    for (uint32_t second = 2401u; second <= 4201u; ++second) {
+      counter -= 10000000u;
+      const OtisPpsCountBoundaryObservation observation = {
+          1u, second, second, second * kTicksPerSecond, counter, 10000000u,
+          0u, 0u,
+      };
+      otis_cx317_preview_live_on_boundary(
+          &observation, 10000000u, true, second, &code, nullptr);
+      for (uint8_t drain = 0u; drain < 16u; ++drain) {
+        otis_cx317_preview_live_service_transport();
+      }
+    }
+    assert(!otis_cx317_preview_live_request_recovery());
+    std::cerr << "recovery_fixture_pass\n";
   }
   std::cout << output;
   return 0;

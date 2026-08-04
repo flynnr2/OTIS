@@ -96,8 +96,9 @@ def test_dual_core_fixture_commands_have_closed_firmware_vocabulary(
 ) -> None:
     assert _events(
         framing_harness,
-        b"DUALCORE?\nDUALCORE INVALIDATE_GNSS\nDUALCORE ARBITRARY\n",
-    ) == ["EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER"]
+        b"DUALCORE?\nDUALCORE INVALIDATE_GNSS\nDUALCORE RECOVER\n"
+        b"DUALCORE ARBITRARY\n",
+    ) == ["EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER"]
 
 
 def test_commas_and_quotes_are_not_echoed_in_diagnostic(

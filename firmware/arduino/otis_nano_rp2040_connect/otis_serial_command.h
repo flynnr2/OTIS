@@ -31,6 +31,7 @@ enum class OtisSerialCommandKind : uint8_t {
   ConfigQuery,
   DualCoreQuery,
   DualCoreInvalidateGnss,
+  DualCoreRecover,
   DualCoreOther,
   DacQuery,
   DacLimitsQuery,

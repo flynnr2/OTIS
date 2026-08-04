@@ -252,6 +252,32 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
         assert result.errors == ()
 
 
+def test_live_preview_controlled_fault_requires_explicit_fresh_recovery(
+    cx317_live_harness: Path,
+) -> None:
+    completed = subprocess.run(
+        [str(cx317_live_harness), "recovery"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    lines = completed.stdout.splitlines()
+    controls = list(csv.DictReader([
+        lines[1], *[line for line in lines[2:] if line.startswith("CTL,")]
+    ]))
+
+    assert completed.stderr.strip() == "recovery_fixture_pass"
+    assert any(row["control_state"] == "FAULT" for row in controls)
+    assert any(
+        row["decision_reason_code"] == "explicit_recovery_fresh_support"
+        for row in controls
+    )
+    assert controls[-1]["decision_reason_code"] == "inside_evidence_deadband"
+    assert controls[-1]["preview_available"] == "true"
+    assert all(row["actuation_authorized"] == "false" for row in controls)
+    assert all(row["actionable"] == "false" for row in controls)
+
+
 def test_preview_sources_have_no_actuator_dependency_or_actionable_path() -> None:
     sources = "\n".join(
         (FIRMWARE / name).read_text(encoding="utf-8")
@@ -277,6 +303,8 @@ def test_stage6_profile_keeps_dac_manual_only() -> None:
     defines = profile["defines"]
     assert defines["OTIS_ENABLE_CX317_I_ONLY_PREVIEW"] == "1"
     assert defines["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
+    assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
+    assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
     assert defines["OTIS_ENABLE_DAC_AD5693R"] == "1"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"

@@ -12,6 +12,7 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("config?", "CONFIG?"),
         ("dualcore?", "DUALCORE?"),
         ("dualcore invalidate_gnss", "DUALCORE INVALIDATE_GNSS"),
+        ("dualcore recover", "DUALCORE RECOVER"),
         ("dac?", "DAC?"),
         ("dac limits?", "DAC LIMITS?"),
         ("dac mid", "DAC MID"),

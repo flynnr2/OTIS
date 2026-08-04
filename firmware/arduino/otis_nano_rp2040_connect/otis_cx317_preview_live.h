@@ -36,6 +36,7 @@ void otis_cx317_preview_live_on_boundary(
 void otis_cx317_preview_live_on_capture_fault(const char *reason,
                                              uint32_t uptime_s,
                                              const OtisCx317StaticCodeState *static_code);
+bool otis_cx317_preview_live_request_recovery(void);
 void otis_cx317_preview_live_service_transport(void);
 bool otis_cx317_preview_live_transport_busy(void);
 void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context);
