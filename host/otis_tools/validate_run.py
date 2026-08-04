@@ -346,7 +346,7 @@ def validate_run(run_dir: Path) -> int:
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
-            allow_rp2040_timer0_wrap=manifest.h_phase == "H1",
+            allow_rp2040_timer0_wrap="rp2040_timer0" in manifest.known_domains,
         )
         result = validate_csv(path, context)
         files_by_contract[contract] = path

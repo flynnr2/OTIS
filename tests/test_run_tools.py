@@ -169,6 +169,46 @@ def test_validate_run_accepts_h1_rp2040_timer_wrap(tmp_path: Path) -> None:
     assert not summary["anomalies"]
 
 
+def test_validate_run_accepts_rp2040_timer_wrap_outside_h1(tmp_path: Path) -> None:
+    run_dir = _copy_example(tmp_path)
+    wrap = (1 << 32) * 16
+    (run_dir / "raw_events.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
+                f"REF,1,1000,1,R,{wrap - 16_000_000},rp2040_timer0,0",
+                "REF,1,1001,1,R,0,rp2040_timer0,0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "count_observations.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
+                f"CNT,1,1,2,{wrap - 16_000_000},0,rp2040_timer0,10000000,R,h0_tcxo_16mhz,0",
+                "CNT,1,2,2,0,16000000,rp2040_timer0,10000000,R,h0_tcxo_16mhz,0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "health.csv").write_text(
+        "\n".join(
+            [
+                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
+                f"STS,1,1,{wrap - 1},rp2040_timer0,system,uptime_seconds,1,INFO,0",
+                "STS,1,2,1,rp2040_timer0,system,uptime_seconds,2,INFO,0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert validate_run(run_dir) == 0
+
+
 def test_report_run_uses_manifest_nominal_interval_for_pps_gated_counts(tmp_path: Path) -> None:
     run_dir = tmp_path / "pps_gated"
     shutil.copytree(H1_TEMPLATE, run_dir)
