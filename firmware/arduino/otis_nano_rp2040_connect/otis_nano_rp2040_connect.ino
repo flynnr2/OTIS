@@ -20,6 +20,7 @@
 #include "otis_cx317_preview_live.h"
 #include "otis_dac_ad5693r.h"
 #include "otis_dual_core_partition.h"
+#include "otis_dual_core_receiver_gate.h"
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
 #include "otis_gnss_receiver.h"
@@ -401,18 +402,9 @@ uint16_t dual_core_hdop_hundredths(const char *text) {
 }
 
 bool dual_core_receiver_qualified_for_control(void) {
-  if (dual_core_receiver.published_ticks == 0u) return false;
-  const uint64_t local_age_ticks =
-      otis_capture_ticks_now() - dual_core_receiver.published_ticks;
-  const uint64_t maximum_age_ticks =
-      static_cast<uint64_t>(OTIS_GNSS_METADATA_MAX_AGE_MS) * 1000ull *
-      OTIS_RP2040_TIMER0_TICKS_PER_US;
-  return dual_core_receiver.control_eligible &&
-         dual_core_receiver.identity_stable &&
-         dual_core_receiver.gsa_checksum_requalified &&
-         dual_core_receiver.gsa_3d &&
-         dual_core_receiver.metadata_age_ms <= OTIS_GNSS_METADATA_MAX_AGE_MS &&
-         local_age_ticks <= maximum_age_ticks;
+  return otis_dual_core_receiver_qualified_for_control_at(
+      &dual_core_receiver, otis_capture_ticks_now(),
+      OTIS_GNSS_METADATA_MAX_AGE_MS);
 }
 
 void publish_dual_core_timing_status(const char *component, const char *key,

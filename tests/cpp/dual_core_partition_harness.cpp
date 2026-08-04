@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "otis_dual_core_partition.h"
+#include "otis_dual_core_receiver_gate.h"
 
 namespace {
 
@@ -77,6 +78,30 @@ OtisServiceMessage receiver_metadata(uint32_t sequence) {
   value.receiver.gsa_checksum_requalified = true;
   value.receiver.gsa_3d = true;
   return value;
+}
+
+void receiver_qualification_age_is_timer_rollover_safe() {
+  constexpr uint64_t kTimerWrapTicks = (1ull << 32) * 16ull;
+  constexpr uint32_t kMaximumMetadataAgeMs = 1500u;
+  OtisReceiverQualificationMessage receiver = receiver_metadata(1u).receiver;
+  receiver.published_ticks = kTimerWrapTicks - 4000000ull;
+  receiver.metadata_age_ms = 250u;
+
+  assert(otis_dual_core_receiver_qualified_for_control_at(
+      &receiver, 12000000ull, kMaximumMetadataAgeMs));
+  assert(!otis_dual_core_receiver_qualified_for_control_at(
+      &receiver, 28000000ull, kMaximumMetadataAgeMs));
+
+  receiver.published_ticks = 32000000ull;
+  assert(otis_dual_core_receiver_qualified_for_control_at(
+      &receiver, 36000000ull, kMaximumMetadataAgeMs));
+  receiver.metadata_age_ms = kMaximumMetadataAgeMs + 1u;
+  assert(!otis_dual_core_receiver_qualified_for_control_at(
+      &receiver, 36000000ull, kMaximumMetadataAgeMs));
+  receiver.metadata_age_ms = 250u;
+  receiver.gsa_3d = false;
+  assert(!otis_dual_core_receiver_qualified_for_control_at(
+      &receiver, 36000000ull, kMaximumMetadataAgeMs));
 }
 
 OtisCrossCoreActuatorRequest request() {
@@ -359,6 +384,7 @@ void stale_ack_and_timeout_fault_without_retry() {
 
 int main() {
   full_build_identity_crosses_telemetry_queue_without_truncation();
+  receiver_qualification_age_is_timer_rollover_safe();
   bounded_core0_stall_preserves_raw_evidence();
   stage7_concurrent_health_and_active_query_burst_does_not_drop();
   service_plane_load_matrix_preserves_timing_state();

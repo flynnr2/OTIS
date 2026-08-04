@@ -1115,6 +1115,9 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
                 str(entry["contract"]),
                 manifest.known_channels,
                 manifest.known_domains,
+                allow_rp2040_timer0_wrap=(
+                    "rp2040_timer0" in manifest.known_domains
+                ),
             ),
         )
         if result.errors:

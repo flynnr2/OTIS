@@ -201,6 +201,7 @@ def test_stage7_analyzer_uses_run_manifest_validation_sets() -> None:
     )
     assert "manifest.known_channels" in source
     assert "manifest.known_domains" in source
+    assert '"rp2040_timer0" in manifest.known_domains' in source
     assert "manifest.channels" not in source
     assert "manifest.domains" not in source
 
