@@ -30,7 +30,11 @@ EXPECTED_LIVE_IDENTITY = {
     ("gnss_receiver", "gsa_checksum_requalified"): "true",
     ("gnss_receiver", "identity_stable"): "true",
     ("gnss_receiver", "metadata_control_eligible"): "true",
-    ("gnss_receiver", "control_eligible"): "true",
+    ("pps_gate", "backend_qualified"): "true",
+    ("pps_gate", "valid"): "true",
+    ("pps_gate", "physical_pps_missing_count"): "0",
+    ("pps_d14", "rejected_short_count"): "0",
+    ("pps_d14", "rejected_long_count"): "0",
 }
 
 
@@ -79,7 +83,10 @@ def _exact_live_identity(path: Path) -> bool:
         (row["component"], row["status_key"]): row["status_value"]
         for row in rows
     }
-    return all(latest.get(key) == value for key, value in EXPECTED_LIVE_IDENTITY.items())
+    return (
+        all(latest.get(key) == value for key, value in EXPECTED_LIVE_IDENTITY.items())
+        and int(latest.get(("pps_d14", "accepted_pps_count"), "0")) > 0
+    )
 
 
 def _exact_state_ack(path: Path) -> bool:
@@ -127,7 +134,7 @@ def run(command_fifo: Path, run_dir: Path, abort_fifo: Path, schedule: Schedule)
         audit.write("supervisor_started", authority="non_actuating_predetermined_only")
         send_command_to_fifo(command_fifo, "CONFIG?")
         audit.write("command_scheduled", command="CONFIG?", purpose="exact_live_identity")
-        identity_deadline = time.monotonic() + 15.0
+        identity_deadline = time.monotonic() + 30.0
         health_path = run_dir / "csv" / "health.csv"
         while not _exact_live_identity(health_path):
             if _abort_requested(abort_fd) or time.monotonic() >= identity_deadline:

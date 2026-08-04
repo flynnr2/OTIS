@@ -55,6 +55,9 @@ def test_preflight_requires_exact_firmware_build_and_gnss_identity(tmp_path: Pat
         f"STS,1,{index},{index},rp2040_timer0,{component},{key},{value},info,0"
         for index, ((component, key), value) in enumerate(EXPECTED_LIVE_IDENTITY.items())
     ]
+    rows.append(
+        f"STS,1,{len(rows)},{len(rows)},rp2040_timer0,pps_d14,accepted_pps_count,1,info,0"
+    )
     path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
     assert _exact_live_identity(path)
     path.write_text(header + "\n".join(rows[:-1]) + "\n", encoding="utf-8")
