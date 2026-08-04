@@ -18,6 +18,7 @@
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_dac_ad5693r.h"
+#include "otis_dual_core_partition.h"
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
 #include "otis_gnss_receiver.h"
@@ -35,6 +36,13 @@
 #include "otis_status_led.h"
 #include "otis_timebase.h"
 #include "otis_transport_serial.h"
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+// Arduino-Pico otherwise splits one 8 KiB stack between both cores.  The
+// timing/estimator path has bounded local formatting buffers, so give Core 1
+// its own full 8 KiB stack as supported by the pinned core.
+bool core1_separate_stack = true;
+#endif
 
 #if OTIS_ENABLE_PPS_DUAL_OBSERVER && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
@@ -73,6 +81,19 @@ bool boot_capability_status_emitted = false;
 bool run_mode_status_emitted = false;
 bool transport_started = false;
 bool config_query_provenance_emitted = false;
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+bool dual_core_service_boot_ready = false;
+bool dual_core_timing_boot_complete = false;
+bool dual_core_timing_boot_in_progress = false;
+uint32_t dual_core_service_sequence = 0u;
+uint32_t dual_core_last_metadata_ms = 0u;
+uint32_t dual_core_last_timing_status_ms = 0u;
+uint32_t dual_core_receiver_invalidation_until_ms = 0u;
+bool dual_core_receiver_fixture_invalid = false;
+OtisCx317StaticCodeState dual_core_static_code = {};
+OtisReceiverQualificationMessage dual_core_receiver = {};
+#endif
 
 bool parse_active_u32_fields(char *text, uint32_t *values, uint8_t count) {
   if (text == nullptr || values == nullptr || count == 0u) return false;
@@ -289,14 +310,29 @@ void emit_h1_dac_sweep_fc0_window(void);
 
 void emit_status(const char *component, const char *key, const char *value,
                  const char *severity, uint32_t flags) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (__atomic_load_n(&dual_core_timing_boot_in_progress,
+                      __ATOMIC_ACQUIRE)) {
+    OtisTelemetryMessage message = {};
+    message.timestamp_ticks = otis_capture_ticks_now();
+    message.flags = flags;
+    snprintf(message.component, sizeof(message.component), "%s", component);
+    snprintf(message.key, sizeof(message.key), "%s", key);
+    snprintf(message.value, sizeof(message.value), "%s", value);
+    snprintf(message.severity, sizeof(message.severity), "%s", severity);
+    otis_dual_core_publish_telemetry(&message);
+    return;
+  }
+#endif
   otis_status_emit(&status_emit_context, component, key, value, severity,
                    flags);
 }
 
 void emit_status_u32(const char *component, const char *key, uint32_t value,
                      const char *severity, uint32_t flags) {
-  otis_status_emit_u32(&status_emit_context, component, key, value, severity,
-                       flags);
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%lu", static_cast<unsigned long>(value));
+  emit_status(component, key, buffer, severity, flags);
 }
 
 void emit_status_i32(const char *component, const char *key, int32_t value,
@@ -322,6 +358,267 @@ void emit_status_u64_decimal(const char *component, const char *key,
   emit_status(component, key, buffer, severity, flags);
 }
 
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+uint16_t dual_core_hdop_hundredths(const char *text) {
+  if (text == nullptr || *text == '\0') return 0u;
+  const double parsed = strtod(text, nullptr);
+  if (parsed <= 0.0) return 0u;
+  const double scaled = parsed * 100.0;
+  return scaled >= 65535.0 ? 65535u : static_cast<uint16_t>(scaled + 0.5);
+}
+
+void publish_dual_core_timing_status(const char *component, const char *key,
+                                     const char *value,
+                                     const char *severity, uint32_t flags) {
+  OtisTelemetryMessage message = {};
+  message.timestamp_ticks = otis_capture_ticks_now();
+  message.flags = flags;
+  snprintf(message.component, sizeof(message.component), "%s", component);
+  snprintf(message.key, sizeof(message.key), "%s", key);
+  snprintf(message.value, sizeof(message.value), "%s", value);
+  snprintf(message.severity, sizeof(message.severity), "%s", severity);
+  otis_dual_core_publish_telemetry(&message);
+}
+
+void publish_dual_core_timing_status_u32(const char *component,
+                                         const char *key, uint32_t value,
+                                         const char *severity,
+                                         uint32_t flags) {
+  char formatted[24];
+  snprintf(formatted, sizeof(formatted), "%lu",
+           static_cast<unsigned long>(value));
+  publish_dual_core_timing_status(component, key, formatted, severity, flags);
+}
+
+void publish_dual_core_timing_health(uint32_t now_ms) {
+  if ((uint32_t)(now_ms - dual_core_last_timing_status_ms) < kStatusPeriodMs)
+    return;
+  dual_core_last_timing_status_ms = now_ms;
+
+  const uint32_t capture_dropped = otis_capture_ring_dropped_count();
+  const uint32_t boundary_dropped =
+      otis_pps_count_boundary_ring_dropped_count();
+  const uint32_t drop_flags = capture_dropped || boundary_dropped
+                                  ? OTIS_FLAG_CAPTURE_RING_OVERRUN
+                                  : OTIS_FLAG_NONE;
+  publish_dual_core_timing_status_u32(
+      "capture", "event_count", runtime_state.capture.emitted_event_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "capture", "dropped_count", capture_dropped,
+      capture_dropped ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO, drop_flags);
+  publish_dual_core_timing_status_u32(
+      "capture", "pps_count_boundary_dropped_count", boundary_dropped,
+      boundary_dropped ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      drop_flags);
+  publish_dual_core_timing_status_u32(
+      "capture", "error_flags", drop_flags,
+      drop_flags ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO, drop_flags);
+
+  otis_count_observation_emit_status(&runtime_state, &status_emit_context);
+
+  OtisCaptureIrqReferenceStats d14;
+  otis_capture_irq_get_reference_stats(&d14);
+  publish_dual_core_timing_status_u32(
+      "pps_d14", "raw_edge_count", d14.d14_raw_edge_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "pps_d14", "accepted_pps_count", d14.d14_accepted_pps_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "pps_d14", "rejected_short_count", d14.d14_rejected_short_count,
+      d14.d14_rejected_short_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      d14.d14_rejected_short_count ? OTIS_FLAG_PULSE_TOO_NARROW
+                                   : OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "pps_d14", "rejected_long_count", d14.d14_rejected_long_count,
+      d14.d14_rejected_long_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      d14.d14_rejected_long_count ? OTIS_FLAG_PULSE_TOO_WIDE
+                                  : OTIS_FLAG_NONE);
+
+  OtisPpsDualObserverStats d10;
+  otis_pps_dual_observer_get_stats(&d10);
+  publish_dual_core_timing_status_u32(
+      "pps_d10", "raw_edge_count", d10.d10_raw_edge_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "pps_d10", "short_interval_count", d10.d10_short_interval_count,
+      d10.d10_short_interval_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      d10.d10_short_interval_count ? OTIS_FLAG_PULSE_TOO_NARROW
+                                   : OTIS_FLAG_NONE);
+  publish_dual_core_timing_status_u32(
+      "pps_d10", "buffer_overflow_count", d10.d10_buffer_overflow_count,
+      d10.d10_buffer_overflow_count ? OTIS_SEVERITY_WARN
+                                    : OTIS_SEVERITY_INFO,
+      d10.d10_buffer_overflow_count ? OTIS_FLAG_CAPTURE_RING_OVERRUN
+                                    : OTIS_FLAG_NONE);
+}
+
+void publish_dual_core_service_metadata(uint32_t now_ms) {
+  if ((uint32_t)(now_ms - dual_core_last_metadata_ms) < 1000u) return;
+  dual_core_last_metadata_ms = now_ms;
+
+#if OTIS_ENABLE_GNSS_RECEIVER
+  OtisGnssReceiverSnapshot gnss;
+  otis_gnss_receiver_get_snapshot(now_ms, &gnss);
+  OtisServiceMessage receiver = {};
+  receiver.kind = OtisServiceMessageKind::ReceiverQualification;
+  receiver.receiver.sequence = dual_core_service_sequence++;
+  receiver.receiver.published_ticks = otis_capture_ticks_now();
+  receiver.receiver.metadata_age_ms = gnss.metadata_age_ms;
+  receiver.receiver.satellites = gnss.satellites;
+  receiver.receiver.hdop_centihundredths =
+      dual_core_hdop_hundredths(gnss.hdop);
+  receiver.receiver.fix_quality = gnss.fix_quality;
+  receiver.receiver.fix_type = gnss.fix_dimension;
+  receiver.receiver.control_eligible = gnss.control_eligible;
+  receiver.receiver.identity_stable = gnss.identity_stable;
+  receiver.receiver.gsa_checksum_requalified =
+      gnss.gsa_checksum_requalified;
+  receiver.receiver.gsa_3d = gnss.gsa_3d;
+  otis_dual_core_publish_service(&receiver);
+#endif
+
+  OtisDacAd5693rStatus dac;
+  otis_dac_ad5693r_get_status(&dac);
+  OtisServiceMessage applied = {};
+  applied.kind = OtisServiceMessageKind::AppliedDacState;
+  applied.dac.sequence = dual_core_service_sequence++;
+  applied.dac.published_ticks = otis_capture_ticks_now();
+  applied.dac.requested_code = dac.last_requested_code;
+  applied.dac.applied_code = dac.last_applied_code;
+  applied.dac.initialized = dac.initialized;
+  applied.dac.i2c_ok = dac.last_write_ok;
+  applied.dac.requested_applied_match =
+      dac.applied_code_known && dac.last_write_ok &&
+      dac.last_requested_code == dac.last_applied_code;
+  otis_dual_core_publish_service(&applied);
+}
+
+void service_dual_core_timing_inputs(void) {
+  OtisServiceMessage message;
+  while (otis_dual_core_take_service(&message)) {
+    if (message.kind == OtisServiceMessageKind::ReceiverQualification) {
+      dual_core_receiver = message.receiver;
+      const uint32_t now_ms = millis();
+      if (dual_core_receiver_fixture_invalid &&
+          (int32_t)(dual_core_receiver_invalidation_until_ms - now_ms) > 0) {
+        dual_core_receiver.control_eligible = false;
+        dual_core_receiver.gsa_3d = false;
+      } else if (dual_core_receiver_fixture_invalid) {
+        dual_core_receiver_fixture_invalid = false;
+        OtisCriticalRecordMessage transition = {};
+        transition.kind = OtisCriticalMessageKind::StateTransition;
+        transition.sequence = message.receiver.sequence;
+        transition.timestamp_ticks = message.receiver.published_ticks;
+        snprintf(transition.component, sizeof(transition.component), "%s",
+                 "gnss_qualification");
+        snprintf(transition.reason, sizeof(transition.reason), "%s",
+                 dual_core_receiver.control_eligible
+                     ? "receiver_metadata_requalified"
+                     : "receiver_metadata_remains_unqualified");
+        otis_dual_core_publish_critical(&transition);
+      }
+      continue;
+    }
+    if (message.kind == OtisServiceMessageKind::Environment) {
+      otis_cx317_preview_live_on_temperature(
+          message.environment.temperature_valid,
+          message.environment.temperature_c,
+          millis() / 1000u);
+      continue;
+    }
+    if (message.kind == OtisServiceMessageKind::AppliedDacState) {
+      const bool prior_available = dual_core_static_code.available;
+      const uint16_t prior_code = dual_core_static_code.applied_code;
+      dual_core_static_code = {
+          message.dac.requested_applied_match,
+          message.dac.requested_applied_match,
+          message.dac.initialized && message.dac.i2c_ok,
+          message.dac.applied_code,
+      };
+      if (prior_available && dual_core_static_code.available &&
+          prior_code != dual_core_static_code.applied_code) {
+        otis_cx317_preview_live_on_dac_applied(
+            dual_core_static_code.applied_code, millis() / 1000u);
+      }
+      continue;
+    }
+    if (message.kind == OtisServiceMessageKind::RunControl &&
+        message.run_control.kind ==
+            OtisRunControlKind::SyntheticReceiverInvalidation) {
+      dual_core_receiver.control_eligible = false;
+      dual_core_receiver.gsa_3d = false;
+      dual_core_receiver_fixture_invalid = true;
+      dual_core_receiver_invalidation_until_ms =
+          millis() + message.run_control.duration_ms;
+      OtisCriticalRecordMessage transition = {};
+      transition.kind = OtisCriticalMessageKind::StateTransition;
+      transition.sequence = message.run_control.sequence;
+      transition.timestamp_ticks = message.run_control.published_ticks;
+      snprintf(transition.component, sizeof(transition.component), "%s",
+               "gnss_qualification");
+      snprintf(transition.reason, sizeof(transition.reason), "%s",
+               "controlled_fixture_invalidation");
+      otis_dual_core_publish_critical(&transition);
+    }
+  }
+}
+
+void service_dual_core_outputs(void) {
+  OtisObservationMessage observation;
+  uint8_t raw_budget = 24u;
+  while (raw_budget-- > 0u &&
+         otis_dual_core_take_observation(&observation)) {
+    if (observation.kind == OtisObservationMessageKind::RawEdge) {
+      const OtisRawEdgeMessage &edge = observation.raw_edge;
+      otis_emit_raw_event(edge.reference_record ? OTIS_RECORD_REF
+                                                : OTIS_RECORD_EVT,
+                          edge.sequence, edge.channel_id,
+                          edge_string(edge.edge), edge.timestamp_ticks,
+                          OTIS_DOMAIN_RP2040_TIMER0, edge.flags);
+    } else if (observation.kind ==
+               OtisObservationMessageKind::PpsSnapshot) {
+      const OtisPpsSnapshotMessage &snapshot = observation.snapshot;
+      otis_emit_pps_snapshot(
+          snapshot.session, snapshot.sequence,
+          snapshot.cumulative_down_counter, snapshot.reference_sequence,
+          snapshot.reference_timestamp_ticks, snapshot.status,
+          "pio_wait_cumulative_snapshot_dma_v1");
+    } else if (observation.kind ==
+               OtisObservationMessageKind::CountObservation) {
+      const OtisCountObservationMessage &count = observation.count;
+      otis_emit_count_observation(
+          count.sequence, count.channel_id, count.gate_open_ticks,
+          count.gate_close_ticks, OTIS_DOMAIN_RP2040_TIMER0,
+          count.counted_edges, OTIS_EDGE_RISING, count.source_domain,
+          count.flags);
+    }
+  }
+
+  OtisCriticalRecordMessage critical;
+  uint8_t critical_budget = 8u;
+  while (critical_budget-- > 0u &&
+         otis_dual_core_take_critical(&critical)) {
+    emit_status(critical.component[0] == '\0' ? "dual_core"
+                                               : critical.component,
+                "critical_record", critical.reason,
+                critical.kind == OtisCriticalMessageKind::Fault
+                    ? OTIS_SEVERITY_ERROR
+                    : OTIS_SEVERITY_INFO,
+                critical.flags);
+  }
+
+  OtisTelemetryMessage telemetry;
+  uint8_t telemetry_budget = 12u;
+  while (telemetry_budget-- > 0u &&
+         otis_dual_core_take_telemetry(&telemetry)) {
+    emit_status(telemetry.component, telemetry.key, telemetry.value,
+                telemetry.severity, telemetry.flags);
+  }
+}
+#endif
+
 void emit_captured_edge(const OtisCapturedEdge &record) {
   if (record.reference_record && record.edge == 'R') {
     otis_capture_irq_process_reference_foreground(record);
@@ -338,6 +635,14 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
     };
     otis_pps_count_boundary_ring_push_from_isr(pending_reference);
 #endif
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisPhase4LiveDacState phase4_dac = {
+        dual_core_static_code.available &&
+            dual_core_static_code.requested_applied_match &&
+            dual_core_static_code.i2c_ok,
+        dual_core_static_code.applied_code,
+    };
+#else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
     OtisPhase4LiveDacState phase4_dac = {
@@ -345,19 +650,36 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
+#endif
     otis_phase4_observe_preview_on_reference(
         runtime_state.sequences.event_seq, record.timestamp_ticks, record.flags,
         &runtime_state, &phase4_dac);
   }
 
-  otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF : OTIS_RECORD_EVT,
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisObservationMessage message = {};
+  message.kind = OtisObservationMessageKind::RawEdge;
+  message.raw_edge.sequence = runtime_state.sequences.event_seq++;
+  message.raw_edge.timestamp_ticks = record.timestamp_ticks;
+  message.raw_edge.flags = record.flags;
+  message.raw_edge.channel_id = record.channel_id;
+  message.raw_edge.edge = record.edge;
+  message.raw_edge.reference_record = record.reference_record;
+  otis_dual_core_publish_observation(&message);
+#else
+  otis_emit_raw_event(record.reference_record ? OTIS_RECORD_REF
+                                              : OTIS_RECORD_EVT,
                       runtime_state.sequences.event_seq++, record.channel_id,
                       edge_string(record.edge), record.timestamp_ticks,
                       OTIS_DOMAIN_RP2040_TIMER0, record.flags);
+#endif
   runtime_state.capture.emitted_event_count++;
 }
 
 OtisCx317StaticCodeState cx317_static_code_state(void) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return dual_core_static_code;
+#else
   OtisDacAd5693rStatus status;
   otis_dac_ad5693r_get_status(&status);
   const bool matches = status.applied_code_known && status.last_write_ok &&
@@ -368,6 +690,7 @@ OtisCx317StaticCodeState cx317_static_code_state(void) {
       status.initialized && status.last_write_ok,
       status.last_applied_code,
   };
+#endif
 }
 
 void service_cx317_active_health(void) {
@@ -488,6 +811,14 @@ void emit_pps_count_boundary(
                                : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   }
   if (window_completed) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisPhase4LiveDacState phase4_dac = {
+        dual_core_static_code.available &&
+            dual_core_static_code.requested_applied_match &&
+            dual_core_static_code.i2c_ok,
+        dual_core_static_code.applied_code,
+    };
+#else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
     OtisPhase4LiveDacState phase4_dac = {
@@ -495,6 +826,7 @@ void emit_pps_count_boundary(
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
+#endif
     otis_phase4_observe_preview_on_count(
         runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
     otis_count_observation_note_control_consumer(observation.session,
@@ -585,11 +917,26 @@ void drain_pps_count_boundary_ring(void) {
         OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
         OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisObservationMessage snapshot_message = {};
+  snapshot_message.kind = OtisObservationMessageKind::PpsSnapshot;
+  snapshot_message.snapshot.session = observation.session;
+  snapshot_message.snapshot.sequence = observation.sequence;
+  snapshot_message.snapshot.cumulative_down_counter =
+      observation.cumulative_down_counter;
+  snapshot_message.snapshot.reference_sequence =
+      observation.reference_sequence;
+  snapshot_message.snapshot.reference_timestamp_ticks =
+      observation.pps_timestamp_ticks;
+  snapshot_message.snapshot.status = snapshot.status;
+  otis_dual_core_publish_observation(&snapshot_message);
+#else
   otis_emit_pps_snapshot(
       observation.session, observation.sequence,
       observation.cumulative_down_counter, observation.reference_sequence,
       observation.pps_timestamp_ticks, snapshot.status,
       "pio_wait_cumulative_snapshot_dma_v1");
+#endif
   emit_pps_count_boundary(observation);
   have_pending_reference = false;
 #endif
@@ -1188,6 +1535,61 @@ void emit_periodic_status(void) {
     return;
   }
   runtime_state.periodic.last_status_ms = now_ms;
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  emit_status_u32("system", "uptime_seconds", now_ms / 1000u,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  OtisDualCoreQueueStats queues;
+  otis_dual_core_get_stats(&queues);
+  emit_status_u32("dual_core", "service_to_timing_depth",
+                  queues.service_to_timing_depth, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "service_to_timing_high_water",
+                  queues.service_to_timing_high_water, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "observation_depth", queues.observation_depth,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "observation_high_water",
+                  queues.observation_high_water, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "critical_depth", queues.critical_depth,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "critical_high_water",
+                  queues.critical_high_water, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "telemetry_depth", queues.telemetry_depth,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "telemetry_high_water",
+                  queues.telemetry_high_water, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "telemetry_dropped",
+                  queues.telemetry_dropped,
+                  queues.telemetry_dropped ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+                  queues.telemetry_dropped
+                      ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                      : OTIS_FLAG_NONE);
+  emit_status("dual_core", "partition_fault",
+              otis_partition_fault_name(queues.fault),
+              queues.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
+              queues.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                                 : OTIS_FLAG_NONE);
+  emit_status("dual_core", "fail_static",
+              queues.fail_static ? "true" : "false",
+              queues.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
+              queues.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                                 : OTIS_FLAG_NONE);
+  emit_status("dual_core", "core0_role",
+              "service_io_actuator_execution", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("dual_core", "core1_role", "protected_timing_discipline",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  otis_cx317_preview_live_emit_status(&status_emit_context);
+#if OTIS_ENABLE_GNSS_RECEIVER
+  emit_gnss_receiver_status(now_ms);
+#endif
+  return;
+#endif
 
   uint32_t capture_dropped_count = otis_capture_ring_dropped_count();
   uint32_t boundary_dropped_count =
@@ -1936,10 +2338,25 @@ void emit_env_sample(const OtisEnvSample &sample,
     return;
   }
   if (strcmp(sample.role, "vcocxo_near") == 0) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisServiceMessage environment = {};
+    environment.kind = OtisServiceMessageKind::Environment;
+    environment.environment.sequence = dual_core_service_sequence++;
+    environment.environment.timestamp_ticks = timestamp_ticks;
+    environment.environment.temperature_c = sample.temperature_c;
+    environment.environment.relative_humidity_pct =
+        sample.relative_humidity_pct;
+    environment.environment.pressure_pa = sample.pressure_pa;
+    environment.environment.temperature_valid = true;
+    environment.environment.humidity_valid = sample.has_humidity;
+    environment.environment.pressure_valid = sample.has_pressure;
+    otis_dual_core_publish_service(&environment);
+#else
     otis_phase4_observe_preview_on_temperature(
         true, sample.temperature_c, timestamp_ticks);
     otis_cx317_preview_live_on_temperature(
         true, sample.temperature_c, millis() / 1000u);
+#endif
   }
   char temperature[16];
   char humidity[16];
@@ -1975,9 +2392,18 @@ void service_environment_sensors(void) {
     const uint64_t timestamp_ticks = otis_capture_ticks_now();
     emit_env_sample(sample, timestamp_ticks);
   } else {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisServiceMessage environment = {};
+    environment.kind = OtisServiceMessageKind::Environment;
+    environment.environment.sequence = dual_core_service_sequence++;
+    environment.environment.timestamp_ticks = otis_capture_ticks_now();
+    environment.environment.temperature_valid = false;
+    otis_dual_core_publish_service(&environment);
+#else
     otis_phase4_observe_preview_on_temperature(
         false, 0.0f, otis_capture_ticks_now());
     otis_cx317_preview_live_on_temperature(false, 0.0f, millis() / 1000u);
+#endif
   }
 #endif
 #if OTIS_ENABLE_ENV_BMP280
@@ -2215,7 +2641,9 @@ void boot_phase_run_mode(void) {
   runtime_state.periodic.last_status_ms = millis();
   otis_status_led_set(OTIS_SYSTEM_STATE_USB_CONFIG_DEBUG);
   otisBootBreadcrumbMarkRunMode();
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION
   emit_run_mode_status_if_ready();
+#endif
 }
 
 void service_loopback_output(void) {
@@ -2237,6 +2665,14 @@ void service_tcxo_gate(void) {
   OtisCountObservationConfig count_config = count_observation_config();
   if (otis_count_observation_service(&runtime_state, &status_emit_context,
                                      &count_config)) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisPhase4LiveDacState phase4_dac = {
+        dual_core_static_code.available &&
+            dual_core_static_code.requested_applied_match &&
+            dual_core_static_code.i2c_ok,
+        dual_core_static_code.applied_code,
+    };
+#else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
     OtisPhase4LiveDacState phase4_dac = {
@@ -2244,6 +2680,7 @@ void service_tcxo_gate(void) {
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
+#endif
     otis_phase4_observe_preview_on_count(
         runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
@@ -2480,7 +2917,7 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   if (command.kind == OtisSerialCommandKind::Help) {
     emit_status("command", "h1_help",
-                "CONFIG?_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_ACTIVE?_ACTIVE_LEASE_seq_ACTIVE_ARM_seq_nonce_expiry_ACTIVE_ABORT_ACTIVE_EVIDENCE_request_SWEEP?_PPSGEN?_HELP",
+                "CONFIG?_DUALCORE?_DUALCORE_INVALIDATE_GNSS_DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_ACTIVE?_ACTIVE_LEASE_seq_ACTIVE_ARM_seq_nonce_expiry_ACTIVE_ABORT_ACTIVE_EVIDENCE_request_SWEEP?_PPSGEN?_HELP",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
@@ -2546,6 +2983,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status_u32("build", "enable_cx317_bounded_active",
                     OTIS_ENABLE_CX317_BOUNDED_ACTIVE, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_dual_core_partition",
+                    OTIS_ENABLE_DUAL_CORE_PARTITION, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("sweep", "default_dwell_ms",
                     OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -2567,6 +3007,66 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                         OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status("command", "config_snapshot", "end",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  } else if (command.kind == OtisSerialCommandKind::DualCoreQuery) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisDualCoreQueueStats queues;
+    otis_dual_core_get_stats(&queues);
+    emit_status_u32("dual_core", "service_to_timing_depth",
+                    queues.service_to_timing_depth, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "observation_depth",
+                    queues.observation_depth, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "critical_depth", queues.critical_depth,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "telemetry_depth", queues.telemetry_depth,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "telemetry_dropped",
+                    queues.telemetry_dropped,
+                    queues.telemetry_dropped ? OTIS_SEVERITY_WARN
+                                             : OTIS_SEVERITY_INFO,
+                    queues.telemetry_dropped
+                        ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                        : OTIS_FLAG_NONE);
+    emit_status("dual_core", "fail_static",
+                queues.fail_static ? "true" : "false",
+                queues.fail_static ? OTIS_SEVERITY_ERROR
+                                   : OTIS_SEVERITY_INFO,
+                queues.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                                   : OTIS_FLAG_NONE);
+#else
+    emit_status("dual_core", "command", "rejected_disabled",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  } else if (command.kind ==
+             OtisSerialCommandKind::DualCoreInvalidateGnss) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisServiceMessage invalidation = {};
+    invalidation.kind = OtisServiceMessageKind::RunControl;
+    invalidation.run_control.sequence = dual_core_service_sequence++;
+    invalidation.run_control.published_ticks = otis_capture_ticks_now();
+    invalidation.run_control.authorization_sequence =
+        invalidation.run_control.sequence;
+    invalidation.run_control.nonce =
+        0xD6170000u ^ invalidation.run_control.sequence;
+    invalidation.run_control.duration_ms = 5000u;
+    invalidation.run_control.kind =
+        OtisRunControlKind::SyntheticReceiverInvalidation;
+    invalidation.run_control.asserted = true;
+    const bool published = otis_dual_core_publish_service(&invalidation);
+    emit_status("dual_core", "gnss_fixture_invalidation",
+                published ? "accepted_5000ms" : "rejected_queue_fault",
+                published ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+                published ? OTIS_FLAG_PROFILE_ASSUMPTION
+                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#else
+    emit_status("dual_core", "gnss_fixture_invalidation",
+                "rejected_disabled", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  } else if (command.kind == OtisSerialCommandKind::DualCoreOther) {
+    emit_status("dual_core", "command", "rejected_unknown",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::DacQuery) {
     emit_dac_status("dac");
   } else if (command.kind == OtisSerialCommandKind::DacLimitsQuery) {
@@ -2756,6 +3256,9 @@ void service_serial_commands(void) {
 
 void setup() {
   otis_runtime_state_init(&runtime_state);
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_partition_reset();
+#endif
   otis_serial_frame_collector_init(&serial_command_collector);
   otis_status_emit_init(&status_emit_context,
                         &runtime_state.sequences.status_seq);
@@ -2767,6 +3270,12 @@ void setup() {
   }
   if (otisBootSafeModeRequested()) {
     enter_safe_mode();
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    __atomic_store_n(&dual_core_timing_boot_complete, true,
+                     __ATOMIC_RELEASE);
+    __atomic_store_n(&dual_core_service_boot_ready, true,
+                     __ATOMIC_RELEASE);
+#endif
     return;
   }
 
@@ -2778,7 +3287,9 @@ void setup() {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   // The count boundary handler must exist before the primary PPS IRQ is armed.
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION
   boot_phase_timer_init();
+#endif
 #endif
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
   boot_phase_capture_init();
@@ -2786,7 +3297,9 @@ void setup() {
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION
   boot_phase_pps_input_init();
+#endif
 #endif
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     (OTIS_ENABLE_DAC_AD5693R ||                                   \
@@ -2796,11 +3309,62 @@ void setup() {
   boot_phase_peripherals_init();
 #endif
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if !OTIS_ENABLE_DUAL_CORE_PARTITION
   boot_phase_preview_init();
 #endif
+#endif
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  __atomic_store_n(&dual_core_service_boot_ready, true, __ATOMIC_RELEASE);
+  while (!__atomic_load_n(&dual_core_timing_boot_complete,
+                          __ATOMIC_ACQUIRE)) {
+    service_dual_core_outputs();
+    delay(1);
+  }
+#else
   boot_phase_capability_audit();
   boot_phase_run_mode();
+#endif
 }
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+void setup1() {
+  while (!__atomic_load_n(&dual_core_service_boot_ready, __ATOMIC_ACQUIRE)) {
+    delay(1);
+  }
+  if (runtime_state.boot.safe_mode_active) {
+    __atomic_store_n(&dual_core_timing_boot_complete, true,
+                     __ATOMIC_RELEASE);
+    return;
+  }
+  __atomic_store_n(&dual_core_timing_boot_in_progress, true,
+                   __ATOMIC_RELEASE);
+  otis_dual_core_set_timing_owner_active(true);
+  boot_phase_timer_init();
+  boot_phase_pps_input_init();
+  boot_phase_preview_init();
+  boot_phase_capability_audit();
+  boot_phase_run_mode();
+  __atomic_store_n(&dual_core_timing_boot_in_progress, false,
+                   __ATOMIC_RELEASE);
+  __atomic_store_n(&dual_core_timing_boot_complete, true,
+                   __ATOMIC_RELEASE);
+}
+
+void loop1() {
+  if (!__atomic_load_n(&dual_core_timing_boot_complete,
+                       __ATOMIC_ACQUIRE) ||
+      runtime_state.boot.safe_mode_active) {
+    return;
+  }
+  service_dual_core_timing_inputs();
+  otis_pps_dual_observer_service();
+  otis_capture_backend_service();
+  drain_pps_count_boundary_ring();
+  drain_capture_ring();
+  service_tcxo_gate();
+  publish_dual_core_timing_health(millis());
+}
+#endif
 
 void loop() {
   if (runtime_state.boot.safe_mode_active) {
@@ -2808,6 +3372,22 @@ void loop() {
     otis_status_led_poll(millis());
     return;
   }
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  service_dual_core_outputs();
+  emit_protocol_banner_if_serial_ready();
+  emit_run_mode_status_if_ready();
+  emit_resource_ownership_status();
+  otis_gnss_receiver_service(millis());
+  service_serial_commands();
+  service_environment_sensors();
+  publish_dual_core_service_metadata(millis());
+  emit_periodic_status();
+  otis_phase4_observe_preview_service_transport();
+  otis_cx317_preview_live_service_transport();
+  otis_status_led_poll(millis());
+  return;
+#endif
 
   // Capture service always runs first. While a queued EST/CTL pair is being
   // transmitted in bounded chunks, no other record producer may interleave

@@ -63,20 +63,34 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert "kOtisGnssMaximumLineBytes = 96u" in header
     assert "OTIS_GNSS_SERVICE_BYTE_BUDGET" in source
     assert "while (remaining-- > 0u && uart_is_readable(uart0))" in source
+    loop1 = sketch[sketch.index("void loop1()") : sketch.index("void loop()")]
     loop = sketch[sketch.index("void loop()") :]
-    assert loop.index("otis_capture_backend_service()") < loop.index(
+    dual_start = loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION")
+    dual_end = loop.index("#endif", dual_start)
+    dual_core0 = loop[dual_start:dual_end]
+    legacy = loop[loop.index("// Capture service always runs first") :]
+
+    assert "otis_capture_backend_service()" in loop1
+    assert "drain_pps_count_boundary_ring()" in loop1
+    assert "drain_capture_ring()" in loop1
+    assert "otis_gnss_receiver_service(millis())" not in loop1
+    assert "otis_gnss_receiver_service(millis())" in dual_core0
+    assert "drain_pps_count_boundary_ring()" not in dual_core0
+    assert "drain_capture_ring()" not in dual_core0
+
+    assert legacy.index("otis_capture_backend_service()") < legacy.index(
         "otis_gnss_receiver_service(millis())"
     )
-    main_path = loop[loop.index("emit_protocol_banner_if_serial_ready()") :]
+    main_path = legacy[legacy.index("emit_protocol_banner_if_serial_ready()") :]
     assert main_path.index("drain_pps_count_boundary_ring()") < main_path.index(
         "otis_gnss_receiver_service(millis())"
     )
     assert main_path.index("drain_capture_ring()") < main_path.index(
         "otis_gnss_receiver_service(millis())"
     )
-    assert "otis_gnss_receiver_service(millis())" in loop[
-        loop.index("if (otis_cx317_active_live_transport_busy())") :
-        loop.index("emit_protocol_banner_if_serial_ready()")
+    assert "otis_gnss_receiver_service(millis())" in legacy[
+        legacy.index("if (otis_cx317_active_live_transport_busy())") :
+        legacy.index("emit_protocol_banner_if_serial_ready()")
     ]
 
 

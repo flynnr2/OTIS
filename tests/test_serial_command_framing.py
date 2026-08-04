@@ -91,6 +91,15 @@ def test_cr_lf_and_crlf_are_supported_delimiters(framing_harness: Path) -> None:
     ]
 
 
+def test_dual_core_fixture_commands_have_closed_firmware_vocabulary(
+    framing_harness: Path,
+) -> None:
+    assert _events(
+        framing_harness,
+        b"DUALCORE?\nDUALCORE INVALIDATE_GNSS\nDUALCORE ARBITRARY\n",
+    ) == ["EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER"]
+
+
 def test_commas_and_quotes_are_not_echoed_in_diagnostic(
     framing_harness: Path,
 ) -> None:

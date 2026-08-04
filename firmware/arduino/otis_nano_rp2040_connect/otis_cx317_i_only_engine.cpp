@@ -4,13 +4,14 @@
 
 namespace {
 
-// CX317_PPS_GATED_I_ONLY_PREVIEW_V2. Each numerical value is bound to the
-// provenance table in profiles/discipline/cx317_pps_gated_i_only_preview_v2.json.
+// CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1. Each numerical value is
+// bound to the sealed Campaign A/B result used by Stage 6. This engine remains
+// structurally observe-only: kActiveLiveUpdateCodes is exactly zero.
 constexpr uint32_t kStartupWarmupS = 1800u;
 constexpr uint32_t kEstimatorSpanS = 600u;
 constexpr uint32_t kFullHistoryResetS = 1500u;
 constexpr uint32_t kRecoveryFreshSupportS = 600u;
-constexpr uint32_t kDecisionCadenceS = 600u;
+constexpr uint32_t kDecisionCadenceS = 1800u;
 constexpr double kErrorDeadbandHz = 0.006249995628992717;
 constexpr double kIntegratorGainCodesPerHz = 2884.5027706464516;
 constexpr int32_t kIntegratorLimitCodes = 21;
@@ -127,8 +128,8 @@ void otis_cx317_i_only_engine_evaluate(
     return;
   }
   if (!input->model_applicable) {
-    engine->state = OtisCx317PreviewState::OutOfModelHold;
-    engine->reason = "plant_model_inapplicable_hold";
+    engine->state = OtisCx317PreviewState::Fault;
+    engine->reason = "plant_model_mismatch";
     engine->integrator_codes = 0.0;
     engine->have_last_decision = false;
     fill_common(*engine, previous, *input, decision);

@@ -8,9 +8,11 @@ import pytest
 
 from host.otis_tools.cx317_i_only_preview_replay import (
     DEFAULT_POLICY,
+    POST_CAMPAIGN_POLICY_SHA256,
     IOnlyPreviewEngine,
     Observation,
     load_policy,
+    load_post_campaign_policy,
     run_scenarios,
 )
 
@@ -41,6 +43,32 @@ def test_policy_values_are_reproducibly_derived_and_non_authorizing() -> None:
     assert policy.maximum_code == 0xAB00
     assert policy.fail_static_code == 0xA950
     assert len(policy.provenance) >= 10
+
+
+def test_post_campaign_policy_is_exactly_bound_and_non_authorizing() -> None:
+    policy = load_post_campaign_policy()
+
+    assert policy.policy_id == "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1"
+    assert policy.config_hash == POST_CAMPAIGN_POLICY_SHA256
+    assert policy.gain_min == pytest.approx(0.00015873009523809524)
+    assert policy.gain_nominal == pytest.approx(0.00017072602587382669)
+    assert policy.gain_max == pytest.approx(0.00017334010044578463)
+    assert policy.decision_cadence_s == 1800
+    assert policy.proposed_max_update_codes == 21
+    assert policy.active_update_codes == 0
+    assert policy.fail_static_code == 0xA82A
+    assert not policy.temperature_required_for_control
+
+
+def test_post_campaign_policy_replay_matrix_passes_without_authority() -> None:
+    policy = load_post_campaign_policy()
+    scenarios = run_scenarios(policy)
+
+    assert all(item["pass"] for item in scenarios)
+    for scenario in scenarios:
+        rendered = json.dumps(scenario)
+        assert '"actionable": true' not in rendered
+        assert '"actuation_authorized": true' not in rendered
 
 
 def test_positive_error_requests_lower_code_and_is_slew_limited() -> None:

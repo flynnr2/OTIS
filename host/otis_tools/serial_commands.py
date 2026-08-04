@@ -42,6 +42,8 @@ SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
         "CONFIG?",
+        "DUALCORE?",
+        "DUALCORE INVALIDATE_GNSS",
         "DAC?",
         "DAC LIMITS?",
         "DAC MID",

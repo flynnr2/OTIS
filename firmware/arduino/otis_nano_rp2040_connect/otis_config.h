@@ -33,6 +33,13 @@
 #define OTIS_ENABLE_CX317_I_ONLY_PREVIEW 0
 #endif
 
+// Stage 6 dedicates Arduino-Pico Core 0 to services/I/O and Core 1 to timing,
+// estimation and control preview.  It remains disabled for all legacy and
+// single-core profiles.
+#ifndef OTIS_ENABLE_DUAL_CORE_PARTITION
+#define OTIS_ENABLE_DUAL_CORE_PARTITION 0
+#endif
+
 // Stage 3+ bounded active control is structurally available only in the two
 // dedicated programme profiles. Existing/default/preview profiles leave this
 // disabled and therefore have no controller-to-DAC call path.
@@ -163,6 +170,8 @@
 #ifndef OTIS_FIRMWARE_VERSION
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
+#elif OTIS_ENABLE_DUAL_CORE_PARTITION
+#define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1"
 #elif OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #define OTIS_FIRMWARE_VERSION "CX317_PPS_GATED_I_ONLY_PREVIEW_V2"
 #elif OTIS_ENABLE_GNSS_RECEIVER
@@ -709,6 +718,16 @@
 #error "OTIS_ENABLE_CX317_I_ONLY_PREVIEW must be 0 or 1."
 #endif
 
+#if OTIS_ENABLE_DUAL_CORE_PARTITION != 0 && \
+    OTIS_ENABLE_DUAL_CORE_PARTITION != 1
+#error "OTIS_ENABLE_DUAL_CORE_PARTITION must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION && \
+    (!OTIS_ENABLE_CX317_I_ONLY_PREVIEW || OTIS_ENABLE_CX317_BOUNDED_ACTIVE)
+#error "The Stage 6 dual-core profile requires I-only preview and structurally prohibits bounded active control."
+#endif
+
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW && OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
 #error "The CX317 selected preview and legacy Phase 4 preview are mutually exclusive."
 #endif
@@ -854,6 +873,11 @@
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #error "Effective OTIS_ENABLE_CX317_I_ONLY_PREVIEW differs from the generated profile."
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
+#if OTIS_ENABLE_DUAL_CORE_PARTITION != OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
+#error "Effective OTIS_ENABLE_DUAL_CORE_PARTITION differs from the generated profile."
+#endif
 #endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_BOUNDED_ACTIVE

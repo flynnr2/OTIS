@@ -7,7 +7,7 @@ namespace {
 
 OtisCx317PreviewInput valid_input(uint32_t timestamp_s, double error_hz) {
   return {
-      timestamp_s, error_hz, 0xA950u, 29.0, true, true, true, true,
+      timestamp_s, error_hz, 0xA82Au, 29.0, true, true, true, true,
       true, true, true, true, false, false, false,
   };
 }

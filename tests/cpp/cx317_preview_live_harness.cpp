@@ -41,8 +41,8 @@ int main() {
   otis_cx317_preview_live_begin(0u);
   otis_cx317_preview_live_emit_headers();
   otis_cx317_preview_live_on_temperature(true, 29.0f, 0u);
-  otis_cx317_preview_live_on_dac_applied(0xA950u, 0u);
-  const OtisCx317StaticCodeState code = {true, true, true, 0xA950u};
+  otis_cx317_preview_live_on_dac_applied(0xA82Au, 0u);
+  const OtisCx317StaticCodeState code = {true, true, true, 0xA82Au};
   uint32_t counter = 0xffffffffu;
   for (uint32_t second = 1u; second <= 2400u; ++second) {
     counter -= 10000000u;
