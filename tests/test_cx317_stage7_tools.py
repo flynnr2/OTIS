@@ -23,6 +23,9 @@ from host.otis_tools.cx317_stage7_rehearsal_analyze import (
 )
 from host.otis_tools.cx317_stage7_manifest import create_stage7_manifest
 from host.otis_tools.cx317_stage7_part_b_matrix import derive_part_b_matrix
+from host.otis_tools.cx317_stage7_part_b_rehearsal import (
+    rehearse as rehearse_part_b,
+)
 from host.otis_tools.cx317_stage7_shadow import CONTRACT_SHA256
 from host.otis_tools.cx317_stage7_shadow_monitor import (
     AUTHORITATIVE,
@@ -40,6 +43,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     Stage7Supervisor,
     _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
+    part_b_timeline_preflight,
     rehearsal_timeline_preflight,
     stage7_timing,
 )
@@ -110,6 +114,49 @@ def test_stage7_rehearsal_preflight_rejects_inherited_qualification_inhibit() ->
     assert preflight["checks"][
         "arm_window_precedes_first_actionable_decision"
     ] is False
+
+
+def test_stage7_part_b_preflight_proves_every_long_clock_fits() -> None:
+    preflight = part_b_timeline_preflight()
+
+    assert all(preflight["checks"].values())
+    assert preflight["derived_s"] == {
+        "lower_layer_ready": 603,
+        "earliest_qualification": 2400,
+        "service_burst_starts": [3600, 25200, 46800, 68400],
+        "final_service_burst_complete": 68460,
+        "qualified_duration": 86400,
+        "response_ready_after_application": 1500,
+        "conservative_boundary_transaction_clear": 1620,
+        "clearance_grace": 3600,
+        "maximum_wall_clock": 95400,
+    }
+
+
+def test_stage7_part_b_preflight_rejects_insufficient_clearance_policy() -> None:
+    policy = json.loads(
+        Path("profiles/discipline/cx317_bounded_active_v2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy["parameters"]["full_history_reset_s"] = 3600
+    preflight = part_b_timeline_preflight(policy)
+
+    assert preflight["checks"]["policy_timers_exact"] is False
+    assert preflight["checks"][
+        "clearance_covers_boundary_transaction_response"
+    ] is False
+
+
+def test_stage7_part_b_accelerated_control_rehearsal_passes() -> None:
+    report = rehearse_part_b()
+
+    assert report["status"] == "pass"
+    assert report["qualification_evidence"] is False
+    assert report["hardware_actuation"] is False
+    assert report["serial_or_fifo_authority"] is False
+    assert all(report["timeline_preflight"]["checks"].values())
+    assert all(report["cases"].values())
 
 
 def test_stage7_rehearsal_manifest_cannot_claim_qualification(
@@ -397,6 +444,11 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
         ),
         encoding="utf-8",
     )
+    rehearsal = tmp_path / "part_b_rehearsal_gate.json"
+    rehearsal.write_text(
+        json.dumps(rehearse_part_b()),
+        encoding="utf-8",
+    )
     derived_matrix, derived_start = derive_part_b_matrix(
         part_a2_gate_path=a2,
         output_path=tmp_path / "stage7_part_b_matrix.json",
@@ -416,12 +468,14 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
         serial_device="/dev/cu.test",
         part_a1_gate_path=a1,
         part_a2_gate_path=a2,
+        part_b_rehearsal_gate_path=rehearsal,
         part_b_matrix_path=derived_matrix,
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert set(manifest["prerequisite_gates"]) == {
         "part_a1_fixed_code_stability",
         "part_a2_cross_core_transaction",
+        "part_b_accelerated_control_rehearsal",
     }
     assert manifest["prerequisite_gates"][
         "part_a1_fixed_code_stability"
@@ -429,6 +483,31 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
     assert manifest["prerequisite_gates"][
         "part_a2_cross_core_transaction"
     ]["document"]["transactions"]["final_code"] == start_code
+    assert manifest["prerequisite_gates"][
+        "part_b_accelerated_control_rehearsal"
+    ]["document"]["status"] == "pass"
+    assert all(
+        manifest["active_campaign"]["cross_layer_timeline_preflight"][
+            "checks"
+        ].values()
+    )
+
+    changed_rehearsal = json.loads(rehearsal.read_text(encoding="utf-8"))
+    changed_rehearsal["cases"]["duration_boundary_inhibits_new_arm"] = False
+    rehearsal.write_text(json.dumps(changed_rehearsal), encoding="utf-8")
+    with pytest.raises(ValueError, match="accelerated rehearsal"):
+        create_stage7_manifest(
+            part="part_b",
+            start_code=start_code,
+            run_dir=tmp_path / "part_b_bad_rehearsal",
+            build_manifest_path=build_manifest,
+            serial_device="/dev/cu.test",
+            part_a1_gate_path=a1,
+            part_a2_gate_path=a2,
+            part_b_rehearsal_gate_path=rehearsal,
+            part_b_matrix_path=derived_matrix,
+        )
+    rehearsal.write_text(json.dumps(rehearse_part_b()), encoding="utf-8")
 
     changed = json.loads(a2.read_text(encoding="utf-8"))
     changed["transactions"]["final_code"] = start_code + 1
@@ -442,6 +521,7 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
             serial_device="/dev/cu.test",
             part_a1_gate_path=a1,
             part_a2_gate_path=a2,
+            part_b_rehearsal_gate_path=rehearsal,
             part_b_matrix_path=derived_matrix,
         )
 
@@ -961,6 +1041,38 @@ def test_part_b_stable_no_write_run_stops_successfully_at_24h(
     assert supervisor.state["terminal"]["reason"] == "24h_after_qualification_complete"
 
 
+def test_part_b_rehearsal_traverses_all_four_service_bursts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    supervisor.state["qualification_started_utc"] = "1970-01-01T00:00:00Z"
+    commands: list[str] = []
+    wall = 3599.0
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage7_supervisor.time.time",
+        lambda: wall,
+    )
+    monotonic = 1.0
+    supervisor._service_load(monotonic)
+    assert commands == []
+
+    for burst_index, burst_start in enumerate((3600, 25200, 46800, 68400)):
+        wall = float(burst_start)
+        for _ in range(60):
+            supervisor._service_load(monotonic)
+            monotonic += 1.01
+        supervisor._service_load(monotonic)
+        monotonic += 1.01
+        assert supervisor.state["part_b_service_bursts_complete"] == list(
+            range(burst_index + 1)
+        )
+
+    assert commands == ["CONFIG?"] * 240
+    assert supervisor.state["part_b_service_burst_index"] is None
+    assert supervisor.state["part_b_service_burst_sent"] == 0
+
+
 def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -986,6 +1098,68 @@ def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
         health, float(PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S)
     )
     assert aborts == ["part_b_clearance_grace_expired"]
+
+
+def test_part_b_boundary_transaction_can_clear_inside_grace(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    supervisor.state.update(
+        {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
+            "arm_pending": True,
+            "duration_elapsed": False,
+            "part_b_service_bursts_complete": [0, 1, 2, 3],
+        }
+    )
+    outstanding = {
+        ("cx317_active", "state"): "AWAITING_RESPONSE",
+        ("cx317_active", "evidence_phase"): "application_preserved",
+    }
+    supervisor._maybe_finish(outstanding, float(PART_B_DURATION_S))
+    assert supervisor.state["duration_elapsed"] is True
+    assert supervisor.state["terminal"] is None
+
+    supervisor.state["arm_pending"] = False
+    clear = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+    }
+    supervisor._maybe_finish(clear, float(PART_B_DURATION_S + 1500))
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"] == (
+        "24h_after_qualification_complete"
+    )
+
+
+def test_part_b_duration_boundary_inhibits_every_new_arm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    supervisor.state.update(
+        {
+            "manual_start_sent": True,
+            "arm_pending": False,
+            "duration_elapsed": True,
+        }
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "true",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "arm_eligible"): "true",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "selected_interval_count"): "599",
+        ("cx317_active", "uptime_s"): "88800",
+    }
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["authorization_sequence"] == 0
 
 
 def test_part_b_cannot_pass_without_all_required_service_bursts(

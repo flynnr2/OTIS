@@ -61,6 +61,8 @@ REHEARSAL_QUALIFIED_TIMEOUT_S = 15 * 60
 REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
 REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 ACTIVE_ARM_LIFETIME_S = 110
+REAL_FC0_STARTUP_INHIBIT_S = 600
+REAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 
 
 @dataclass(frozen=True)
@@ -199,6 +201,104 @@ def rehearsal_timeline_preflight(
     }
 
 
+def part_b_timeline_preflight(
+    policy: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Prove the exact 24-hour control sequence has no terminal dead end.
+
+    This is deliberately independent of the live clock.  It binds the lower
+    layer, estimator, controller, service-load and post-duration response
+    clocks before a Part B artifact can be accepted.
+    """
+    if policy is None:
+        policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    parameters = policy.get("parameters", {})
+    if not isinstance(parameters, dict):
+        parameters = {}
+    expected = {
+        "startup_warmup_s": 1800,
+        "settling_exclusion_s": 900,
+        "fresh_support_after_settling_s": 600,
+        "full_history_reset_s": 1500,
+        "minimum_applied_correction_cadence_s": 1800,
+        "arming_maximum_lifetime_s": 120,
+    }
+    values = {key: int(parameters.get(key, -1)) for key in expected}
+    lower_layer_ready_s = (
+        REAL_FC0_STARTUP_INHIBIT_S
+        + REAL_FC0_CONTROL_READY_CLEAN_WINDOWS
+    )
+    earliest_qualification_s = max(
+        lower_layer_ready_s,
+        values["startup_warmup_s"] + SELECTED_INTERVAL_S,
+    )
+    response_ready_after_application_s = max(
+        values["full_history_reset_s"],
+        values["settling_exclusion_s"]
+        + values["fresh_support_after_settling_s"],
+    )
+    conservative_boundary_transaction_clear_s = (
+        values["arming_maximum_lifetime_s"]
+        + response_ready_after_application_s
+    )
+    final_service_burst_complete_s = (
+        max(PART_B_SERVICE_LOAD_STARTS_S)
+        + PART_B_SERVICE_LOAD_QUERIES
+    )
+    maximum_wall_clock_s = (
+        STAGE7_QUALIFICATION_TIMEOUT_S
+        + PART_B_DURATION_S
+        + PART_B_CLEARANCE_GRACE_S
+    )
+    checks = {
+        "policy_timers_exact": values == expected,
+        "lower_layer_ready_before_first_qualification": (
+            lower_layer_ready_s < earliest_qualification_s
+        ),
+        "first_qualification_precedes_deadline": (
+            earliest_qualification_s < STAGE7_QUALIFICATION_TIMEOUT_S
+        ),
+        "service_bursts_strictly_increase": (
+            tuple(sorted(set(PART_B_SERVICE_LOAD_STARTS_S)))
+            == PART_B_SERVICE_LOAD_STARTS_S
+        ),
+        "all_service_bursts_finish_before_24h": (
+            final_service_burst_complete_s < PART_B_DURATION_S
+        ),
+        "qualified_duration_contains_whole_selected_intervals": (
+            PART_B_DURATION_S % SELECTED_INTERVAL_S == 0
+        ),
+        "qualified_duration_contains_whole_decision_cadences": (
+            PART_B_DURATION_S % DECISION_CADENCE_S == 0
+        ),
+        "clearance_covers_boundary_transaction_response": (
+            conservative_boundary_transaction_clear_s
+            < PART_B_CLEARANCE_GRACE_S
+        ),
+        "absolute_wall_clock_is_exactly_bounded": (
+            maximum_wall_clock_s == 26 * 60 * 60 + 30 * 60
+        ),
+    }
+    return {
+        "checks": checks,
+        "derived_s": {
+            "lower_layer_ready": lower_layer_ready_s,
+            "earliest_qualification": earliest_qualification_s,
+            "service_burst_starts": list(PART_B_SERVICE_LOAD_STARTS_S),
+            "final_service_burst_complete": final_service_burst_complete_s,
+            "qualified_duration": PART_B_DURATION_S,
+            "response_ready_after_application": (
+                response_ready_after_application_s
+            ),
+            "conservative_boundary_transaction_clear": (
+                conservative_boundary_transaction_clear_s
+            ),
+            "clearance_grace": PART_B_CLEARANCE_GRACE_S,
+            "maximum_wall_clock": maximum_wall_clock_s,
+        },
+    }
+
+
 def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str, str]]:
     if part not in {"part_a", "part_b", "rehearsal"}:
         raise ValueError(f"unsupported Stage 7 part {part!r}")
@@ -236,6 +336,13 @@ def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str
             "response_policy_sha256": bindings["response_policy_sha256"],
             "numerical_policy_sha256": policy_hash,
         }
+    if part == "part_b":
+        timeline = part_b_timeline_preflight(policy)
+        if not all(timeline["checks"].values()):
+            raise ValueError(
+                "Stage 7 Part B cross-layer timeline is unsatisfiable: "
+                + json.dumps(timeline, sort_keys=True)
+            )
     is_a = part == "part_a"
     spec = CampaignSpec(
         campaign=f"stage7_{part}",

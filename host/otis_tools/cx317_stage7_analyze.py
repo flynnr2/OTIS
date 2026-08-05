@@ -20,7 +20,8 @@ from .cx317_active_campaign import (
 )
 from .cx317_bounded_active import ResponseClassifier
 from .cx317_i_only_preview_replay import IOnlyPreviewEngine, Observation, load_post_campaign_policy
-from .cx317_stage7_part_b_matrix import STAGE7_PROMPT_SHA256
+from .cx317_stage7_part_b_matrix import STAGE7_PROMPT, STAGE7_PROMPT_SHA256
+from .cx317_stage7_part_b_rehearsal import SUPERVISOR_PATH, TOOL_PATH
 from .cx317_stage6_dual_core_analyze import _estimator_parity, _rows_for
 from .cx317_stage6_live_analyze import (
     SERIALIZED_12_DECIMAL_HALF_UNIT,
@@ -1204,6 +1205,18 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         == STAGE7_QUALIFICATION_TIMEOUT_S + expected_duration + expected_grace
         and campaign.get("timeout_disposition")
         == "fail_static_abort_diagnostic_no_stage_exit"
+        and (
+            part != "part_b"
+            or (
+                bool(campaign.get("cross_layer_timeline_preflight", {}).get("checks"))
+                and all(
+                    value is True
+                    for value in campaign[
+                        "cross_layer_timeline_preflight"
+                    ]["checks"].values()
+                )
+            )
+        )
     )
     checks.append(
         Check(
@@ -1219,8 +1232,13 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         matrix_binding = manifest.data.get("part_b_matrix_binding", {})
         a1 = prerequisite.get("part_a1_fixed_code_stability", {})
         a2 = prerequisite.get("part_a2_cross_core_transaction", {})
+        rehearsal = prerequisite.get(
+            "part_b_accelerated_control_rehearsal", {}
+        )
         a1_document = a1.get("document", {})
         a2_document = a2.get("document", {})
+        rehearsal_document = rehearsal.get("document", {})
+        rehearsal_bindings = rehearsal_document.get("bindings", {})
         a2_transactions = a2_document.get("transactions", {})
 
         def gate_file_exact(entry: dict[str, Any]) -> bool:
@@ -1238,9 +1256,11 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             == {
                 "part_a1_fixed_code_stability",
                 "part_a2_cross_core_transaction",
+                "part_b_accelerated_control_rehearsal",
             }
             and gate_file_exact(a1)
             and gate_file_exact(a2)
+            and gate_file_exact(rehearsal)
             and a1_document.get("status") == "pass"
             and a1_document.get("test")
             == "part_a_fixed_code_stability"
@@ -1258,13 +1278,43 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             )
             is True
             and int(a2_transactions.get("final_code", -1)) == start_code
+            and rehearsal_document.get("status") == "pass"
+            and rehearsal_document.get("test")
+            == "stage7_part_b_accelerated_control_rehearsal"
+            and rehearsal_document.get("qualification_evidence") is False
+            and rehearsal_document.get("hardware_actuation") is False
+            and rehearsal_document.get("serial_or_fifo_authority") is False
+            and bool(rehearsal_document.get("cases"))
+            and all(
+                value is True
+                for value in rehearsal_document.get("cases", {}).values()
+            )
+            and bool(
+                rehearsal_document.get("timeline_preflight", {}).get(
+                    "checks"
+                )
+            )
+            and all(
+                value is True
+                for value in rehearsal_document.get(
+                    "timeline_preflight", {}
+                ).get("checks", {}).values()
+            )
+            and rehearsal_bindings.get("supervisor_sha256")
+            == _sha256_file(SUPERVISOR_PATH)
+            and rehearsal_bindings.get("rehearsal_tool_sha256")
+            == _sha256_file(TOOL_PATH)
+            and rehearsal_bindings.get("stage7_prompt_sha256")
+            == STAGE7_PROMPT_SHA256
+            and _sha256_file(REPO_ROOT / STAGE7_PROMPT)
+            == STAGE7_PROMPT_SHA256
         )
         checks.append(
             Check(
                 "sealed_composite_part_a_handoff",
                 prerequisite_ok,
                 "embedded A1 stability and A2 transaction gates with exact "
-                f"Part B start {start_code}",
+                f"Part B start {start_code}, plus accelerated Part B rehearsal",
             )
         )
         try:

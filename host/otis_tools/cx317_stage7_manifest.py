@@ -12,8 +12,10 @@ from typing import Any
 from .cx317_stage7_shadow import CONTRACT_SHA256, DEFAULT_CONTRACT
 from .cx317_stage7_part_b_matrix import (
     PART_B_PROFILE,
+    STAGE7_PROMPT,
     STAGE7_PROMPT_SHA256,
 )
+from .cx317_stage7_part_b_rehearsal import SUPERVISOR_PATH, TOOL_PATH
 from .cx317_stage7_supervisor import (
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
@@ -22,6 +24,7 @@ from .cx317_stage7_supervisor import (
     REHEARSAL_POLICY_PATH,
     STAGE7_QUALIFICATION_TIMEOUT_S,
     load_stage7_spec,
+    part_b_timeline_preflight,
     rehearsal_timeline_preflight,
     stage7_timing,
 )
@@ -47,6 +50,7 @@ def create_stage7_manifest(
     baud: int = 115200,
     part_a1_gate_path: Path | None = None,
     part_a2_gate_path: Path | None = None,
+    part_b_rehearsal_gate_path: Path | None = None,
     part_b_matrix_path: Path | None = None,
 ) -> Path:
     path = run_dir / "run_manifest.json"
@@ -63,10 +67,12 @@ def create_stage7_manifest(
         if (
             part_a1_gate_path is None
             or part_a2_gate_path is None
+            or part_b_rehearsal_gate_path is None
             or part_b_matrix_path is None
         ):
             raise ValueError(
-                "Stage 7 Part B requires A1/A2 gates and the derived Part B matrix"
+                "Stage 7 Part B requires A1/A2 gates, the accelerated "
+                "Part B rehearsal gate and the derived Part B matrix"
             )
         part_a1_gate = json.loads(
             part_a1_gate_path.read_text(encoding="utf-8")
@@ -74,6 +80,10 @@ def create_stage7_manifest(
         part_a2_gate = json.loads(
             part_a2_gate_path.read_text(encoding="utf-8")
         )
+        part_b_rehearsal_gate = json.loads(
+            part_b_rehearsal_gate_path.read_text(encoding="utf-8")
+        )
+        rehearsal_bindings = part_b_rehearsal_gate.get("bindings", {})
         if (
             part_a1_gate.get("status") != "pass"
             or part_a1_gate.get("test")
@@ -102,6 +112,39 @@ def create_stage7_manifest(
             is not True
         ):
             raise ValueError("Stage 7 Part A2 transaction gate is not passed")
+        if (
+            part_b_rehearsal_gate.get("status") != "pass"
+            or part_b_rehearsal_gate.get("test")
+            != "stage7_part_b_accelerated_control_rehearsal"
+            or part_b_rehearsal_gate.get("qualification_evidence") is not False
+            or part_b_rehearsal_gate.get("hardware_actuation") is not False
+            or part_b_rehearsal_gate.get("serial_or_fifo_authority") is not False
+            or not part_b_rehearsal_gate.get("cases")
+            or not all(
+                value is True
+                for value in part_b_rehearsal_gate["cases"].values()
+            )
+            or not part_b_rehearsal_gate.get(
+                "timeline_preflight", {}
+            ).get("checks")
+            or not all(
+                value is True
+                for value in part_b_rehearsal_gate[
+                    "timeline_preflight"
+                ]["checks"].values()
+            )
+            or rehearsal_bindings.get("supervisor_sha256")
+            != sha256(SUPERVISOR_PATH.read_bytes()).hexdigest()
+            or rehearsal_bindings.get("rehearsal_tool_sha256")
+            != sha256(TOOL_PATH.read_bytes()).hexdigest()
+            or rehearsal_bindings.get("stage7_prompt_sha256")
+            != STAGE7_PROMPT_SHA256
+            or sha256(
+                (POLICY_PATH.parents[2] / STAGE7_PROMPT).read_bytes()
+            ).hexdigest()
+            != STAGE7_PROMPT_SHA256
+        ):
+            raise ValueError("Stage 7 Part B accelerated rehearsal is not passed")
         final_code = int(
             part_a2_gate.get("transactions", {}).get("final_code", -1)
         )
@@ -154,6 +197,13 @@ def create_stage7_manifest(
                 "path": str(part_a2_gate_path.resolve()),
                 "sha256": sha256(part_a2_gate_path.read_bytes()).hexdigest(),
                 "document": part_a2_gate,
+            },
+            "part_b_accelerated_control_rehearsal": {
+                "path": str(part_b_rehearsal_gate_path.resolve()),
+                "sha256": sha256(
+                    part_b_rehearsal_gate_path.read_bytes()
+                ).hexdigest(),
+                "document": part_b_rehearsal_gate,
             },
         }
     configuration = provenance["configuration"]
@@ -301,9 +351,11 @@ def create_stage7_manifest(
                 {
                     "cross_layer_timeline_preflight": (
                         rehearsal_timeline_preflight()
+                        if is_rehearsal
+                        else part_b_timeline_preflight()
                     )
                 }
-                if is_rehearsal
+                if is_rehearsal or part == "part_b"
                 else {}
             ),
             **identities,
@@ -420,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--part-a1-gate", type=Path)
     parser.add_argument("--part-a2-gate", type=Path)
+    parser.add_argument("--part-b-rehearsal-gate", type=Path)
     parser.add_argument("--part-b-matrix", type=Path)
     args = parser.parse_args(argv)
     print(
@@ -432,6 +485,7 @@ def main(argv: list[str] | None = None) -> int:
             baud=args.baud,
             part_a1_gate_path=args.part_a1_gate,
             part_a2_gate_path=args.part_a2_gate,
+            part_b_rehearsal_gate_path=args.part_b_rehearsal_gate,
             part_b_matrix_path=args.part_b_matrix,
         )
     )
