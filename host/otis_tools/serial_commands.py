@@ -139,8 +139,10 @@ def parse_serial_command(text: str) -> SerialCommand:
             raise ValueError(
                 "ACTIVE EVIDENCE requires non-zero request and phase sequences"
             )
-        if int(fields[1], 10) not in {1, 2, 3}:
-            raise ValueError("ACTIVE EVIDENCE phase sequence must be 1, 2, or 3")
+        if int(fields[1], 10) not in {1, 2, 3, 4}:
+            raise ValueError(
+                "ACTIVE EVIDENCE phase sequence must be 1, 2, 3, or 4"
+            )
         return SerialCommand(
             f"ACTIVE EVIDENCE {int(fields[0], 10)} {int(fields[1], 10)}"
         )

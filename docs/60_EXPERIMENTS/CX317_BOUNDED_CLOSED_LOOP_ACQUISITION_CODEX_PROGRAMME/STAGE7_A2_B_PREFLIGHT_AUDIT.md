@@ -36,6 +36,7 @@ A800 is the last confirmed code.
 |---|---|---|
 | Authority/evidence separation | The dual-core serializer leaked private request actionability into durable evidence. | The internal request remains actionable, but the ACT serializer now emits literal `false` in every phase. A source guard and CSV-contract scenario enforce the distinction. |
 | Four-phase ordering | Per-row validation could not prove that later phases referred to the same immutable request. | Before any ACK, the host now validates the complete durable prefix, exact phase order, contiguous request/record/ordinal sequences, unchanged request identity, prior applied code and exact cumulative movement. |
+| Four-phase command ingress | The generic host command parser still limited `ACTIVE EVIDENCE` to the original three phases, so it would have rejected Stage 7 response phase 4. | The closed command grammar now permits exactly phases 1--4 and still rejects phase 0, phase 5 and open-ended forms; the Stage 7 scenario asserts phase-4 transport. |
 | Response evidence | Stage 7 analysis trusted serialized response classification. | Every response class, reason, observed response, cumulative response and indeterminate count is replayed sequentially from the frozen classifier. |
 | Part A2 initial condition | Generic range validation did not enforce the declared A800 acquisition stimulus. | Part A2 specification and manifest creation require exact A800. The shadow V3 procedural amendment explicitly binds A1 A82A, A2 A800 and the B handoff without changing candidate numerics or authority. |
 | Composite A gate | The older aggregate A1 report has top-level `fail` because it correctly lacks a transaction, despite its dedicated stability subtest passing. | Part B now requires the dedicated passed A1 stability gate plus a passed A2 transaction gate with one to four applications and exact response replay. Both documents and hashes are embedded in the B run manifest. |
@@ -66,7 +67,7 @@ The exact A800 four-phase happy path, every incomplete prefix, cross-phase
 mutation rejection, response replay, A1/A2/B handoff, derived B matrix, B
 zero-write success, missing-service-burst failure, 24-hour clearance success
 and clearance timeout are covered by the focused Stage 7 tests. The complete
-repository suite passes: `737 passed, 2 skipped`.
+repository suite passes: `738 passed, 2 skipped`.
 
 No hardware run is authorized by this document alone. The remaining entry gate
 is one clean commit containing this audit and its repairs, followed by the

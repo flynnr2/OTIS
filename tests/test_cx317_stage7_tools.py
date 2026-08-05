@@ -31,6 +31,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     load_stage7_spec,
 )
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
+from host.otis_tools.serial_commands import parse_serial_command
 from tools.firmware_matrix import source_input_hash
 
 
@@ -139,6 +140,9 @@ def test_stage7_supervisor_declares_four_host_evidence_releases() -> None:
     assert "PART_B_CLEARANCE_GRACE_S = 60 * 60" in source
     assert 'self.state["response_count"] >= 1' in source
     assert '"part_a_post_service_eligible_control_seq"' in source
+    assert parse_serial_command("ACTIVE EVIDENCE 1 4").normalized == (
+        "ACTIVE EVIDENCE 1 4"
+    )
     assert "inside_deadband" not in source[source.index("def _process_transactions") : source.index("def _maybe_qualify")]
 
 

@@ -39,6 +39,7 @@ from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, s
         ("active evidence 2 1", "ACTIVE EVIDENCE 2 1"),
         ("active evidence 2 2", "ACTIVE EVIDENCE 2 2"),
         ("active evidence 2 3", "ACTIVE EVIDENCE 2 3"),
+        ("active evidence 2 4", "ACTIVE EVIDENCE 2 4"),
         ("active abort", "ACTIVE ABORT"),
     ],
 )
@@ -60,7 +61,7 @@ def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normali
         "ACTIVE ARM 1 2",
         "ACTIVE ARM 1 0 3",
         "ACTIVE EVIDENCE 1",
-        "ACTIVE EVIDENCE 1 4",
+        "ACTIVE EVIDENCE 1 5",
         "ACTIVE SET 0xA950",
     ],
 )
