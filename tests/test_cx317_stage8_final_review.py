@@ -4,11 +4,14 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from host.otis_tools.cx317_stage8_final_review import (
     _active_run_history,
     _decision,
     _gate_passed,
     _next_goal,
+    _sealed_run_check,
 )
 
 
@@ -139,3 +142,87 @@ def test_active_run_inventory_preserves_diagnostic_and_passed_histories(
         "complete",
     ]
     assert all(item["final_confirmed_code"] == 43008 for item in history)
+
+
+def test_stage8_requires_closed_complete_evidence_snapshot_for_each_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = tmp_path / "run"
+    (run / "reports").mkdir(parents=True)
+    gate = run / "reports/gate.json"
+    gate.write_text("{}\n", encoding="utf-8")
+    (run / "COMPLETE").touch()
+    (run / "evidence_manifest.json").write_text(
+        json.dumps(
+            {
+                "run_state": "complete",
+                "snapshot_digest": "a" * 64,
+                "artifacts": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review.load_manifest",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review.validate_evidence_snapshot",
+        lambda path, manifest: ([], []),
+    )
+
+    check, details = _sealed_run_check("fixture", gate)
+    assert check.passed
+    assert details["gate_in_snapshot"] is False
+
+    (run / "capture_in_progress.flag").touch()
+    check, details = _sealed_run_check("fixture", gate)
+    assert not check.passed
+    assert details["capture_active"] is True
+
+
+def test_stage8_accepts_validated_partial_source_only_for_declared_subtest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = tmp_path / "part_a1"
+    (run / "reports").mkdir(parents=True)
+    gate = run / "reports/part_a_fixed_code_stability_gate.json"
+    gate.write_text("{}\n", encoding="utf-8")
+    (run / "evidence_manifest.json").write_text(
+        json.dumps(
+            {
+                "run_state": "partial",
+                "snapshot_digest": "b" * 64,
+                "artifacts": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review.load_manifest",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review.validate_evidence_snapshot",
+        lambda path, manifest: ([], []),
+    )
+
+    check, details = _sealed_run_check("stage7_a1", gate)
+    assert not check.passed
+    assert details["seal_class"] == "unsealed"
+
+    check, details = _sealed_run_check(
+        "stage7_a1", gate, allow_partial_subtest=True
+    )
+    assert check.passed
+    assert (
+        details["seal_class"]
+        == "validated_partial_source_for_transitively_sealed_subtest"
+    )
+
+    (run / "COMPLETE").touch()
+    check, details = _sealed_run_check(
+        "stage7_a1", gate, allow_partial_subtest=True
+    )
+    assert not check.passed
+    assert details["seal_class"] == "unsealed"

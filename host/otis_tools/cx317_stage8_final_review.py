@@ -18,6 +18,9 @@ import os
 import tempfile
 from typing import Any, Iterable
 
+from .evidence import validate_evidence_snapshot
+from .run_loader import load_manifest
+
 
 TOOL_VERSION = "cx317_stage8_final_review_v1"
 DECISIONS = (
@@ -114,6 +117,90 @@ def _gate_passed(value: dict[str, Any], gate_kind: str) -> bool:
             and no_hardware.get("result") == "pass"
         )
     raise ValueError(f"unknown gate kind {gate_kind!r}")
+
+
+def _sealed_run_check(
+    identifier: str,
+    gate_path: Path,
+    *,
+    allow_partial_subtest: bool = False,
+) -> tuple[Check, dict[str, Any]]:
+    """Require the run containing a supplied gate to be closed and sealed."""
+    resolved = gate_path.resolve()
+    run_dir = resolved.parent.parent
+    evidence_path = run_dir / "evidence_manifest.json"
+    complete = (run_dir / "COMPLETE").is_file()
+    capture_active = (run_dir / "capture_in_progress.flag").exists()
+    snapshot: dict[str, Any] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
+    try:
+        manifest = load_manifest(run_dir)
+        failures, warnings = validate_evidence_snapshot(run_dir, manifest)
+        if evidence_path.is_file():
+            snapshot = _read_json(evidence_path)
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        failures = [str(exc)]
+    gate_in_snapshot = False
+    if snapshot:
+        gate_relative = str(resolved.relative_to(run_dir))
+        artifacts = snapshot.get("artifacts", [])
+        gate_in_snapshot = any(
+            item.get("path") == gate_relative
+            for item in artifacts
+            if isinstance(item, dict)
+        )
+    complete_seal = (
+        complete
+        and not capture_active
+        and snapshot.get("run_state") == "complete"
+        and isinstance(snapshot.get("snapshot_digest"), str)
+        and len(snapshot["snapshot_digest"]) == 64
+        and not failures
+    )
+    partial_subtest_seal = (
+        allow_partial_subtest
+        and not complete
+        and not capture_active
+        and snapshot.get("run_state") == "partial"
+        and isinstance(snapshot.get("snapshot_digest"), str)
+        and len(snapshot["snapshot_digest"]) == 64
+        and not failures
+    )
+    passed = complete_seal or partial_subtest_seal
+    details = {
+        "run_directory": str(run_dir),
+        "gate_path": str(resolved),
+        "complete_marker": complete,
+        "capture_active": capture_active,
+        "evidence_run_state": snapshot.get("run_state", "missing"),
+        "evidence_snapshot_digest": snapshot.get("snapshot_digest"),
+        "gate_in_snapshot": gate_in_snapshot,
+        "allow_partial_subtest": allow_partial_subtest,
+        "seal_class": (
+            "complete_run"
+            if complete_seal
+            else "validated_partial_source_for_transitively_sealed_subtest"
+            if partial_subtest_seal
+            else "unsealed"
+        ),
+        "validation_failures": failures,
+        "validation_warnings": warnings,
+    }
+    return (
+        Check(
+            f"{identifier}_sealed_run",
+            passed,
+            (
+                f"run {run_dir.name}; COMPLETE={complete}; "
+                f"capture_active={capture_active}; snapshot "
+                f"{snapshot.get('snapshot_digest', 'missing')}; "
+                f"gate_in_snapshot={gate_in_snapshot}; gate SHA-256 "
+                f"{_sha256_file(resolved)}; failures={len(failures)}"
+            ),
+        ),
+        details,
+    )
 
 
 def _decision(gates: dict[str, bool]) -> str:
@@ -370,6 +457,19 @@ def review(
     gates = {
         name: _gate_passed(values[name], kind) for name, kind in kinds.items()
     }
+    seal_checks: list[Check] = []
+    sealed_runs: dict[str, dict[str, Any]] = {}
+    for name in kinds:
+        if name == "verification":
+            continue
+        check, details = _sealed_run_check(
+            name,
+            gate_paths[name],
+            allow_partial_subtest=name == "stage7_a1",
+        )
+        seal_checks.append(check)
+        sealed_runs[name] = details
+        gates[name] = gates[name] and check.passed
     gates["stage7_b_attempted"] = values["stage7_b"].get("status") in {
         "pass",
         "fail",
@@ -377,7 +477,7 @@ def review(
     checks = [
         Check(name, gates[name], _sha256_file(gate_paths[name].resolve()))
         for name in kinds
-    ]
+    ] + seal_checks
     decision = _decision(gates)
     if decision not in DECISIONS:
         raise RuntimeError(f"invalid decision {decision!r}")
@@ -418,6 +518,7 @@ def review(
         "rationale": rationale,
         "checks": [asdict(item) for item in checks],
         "source_evidence": source_evidence,
+        "sealed_run_audit": sealed_runs,
         "active_run_history": history,
         "stage7_endurance": stage7_b,
         "final_verification": values["verification"],
