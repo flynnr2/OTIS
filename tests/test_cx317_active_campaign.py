@@ -137,9 +137,36 @@ def test_supervisor_fsyncs_capsule_then_submits_exact_phase_one_ack(
     )
     active_csv = tmp_path / "run" / "csv" / "active_transactions_v1.csv"
     active_csv.parent.mkdir(parents=True)
+    manual = dict(values)
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "current_applied_code": str(spec.start_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(spec.start_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0",
+            "accepted_code": str(spec.start_code),
+            "applied_code": str(spec.start_code),
+            "i2c_ok": "true",
+            "active_state": "DISARMED",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+    values["transaction_record_sequence"] = "2"
     with active_csv.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V1_FIELDS)
         writer.writeheader()
+        writer.writerow(manual)
         writer.writerow(values)
 
     command_fifo = tmp_path / "commands.fifo"
@@ -157,6 +184,6 @@ def test_supervisor_fsyncs_capsule_then_submits_exact_phase_one_ack(
     with CommandFifo(command_fifo) as reader:
         supervisor._process_transactions()
         assert reader.poll() == ["ACTIVE EVIDENCE 1 1"]
-    capsule = tmp_path / "run" / "reports" / "step_001" / "record_000001_request_accepted.json"
+    capsule = tmp_path / "run" / "reports" / "step_001" / "record_000002_request_accepted.json"
     assert capsule.exists()
     assert json.loads(capsule.read_text(encoding="utf-8")) == values

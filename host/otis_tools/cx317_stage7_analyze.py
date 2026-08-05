@@ -13,8 +13,14 @@ import tempfile
 from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
-from .cx317_active_campaign import _read_csv, validate_transaction_row
+from .cx317_active_campaign import (
+    _read_csv,
+    validate_transaction_history,
+    validate_transaction_row,
+)
+from .cx317_bounded_active import ResponseClassifier
 from .cx317_i_only_preview_replay import IOnlyPreviewEngine, Observation, load_post_campaign_policy
+from .cx317_stage7_part_b_matrix import STAGE7_PROMPT_SHA256
 from .cx317_stage6_dual_core_analyze import _estimator_parity, _rows_for
 from .cx317_stage6_live_analyze import (
     SERIALIZED_12_DECIMAL_HALF_UNIT,
@@ -247,6 +253,13 @@ def _controller_parity(
 def _transactions(
     rows: list[dict[str, str]], spec: Any, identities: dict[str, str], build_identity: str
 ) -> tuple[Check, dict[str, Any]]:
+    validate_transaction_history(
+        rows,
+        spec,
+        identities,
+        build_identity,
+        dual_core=True,
+    )
     valid = [int(row["transaction_record_sequence"]) for row in rows] == list(
         range(1, len(rows) + 1)
     )
@@ -262,6 +275,8 @@ def _transactions(
     expected_events = ["request_created", "core0_accepted", "application", "response"]
     applications: list[dict[str, str]] = []
     latencies: list[dict[str, int]] = []
+    response_replays: list[dict[str, Any]] = []
+    response_classifier = ResponseClassifier()
     for request_sequence, group in sorted(by_request.items()):
         events = [row["event"] for row in group]
         valid = valid and events == expected_events
@@ -269,6 +284,35 @@ def _transactions(
             continue
         created, accepted, applied, response = group
         requested = int(created["requested_code"])
+        replayed_response = response_classifier.classify(
+            pre_error_hz=float(created["pre_error_hz"]),
+            post_error_hz=float(response["post_error_hz"]),
+            applied_delta_codes=int(created["requested_delta_codes"]),
+            current_code=int(applied["applied_code"]),
+            minimum_code=spec.minimum_code,
+            maximum_code=spec.maximum_code,
+            evidence_healthy=True,
+        )
+        response_exact = (
+            response["response_class"] == replayed_response.classification.value
+            and response["reason"] == replayed_response.reason
+            and replayed_response.observed_response_hz is not None
+            and replayed_response.cumulative_response_hz is not None
+            and math.isclose(
+                float(response["observed_response_hz"]),
+                replayed_response.observed_response_hz,
+                rel_tol=0.0,
+                abs_tol=5e-9,
+            )
+            and math.isclose(
+                float(response["cumulative_response_hz"]),
+                replayed_response.cumulative_response_hz,
+                rel_tol=0.0,
+                abs_tol=5e-9,
+            )
+            and int(response["consecutive_indeterminate"])
+            == replayed_response.consecutive_indeterminate
+        )
         exact = (
             int(created["accepted_code"]) == 0
             and int(accepted["accepted_code"]) == requested
@@ -279,6 +323,7 @@ def _transactions(
             and applied["ambiguous"] == "false"
             and applied["estimator_history_reset"] == "true"
             and all(row["actionable"] == "false" for row in group)
+            and response_exact
         )
         valid = valid and exact
         applications.append(applied)
@@ -289,6 +334,16 @@ def _transactions(
                 - int(created["decision_timestamp_s"]),
                 "application_latency_s": int(applied["application_timestamp_s"])
                 - int(accepted["accepted_timestamp_s"]),
+            }
+        )
+        response_replays.append(
+            {
+                "request_sequence": request_sequence,
+                "observed_class": response["response_class"],
+                "replayed_class": replayed_response.classification.value,
+                "observed_reason": response["reason"],
+                "replayed_reason": replayed_response.reason,
+                "pass": response_exact,
             }
         )
     ordinals = [int(row["correction_count"]) for row in applications]
@@ -335,6 +390,10 @@ def _transactions(
                 for row in applications
             ],
             "latencies": latencies,
+            "response_replays": response_replays,
+            "all_response_classifications_replay_exactly": all(
+                item["pass"] for item in response_replays
+            ),
             "final_code": int(applications[-1]["applied_code"])
             if applications
             else spec.start_code,
@@ -1151,6 +1210,87 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
 
+    if part == "part_b":
+        prerequisite = manifest.data.get("prerequisite_gates", {})
+        matrix_binding = manifest.data.get("part_b_matrix_binding", {})
+        a1 = prerequisite.get("part_a1_fixed_code_stability", {})
+        a2 = prerequisite.get("part_a2_cross_core_transaction", {})
+        a1_document = a1.get("document", {})
+        a2_document = a2.get("document", {})
+        a2_transactions = a2_document.get("transactions", {})
+
+        def gate_file_exact(entry: dict[str, Any]) -> bool:
+            try:
+                path = Path(entry["path"])
+                return (
+                    path.is_file()
+                    and _sha256_file(path) == entry["sha256"]
+                )
+            except (KeyError, OSError, TypeError):
+                return False
+
+        prerequisite_ok = (
+            set(prerequisite)
+            == {
+                "part_a1_fixed_code_stability",
+                "part_a2_cross_core_transaction",
+            }
+            and gate_file_exact(a1)
+            and gate_file_exact(a2)
+            and a1_document.get("status") == "pass"
+            and a1_document.get("test")
+            == "part_a_fixed_code_stability"
+            and a1_document.get("applicable") is True
+            and bool(a1_document.get("criteria"))
+            and all(
+                value is True
+                for value in a1_document.get("criteria", {}).values()
+            )
+            and a2_document.get("status") == "pass"
+            and a2_document.get("part") == "part_a"
+            and 1 <= int(a2_transactions.get("application_count", 0)) <= 4
+            and a2_transactions.get(
+                "all_response_classifications_replay_exactly"
+            )
+            is True
+            and int(a2_transactions.get("final_code", -1)) == start_code
+        )
+        checks.append(
+            Check(
+                "sealed_composite_part_a_handoff",
+                prerequisite_ok,
+                "embedded A1 stability and A2 transaction gates with exact "
+                f"Part B start {start_code}",
+            )
+        )
+        try:
+            from tools.firmware_matrix import source_input_hash
+
+            derived_matrix_path = Path(matrix_binding["path"])
+            matrix_derivation = matrix_binding["derivation"]
+            matrix_ok = (
+                derived_matrix_path.is_file()
+                and _sha256_file(derived_matrix_path)
+                == matrix_binding["sha256"]
+                and matrix_derivation.get("stage7_prompt_sha256")
+                == STAGE7_PROMPT_SHA256
+                and int(
+                    matrix_derivation.get("exact_part_b_start_code", -1)
+                )
+                == start_code
+                and source_input_hash(matrix_path=derived_matrix_path)
+                == firmware["source_sha256"]
+            )
+        except (KeyError, OSError, TypeError, ValueError):
+            matrix_ok = False
+        checks.append(
+            Check(
+                "derived_part_b_artifact_start_binding",
+                matrix_ok,
+                f"derived build matrix and artifact bind start {start_code}",
+            )
+        )
+
     for entry in manifest.files:
         path = run_dir / str(entry["path"])
         if not path.exists():
@@ -1212,13 +1352,23 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     )
 
     latest = _latest_health_rows(health_rows)
+    critical_high_water = int(
+        latest.get(("dual_core", "critical_high_water"), "-1")
+    )
     queue_ok = (
         latest.get(("dual_core", "partition_fault")) == "none"
         and latest.get(("dual_core", "fail_static")) == "false"
         and latest.get(("cx317_active", "fail_static")) == "false"
         and int(latest.get(("dual_core", "telemetry_dropped"), "-1")) == 0
         and int(latest.get(("dual_core", "observation_high_water"), "0")) > 0
-        and int(latest.get(("dual_core", "critical_high_water"), "0")) > 0
+        # Part B explicitly permits a stable 24-hour zero-correction pass.
+        # Such a run legitimately has no actuator-critical traffic; Part A2
+        # supplies the required live cross-core transaction proof.
+        and (
+            critical_high_water > 0
+            if applications
+            else part == "part_b" and critical_high_water == 0
+        )
         and int(latest.get(("dual_core", "evidence_high_water"), "0")) > 0
     )
     checks.append(

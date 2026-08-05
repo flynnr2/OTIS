@@ -29,6 +29,7 @@ from .cx317_active_campaign import (
     _latest_health,
     _read_csv,
     _utc_now,
+    validate_transaction_history,
     validate_transaction_row,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
@@ -55,6 +56,8 @@ def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str
         raise ValueError(f"unsupported Stage 7 part {part!r}")
     if not 0xA800 <= start_code <= 0xAB00:
         raise ValueError("Stage 7 start code is outside A800..AB00")
+    if part == "part_a" and start_code != 0xA800:
+        raise ValueError("Stage 7 Part A2 requires the frozen exact A800 start")
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     is_a = part == "part_a"
     spec = CampaignSpec(
@@ -192,9 +195,17 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             raise ValueError(
                 "ACT contract validation failed: " + "; ".join(validation.errors)
             )
+        rows = _read_csv(path)
+        validate_transaction_history(
+            rows,
+            self.spec,
+            self.identities,
+            self.expected_build_identity,
+            dual_core=True,
+        )
         acknowledged = set(self.state["acknowledged_record_sequences"])
         observed_manual = set(self.state["observed_manual_record_sequences"])
-        for row in _read_csv(path):
+        for row in rows:
             record_sequence = int(row["transaction_record_sequence"])
             validate_transaction_row(
                 row, self.spec, self.identities, self.expected_build_identity
@@ -606,6 +617,11 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                 self.state["duration_elapsed"] = True
                 self._save()
                 self._event("part_b_24h_duration_elapsed_waiting_for_clear_state")
+            required_bursts = set(range(len(PART_B_SERVICE_LOAD_STARTS_S)))
+            completed_bursts = set(self.state["part_b_service_bursts_complete"])
+            if completed_bursts != required_bursts:
+                self._abort("part_b_required_service_bursts_incomplete")
+                return
             if (
                 not self.state["arm_pending"]
                 and state == "DISARMED"

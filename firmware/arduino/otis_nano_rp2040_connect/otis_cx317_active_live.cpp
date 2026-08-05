@@ -274,8 +274,14 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
       response == nullptr ? 0u : response->consecutive_indeterminate,
       otis_cx317_active_state_name(transaction.state), response_name, reason,
       kEstimatorHash, kModelHash, kActivePolicyHash, kResponsePolicyHash,
-      kNumericalPolicyHash, transaction.request.actionable ? "true" : "false",
-      evidence_state_name());
+      kNumericalPolicyHash,
+      // ACT is a durable observation, never a transferable authority token.
+      // During the dual-core request_created phase the private pending request
+      // remains actionable until Core 0 accepts it, but the serialized copy
+      // must stay non-actionable exactly as the frozen evidence contract
+      // requires.  The host releases the private request only by acknowledging
+      // the durably preserved phase and cannot reconstruct authority from CSV.
+      "false", evidence_state_name());
   if (used <= 0 || static_cast<size_t>(used) >= sizeof(frame.data)) {
     frame = {};
     return false;

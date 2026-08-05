@@ -87,6 +87,21 @@ def test_prewrite_capsule_requires_exact_phase_ack_before_single_i2c_attempt() -
     assert "evidence_acknowledgement_timeout" in active
 
 
+def test_serialized_act_evidence_never_copies_private_actionability() -> None:
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    serializer = active[
+        active.index("bool queue_frame(") : active.index(
+            "bool queue_manual_start_frame("
+        )
+    ]
+    assert '"false", evidence_state_name()' in serializer
+    assert "transaction.request.actionable" not in serializer
+    assert "cross.actionable = request.actionable" in active
+    assert "pending_actionable_request = request" in active
+
+
 def test_active_commands_cannot_supply_feedback_code_or_actionability() -> None:
     parser = (FIRMWARE / "otis_serial_command.cpp").read_text(encoding="utf-8")
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(

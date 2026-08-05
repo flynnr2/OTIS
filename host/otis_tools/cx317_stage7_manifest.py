@@ -7,8 +7,13 @@ from hashlib import sha256
 from pathlib import Path
 import argparse
 import json
+from typing import Any
 
 from .cx317_stage7_shadow import CONTRACT_SHA256, DEFAULT_CONTRACT
+from .cx317_stage7_part_b_matrix import (
+    PART_B_PROFILE,
+    STAGE7_PROMPT_SHA256,
+)
 from .cx317_stage7_supervisor import (
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
@@ -37,6 +42,9 @@ def create_stage7_manifest(
     build_manifest_path: Path,
     serial_device: str,
     baud: int = 115200,
+    part_a1_gate_path: Path | None = None,
+    part_a2_gate_path: Path | None = None,
+    part_b_matrix_path: Path | None = None,
 ) -> Path:
     path = run_dir / "run_manifest.json"
     if path.exists():
@@ -44,6 +52,105 @@ def create_stage7_manifest(
     build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     provenance = build["provenance"]
     spec, identities = load_stage7_spec(part, start_code)
+    prerequisite_gates: dict[str, dict[str, Any]] = {}
+    part_b_matrix_binding: dict[str, Any] = {}
+    if part == "part_b":
+        if (
+            part_a1_gate_path is None
+            or part_a2_gate_path is None
+            or part_b_matrix_path is None
+        ):
+            raise ValueError(
+                "Stage 7 Part B requires A1/A2 gates and the derived Part B matrix"
+            )
+        part_a1_gate = json.loads(
+            part_a1_gate_path.read_text(encoding="utf-8")
+        )
+        part_a2_gate = json.loads(
+            part_a2_gate_path.read_text(encoding="utf-8")
+        )
+        if (
+            part_a1_gate.get("status") != "pass"
+            or part_a1_gate.get("test")
+            != "part_a_fixed_code_stability"
+            or part_a1_gate.get("applicable") is not True
+            or not part_a1_gate.get("criteria")
+            or not all(
+                value is True
+                for value in part_a1_gate["criteria"].values()
+            )
+        ):
+            raise ValueError("Stage 7 Part A1 stability gate is not passed")
+        if (
+            part_a2_gate.get("status") != "pass"
+            or part_a2_gate.get("part") != "part_a"
+            or not 1
+            <= int(
+                part_a2_gate.get("transactions", {}).get(
+                    "application_count", 0
+                )
+            )
+            <= 4
+            or part_a2_gate.get("transactions", {}).get(
+                "all_response_classifications_replay_exactly"
+            )
+            is not True
+        ):
+            raise ValueError("Stage 7 Part A2 transaction gate is not passed")
+        final_code = int(
+            part_a2_gate.get("transactions", {}).get("final_code", -1)
+        )
+        if final_code != start_code:
+            raise ValueError(
+                "Stage 7 Part B start does not equal the passed Part A2 final code"
+            )
+        part_b_matrix_path = part_b_matrix_path.resolve()
+        part_b_matrix = json.loads(
+            part_b_matrix_path.read_text(encoding="utf-8")
+        )
+        derivation = part_b_matrix.get("stage7_part_b_derivation", {})
+        part_b_profiles = {
+            item.get("id"): item for item in part_b_matrix.get("profiles", [])
+        }
+        derived_profile = part_b_profiles.get(PART_B_PROFILE, {})
+        if (
+            derivation.get("stage7_prompt_sha256")
+            != STAGE7_PROMPT_SHA256
+            or derivation.get("part_a2_gate_sha256")
+            != sha256(part_a2_gate_path.read_bytes()).hexdigest()
+            or int(derivation.get("exact_part_b_start_code", -1))
+            != start_code
+            or derived_profile.get("defines", {}).get(
+                "OTIS_CX317_ACTIVE_START_CODE"
+            )
+            != f"0x{start_code:04X}u"
+        ):
+            raise ValueError("Stage 7 Part B derived matrix binding differs")
+        from tools.firmware_matrix import source_input_hash
+
+        if source_input_hash(matrix_path=part_b_matrix_path) != provenance[
+            "source"
+        ]["sha256"]:
+            raise ValueError(
+                "Part B build source identity does not match the derived matrix"
+            )
+        part_b_matrix_binding = {
+            "path": str(part_b_matrix_path),
+            "sha256": sha256(part_b_matrix_path.read_bytes()).hexdigest(),
+            "derivation": derivation,
+        }
+        prerequisite_gates = {
+            "part_a1_fixed_code_stability": {
+                "path": str(part_a1_gate_path.resolve()),
+                "sha256": sha256(part_a1_gate_path.read_bytes()).hexdigest(),
+                "document": part_a1_gate,
+            },
+            "part_a2_cross_core_transaction": {
+                "path": str(part_a2_gate_path.resolve()),
+                "sha256": sha256(part_a2_gate_path.read_bytes()).hexdigest(),
+                "document": part_a2_gate,
+            },
+        }
     configuration = provenance["configuration"]
     defines = configuration["defines"]
     if configuration["profile_id"] != spec.profile:
@@ -187,6 +294,13 @@ def create_stage7_manifest(
             "reports/stage7_shadow_decisions_v1.csv",
             "reports/stage7_exit_gate.json",
         ],
+        "evidence_artifacts": [
+            "reports/cx317_active_supervisor_state.json",
+            "reports/cx317_active_supervisor_events.jsonl",
+            "reports/stage7_authoritative_observations_v1.csv",
+            "reports/stage7_shadow_decisions_v1.csv",
+            "reports/stage7_exit_gate.json",
+        ],
         "policy": {
             "path": str(POLICY_PATH.relative_to(POLICY_PATH.parents[2])),
             "sha256": identities["active_policy_sha256"],
@@ -198,6 +312,9 @@ def create_stage7_manifest(
             "Shadow candidates are counterfactual and have no Stage 7 actuation authority.",
         ],
     }
+    if prerequisite_gates:
+        manifest["prerequisite_gates"] = prerequisite_gates
+        manifest["part_b_matrix_binding"] = part_b_matrix_binding
     run_dir.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2, sort_keys=True)
@@ -213,6 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-manifest", type=Path, required=True)
     parser.add_argument("--serial-device", required=True)
     parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument("--part-a1-gate", type=Path)
+    parser.add_argument("--part-a2-gate", type=Path)
+    parser.add_argument("--part-b-matrix", type=Path)
     args = parser.parse_args(argv)
     print(
         create_stage7_manifest(
@@ -222,6 +342,9 @@ def main(argv: list[str] | None = None) -> int:
             build_manifest_path=args.build_manifest,
             serial_device=args.serial_device,
             baud=args.baud,
+            part_a1_gate_path=args.part_a1_gate,
+            part_a2_gate_path=args.part_a2_gate,
+            part_b_matrix_path=args.part_b_matrix,
         )
     )
     return 0

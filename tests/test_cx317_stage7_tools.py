@@ -10,8 +10,11 @@ from host.otis_tools.cx317_stage7_analyze import (
     _historical_shadow_replays,
     _latest_health_rows,
     _series_metrics,
+    _transactions,
 )
+from host.otis_tools.contracts import ACTIVE_TRANSACTION_V1_FIELDS
 from host.otis_tools.cx317_stage7_manifest import create_stage7_manifest
+from host.otis_tools.cx317_stage7_part_b_matrix import derive_part_b_matrix
 from host.otis_tools.cx317_stage7_shadow import CONTRACT_SHA256
 from host.otis_tools.cx317_stage7_shadow_monitor import (
     AUTHORITATIVE,
@@ -28,6 +31,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     load_stage7_spec,
 )
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
+from tools.firmware_matrix import source_input_hash
 
 
 def _rows(path: Path) -> list[dict[str, str]]:
@@ -191,6 +195,121 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
     assert manifest["active_campaign"]["maximum_wall_clock_s"] == 19800
     assert manifest["shadow_contract"]["sha256"] == CONTRACT_SHA256
     assert manifest["host"]["shadow_has_serial_or_command_authority"] is False
+    assert set(manifest["evidence_artifacts"]) == {
+        "reports/cx317_active_supervisor_state.json",
+        "reports/cx317_active_supervisor_events.jsonl",
+        "reports/stage7_authoritative_observations_v1.csv",
+        "reports/stage7_shadow_decisions_v1.csv",
+        "reports/stage7_exit_gate.json",
+    }
+
+
+def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
+    tmp_path: Path,
+) -> None:
+    start_code = 0xA815
+    build = {
+        "provenance": {
+            "source": {
+                "git_commit": "1" * 40,
+                "sha256": "2" * 64,
+                "state": "clean",
+            },
+            "configuration": {
+                "profile_id": "cx317_dual_core_active_endurance_part_b",
+                "sha256": "3" * 64,
+                "defines": {
+                    "OTIS_CX317_ACTIVE_START_CODE": f"0x{start_code:04X}u",
+                    "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "32u",
+                    "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "672u",
+                    "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
+                    "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
+                    "OTIS_GNSS_UART_TX_ENABLED": "0",
+                },
+            },
+        },
+        "artifacts": [
+            {
+                "name": "otis_nano_rp2040_connect.ino.uf2",
+                "sha256": "4" * 64,
+                "size_bytes": 123456,
+            }
+        ],
+    }
+    a1 = tmp_path / "part_a1_gate.json"
+    a1.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "test": "part_a_fixed_code_stability",
+                "applicable": True,
+                "criteria": {"every_frozen_criterion": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    a2 = tmp_path / "part_a2_gate.json"
+    a2.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "part": "part_a",
+                "transactions": {
+                    "application_count": 1,
+                    "all_response_classifications_replay_exactly": True,
+                    "final_code": start_code,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    derived_matrix, derived_start = derive_part_b_matrix(
+        part_a2_gate_path=a2,
+        output_path=tmp_path / "stage7_part_b_matrix.json",
+    )
+    assert derived_start == start_code
+    build["provenance"]["source"]["sha256"] = source_input_hash(
+        matrix_path=derived_matrix
+    )
+    build_manifest = tmp_path / "firmware_build_manifest.json"
+    build_manifest.write_text(json.dumps(build), encoding="utf-8")
+
+    manifest_path = create_stage7_manifest(
+        part="part_b",
+        start_code=start_code,
+        run_dir=tmp_path / "part_b",
+        build_manifest_path=build_manifest,
+        serial_device="/dev/cu.test",
+        part_a1_gate_path=a1,
+        part_a2_gate_path=a2,
+        part_b_matrix_path=derived_matrix,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert set(manifest["prerequisite_gates"]) == {
+        "part_a1_fixed_code_stability",
+        "part_a2_cross_core_transaction",
+    }
+    assert manifest["prerequisite_gates"][
+        "part_a1_fixed_code_stability"
+    ]["document"]["test"] == "part_a_fixed_code_stability"
+    assert manifest["prerequisite_gates"][
+        "part_a2_cross_core_transaction"
+    ]["document"]["transactions"]["final_code"] == start_code
+
+    changed = json.loads(a2.read_text(encoding="utf-8"))
+    changed["transactions"]["final_code"] = start_code + 1
+    a2.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(ValueError, match="Part B start"):
+        create_stage7_manifest(
+            part="part_b",
+            start_code=start_code,
+            run_dir=tmp_path / "part_b_bad",
+            build_manifest_path=build_manifest,
+            serial_device="/dev/cu.test",
+            part_a1_gate_path=a1,
+            part_a2_gate_path=a2,
+            part_b_matrix_path=derived_matrix,
+        )
 
 
 def test_stage7_time_series_metrics_do_not_assume_independence() -> None:
@@ -237,6 +356,153 @@ def test_stage7_analyzer_reduces_loaded_health_rows() -> None:
         ]
     )
     assert latest[("dual_core", "telemetry_dropped")] == "7"
+
+
+def _exact_stage7_transaction_rows() -> tuple[
+    list[dict[str, str]], object, dict[str, str], str
+]:
+    spec, identities = load_stage7_spec("part_a", 0xA800)
+    build_identity = "a" * 64 + ":" + "b" * 64
+    base = {field: "" for field in ACTIVE_TRANSACTION_V1_FIELDS}
+    base.update(
+        {
+            "record_type": "ACT",
+            "schema_version": "1",
+            "run_identity": spec.run_identity,
+            "build_identity": build_identity,
+            "profile_identity": spec.profile,
+            **identities,
+            "session_id": "7",
+            "authorization_sequence": "1",
+            "nonce": "9",
+            "request_sequence": "1",
+            "decision_sequence": "4",
+            "source_first_sequence": "100",
+            "source_last_sequence": "699",
+            "decision_timestamp_s": "2400",
+            "current_applied_code": str(spec.start_code),
+            "requested_delta_codes": "21",
+            "requested_code": str(spec.start_code + 21),
+            "correction_ordinal": "1",
+            "cumulative_after_codes": "21",
+            "pre_error_hz": "-0.010000000",
+            "accepted_code": "0",
+            "accepted_timestamp_s": "0",
+            "applied_code": "0",
+            "application_sequence": "0",
+            "application_timestamp_s": "0",
+            "i2c_ok": "false",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "0",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "post_error_hz": "0",
+            "observed_response_hz": "0",
+            "cumulative_response_hz": "0",
+            "consecutive_indeterminate": "0",
+            "response_class": "unavailable",
+            "actionable": "false",
+        }
+    )
+    manual = dict(base)
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "requested_delta_codes": "0",
+            "requested_code": str(spec.start_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0",
+            "accepted_code": str(spec.start_code),
+            "accepted_timestamp_s": "1",
+            "applied_code": str(spec.start_code),
+            "application_timestamp_s": "1",
+            "i2c_ok": "true",
+            "active_state": "DISARMED",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+    created = dict(base)
+    created.update(
+        {
+            "transaction_record_sequence": "2",
+            "event": "request_created",
+            "active_state": "REQUEST_PENDING",
+            "reason": "request_created",
+            "evidence_state": "request_pending",
+        }
+    )
+    accepted = dict(created)
+    accepted.update(
+        {
+            "transaction_record_sequence": "3",
+            "event": "core0_accepted",
+            "accepted_code": str(spec.start_code + 21),
+            "accepted_timestamp_s": "2400",
+            "active_state": "ACCEPTED_AWAITING_APPLICATION",
+            "reason": "request_consumed_actionable_cleared",
+            "evidence_state": "acceptance_pending",
+        }
+    )
+    application = dict(accepted)
+    application.update(
+        {
+            "transaction_record_sequence": "4",
+            "event": "application",
+            "applied_code": str(spec.start_code + 21),
+            "application_sequence": "1",
+            "application_timestamp_s": "2401",
+            "i2c_ok": "true",
+            "dac_epoch": "1",
+            "estimator_history_reset": "true",
+            "correction_count": "1",
+            "cumulative_movement_codes": "21",
+            "active_state": "AWAITING_RESPONSE",
+            "reason": "application_preserved",
+            "evidence_state": "application_pending",
+        }
+    )
+    response = dict(application)
+    response.update(
+        {
+            "transaction_record_sequence": "5",
+            "event": "response",
+            "post_error_hz": "-0.003000000",
+            "observed_response_hz": "0.007000000",
+            "cumulative_response_hz": "0.007000000",
+            "active_state": "DISARMED",
+            "response_class": "inside_deadband",
+            "reason": "post_error_inside_frozen_deadband",
+            "evidence_state": "response_pending",
+        }
+    )
+    return [manual, created, accepted, application, response], spec, identities, build_identity
+
+
+def test_stage7_exact_four_phase_history_and_response_replay() -> None:
+    rows, spec, identities, build_identity = _exact_stage7_transaction_rows()
+    check, evidence = _transactions(rows, spec, identities, build_identity)
+    assert check.passed
+    assert evidence["application_count"] == 1
+    assert evidence["final_code"] == 0xA815
+    assert evidence["all_response_classifications_replay_exactly"] is True
+
+
+def test_stage7_rejects_cross_phase_request_field_mutation() -> None:
+    rows, spec, identities, build_identity = _exact_stage7_transaction_rows()
+    rows[3]["nonce"] = "10"
+    with pytest.raises(ValueError, match="immutable fields changed"):
+        _transactions(rows, spec, identities, build_identity)
 
 
 def _supervisor(
@@ -329,6 +595,7 @@ def test_part_b_stable_no_write_run_stops_successfully_at_24h(
             "qualification_started_utc": "1970-01-01T00:00:00Z",
             "arm_pending": False,
             "duration_elapsed": False,
+            "part_b_service_bursts_complete": [0, 1, 2, 3],
         }
     )
     health = {
@@ -352,6 +619,7 @@ def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
             "qualification_started_utc": "1970-01-01T00:00:00Z",
             "arm_pending": True,
             "duration_elapsed": False,
+            "part_b_service_bursts_complete": [0, 1, 2, 3],
         }
     )
     health = {
@@ -365,6 +633,28 @@ def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
         health, float(PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S)
     )
     assert aborts == ["part_b_clearance_grace_expired"]
+
+
+def test_part_b_cannot_pass_without_all_required_service_bursts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    aborts: list[str] = []
+    monkeypatch.setattr(supervisor, "_abort", aborts.append)
+    supervisor.state.update(
+        {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
+            "arm_pending": False,
+            "duration_elapsed": False,
+            "part_b_service_bursts_complete": [0, 1, 2],
+        }
+    )
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+    }
+    supervisor._maybe_finish(health, float(PART_B_DURATION_S))
+    assert aborts == ["part_b_required_service_bursts_incomplete"]
 
 
 def test_stage7_supervisor_stops_on_partition_or_transport_loss(

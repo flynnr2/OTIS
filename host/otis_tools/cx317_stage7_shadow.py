@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 import argparse
@@ -25,8 +25,14 @@ V2_CONTRACT = (
 V2_CONTRACT_SHA256 = (
     "c9336162e1c27bd037fa854cef33c0080b8fe1ebfaf24ff0302f2eae2c1e4291"
 )
-DEFAULT_CONTRACT = V2_CONTRACT
-CONTRACT_SHA256 = V2_CONTRACT_SHA256
+V3_CONTRACT = (
+    REPO_ROOT / "profiles/discipline/cx317_stage7_shadow_deadband_v3.json"
+)
+V3_CONTRACT_SHA256 = (
+    "bcf89ecfa1b926a54aaf6f2518e26283ff8263e93e8cd31444057da8651972c1"
+)
+DEFAULT_CONTRACT = V3_CONTRACT
+CONTRACT_SHA256 = V3_CONTRACT_SHA256
 TOOL_VERSION = "cx317_stage7_shadow_v1"
 
 
@@ -127,6 +133,80 @@ class ShadowDecision:
 
 def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
     actual_contract_sha256 = _sha256_file(path)
+    if actual_contract_sha256 == V3_CONTRACT_SHA256:
+        amendment = json.loads(path.read_text(encoding="utf-8"))
+        if set(amendment) != {
+            "schema_version",
+            "contract_id",
+            "status",
+            "base_contract",
+            "amendment",
+        }:
+            raise ValueError("Stage 7 V3 shadow amendment fields differ")
+        expected_prompt_path = (
+            "docs/60_EXPERIMENTS/"
+            "CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/"
+            "07_DUAL_CORE_ACTIVE_ENDURANCE_PROMPT.md"
+        )
+        amended = amendment["amendment"]
+        if (
+            amendment["schema_version"] != 3
+            or amendment["contract_id"]
+            != "CX317_STAGE7_SHADOW_DEADBAND_V3"
+            or amendment["status"]
+            != "frozen_before_repaired_stage7_part_a2_non_actionable"
+            or amendment["base_contract"]
+            != {
+                "path": str(V2_CONTRACT.relative_to(REPO_ROOT)),
+                "sha256": V2_CONTRACT_SHA256,
+            }
+            or set(amended)
+            != {
+                "stage7_prompt_path",
+                "stage7_prompt_sha256",
+                "scope",
+                "candidate_numerics_changed",
+                "shadow_authority_changed",
+                "initial_conditions",
+            }
+            or amended["stage7_prompt_path"] != expected_prompt_path
+            or amended["scope"]
+            != "bind_composite_part_a_initial_conditions_and_part_b_handoff_without_changing_candidate_numerics_or_authority"
+            or amended["candidate_numerics_changed"] is not False
+            or amended["shadow_authority_changed"] is not False
+            or amended["initial_conditions"]
+            != {
+                "part_a1_sealed_run": (
+                    "runs/cx317_bounded_closed_loop_acquisition/"
+                    "campaign_20260803T080615Z/stage7/"
+                    "part_a_20260804T222508Z"
+                ),
+                "part_a1_start_code": 43050,
+                "part_a2_start_code": 43008,
+                "part_b_start_rule": (
+                    "exact_passed_part_a2_final_confirmed_code"
+                ),
+                "minimum_code": 43008,
+                "maximum_code": 43776,
+            }
+        ):
+            raise ValueError("unsupported Stage 7 V3 shadow contract identity")
+        if (
+            _sha256_file(REPO_ROOT / amended["stage7_prompt_path"])
+            != amended["stage7_prompt_sha256"]
+        ):
+            raise ValueError("Stage 7 V3 shadow prompt binding differs")
+        if _sha256_file(V2_CONTRACT) != V2_CONTRACT_SHA256:
+            raise ValueError("Stage 7 V3 shadow base contract differs")
+        base = load_contract(V2_CONTRACT)
+        return replace(
+            base,
+            contract_id=amendment["contract_id"],
+            contract_sha256=actual_contract_sha256,
+            part_a_start_code=int(
+                amended["initial_conditions"]["part_a2_start_code"]
+            ),
+        )
     returned_contract_id: str | None = None
     returned_contract_sha256 = actual_contract_sha256
     if actual_contract_sha256 == V2_CONTRACT_SHA256:
