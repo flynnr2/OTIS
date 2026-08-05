@@ -313,9 +313,10 @@ def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
         )
         if profile["id"] in {
             "cx317_bounded_active_campaign_a",
-            "cx317_bounded_active_campaign_b",
-            "cx317_dual_core_active_part_a",
-            "cx317_dual_core_active_endurance_part_b",
+                "cx317_bounded_active_campaign_b",
+                "cx317_dual_core_active_part_a",
+                "cx317_dual_core_active_rehearsal",
+                "cx317_dual_core_active_endurance_part_b",
         }:
             assert enabled == "1"
         else:

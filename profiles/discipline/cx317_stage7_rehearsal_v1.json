@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX317_STAGE7_HIL_REHEARSAL_V1",
+  "status": "diagnostic_only_prequalification_gate",
+  "bindings": {
+    "base_active_policy_path": "profiles/discipline/cx317_bounded_active_v2.json",
+    "base_active_policy_sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42",
+    "plant_model_path": "profiles/plant_models/cx317_pps_gated_v2.json",
+    "plant_model_sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1",
+    "selected_estimator_path": "profiles/estimators/cx317_pps_gated_rehearsal_selected_v1.json",
+    "selected_estimator_sha256": "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977",
+    "response_policy_path": "profiles/discipline/cx317_response_classification_v2.json",
+    "response_policy_sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec"
+  },
+  "timing_s": {
+    "startup_warmup": 60,
+    "selected_span": 120,
+    "settling_exclusion": 60,
+    "full_history_reset": 180,
+    "recovery_fresh_support": 120,
+    "decision_cadence": 240,
+    "minimum_applied_correction_cadence": 240,
+    "qualification_timeout": 420,
+    "qualified_timeout": 900
+  },
+  "actuation_envelope": {
+    "run_identity": "cx317_stage7_rehearsal:3170005",
+    "firmware_profile": "cx317_dual_core_active_rehearsal",
+    "start_code": 43008,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_step_codes": 21,
+    "maximum_corrections": 1,
+    "maximum_cumulative_movement_codes": 21,
+    "automatic_retry": false,
+    "automatic_restore": false
+  },
+  "required_sequence": [
+    "manual_start_A800",
+    "core1_request_created",
+    "core0_accepted",
+    "single_i2c_application",
+    "response_classified",
+    "sixty_query_service_load",
+    "later_cadence_eligible_decision",
+    "disarmed_evidence_clear"
+  ],
+  "authority": {
+    "diagnostic_only": true,
+    "qualification_evidence": false,
+    "stage7_progression_authority": false,
+    "may_unlock_exact_stage7_part_a_retry_after_pass": true,
+    "may_replace_stage7_part_a_or_b": false
+  }
+}

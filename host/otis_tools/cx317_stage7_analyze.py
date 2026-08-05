@@ -273,7 +273,8 @@ def _transactions(
         validate_transaction_row(row, spec, identities, build_identity)
         by_request.setdefault(int(row["request_sequence"]), []).append(row)
     expected_events = ["request_created", "core0_accepted", "application", "response"]
-    applications: list[dict[str, str]] = []
+    applications = [row for row in automatic if row["event"] == "application"]
+    complete_request_groups = 0
     latencies: list[dict[str, int]] = []
     response_replays: list[dict[str, Any]] = []
     response_classifier = ResponseClassifier()
@@ -282,6 +283,7 @@ def _transactions(
         valid = valid and events == expected_events
         if events != expected_events:
             continue
+        complete_request_groups += 1
         created, accepted, applied, response = group
         requested = int(created["requested_code"])
         replayed_response = response_classifier.classify(
@@ -326,7 +328,6 @@ def _transactions(
             and response_exact
         )
         valid = valid and exact
-        applications.append(applied)
         latencies.append(
             {
                 "request_sequence": request_sequence,
@@ -363,10 +364,12 @@ def _transactions(
         Check(
             "exact_four_phase_cross_core_transactions",
             valid,
-            f"{len(applications)} applications, path {sum(movements)} codes, {len(by_request)} complete request groups",
+            f"{len(applications)} applications, path {sum(movements)} codes, {complete_request_groups}/{len(by_request)} complete four-phase request groups",
         ),
         {
             "application_count": len(applications),
+            "complete_request_group_count": complete_request_groups,
+            "request_group_count": len(by_request),
             "path_codes": sum(movements),
             "net_movement_codes": (
                 int(applications[-1]["applied_code"]) - spec.start_code
@@ -391,8 +394,9 @@ def _transactions(
             ],
             "latencies": latencies,
             "response_replays": response_replays,
-            "all_response_classifications_replay_exactly": all(
-                item["pass"] for item in response_replays
+            "all_response_classifications_replay_exactly": (
+                complete_request_groups == len(by_request)
+                and all(item["pass"] for item in response_replays)
             ),
             "final_code": int(applications[-1]["applied_code"])
             if applications

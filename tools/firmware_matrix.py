@@ -58,6 +58,13 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_CX317_ACTIVE_START_CODE",
     "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
     "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES",
+    "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG",
+    "OTIS_CX317_STARTUP_WARMUP_S",
+    "OTIS_CX317_SETTLING_EXCLUSION_S",
+    "OTIS_CX317_FULL_HISTORY_RESET_S",
+    "OTIS_CX317_RECOVERY_FRESH_SUPPORT_S",
+    "OTIS_CX317_DECISION_CADENCE_S",
+    "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S",
 }
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
@@ -234,12 +241,13 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx317_bounded_active_campaign_a",
                 "cx317_bounded_active_campaign_b",
                 "cx317_dual_core_active_part_a",
+                "cx317_dual_core_active_rehearsal",
                 "cx317_dual_core_active_endurance_part_b",
             }
         ):
             raise MatrixError(
                 "bounded controller-to-DAC reachability is restricted to "
-                "the four dedicated programme profiles"
+                "the dedicated programme and diagnostic rehearsal profiles"
             )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(

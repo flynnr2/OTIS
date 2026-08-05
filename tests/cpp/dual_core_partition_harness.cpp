@@ -5,6 +5,7 @@
 
 #include "otis_dual_core_partition.h"
 #include "otis_dual_core_receiver_gate.h"
+#include "otis_cx317_dual_core_state.h"
 
 namespace {
 
@@ -380,6 +381,37 @@ void stale_ack_and_timeout_fault_without_retry() {
   assert(stats.fault == OtisPartitionFault::ActuatorTimeout);
 }
 
+void applied_ack_advances_stale_periodic_dac_state_before_health() {
+  OtisCx317StaticCodeState state = {};
+  OtisAppliedDacStateMessage stale = {};
+  stale.initialized = true;
+  stale.i2c_ok = true;
+  stale.requested_applied_match = true;
+  stale.requested_code = 0xA800u;
+  stale.applied_code = 0xA800u;
+  assert(!otis_cx317_dual_core_static_state_on_periodic(&state, &stale));
+  assert(state.available);
+  assert(state.applied_code == 0xA800u);
+
+  OtisCrossCoreActuatorAck applied =
+      acknowledgement(OtisActuatorAckKind::Applied);
+  applied.requested_code = 0xA815u;
+  applied.accepted_code = 0xA815u;
+  applied.applied_code = 0xA815u;
+  assert(otis_cx317_dual_core_static_state_on_applied_ack(
+      &state, &applied, true));
+  assert(state.available);
+  assert(state.requested_applied_match);
+  assert(state.i2c_ok);
+  assert(state.applied_code == 0xA815u);
+
+  OtisCrossCoreActuatorAck rejected = applied;
+  rejected.applied_code = 0xA82Au;
+  assert(!otis_cx317_dual_core_static_state_on_applied_ack(
+      &state, &rejected, false));
+  assert(state.applied_code == 0xA815u);
+}
+
 }  // namespace
 
 int main() {
@@ -393,5 +425,6 @@ int main() {
   every_non_droppable_queue_exhaustion_is_fail_static();
   actuator_transaction_requires_exact_two_phase_ack();
   stale_ack_and_timeout_fault_without_retry();
+  applied_ack_advances_stale_periodic_dac_state_before_health();
   return 0;
 }

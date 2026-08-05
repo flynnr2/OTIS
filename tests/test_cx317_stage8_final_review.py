@@ -60,8 +60,8 @@ def test_gate_parsers_require_exact_pass_shapes() -> None:
         },
         "firmware_matrix": {
             "result": "pass",
-            "passed_profiles": 21,
-            "expected_pass_profiles": 21,
+            "passed_profiles": 22,
+            "expected_pass_profiles": 22,
             "guarded_failures_observed": 7,
             "expected_fail_profiles": 7,
         },

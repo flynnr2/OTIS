@@ -16,19 +16,34 @@
 namespace {
 
 constexpr char kEstimatorMethod[] = "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1";
+#if OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+constexpr char kSelectedEstimatorVersion[] =
+    "cx317_rehearsal_selected_120s_nonoverlap_v1";
+constexpr char kSelectedEstimatorReference[] = "selected120rehearsal";
+constexpr char kSelectedEstimatorHash[] =
+    "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977";
+constexpr char kPolicyId[] = "CX317_STAGE7_HIL_REHEARSAL_V1";
+constexpr char kPolicyHash[] =
+    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+#else
+constexpr char kSelectedEstimatorVersion[] =
+    "cx317_selected_600s_nonoverlap_v1";
+constexpr char kSelectedEstimatorReference[] = "selected600";
 constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kPolicyId[] = "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1";
 constexpr char kPolicyHash[] =
     "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f";
+#endif
 constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
 constexpr char kPlantModelHash[] =
     "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
 constexpr char kTimeDomain[] = "rp2040_timer0";
 constexpr double kNominalFrequencyHz = 10000000.0;
 constexpr double kNominalGainHzPerCode = 0.00017072602587382669;
-constexpr uint32_t kStartupWarmupS = 1800u;
-constexpr uint32_t kSettlingExclusionS = 900u;
+constexpr uint32_t kStartupWarmupS = OTIS_CX317_STARTUP_WARMUP_S;
+constexpr uint32_t kSettlingExclusionS = OTIS_CX317_SETTLING_EXCLUSION_S;
 constexpr int32_t kActiveLiveUpdateCodes = 0;
 constexpr uint8_t kQueueDepth = 4u;
 constexpr size_t kFrameCapacity = 1536u;
@@ -160,14 +175,15 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       "diagnostic_healthy,%.12f,%lu,unavailable,%.12f,%.12f,,unavailable,"
       "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
       ",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n",
-      static_cast<unsigned long>(seq), selected ? "selected600" : "diagnostic60",
+      static_cast<unsigned long>(seq),
+      selected ? kSelectedEstimatorReference : "diagnostic60",
       static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(first),
       static_cast<unsigned long>(span.last_sequence), OTIS_FIRMWARE_CONFIG_ID,
-      selected ? "cx317_selected_600s_nonoverlap_v1"
+      selected ? kSelectedEstimatorVersion
                : "cx317_diagnostic_60s_overlap_v1",
       kSelectedEstimatorHash, frequency, static_cast<unsigned long>(samples),
       frequency, frequency - kNominalFrequencyHz,
@@ -218,11 +234,12 @@ void emit_control(const OtisCx317PreviewDecision &decision,
 #endif
   int used = snprintf(
       frame, sizeof(frame),
-      "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:selected600:%06lu,"
+      "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:%s:%06lu,"
       "profile:plant_models/cx317_pps_gated_v2.json,%s,2,%s,%s,%s,%s,%s,%s,%s,"
       "%s,%s,healthy,%s,%s,%u,%s,%.15g,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
       static_cast<unsigned long>(seq), static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
+      kSelectedEstimatorReference,
       static_cast<unsigned long>(source_estimate_seq), kPlantModelId,
       kPlantModelHash, kPolicyId, kPolicyHash,
       otis_cx317_preview_state_name(decision.state),

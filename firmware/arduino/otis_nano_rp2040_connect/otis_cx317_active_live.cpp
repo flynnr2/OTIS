@@ -11,14 +11,28 @@
 
 namespace {
 
+#if OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+constexpr char kEstimatorHash[] =
+    "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977";
+#else
 constexpr char kEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+#endif
 constexpr char kModelHash[] =
     "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
+#if OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+constexpr char kNumericalPolicyHash[] =
+    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+constexpr char kActivePolicyHash[] =
+    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+#else
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
     "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42";
+#endif
 constexpr char kResponsePolicyHash[] =
     "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec";
 constexpr uint32_t kCaptureLeaseMaximumAgeS = 30u;
@@ -40,6 +54,10 @@ constexpr char kExpectedProfile[] = "cx317_dual_core_active_part_a";
 constexpr char kRunIdentity[] = "cx317_stage7_part_b:3170004";
 constexpr char kExpectedProfile[] =
     "cx317_dual_core_active_endurance_part_b";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+constexpr char kRunIdentity[] = "cx317_stage7_rehearsal:3170005";
+constexpr char kExpectedProfile[] = "cx317_dual_core_active_rehearsal";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";

@@ -17,6 +17,7 @@
 #include "otis_count_observation.h"
 #include "otis_cx317_active_actuator.h"
 #include "otis_cx317_active_live.h"
+#include "otis_cx317_dual_core_state.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_dac_ad5693r.h"
 #include "otis_dual_core_partition.h"
@@ -657,16 +658,10 @@ void service_dual_core_timing_inputs(void) {
       continue;
     }
     if (message.kind == OtisServiceMessageKind::AppliedDacState) {
-      const bool prior_available = dual_core_static_code.available;
-      const uint16_t prior_code = dual_core_static_code.applied_code;
-      dual_core_static_code = {
-          message.dac.requested_applied_match,
-          message.dac.requested_applied_match,
-          message.dac.initialized && message.dac.i2c_ok,
-          message.dac.applied_code,
-      };
-      if (prior_available && dual_core_static_code.available &&
-          prior_code != dual_core_static_code.applied_code) {
+      const bool changed =
+          otis_cx317_dual_core_static_state_on_periodic(
+              &dual_core_static_code, &message.dac);
+      if (changed) {
 #if !OTIS_ENABLE_CX317_BOUNDED_ACTIVE
         otis_cx317_preview_live_on_dac_applied(
             dual_core_static_code.applied_code, millis() / 1000u);
@@ -677,8 +672,16 @@ void service_dual_core_timing_inputs(void) {
     if (message.kind ==
         OtisServiceMessageKind::ActuatorAcknowledgement) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
-      otis_cx317_active_live_on_cross_core_ack(
-          &message.actuator_acknowledgement, millis() / 1000u);
+      const bool transaction_acknowledged =
+          otis_cx317_active_live_on_cross_core_ack(
+              &message.actuator_acknowledgement, millis() / 1000u);
+      if (message.actuator_acknowledgement.kind ==
+              OtisActuatorAckKind::Applied &&
+          !otis_cx317_dual_core_static_state_on_applied_ack(
+              &dual_core_static_code, &message.actuator_acknowledgement,
+              transaction_acknowledged))
+        otis_dual_core_latch_fault(
+            OtisPartitionFault::ActuatorAcknowledgementMismatch);
 #endif
       continue;
     }

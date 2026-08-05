@@ -3,10 +3,13 @@
 #include <math.h>
 #include <string.h>
 
+#include "otis_config.h"
+
 namespace {
 
 constexpr uint32_t kMaximumArmLifetimeS = 120u;
-constexpr uint32_t kMinimumCadenceS = 1800u;
+constexpr uint32_t kMinimumCadenceS =
+    OTIS_CX317_MINIMUM_APPLIED_CADENCE_S;
 constexpr double kGainMinimumHzPerCode = 0.00016357422282453626;
 constexpr double kGainMaximumHzPerCode = 0.00017334010044578463;
 constexpr double kDetectionFloorHz = 0.0033333317438761396;

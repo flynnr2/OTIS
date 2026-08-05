@@ -3,8 +3,11 @@
 
 #include <stdint.h>
 
+#include "otis_config.h"
+
 constexpr uint16_t OTIS_CX317_DIAGNOSTIC_SPAN_INTERVALS = 60u;
-constexpr uint16_t OTIS_CX317_SELECTED_SPAN_INTERVALS = 600u;
+constexpr uint16_t OTIS_CX317_SELECTED_SPAN_INTERVALS =
+    OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG;
 
 struct OtisCx317SpanEstimate {
   bool diagnostic_available;

@@ -8,6 +8,7 @@ the device.  Shadow analysis is deliberately absent from this authority path.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -37,6 +38,9 @@ from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json"
+REHEARSAL_POLICY_PATH = (
+    REPO_ROOT / "profiles/discipline/cx317_stage7_rehearsal_v1.json"
+)
 CONTROL_CSV = Path("csv/control_previews_v1.csv")
 ESTIMATES_CSV = Path("csv/estimates_v2.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
@@ -49,16 +53,87 @@ PART_B_SERVICE_LOAD_STARTS_S = (3600, 25200, 46800, 68400)
 PART_B_SERVICE_LOAD_QUERIES = 60
 SELECTED_INTERVAL_S = 600
 DECISION_CADENCE_S = 1800
+REHEARSAL_SELECTED_INTERVAL_S = 120
+REHEARSAL_DECISION_CADENCE_S = 240
+REHEARSAL_ARM_PROGRESS_THRESHOLD = 105
+REHEARSAL_QUALIFICATION_TIMEOUT_S = 7 * 60
+REHEARSAL_QUALIFIED_TIMEOUT_S = 15 * 60
+
+
+@dataclass(frozen=True)
+class Stage7Timing:
+    selected_interval_s: int
+    decision_cadence_s: int
+    arm_progress_threshold: int
+    qualification_timeout_s: int
+    qualified_timeout_s: int
+    service_load_queries: int
+    service_query_period_s: float
+
+
+def stage7_timing(part: str) -> Stage7Timing:
+    if part == "rehearsal":
+        return Stage7Timing(
+            selected_interval_s=REHEARSAL_SELECTED_INTERVAL_S,
+            decision_cadence_s=REHEARSAL_DECISION_CADENCE_S,
+            arm_progress_threshold=REHEARSAL_ARM_PROGRESS_THRESHOLD,
+            qualification_timeout_s=REHEARSAL_QUALIFICATION_TIMEOUT_S,
+            qualified_timeout_s=REHEARSAL_QUALIFIED_TIMEOUT_S,
+            service_load_queries=PART_A_SERVICE_LOAD_QUERIES,
+            service_query_period_s=1.0,
+        )
+    if part in {"part_a", "part_b"}:
+        return Stage7Timing(
+            selected_interval_s=SELECTED_INTERVAL_S,
+            decision_cadence_s=DECISION_CADENCE_S,
+            arm_progress_threshold=ARM_PROGRESS_THRESHOLD,
+            qualification_timeout_s=STAGE7_QUALIFICATION_TIMEOUT_S,
+            qualified_timeout_s=(
+                PART_A_QUALIFIED_TIMEOUT_S
+                if part == "part_a"
+                else PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S
+            ),
+            service_load_queries=(
+                PART_A_SERVICE_LOAD_QUERIES
+                if part == "part_a"
+                else PART_B_SERVICE_LOAD_QUERIES
+            ),
+            service_query_period_s=1.0,
+        )
+    raise ValueError(f"unsupported Stage 7 part {part!r}")
 
 
 def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str, str]]:
-    if part not in {"part_a", "part_b"}:
+    if part not in {"part_a", "part_b", "rehearsal"}:
         raise ValueError(f"unsupported Stage 7 part {part!r}")
     if not 0xA800 <= start_code <= 0xAB00:
         raise ValueError("Stage 7 start code is outside A800..AB00")
-    if part == "part_a" and start_code != 0xA800:
-        raise ValueError("Stage 7 Part A2 requires the frozen exact A800 start")
-    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    if part in {"part_a", "rehearsal"} and start_code != 0xA800:
+        raise ValueError(
+            f"Stage 7 {part} requires the frozen exact A800 start"
+        )
+    policy_path = REHEARSAL_POLICY_PATH if part == "rehearsal" else POLICY_PATH
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    if part == "rehearsal":
+        bindings = policy["bindings"]
+        policy_hash = sha256(policy_path.read_bytes()).hexdigest()
+        return CampaignSpec(
+            campaign="stage7_rehearsal",
+            profile="cx317_dual_core_active_rehearsal",
+            run_identity="cx317_stage7_rehearsal:3170005",
+            start_code=start_code,
+            correction_limit=1,
+            cumulative_limit=21,
+            minimum_code=0xA800,
+            maximum_code=0xAB00,
+            maximum_step=21,
+        ), {
+            "estimator_sha256": bindings["selected_estimator_sha256"],
+            "model_sha256": bindings["plant_model_sha256"],
+            "active_policy_sha256": policy_hash,
+            "response_policy_sha256": bindings["response_policy_sha256"],
+            "numerical_policy_sha256": policy_hash,
+        }
     is_a = part == "part_a"
     spec = CampaignSpec(
         campaign=f"stage7_{part}",
@@ -95,7 +170,11 @@ def _latest_preview(path: Path) -> dict[str, str] | None:
 
 
 def _next_selected_interval_is_cadence_eligible(
-    controls_path: Path, estimates_path: Path
+    controls_path: Path,
+    estimates_path: Path,
+    *,
+    selected_interval_s: int = SELECTED_INTERVAL_S,
+    decision_cadence_s: int = DECISION_CADENCE_S,
 ) -> bool:
     """Conservatively predict whether an arm can be consumed next interval.
 
@@ -126,8 +205,8 @@ def _next_selected_interval_is_cadence_eligible(
         )
     except (KeyError, TypeError, ValueError):
         return False
-    return latest_uptime_s + SELECTED_INTERVAL_S - last_eligible_uptime_s >= (
-        DECISION_CADENCE_S
+    return latest_uptime_s + selected_interval_s - last_eligible_uptime_s >= (
+        decision_cadence_s
     )
 
 
@@ -139,6 +218,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
     def __init__(self, *, part: str, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.part = part
+        self.timing = stage7_timing(part)
         self._last_arm_monotonic: float | None = None
         self._arm_progress_control_ref: str | None = None
         self._arm_progress_reset_seen = False
@@ -177,7 +257,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         if control_ref != self._arm_progress_control_ref:
             self._arm_progress_control_ref = control_ref
             self._arm_progress_reset_seen = False
-        if progress < ARM_PROGRESS_THRESHOLD:
+        if progress < self.timing.arm_progress_threshold:
             self._arm_progress_reset_seen = True
         return self._arm_progress_reset_seen
 
@@ -369,16 +449,18 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
     def _service_load(self, now: float) -> None:
         if now < self._next_service_command_monotonic:
             return
-        if self.part == "part_a":
+        if self.part in {"part_a", "rehearsal"}:
             if self.state["response_count"] < 1 or self.state[
                 "part_a_service_load_complete"
             ]:
                 return
             sent = int(self.state["part_a_service_load_sent"])
-            if sent < PART_A_SERVICE_LOAD_QUERIES:
+            if sent < self.timing.service_load_queries:
                 self._command("CONFIG?")
                 self.state["part_a_service_load_sent"] = sent + 1
-                self._next_service_command_monotonic = now + 1.0
+                self._next_service_command_monotonic = (
+                    now + self.timing.service_query_period_s
+                )
                 self._save()
                 return
             self.state["part_a_service_load_complete"] = True
@@ -389,7 +471,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             self._save()
             self._event(
                 "part_a_bounded_service_load_complete",
-                query_count=PART_A_SERVICE_LOAD_QUERIES,
+                query_count=self.timing.service_load_queries,
                 control_seq=self.state[
                     "part_a_service_load_completed_control_seq"
                 ],
@@ -520,11 +602,13 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             state == "DISARMED"
             and arm_eligible
             and evidence_clear
-            and progress >= ARM_PROGRESS_THRESHOLD
+            and progress >= self.timing.arm_progress_threshold
             and arm_progress_epoch_ready
             and _next_selected_interval_is_cadence_eligible(
                 self.run_dir / CONTROL_CSV,
                 self.run_dir / ESTIMATES_CSV,
+                selected_interval_s=self.timing.selected_interval_s,
+                decision_cadence_s=self.timing.decision_cadence_s,
             )
         ):
             uptime = int(health[("cx317_active", "uptime_s")])
@@ -560,12 +644,12 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             if (
                 isinstance(started, str)
                 and now_epoch - _parse_utc_epoch(started)
-                >= STAGE7_QUALIFICATION_TIMEOUT_S
+                >= self.timing.qualification_timeout_s
             ):
                 self._abort("stage7_qualification_timeout")
             return
         qualified_elapsed_s = now_epoch - _parse_utc_epoch(qualified)
-        if self.part == "part_a":
+        if self.part in {"part_a", "rehearsal"}:
             baseline = self.state.get(
                 "part_a_service_load_completed_control_seq"
             )
@@ -609,8 +693,8 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                     "utc": _utc_now(),
                 }
                 self._save()
-            elif qualified_elapsed_s >= PART_A_QUALIFIED_TIMEOUT_S:
-                self._abort("part_a_qualified_duration_expired")
+            elif qualified_elapsed_s >= self.timing.qualified_timeout_s:
+                self._abort(f"{self.part}_qualified_duration_expired")
             return
         if qualified_elapsed_s >= PART_B_DURATION_S:
             if not self.state["duration_elapsed"]:
@@ -688,7 +772,9 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--part", choices=("part_a", "part_b"), required=True)
+    parser.add_argument(
+        "--part", choices=("part_a", "part_b", "rehearsal"), required=True
+    )
     parser.add_argument("--start-code", type=lambda value: int(value, 0), required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--command-fifo", type=Path, required=True)

@@ -19,8 +19,10 @@ from .cx317_stage7_supervisor import (
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
     POLICY_PATH,
+    REHEARSAL_POLICY_PATH,
     STAGE7_QUALIFICATION_TIMEOUT_S,
     load_stage7_spec,
+    stage7_timing,
 )
 from .run_paths import default_csv_files
 
@@ -52,6 +54,8 @@ def create_stage7_manifest(
     build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     provenance = build["provenance"]
     spec, identities = load_stage7_spec(part, start_code)
+    timing = stage7_timing(part)
+    is_rehearsal = part == "rehearsal"
     prerequisite_gates: dict[str, dict[str, Any]] = {}
     part_b_matrix_binding: dict[str, Any] = {}
     if part == "part_b":
@@ -166,6 +170,18 @@ def create_stage7_manifest(
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_GNSS_UART_TX_ENABLED": "0",
     }
+    if is_rehearsal:
+        expected_defines.update(
+            {
+                "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+                "OTIS_CX317_STARTUP_WARMUP_S": "60u",
+                "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
+                "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
+                "OTIS_CX317_RECOVERY_FRESH_SUPPORT_S": "120u",
+                "OTIS_CX317_DECISION_CADENCE_S": "240u",
+                "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "240u",
+            }
+        )
     for key, expected in expected_defines.items():
         if defines.get(key) != expected:
             raise ValueError(f"Stage 7 build define {key} is not {expected}")
@@ -194,10 +210,17 @@ def create_stage7_manifest(
         "run_id": run_dir.name,
         "created_utc": now,
         "started_at_utc": now,
-        "stage": f"CX317_DUAL_CORE_ACTIVE_{part.upper()}",
+        "stage": (
+            "CX317_STAGE7_DIAGNOSTIC_REHEARSAL"
+            if is_rehearsal
+            else f"CX317_DUAL_CORE_ACTIVE_{part.upper()}"
+        ),
         "closed_loop_control": True,
         "actionable": False,
         "actuation_authorized": True,
+        "diagnostic_only": is_rehearsal,
+        "qualification_evidence": not is_rehearsal,
+        "stage7_progression_authority": not is_rehearsal,
         "board": "arduino_nano_rp2040_connect",
         "firmware": {
             "name": "otis_nano_rp2040_connect",
@@ -217,7 +240,11 @@ def create_stage7_manifest(
         "host": {
             "capture_tool": "host.otis_tools.capture_device",
             "supervisor_tool": "host.otis_tools.cx317_stage7_supervisor",
-            "shadow_tool": "host.otis_tools.cx317_stage7_shadow_monitor",
+            "shadow_tool": (
+                None
+                if is_rehearsal
+                else "host.otis_tools.cx317_stage7_shadow_monitor"
+            ),
             "serial_device": serial_device,
             "baud": baud,
             "sole_serial_owner": True,
@@ -233,37 +260,61 @@ def create_stage7_manifest(
             "maximum_step_codes": spec.maximum_step,
             "correction_limit": spec.correction_limit,
             "cumulative_limit_codes": spec.cumulative_limit,
-            "minimum_applied_cadence_s": 1800,
-            "settling_exclusion_s": 900,
-            "fresh_authoritative_support_s": 600,
+            "minimum_applied_cadence_s": (
+                240 if is_rehearsal else 1800
+            ),
+            "settling_exclusion_s": 60 if is_rehearsal else 900,
+            "fresh_authoritative_support_s": 120 if is_rehearsal else 600,
+            "selected_interval_s": timing.selected_interval_s,
+            "decision_cadence_s": timing.decision_cadence_s,
             "authoritative_deadband_hz": 0.006249995628992717,
-            "qualification_timeout_s": STAGE7_QUALIFICATION_TIMEOUT_S,
+            "qualification_timeout_s": timing.qualification_timeout_s,
             "duration_after_qualification_s": (
-                PART_A_QUALIFIED_TIMEOUT_S
-                if part == "part_a"
-                else PART_B_DURATION_S
-            ),
-            "post_duration_clearance_grace_s": (
-                0 if part == "part_a" else PART_B_CLEARANCE_GRACE_S
-            ),
-            "maximum_wall_clock_s": (
-                STAGE7_QUALIFICATION_TIMEOUT_S
-                + (
+                timing.qualified_timeout_s
+                if is_rehearsal
+                else (
                     PART_A_QUALIFIED_TIMEOUT_S
                     if part == "part_a"
-                    else PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S
+                    else PART_B_DURATION_S
+                )
+            ),
+            "post_duration_clearance_grace_s": (
+                0 if part in {"part_a", "rehearsal"} else PART_B_CLEARANCE_GRACE_S
+            ),
+            "maximum_wall_clock_s": (
+                timing.qualification_timeout_s
+                + (
+                    timing.qualified_timeout_s
+                    if is_rehearsal
+                    else (
+                        PART_A_QUALIFIED_TIMEOUT_S
+                        if part == "part_a"
+                        else PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S
+                    )
                 )
             ),
             "timeout_disposition": "fail_static_abort_diagnostic_no_stage_exit",
             **identities,
         },
-        "shadow_contract": {
-            "path": str(DEFAULT_CONTRACT.relative_to(DEFAULT_CONTRACT.parents[2])),
-            "sha256": CONTRACT_SHA256,
-            "actionable": False,
-            "actuation_authorized": False,
-            "may_issue_command": False,
-        },
+        "shadow_contract": (
+            {
+                "enabled": False,
+                "reason": "diagnostic_rehearsal_has_no_shadow_or_adoption_authority",
+                "actionable": False,
+                "actuation_authorized": False,
+                "may_issue_command": False,
+            }
+            if is_rehearsal
+            else {
+                "path": str(
+                    DEFAULT_CONTRACT.relative_to(DEFAULT_CONTRACT.parents[2])
+                ),
+                "sha256": CONTRACT_SHA256,
+                "actionable": False,
+                "actuation_authorized": False,
+                "may_issue_command": False,
+            }
+        ),
         "domains": [
             {"name": "rp2040_timer0", "nominal_hz": 16000000},
             {"name": "h0_tcxo_16mhz", "nominal_hz": 10000000},
@@ -290,19 +341,35 @@ def create_stage7_manifest(
             "raw/serial.log",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
-            "reports/stage7_authoritative_observations_v1.csv",
-            "reports/stage7_shadow_decisions_v1.csv",
-            "reports/stage7_exit_gate.json",
+            *(
+                ["reports/stage7_rehearsal_gate.json"]
+                if is_rehearsal
+                else [
+                    "reports/stage7_authoritative_observations_v1.csv",
+                    "reports/stage7_shadow_decisions_v1.csv",
+                    "reports/stage7_exit_gate.json",
+                ]
+            ),
         ],
         "evidence_artifacts": [
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
-            "reports/stage7_authoritative_observations_v1.csv",
-            "reports/stage7_shadow_decisions_v1.csv",
-            "reports/stage7_exit_gate.json",
+            *(
+                ["reports/stage7_rehearsal_gate.json"]
+                if is_rehearsal
+                else [
+                    "reports/stage7_authoritative_observations_v1.csv",
+                    "reports/stage7_shadow_decisions_v1.csv",
+                    "reports/stage7_exit_gate.json",
+                ]
+            ),
         ],
         "policy": {
-            "path": str(POLICY_PATH.relative_to(POLICY_PATH.parents[2])),
+            "path": str(
+                (REHEARSAL_POLICY_PATH if is_rehearsal else POLICY_PATH).relative_to(
+                    POLICY_PATH.parents[2]
+                )
+            ),
             "sha256": identities["active_policy_sha256"],
         },
         "known_limitations": [
@@ -310,6 +377,13 @@ def create_stage7_manifest(
             "The h0_tcxo_16mhz token is historical; the connected CX317 source is nominally 10 MHz.",
             "Stage 7 demonstrates bounded frequency-control endurance, not calibrated UTC, phase lock, or holdover.",
             "Shadow candidates are counterfactual and have no Stage 7 actuation authority.",
+            *(
+                [
+                    "Rehearsal timing and estimator output are diagnostic-only and cannot satisfy a Stage 7A or Stage 7B exit gate."
+                ]
+                if is_rehearsal
+                else []
+            ),
         ],
     }
     if prerequisite_gates:
@@ -324,7 +398,9 @@ def create_stage7_manifest(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--part", choices=("part_a", "part_b"), required=True)
+    parser.add_argument(
+        "--part", choices=("part_a", "part_b", "rehearsal"), required=True
+    )
     parser.add_argument("--start-code", type=lambda value: int(value, 0), required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--build-manifest", type=Path, required=True)

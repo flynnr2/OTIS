@@ -12,7 +12,15 @@ from host.otis_tools.cx317_stage7_analyze import (
     _series_metrics,
     _transactions,
 )
-from host.otis_tools.contracts import ACTIVE_TRANSACTION_V1_FIELDS
+from host.otis_tools.contracts import (
+    ACTIVE_TRANSACTION_V1_FIELDS,
+    CONTROL_PREVIEW_V1_FIELDS,
+    ESTIMATE_V2_FIELDS,
+    HEALTH_FIELDS,
+)
+from host.otis_tools.cx317_stage7_rehearsal_analyze import (
+    analyze as analyze_rehearsal,
+)
 from host.otis_tools.cx317_stage7_manifest import create_stage7_manifest
 from host.otis_tools.cx317_stage7_part_b_matrix import derive_part_b_matrix
 from host.otis_tools.cx317_stage7_shadow import CONTRACT_SHA256
@@ -22,6 +30,9 @@ from host.otis_tools.cx317_stage7_shadow_monitor import (
     refresh,
 )
 from host.otis_tools.cx317_stage7_supervisor import (
+    REHEARSAL_DECISION_CADENCE_S,
+    REHEARSAL_QUALIFICATION_TIMEOUT_S,
+    REHEARSAL_SELECTED_INTERVAL_S,
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
@@ -29,6 +40,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     Stage7Supervisor,
     _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
+    stage7_timing,
 )
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
 from host.otis_tools.serial_commands import parse_serial_command
@@ -53,6 +65,90 @@ def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
     assert (part_b.correction_limit, part_b.cumulative_limit) == (32, 672)
     assert identities_a == identities_b
     assert STAGE7_QUALIFICATION_TIMEOUT_S == 5400
+
+
+def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
+    spec, identities = load_stage7_spec("rehearsal", 0xA800)
+    timing = stage7_timing("rehearsal")
+
+    assert spec.profile == "cx317_dual_core_active_rehearsal"
+    assert spec.run_identity == "cx317_stage7_rehearsal:3170005"
+    assert spec.correction_limit == 1
+    assert spec.cumulative_limit == 21
+    assert timing.selected_interval_s == REHEARSAL_SELECTED_INTERVAL_S == 120
+    assert timing.decision_cadence_s == REHEARSAL_DECISION_CADENCE_S == 240
+    assert timing.qualification_timeout_s == REHEARSAL_QUALIFICATION_TIMEOUT_S == 420
+    assert timing.qualified_timeout_s == 900
+    assert identities["estimator_sha256"] != load_stage7_spec(
+        "part_a", 0xA800
+    )[1]["estimator_sha256"]
+    assert identities["active_policy_sha256"] == identities[
+        "numerical_policy_sha256"
+    ]
+
+
+def test_stage7_rehearsal_manifest_cannot_claim_qualification(
+    tmp_path: Path,
+) -> None:
+    defines = {
+        "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "1u",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "21u",
+        "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
+        "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
+        "OTIS_GNSS_UART_TX_ENABLED": "0",
+        "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+        "OTIS_CX317_STARTUP_WARMUP_S": "60u",
+        "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
+        "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
+        "OTIS_CX317_RECOVERY_FRESH_SUPPORT_S": "120u",
+        "OTIS_CX317_DECISION_CADENCE_S": "240u",
+        "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "240u",
+    }
+    build = {
+        "provenance": {
+            "source": {
+                "git_commit": "1" * 40,
+                "sha256": "2" * 64,
+                "state": "clean",
+            },
+            "configuration": {
+                "profile_id": "cx317_dual_core_active_rehearsal",
+                "sha256": "3" * 64,
+                "defines": defines,
+            },
+        },
+        "artifacts": [
+            {
+                "name": "otis_nano_rp2040_connect.ino.uf2",
+                "sha256": "4" * 64,
+                "size_bytes": 123456,
+            }
+        ],
+    }
+    build_manifest = tmp_path / "firmware_build_manifest.json"
+    build_manifest.write_text(json.dumps(build), encoding="utf-8")
+    path = create_stage7_manifest(
+        part="rehearsal",
+        start_code=0xA800,
+        run_dir=tmp_path / "rehearsal",
+        build_manifest_path=build_manifest,
+        serial_device="/dev/cu.test",
+    )
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+
+    assert manifest["diagnostic_only"] is True
+    assert manifest["qualification_evidence"] is False
+    assert manifest["stage7_progression_authority"] is False
+    assert manifest["shadow_contract"]["enabled"] is False
+    assert manifest["active_campaign"]["correction_limit"] == 1
+    assert manifest["active_campaign"]["maximum_wall_clock_s"] == 1320
+    assert manifest["policy"]["path"] == (
+        "profiles/discipline/cx317_stage7_rehearsal_v1.json"
+    )
+    assert "reports/stage7_rehearsal_gate.json" in manifest[
+        "expected_artifacts"
+    ]
     assert PART_A_QUALIFIED_TIMEOUT_S == 14400
     assert PART_B_DURATION_S == 86400
     assert PART_B_CLEARANCE_GRACE_S == 3600
@@ -364,10 +460,12 @@ def test_stage7_analyzer_reduces_loaded_health_rows() -> None:
     assert latest[("dual_core", "telemetry_dropped")] == "7"
 
 
-def _exact_stage7_transaction_rows() -> tuple[
+def _exact_stage7_transaction_rows(
+    part: str = "part_a",
+) -> tuple[
     list[dict[str, str]], object, dict[str, str], str
 ]:
-    spec, identities = load_stage7_spec("part_a", 0xA800)
+    spec, identities = load_stage7_spec(part, 0xA800)
     build_identity = "a" * 64 + ":" + "b" * 64
     base = {field: "" for field in ACTIVE_TRANSACTION_V1_FIELDS}
     base.update(
@@ -495,6 +593,169 @@ def _exact_stage7_transaction_rows() -> tuple[
     return [manual, created, accepted, application, response], spec, identities, build_identity
 
 
+def _write_rows(
+    path: Path, fields: list[str], rows: list[dict[str, str]]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "rehearsal"
+    uf2 = tmp_path / "candidate.uf2"
+    uf2.write_bytes(b"rehearsal-uf2")
+    from hashlib import sha256
+
+    uf2_sha = sha256(uf2.read_bytes()).hexdigest()
+    source_sha = "a" * 64
+    config_sha = "b" * 64
+    defines = {
+        "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "1u",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "21u",
+        "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
+        "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
+        "OTIS_GNSS_UART_TX_ENABLED": "0",
+        "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+        "OTIS_CX317_STARTUP_WARMUP_S": "60u",
+        "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
+        "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
+        "OTIS_CX317_RECOVERY_FRESH_SUPPORT_S": "120u",
+        "OTIS_CX317_DECISION_CADENCE_S": "240u",
+        "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "240u",
+    }
+    build = {
+        "provenance": {
+            "source": {
+                "git_commit": "1" * 40,
+                "sha256": source_sha,
+                "state": "clean",
+            },
+            "configuration": {
+                "profile_id": "cx317_dual_core_active_rehearsal",
+                "sha256": config_sha,
+                "defines": defines,
+            },
+        },
+        "artifacts": [
+            {
+                "name": "candidate.uf2",
+                "sha256": uf2_sha,
+                "size_bytes": uf2.stat().st_size,
+            }
+        ],
+    }
+    build_manifest = tmp_path / "firmware_build_manifest.json"
+    build_manifest.write_text(json.dumps(build), encoding="utf-8")
+    create_stage7_manifest(
+        part="rehearsal",
+        start_code=0xA800,
+        run_dir=run,
+        build_manifest_path=build_manifest,
+        serial_device="/dev/cu.test",
+    )
+    rows, _, _, _ = _exact_stage7_transaction_rows("rehearsal")
+    for row in rows:
+        row["build_identity"] = f"{source_sha}:{config_sha}"
+    _write_rows(
+        run / "csv/active_transactions_v1.csv",
+        ACTIVE_TRANSACTION_V1_FIELDS,
+        rows,
+    )
+
+    health_values = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "applied_code"): str(0xA815),
+        ("cx317_active", "correction_count"): "1",
+        ("cx317_active", "fail_static"): "false",
+        ("dual_core", "partition_fault"): "none",
+        ("dual_core", "fail_static"): "false",
+        ("dual_core", "telemetry_dropped"): "0",
+        ("capture", "dropped_count"): "0",
+        ("capture", "pps_count_boundary_dropped_count"): "0",
+    }
+    health_rows = []
+    for sequence, ((component, key), value) in enumerate(
+        health_values.items(), 1
+    ):
+        row = {field: "" for field in HEALTH_FIELDS}
+        row.update(
+            {
+                "record_type": "STS",
+                "schema_version": "1",
+                "status_seq": str(sequence),
+                "timestamp_ticks": str(sequence),
+                "status_domain": "rp2040_timer0",
+                "component": component,
+                "status_key": key,
+                "status_value": value,
+                "severity": "INFO",
+                "flags": "0",
+            }
+        )
+        health_rows.append(row)
+    _write_rows(run / "csv/health.csv", HEALTH_FIELDS, health_rows)
+
+    control = {field: "" for field in CONTROL_PREVIEW_V1_FIELDS}
+    control.update(
+        {
+            "record_type": "CTL",
+            "schema_version": "1",
+            "control_seq": "3",
+            "preview_available": "true",
+        }
+    )
+    _write_rows(
+        run / "csv/control_previews_v1.csv",
+        CONTROL_PREVIEW_V1_FIELDS,
+        [control],
+    )
+    estimates = []
+    for sequence in range(3):
+        row = {field: "" for field in ESTIMATE_V2_FIELDS}
+        row.update(
+            {
+                "record_type": "EST",
+                "schema_version": "2",
+                "estimate_seq": str(sequence),
+                "estimator_version": (
+                    "cx317_rehearsal_selected_120s_nonoverlap_v1"
+                ),
+            }
+        )
+        estimates.append(row)
+    _write_rows(run / "csv/estimates_v2.csv", ESTIMATE_V2_FIELDS, estimates)
+
+    state = {
+        "terminal": {"result": "healthy_stop"},
+        "response_count": 1,
+        "part_a_service_load_sent": 60,
+        "part_a_service_load_complete": True,
+        "part_a_post_service_eligible_control_seq": 3,
+    }
+    state_path = run / "reports/cx317_active_supervisor_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    (run / "reports/cx317_active_supervisor_events.jsonl").write_text(
+        "", encoding="utf-8"
+    )
+
+    output, result = analyze_rehearsal(
+        run, build_manifest=build_manifest, uf2=uf2
+    )
+    assert result["status"] == "pass"
+    assert all(result["criteria"].values())
+    assert json.loads(output.read_text(encoding="utf-8"))[
+        "qualification_evidence"
+    ] is False
+
+
 def test_stage7_exact_four_phase_history_and_response_replay() -> None:
     rows, spec, identities, build_identity = _exact_stage7_transaction_rows()
     check, evidence = _transactions(rows, spec, identities, build_identity)
@@ -502,6 +763,22 @@ def test_stage7_exact_four_phase_history_and_response_replay() -> None:
     assert evidence["application_count"] == 1
     assert evidence["final_code"] == 0xA815
     assert evidence["all_response_classifications_replay_exactly"] is True
+
+
+def test_stage7_incomplete_response_preserves_physical_application() -> None:
+    rows, spec, identities, build_identity = _exact_stage7_transaction_rows()
+    check, evidence = _transactions(
+        rows[:-1], spec, identities, build_identity
+    )
+
+    assert not check.passed
+    assert evidence["application_count"] == 1
+    assert evidence["complete_request_group_count"] == 0
+    assert evidence["request_group_count"] == 1
+    assert evidence["path_codes"] == 21
+    assert evidence["net_movement_codes"] == 21
+    assert evidence["final_code"] == 0xA815
+    assert evidence["all_response_classifications_replay_exactly"] is False
 
 
 def test_stage7_rejects_cross_phase_request_field_mutation() -> None:

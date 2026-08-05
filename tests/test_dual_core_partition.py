@@ -210,6 +210,25 @@ def test_manual_dac_ack_never_mutates_core1_preview_from_core0() -> None:
     assert "otis_cx317_preview_live_on_dac_applied(" in service
 
 
+def test_applied_ack_advances_core1_dac_cache_before_health_check() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    service_start = sketch.index("void service_dual_core_timing_inputs(")
+    service_end = sketch.index("void service_dual_core_outputs(", service_start)
+    service = sketch[service_start:service_end]
+    applied_branch = service[
+        service.index("OtisServiceMessageKind::ActuatorAcknowledgement") :
+    ]
+
+    assert applied_branch.index(
+        "otis_cx317_active_live_on_cross_core_ack"
+    ) < applied_branch.index(
+        "otis_cx317_dual_core_static_state_on_applied_ack"
+    )
+    assert "OtisPartitionFault::ActuatorAcknowledgementMismatch" in applied_branch
+
+
 def test_core1_status_never_bypasses_cross_core_transport() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
