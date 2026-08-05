@@ -22,6 +22,7 @@ from .cx317_stage7_supervisor import (
     REHEARSAL_POLICY_PATH,
     STAGE7_QUALIFICATION_TIMEOUT_S,
     load_stage7_spec,
+    rehearsal_timeline_preflight,
     stage7_timing,
 )
 from .run_paths import default_csv_files
@@ -174,6 +175,8 @@ def create_stage7_manifest(
         expected_defines.update(
             {
                 "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+                "OTIS_FC0_STARTUP_INHIBIT_MS": "60000u",
+                "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
                 "OTIS_CX317_STARTUP_WARMUP_S": "60u",
                 "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
                 "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
@@ -294,6 +297,15 @@ def create_stage7_manifest(
                 )
             ),
             "timeout_disposition": "fail_static_abort_diagnostic_no_stage_exit",
+            **(
+                {
+                    "cross_layer_timeline_preflight": (
+                        rehearsal_timeline_preflight()
+                    )
+                }
+                if is_rehearsal
+                else {}
+            ),
             **identities,
         },
         "shadow_contract": (

@@ -58,6 +58,9 @@ REHEARSAL_DECISION_CADENCE_S = 240
 REHEARSAL_ARM_PROGRESS_THRESHOLD = 105
 REHEARSAL_QUALIFICATION_TIMEOUT_S = 7 * 60
 REHEARSAL_QUALIFIED_TIMEOUT_S = 15 * 60
+REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
+REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
+ACTIVE_ARM_LIFETIME_S = 110
 
 
 @dataclass(frozen=True)
@@ -103,6 +106,99 @@ def stage7_timing(part: str) -> Stage7Timing:
     raise ValueError(f"unsupported Stage 7 part {part!r}")
 
 
+def rehearsal_timeline_preflight(
+    policy: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Prove the accelerated cross-layer sequence fits every frozen clock."""
+    if policy is None:
+        policy = json.loads(REHEARSAL_POLICY_PATH.read_text(encoding="utf-8"))
+    timing = policy.get("timing_s", {})
+    if not isinstance(timing, dict):
+        timing = {}
+    expected = {
+        "pps_backend_startup_inhibit": REHEARSAL_FC0_STARTUP_INHIBIT_S,
+        "pps_backend_control_ready_clean_windows": (
+            REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS
+        ),
+        "startup_warmup": 60,
+        "selected_span": REHEARSAL_SELECTED_INTERVAL_S,
+        "settling_exclusion": 60,
+        "full_history_reset": 180,
+        "recovery_fresh_support": 120,
+        "decision_cadence": REHEARSAL_DECISION_CADENCE_S,
+        "minimum_applied_correction_cadence": 240,
+        "qualification_timeout": REHEARSAL_QUALIFICATION_TIMEOUT_S,
+        "qualified_timeout": REHEARSAL_QUALIFIED_TIMEOUT_S,
+    }
+    values = {
+        key: int(timing.get(key, -1))
+        for key in expected
+    }
+    lower_layer_ready_s = (
+        values["pps_backend_startup_inhibit"]
+        + values["pps_backend_control_ready_clean_windows"]
+    )
+    first_arm_window_s = max(
+        lower_layer_ready_s,
+        values["startup_warmup"] + REHEARSAL_ARM_PROGRESS_THRESHOLD,
+    )
+    first_actionable_decision_s = (
+        values["startup_warmup"] + values["selected_span"]
+    )
+    response_ready_after_application_s = max(
+        values["full_history_reset"],
+        values["settling_exclusion"]
+        + values["recovery_fresh_support"],
+    )
+    conservative_post_application_completion_s = (
+        response_ready_after_application_s
+        + PART_A_SERVICE_LOAD_QUERIES
+        + values["decision_cadence"]
+    )
+    checks = {
+        "policy_timers_exact": values == expected,
+        "lower_layer_ready_before_arm_window": (
+            lower_layer_ready_s
+            <= values["startup_warmup"] + REHEARSAL_ARM_PROGRESS_THRESHOLD
+        ),
+        "arm_window_precedes_first_actionable_decision": (
+            first_arm_window_s < first_actionable_decision_s
+        ),
+        "arm_lifetime_covers_first_actionable_decision": (
+            first_actionable_decision_s - first_arm_window_s
+            < ACTIVE_ARM_LIFETIME_S
+        ),
+        "first_actionable_decision_precedes_qualification_timeout": (
+            first_actionable_decision_s
+            < values["qualification_timeout"]
+        ),
+        "response_service_and_later_decision_fit_qualified_timeout": (
+            conservative_post_application_completion_s
+            < values["qualified_timeout"]
+        ),
+        "complete_sequence_fits_manifest_wall_clock": (
+            first_actionable_decision_s
+            + conservative_post_application_completion_s
+            < values["qualification_timeout"]
+            + values["qualified_timeout"]
+        ),
+    }
+    return {
+        "checks": checks,
+        "derived_s": {
+            "lower_layer_ready": lower_layer_ready_s,
+            "first_arm_window": first_arm_window_s,
+            "first_actionable_decision": first_actionable_decision_s,
+            "response_ready_after_application": (
+                response_ready_after_application_s
+            ),
+            "conservative_post_application_completion": (
+                conservative_post_application_completion_s
+            ),
+        },
+    }
+
+
 def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str, str]]:
     if part not in {"part_a", "part_b", "rehearsal"}:
         raise ValueError(f"unsupported Stage 7 part {part!r}")
@@ -115,6 +211,12 @@ def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str
     policy_path = REHEARSAL_POLICY_PATH if part == "rehearsal" else POLICY_PATH
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     if part == "rehearsal":
+        timeline = rehearsal_timeline_preflight(policy)
+        if not all(timeline["checks"].values()):
+            raise ValueError(
+                "Stage 7 rehearsal cross-layer timeline is unsatisfiable: "
+                + json.dumps(timeline, sort_keys=True)
+            )
         bindings = policy["bindings"]
         policy_hash = sha256(policy_path.read_bytes()).hexdigest()
         return CampaignSpec(

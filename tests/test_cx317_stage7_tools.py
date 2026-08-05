@@ -40,6 +40,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     Stage7Supervisor,
     _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
+    rehearsal_timeline_preflight,
     stage7_timing,
 )
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
@@ -85,6 +86,30 @@ def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
     assert identities["active_policy_sha256"] == identities[
         "numerical_policy_sha256"
     ]
+    preflight = rehearsal_timeline_preflight()
+    assert all(preflight["checks"].values())
+    assert preflight["derived_s"] == {
+        "lower_layer_ready": 63,
+        "first_arm_window": 165,
+        "first_actionable_decision": 180,
+        "response_ready_after_application": 180,
+        "conservative_post_application_completion": 480,
+    }
+
+
+def test_stage7_rehearsal_preflight_rejects_inherited_qualification_inhibit() -> None:
+    policy = json.loads(
+        Path("profiles/discipline/cx317_stage7_rehearsal_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy["timing_s"]["pps_backend_startup_inhibit"] = 600
+    preflight = rehearsal_timeline_preflight(policy)
+
+    assert preflight["checks"]["policy_timers_exact"] is False
+    assert preflight["checks"][
+        "arm_window_precedes_first_actionable_decision"
+    ] is False
 
 
 def test_stage7_rehearsal_manifest_cannot_claim_qualification(
@@ -98,6 +123,8 @@ def test_stage7_rehearsal_manifest_cannot_claim_qualification(
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_GNSS_UART_TX_ENABLED": "0",
         "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+        "OTIS_FC0_STARTUP_INHIBIT_MS": "60000u",
+        "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
         "OTIS_CX317_STARTUP_WARMUP_S": "60u",
         "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
         "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
@@ -143,6 +170,11 @@ def test_stage7_rehearsal_manifest_cannot_claim_qualification(
     assert manifest["shadow_contract"]["enabled"] is False
     assert manifest["active_campaign"]["correction_limit"] == 1
     assert manifest["active_campaign"]["maximum_wall_clock_s"] == 1320
+    assert all(
+        manifest["active_campaign"]["cross_layer_timeline_preflight"][
+            "checks"
+        ].values()
+    )
     assert manifest["policy"]["path"] == (
         "profiles/discipline/cx317_stage7_rehearsal_v1.json"
     )
@@ -622,6 +654,8 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_GNSS_UART_TX_ENABLED": "0",
         "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",
+        "OTIS_FC0_STARTUP_INHIBIT_MS": "60000u",
+        "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
         "OTIS_CX317_STARTUP_WARMUP_S": "60u",
         "OTIS_CX317_SETTLING_EXCLUSION_S": "60u",
         "OTIS_CX317_FULL_HISTORY_RESET_S": "180u",
@@ -681,8 +715,44 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
         ("capture", "pps_count_boundary_dropped_count"): "0",
     }
     health_rows = []
+    for value, sequence in (("true", 1), ("false", 2)):
+        row = {field: "" for field in HEALTH_FIELDS}
+        row.update(
+            {
+                "record_type": "STS",
+                "schema_version": "1",
+                "status_seq": str(sequence),
+                "timestamp_ticks": str(sequence),
+                "status_domain": "rp2040_timer0",
+                "component": "pps_gate",
+                "status_key": "startup_inhibit_active",
+                "status_value": value,
+                "severity": "WARN" if value == "true" else "INFO",
+                "flags": "0",
+            }
+        )
+        health_rows.append(row)
+    for key, value, sequence in (
+        ("control_eligible", "true", 3),
+    ):
+        row = {field: "" for field in HEALTH_FIELDS}
+        row.update(
+            {
+                "record_type": "STS",
+                "schema_version": "1",
+                "status_seq": str(sequence),
+                "timestamp_ticks": str(sequence),
+                "status_domain": "rp2040_timer0",
+                "component": "pps_gate",
+                "status_key": key,
+                "status_value": value,
+                "severity": "INFO",
+                "flags": "0",
+            }
+        )
+        health_rows.append(row)
     for sequence, ((component, key), value) in enumerate(
-        health_values.items(), 1
+        health_values.items(), 4
     ):
         row = {field: "" for field in HEALTH_FIELDS}
         row.update(

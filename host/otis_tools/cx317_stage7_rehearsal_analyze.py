@@ -98,6 +98,13 @@ def analyze(
         (row for row in act_rows if row.get("event") == "response"), {}
     )
     health = _latest_health(run_dir / HEALTH_CSV)
+    health_rows = _read_csv(run_dir / HEALTH_CSV)
+    pps_startup_values = [
+        row.get("status_value")
+        for row in health_rows
+        if row.get("component") == "pps_gate"
+        and row.get("status_key") == "startup_inhibit_active"
+    ]
     selected = _selected_rows(run_dir / ESTIMATES_CSV)
     controls = _read_csv(run_dir / CONTROL_CSV)
     post_service_seq = state.get("part_a_post_service_eligible_control_seq")
@@ -135,6 +142,12 @@ def analyze(
             and manifest["firmware"]["uf2_sha256"] == _sha256(uf2)
         ),
         "active_contract_valid": not validation.errors and history_error is None,
+        "pps_backend_startup_inhibit_completed": (
+            "true" in pps_startup_values
+            and "false" in pps_startup_values
+            and health.get(("pps_gate", "startup_inhibit_active")) == "false"
+            and health.get(("pps_gate", "control_eligible")) == "true"
+        ),
         "exact_single_complete_transaction": event_names == expected_events,
         "exact_a800_to_a815_application": (
             application.get("current_applied_code") == str(0xA800)

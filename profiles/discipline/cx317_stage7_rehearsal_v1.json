@@ -13,6 +13,8 @@
     "response_policy_sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec"
   },
   "timing_s": {
+    "pps_backend_startup_inhibit": 60,
+    "pps_backend_control_ready_clean_windows": 3,
     "startup_warmup": 60,
     "selected_span": 120,
     "settling_exclusion": 60,
