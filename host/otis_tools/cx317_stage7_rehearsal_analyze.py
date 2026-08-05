@@ -84,19 +84,25 @@ def analyze(
         history_error = str(exc)
 
     event_names = [row.get("event") for row in act_rows]
-    expected_events = [
-        "manual_start",
-        "request_created",
-        "core0_accepted",
-        "application",
-        "response",
+    expected_events = ["manual_start"] + [
+        event
+        for _ in range(2)
+        for event in (
+            "request_created",
+            "core0_accepted",
+            "application",
+            "response",
+        )
     ]
-    application = next(
-        (row for row in act_rows if row.get("event") == "application"), {}
-    )
-    response = next(
-        (row for row in act_rows if row.get("event") == "response"), {}
-    )
+    applications = [
+        row for row in act_rows if row.get("event") == "application"
+    ]
+    responses = [row for row in act_rows if row.get("event") == "response"]
+    requests = [
+        row for row in act_rows if row.get("event") == "request_created"
+    ]
+    first_application = applications[0] if applications else {}
+    second_application = applications[1] if len(applications) > 1 else {}
     health = _latest_health(run_dir / HEALTH_CSV)
     health_rows = _read_csv(run_dir / HEALTH_CSV)
     pps_startup_values = [
@@ -148,24 +154,51 @@ def analyze(
             and health.get(("pps_gate", "startup_inhibit_active")) == "false"
             and health.get(("pps_gate", "control_eligible")) == "true"
         ),
-        "exact_single_complete_transaction": event_names == expected_events,
-        "exact_a800_to_a815_application": (
-            application.get("current_applied_code") == str(0xA800)
-            and application.get("requested_delta_codes") == "21"
-            and application.get("applied_code") == str(0xA815)
-            and application.get("i2c_ok") == "true"
-            and application.get("ambiguous") == "false"
-            and application.get("clamped") == "false"
+        "exact_two_complete_consecutive_transactions": (
+            event_names == expected_events
         ),
-        "response_completed_without_fault_class": (
-            response.get("response_class")
-            in {
-                "healthy_detected",
-                "healthy_indeterminate_near_resolution",
-                "inside_deadband",
-                "limit_reached",
-            }
-            and response.get("active_state") == "DISARMED"
+        "exact_first_a800_to_a815_application": (
+            first_application.get("current_applied_code") == str(0xA800)
+            and first_application.get("requested_delta_codes") == "21"
+            and first_application.get("applied_code") == str(0xA815)
+            and first_application.get("i2c_ok") == "true"
+            and first_application.get("ambiguous") == "false"
+            and first_application.get("clamped") == "false"
+        ),
+        "second_request_clears_prior_acceptance_and_application": (
+            len(requests) == 2
+            and requests[1].get("accepted_code") == "0"
+            and requests[1].get("accepted_timestamp_s") == "0"
+            and requests[1].get("applied_code") == "0"
+            and requests[1].get("application_sequence") == "0"
+            and requests[1].get("application_timestamp_s") == "0"
+        ),
+        "second_application_is_single_bounded_follow_on": (
+            len(applications) == 2
+            and second_application.get("current_applied_code")
+            == str(0xA815)
+            and 0
+            < abs(int(second_application.get("requested_delta_codes", "0")))
+            <= 21
+            and second_application.get("requested_code")
+            == second_application.get("applied_code")
+            and second_application.get("i2c_ok") == "true"
+            and second_application.get("ambiguous") == "false"
+            and second_application.get("clamped") == "false"
+        ),
+        "both_responses_completed_without_fault_class": (
+            len(responses) == 2
+            and all(
+                response.get("response_class")
+                in {
+                    "healthy_detected",
+                    "healthy_indeterminate_near_resolution",
+                    "inside_deadband",
+                    "limit_reached",
+                }
+                and response.get("active_state") == "DISARMED"
+                for response in responses
+            )
         ),
         "sixty_query_service_load_completed": (
             state.get("part_a_service_load_sent") == 60
@@ -181,7 +214,7 @@ def analyze(
         ),
         "supervisor_healthy_stop": (
             state.get("terminal", {}).get("result") == "healthy_stop"
-            and state.get("response_count") == 1
+            and state.get("response_count") == 2
             and not event_faults
         ),
         "final_device_disarmed_evidence_clear": (
@@ -189,8 +222,8 @@ def analyze(
             and health.get(("cx317_active", "evidence_phase"))
             == "evidence_clear"
             and health.get(("cx317_active", "confirmed_applied_code"))
-            == str(0xA815)
-            and health.get(("cx317_active", "correction_count")) == "1"
+            == second_application.get("applied_code")
+            and health.get(("cx317_active", "correction_count")) == "2"
         ),
         "partition_capture_and_transport_remained_clean": (
             health.get(("dual_core", "partition_fault")) in {None, "none"}
@@ -201,14 +234,14 @@ def analyze(
             in {None, "0"}
             and health.get(("dual_core", "telemetry_dropped")) in {None, "0"}
         ),
-        "rehearsal_selected_estimator_observed": len(selected) >= 3,
+        "rehearsal_selected_estimator_observed": len(selected) >= 5,
         "capture_closed_before_gate": not (
             run_dir / CAPTURE_IN_PROGRESS_FLAG
         ).exists(),
     }
     result = {
         "schema_version": 1,
-        "tool": "cx317_stage7_rehearsal_analyze_v1",
+        "tool": "cx317_stage7_rehearsal_analyze_v2",
         "status": "pass" if all(criteria.values()) else "fail",
         "diagnostic_only": True,
         "qualification_evidence": False,
@@ -216,7 +249,7 @@ def analyze(
         "run_dir": str(run_dir.resolve()),
         "criteria": criteria,
         "transaction_events": event_names,
-        "response_class": response.get("response_class"),
+        "response_classes": [row.get("response_class") for row in responses],
         "selected_estimate_count": len(selected),
         "active_contract_errors": validation.errors,
         "transaction_history_error": history_error,

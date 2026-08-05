@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "policy_id": "CX317_STAGE7_HIL_REHEARSAL_V1",
+  "policy_id": "CX317_STAGE7_CONSECUTIVE_HIL_REHEARSAL_V2",
   "status": "diagnostic_only_prequalification_gate",
   "bindings": {
     "base_active_policy_path": "profiles/discipline/cx317_bounded_active_v2.json",
@@ -23,7 +23,7 @@
     "decision_cadence": 240,
     "minimum_applied_correction_cadence": 240,
     "qualification_timeout": 420,
-    "qualified_timeout": 900
+    "qualified_timeout": 1200
   },
   "actuation_envelope": {
     "run_identity": "cx317_stage7_rehearsal:3170005",
@@ -32,8 +32,8 @@
     "minimum_code": 43008,
     "maximum_code": 43776,
     "maximum_step_codes": 21,
-    "maximum_corrections": 1,
-    "maximum_cumulative_movement_codes": 21,
+    "maximum_corrections": 2,
+    "maximum_cumulative_movement_codes": 42,
     "automatic_retry": false,
     "automatic_restore": false
   },
@@ -43,6 +43,10 @@
     "core0_accepted",
     "single_i2c_application",
     "response_classified",
+    "second_request_created_with_zero_acceptance_and_application_fields",
+    "second_core0_acceptance",
+    "second_single_i2c_application",
+    "second_response_classified",
     "sixty_query_service_load",
     "later_cadence_eligible_decision",
     "disarmed_evidence_clear"

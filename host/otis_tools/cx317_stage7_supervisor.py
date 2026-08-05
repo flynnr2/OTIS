@@ -57,7 +57,7 @@ REHEARSAL_SELECTED_INTERVAL_S = 120
 REHEARSAL_DECISION_CADENCE_S = 240
 REHEARSAL_ARM_PROGRESS_THRESHOLD = 105
 REHEARSAL_QUALIFICATION_TIMEOUT_S = 7 * 60
-REHEARSAL_QUALIFIED_TIMEOUT_S = 15 * 60
+REHEARSAL_QUALIFIED_TIMEOUT_S = 20 * 60
 REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
 REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 ACTIVE_ARM_LIFETIME_S = 110
@@ -154,6 +154,9 @@ def rehearsal_timeline_preflight(
     )
     conservative_post_application_completion_s = (
         response_ready_after_application_s
+        + values["decision_cadence"]
+        + values["selected_span"]
+        + response_ready_after_application_s
         + PART_A_SERVICE_LOAD_QUERIES
         + values["decision_cadence"]
     )
@@ -324,8 +327,8 @@ def load_stage7_spec(part: str, start_code: int) -> tuple[CampaignSpec, dict[str
             profile="cx317_dual_core_active_rehearsal",
             run_identity="cx317_stage7_rehearsal:3170005",
             start_code=start_code,
-            correction_limit=1,
-            cumulative_limit=21,
+            correction_limit=2,
+            cumulative_limit=42,
             minimum_code=0xA800,
             maximum_code=0xAB00,
             maximum_step=21,
@@ -659,7 +662,8 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         if now < self._next_service_command_monotonic:
             return
         if self.part in {"part_a", "rehearsal"}:
-            if self.state["response_count"] < 1 or self.state[
+            required_responses = 2 if self.part == "rehearsal" else 1
+            if self.state["response_count"] < required_responses or self.state[
                 "part_a_service_load_complete"
             ]:
                 return
@@ -783,6 +787,15 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             or self.state["duration_elapsed"]
         ):
             return
+        # Part A's post-service decision is an observation/terminal gate, not
+        # another actuation criterion.  Once the bounded service interval is
+        # complete, wait for _maybe_finish() to observe the next eligible
+        # preview and stop before granting a new authorization even when that
+        # preview proposes a non-zero correction.
+        if self.part in {"part_a", "rehearsal"} and self.state[
+            "part_a_service_load_complete"
+        ]:
+            return
 
         correction_count = int(
             health.get(("cx317_active", "correction_count"), "0")
@@ -887,8 +900,9 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                             "limited_delta_codes"
                         ),
                     )
+            required_responses = 2 if self.part == "rehearsal" else 1
             if (
-                self.state["response_count"] >= 1
+                self.state["response_count"] >= required_responses
                 and self.state["part_a_service_load_complete"]
                 and self.state.get("part_a_post_service_eligible_control_seq")
                 is not None

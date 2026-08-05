@@ -406,6 +406,101 @@ def _transactions(
     )
 
 
+def _transactions_for_analysis(
+    rows: list[dict[str, str]],
+    spec: Any,
+    identities: dict[str, str],
+    build_identity: str,
+) -> tuple[Check, dict[str, Any]]:
+    """Preserve a malformed live prefix as explicit non-passing evidence."""
+    try:
+        return _transactions(rows, spec, identities, build_identity)
+    except ValueError as exc:
+        validated_prefix_count = 0
+        prefix_evidence: dict[str, Any] = {
+            "application_count": 0,
+            "complete_request_group_count": 0,
+            "request_group_count": 0,
+            "path_codes": 0,
+            "net_movement_codes": 0,
+            "corrections": [],
+            "latencies": [],
+            "response_replays": [],
+            "all_response_classifications_replay_exactly": False,
+            "final_code": spec.start_code,
+        }
+        for end in range(1, len(rows) + 1):
+            try:
+                _, candidate = _transactions(
+                    rows[:end], spec, identities, build_identity
+                )
+            except ValueError:
+                break
+            validated_prefix_count = end
+            prefix_evidence = candidate
+
+        applications = [row for row in rows if row.get("event") == "application"]
+        automatic_requests = {
+            int(row["request_sequence"])
+            for row in rows
+            if row.get("event") != "manual_start"
+        }
+        physical_path = sum(
+            abs(int(row["requested_delta_codes"])) for row in applications
+        )
+        prefix_evidence.update(
+            {
+                "application_count": len(applications),
+                "request_group_count": len(automatic_requests),
+                "path_codes": physical_path,
+                "net_movement_codes": (
+                    int(applications[-1]["applied_code"]) - spec.start_code
+                    if applications
+                    else 0
+                ),
+                "corrections": [
+                    {
+                        "request_sequence": int(row["request_sequence"]),
+                        "application_timestamp_s": int(
+                            row["application_timestamp_s"]
+                        ),
+                        "delta_codes": int(row["requested_delta_codes"]),
+                        "direction": (
+                            "positive"
+                            if int(row["requested_delta_codes"]) > 0
+                            else "negative"
+                        ),
+                        "applied_code": int(row["applied_code"]),
+                    }
+                    for row in applications
+                ],
+                "all_response_classifications_replay_exactly": False,
+                "final_code": (
+                    int(applications[-1]["applied_code"])
+                    if applications
+                    else spec.start_code
+                ),
+                "validated_prefix_record_count": validated_prefix_count,
+                "total_record_count": len(rows),
+                "first_invalid_record_sequence": (
+                    int(rows[validated_prefix_count]["transaction_record_sequence"])
+                    if validated_prefix_count < len(rows)
+                    else None
+                ),
+                "transaction_validation_error": str(exc),
+            }
+        )
+        return (
+            Check(
+                "exact_four_phase_cross_core_transactions",
+                False,
+                f"validated {validated_prefix_count}/{len(rows)} records; "
+                f"physical applications {len(applications)}; {exc}",
+            ),
+            prefix_evidence,
+        )
+
+
 def _series_metrics(rows: list[dict[str, str]]) -> dict[str, Any]:
     values = [float(row["frequency_error_hz"]) for row in rows]
     times = [float(row["timestamp_s"]) for row in rows]
@@ -1378,7 +1473,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     checks.append(estimator_check)
     controller_check, controller_replay = _controller_parity(controls, estimates)
     checks.append(controller_check)
-    transaction_check, transactions = _transactions(
+    transaction_check, transactions = _transactions_for_analysis(
         active, spec, identities, firmware["build_identity"]
     )
     checks.append(transaction_check)

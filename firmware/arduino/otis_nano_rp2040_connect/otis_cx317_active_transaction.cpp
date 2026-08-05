@@ -396,6 +396,14 @@ bool otis_cx317_active_make_request(
       true,
   };
   transaction->request = *request;
+  // Each request must serialize as unaccepted and unapplied even after a
+  // prior transaction completed.  The response row already preserved the
+  // previous accepted/application fields; carrying them into the next
+  // request_created row would falsely bind the current request to stale evidence.
+  transaction->accepted = {};
+  transaction->applied = {};
+  transaction->have_acceptance = false;
+  transaction->have_application = false;
   transaction->last_decision_sequence = decision->decision_sequence;
   transaction->last_authorization_sequence = arm.authorization_sequence;
   transaction->have_request = true;

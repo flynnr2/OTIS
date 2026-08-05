@@ -25,6 +25,7 @@ OtisCx317ActiveEligibility healthy() {
 void complete_rehearsal_sequence() {
   constexpr uint16_t kStart = 0xA800u;
   constexpr uint16_t kApplied = 0xA815u;
+  constexpr uint16_t kSecondApplied = 0xA82Au;
   OtisCx317IOnlyEngine engine = {};
   otis_cx317_i_only_engine_init(&engine, 0u);
 
@@ -55,8 +56,8 @@ void complete_rehearsal_sequence() {
       0xA800u,
       0xAB00u,
       21u,
-      1u,
-      21u,
+      2u,
+      42u,
       false,
   };
   OtisCx317ActiveTransaction transaction = {};
@@ -131,18 +132,92 @@ void complete_rehearsal_sequence() {
          OtisCx317ResponseClass::HealthyIndeterminateNearResolution);
   assert(transaction.state == OtisCx317ActiveState::Disarmed);
 
+  auto cadence_hold = preview_input(480u, -0.008333332837, true, kApplied);
+  otis_cx317_i_only_engine_evaluate(&engine, &cadence_hold, &preview);
+  assert(!preview.preview_available);
+  auto second_selected =
+      preview_input(600u, -0.008333332837, true, kApplied);
+  otis_cx317_i_only_engine_evaluate(&engine, &second_selected, &preview);
+  assert(preview.preview_available);
+  assert(preview.limited_delta_codes == 21);
+  assert(preview.proposed_code == kSecondApplied);
+
+  const OtisCx317ArmRequest second_arm = {
+      binding, 2u, 0x87654321u, 680u};
+  assert(otis_cx317_active_arm(&transaction, &second_arm, &eligibility,
+                              590u));
+  const OtisCx317ActiveDecision second_decision = {
+      2u,
+      181u,
+      300u,
+      600u,
+      kApplied,
+      preview.limited_delta_codes,
+      preview.proposed_code,
+      preview.frequency_error_hz,
+  };
+  OtisCx317ActionableRequest second_request = {};
+  assert(otis_cx317_active_make_request(
+      &transaction, &second_decision, &eligibility, 600u, &second_request));
+  assert(second_request.requested_code == kSecondApplied);
+  assert(transaction.accepted.accepted_code == 0u);
+  assert(transaction.accepted.accepted_timestamp_s == 0u);
+  assert(transaction.applied.applied_code == 0u);
+  assert(transaction.applied.application_sequence == 0u);
+
+  OtisCx317AcceptedRequest second_accepted = {};
+  assert(otis_cx317_active_accept(&transaction, &second_request, 600u,
+                                  &second_accepted));
+  const OtisCx317AppliedAck second_applied = {
+      second_request.request_sequence,
+      second_request.authorization_sequence,
+      second_request.nonce,
+      second_request.requested_code,
+      second_accepted.accepted_code,
+      second_request.requested_code,
+      2u,
+      600u,
+      true,
+      false,
+      false,
+  };
+  assert(otis_cx317_active_acknowledge_application(&transaction,
+                                                   &second_applied));
+  cross_ack.requested_code = kSecondApplied;
+  cross_ack.accepted_code = kSecondApplied;
+  cross_ack.applied_code = kSecondApplied;
+  assert(otis_cx317_dual_core_static_state_on_applied_ack(
+      &core1_cache, &cross_ack, true));
+  assert(core1_cache.applied_code == kSecondApplied);
+
+  otis_cx317_i_only_engine_note_dac_epoch(&engine, 600u);
+  auto second_response_selected =
+      preview_input(780u, -0.008333332837, true, kSecondApplied);
+  otis_cx317_i_only_engine_evaluate(&engine, &second_response_selected,
+                                    &preview);
+  assert(preview.preview_available);
+  OtisCx317ResponseResult second_response = {};
+  assert(otis_cx317_active_record_response(
+      &transaction, second_response_selected.frequency_error_hz, true, true,
+      &second_response));
+  assert(second_response.classification ==
+         OtisCx317ResponseClass::HealthyIndeterminateNearResolution);
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+
   uint32_t service_queries = 0u;
   for (; service_queries < 60u; ++service_queries) {
   }
   assert(service_queries == 60u);
-  auto cadence_hold = preview_input(480u, -0.008333332837, true, kApplied);
-  otis_cx317_i_only_engine_evaluate(&engine, &cadence_hold, &preview);
+  auto post_service_hold =
+      preview_input(900u, -0.008333332837, true, kSecondApplied);
+  otis_cx317_i_only_engine_evaluate(&engine, &post_service_hold, &preview);
   assert(!preview.preview_available);
-  auto later_eligible = preview_input(600u, -0.008333332837, true, kApplied);
+  auto later_eligible =
+      preview_input(1020u, -0.008333332837, true, kSecondApplied);
   otis_cx317_i_only_engine_evaluate(&engine, &later_eligible, &preview);
   assert(preview.preview_available);
   assert(transaction.state == OtisCx317ActiveState::Disarmed);
-  assert(core1_cache.applied_code == kApplied);
+  assert(core1_cache.applied_code == kSecondApplied);
 }
 
 }  // namespace

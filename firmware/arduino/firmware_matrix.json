@@ -193,7 +193,7 @@
     },
     {
       "id": "cx317_dual_core_active_rehearsal",
-      "purpose": "Diagnostic-only accelerated hardware-in-loop rehearsal of the complete Stage 7 dual-core request, acceptance, application, response, service-load and clear-state sequence; never qualification evidence.",
+      "purpose": "Diagnostic-only accelerated hardware-in-loop rehearsal of two consecutive Stage 7 dual-core request, acceptance, application and response sequences followed by service load and clear state; never qualification evidence.",
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -217,8 +217,8 @@
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_CX317_ACTIVE_CAMPAIGN": "OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL",
         "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "1u",
-        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "21u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "2u",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "42u",
         "OTIS_FC0_STARTUP_INHIBIT_MS": "60000u",
         "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
         "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "120u",

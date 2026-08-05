@@ -225,6 +225,12 @@ void complete_dither_step(OtisCx317ActiveTransaction *transaction,
   OtisCx317ActionableRequest request;
   assert(otis_cx317_active_make_request(transaction, &numerical, eligibility,
                                         now_s, &request));
+  assert(transaction->accepted.accepted_code == 0u);
+  assert(transaction->accepted.accepted_timestamp_s == 0u);
+  assert(transaction->applied.applied_code == 0u);
+  assert(transaction->applied.application_sequence == 0u);
+  assert(!transaction->have_acceptance);
+  assert(!transaction->have_application);
   OtisCx317AcceptedRequest accepted;
   assert(otis_cx317_active_accept(transaction, &request, now_s, &accepted));
   OtisCx317AppliedAck applied = {

@@ -11,6 +11,7 @@ from host.otis_tools.cx317_stage7_analyze import (
     _latest_health_rows,
     _series_metrics,
     _transactions,
+    _transactions_for_analysis,
 )
 from host.otis_tools.contracts import (
     ACTIVE_TRANSACTION_V1_FIELDS,
@@ -78,12 +79,12 @@ def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
 
     assert spec.profile == "cx317_dual_core_active_rehearsal"
     assert spec.run_identity == "cx317_stage7_rehearsal:3170005"
-    assert spec.correction_limit == 1
-    assert spec.cumulative_limit == 21
+    assert spec.correction_limit == 2
+    assert spec.cumulative_limit == 42
     assert timing.selected_interval_s == REHEARSAL_SELECTED_INTERVAL_S == 120
     assert timing.decision_cadence_s == REHEARSAL_DECISION_CADENCE_S == 240
     assert timing.qualification_timeout_s == REHEARSAL_QUALIFICATION_TIMEOUT_S == 420
-    assert timing.qualified_timeout_s == 900
+    assert timing.qualified_timeout_s == 1200
     assert identities["estimator_sha256"] != load_stage7_spec(
         "part_a", 0xA800
     )[1]["estimator_sha256"]
@@ -97,7 +98,7 @@ def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
         "first_arm_window": 165,
         "first_actionable_decision": 180,
         "response_ready_after_application": 180,
-        "conservative_post_application_completion": 480,
+        "conservative_post_application_completion": 1020,
     }
 
 
@@ -164,8 +165,8 @@ def test_stage7_rehearsal_manifest_cannot_claim_qualification(
 ) -> None:
     defines = {
         "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "1u",
-        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "21u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "2u",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "42u",
         "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_GNSS_UART_TX_ENABLED": "0",
@@ -215,8 +216,9 @@ def test_stage7_rehearsal_manifest_cannot_claim_qualification(
     assert manifest["qualification_evidence"] is False
     assert manifest["stage7_progression_authority"] is False
     assert manifest["shadow_contract"]["enabled"] is False
-    assert manifest["active_campaign"]["correction_limit"] == 1
-    assert manifest["active_campaign"]["maximum_wall_clock_s"] == 1320
+    assert manifest["active_campaign"]["correction_limit"] == 2
+    assert manifest["active_campaign"]["cumulative_limit_codes"] == 42
+    assert manifest["active_campaign"]["maximum_wall_clock_s"] == 1620
     assert all(
         manifest["active_campaign"]["cross_layer_timeline_preflight"][
             "checks"
@@ -315,7 +317,7 @@ def test_stage7_supervisor_declares_four_host_evidence_releases() -> None:
     assert "STAGE7_QUALIFICATION_TIMEOUT_S = 90 * 60" in source
     assert "PART_A_QUALIFIED_TIMEOUT_S = 4 * 60 * 60" in source
     assert "PART_B_CLEARANCE_GRACE_S = 60 * 60" in source
-    assert 'self.state["response_count"] >= 1' in source
+    assert 'required_responses = 2 if self.part == "rehearsal" else 1' in source
     assert '"part_a_post_service_eligible_control_seq"' in source
     assert parse_serial_command("ACTIVE EVIDENCE 1 4").normalized == (
         "ACTIVE EVIDENCE 1 4"
@@ -715,6 +717,95 @@ def _write_rows(
         writer.writerows(rows)
 
 
+def _append_second_stage7_transaction(
+    rows: list[dict[str, str]], start_code: int
+) -> None:
+    """Append an exact clean follow-on transaction to a validated first one."""
+    second_code = start_code + 42
+    created = dict(rows[1])
+    created.update(
+        {
+            "transaction_record_sequence": "6",
+            "authorization_sequence": "2",
+            "nonce": "10",
+            "request_sequence": "2",
+            "decision_sequence": "5",
+            "source_first_sequence": "700",
+            "source_last_sequence": "1299",
+            "decision_timestamp_s": "4800",
+            "current_applied_code": str(start_code + 21),
+            "requested_delta_codes": "21",
+            "requested_code": str(second_code),
+            "correction_ordinal": "2",
+            "cumulative_after_codes": "42",
+            "pre_error_hz": "-0.008333333",
+            "accepted_code": "0",
+            "accepted_timestamp_s": "0",
+            "applied_code": "0",
+            "application_sequence": "0",
+            "application_timestamp_s": "0",
+            "i2c_ok": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "1",
+            "cumulative_movement_codes": "21",
+            "post_error_hz": "0",
+            "observed_response_hz": "0",
+            "cumulative_response_hz": "0",
+            "consecutive_indeterminate": "0",
+            "response_class": "unavailable",
+            "active_state": "REQUEST_PENDING",
+            "reason": "request_created",
+            "evidence_state": "request_pending",
+        }
+    )
+    accepted = dict(created)
+    accepted.update(
+        {
+            "transaction_record_sequence": "7",
+            "event": "core0_accepted",
+            "accepted_code": str(second_code),
+            "accepted_timestamp_s": "4800",
+            "active_state": "ACCEPTED_AWAITING_APPLICATION",
+            "reason": "request_consumed_actionable_cleared",
+            "evidence_state": "acceptance_pending",
+        }
+    )
+    application = dict(accepted)
+    application.update(
+        {
+            "transaction_record_sequence": "8",
+            "event": "application",
+            "applied_code": str(second_code),
+            "application_sequence": "2",
+            "application_timestamp_s": "4801",
+            "i2c_ok": "true",
+            "dac_epoch": "2",
+            "estimator_history_reset": "true",
+            "correction_count": "2",
+            "cumulative_movement_codes": "42",
+            "active_state": "AWAITING_RESPONSE",
+            "reason": "application_preserved",
+            "evidence_state": "application_pending",
+        }
+    )
+    response = dict(application)
+    response.update(
+        {
+            "transaction_record_sequence": "9",
+            "event": "response",
+            "post_error_hz": "-0.006000000",
+            "observed_response_hz": "0.002333333",
+            "cumulative_response_hz": "0.004000000",
+            "active_state": "DISARMED",
+            "response_class": "inside_deadband",
+            "reason": "post_error_inside_frozen_deadband",
+            "evidence_state": "response_pending",
+        }
+    )
+    rows.extend((created, accepted, application, response))
+
+
 def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     tmp_path: Path,
 ) -> None:
@@ -728,8 +819,8 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     config_sha = "b" * 64
     defines = {
         "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "1u",
-        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "21u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "2u",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "42u",
         "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_GNSS_UART_TX_ENABLED": "0",
@@ -774,6 +865,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
         serial_device="/dev/cu.test",
     )
     rows, _, _, _ = _exact_stage7_transaction_rows("rehearsal")
+    _append_second_stage7_transaction(rows, 0xA800)
     for row in rows:
         row["build_identity"] = f"{source_sha}:{config_sha}"
     _write_rows(
@@ -785,8 +877,8 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     health_values = {
         ("cx317_active", "state"): "DISARMED",
         ("cx317_active", "evidence_phase"): "evidence_clear",
-        ("cx317_active", "confirmed_applied_code"): str(0xA815),
-        ("cx317_active", "correction_count"): "1",
+        ("cx317_active", "confirmed_applied_code"): str(0xA82A),
+        ("cx317_active", "correction_count"): "2",
         ("cx317_active", "fail_static"): "false",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
@@ -857,7 +949,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
         {
             "record_type": "CTL",
             "schema_version": "1",
-            "control_seq": "3",
+            "control_seq": "6",
             "preview_available": "true",
         }
     )
@@ -867,7 +959,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
         [control],
     )
     estimates = []
-    for sequence in range(3):
+    for sequence in range(5):
         row = {field: "" for field in ESTIMATE_V2_FIELDS}
         row.update(
             {
@@ -884,10 +976,10 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
 
     state = {
         "terminal": {"result": "healthy_stop"},
-        "response_count": 1,
+        "response_count": 2,
         "part_a_service_load_sent": 60,
         "part_a_service_load_complete": True,
-        "part_a_post_service_eligible_control_seq": 3,
+        "part_a_post_service_eligible_control_seq": 6,
     }
     state_path = run / "reports/cx317_active_supervisor_state.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -936,6 +1028,33 @@ def test_stage7_rejects_cross_phase_request_field_mutation() -> None:
     rows[3]["nonce"] = "10"
     with pytest.raises(ValueError, match="immutable fields changed"):
         _transactions(rows, spec, identities, build_identity)
+
+
+def test_stage7_analysis_preserves_valid_prefix_before_malformed_request() -> None:
+    rows, spec, identities, build_identity = _exact_stage7_transaction_rows()
+    malformed = dict(rows[1])
+    malformed.update(
+        {
+            "transaction_record_sequence": "6",
+            "authorization_sequence": "2",
+            "request_sequence": "2",
+            "accepted_code": str(0xA815),
+        }
+    )
+
+    check, evidence = _transactions_for_analysis(
+        rows + [malformed], spec, identities, build_identity
+    )
+
+    assert not check.passed
+    assert evidence["validated_prefix_record_count"] == 5
+    assert evidence["first_invalid_record_sequence"] == 6
+    assert evidence["application_count"] == 1
+    assert evidence["complete_request_group_count"] == 1
+    assert evidence["request_group_count"] == 2
+    assert evidence["path_codes"] == 21
+    assert evidence["final_code"] == 0xA815
+    assert "non-zero accepted code" in evidence["transaction_validation_error"]
 
 
 def _supervisor(
@@ -991,6 +1110,46 @@ def test_part_a_waits_for_eligible_decision_after_service_interval(
     supervisor._maybe_finish(health, 0.0)
     assert supervisor.state["terminal"]["result"] == "healthy_stop"
     assert supervisor.state["part_a_post_service_eligible_control_seq"] == 11
+
+
+def test_part_a_service_completion_inhibits_rearm_for_nonzero_terminal_preview(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state.update(
+        {
+            "manual_start_sent": True,
+            "response_count": 1,
+            "part_a_service_load_complete": True,
+            "part_a_service_load_completed_control_seq": 2,
+            "part_a_post_service_eligible_control_seq": None,
+            "arm_pending": False,
+        }
+    )
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    controls.write_text(
+        "control_seq,preview_available,model_applicability,diagnostic_health,"
+        "limited_delta_codes\n"
+        "3,true,applicable,healthy,19\n",
+        encoding="utf-8",
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "true",
+        ("cx317_active", "correction_count"): "1",
+        ("cx317_active", "arm_eligible"): "true",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "selected_interval_count"): "599",
+        ("cx317_active", "uptime_s"): "4500",
+    }
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["authorization_sequence"] == 0
 
 
 def test_stage7_qualification_and_part_a_have_finite_fail_static_deadlines(

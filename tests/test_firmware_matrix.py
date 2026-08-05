@@ -109,8 +109,8 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
     rehearsal = active["cx317_dual_core_active_rehearsal"]
     assert rehearsal["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
-    assert rehearsal["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "1u"
-    assert rehearsal["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "21u"
+    assert rehearsal["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "2u"
+    assert rehearsal["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "42u"
     assert rehearsal["OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG"] == "120u"
     assert rehearsal["OTIS_FC0_STARTUP_INHIBIT_MS"] == "60000u"
     assert rehearsal["OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS"] == "3u"
