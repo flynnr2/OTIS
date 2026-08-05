@@ -91,8 +91,9 @@ def _atomic_write(path: Path, text: str) -> None:
 
 def _checks_pass(value: dict[str, Any]) -> bool:
     checks = value.get("checks")
-    return not isinstance(checks, list) or all(
-        item.get("passed") is True for item in checks
+    return isinstance(checks, list) and bool(checks) and all(
+        isinstance(item, dict) and item.get("passed") is True
+        for item in checks
     )
 
 
@@ -103,7 +104,17 @@ def _gate_passed(value: dict[str, Any], gate_kind: str) -> bool:
         return value.get("status") == "pass" and _checks_pass(value)
     if gate_kind == "stage7_a2":
         return part_a2_progression_gate_valid(value)
-    if gate_kind in {"stage7_a1", "stage7_b"}:
+    if gate_kind == "stage7_a1":
+        criteria = value.get("criteria", {})
+        return (
+            value.get("status") == "pass"
+            and value.get("test") == "part_a_fixed_code_stability"
+            and value.get("applicable") is True
+            and isinstance(criteria, dict)
+            and bool(criteria)
+            and all(item is True for item in criteria.values())
+        )
+    if gate_kind == "stage7_b":
         return value.get("status") == "pass" and _checks_pass(value)
     if gate_kind == "verification":
         pytest = value.get("pytest", {})
@@ -328,6 +339,62 @@ def _composite_part_a_seal_check(
             passed,
             f"composite SHA-256 {_sha256_file(composite_path)}; "
             f"components={len(component_audit)}/3; "
+            f"Part B binding={transitive_binding}; failures={len(failures)}",
+        ),
+        details,
+    )
+
+
+def _part_a1_transitive_seal_check(
+    part_a1_gate_path: Path,
+    part_b_gate_path: Path,
+) -> tuple[Check, dict[str, Any]]:
+    """Accept partial A1 only when Part B binds its exact passed subtest."""
+    gate_path = part_a1_gate_path.resolve()
+    gate = _read_json(gate_path)
+    source_check, details = _sealed_run_check(
+        "stage7_a1",
+        gate_path,
+        allow_partial_subtest=True,
+    )
+    failures = list(details["validation_failures"])
+    transitive_binding = False
+    try:
+        part_b_run = part_b_gate_path.resolve().parent.parent
+        part_b_manifest = _read_json(part_b_run / "run_manifest.json")
+        entry = part_b_manifest["prerequisite_gates"][
+            "part_a1_fixed_code_stability"
+        ]
+        transitive_binding = (
+            str(Path(entry["path"]).resolve()) == str(gate_path)
+            and entry["sha256"] == _sha256_file(gate_path)
+            and entry["document"] == gate
+        )
+        if not transitive_binding:
+            failures.append("Part B manifest A1 subtest binding differs")
+    except (FileNotFoundError, KeyError, OSError, TypeError, ValueError) as exc:
+        failures.append(f"Part B manifest A1 subtest binding: {exc}")
+    passed = (
+        _gate_passed(gate, "stage7_a1")
+        and source_check.passed
+        and transitive_binding
+        and not failures
+    )
+    details = {
+        **details,
+        "seal_class": (
+            "part_b_manifest_bound_validated_partial_a1_subtest"
+            if passed
+            else "unsealed"
+        ),
+        "transitively_bound_by_part_b_manifest": transitive_binding,
+        "validation_failures": failures,
+    }
+    return (
+        Check(
+            "stage7_a1_transitively_sealed_subtest",
+            passed,
+            f"A1 SHA-256 {_sha256_file(gate_path)}; "
             f"Part B binding={transitive_binding}; failures={len(failures)}",
         ),
         details,
@@ -769,7 +836,11 @@ def review(
     for name in kinds:
         if name == "verification":
             continue
-        if (
+        if name == "stage7_a1":
+            check, details = _part_a1_transitive_seal_check(
+                gate_paths[name], gate_paths["stage7_b"]
+            )
+        elif (
             name == "stage7_a2"
             and values[name].get("test") == PART_A_COMPOSITE_TEST
         ):

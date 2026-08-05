@@ -14,6 +14,7 @@ from host.otis_tools.cx317_stage8_final_review import (
     _decision,
     _gate_passed,
     _next_goal,
+    _part_a1_transitive_seal_check,
     _render,
     _sealed_run_check,
 )
@@ -76,6 +77,72 @@ def test_gate_parsers_require_exact_pass_shapes() -> None:
         "no_hardware_validation": {"result": "pass"},
     }
     assert _gate_passed(verification, "verification")
+    assert not _gate_passed({"status": "pass"}, "stage6")
+    assert not _gate_passed({"status": "pass"}, "stage7_b")
+    assert not _gate_passed({"status": "pass"}, "stage7_a1")
+
+
+def test_stage8_a1_partial_subtest_requires_exact_part_b_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a1_gate = tmp_path / "a1/reports/gate.json"
+    a1_gate.parent.mkdir(parents=True)
+    a1 = {
+        "status": "pass",
+        "test": "part_a_fixed_code_stability",
+        "applicable": True,
+        "criteria": {"stable": True},
+    }
+    a1_gate.write_text(json.dumps(a1), encoding="utf-8")
+    part_b_gate = tmp_path / "part_b/reports/gate.json"
+    part_b_gate.parent.mkdir(parents=True)
+    part_b_gate.write_text("{}\n", encoding="utf-8")
+    part_b_manifest = {
+        "prerequisite_gates": {
+            "part_a1_fixed_code_stability": {
+                "path": str(a1_gate.resolve()),
+                "sha256": hashlib.sha256(a1_gate.read_bytes()).hexdigest(),
+                "document": a1,
+            }
+        }
+    }
+    manifest_path = part_b_gate.parent.parent / "run_manifest.json"
+    manifest_path.write_text(json.dumps(part_b_manifest), encoding="utf-8")
+    source_details = {
+        "run_directory": str(a1_gate.parent.parent),
+        "gate_path": str(a1_gate),
+        "complete_marker": False,
+        "capture_active": False,
+        "evidence_run_state": "partial",
+        "evidence_snapshot_digest": "a" * 64,
+        "gate_in_snapshot": False,
+        "allow_partial_subtest": True,
+        "seal_class": "validated_partial_source_for_transitively_sealed_subtest",
+        "validation_failures": [],
+        "validation_warnings": [],
+    }
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review._sealed_run_check",
+        lambda *_args, **_kwargs: (
+            SimpleNamespace(passed=True),
+            source_details,
+        ),
+    )
+
+    check, details = _part_a1_transitive_seal_check(a1_gate, part_b_gate)
+    assert check.passed
+    assert (
+        details["seal_class"]
+        == "part_b_manifest_bound_validated_partial_a1_subtest"
+    )
+
+    part_b_manifest["prerequisite_gates"]["part_a1_fixed_code_stability"][
+        "document"
+    ] = {"status": "pass"}
+    manifest_path.write_text(json.dumps(part_b_manifest), encoding="utf-8")
+    check, details = _part_a1_transitive_seal_check(a1_gate, part_b_gate)
+    assert not check.passed
+    assert details["seal_class"] == "unsealed"
 
 
 def test_stage8_rejects_incomplete_composite_part_a_shape() -> None:
