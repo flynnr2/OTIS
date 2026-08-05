@@ -11,6 +11,20 @@ ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
 
+def test_stage7_rehearsal_compile_guard_matches_two_transaction_envelope() -> None:
+    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+    guard_start = config.index(
+        "OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL &&"
+    )
+    guard_end = config.index(
+        '#error "Stage 7 rehearsal parameters differ', guard_start
+    )
+    guard = config[guard_start:guard_end]
+
+    assert "OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 2u" in guard
+    assert "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 42u" in guard
+
+
 def test_deterministic_stage7_rehearsal_sequence_harness(
     tmp_path: Path,
 ) -> None:
