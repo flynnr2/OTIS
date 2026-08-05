@@ -82,7 +82,9 @@ def test_shadow_monitor_preserves_context_and_exactly_replays(tmp_path: Path) ->
     )
     (run / "csv/health.csv").write_text(
         "record_type,component,status_key,status_value\n"
-        "STS,gnss_receiver,control_eligible,true\n"
+        # A later mutable display snapshot must not overwrite the exact
+        # qualification carried by the selected estimator source boundary.
+        "STS,gnss_receiver,control_eligible,false\n"
         "STS,dual_core,service_to_timing_depth,0\n"
         "STS,dual_core,service_to_timing_high_water,2\n"
         "STS,dual_core,observation_depth,0\n"

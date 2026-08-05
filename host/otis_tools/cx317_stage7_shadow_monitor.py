@@ -158,7 +158,13 @@ def _selected_rows(path: Path) -> list[dict[str, str]]:
     return [
         row
         for row in _read_csv(path)
-        if row.get("estimator_version") == SELECTED_ESTIMATOR
+        if _selected_estimate_is_qualified(row)
+    ]
+
+
+def _selected_estimate_is_qualified(row: dict[str, str]) -> bool:
+    return (
+        row.get("estimator_version") == SELECTED_ESTIMATOR
         and row.get("config_hash") == SELECTED_HASH
         and row.get("observation_validity") == "valid"
         and row.get("reference_validity") == "valid"
@@ -166,7 +172,7 @@ def _selected_rows(path: Path) -> list[dict[str, str]]:
         and row.get("diagnostic_health") == "healthy"
         and row.get("preview_eligibility") == "true"
         and row.get("frequency_error_hz") not in {None, ""}
-    ]
+    )
 
 
 def _actual_state(
@@ -227,9 +233,14 @@ def _context_row(
         return health.get((component, key), "unavailable")
 
     error = float(estimate["frequency_error_hz"])
+    # Bind qualification to the exact source observation.  A mutable latest
+    # STS snapshot can be emitted seconds later and is not historical evidence
+    # for this estimator row.  The selected estimator's reference validity,
+    # diagnostic health and preview eligibility already include the firmware
+    # receiver/reference gate at the cited source boundary.
     gnss = (
         "qualified"
-        if status("gnss_receiver", "control_eligible") == "true"
+        if _selected_estimate_is_qualified(estimate)
         else "unqualified"
     )
     return {
