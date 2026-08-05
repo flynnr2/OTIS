@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from host.otis_tools.cx317_stage8_final_review import (
     _active_run_history,
+    _composite_part_a_seal_check,
     _decision,
     _gate_passed,
     _next_goal,
     _render,
     _sealed_run_check,
 )
+from host.otis_tools.cx317_stage7_gate_validation import PART_A_COMPOSITE_TEST
 
 
 def test_stage8_decision_uses_exact_programme_vocabulary() -> None:
@@ -72,6 +76,135 @@ def test_gate_parsers_require_exact_pass_shapes() -> None:
         "no_hardware_validation": {"result": "pass"},
     }
     assert _gate_passed(verification, "verification")
+
+
+def test_stage8_rejects_incomplete_composite_part_a_shape() -> None:
+    assert not _gate_passed(
+        {
+            "status": "pass",
+            "part": "part_a",
+            "test": PART_A_COMPOSITE_TEST,
+            "transactions": {
+                "application_count": 1,
+                "all_response_classifications_replay_exactly": True,
+                "final_code": 0xA815,
+            },
+        },
+        "stage7_a2",
+    )
+
+
+def test_stage8_composite_part_a_requires_exact_part_b_transitive_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    component_bindings: dict[str, dict[str, object]] = {}
+    details_by_gate: dict[Path, dict[str, object]] = {}
+    for name, gate_key, hash_key, run_state in (
+        ("a1", "gate_path", "gate_sha256", "partial"),
+        (
+            "source_a2",
+            "source_exit_gate_path",
+            "source_exit_gate_sha256",
+            "partial",
+        ),
+        ("repair", "gate_path", "gate_sha256", "complete"),
+    ):
+        run = tmp_path / name
+        gate = run / "reports/gate.json"
+        gate.parent.mkdir(parents=True)
+        gate.write_text(f'{{"name":"{name}"}}\n', encoding="utf-8")
+        evidence = run / "evidence_manifest.json"
+        evidence.write_text(f'{{"state":"{run_state}"}}\n', encoding="utf-8")
+        binding = {
+            gate_key: str(gate.resolve()),
+            hash_key: hashlib.sha256(gate.read_bytes()).hexdigest(),
+            "run_dir": str(run.resolve()),
+            "run_state": run_state,
+            "snapshot_digest": name * 8,
+            "evidence_manifest_sha256": hashlib.sha256(
+                evidence.read_bytes()
+            ).hexdigest(),
+            "evidence_snapshot_failures": [],
+            "evidence_snapshot_warnings": [],
+        }
+        component_bindings[name] = binding
+        details_by_gate[gate.resolve()] = {
+            "run_directory": str(run.resolve()),
+            "evidence_run_state": run_state,
+            "evidence_snapshot_digest": name * 8,
+            "validation_failures": [],
+            "validation_warnings": [],
+        }
+
+    def sealed(_identifier: str, path: Path, **_kwargs: object):
+        return SimpleNamespace(passed=True), details_by_gate[Path(path).resolve()]
+
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage8_final_review._sealed_run_check", sealed
+    )
+    composite = {
+        "status": "pass",
+        "part": "part_a",
+        "test": PART_A_COMPOSITE_TEST,
+        "qualification_evidence": True,
+        "stage7_progression_authority": True,
+        "criteria": {"all_components": True},
+        "transactions": {
+            "application_count": 1,
+            "all_response_classifications_replay_exactly": True,
+            "final_code": 0xA815,
+        },
+        "part_a1_stability": {
+            "status": "pass",
+            "binding": component_bindings["a1"],
+        },
+        "source_a2_disposition": {
+            "source_exit_status": "fail",
+            "source_run_state": "partial",
+            "source_run_relabelled_as_pass": False,
+            "binding": component_bindings["source_a2"],
+        },
+        "repair_rehearsal": {
+            "status": "pass",
+            "diagnostic_only": True,
+            "qualification_evidence": False,
+            "evidence_snapshot_valid": True,
+            "binding": component_bindings["repair"],
+        },
+    }
+    composite_path = tmp_path / "stage7/composite.json"
+    composite_path.parent.mkdir()
+    composite_path.write_text(json.dumps(composite), encoding="utf-8")
+    part_b_gate = tmp_path / "stage7/part_b/reports/stage7_exit_gate.json"
+    part_b_gate.parent.mkdir(parents=True)
+    part_b_gate.write_text("{}\n", encoding="utf-8")
+    manifest = {
+        "prerequisite_gates": {
+            "part_a2_cross_core_transaction": {
+                "path": str(composite_path.resolve()),
+                "sha256": hashlib.sha256(composite_path.read_bytes()).hexdigest(),
+                "document": composite,
+            }
+        }
+    }
+    manifest_path = part_b_gate.parent.parent / "run_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    check, details = _composite_part_a_seal_check(
+        composite_path, part_b_gate
+    )
+    assert check.passed
+    assert details["transitively_bound_by_part_b_manifest"] is True
+
+    manifest["prerequisite_gates"]["part_a2_cross_core_transaction"][
+        "sha256"
+    ] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    check, details = _composite_part_a_seal_check(
+        composite_path, part_b_gate
+    )
+    assert not check.passed
+    assert details["seal_class"] == "unsealed"
 
 
 def test_active_run_inventory_preserves_diagnostic_and_passed_histories(

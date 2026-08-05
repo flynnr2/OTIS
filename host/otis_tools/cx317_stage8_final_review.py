@@ -19,6 +19,10 @@ import tempfile
 from typing import Any, Iterable
 
 from .evidence import validate_evidence_snapshot
+from .cx317_stage7_gate_validation import (
+    PART_A_COMPOSITE_TEST,
+    part_a2_progression_gate_valid,
+)
 from .run_loader import load_manifest
 
 
@@ -97,7 +101,9 @@ def _gate_passed(value: dict[str, Any], gate_kind: str) -> bool:
         return value.get("stage_exit_passed") is True
     if gate_kind == "stage6":
         return value.get("status") == "pass" and _checks_pass(value)
-    if gate_kind in {"stage7_a1", "stage7_a2", "stage7_b"}:
+    if gate_kind == "stage7_a2":
+        return part_a2_progression_gate_valid(value)
+    if gate_kind in {"stage7_a1", "stage7_b"}:
         return value.get("status") == "pass" and _checks_pass(value)
     if gate_kind == "verification":
         pytest = value.get("pytest", {})
@@ -198,6 +204,131 @@ def _sealed_run_check(
                 f"gate_in_snapshot={gate_in_snapshot}; gate SHA-256 "
                 f"{_sha256_file(resolved)}; failures={len(failures)}"
             ),
+        ),
+        details,
+    )
+
+
+def _composite_part_a_seal_check(
+    composite_gate_path: Path,
+    part_b_gate_path: Path,
+) -> tuple[Check, dict[str, Any]]:
+    """Revalidate a composite A gate and its transitive Part B binding.
+
+    Composite A intentionally preserves two partial source runs and one
+    complete repair rehearsal; it is not a relabelled single-run pass.  The
+    exact composite document becomes progression authority only when the
+    immutable Part B manifest embeds its path, hash and document verbatim.
+    """
+    composite_path = composite_gate_path.resolve()
+    composite = _read_json(composite_path)
+    failures: list[str] = []
+    component_audit: dict[str, dict[str, Any]] = {}
+    components = (
+        (
+            "part_a1_fixed_code_stability",
+            composite.get("part_a1_stability", {}).get("binding", {}),
+            "gate_path",
+            "gate_sha256",
+            True,
+        ),
+        (
+            "source_a2_failed_diagnostic",
+            composite.get("source_a2_disposition", {}).get("binding", {}),
+            "source_exit_gate_path",
+            "source_exit_gate_sha256",
+            True,
+        ),
+        (
+            "targeted_repair_rehearsal",
+            composite.get("repair_rehearsal", {}).get("binding", {}),
+            "gate_path",
+            "gate_sha256",
+            False,
+        ),
+    )
+    for name, binding, path_key, hash_key, allow_partial in components:
+        try:
+            gate_path = Path(binding[path_key]).resolve()
+            check, details = _sealed_run_check(
+                name,
+                gate_path,
+                allow_partial_subtest=allow_partial,
+            )
+            evidence_manifest = Path(details["run_directory"]) / (
+                "evidence_manifest.json"
+            )
+            exact = (
+                check.passed
+                and str(gate_path) == str(Path(binding[path_key]).resolve())
+                and _sha256_file(gate_path) == binding[hash_key]
+                and str(Path(binding["run_dir"]).resolve())
+                == details["run_directory"]
+                and binding["run_state"] == details["evidence_run_state"]
+                and binding["snapshot_digest"]
+                == details["evidence_snapshot_digest"]
+                and evidence_manifest.is_file()
+                and _sha256_file(evidence_manifest)
+                == binding["evidence_manifest_sha256"]
+                and not binding.get("evidence_snapshot_failures", [])
+                and not binding.get("evidence_snapshot_warnings", [])
+                and not details["validation_failures"]
+                and not details["validation_warnings"]
+            )
+            component_audit[name] = {**details, "binding_exact": exact}
+            if not exact:
+                failures.append(f"{name}: component seal binding differs")
+        except (FileNotFoundError, KeyError, OSError, TypeError, ValueError) as exc:
+            failures.append(f"{name}: {exc}")
+
+    transitive_binding = False
+    try:
+        part_b_run = part_b_gate_path.resolve().parent.parent
+        part_b_manifest = _read_json(part_b_run / "run_manifest.json")
+        entry = part_b_manifest["prerequisite_gates"][
+            "part_a2_cross_core_transaction"
+        ]
+        transitive_binding = (
+            str(Path(entry["path"]).resolve()) == str(composite_path)
+            and entry["sha256"] == _sha256_file(composite_path)
+            and entry["document"] == composite
+        )
+        if not transitive_binding:
+            failures.append("Part B manifest composite-A binding differs")
+    except (FileNotFoundError, KeyError, OSError, TypeError, ValueError) as exc:
+        failures.append(f"Part B manifest composite-A binding: {exc}")
+
+    passed = (
+        part_a2_progression_gate_valid(composite)
+        and transitive_binding
+        and not failures
+    )
+    details = {
+        "run_directory": "composite_transitive_evidence",
+        "gate_path": str(composite_path),
+        "complete_marker": None,
+        "capture_active": False,
+        "evidence_run_state": "composite",
+        "evidence_snapshot_digest": "transitive_component_seals",
+        "gate_in_snapshot": False,
+        "allow_partial_subtest": True,
+        "seal_class": (
+            "part_b_manifest_bound_composite_of_validated_source_seals"
+            if passed
+            else "unsealed"
+        ),
+        "transitively_bound_by_part_b_manifest": transitive_binding,
+        "component_audit": component_audit,
+        "validation_failures": failures,
+        "validation_warnings": [],
+    }
+    return (
+        Check(
+            "stage7_a2_composite_sealed_evidence",
+            passed,
+            f"composite SHA-256 {_sha256_file(composite_path)}; "
+            f"components={len(component_audit)}/3; "
+            f"Part B binding={transitive_binding}; failures={len(failures)}",
         ),
         details,
     )
@@ -638,11 +769,19 @@ def review(
     for name in kinds:
         if name == "verification":
             continue
-        check, details = _sealed_run_check(
-            name,
-            gate_paths[name],
-            allow_partial_subtest=name == "stage7_a1",
-        )
+        if (
+            name == "stage7_a2"
+            and values[name].get("test") == PART_A_COMPOSITE_TEST
+        ):
+            check, details = _composite_part_a_seal_check(
+                gate_paths[name], gate_paths["stage7_b"]
+            )
+        else:
+            check, details = _sealed_run_check(
+                name,
+                gate_paths[name],
+                allow_partial_subtest=name == "stage7_a1",
+            )
         seal_checks.append(check)
         sealed_runs[name] = details
         gates[name] = gates[name] and check.passed
