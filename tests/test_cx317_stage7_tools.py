@@ -8,6 +8,7 @@ import pytest
 
 from host.otis_tools.cx317_stage7_analyze import (
     _controller_parity,
+    _dual_core_queue_health,
     _historical_shadow_replays,
     _latest_health_rows,
     _series_metrics,
@@ -82,6 +83,27 @@ def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
     assert (part_b.correction_limit, part_b.cumulative_limit) == (32, 672)
     assert identities_a == identities_b
     assert STAGE7_QUALIFICATION_TIMEOUT_S == 5400
+
+
+def test_zero_correction_endurance_still_requires_manual_start_queue_traffic() -> None:
+    latest = {
+        ("dual_core", "partition_fault"): "none",
+        ("dual_core", "fail_static"): "false",
+        ("cx317_active", "fail_static"): "false",
+        ("dual_core", "telemetry_dropped"): "0",
+        ("dual_core", "observation_high_water"): "3",
+        ("dual_core", "critical_high_water"): "1",
+        ("dual_core", "evidence_high_water"): "1",
+    }
+
+    assert _dual_core_queue_health(latest)
+
+    latest[("dual_core", "critical_high_water")] = "0"
+    assert not _dual_core_queue_health(latest)
+
+    latest[("dual_core", "critical_high_water")] = "1"
+    latest[("dual_core", "telemetry_dropped")] = "1"
+    assert not _dual_core_queue_health(latest)
 
 
 def test_composite_part_a_gate_preserves_failed_source_and_repair_scope() -> None:

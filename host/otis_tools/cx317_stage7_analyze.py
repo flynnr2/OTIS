@@ -136,6 +136,25 @@ def _latest_health_rows(
     return latest
 
 
+def _dual_core_queue_health(latest: dict[tuple[str, str], str]) -> bool:
+    """Validate the queue path exercised by every Stage 7 hardware entry.
+
+    The mandatory manual-start acknowledgement is itself transported on the
+    critical/evidence path.  Consequently a healthy zero-automatic-correction
+    Part B run has a non-zero critical high-water mark; zero would mean that
+    the required entry capsule never crossed the queue boundary.
+    """
+    return (
+        latest.get(("dual_core", "partition_fault")) == "none"
+        and latest.get(("dual_core", "fail_static")) == "false"
+        and latest.get(("cx317_active", "fail_static")) == "false"
+        and int(latest.get(("dual_core", "telemetry_dropped"), "-1")) == 0
+        and int(latest.get(("dual_core", "observation_high_water"), "0")) > 0
+        and int(latest.get(("dual_core", "critical_high_water"), "0")) > 0
+        and int(latest.get(("dual_core", "evidence_high_water"), "0")) > 0
+    )
+
+
 def _mapped_state(value: str) -> str:
     return {
         "WARMUP_INHIBIT": "WARMUP_INHIBIT",
@@ -1523,25 +1542,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     )
 
     latest = _latest_health_rows(health_rows)
-    critical_high_water = int(
-        latest.get(("dual_core", "critical_high_water"), "-1")
-    )
-    queue_ok = (
-        latest.get(("dual_core", "partition_fault")) == "none"
-        and latest.get(("dual_core", "fail_static")) == "false"
-        and latest.get(("cx317_active", "fail_static")) == "false"
-        and int(latest.get(("dual_core", "telemetry_dropped"), "-1")) == 0
-        and int(latest.get(("dual_core", "observation_high_water"), "0")) > 0
-        # Part B explicitly permits a stable 24-hour zero-correction pass.
-        # Such a run legitimately has no actuator-critical traffic; Part A2
-        # supplies the required live cross-core transaction proof.
-        and (
-            critical_high_water > 0
-            if applications
-            else part == "part_b" and critical_high_water == 0
-        )
-        and int(latest.get(("dual_core", "evidence_high_water"), "0")) > 0
-    )
+    queue_ok = _dual_core_queue_health(latest)
     checks.append(
         Check(
             "dual_core_queues_and_fail_static_health",
