@@ -188,7 +188,7 @@ def analyze(
             health.get(("cx317_active", "state")) == "DISARMED"
             and health.get(("cx317_active", "evidence_phase"))
             == "evidence_clear"
-            and health.get(("cx317_active", "applied_code"))
+            and health.get(("cx317_active", "confirmed_applied_code"))
             == str(0xA815)
             and health.get(("cx317_active", "correction_count")) == "1"
         ),
@@ -224,7 +224,9 @@ def analyze(
         "final": {
             "active_state": health.get(("cx317_active", "state")),
             "evidence_phase": health.get(("cx317_active", "evidence_phase")),
-            "applied_code": health.get(("cx317_active", "applied_code")),
+            "applied_code": health.get(
+                ("cx317_active", "confirmed_applied_code")
+            ),
         },
     }
     output = run_dir / OUTPUT
