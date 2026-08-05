@@ -392,6 +392,15 @@ class IOnlyPreviewEngine:
         self.inhibit_until_s = self.qualifying_since_s
         self.latched_reason = "startup_warmup"
 
+    def note_dac_epoch(self, timestamp_s: int) -> None:
+        """Reset history at the actual application time, between observations."""
+        self.state = "SETTLING_INHIBIT"
+        self.latched_reason = "dac_epoch_full_history_reset"
+        self.inhibit_until_s = timestamp_s + self.policy.full_history_reset_s
+        self.qualifying_since_s = self.inhibit_until_s
+        self.integrator_codes = 0.0
+        self.last_decision_s = None
+
     def _result(self, observation: Observation, **values: Any) -> dict[str, Any]:
         result = {
             "timestamp_s": observation.timestamp_s,
@@ -464,11 +473,7 @@ class IOnlyPreviewEngine:
             self.last_decision_s = None
             return self._result(observation)
         if observation.dac_epoch:
-            self.state, self.latched_reason = "SETTLING_INHIBIT", "dac_epoch_full_history_reset"
-            self.inhibit_until_s = observation.timestamp_s + self.policy.full_history_reset_s
-            self.qualifying_since_s = self.inhibit_until_s
-            self.integrator_codes = 0.0
-            self.last_decision_s = None
+            self.note_dac_epoch(observation.timestamp_s)
             return self._result(observation)
         if observation.timestamp_s < self.startup_s + self.policy.warmup_s:
             self.state, self.latched_reason = "WARMUP_INHIBIT", "startup_warmup"

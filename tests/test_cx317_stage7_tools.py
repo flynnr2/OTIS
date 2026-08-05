@@ -7,12 +7,19 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.cx317_stage7_analyze import (
+    _controller_parity,
     _historical_shadow_replays,
     _latest_health_rows,
     _series_metrics,
     _transactions,
     _transactions_for_analysis,
 )
+from host.otis_tools.cx317_i_only_preview_replay import (
+    IOnlyPreviewEngine,
+    Observation,
+    load_post_campaign_policy,
+)
+from host.otis_tools.cx317_stage6_dual_core_analyze import _estimator_parity
 from host.otis_tools.contracts import (
     ACTIVE_TRANSACTION_V1_FIELDS,
     CONTROL_PREVIEW_V1_FIELDS,
@@ -23,6 +30,10 @@ from host.otis_tools.cx317_stage7_rehearsal_analyze import (
     analyze as analyze_rehearsal,
 )
 from host.otis_tools.cx317_stage7_manifest import create_stage7_manifest
+from host.otis_tools.cx317_stage7_gate_validation import (
+    PART_A_COMPOSITE_TEST,
+    part_a2_progression_gate_valid,
+)
 from host.otis_tools.cx317_stage7_part_b_matrix import derive_part_b_matrix
 from host.otis_tools.cx317_stage7_part_b_rehearsal import (
     rehearse as rehearse_part_b,
@@ -71,6 +82,40 @@ def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
     assert (part_b.correction_limit, part_b.cumulative_limit) == (32, 672)
     assert identities_a == identities_b
     assert STAGE7_QUALIFICATION_TIMEOUT_S == 5400
+
+
+def test_composite_part_a_gate_preserves_failed_source_and_repair_scope() -> None:
+    gate = {
+        "status": "pass",
+        "part": "part_a",
+        "test": PART_A_COMPOSITE_TEST,
+        "qualification_evidence": True,
+        "stage7_progression_authority": True,
+        "criteria": {"all_bound_evidence_passed": True},
+        "transactions": {
+            "application_count": 1,
+            "all_response_classifications_replay_exactly": True,
+            "final_code": 0xA815,
+        },
+        "source_a2_disposition": {
+            "source_exit_status": "fail",
+            "source_run_state": "partial",
+            "source_run_relabelled_as_pass": False,
+        },
+        "repair_rehearsal": {
+            "status": "pass",
+            "diagnostic_only": True,
+            "qualification_evidence": False,
+            "evidence_snapshot_valid": True,
+        },
+    }
+
+    assert part_a2_progression_gate_valid(gate)
+    gate["source_a2_disposition"]["source_run_relabelled_as_pass"] = True
+    assert not part_a2_progression_gate_valid(gate)
+    gate["source_a2_disposition"]["source_run_relabelled_as_pass"] = False
+    gate["repair_rehearsal"]["qualification_evidence"] = True
+    assert not part_a2_progression_gate_valid(gate)
 
 
 def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
@@ -541,6 +586,125 @@ def test_stage7_time_series_metrics_do_not_assume_independence() -> None:
     assert metrics["successive_estimates_assumed_independent"] is False
     assert 0 < metrics["effective_sample_size_initial_positive_acf"] <= 6
     assert metrics["authoritative_boundary_crossings"] == 2
+
+
+def test_stage7_a2_estimator_replay_accepts_its_three_required_outputs() -> None:
+    estimator_hash = "e" * 64
+    counts: dict[int, dict[str, str]] = {}
+    estimates: list[dict[str, str]] = []
+    for estimate_sequence in range(3):
+        first = estimate_sequence * 600
+        last = first + 600
+        for source_sequence in range(first + 1, last + 1):
+            counts[source_sequence] = {"counted_edges": "10000000"}
+        estimates.append(
+            {
+                "estimate_seq": str(estimate_sequence),
+                "estimate_id": f"estimate-{estimate_sequence}",
+                "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+                "source_reference_first_seq": str(first),
+                "source_reference_last_seq": str(last),
+                "frequency_estimate_hz": "10000000.000000000000",
+                "frequency_error_hz": "0.000000000000",
+                "config_hash": estimator_hash,
+                "observation_validity": "valid",
+                "reference_validity": "valid",
+                "count_validity": "valid",
+                "diagnostic_health": "healthy",
+            }
+        )
+
+    stage6_check, _ = _estimator_parity(estimates, counts, estimator_hash)
+    stage7_a2_check, _ = _estimator_parity(
+        estimates, counts, estimator_hash, minimum_selected=3
+    )
+
+    assert not stage6_check.passed
+    assert stage7_a2_check.passed
+
+
+def test_stage7_controller_replay_uses_actual_application_epoch() -> None:
+    policy = load_post_campaign_policy()
+    generator = IOnlyPreviewEngine(policy)
+    estimates = [
+        {"estimate_id": "selected-1", "frequency_error_hz": "-0.010000000000"},
+        {"estimate_id": "selected-2", "frequency_error_hz": "-0.006666665897"},
+        {"estimate_id": "selected-3", "frequency_error_hz": "-0.006666665897"},
+    ]
+    observations = (
+        (1800, None, 0xA800, "missing"),
+        (2400, -0.010000000000, 0xA800, "selected-1"),
+        (3900, -0.006666665897, 0xA815, "selected-2"),
+        (4500, -0.006666665897, 0xA815, "selected-3"),
+    )
+    mapped = {
+        "WARMUP_INHIBIT": "WARMUP_INHIBIT",
+        "QUALIFYING": "QUALIFYING",
+        "SETTLING_INHIBIT": "SETTLE_PREVIEW",
+        "TRACKING": "LOCKED_PREVIEW",
+    }
+    controls: list[dict[str, str]] = []
+    for sequence, (timestamp_s, error, code, estimate_id) in enumerate(
+        observations
+    ):
+        if sequence == 2:
+            generator.note_dac_epoch(2403)
+        previous = generator.state
+        result = generator.process(
+            Observation(timestamp_s, error, code)
+        )
+        preview = bool(result["preview_available"])
+        raw_delta = result["raw_delta_codes"]
+        controls.append(
+            {
+                "control_seq": str(sequence),
+                "decision_timestamp_ticks": str(timestamp_s * 16_000_000),
+                "est_input_ref": estimate_id,
+                "current_dac_code": str(code),
+                "frequency_error_hz": (
+                    "" if error is None else f"{error:.12f}"
+                ),
+                "raw_delta_codes": (
+                    "" if raw_delta is None else f"{float(raw_delta):.12f}"
+                ),
+                "limited_delta_codes": (
+                    "" if result["limited_delta_codes"] is None
+                    else str(result["limited_delta_codes"])
+                ),
+                "proposed_dac_code": (
+                    "" if result["proposed_code"] is None
+                    else str(result["proposed_code"])
+                ),
+                "policy_version": policy.policy_id,
+                "config_hash": policy.config_hash,
+                "plant_model_hash": policy.plant_model_hash,
+                "control_state": mapped[str(result["state"])],
+                "previous_control_state": mapped[previous],
+                "decision_reason_code": str(result["reason"]),
+                "model_applicability": "applicable",
+                "preview_available": "true" if preview else "false",
+                "preview_only": "true",
+                "actuation_authorized": "false",
+                "actionable": "false",
+                "step_limited": (
+                    "true" if result["step_limited"] else "false"
+                ),
+                "range_clamped": (
+                    "true" if result["range_clamped"] else "false"
+                ),
+            }
+        )
+
+    without_epoch, _ = _controller_parity(controls, estimates)
+    with_epoch, replay = _controller_parity(
+        controls,
+        estimates,
+        [{"application_timestamp_s": "2403"}],
+    )
+
+    assert not without_epoch.passed
+    assert with_epoch.passed
+    assert all(item["pass"] for item in replay["comparisons"])
 
 
 def test_stage7_analyzer_uses_run_manifest_validation_sets() -> None:

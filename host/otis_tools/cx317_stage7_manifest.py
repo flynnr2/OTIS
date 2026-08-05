@@ -16,6 +16,7 @@ from .cx317_stage7_part_b_matrix import (
     STAGE7_PROMPT_SHA256,
 )
 from .cx317_stage7_part_b_rehearsal import SUPERVISOR_PATH, TOOL_PATH
+from .cx317_stage7_gate_validation import part_a2_progression_gate_valid
 from .cx317_stage7_supervisor import (
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
@@ -96,21 +97,7 @@ def create_stage7_manifest(
             )
         ):
             raise ValueError("Stage 7 Part A1 stability gate is not passed")
-        if (
-            part_a2_gate.get("status") != "pass"
-            or part_a2_gate.get("part") != "part_a"
-            or not 1
-            <= int(
-                part_a2_gate.get("transactions", {}).get(
-                    "application_count", 0
-                )
-            )
-            <= 4
-            or part_a2_gate.get("transactions", {}).get(
-                "all_response_classifications_replay_exactly"
-            )
-            is not True
-        ):
+        if not part_a2_progression_gate_valid(part_a2_gate):
             raise ValueError("Stage 7 Part A2 transaction gate is not passed")
         if (
             part_b_rehearsal_gate.get("status") != "pass"

@@ -88,7 +88,7 @@ def _rows_for(manifest: Any, run_dir: Path, contract: str) -> list[dict[str, str
 
 def _estimator_parity(
     rows: list[dict[str, str]], count_by_seq: dict[int, dict[str, str]],
-    estimator_hash: str,
+    estimator_hash: str, *, minimum_selected: int = 4,
 ) -> tuple[Check, dict[str, dict[str, str]]]:
     by_id: dict[str, dict[str, str]] = {}
     maximum_difference = 0.0
@@ -122,7 +122,7 @@ def _estimator_parity(
         )
     return Check(
         "estimator_host_firmware_parity",
-        valid and selected >= 4,
+        valid and selected >= minimum_selected,
         f"{len(rows)} estimates, {selected} selected; maximum difference {maximum_difference:.17g} Hz",
     ), by_id
 

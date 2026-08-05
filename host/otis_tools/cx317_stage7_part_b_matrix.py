@@ -11,6 +11,7 @@ import os
 import tempfile
 
 from tools.firmware_matrix import DEFAULT_MATRIX, load_matrix
+from .cx317_stage7_gate_validation import part_a2_progression_gate_valid
 
 
 PART_B_PROFILE = "cx317_dual_core_active_endurance_part_b"
@@ -43,15 +44,7 @@ def derive_part_b_matrix(
     gate = json.loads(part_a2_gate_path.read_text(encoding="utf-8"))
     transactions = gate.get("transactions", {})
     applications = int(transactions.get("application_count", 0))
-    if (
-        gate.get("status") != "pass"
-        or gate.get("part") != "part_a"
-        or not 1 <= applications <= 4
-        or transactions.get(
-            "all_response_classifications_replay_exactly"
-        )
-        is not True
-    ):
+    if not part_a2_progression_gate_valid(gate):
         raise ValueError("Stage 7 Part A2 transaction gate is not passed")
     start_code = int(transactions.get("final_code", -1))
     if not 0xA800 <= start_code <= 0xAB00:

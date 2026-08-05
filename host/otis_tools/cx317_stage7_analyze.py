@@ -149,7 +149,9 @@ def _mapped_state(value: str) -> str:
 
 
 def _controller_parity(
-    rows: list[dict[str, str]], estimates: list[dict[str, str]]
+    rows: list[dict[str, str]],
+    estimates: list[dict[str, str]],
+    applications: list[dict[str, str]] | None = None,
 ) -> tuple[Check, dict[str, Any]]:
     policy = load_post_campaign_policy()
     engine = IOnlyPreviewEngine(policy)
@@ -158,17 +160,28 @@ def _controller_parity(
         [int(row["decision_timestamp_ticks"]) for row in rows]
     )
     valid = [int(row["control_seq"]) for row in rows] == list(range(len(rows)))
+    pending_epochs = iter(
+        sorted(
+            int(row["application_timestamp_s"])
+            for row in (applications or [])
+        )
+    )
+    next_epoch = next(pending_epochs, None)
     comparisons: list[dict[str, Any]] = []
     max_error = 0.0
     max_delta = 0.0
     for row, timestamp_ticks in zip(rows, timestamps, strict=True):
+        timestamp_s = timestamp_ticks // TICKS_PER_SECOND
+        while next_epoch is not None and next_epoch <= timestamp_s:
+            engine.note_dac_epoch(next_epoch)
+            next_epoch = next(pending_epochs, None)
         estimate = by_id.get(row["est_input_ref"])
         error = float(estimate["frequency_error_hz"]) if estimate else None
         reason = row["decision_reason_code"]
         previous = engine.state
         host = engine.process(
             Observation(
-                timestamp_s=timestamp_ticks // TICKS_PER_SECOND,
+                timestamp_s=timestamp_s,
                 frequency_error_hz=error,
                 current_code=int(row["current_dac_code"]),
                 reference_valid=reason != "reference_invalid",
@@ -179,7 +192,7 @@ def _controller_parity(
                 count_valid=reason not in {"reference_invalid", "count_invalid"},
                 model_applicable=row["model_applicability"] == "applicable",
                 recovery_requested=reason == "explicit_recovery_fresh_support",
-                dac_epoch=reason == "dac_epoch_full_history_reset",
+                dac_epoch=False,
             )
         )
         host_error = host["frequency_error_hz"]
@@ -1469,9 +1482,18 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
 
     continuity, count_by_seq = _check_continuity(counts, snapshots, references)
     checks.extend(Check(item.identifier, item.passed, item.evidence) for item in continuity)
-    estimator_check, _ = _estimator_parity(estimates, count_by_seq, identities["estimator_sha256"])
+    estimator_check, _ = _estimator_parity(
+        estimates,
+        count_by_seq,
+        identities["estimator_sha256"],
+        minimum_selected=3 if part == "part_a" else 4,
+    )
     checks.append(estimator_check)
-    controller_check, controller_replay = _controller_parity(controls, estimates)
+    controller_check, controller_replay = _controller_parity(
+        controls,
+        estimates,
+        [row for row in active if row["event"] == "application"],
+    )
     checks.append(controller_check)
     transaction_check, transactions = _transactions_for_analysis(
         active, spec, identities, firmware["build_identity"]
