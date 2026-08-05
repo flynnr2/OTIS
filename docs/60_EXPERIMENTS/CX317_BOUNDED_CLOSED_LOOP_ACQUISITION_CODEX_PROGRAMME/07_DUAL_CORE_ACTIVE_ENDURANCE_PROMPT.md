@@ -18,14 +18,36 @@ B, or during Part B. Evidence that contradicts its safety or applicability
 stops Stage 7 instead of triggering an opportunistic threshold change.
 
 Before Part A, freeze a versioned, non-actionable shadow-analysis contract
-containing:
+with the following candidates and rules:
 
-- a finite list of candidate symmetric deadbands;
-- candidate hysteretic entry/release threshold pairs where justified;
-- the consecutive fresh-estimate requirements for entry and release;
+| Shadow ID | Entry rule | Release rule | Persistence rule |
+| --- | --- | --- | --- |
+| `S0` | `abs(error_hz) > 0.006249995628992717` | not applicable (symmetric comparator) | one qualified fresh 600 s estimate |
+| `S1` | `abs(error_hz) > 0.005000000000000000` | not applicable (symmetric comparator) | one qualified fresh 600 s estimate |
+| `S2` | `abs(error_hz) > 0.003333331743876140` | not applicable (symmetric comparator) | one qualified fresh 600 s estimate |
+| `H1` | enter when `abs(error_hz) > 0.005000000000000000` | return to hold only when `abs(error_hz) <= 0.006249995628992717` | two consecutive qualified fresh 600 s estimates of the same non-zero sign for entry; one qualifying release estimate |
+| `H2` | enter when `abs(error_hz) > 0.003333331743876140` | return to hold only when `abs(error_hz) <= 0.006249995628992717` | two consecutive qualified fresh 600 s estimates of the same non-zero sign for entry; one qualifying release estimate |
+
+`S0` is the exact authoritative comparator run as a replay control. `S1`,
+`S2`, `H1` and `H2` are frozen analytic candidates only. The `S2`/`H2`
+threshold is the empirical finite-run detection floor, not calibrated
+resolution and not a recommended active threshold.
+
+For every candidate, freeze:
+
 - the exact counterfactual state, rounding, cadence, clamp, dither and
   cumulative-budget rules;
 - acceptance metrics and a rule for handling temporally correlated estimates.
+
+The counterfactual controller must use the V2 I-only gain, signed rounding,
+21-code per-decision clamp, `0xA800..0xAB00` range, 1,800 s minimum cadence,
+900 s post-write exclusion, 600 s fresh-support requirement, and the same
+one-request, budget and fail-static rules as the authoritative controller.
+For candidates that are in a virtual post-write exclusion, record the pending
+decision but do not manufacture a fresh measurement or advance virtual state
+until the required support would exist. Counterfactual writes are analytical
+events only and must never alter the live DAC epoch, estimator history, budget
+or controller state.
 
 Run every candidate against the same authoritative 600 s estimates in Parts A
 and B. Shadow results must never become actionable, consume an authorization,
@@ -79,6 +101,35 @@ Inside the evidence deadband, continue observing but do not write. Add a
 pre-frozen dither/limit-cycle rule that stops repeated alternating corrections
 or excessive path length even when net movement is small.
 
+### Part B deadband-refinement evidence plan
+
+Keep V2's `abs(error_hz) <= 0.006249995628992717` comparator authoritative
+for the complete run. No observation, shadow event, counterfactual result or
+operator interpretation may narrow it, arm a write, alter the integrator reset
+rule or change any live policy parameter during Part B.
+
+For every qualified estimate, log the authoritative decision and each shadow
+candidate's virtual state and decision: residual and sign; qualified-estimate
+sequence number; entry/release state; persistence state; virtual integrator;
+unclamped and clamped virtual step; virtual applied code and epoch; virtual
+cadence/settling/fresh-support eligibility; and every reason a virtual write
+would be withheld. Preserve the exact source observation identifiers used by
+all five evaluations.
+
+At analysis time, partition results into fixed-code, settled-post-write and
+aggregate series. For each candidate calculate paired differences from `S0`
+in median absolute error, RMS error, inside-band occupancy and continuous
+residence, plus its correction count, total absolute code path, reversals,
+alternating-correction runs, boundary crossings, virtual dither holds and
+clamp approaches. Report lag-1 through lag-6 autocorrelation, an explicitly
+chosen Newey--West/HAC configuration, and effective sample size. Do not use an
+ordinary independent-sample SEM.
+
+The active 24-hour run remains the only source of observed closed-loop error
+and actuator results. The shadow replay may establish plausibility and
+counterfactual actuator cost; it cannot establish the closed-loop benefit of a
+candidate that did not write hardware.
+
 Preserve every qualified 600 s estimate during no-write occupancy, including
 the applied code, time since the last DAC epoch, deadband state, preceding
 correction direction, GNSS qualification, service-load state and available
@@ -116,8 +167,12 @@ Report:
   dependence and drift;
 - naturally observed same-code repeatability and direction-paired hysteresis;
 - for every pre-frozen shadow candidate, counterfactual entry/release events,
-  corrections, convergence, deadband occupancy, alternating corrections and
-  path length;
+  persistence decisions, corrections, convergence, deadband occupancy,
+  continuous residence, alternating corrections, reversals, path length,
+  dither holds, clamp approaches and every withheld virtual write;
+- paired `S1`/`S2`/`H1`/`H2` versus `S0` error and actuator-cost comparison,
+  including the selected HAC/Newey--West interval, autocorrelation and
+  effective sample size;
 - candidate sensitivity to GNSS availability, service load, elapsed time and
   available environment context without unsupported causal claims;
 - response and settling consistency with Campaigns A/B;
@@ -139,18 +194,24 @@ deadband or hysteretic entry/release rule is justified only if it:
 
 1. remains distinguishable from the 600 s estimator's empirical detection
    floor, quantization and fixed-code residual behavior;
-2. does not create unjustified extra writes, alternating corrections, path
-   length or boundary churn;
-3. passes counterfactual replay of Campaigns A/B and Stage 7, including all
+2. improves paired median absolute error by at least one estimator count
+   (`0.001666666666666667 Hz`) relative to `S0`, and its paired HAC 95%
+   interval excludes zero in the favourable direction;
+3. does not materially increase counterfactual corrections, total path
+   length, reversals, alternating corrections, boundary churn, dither holds
+   or clamp approaches; the report must state the pre-frozen practical
+   materiality limits and each observed difference;
+4. passes counterfactual replay of Campaigns A/B and Stage 7, including all
    safety, transaction and fault cases, with every changed decision explained;
-4. records its finite-run uncertainty, temporal-support limitations and any
+5. records its finite-run uncertainty, temporal-support limitations and any
    unresolved directional hysteresis.
 
 Do not narrow below the frozen empirical detection floor without separately
 versioned estimator evidence that justifies the change. Any adopted refinement
 is a new V3 control/response policy and exact artifact. It has no retrospective
 authority over Stage 7 and requires a separate active validation run before it
-can replace V2.
+can replace V2. A Stage 7B result may recommend only a later active validation
+candidate; it must not automatically adopt a candidate.
 
 ## Deliverables and exit gate
 
