@@ -11,6 +11,7 @@ from host.otis_tools.cx317_stage8_final_review import (
     _decision,
     _gate_passed,
     _next_goal,
+    _render,
     _sealed_run_check,
 )
 
@@ -226,3 +227,57 @@ def test_stage8_accepts_validated_partial_source_only_for_declared_subtest(
     )
     assert not check.passed
     assert details["seal_class"] == "unsealed"
+
+
+def test_stage8_report_renders_measured_evidence_sections() -> None:
+    result = {
+        "decision": "dual_core_frequency_control_endurance_passed",
+        "rationale": "passed",
+        "checks": [],
+        "sealed_run_audit": {},
+        "active_run_history": [],
+        "stage7_endurance": {
+            "authoritative_time_series": {"count": 144},
+            "authoritative_context_analysis": {
+                "gnss_qualification": {
+                    "qualified_count": 144,
+                    "observation_count": 144,
+                    "longest_unqualified_run_estimates": 0,
+                }
+            },
+            "transactions": {
+                "application_count": 0,
+                "path_codes": 0,
+                "net_movement_codes": 0,
+                "latencies": [],
+                "complete_request_group_count": 0,
+                "request_group_count": 0,
+                "all_response_classifications_replay_exactly": True,
+            },
+        },
+        "final_verification": {
+            "pytest": {
+                "result": "pass",
+                "passed": 1,
+                "skipped": 0,
+                "failed": 0,
+                "errors": 0,
+            },
+            "firmware_matrix": {
+                "result": "pass",
+                "passed_profiles": 1,
+                "expected_pass_profiles": 1,
+                "guarded_failures_observed": 1,
+                "expected_fail_profiles": 1,
+            },
+            "no_hardware_validation": {"result": "pass", "evidence": "ok"},
+        },
+        "recommended_next_goal": {"goal": "phase", "rationale": "next"},
+        "last_confirmed_code_hex": "0xA815",
+    }
+
+    report = _render(result)
+
+    assert "qualified 600 s observations | 144" in report
+    assert "Stage 7B qualified 144 of 144" in report
+    assert "## Final software/build verification" in report

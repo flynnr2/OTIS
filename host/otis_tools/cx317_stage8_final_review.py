@@ -22,7 +22,7 @@ from .evidence import validate_evidence_snapshot
 from .run_loader import load_manifest
 
 
-TOOL_VERSION = "cx317_stage8_final_review_v1"
+TOOL_VERSION = "cx317_stage8_final_review_v2"
 DECISIONS = (
     "blocked_before_active_control",
     "bounded_control_needs_revision",
@@ -270,6 +270,8 @@ def _run_summary(run_dir: Path, campaign_root: Path) -> dict[str, Any]:
     exit_path = run_dir / "reports/stage7_exit_gate.json"
     exit_gate = _read_json(exit_path) if exit_path.is_file() else {}
     firmware = manifest.get("firmware", {})
+    active_campaign = manifest.get("active_campaign", {})
+    shadow_contract = manifest.get("shadow_contract", {})
     return {
         "run_id": manifest.get("run_id", run_dir.name),
         "run_directory": str(run_dir.relative_to(campaign_root)),
@@ -288,6 +290,8 @@ def _run_summary(run_dir: Path, campaign_root: Path) -> dict[str, Any]:
             else 0
         ),
         "final_confirmed_code": final_code,
+        "transaction_record_count": len(transactions),
+        "transaction_event_sequence": [row.get("event") for row in transactions],
         "corrections": corrections,
         "responses": responses,
         "identities": {
@@ -298,6 +302,18 @@ def _run_summary(run_dir: Path, campaign_root: Path) -> dict[str, Any]:
             "firmware_uf2_sha256": firmware.get("uf2_sha256"),
             "build_identity": firmware.get("build_identity"),
             "profile_id": firmware.get("profile_id"),
+            "estimator_sha256": active_campaign.get("estimator_sha256"),
+            "model_sha256": active_campaign.get("model_sha256"),
+            "active_policy_sha256": active_campaign.get(
+                "active_policy_sha256"
+            ),
+            "response_policy_sha256": active_campaign.get(
+                "response_policy_sha256"
+            ),
+            "numerical_policy_sha256": active_campaign.get(
+                "numerical_policy_sha256"
+            ),
+            "shadow_contract_sha256": shadow_contract.get("sha256"),
         },
     }
 
@@ -343,6 +359,43 @@ def _render(result: dict[str, Any]) -> str:
     decision = result["decision"]
     history = result["active_run_history"]
     next_goal = result["recommended_next_goal"]
+    stage7 = result["stage7_endurance"]
+    authoritative = stage7.get("authoritative_time_series", {})
+    context = stage7.get("authoritative_context_analysis", {})
+    transactions = stage7.get("transactions", {})
+    verification = result["final_verification"]
+    correction_rows: list[tuple[Any, ...]] = []
+    response_rows: list[tuple[Any, ...]] = []
+    for item in history:
+        if item["corrections"]:
+            correction_rows.extend(
+                (
+                    item["run_id"],
+                    correction["request_sequence"],
+                    correction["requested_delta_codes"],
+                    f"0x{correction['requested_code']:04X}",
+                    f"0x{correction['applied_code']:04X}",
+                    f"{correction['pre_error_hz']:.12g}",
+                )
+                for correction in item["corrections"]
+            )
+        else:
+            correction_rows.append((item["run_id"], "none", 0, "—", "—", "—"))
+        response_rows.extend(
+            (
+                item["run_id"],
+                response["request_sequence"],
+                f"{response['post_error_hz']:.12g}",
+                f"{response['observed_response_hz']:.12g}",
+                response["response_class"],
+            )
+            for response in item["responses"]
+        )
+    if not response_rows:
+        response_rows.append(("none", "—", "—", "—", "—"))
+    pytest_result = verification.get("pytest", {})
+    matrix_result = verification.get("firmware_matrix", {})
+    no_hardware_result = verification.get("no_hardware_validation", {})
     lines = [
         "# CX317 Bounded Closed-Loop Acquisition Programme Final Review",
         "",
@@ -355,7 +408,7 @@ def _render(result: dict[str, Any]) -> str:
         "## Exit-gate audit",
         "",
         *_markdown_table(
-            ("Gate", "Result", "Evidence SHA-256"),
+            ("Gate", "Result", "Evidence / SHA-256"),
             (
                 (
                     item["identifier"],
@@ -363,6 +416,21 @@ def _render(result: dict[str, Any]) -> str:
                     item["evidence"],
                 )
                 for item in result["checks"]
+            ),
+        ),
+        "",
+        "## Immutable run seals",
+        "",
+        *_markdown_table(
+            ("Gate", "Seal class", "Snapshot digest", "Gate in snapshot"),
+            (
+                (
+                    name,
+                    details["seal_class"],
+                    details["evidence_snapshot_digest"],
+                    details["gate_in_snapshot"],
+                )
+                for name, details in result["sealed_run_audit"].items()
             ),
         ),
         "",
@@ -396,21 +464,129 @@ def _render(result: dict[str, Any]) -> str:
             ),
         ),
         "",
+        "### Exact automatic applications",
+        "",
+        *_markdown_table(
+            ("Run", "Request", "Delta", "Requested", "Applied", "Pre-error (Hz)"),
+            correction_rows,
+        ),
+        "",
+        "### Response classifications",
+        "",
+        *_markdown_table(
+            ("Run", "Request", "Post-error (Hz)", "Observed response (Hz)", "Class"),
+            response_rows,
+        ),
+        "",
+        "### Complete transaction record sequences",
+        "",
+        *_markdown_table(
+            ("Run", "Records", "Ordered events"),
+            (
+                (
+                    item["run_id"],
+                    item["transaction_record_count"],
+                    " → ".join(item["transaction_event_sequence"]) or "none",
+                )
+                for item in history
+            ),
+        ),
+        "",
+        "## Exact active identities",
+        "",
+        *_markdown_table(
+            (
+                "Run",
+                "Firmware source",
+                "Config",
+                "UF2",
+                "Estimator",
+                "Model",
+                "Active policy",
+                "Response policy",
+                "Numerical policy",
+                "Shadow contract",
+            ),
+            (
+                (
+                    item["run_id"],
+                    item["identities"]["firmware_source_sha256"],
+                    item["identities"]["firmware_configuration_sha256"],
+                    item["identities"]["firmware_uf2_sha256"],
+                    item["identities"]["estimator_sha256"],
+                    item["identities"]["model_sha256"],
+                    item["identities"]["active_policy_sha256"],
+                    item["identities"]["response_policy_sha256"],
+                    item["identities"]["numerical_policy_sha256"],
+                    item["identities"]["shadow_contract_sha256"],
+                )
+                for item in history
+            ),
+        ),
+        "",
         "## Frequency-control and deadband evidence",
         "",
-        "The authoritative Stage 7 result, including 600 s residuals, deadband residence, corrections, response replay, shadow candidates, hysteresis and dither metrics, is preserved verbatim in the bound Stage 7B exit-gate artifact listed in the source-evidence manifest.",
+        "The authoritative Stage 7 policy retained the V2 deadband of `abs(error) <= 0.006249995628992717 Hz`; shadow candidates had zero authority.",
+        "",
+        *_markdown_table(
+            ("Metric", "Measured value"),
+            (
+                ("qualified 600 s observations", authoritative.get("count", "unavailable")),
+                ("minimum error (Hz)", authoritative.get("minimum_hz", "unavailable")),
+                ("maximum error (Hz)", authoritative.get("maximum_hz", "unavailable")),
+                ("mean error (Hz)", authoritative.get("mean_hz", "unavailable")),
+                ("median error (Hz)", authoritative.get("median_hz", "unavailable")),
+                ("inside-deadband fraction", authoritative.get("authoritative_inside_fraction", "unavailable")),
+                ("boundary crossings", authoritative.get("authoritative_boundary_crossings", "unavailable")),
+                ("longest continuous inside residence (s)", authoritative.get("longest_inside_continuous_residence_s", "unavailable")),
+                ("linear drift (Hz/s)", authoritative.get("linear_drift_hz_per_s", "unavailable")),
+                ("effective sample size", authoritative.get("effective_sample_size_initial_positive_acf", "unavailable")),
+                ("automatic applications", transactions.get("application_count", "unavailable")),
+                ("absolute path (codes)", transactions.get("path_codes", "unavailable")),
+                ("net movement (codes)", transactions.get("net_movement_codes", "unavailable")),
+                ("direction-paired hysteresis", context.get("hysteresis_claim", "unavailable")),
+            ),
+        ),
+        "",
+        "Full fixed-code distributions, residence segments, autocorrelation, Newey–West uncertainty, service/environment associations, candidate replay, dither and hysteresis records remain verbatim in the immutable Stage 7B gate listed above.",
         "",
         "## GNSS validity and availability",
         "",
-        "Receiver metadata qualifies but does not timestamp the hardware PPS. The final report preserves fix-quality, GSA-3D, checksum, identity, outage and recovery evidence from the sealed run reports; it does not convert them into UTC traceability.",
+        f"Stage 7B qualified {context.get('gnss_qualification', {}).get('qualified_count', 'unavailable')} of {context.get('gnss_qualification', {}).get('observation_count', 'unavailable')} authoritative observations; its longest unqualified run was {context.get('gnss_qualification', {}).get('longest_unqualified_run_estimates', 'unavailable')} selected estimates.",
+        "Receiver metadata qualifies but does not timestamp the hardware PPS. Fix quality, GSA-3D, checksum, identity, controlled Stage 6 invalidation/recovery and any natural outage evidence remain bounded to eligibility; none supplies UTC traceability.",
         "",
         "## Cross-core architecture and isolation",
         "",
         "Core 1 owns timing, observation, estimation and request generation; Core 0 owns USB, GNSS/environment service and physical I2C application. Stage 6 and Stage 7 evidence must both pass before the endurance decision can be selected.",
         "",
+        f"Stage 7B recorded {len(transactions.get('latencies', []))} complete cross-core transaction latency sets, {transactions.get('complete_request_group_count', 'unavailable')}/{transactions.get('request_group_count', 'unavailable')} complete four-phase request groups, and exact response replay={transactions.get('all_response_classifications_replay_exactly', 'unavailable')}.",
+        "",
         "## Faults, stops, recovery and preservation",
         "",
         "Every manifest-bearing active attempt appears in the correction-history table, including diagnostic and stopped runs. Passing runs cannot erase a failed prefix; diagnostic evidence remains explicitly non-passing.",
+        "",
+        "## Final software/build verification",
+        "",
+        *_markdown_table(
+            ("Gate", "Result", "Exact outcome"),
+            (
+                (
+                    "pytest",
+                    pytest_result.get("result", "unavailable"),
+                    f"passed={pytest_result.get('passed')} skipped={pytest_result.get('skipped')} failed={pytest_result.get('failed')} errors={pytest_result.get('errors')}",
+                ),
+                (
+                    "firmware matrix",
+                    matrix_result.get("result", "unavailable"),
+                    f"supported={matrix_result.get('passed_profiles')}/{matrix_result.get('expected_pass_profiles')} guarded={matrix_result.get('guarded_failures_observed')}/{matrix_result.get('expected_fail_profiles')}",
+                ),
+                (
+                    "no-hardware validation",
+                    no_hardware_result.get("result", "unavailable"),
+                    no_hardware_result.get("evidence", "see bound verification artifact"),
+                ),
+            ),
+        ),
         "",
         "## Remaining blockers and unsupported claims",
         "",
