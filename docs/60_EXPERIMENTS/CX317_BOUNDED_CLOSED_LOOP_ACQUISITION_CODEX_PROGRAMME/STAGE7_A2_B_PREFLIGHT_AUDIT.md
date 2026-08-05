@@ -1,7 +1,9 @@
 # Stage 7 A2/B preflight audit
 
-Status: software audit passed; hardware remains held until this exact source is
-committed and the complete clean firmware matrix passes.
+Status: Part A2 is live under the rehearsal-gated protocol. Part B remains
+held until A2 passes/seals, its exact start artifact is derived, the accelerated
+Part B control rehearsal is regenerated and sealed at the exact clean source,
+and the complete clean firmware matrix passes.
 
 Protocol binding:
 
@@ -43,6 +45,7 @@ A800 is the last confirmed code.
 | Part B start artifact | The matrix template contains a placeholder Part B start and previously required an ad-hoc edit after A2. | A dedicated derivation tool produces an immutable matrix from the passed A2 gate. Manifest creation proves the derived matrix, build source identity, firmware define and passed A2 final code are identical. |
 | Part B zero-correction path | Analysis previously demanded nonzero critical actuator-queue high-water, contradicting the updated protocol's valid zero-write endurance outcome. | A zero-correction B run may pass with critical high-water zero; any B run with applications must show critical traffic. A2 supplies the required live transaction proof. |
 | Part B service schedule | The supervisor could reach a healthy time/clear state while a required load burst was missing, leaving analysis to fail after 24 hours. | Healthy stop now requires all four scheduled 60-query bursts. A missing burst aborts diagnostic-only at the 24-hour boundary. |
+| Part B long-run rehearsal | Unit coverage alone did not provide one immutable gate proving the entire 24-hour scheduler and terminal sequence had been traversed before committing a day to hardware. | An accelerated non-qualifying rehearsal invokes the production supervisor transition methods with a deterministic clock. Part B manifest creation and final analysis require its exact passed report, bound to the current supervisor, rehearsal tool and Stage 7 prompt. |
 | Finite endpoints | A1 originally lacked a finite successful no-crossing endpoint. | A1 is sealed and not repeated. A2 has 90 minutes to qualify and four qualified hours to pass. B has 90 minutes to qualify, exactly 24 qualified hours, and at most one clearance-only hour for an already outstanding transaction. |
 | Evidence sealing | Stage 7 reports were expected but not included in the primary evidence snapshot. | New A2/B manifests declare supervisor state/events, authoritative/shadow reports and the exit gate as required evidence artifacts. |
 
@@ -61,16 +64,48 @@ terminal `DISARMED/evidence_clear`. Zero corrections is a valid pass. If a
 transaction is already outstanding at 24 hours, only its completion and clear
 state may use the one-hour grace period; otherwise the run aborts fail-static.
 
+## Part B accelerated rehearsal
+
+The rehearsal is intended to detect long-clock configuration and terminal-path
+errors before starting the 24-hour hardware run. It advances a deterministic
+clock through the production host supervisor; it has no serial, command-FIFO or
+DAC authority, is explicitly non-qualifying, and normally completes in seconds.
+The already sealed live Stage 7 hardware rehearsal separately proves the real
+Core 1 request, Core 0 acceptance/application and Core 1 response path.
+
+The Part B rehearsal succeeds only when all of these cases pass:
+
+- a healthy preview starts the qualification clock, while failure to qualify
+  aborts at 90 minutes;
+- all four 60-query service bursts start at their declared qualified-time
+  offsets and complete before 24 hours;
+- a full 24-hour inside-deadband/no-write run stops successfully;
+- an already outstanding boundary transaction may complete and clear within
+  the one-hour grace, but failure to clear aborts at its deadline;
+- the 24-hour boundary prevents every new arm;
+- a missing service burst aborts instead of producing a false healthy stop;
+- qualification, duration and completed-burst state survive exact supervisor
+  state reload;
+- the lower-layer, estimator, cadence, response and wall-clock arithmetic is
+  satisfiable: 603 s lower-layer readiness, earliest qualification at 2400 s,
+  final service completion at 68460 s, exact 86400 s qualified duration,
+  conservative 1620 s boundary-transaction clearance inside the 3600 s grace,
+  and a 95400 s absolute wall-clock ceiling.
+
+The passed report is a mandatory immutable Part B prerequisite. Changing any
+case result or its source/prompt binding prevents run-manifest creation.
+
 ## Offline verification
 
 The exact A800 four-phase happy path, every incomplete prefix, cross-phase
 mutation rejection, response replay, A1/A2/B handoff, derived B matrix, B
-zero-write success, missing-service-burst failure, 24-hour clearance success
-and clearance timeout are covered by the focused Stage 7 tests. The complete
-repository suite passes: `738 passed, 2 skipped`.
+zero-write success, all four service bursts, no-new-arm enforcement, exact
+state persistence, missing-service-burst failure, 24-hour clearance success
+and clearance timeout are covered by the focused Stage 7 tests and the durable
+accelerated rehearsal. The complete repository suite passes:
+`757 passed, 2 skipped` at commit `ee7b6e3` plus this documentation update.
 
-No hardware run is authorized by this document alone. The remaining entry gate
-is one clean commit containing this audit and its repairs, followed by the
-complete pinned firmware matrix from that clean source. Part B must additionally
-be re-reviewed against the prompt hash above after A2 passes and before its
-derived artifact is flashed.
+No hardware run is authorized by this document alone. Part B must be re-reviewed
+against the prompt hash above after A2 passes; its exact derived artifact, clean
+matrix, accelerated rehearsal report and manifest bindings must all pass before
+the first Part B flash or command.
