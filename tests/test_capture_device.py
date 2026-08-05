@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import signal
 import shutil
 import threading
 
@@ -297,6 +298,48 @@ def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> Non
     assert b"STS,1,partial" not in raw
     assert b"partial_line_dropped" in raw
     assert "partial" not in RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
+
+
+def test_sigint_shutdown_drains_exactly_one_partial_device_line(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    runner: CaptureDeviceRunner
+
+    class SignalAfterFirstRead(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__(
+                [
+                    b"STS,1,1,1,rp2040_timer0,system,mode",
+                    b",SW1_GPS_PPS,INFO,32768\n"
+                    b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+                ]
+            )
+            self.first_read = True
+
+        def read(self, size: int) -> bytes:
+            data = super().read(size)
+            if self.first_read:
+                self.first_read = False
+                runner.request_stop(signal.SIGINT)
+            return data
+
+    serial = SignalAfterFirstRead()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert (
+        b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n"
+        in raw
+    )
+    assert b"REF,1,1001" not in raw
+    assert b"graceful_shutdown_complete" in raw
+    assert b"partial_line_dropped" not in raw
 
 
 def test_planned_duration_stops_after_completing_partial_device_line(

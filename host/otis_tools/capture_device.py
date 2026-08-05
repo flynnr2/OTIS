@@ -303,8 +303,13 @@ class CaptureDeviceRunner:
         self.commands_sent = 0
         self.commands_rejected = 0
         self.framer = LineFramer(config.max_line_bytes)
+        self.graceful_stop_requested = False
 
     def request_stop(self, signum: int | None = None) -> None:
+        if signum == signal.SIGINT and not self.graceful_stop_requested:
+            self.graceful_stop_requested = True
+            _log_event(logging.INFO, "graceful_shutdown_requested", signal=signum)
+            return
         _log_event(logging.INFO, "shutdown_requested", signal=signum)
         self.stop_event.set()
 
@@ -433,35 +438,51 @@ class CaptureDeviceRunner:
                         backoff = self.config.reconnect_initial_s
 
                         while not self.stop_event.is_set():
-                            # After the planned duration, drain only the
-                            # current device record.  Reading one byte at a
-                            # time prevents a following record from being
-                            # consumed before the capture can stop on the
-                            # newline boundary.
-                            read_size = 1 if duration_reached else self.config.read_size
+                            # After a planned-duration or graceful-signal
+                            # request, drain only the current device record.
+                            # Reading one byte at a time prevents a following
+                            # record from being consumed before the capture
+                            # can stop on the newline boundary.
+                            drain_to_boundary = (
+                                duration_reached or self.graceful_stop_requested
+                            )
+                            read_size = 1 if drain_to_boundary else self.config.read_size
                             data = serial_handle.read(read_size)
                             if data:
                                 self._process_bytes(data, splitter, raw_writer)
-                            self._poll_commands(command_fifo, serial_handle, raw_writer)
+                            if not self.graceful_stop_requested:
+                                self._poll_commands(
+                                    command_fifo, serial_handle, raw_writer
+                                )
                             now = time.monotonic()
                             if capture_deadline is not None and now >= capture_deadline:
                                 duration_reached = True
                             if (
-                                duration_reached
+                                (duration_reached or self.graceful_stop_requested)
                                 and not raw_writer.partial
                                 and not self.framer.buffer
                                 and not self.framer.discarding_oversize
                             ):
-                                _log_event(
-                                    logging.INFO,
-                                    "planned_duration_complete",
-                                    duration_s=self.config.duration_s,
-                                )
-                                _write_marker(
-                                    raw_writer,
-                                    "planned_duration_complete",
-                                    duration_s=self.config.duration_s,
-                                )
+                                if duration_reached:
+                                    _log_event(
+                                        logging.INFO,
+                                        "planned_duration_complete",
+                                        duration_s=self.config.duration_s,
+                                    )
+                                    _write_marker(
+                                        raw_writer,
+                                        "planned_duration_complete",
+                                        duration_s=self.config.duration_s,
+                                    )
+                                else:
+                                    _log_event(
+                                        logging.INFO,
+                                        "graceful_shutdown_complete",
+                                    )
+                                    _write_marker(
+                                        raw_writer,
+                                        "graceful_shutdown_complete",
+                                    )
                                 self.stop_event.set()
                                 break
                             if now >= next_status:
