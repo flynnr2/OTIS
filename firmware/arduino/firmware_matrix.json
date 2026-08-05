@@ -163,7 +163,7 @@
     },
     {
       "id": "cx317_dual_core_active_part_a",
-      "purpose": "Stage 7 Part A bounded dual-core active validation with Core 1 authority and Core 0 single-attempt actuation.",
+      "purpose": "Stage 7 Part A bounded A800 acquisition stimulus for live dual-core transaction confirmation with Core 1 authority and Core 0 single-attempt actuation.",
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -186,14 +186,14 @@
         "OTIS_ENABLE_ENV_SENSORS": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_CX317_ACTIVE_CAMPAIGN": "OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_A",
-        "OTIS_CX317_ACTIVE_START_CODE": "0xA82Au",
+        "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
         "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "4u",
         "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u"
       }
     },
     {
       "id": "cx317_dual_core_active_endurance_part_b",
-      "purpose": "Stage 7 Part B 24-hour bounded dual-core active endurance profile; exact start is regenerated from the sealed Part A final code before hardware entry.",
+      "purpose": "Stage 7 Part B 24-hour bounded dual-core active endurance profile with a one-hour fail-static post-duration clearance ceiling; exact start is regenerated from the sealed Part A final code before hardware entry.",
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",

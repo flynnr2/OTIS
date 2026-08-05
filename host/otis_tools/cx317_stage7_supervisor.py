@@ -40,6 +40,9 @@ CONTROL_CSV = Path("csv/control_previews_v1.csv")
 ESTIMATES_CSV = Path("csv/estimates_v2.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
 PART_B_DURATION_S = 24 * 60 * 60
+STAGE7_QUALIFICATION_TIMEOUT_S = 90 * 60
+PART_A_QUALIFIED_TIMEOUT_S = 4 * 60 * 60
+PART_B_CLEARANCE_GRACE_S = 60 * 60
 PART_A_SERVICE_LOAD_QUERIES = 60
 PART_B_SERVICE_LOAD_STARTS_S = (3600, 25200, 46800, 68400)
 PART_B_SERVICE_LOAD_QUERIES = 60
@@ -139,6 +142,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self._next_service_command_monotonic = 0.0
         self.state.setdefault("stage7_part", part)
         self.state.setdefault("response_count", 0)
+        self.state.setdefault("supervisor_started_utc", _utc_now())
         self.state.setdefault("qualification_started_utc", None)
         self.state.setdefault("part_a_service_load_sent", 0)
         self.state.setdefault("part_a_service_load_complete", False)
@@ -539,6 +543,17 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         evidence_clear = (
             health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
         )
+        qualified = self.state["qualification_started_utc"]
+        if qualified is None:
+            started = self.state.get("supervisor_started_utc")
+            if (
+                isinstance(started, str)
+                and now_epoch - _parse_utc_epoch(started)
+                >= STAGE7_QUALIFICATION_TIMEOUT_S
+            ):
+                self._abort("stage7_qualification_timeout")
+            return
+        qualified_elapsed_s = now_epoch - _parse_utc_epoch(qualified)
         if self.part == "part_a":
             baseline = self.state.get(
                 "part_a_service_load_completed_control_seq"
@@ -583,11 +598,10 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                     "utc": _utc_now(),
                 }
                 self._save()
+            elif qualified_elapsed_s >= PART_A_QUALIFIED_TIMEOUT_S:
+                self._abort("part_a_qualified_duration_expired")
             return
-        qualified = self.state["qualification_started_utc"]
-        if qualified is None:
-            return
-        if now_epoch - _parse_utc_epoch(qualified) >= PART_B_DURATION_S:
+        if qualified_elapsed_s >= PART_B_DURATION_S:
             if not self.state["duration_elapsed"]:
                 self.state["duration_elapsed"] = True
                 self._save()
@@ -603,6 +617,10 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                     "utc": _utc_now(),
                 }
                 self._save()
+            elif qualified_elapsed_s >= (
+                PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S
+            ):
+                self._abort("part_b_clearance_grace_expired")
 
     def run(self) -> int:
         capture_flag = self.run_dir / CAPTURE_IN_PROGRESS_FLAG

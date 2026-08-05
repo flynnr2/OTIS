@@ -10,6 +10,8 @@ from host.otis_tools.cx317_stage7_shadow import (
     CONTRACT_SHA256,
     CandidateEngine,
     ShadowObservation,
+    V1_CONTRACT,
+    V1_CONTRACT_SHA256,
     load_contract,
     run_shadow,
 )
@@ -69,6 +71,18 @@ def test_stage7_shadow_contract_is_exact_finite_and_non_actionable() -> None:
         "counterfactual_only_after_code_divergence": True,
         "candidate_adoption_during_stage7": False,
     }
+
+
+def test_v2_procedural_amendment_preserves_v1_numerics_and_history() -> None:
+    current = load_contract()
+    historical = load_contract(V1_CONTRACT)
+    assert current.contract_id == "CX317_STAGE7_SHADOW_DEADBAND_V2"
+    assert current.contract_sha256 == CONTRACT_SHA256
+    assert historical.contract_id == "CX317_STAGE7_SHADOW_DEADBAND_V1"
+    assert historical.contract_sha256 == V1_CONTRACT_SHA256
+    assert current.authoritative_deadband_hz == historical.authoritative_deadband_hz
+    assert current.candidates == historical.candidates
+    assert current.budgets == historical.budgets
 
 
 def test_stage7_shadow_contract_rejects_any_post_freeze_change(

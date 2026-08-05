@@ -19,7 +19,10 @@ from host.otis_tools.cx317_stage7_shadow_monitor import (
     refresh,
 )
 from host.otis_tools.cx317_stage7_supervisor import (
+    PART_A_QUALIFIED_TIMEOUT_S,
+    PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
+    STAGE7_QUALIFICATION_TIMEOUT_S,
     Stage7Supervisor,
     _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
@@ -33,7 +36,7 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 
 def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
-    part_a, identities_a = load_stage7_spec("part_a", 0xA82A)
+    part_a, identities_a = load_stage7_spec("part_a", 0xA800)
     part_b, identities_b = load_stage7_spec("part_b", 0xA815)
 
     assert part_a.profile == "cx317_dual_core_active_part_a"
@@ -44,7 +47,10 @@ def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
     assert part_b.start_code == 0xA815
     assert (part_b.correction_limit, part_b.cumulative_limit) == (32, 672)
     assert identities_a == identities_b
+    assert STAGE7_QUALIFICATION_TIMEOUT_S == 5400
+    assert PART_A_QUALIFIED_TIMEOUT_S == 14400
     assert PART_B_DURATION_S == 86400
+    assert PART_B_CLEARANCE_GRACE_S == 3600
 
 
 def test_shadow_monitor_preserves_context_and_exactly_replays(tmp_path: Path) -> None:
@@ -124,6 +130,9 @@ def test_stage7_supervisor_declares_four_host_evidence_releases() -> None:
     assert '"response": 4' in source
     assert "PART_A_SERVICE_LOAD_QUERIES = 60" in source
     assert "PART_B_DURATION_S = 24 * 60 * 60" in source
+    assert "STAGE7_QUALIFICATION_TIMEOUT_S = 90 * 60" in source
+    assert "PART_A_QUALIFIED_TIMEOUT_S = 4 * 60 * 60" in source
+    assert "PART_B_CLEARANCE_GRACE_S = 60 * 60" in source
     assert 'self.state["response_count"] >= 1' in source
     assert '"part_a_post_service_eligible_control_seq"' in source
     assert "inside_deadband" not in source[source.index("def _process_transactions") : source.index("def _maybe_qualify")]
@@ -141,7 +150,7 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
                 "profile_id": "cx317_dual_core_active_part_a",
                 "sha256": "3" * 64,
                 "defines": {
-                    "OTIS_CX317_ACTIVE_START_CODE": "0xA82Au",
+                    "OTIS_CX317_ACTIVE_START_CODE": "0xA800u",
                     "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "4u",
                     "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u",
                     "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
@@ -165,7 +174,7 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
     run = tmp_path / "stage7_part_a"
     manifest_path = create_stage7_manifest(
         part="part_a",
-        start_code=0xA82A,
+        start_code=0xA800,
         run_dir=run,
         build_manifest_path=build_manifest,
         serial_device="/dev/cu.test",
@@ -176,6 +185,10 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
     assert manifest["active_campaign"]["authoritative_deadband_hz"] == (
         0.006249995628992717
     )
+    assert manifest["active_campaign"]["qualification_timeout_s"] == 5400
+    assert manifest["active_campaign"]["duration_after_qualification_s"] == 14400
+    assert manifest["active_campaign"]["post_duration_clearance_grace_s"] == 0
+    assert manifest["active_campaign"]["maximum_wall_clock_s"] == 19800
     assert manifest["shadow_contract"]["sha256"] == CONTRACT_SHA256
     assert manifest["host"]["shadow_has_serial_or_command_authority"] is False
 
@@ -226,12 +239,14 @@ def test_stage7_analyzer_reduces_loaded_health_rows() -> None:
     assert latest[("dual_core", "telemetry_dropped")] == "7"
 
 
-def _supervisor(tmp_path: Path) -> Stage7Supervisor:
+def _supervisor(
+    tmp_path: Path, *, part: str = "part_a", start_code: int = 0xA800
+) -> Stage7Supervisor:
     run = tmp_path / "run"
     (run / "csv").mkdir(parents=True)
-    spec, identities = load_stage7_spec("part_a", 0xA82A)
+    spec, identities = load_stage7_spec(part, start_code)
     return Stage7Supervisor(
-        part="part_a",
+        part=part,
         run_dir=run,
         command_fifo=tmp_path / "command.fifo",
         abort_fifo=tmp_path / "abort.fifo",
@@ -250,6 +265,7 @@ def test_part_a_waits_for_eligible_decision_after_service_interval(
     supervisor = _supervisor(tmp_path)
     supervisor.state.update(
         {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
             "response_count": 1,
             "part_a_service_load_complete": True,
             "part_a_service_load_completed_control_seq": 10,
@@ -276,6 +292,79 @@ def test_part_a_waits_for_eligible_decision_after_service_interval(
     supervisor._maybe_finish(health, 0.0)
     assert supervisor.state["terminal"]["result"] == "healthy_stop"
     assert supervisor.state["part_a_post_service_eligible_control_seq"] == 11
+
+
+def test_stage7_qualification_and_part_a_have_finite_fail_static_deadlines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    aborts: list[str] = []
+    monkeypatch.setattr(supervisor, "_abort", aborts.append)
+    supervisor.state.update(
+        {
+            "supervisor_started_utc": "1970-01-01T00:00:00Z",
+            "qualification_started_utc": None,
+        }
+    )
+    supervisor._maybe_finish({}, float(STAGE7_QUALIFICATION_TIMEOUT_S))
+    assert aborts == ["stage7_qualification_timeout"]
+
+    aborts.clear()
+    supervisor.state.update(
+        {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
+            "response_count": 0,
+        }
+    )
+    supervisor._maybe_finish({}, float(PART_A_QUALIFIED_TIMEOUT_S))
+    assert aborts == ["part_a_qualified_duration_expired"]
+
+
+def test_part_b_stable_no_write_run_stops_successfully_at_24h(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    supervisor.state.update(
+        {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
+            "arm_pending": False,
+            "duration_elapsed": False,
+        }
+    )
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+    }
+    supervisor._maybe_finish(health, float(PART_B_DURATION_S))
+    assert supervisor.state["duration_elapsed"] is True
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"] == "24h_after_qualification_complete"
+
+
+def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    aborts: list[str] = []
+    monkeypatch.setattr(supervisor, "_abort", aborts.append)
+    supervisor.state.update(
+        {
+            "qualification_started_utc": "1970-01-01T00:00:00Z",
+            "arm_pending": True,
+            "duration_elapsed": False,
+        }
+    )
+    health = {
+        ("cx317_active", "state"): "AWAITING_RESPONSE",
+        ("cx317_active", "evidence_phase"): "application_preserved",
+    }
+    supervisor._maybe_finish(health, float(PART_B_DURATION_S))
+    assert supervisor.state["duration_elapsed"] is True
+    assert aborts == []
+    supervisor._maybe_finish(
+        health, float(PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S)
+    )
+    assert aborts == ["part_b_clearance_grace_expired"]
 
 
 def test_stage7_supervisor_stops_on_partition_or_transport_loss(

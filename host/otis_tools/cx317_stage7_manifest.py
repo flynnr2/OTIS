@@ -9,7 +9,14 @@ import argparse
 import json
 
 from .cx317_stage7_shadow import CONTRACT_SHA256, DEFAULT_CONTRACT
-from .cx317_stage7_supervisor import POLICY_PATH, load_stage7_spec
+from .cx317_stage7_supervisor import (
+    PART_A_QUALIFIED_TIMEOUT_S,
+    PART_B_CLEARANCE_GRACE_S,
+    PART_B_DURATION_S,
+    POLICY_PATH,
+    STAGE7_QUALIFICATION_TIMEOUT_S,
+    load_stage7_spec,
+)
 from .run_paths import default_csv_files
 
 
@@ -123,7 +130,24 @@ def create_stage7_manifest(
             "settling_exclusion_s": 900,
             "fresh_authoritative_support_s": 600,
             "authoritative_deadband_hz": 0.006249995628992717,
-            "duration_after_qualification_s": 0 if part == "part_a" else 86400,
+            "qualification_timeout_s": STAGE7_QUALIFICATION_TIMEOUT_S,
+            "duration_after_qualification_s": (
+                PART_A_QUALIFIED_TIMEOUT_S
+                if part == "part_a"
+                else PART_B_DURATION_S
+            ),
+            "post_duration_clearance_grace_s": (
+                0 if part == "part_a" else PART_B_CLEARANCE_GRACE_S
+            ),
+            "maximum_wall_clock_s": (
+                STAGE7_QUALIFICATION_TIMEOUT_S
+                + (
+                    PART_A_QUALIFIED_TIMEOUT_S
+                    if part == "part_a"
+                    else PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S
+                )
+            ),
+            "timeout_disposition": "fail_static_abort_diagnostic_no_stage_exit",
             **identities,
         },
         "shadow_contract": {

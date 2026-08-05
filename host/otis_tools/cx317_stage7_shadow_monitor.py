@@ -17,7 +17,7 @@ import time
 
 from .cx317_active_campaign import _latest_health, _read_csv
 from .cx317_stage7_shadow import (
-    CONTRACT_SHA256,
+    ShadowContract,
     ShadowObservation,
     load_contract,
     run_shadow,
@@ -213,6 +213,7 @@ def _context_row(
     start_code: int,
     observation_sequence: int,
     estimate: dict[str, str],
+    shadow_contract_sha256: str,
 ) -> dict:
     timestamp_s = int(estimate["source_reference_last_seq"])
     code, epoch, elapsed, direction = _actual_state(
@@ -280,7 +281,7 @@ def _context_row(
         ),
         "telemetry_dropped": status("dual_core", "telemetry_dropped"),
         "selected_estimator_sha256": SELECTED_HASH,
-        "shadow_contract_sha256": CONTRACT_SHA256,
+        "shadow_contract_sha256": shadow_contract_sha256,
         "preserved_while_capture_active": (
             run_dir / CAPTURE_IN_PROGRESS_FLAG
         ).exists(),
@@ -288,8 +289,14 @@ def _context_row(
     }
 
 
-def refresh(run_dir: Path, *, part: str, start_code: int) -> tuple[int, int]:
-    contract = load_contract()
+def refresh(
+    run_dir: Path,
+    *,
+    part: str,
+    start_code: int,
+    contract: ShadowContract | None = None,
+) -> tuple[int, int]:
+    selected_contract = contract or load_contract()
     authoritative_path = run_dir / AUTHORITATIVE
     existing = _read_csv(authoritative_path)
     known = {row["estimate_id"] for row in existing}
@@ -304,6 +311,7 @@ def refresh(run_dir: Path, *, part: str, start_code: int) -> tuple[int, int]:
                 start_code=start_code,
                 observation_sequence=len(existing) + 1,
                 estimate=estimate,
+                shadow_contract_sha256=selected_contract.contract_sha256,
             )
         )
         known.add(estimate["estimate_id"])
@@ -322,13 +330,16 @@ def refresh(run_dir: Path, *, part: str, start_code: int) -> tuple[int, int]:
         for row in existing
     ]
     decisions = run_shadow(
-        observations, contract=contract, part=part, start_code=start_code
+        observations,
+        contract=selected_contract,
+        part=part,
+        start_code=start_code,
     )
     shadow_rows = [
         {
             **asdict(decision),
             "part": part,
-            "shadow_contract_sha256": CONTRACT_SHA256,
+            "shadow_contract_sha256": selected_contract.contract_sha256,
         }
         for decision in decisions
     ]

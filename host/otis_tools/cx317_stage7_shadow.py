@@ -13,12 +13,20 @@ from typing import Any, Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONTRACT = (
+V1_CONTRACT = (
     REPO_ROOT / "profiles/discipline/cx317_stage7_shadow_deadband_v1.json"
 )
-CONTRACT_SHA256 = (
+V1_CONTRACT_SHA256 = (
     "85c686f9e2ca7997ddf00cf8039c1c8d0d61bfdb217d4104bdbc5519a66e3bf9"
 )
+V2_CONTRACT = (
+    REPO_ROOT / "profiles/discipline/cx317_stage7_shadow_deadband_v2.json"
+)
+V2_CONTRACT_SHA256 = (
+    "c9336162e1c27bd037fa854cef33c0080b8fe1ebfaf24ff0302f2eae2c1e4291"
+)
+DEFAULT_CONTRACT = V2_CONTRACT
+CONTRACT_SHA256 = V2_CONTRACT_SHA256
 TOOL_VERSION = "cx317_stage7_shadow_v1"
 
 
@@ -118,8 +126,67 @@ class ShadowDecision:
 
 
 def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
-    if _sha256_file(path) != CONTRACT_SHA256:
+    actual_contract_sha256 = _sha256_file(path)
+    returned_contract_id: str | None = None
+    returned_contract_sha256 = actual_contract_sha256
+    if actual_contract_sha256 == V2_CONTRACT_SHA256:
+        amendment = json.loads(path.read_text(encoding="utf-8"))
+        if set(amendment) != {
+            "schema_version",
+            "contract_id",
+            "status",
+            "base_contract",
+            "amendment",
+        }:
+            raise ValueError("Stage 7 V2 shadow amendment fields differ")
+        if (
+            amendment["schema_version"] != 2
+            or amendment["contract_id"] != "CX317_STAGE7_SHADOW_DEADBAND_V2"
+            or amendment["status"]
+            != "frozen_before_stage7_part_a2_non_actionable"
+        ):
+            raise ValueError("unsupported Stage 7 V2 shadow contract identity")
+        base = amendment["base_contract"]
+        amended = amendment["amendment"]
+        expected_base_path = str(V1_CONTRACT.relative_to(REPO_ROOT))
+        if base != {
+            "path": expected_base_path,
+            "sha256": V1_CONTRACT_SHA256,
+        }:
+            raise ValueError("Stage 7 V2 shadow base contract differs")
+        expected_prompt_path = (
+            "docs/60_EXPERIMENTS/"
+            "CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/"
+            "07_DUAL_CORE_ACTIVE_ENDURANCE_PROMPT.md"
+        )
+        if set(amended) != {
+            "stage7_prompt_path",
+            "stage7_prompt_sha256",
+            "scope",
+            "numerical_contract_changed",
+            "candidate_set_changed",
+            "shadow_authority_changed",
+        } or amended != {
+            "stage7_prompt_path": expected_prompt_path,
+            "stage7_prompt_sha256": amended["stage7_prompt_sha256"],
+            "scope": "finite_runtime_and_composite_part_a_procedure_only",
+            "numerical_contract_changed": False,
+            "candidate_set_changed": False,
+            "shadow_authority_changed": False,
+        }:
+            raise ValueError("Stage 7 V2 shadow amendment semantics differ")
+        if (
+            _sha256_file(REPO_ROOT / amended["stage7_prompt_path"])
+            != amended["stage7_prompt_sha256"]
+        ):
+            raise ValueError("Stage 7 V2 shadow prompt binding differs")
+        path = REPO_ROOT / base["path"]
+        if _sha256_file(path) != base["sha256"]:
+            raise ValueError("Stage 7 V2 shadow base contract hash differs")
+        returned_contract_id = amendment["contract_id"]
+    elif actual_contract_sha256 != V1_CONTRACT_SHA256:
         raise ValueError("Stage 7 shadow contract hash differs from the freeze")
+
     value = json.loads(path.read_text(encoding="utf-8"))
     expected_top = {
         "schema_version",
@@ -155,6 +222,11 @@ def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
         "response_policy_sha256": bindings["response_policy_path"],
     }
     for hash_field, relative_path in bound_paths.items():
+        # V1 remains an immutable historical contract.  Its prompt was amended
+        # only after Part A1 completed; V2 binds the amended prompt while
+        # inheriting every unchanged numerical and authority field from V1.
+        if hash_field == "stage7_prompt_sha256":
+            continue
         if _sha256_file(REPO_ROOT / relative_path) != bindings[hash_field]:
             raise ValueError(f"Stage 7 shadow binding differs: {hash_field}")
 
@@ -265,8 +337,8 @@ def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
         raise ValueError("Stage 7 shadow dither semantics differ")
 
     return ShadowContract(
-        contract_id=value["contract_id"],
-        contract_sha256=CONTRACT_SHA256,
+        contract_id=returned_contract_id or value["contract_id"],
+        contract_sha256=returned_contract_sha256,
         authoritative_deadband_hz=float(
             numerical["authoritative_v2_deadband_hz"]
         ),

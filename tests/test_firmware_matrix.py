@@ -102,7 +102,7 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "8u"
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "168u"
-    assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA82Au"
+    assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
     assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
     assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
     assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA82Au"

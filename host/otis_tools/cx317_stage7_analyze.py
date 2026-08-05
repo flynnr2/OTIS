@@ -24,7 +24,12 @@ from .cx317_stage6_live_analyze import (
     _one_marker,
     _serialized_difference,
 )
-from .cx317_stage7_shadow import CONTRACT_SHA256, ShadowObservation, load_contract, run_shadow
+from .cx317_stage7_shadow import (
+    ShadowContract,
+    ShadowObservation,
+    load_contract,
+    run_shadow,
+)
 from .cx317_stage7_shadow_monitor import (
     AUTHORITATIVE,
     SHADOW,
@@ -34,9 +39,12 @@ from .cx317_stage7_shadow_monitor import (
     refresh,
 )
 from .cx317_stage7_supervisor import (
+    PART_A_QUALIFIED_TIMEOUT_S,
     PART_A_SERVICE_LOAD_QUERIES,
+    PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
     PART_B_SERVICE_LOAD_STARTS_S,
+    STAGE7_QUALIFICATION_TIMEOUT_S,
     load_stage7_spec,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
@@ -44,6 +52,8 @@ from .timebase import unwrap_ticks
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PART_A_STABILITY_MIN_OBSERVATIONS = 36
+PART_A_STABILITY_MIN_DURATION_S = 6 * 60 * 60
 HISTORICAL_REPLAYS = (
     (
         "campaign_a_v3",
@@ -870,9 +880,12 @@ def _shadow_observations(
 
 
 def _gain_sensitivity(
-    authoritative: list[dict[str, str]], *, part: str, start_code: int
+    authoritative: list[dict[str, str]],
+    *,
+    part: str,
+    start_code: int,
+    contract: ShadowContract,
 ) -> dict[str, Any]:
-    contract = load_contract()
     observations = _shadow_observations(authoritative)
     result: dict[str, Any] = {}
     for gain in (contract.gain_min, contract.gain_nominal, contract.gain_max):
@@ -1018,9 +1031,12 @@ def _historical_shadow_replays() -> tuple[Check, dict[str, Any]]:
 
 
 def _shadow_replay(
-    authoritative: list[dict[str, str]], shadow: list[dict[str, str]], part: str, start_code: int
+    authoritative: list[dict[str, str]],
+    shadow: list[dict[str, str]],
+    part: str,
+    start_code: int,
+    contract: ShadowContract,
 ) -> tuple[Check, dict[str, Any]]:
-    contract = load_contract()
     observations = [
         ShadowObservation(
             observation_sequence=int(row["observation_sequence"]),
@@ -1041,7 +1057,7 @@ def _shadow_replay(
         expected_row = {
             **asdict(replayed),
             "part": part,
-            "shadow_contract_sha256": CONTRACT_SHA256,
+            "shadow_contract_sha256": contract.contract_sha256,
         }
         for field in SHADOW_FIELDS:
             value = expected_row[field]
@@ -1081,6 +1097,10 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         raise ValueError("run is not an instantiated Stage 7 part")
     part = str(manifest.data["active_campaign"]["part"])
     start_code = int(manifest.data["active_campaign"]["start_code"])
+    shadow_contract_path = REPO_ROOT / str(
+        manifest.data["shadow_contract"]["path"]
+    )
+    shadow_contract = load_contract(shadow_contract_path)
     spec, identities = load_stage7_spec(part, start_code)
     checks: list[Check] = []
 
@@ -1095,13 +1115,39 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         == firmware["configuration_sha256"]
         and build["provenance"]["source"]["sha256"]
         == firmware["source_sha256"]
-        and manifest.data["shadow_contract"]["sha256"] == CONTRACT_SHA256
+        and manifest.data["shadow_contract"]["sha256"]
+        == shadow_contract.contract_sha256
     )
     checks.append(
         Check(
             "exact_clean_artifact_and_frozen_contract",
             artifact_ok,
             f"profile {firmware['profile_id']}; UF2 {firmware['uf2_sha256']}",
+        )
+    )
+    campaign = manifest.data["active_campaign"]
+    expected_duration = (
+        PART_A_QUALIFIED_TIMEOUT_S if part == "part_a" else PART_B_DURATION_S
+    )
+    expected_grace = 0 if part == "part_a" else PART_B_CLEARANCE_GRACE_S
+    finite_runtime_ok = (
+        int(campaign.get("qualification_timeout_s", -1))
+        == STAGE7_QUALIFICATION_TIMEOUT_S
+        and int(campaign.get("duration_after_qualification_s", -1))
+        == expected_duration
+        and int(campaign.get("post_duration_clearance_grace_s", -1))
+        == expected_grace
+        and int(campaign.get("maximum_wall_clock_s", -1))
+        == STAGE7_QUALIFICATION_TIMEOUT_S + expected_duration + expected_grace
+        and campaign.get("timeout_disposition")
+        == "fail_static_abort_diagnostic_no_stage_exit"
+    )
+    checks.append(
+        Check(
+            "finite_runtime_contract_bound",
+            finite_runtime_ok,
+            "qualification/duration/clearance maxima "
+            f"{STAGE7_QUALIFICATION_TIMEOUT_S}/{expected_duration}/{expected_grace} s",
         )
     )
 
@@ -1183,7 +1229,12 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
 
-    refresh(run_dir, part=part, start_code=start_code)
+    refresh(
+        run_dir,
+        part=part,
+        start_code=start_code,
+        contract=shadow_contract,
+    )
     authoritative = _read_csv(run_dir / AUTHORITATIVE)
     shadow = _read_csv(run_dir / SHADOW)
     selected = _selected_rows(run_dir / "csv/estimates_v2.csv")
@@ -1191,7 +1242,11 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         len(authoritative) == len(selected)
         and [row["estimate_id"] for row in authoritative]
         == [row["estimate_id"] for row in selected]
-        and all(row["shadow_contract_sha256"] == CONTRACT_SHA256 for row in authoritative)
+        and all(
+            row["shadow_contract_sha256"]
+            == shadow_contract.contract_sha256
+            for row in authoritative
+        )
         and all(
             row["preserved_while_capture_active"] == "true"
             for row in authoritative
@@ -1206,7 +1261,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
     shadow_check, shadow_summaries = _shadow_replay(
-        authoritative, shadow, part, start_code
+        authoritative, shadow, part, start_code, shadow_contract
     )
     checks.append(shadow_check)
     historical_check, historical_replays = _historical_shadow_replays()
@@ -1218,9 +1273,22 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
     terminal = supervisor.get("terminal") or {}
+    qualified = supervisor.get("qualification_started_utc")
+    completed = terminal.get("utc")
+    qualified_duration = (
+        __import__("datetime").datetime.fromisoformat(
+            completed.replace("Z", "+00:00")
+        ).timestamp()
+        - __import__("datetime").datetime.fromisoformat(
+            qualified.replace("Z", "+00:00")
+        ).timestamp()
+        if qualified and completed
+        else 0.0
+    )
     if part == "part_a":
         schedule_ok = (
             terminal.get("result") == "healthy_stop"
+            and qualified_duration <= PART_A_QUALIFIED_TIMEOUT_S + 1.0
             and int(supervisor.get("response_count", 0)) >= 1
             and int(supervisor.get("response_count", 0)) <= 4
             and supervisor.get("part_a_service_load_complete") is True
@@ -1230,32 +1298,24 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             is not None
         )
         schedule_evidence = (
-            f"responses {supervisor.get('response_count')}; service queries "
+            f"qualified duration {qualified_duration:.0f} s; responses "
+            f"{supervisor.get('response_count')}; service queries "
             f"{supervisor.get('part_a_service_load_sent')}; post-service "
             "eligible control "
             f"{supervisor.get('part_a_post_service_eligible_control_seq')}"
         )
     else:
-        qualified = supervisor.get("qualification_started_utc")
-        completed = terminal.get("utc")
-        duration = (
-            __import__("datetime").datetime.fromisoformat(
-                completed.replace("Z", "+00:00")
-            ).timestamp()
-            - __import__("datetime").datetime.fromisoformat(
-                qualified.replace("Z", "+00:00")
-            ).timestamp()
-            if qualified and completed
-            else 0.0
-        )
         schedule_ok = (
             terminal.get("result") == "healthy_stop"
-            and duration >= PART_B_DURATION_S
+            and qualified_duration >= PART_B_DURATION_S
+            and qualified_duration <= (
+                PART_B_DURATION_S + PART_B_CLEARANCE_GRACE_S + 1.0
+            )
             and set(supervisor.get("part_b_service_bursts_complete", []))
             == set(range(len(PART_B_SERVICE_LOAD_STARTS_S)))
         )
         schedule_evidence = (
-            f"qualified duration {duration:.0f} s; completed service bursts "
+            f"qualified duration {qualified_duration:.0f} s; completed service bursts "
             f"{supervisor.get('part_b_service_bursts_complete')}"
         )
     checks.append(Check("part_specific_duration_and_service_schedule", schedule_ok, schedule_evidence))
@@ -1279,6 +1339,112 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
     )
 
+    stability_gate: dict[str, Any] = {
+        "schema_version": 1,
+        "test": "part_a_fixed_code_stability",
+        "applicable": part == "part_a" and start_code == 0xA82A,
+        "status": "not_applicable",
+        "claim_scope": "fixed_code_stability_only_not_active_transaction_confirmation",
+    }
+    if stability_gate["applicable"]:
+        observation_duration_s = (
+            int(authoritative[-1]["timestamp_s"])
+            - int(authoritative[0]["timestamp_s"])
+            + 600
+            if authoritative
+            else 0
+        )
+        abort_ticks = min(
+            (
+                int(row["timestamp_ticks"])
+                for row in health_rows
+                if row.get("component") == "cx317_active"
+                and row.get("status_key") == "state"
+                and row.get("status_value") == "ABORTED"
+            ),
+            default=None,
+        )
+        pre_stop_health_rows = [
+            row
+            for row in health_rows
+            if abort_ticks is None or int(row["timestamp_ticks"]) < abort_ticks
+        ]
+        pre_stop = _latest_health_rows(pre_stop_health_rows)
+        pre_stop_health_ok = (
+            pre_stop.get(("dual_core", "partition_fault")) == "none"
+            and pre_stop.get(("dual_core", "fail_static")) == "false"
+            and pre_stop.get(("cx317_active", "fail_static")) == "false"
+            and int(pre_stop.get(("dual_core", "telemetry_dropped"), "-1")) == 0
+            and int(pre_stop.get(("gnss_receiver", "parser_drop_count"), "-1")) == 0
+            and int(pre_stop.get(("gnss_receiver", "checksum_failure_count"), "-1")) == 0
+            and int(pre_stop.get(("gnss_receiver", "truncated_count"), "-1")) == 0
+        )
+        stability_criteria = {
+            "minimum_observations": len(authoritative)
+            >= PART_A_STABILITY_MIN_OBSERVATIONS,
+            "minimum_qualified_duration": observation_duration_s
+            >= PART_A_STABILITY_MIN_DURATION_S,
+            "all_observations_inside_authoritative_deadband": bool(authoritative)
+            and all(
+                row["authoritative_deadband_state"] == "inside"
+                for row in authoritative
+            ),
+            "all_observations_gnss_qualified": bool(authoritative)
+            and all(row["gnss_qualification"] == "qualified" for row in authoritative),
+            "zero_automatic_applications_and_movement": (
+                len(applications) == 0
+                and int(transactions["path_codes"]) == 0
+                and int(transactions["net_movement_codes"]) == 0
+            ),
+            "continuous_raw_count_snapshot_evidence": all(
+                item.passed for item in continuity
+            ),
+            "exact_estimator_controller_shadow_replay": (
+                estimator_check.passed
+                and controller_check.passed
+                and observation_ok
+                and shadow_check.passed
+            ),
+            "pre_stop_health_clean": pre_stop_health_ok,
+            "deliberate_fail_static_endpoint": (
+                terminal.get("result") == "aborted"
+                and terminal.get("reason") == "independent_host_abort_fifo"
+            ),
+            "host_transport_counters_zero": all(
+                int(stopped.get(key, -1)) == 0
+                for key in (
+                    "malformed_utf8",
+                    "parser_errors",
+                    "reconnect_count",
+                    "commands_rejected",
+                )
+            ),
+        }
+        stability_passed = all(stability_criteria.values())
+        stability_gate.update(
+            {
+                "status": "pass" if stability_passed else "fail",
+                "criteria": stability_criteria,
+                "observed": {
+                    "qualified_observations": len(authoritative),
+                    "qualified_duration_s": observation_duration_s,
+                    "minimum_error_hz": min(
+                        float(row["frequency_error_hz"]) for row in authoritative
+                    ),
+                    "maximum_error_hz": max(
+                        float(row["frequency_error_hz"]) for row in authoritative
+                    ),
+                    "automatic_applications": len(applications),
+                    "path_codes": int(transactions["path_codes"]),
+                    "terminal": terminal,
+                },
+            }
+        )
+        _atomic_json(
+            run_dir / "reports/part_a_fixed_code_stability_gate.json",
+            stability_gate,
+        )
+
     passed = all(check.passed for check in checks)
     result = {
         "schema_version": 1,
@@ -1288,6 +1454,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         "run_id": manifest.run_id,
         "checks": [asdict(check) for check in checks],
         "transactions": transactions,
+        "subtests": {"part_a_fixed_code_stability": stability_gate},
         "controller_replay": controller_replay,
         "authoritative_time_series": _series_metrics(authoritative),
         "authoritative_context_analysis": _context_analysis(authoritative),
@@ -1296,7 +1463,10 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             shadow, post_part_b=part == "part_b"
         ),
         "shadow_gain_sensitivity": _gain_sensitivity(
-            authoritative, part=part, start_code=start_code
+            authoritative,
+            part=part,
+            start_code=start_code,
+            contract=shadow_contract,
         ),
         "shadow_context_sensitivity": _shadow_context_sensitivity(
             authoritative, shadow
