@@ -24,9 +24,9 @@ constexpr char kModelHash[] =
 #if OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
 constexpr char kNumericalPolicyHash[] =
-    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+    "eef8f40b370c148fce8795c0a7f372132f2409d694d73ac3ae1af0c3935cc165";
 constexpr char kActivePolicyHash[] =
-    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+    "eef8f40b370c148fce8795c0a7f372132f2409d694d73ac3ae1af0c3935cc165";
 #else
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";

@@ -34,6 +34,19 @@ def test_live_firmware_embeds_every_exact_frozen_identity() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_stage7_rehearsal_policy_hash_is_bound_into_both_live_paths() -> None:
+    policy_hash = _hash("profiles/discipline/cx317_stage7_rehearsal_v1.json")
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert active.count(policy_hash) == 2
+    assert preview.count(policy_hash) == 1
+
+
 def test_only_actuator_owner_has_controller_to_dac_call_and_no_retry() -> None:
     owner = (FIRMWARE / "otis_cx317_active_actuator.cpp").read_text(
         encoding="utf-8"

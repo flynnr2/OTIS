@@ -25,7 +25,7 @@ constexpr char kSelectedEstimatorHash[] =
     "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977";
 constexpr char kPolicyId[] = "CX317_STAGE7_HIL_REHEARSAL_V1";
 constexpr char kPolicyHash[] =
-    "c8db270d92e5045fc3b03f7d1ea607da1ea145478b49c300bc6af9987c538d8d";
+    "eef8f40b370c148fce8795c0a7f372132f2409d694d73ac3ae1af0c3935cc165";
 #else
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
