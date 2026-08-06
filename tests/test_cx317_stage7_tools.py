@@ -1418,6 +1418,63 @@ def test_part_b_rehearsal_traverses_all_four_service_bursts(
     assert supervisor.state["part_b_service_burst_sent"] == 0
 
 
+def test_part_b_service_burst_and_one_shot_authorization_never_overlap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="part_b", start_code=0xA82A)
+    supervisor.state["qualification_started_utc"] = "1970-01-01T00:00:00Z"
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        "host.otis_tools.cx317_stage7_supervisor.time.time",
+        lambda: 3600.0,
+    )
+
+    supervisor.state["arm_pending"] = True
+    supervisor._service_load(1.0)
+    assert commands == []
+    assert supervisor.state["part_b_service_burst_index"] is None
+
+    supervisor.state["arm_pending"] = False
+    supervisor._service_load(1.0)
+    assert commands == ["CONFIG?"]
+    assert supervisor.state["part_b_service_burst_index"] == 0
+
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    controls.write_text(
+        "control_seq,preview_available,decision_timestamp_ticks,"
+        "limited_delta_codes\n"
+        "10,true,16000000000,19\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "true",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "arm_eligible"): "true",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "selected_interval_count"): "599",
+        ("cx317_active", "uptime_s"): "4200",
+    }
+    supervisor._maybe_start_or_arm(health)
+    assert commands == ["CONFIG?"]
+
+    supervisor.state["part_b_service_burst_sent"] = 60
+    supervisor._service_load(2.01)
+    assert supervisor.state["part_b_service_burst_index"] is None
+    assert supervisor.state["part_b_arm_resume_after_control_seq"] == 10
+
+    supervisor._maybe_start_or_arm(health)
+    assert commands == ["CONFIG?"]
+
+    with controls.open("a", encoding="utf-8") as handle:
+        handle.write("11,true,25600000000,19\n")
+    supervisor._maybe_start_or_arm(health)
+    assert commands == ["CONFIG?"]
+    assert supervisor.state["part_b_arm_resume_after_control_seq"] is None
+
+
 def test_part_b_cannot_wait_indefinitely_for_post_duration_clearance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1587,6 +1644,41 @@ def test_stage7_arms_only_for_the_next_cadence_eligible_interval(
     with controls.open("a", encoding="utf-8") as handle:
         handle.write("57627748416,false,decision_cadence_hold,est:3\n")
     assert _next_selected_interval_is_cadence_eligible(controls, estimates)
+
+
+def test_stage7_cadence_prediction_rejects_the_failed_part_b_boundary(
+    tmp_path: Path,
+) -> None:
+    controls = tmp_path / "control_previews_v1.csv"
+    estimates = tmp_path / "estimates_v2.csv"
+    # Reproduce the RP2040 timer phase that made three nominal 600 s spans
+    # only 1799 integer uptime seconds.  PPS source sequences had advanced by
+    # 1803 and therefore falsely predicted an eligible decision in the stopped
+    # Part B run.
+    modulus = (1 << 32) * 16
+    spacing = 9_599_940_352
+    eligible_ticks = 763_248_107_312
+    unwrapped = [
+        eligible_ticks - (75 - index) * spacing for index in range(78)
+    ]
+    lines = [
+        "control_seq,preview_available,decision_timestamp_ticks,"
+        "decision_reason_code\n"
+    ]
+    for index, ticks in enumerate(unwrapped):
+        preview = "true" if index == 75 else "false"
+        reason = (
+            "inside_evidence_deadband"
+            if index == 75
+            else "decision_cadence_hold"
+        )
+        lines.append(f"{index},{preview},{ticks % modulus},{reason}\n")
+    controls.write_text("".join(lines), encoding="utf-8")
+    estimates.write_text("estimate_id,source_count_seq\n", encoding="utf-8")
+
+    assert not _next_selected_interval_is_cadence_eligible(
+        controls, estimates
+    )
 
 
 def test_stage7_does_not_rearm_from_stale_high_progress_after_control(

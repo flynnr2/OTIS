@@ -24,6 +24,7 @@ from .cx317_stage7_supervisor import (
     PART_B_SERVICE_LOAD_STARTS_S,
     STAGE7_QUALIFICATION_TIMEOUT_S,
     Stage7Supervisor,
+    _next_selected_interval_is_cadence_eligible,
     load_stage7_spec,
     part_b_timeline_preflight,
 )
@@ -159,6 +160,64 @@ def rehearse() -> dict[str, object]:
             and service.state["part_b_service_burst_index"] is None
         )
 
+        interlock = _supervisor(root / "service_arm_interlock")
+        interlock.state["qualification_started_utc"] = (
+            "1970-01-01T00:00:00Z"
+        )
+        interlock_commands: list[str] = []
+        interlock._command = interlock_commands.append  # type: ignore[method-assign]
+        interlock.state["arm_pending"] = True
+        wall = float(PART_B_SERVICE_LOAD_STARTS_S[0])
+        with patch(
+            "host.otis_tools.cx317_stage7_supervisor.time.time",
+            side_effect=lambda: wall,
+        ):
+            interlock._service_load(1.0)
+            pending_arm_delayed_service = not interlock_commands
+            interlock.state["arm_pending"] = False
+            interlock._service_load(1.0)
+        service_started_only_after_clear = (
+            interlock_commands == ["CONFIG?"]
+            and interlock.state["part_b_service_burst_index"] == 0
+        )
+        cases["service_and_one_shot_authorization_do_not_overlap"] = (
+            pending_arm_delayed_service and service_started_only_after_clear
+        )
+
+        cadence = _supervisor(root / "cadence_regression")
+        controls = cadence.run_dir / "csv/control_previews_v1.csv"
+        estimates = cadence.run_dir / "csv/estimates_v2.csv"
+        modulus = (1 << 32) * 16
+        spacing = 9_599_940_352
+        eligible_ticks = 763_248_107_312
+        unwrapped = [
+            eligible_ticks - (75 - index) * spacing
+            for index in range(78)
+        ]
+        lines = [
+            "control_seq,preview_available,decision_timestamp_ticks,"
+            "decision_reason_code\n"
+        ]
+        for index, ticks in enumerate(unwrapped):
+            preview = "true" if index == 75 else "false"
+            reason = (
+                "inside_evidence_deadband"
+                if index == 75
+                else "decision_cadence_hold"
+            )
+            lines.append(
+                f"{index},{preview},{ticks % modulus},{reason}\n"
+            )
+        controls.write_text("".join(lines), encoding="utf-8")
+        estimates.write_text(
+            "estimate_id,source_count_seq\n", encoding="utf-8"
+        )
+        cases["failed_1799_second_cadence_boundary_is_not_armed"] = not (
+            _next_selected_interval_is_cadence_eligible(
+                controls, estimates
+            )
+        )
+
         clear_health = {
             ("cx317_active", "state"): "DISARMED",
             ("cx317_active", "evidence_phase"): "evidence_clear",
@@ -263,6 +322,7 @@ def rehearse() -> dict[str, object]:
                 "qualification_started_utc": "1970-01-01T00:00:00Z",
                 "duration_elapsed": True,
                 "part_b_service_bursts_complete": [0, 1, 2, 3],
+                "part_b_arm_resume_after_control_seq": 78,
             }
         )
         persisted._save()
@@ -273,6 +333,7 @@ def rehearse() -> dict[str, object]:
             and reloaded.state["duration_elapsed"] is True
             and reloaded.state["part_b_service_bursts_complete"]
             == [0, 1, 2, 3]
+            and reloaded.state["part_b_arm_resume_after_control_seq"] == 78
         )
 
     return {

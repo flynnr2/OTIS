@@ -34,6 +34,7 @@ from .cx317_active_campaign import (
     validate_transaction_row,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .timebase import unwrap_ticks
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -61,6 +62,7 @@ REHEARSAL_QUALIFIED_TIMEOUT_S = 20 * 60
 REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
 REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 ACTIVE_ARM_LIFETIME_S = 110
+RP2040_TIMER0_TICKS_PER_SECOND = 16_000_000
 REAL_FC0_STARTUP_INHIBIT_S = 600
 REAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 
@@ -394,32 +396,51 @@ def _next_selected_interval_is_cadence_eligible(
     eligible decision.  Selected estimates arrive every 600 seconds, while the
     frozen controller decision cadence is 1800 seconds.  Arming before either
     intervening cadence-hold interval leaves the one-shot authorization unused
-    and therefore correctly faults when its short lifetime expires.  Use the
-    selected estimate's integer boundary sequence because that is the uptime
-    value evaluated by firmware; raw edge ticks include harmless sub-second
-    sampling jitter and are not the cadence clock.
+    and therefore correctly faults when its short lifetime expires.
+
+    Firmware evaluates integer uptime seconds, not the PPS source sequence.
+    The source sequence is a count identity and can lead or lag uptime by
+    several seconds during a long run.  CTL timestamps are emitted from the
+    same monotonic RP2040 timer domain used to derive uptime.  Project the next
+    boundary with the shortest observed selected-interval spacing and require
+    its floored second to satisfy the cadence.  This deliberately defers an
+    ambiguous nominal 1800-second boundary by one selected interval rather
+    than granting an authorization that firmware may classify as a hold.
     """
+    del estimates_path  # retained in the API for callers and historical tests
     rows = _read_csv(controls_path)
     if not rows:
         return False
     eligible = [row for row in rows if row.get("preview_available") == "true"]
     if not eligible:
         return True
-    estimates = {
-        row.get("estimate_id", ""): row for row in _read_csv(estimates_path)
-    }
     try:
-        latest_uptime_s = int(
-            estimates[rows[-1]["est_input_ref"]]["source_count_seq"]
+        ticks, _ = unwrap_ticks(
+            [int(row["decision_timestamp_ticks"]) for row in rows]
         )
-        last_eligible_uptime_s = int(
-            estimates[eligible[-1]["est_input_ref"]]["source_count_seq"]
+        eligible_index = max(
+            index
+            for index, row in enumerate(rows)
+            if row.get("preview_available") == "true"
         )
     except (KeyError, TypeError, ValueError):
         return False
-    return latest_uptime_s + selected_interval_s - last_eligible_uptime_s >= (
-        decision_cadence_s
+    positive_spacings = [
+        later - earlier
+        for earlier, later in zip(ticks, ticks[1:])
+        if later > earlier
+    ]
+    conservative_spacing = min(
+        positive_spacings,
+        default=selected_interval_s * RP2040_TIMER0_TICKS_PER_SECOND,
     )
+    projected_next_s = (
+        ticks[-1] + conservative_spacing
+    ) // RP2040_TIMER0_TICKS_PER_SECOND
+    last_eligible_s = (
+        ticks[eligible_index] // RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    return projected_next_s - last_eligible_s >= decision_cadence_s
 
 
 def _parse_utc_epoch(value: str) -> float:
@@ -446,6 +467,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self.state.setdefault("part_b_service_bursts_complete", [])
         self.state.setdefault("part_b_service_burst_sent", 0)
         self.state.setdefault("part_b_service_burst_index", None)
+        self.state.setdefault("part_b_arm_resume_after_control_seq", None)
         self.state.setdefault("duration_elapsed", False)
         self.state.setdefault("arm_sent_at_utc", None)
         self._save()
@@ -698,6 +720,11 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         complete = set(self.state["part_b_service_bursts_complete"])
         active_index = self.state["part_b_service_burst_index"]
         if active_index is None:
+            # Never begin the high-volume service snapshot while a one-shot
+            # authorization is live.  The burst may start late; it must not
+            # consume most of the authorization lifetime or hide its outcome.
+            if self.state["arm_pending"]:
+                return
             active_index = next(
                 (
                     index
@@ -727,11 +754,18 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self.state["part_b_service_bursts_complete"] = sorted(complete)
         self.state["part_b_service_burst_index"] = None
         self.state["part_b_service_burst_sent"] = 0
+        preview = _latest_preview(self.run_dir / CONTROL_CSV)
+        self.state["part_b_arm_resume_after_control_seq"] = (
+            int(preview["control_seq"]) if preview is not None else -1
+        )
         self._save()
         self._event(
             "part_b_service_load_complete",
             burst_index=active_index,
             query_count=PART_B_SERVICE_LOAD_QUERIES,
+            arm_resume_after_control_seq=self.state[
+                "part_b_arm_resume_after_control_seq"
+            ],
         )
 
     def _maybe_start_or_arm(
@@ -803,6 +837,25 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         if correction_count >= self.spec.correction_limit:
             return
         preview = _latest_preview(self.run_dir / CONTROL_CSV)
+        if self.part == "part_b":
+            if self.state["part_b_service_burst_index"] is not None:
+                return
+            resume_after = self.state.get(
+                "part_b_arm_resume_after_control_seq"
+            )
+            if resume_after is not None:
+                try:
+                    latest_control_seq = int(preview["control_seq"])
+                except (KeyError, TypeError, ValueError):
+                    return
+                if latest_control_seq <= int(resume_after):
+                    return
+                self.state["part_b_arm_resume_after_control_seq"] = None
+                self._save()
+                self._event(
+                    "part_b_post_service_control_observed_arm_resumed",
+                    control_seq=latest_control_seq,
+                )
         progress = int(
             health.get(("cx317_active", "selected_interval_count"), "0")
         )
