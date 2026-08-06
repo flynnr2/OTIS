@@ -60,6 +60,7 @@ from host.otis_tools.cx317_stage7_supervisor import (
     rehearsal_timeline_preflight,
     stage7_timing,
 )
+from host.otis_tools.evidence import create_evidence_snapshot
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
 from host.otis_tools.serial_commands import parse_serial_command
 from tools.firmware_matrix import source_input_hash
@@ -68,6 +69,76 @@ from tools.firmware_matrix import source_input_hash
 def _rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
+    run = (tmp_path / "sealed_hil_rehearsal").resolve()
+    reports = run / "reports"
+    csv_dir = run / "csv"
+    reports.mkdir(parents=True)
+    csv_dir.mkdir()
+    (csv_dir / "test.csv").write_text("value\npassed\n", encoding="utf-8")
+    gate = reports / "stage7_rehearsal_gate.json"
+    gate.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "tool": "cx317_stage7_rehearsal_analyze_v2",
+                "diagnostic_only": True,
+                "qualification_evidence": False,
+                "stage7_progression_authority": False,
+                "run_dir": str(run),
+                "criteria": {
+                    "active_contract_valid": True,
+                    "both_responses_completed_without_fault_class": True,
+                    "capture_closed_before_gate": True,
+                    "exact_clean_build_and_uf2": True,
+                    "exact_two_complete_consecutive_transactions": True,
+                    "final_device_disarmed_evidence_clear": True,
+                    "later_cadence_eligible_decision_observed": True,
+                    "partition_capture_and_transport_remained_clean": True,
+                    "sixty_query_service_load_completed": True,
+                    "supervisor_healthy_stop": True,
+                },
+                "event_faults": [],
+                "active_contract_errors": [],
+                "final": {
+                    "active_state": "DISARMED",
+                    "evidence_phase": "evidence_clear",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": run.name,
+                "stage": "CX317_STAGE7_DIAGNOSTIC_REHEARSAL",
+                "diagnostic_only": True,
+                "qualification_evidence": False,
+                "stage7_progression_authority": False,
+                "host": {
+                    "sole_serial_owner": True,
+                    "independent_abort_fifo_required": True,
+                    "supervisor_tool": "host.otis_tools.cx317_stage7_supervisor",
+                },
+                "active_campaign": {"part": "rehearsal"},
+                "firmware": {"source_state": "clean"},
+                "files": [
+                    {"path": "csv/test.csv", "contract": "test_v1"}
+                ],
+                "evidence_artifacts": [
+                    "reports/stage7_rehearsal_gate.json"
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    create_evidence_snapshot(run)
+    return gate
 
 
 def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
@@ -518,6 +589,7 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
         json.dumps(rehearse_part_b()),
         encoding="utf-8",
     )
+    hil_rehearsal = _sealed_hil_rehearsal_gate(tmp_path)
     derived_matrix, derived_start = derive_part_b_matrix(
         part_a2_gate_path=a2,
         output_path=tmp_path / "stage7_part_b_matrix.json",
@@ -538,6 +610,7 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
         part_a1_gate_path=a1,
         part_a2_gate_path=a2,
         part_b_rehearsal_gate_path=rehearsal,
+        part_b_hil_rehearsal_gate_path=hil_rehearsal,
         part_b_matrix_path=derived_matrix,
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -545,6 +618,7 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
         "part_a1_fixed_code_stability",
         "part_a2_cross_core_transaction",
         "part_b_accelerated_control_rehearsal",
+        "part_b_post_repair_hil_rehearsal",
     }
     assert manifest["prerequisite_gates"][
         "part_a1_fixed_code_stability"
@@ -554,6 +628,9 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
     ]["document"]["transactions"]["final_code"] == start_code
     assert manifest["prerequisite_gates"][
         "part_b_accelerated_control_rehearsal"
+    ]["document"]["status"] == "pass"
+    assert manifest["prerequisite_gates"][
+        "part_b_post_repair_hil_rehearsal"
     ]["document"]["status"] == "pass"
     assert all(
         manifest["active_campaign"]["cross_layer_timeline_preflight"][
@@ -574,6 +651,7 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
             part_a1_gate_path=a1,
             part_a2_gate_path=a2,
             part_b_rehearsal_gate_path=rehearsal,
+            part_b_hil_rehearsal_gate_path=hil_rehearsal,
             part_b_matrix_path=derived_matrix,
         )
     rehearsal.write_text(json.dumps(rehearse_part_b()), encoding="utf-8")
@@ -591,6 +669,26 @@ def test_part_b_manifest_requires_exact_passed_a1_a2_handoff(
             part_a1_gate_path=a1,
             part_a2_gate_path=a2,
             part_b_rehearsal_gate_path=rehearsal,
+            part_b_hil_rehearsal_gate_path=hil_rehearsal,
+            part_b_matrix_path=derived_matrix,
+        )
+    changed["transactions"]["final_code"] = start_code
+    a2.write_text(json.dumps(changed), encoding="utf-8")
+
+    changed_hil = json.loads(hil_rehearsal.read_text(encoding="utf-8"))
+    changed_hil["criteria"]["supervisor_healthy_stop"] = False
+    hil_rehearsal.write_text(json.dumps(changed_hil), encoding="utf-8")
+    with pytest.raises(ValueError, match="HIL rehearsal"):
+        create_stage7_manifest(
+            part="part_b",
+            start_code=start_code,
+            run_dir=tmp_path / "part_b_bad_hil_rehearsal",
+            build_manifest_path=build_manifest,
+            serial_device="/dev/cu.test",
+            part_a1_gate_path=a1,
+            part_a2_gate_path=a2,
+            part_b_rehearsal_gate_path=rehearsal,
+            part_b_hil_rehearsal_gate_path=hil_rehearsal,
             part_b_matrix_path=derived_matrix,
         )
 

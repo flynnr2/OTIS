@@ -29,6 +29,12 @@ from .cx317_stage7_supervisor import (
     rehearsal_timeline_preflight,
     stage7_timing,
 )
+from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
+from .run_loader import (
+    CAPTURE_IN_PROGRESS_FLAG,
+    COMPLETE_MARKER,
+    load_manifest,
+)
 from .run_paths import default_csv_files
 
 
@@ -39,6 +45,114 @@ def _utc_now() -> str:
         .isoformat()
         .replace("+00:00", "Z")
     )
+
+
+def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
+    """Validate and bind the sealed live repair rehearsal required for Part B."""
+    gate_path = gate_path.resolve()
+    if gate_path.name != "stage7_rehearsal_gate.json" or gate_path.parent.name != "reports":
+        raise ValueError("Stage 7 Part B HIL rehearsal gate path is not canonical")
+    run_dir = gate_path.parent.parent
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("Stage 7 Part B HIL rehearsal capture is still active")
+    if not (run_dir / COMPLETE_MARKER).is_file():
+        raise ValueError("Stage 7 Part B HIL rehearsal is not marked complete")
+
+    try:
+        run_manifest = load_manifest(run_dir)
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        snapshot_path = run_dir / EVIDENCE_MANIFEST
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"Stage 7 Part B HIL rehearsal evidence is unreadable: {exc}"
+        ) from exc
+
+    manifest_data = run_manifest.data
+    host = manifest_data.get("host", {})
+    active_campaign = manifest_data.get("active_campaign", {})
+    firmware = manifest_data.get("firmware", {})
+    required_criteria = {
+        "active_contract_valid",
+        "both_responses_completed_without_fault_class",
+        "capture_closed_before_gate",
+        "exact_clean_build_and_uf2",
+        "exact_two_complete_consecutive_transactions",
+        "final_device_disarmed_evidence_clear",
+        "later_cadence_eligible_decision_observed",
+        "partition_capture_and_transport_remained_clean",
+        "sixty_query_service_load_completed",
+        "supervisor_healthy_stop",
+    }
+    criteria = gate.get("criteria", {})
+    final = gate.get("final", {})
+    manifest_valid = (
+        manifest_data.get("stage") == "CX317_STAGE7_DIAGNOSTIC_REHEARSAL"
+        and manifest_data.get("diagnostic_only") is True
+        and manifest_data.get("qualification_evidence") is False
+        and manifest_data.get("stage7_progression_authority") is False
+        and isinstance(active_campaign, dict)
+        and active_campaign.get("part") == "rehearsal"
+        and isinstance(host, dict)
+        and host.get("sole_serial_owner") is True
+        and host.get("independent_abort_fifo_required") is True
+        and host.get("supervisor_tool")
+        == "host.otis_tools.cx317_stage7_supervisor"
+        and isinstance(firmware, dict)
+        and firmware.get("source_state") == "clean"
+    )
+    gate_valid = (
+        gate.get("status") == "pass"
+        and gate.get("tool") == "cx317_stage7_rehearsal_analyze_v2"
+        and gate.get("diagnostic_only") is True
+        and gate.get("qualification_evidence") is False
+        and gate.get("stage7_progression_authority") is False
+        and gate.get("run_dir") == str(run_dir)
+        and isinstance(criteria, dict)
+        and required_criteria <= set(criteria)
+        and all(value is True for value in criteria.values())
+        and gate.get("event_faults") == []
+        and gate.get("active_contract_errors") == []
+        and isinstance(final, dict)
+        and final.get("active_state") == "DISARMED"
+        and final.get("evidence_phase") == "evidence_clear"
+    )
+    failures, warnings = validate_evidence_snapshot(run_dir, run_manifest)
+    snapshot_valid = (
+        snapshot.get("run_state") == "complete"
+        and isinstance(snapshot.get("snapshot_digest"), str)
+        and len(snapshot["snapshot_digest"]) == 64
+        and not failures
+        and not warnings
+    )
+    if not manifest_valid or not gate_valid or not snapshot_valid:
+        details = {
+            "manifest_valid": manifest_valid,
+            "gate_valid": gate_valid,
+            "snapshot_valid": snapshot_valid,
+            "snapshot_failures": failures,
+            "snapshot_warnings": warnings,
+        }
+        raise ValueError(
+            "Stage 7 Part B HIL rehearsal is not a sealed pass: "
+            + json.dumps(details, sort_keys=True)
+        )
+
+    return {
+        "path": str(gate_path),
+        "sha256": sha256(gate_path.read_bytes()).hexdigest(),
+        "document": gate,
+        "run_manifest": {
+            "path": str(run_manifest.path.resolve()),
+            "sha256": sha256(run_manifest.path.read_bytes()).hexdigest(),
+        },
+        "evidence_snapshot": {
+            "path": str(snapshot_path.resolve()),
+            "sha256": sha256(snapshot_path.read_bytes()).hexdigest(),
+            "snapshot_digest": snapshot["snapshot_digest"],
+        },
+        "supervisor_sha256": sha256(SUPERVISOR_PATH.read_bytes()).hexdigest(),
+    }
 
 
 def create_stage7_manifest(
@@ -52,6 +166,7 @@ def create_stage7_manifest(
     part_a1_gate_path: Path | None = None,
     part_a2_gate_path: Path | None = None,
     part_b_rehearsal_gate_path: Path | None = None,
+    part_b_hil_rehearsal_gate_path: Path | None = None,
     part_b_matrix_path: Path | None = None,
 ) -> Path:
     path = run_dir / "run_manifest.json"
@@ -69,11 +184,13 @@ def create_stage7_manifest(
             part_a1_gate_path is None
             or part_a2_gate_path is None
             or part_b_rehearsal_gate_path is None
+            or part_b_hil_rehearsal_gate_path is None
             or part_b_matrix_path is None
         ):
             raise ValueError(
                 "Stage 7 Part B requires A1/A2 gates, the accelerated "
-                "Part B rehearsal gate and the derived Part B matrix"
+                "Part B rehearsal gate, the sealed live HIL rehearsal gate "
+                "and the derived Part B matrix"
             )
         part_a1_gate = json.loads(
             part_a1_gate_path.read_text(encoding="utf-8")
@@ -83,6 +200,9 @@ def create_stage7_manifest(
         )
         part_b_rehearsal_gate = json.loads(
             part_b_rehearsal_gate_path.read_text(encoding="utf-8")
+        )
+        part_b_hil_rehearsal_binding = _passed_part_b_hil_rehearsal_binding(
+            part_b_hil_rehearsal_gate_path
         )
         rehearsal_bindings = part_b_rehearsal_gate.get("bindings", {})
         if (
@@ -192,6 +312,9 @@ def create_stage7_manifest(
                 ).hexdigest(),
                 "document": part_b_rehearsal_gate,
             },
+            "part_b_post_repair_hil_rehearsal": (
+                part_b_hil_rehearsal_binding
+            ),
         }
     configuration = provenance["configuration"]
     defines = configuration["defines"]
@@ -460,6 +583,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--part-a1-gate", type=Path)
     parser.add_argument("--part-a2-gate", type=Path)
     parser.add_argument("--part-b-rehearsal-gate", type=Path)
+    parser.add_argument("--part-b-hil-rehearsal-gate", type=Path)
     parser.add_argument("--part-b-matrix", type=Path)
     args = parser.parse_args(argv)
     print(
@@ -473,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
             part_a1_gate_path=args.part_a1_gate,
             part_a2_gate_path=args.part_a2_gate,
             part_b_rehearsal_gate_path=args.part_b_rehearsal_gate,
+            part_b_hil_rehearsal_gate_path=args.part_b_hil_rehearsal_gate,
             part_b_matrix_path=args.part_b_matrix,
         )
     )
