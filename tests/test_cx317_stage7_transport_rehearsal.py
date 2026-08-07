@@ -182,6 +182,9 @@ def test_transport_rehearsal_analyzer_passes_exact_priority_abort(
                 "normal_fifo_saturated": True,
                 "timestamped_config_queries_queued": 100,
                 "capture_resumed": True,
+                "capture_pid": 1234,
+                "serial_owner_pids": [1234],
+                "sole_serial_owner_verified": True,
             }
         ),
         encoding="utf-8",

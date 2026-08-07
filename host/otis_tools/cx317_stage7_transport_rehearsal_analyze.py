@@ -152,6 +152,9 @@ def analyze(
             and int(saturation.get("timestamped_config_queries_queued", 0))
             > 0
             and saturation.get("capture_resumed") is True
+            and saturation.get("sole_serial_owner_verified") is True
+            and saturation.get("serial_owner_pids")
+            == [saturation.get("capture_pid")]
         ),
         "supervisor_fault_used_priority_abort_not_normal_fifo": (
             len(supervisor_faults) == 1

@@ -68,6 +68,20 @@ def _capture_command(pid: int) -> str:
     return completed.stdout.strip()
 
 
+def _serial_owner_pids(device: str) -> set[int]:
+    completed = subprocess.run(
+        ["lsof", "-t", device],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        int(line)
+        for line in completed.stdout.splitlines()
+        if line.strip().isdigit()
+    }
+
+
 def _wait_for_text(path: Path, text: str, timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -106,6 +120,18 @@ def inject(
         _require_fifo(path)
 
     command = _capture_command(capture_pid)
+    manifest = json.loads(
+        (run_dir / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    serial_device = str(manifest.get("host", {}).get("serial_device", ""))
+    if not serial_device:
+        raise ValueError("run manifest has no serial device")
+    owner_pids = _serial_owner_pids(serial_device)
+    if owner_pids != {capture_pid}:
+        raise ValueError(
+            "capture is not the sole serial owner: "
+            f"device={serial_device} owners={sorted(owner_pids)}"
+        )
     if (
         "host.otis_tools.capture_device" not in command
         or str(run_dir) not in command
@@ -200,6 +226,9 @@ def inject(
         "completed_at_utc": _utc_now(),
         "capture_pid": capture_pid,
         "capture_command": command,
+        "serial_device": serial_device,
+        "serial_owner_pids": sorted(owner_pids),
+        "sole_serial_owner_verified": True,
         "run_dir": str(run_dir),
         "normal_command_fifo": str(command_fifo),
         "emergency_command_fifo": str(emergency_command_fifo),
