@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 import signal
 import shutil
 import threading
+
+import pytest
 
 import host.otis_tools.capture_device as capture_device_module
 from host.otis_tools.capture_device import (
@@ -14,6 +17,7 @@ from host.otis_tools.capture_device import (
     RawEvidenceWriter,
 )
 from host.otis_tools.run_paths import RunPaths, default_csv_files
+from host.otis_tools.serial_commands import CommandFifo, send_command_to_fifo
 
 
 class FakeSerial:
@@ -23,6 +27,7 @@ class FakeSerial:
         self.fail_after = fail_after
         self.closed = False
         self.writes: list[bytes] = []
+        self.flush_calls = 0
 
     def read(self, size: int) -> bytes:
         if self.chunks:
@@ -45,7 +50,7 @@ class FakeSerial:
         return len(data)
 
     def flush(self) -> None:
-        return None
+        self.flush_calls += 1
 
 
 def _config(tmp_path: Path) -> CaptureDeviceConfig:
@@ -397,10 +402,134 @@ def test_capture_device_sends_audited_atomic_command_without_polluting_raw_strea
 
     raw = paths.raw_serial_log.read_bytes()
     assert serial.writes == [b"DAC MID\n"]
+    assert serial.flush_calls == 0
     assert b"host_command_accepted" in raw
     assert b"host_command_sent" in raw
     assert b"\nDAC MID\n" not in raw
     assert runner.commands_sent == 1
+
+
+def test_emergency_abort_preempts_and_revokes_normal_command_ingress(
+    tmp_path: Path,
+) -> None:
+    base = _config(tmp_path)
+    normal_fifo_path = tmp_path / "control/commands.fifo"
+    emergency_fifo_path = tmp_path / "control/emergency.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        status_interval_s=base.status_interval_s,
+    )
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+
+    with CommandFifo(normal_fifo_path) as normal_fifo, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_fifo, paths.raw_serial_log.open("a+b") as raw_handle:
+        assert send_command_to_fifo(
+            normal_fifo_path, "ACTIVE ARM 1 2 3"
+        ) == 0
+        assert send_command_to_fifo(
+            emergency_fifo_path, "ACTIVE ABORT"
+        ) == 0
+
+        runner._poll_emergency_command(
+            emergency_fifo,
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+        runner._poll_commands(
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+
+        assert normal_fifo.fd is None
+        with pytest.raises(SystemExit, match="no capture_device command reader"):
+            send_command_to_fifo(normal_fifo_path, "ACTIVE?")
+
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert runner.emergency_abort_latched is True
+    assert runner.emergency_aborts_sent == 1
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"emergency_abort_latched" in raw
+    assert b"normal_command_ingress_revoked" in raw
+    assert b"emergency_abort_sent" in raw
+
+
+def test_emergency_fifo_unknown_command_fails_closed_to_abort(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    normal_fifo_path = tmp_path / "control/commands.fifo"
+    emergency_fifo_path = tmp_path / "control/emergency.fifo"
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+
+    with CommandFifo(normal_fifo_path) as normal_fifo, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_fifo, paths.raw_serial_log.open("a+b") as raw_handle:
+        writer_fd = os.open(
+            emergency_fifo_path,
+            os.O_WRONLY | os.O_NONBLOCK,
+        )
+        try:
+            os.write(writer_fd, b"DAC MID\n")
+        finally:
+            os.close(writer_fd)
+        runner._poll_emergency_command(
+            emergency_fifo,
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert b"emergency_command_ingress_fault" in (
+        paths.raw_serial_log.read_bytes()
+    )
+
+
+def test_active_capture_serial_fault_stops_without_reconnect(
+    tmp_path: Path,
+) -> None:
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=tmp_path / "control/commands.fifo",
+        emergency_command_fifo=tmp_path / "control/emergency.fifo",
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+    )
+    serial = FakeSerial([], fail_after=OSError("serial transport stalled"))
+    factory_calls: list[dict[str, object]] = []
+
+    def factory(*_args, **kwargs):
+        factory_calls.append(kwargs)
+        return serial
+
+    runner = CaptureDeviceRunner(config, serial_factory=factory)
+
+    assert runner.run() == 0
+    assert len(factory_calls) == 1
+    assert factory_calls[0]["write_timeout"] == 1.0
+    assert runner.reconnect_count == 1
+    assert not (config.run_dir / "capture_in_progress.flag").exists()
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert b"active_command_transport_fail_static_stop" in raw
+    assert b"reconnecting" not in raw
+    assert b"capture_stopped" in raw
 
 
 def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
@@ -418,6 +547,41 @@ def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
     assert serial.writes == []
     assert b"host_command_rejected" in raw
     assert runner.commands_rejected == 1
+
+
+def test_capture_device_rejects_stale_or_unwrapped_normal_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        normal_command_max_age_s=2.0,
+    )
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        capture_device_module.time, "monotonic_ns", lambda: 10_000_000_000
+    )
+
+    with paths.raw_serial_log.open("a+b") as raw_handle:
+        writer = RawEvidenceWriter(raw_handle)
+        runner._send_command("ACTIVE ARM 1 2 3", serial, writer)
+        runner._send_command(
+            "OTISQ1 7000000000 ACTIVE ARM 1 2 3", serial, writer
+        )
+        runner._send_command(
+            "OTISQ1 9000000000 ACTIVE LEASE 4", serial, writer
+        )
+
+    assert serial.writes == [b"ACTIVE LEASE 4\n"]
+    assert runner.commands_rejected == 2
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"lacks required OTISQ1" in raw
+    assert b"timestamp is stale" in raw
 
 
 def test_raw_evidence_writer_defers_host_marker_until_partial_device_line_completes(tmp_path: Path) -> None:

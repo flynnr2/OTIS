@@ -8,7 +8,9 @@ from contextlib import nullcontext
 import glob
 import json
 import logging
+import os
 import signal
+import tempfile
 import time
 import threading
 from typing import Callable
@@ -16,11 +18,16 @@ from typing import Callable
 from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 from .run_paths import default_csv_files, ensure_run_layout
-from .serial_commands import CommandFifo, parse_serial_command
+from .serial_commands import (
+    CommandFifo,
+    parse_serial_command,
+    parse_timestamped_command_line,
+)
 
 
 LOGGER = logging.getLogger("otis.capture_device")
 HOST_MARKER_PREFIX = b"# OTIS_HOST"
+CAPTURE_STATE = Path("reports/capture_device_state.json")
 
 
 @dataclass(frozen=True)
@@ -29,9 +36,12 @@ class CaptureDeviceConfig:
     baud: int
     run_dir: Path
     command_fifo: Path | None = None
+    emergency_command_fifo: Path | None = None
     manifest_template: Path | None = None
     read_size: int = 4096
     read_timeout_s: float = 1.0
+    write_timeout_s: float = 1.0
+    normal_command_max_age_s: float | None = None
     reconnect_initial_s: float = 1.0
     reconnect_max_s: float = 30.0
     status_interval_s: float = 60.0
@@ -51,6 +61,22 @@ def _log_event(level: int, event: str, **fields: object) -> None:
 def _marker_bytes(event: str, **fields: object) -> bytes:
     payload = {"event": event, "utc": _utc_now(), **fields}
     return HOST_MARKER_PREFIX + b" " + json.dumps(payload, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _atomic_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    temporary.replace(path)
 
 
 class RawEvidenceWriter:
@@ -302,6 +328,11 @@ class CaptureDeviceRunner:
         self.reconnect_count = 0
         self.commands_sent = 0
         self.commands_rejected = 0
+        self.normal_command_buffered_bytes_discarded = 0
+        self.emergency_aborts_sent = 0
+        self.emergency_abort_latched = False
+        self.capture_active = False
+        self.serial_open = False
         self.framer = LineFramer(config.max_line_bytes)
         self.graceful_stop_requested = False
 
@@ -352,31 +383,112 @@ class CaptureDeviceRunner:
         for line in lines:
             self._process_line(line, splitter, raw_writer)
 
-    def _send_command(self, raw_command: str, serial_handle, raw_writer: RawEvidenceWriter) -> None:
+    def _send_command(
+        self,
+        raw_command: str,
+        serial_handle,
+        raw_writer: RawEvidenceWriter,
+        *,
+        priority: bool = False,
+    ) -> None:
         try:
-            command = parse_serial_command(raw_command)
+            command, created_monotonic_ns = parse_timestamped_command_line(
+                raw_command
+            )
+            if not priority and self.config.normal_command_max_age_s is not None:
+                if created_monotonic_ns is None:
+                    raise ValueError(
+                        "normal command lacks required OTISQ1 timestamp envelope"
+                    )
+                age_s = (
+                    time.monotonic_ns() - created_monotonic_ns
+                ) / 1_000_000_000
+                if age_s < 0 or age_s > self.config.normal_command_max_age_s:
+                    raise ValueError(
+                        "normal command timestamp is stale or from the future: "
+                        f"age_s={age_s:.6f} limit_s="
+                        f"{self.config.normal_command_max_age_s:.6f}"
+                    )
         except ValueError as exc:
             self.commands_rejected += 1
             _log_event(logging.WARNING, "host_command_rejected", command=raw_command, reason=str(exc))
             _write_marker(raw_writer, "host_command_rejected", command=raw_command, reason=str(exc))
+            self._emit_status()
             return
 
         payload = (command.normalized + "\n").encode("ascii")
         _log_event(logging.INFO, "host_command_accepted", command=command.normalized)
         _write_marker(raw_writer, "host_command_accepted", command=command.normalized)
         bytes_written = serial_handle.write(payload)
-        flush = getattr(serial_handle, "flush", None)
-        if flush is not None:
-            flush()
+        if bytes_written != len(payload):
+            raise OSError(
+                "short serial command write: "
+                f"expected {len(payload)} bytes, wrote {bytes_written}"
+            )
         self.commands_sent += 1
         _log_event(logging.INFO, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
         _write_marker(raw_writer, "host_command_sent", command=command.normalized, bytes_written=bytes_written)
+        self._emit_status()
 
     def _poll_commands(self, command_fifo: CommandFifo | None, serial_handle, raw_writer: RawEvidenceWriter) -> None:
         if command_fifo is None:
             return
-        for raw_command in command_fifo.poll():
+        for raw_command in command_fifo.poll(max_lines=1):
             self._send_command(raw_command, serial_handle, raw_writer)
+
+    def _poll_emergency_command(
+        self,
+        emergency_fifo: CommandFifo | None,
+        command_fifo: CommandFifo | None,
+        serial_handle,
+        raw_writer: RawEvidenceWriter,
+    ) -> None:
+        if emergency_fifo is None:
+            return
+        emergency_commands = emergency_fifo.poll(max_lines=1)
+        if not emergency_commands:
+            return
+        raw_command = emergency_commands[0]
+        try:
+            command = parse_serial_command(raw_command)
+        except ValueError as exc:
+            _write_marker(
+                raw_writer,
+                "emergency_command_ingress_fault",
+                command=raw_command,
+                reason=str(exc),
+            )
+            command = parse_serial_command("ACTIVE ABORT")
+        if command.normalized != "ACTIVE ABORT":
+            _write_marker(
+                raw_writer,
+                "emergency_command_ingress_fault",
+                command=command.normalized,
+                reason="emergency FIFO accepts ACTIVE ABORT only",
+            )
+            command = parse_serial_command("ACTIVE ABORT")
+        if self.emergency_abort_latched:
+            _write_marker(raw_writer, "emergency_abort_duplicate_ignored")
+            return
+
+        self.emergency_abort_latched = True
+        _write_marker(raw_writer, "emergency_abort_latched")
+        if command_fifo is not None:
+            buffered = len(command_fifo.buffer)
+            command_fifo.close()
+            command_fifo.buffer.clear()
+            self.normal_command_buffered_bytes_discarded += buffered
+            _write_marker(
+                raw_writer,
+                "normal_command_ingress_revoked",
+                buffered_bytes_discarded=buffered,
+            )
+        self._send_command(
+            "ACTIVE ABORT", serial_handle, raw_writer, priority=True
+        )
+        self.emergency_aborts_sent += 1
+        _write_marker(raw_writer, "emergency_abort_sent")
+        self._emit_status()
 
     def _emit_status(self) -> None:
         _log_event(
@@ -390,6 +502,45 @@ class CaptureDeviceRunner:
             reconnect_count=self.reconnect_count,
             commands_sent=self.commands_sent,
             commands_rejected=self.commands_rejected,
+            normal_command_buffered_bytes_discarded=(
+                self.normal_command_buffered_bytes_discarded
+            ),
+            emergency_aborts_sent=self.emergency_aborts_sent,
+            emergency_abort_latched=self.emergency_abort_latched,
+        )
+        _atomic_json(
+            self.config.run_dir / CAPTURE_STATE,
+            {
+                "schema_version": 1,
+                "updated_utc": _utc_now(),
+                "pid": os.getpid(),
+                "capture_active": self.capture_active,
+                "serial_open": self.serial_open,
+                "bytes_written": self.bytes_written,
+                "lines_seen": self.lines_seen,
+                "lines_parsed": self.lines_parsed,
+                "malformed_utf8": self.malformed_utf8,
+                "parser_errors": self.parser_errors,
+                "reconnect_count": self.reconnect_count,
+                "commands_sent": self.commands_sent,
+                "commands_rejected": self.commands_rejected,
+                "normal_command_buffered_bytes_discarded": (
+                    self.normal_command_buffered_bytes_discarded
+                ),
+                "emergency_aborts_sent": self.emergency_aborts_sent,
+                "emergency_abort_latched": self.emergency_abort_latched,
+                "command_fifo_configured": (
+                    self.config.command_fifo is not None
+                ),
+                "emergency_command_fifo_configured": (
+                    self.config.emergency_command_fifo is not None
+                ),
+                "normal_command_batch_limit": 1,
+                "normal_command_max_age_s": (
+                    self.config.normal_command_max_age_s
+                ),
+                "write_timeout_s": self.config.write_timeout_s,
+            },
         )
 
     def run(self) -> int:
@@ -402,7 +553,8 @@ class CaptureDeviceRunner:
         )
         file_by_contract, file_by_record_type = _split_targets(self.config.run_dir)
         in_progress = self.config.run_dir / CAPTURE_IN_PROGRESS_FLAG
-        in_progress.touch(exist_ok=True)
+        self.capture_active = True
+        self._emit_status()
         backoff = self.config.reconnect_initial_s
         next_status = time.monotonic() + self.config.status_interval_s
         capture_deadline = (
@@ -413,18 +565,43 @@ class CaptureDeviceRunner:
         duration_reached = False
 
         command_fifo_context = (
-            CommandFifo(self.config.command_fifo) if self.config.command_fifo is not None else nullcontext(None)
+            CommandFifo(self.config.command_fifo)
+            if self.config.command_fifo is not None
+            else nullcontext(None)
+        )
+        emergency_fifo_context = (
+            CommandFifo(self.config.emergency_command_fifo)
+            if self.config.emergency_command_fifo is not None
+            else nullcontext(None)
         )
         with paths.raw_serial_log.open("a+b") as raw_handle, CsvRecordSplitter(
             file_by_contract,
             file_by_record_type,
             append=True,
             on_parser_error=self._parser_error,
-        ) as splitter, command_fifo_context as command_fifo:
+        ) as splitter, command_fifo_context as command_fifo, (
+            emergency_fifo_context
+        ) as emergency_fifo:
+            in_progress.touch(exist_ok=True)
             raw_writer = RawEvidenceWriter(raw_handle)
             _write_marker(raw_writer, "capture_started", device=self.config.device, baud=self.config.baud)
             if self.config.command_fifo is not None:
-                _write_marker(raw_writer, "command_ingress_opened", path=str(self.config.command_fifo))
+                _write_marker(
+                    raw_writer,
+                    "command_ingress_opened",
+                    path=str(self.config.command_fifo),
+                    batch_limit=1,
+                    normal_command_max_age_s=(
+                        self.config.normal_command_max_age_s
+                    ),
+                )
+            if self.config.emergency_command_fifo is not None:
+                _write_marker(
+                    raw_writer,
+                    "emergency_command_ingress_opened",
+                    path=str(self.config.emergency_command_fifo),
+                )
+            self._emit_status()
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
@@ -432,12 +609,26 @@ class CaptureDeviceRunner:
                     serial_handle = None
                     try:
                         _log_event(logging.INFO, "serial_opening", device=self.config.device, baud=self.config.baud)
-                        serial_handle = factory(self.config.device, baudrate=self.config.baud, timeout=self.config.read_timeout_s)
+                        serial_handle = factory(
+                            self.config.device,
+                            baudrate=self.config.baud,
+                            timeout=self.config.read_timeout_s,
+                            write_timeout=self.config.write_timeout_s,
+                        )
                         _log_event(logging.INFO, "serial_opened", device=self.config.device, baud=self.config.baud)
+                        self.serial_open = True
+                        self._emit_status()
                         _write_marker(raw_writer, "serial_opened", device=self.config.device, baud=self.config.baud)
                         backoff = self.config.reconnect_initial_s
 
                         while not self.stop_event.is_set():
+                            if not self.graceful_stop_requested:
+                                self._poll_emergency_command(
+                                    emergency_fifo,
+                                    command_fifo,
+                                    serial_handle,
+                                    raw_writer,
+                                )
                             # After a planned-duration or graceful-signal
                             # request, drain only the current device record.
                             # Reading one byte at a time prevents a following
@@ -450,7 +641,10 @@ class CaptureDeviceRunner:
                             data = serial_handle.read(read_size)
                             if data:
                                 self._process_bytes(data, splitter, raw_writer)
-                            if not self.graceful_stop_requested:
+                            if (
+                                not self.graceful_stop_requested
+                                and not self.emergency_abort_latched
+                            ):
                                 self._poll_commands(
                                     command_fifo, serial_handle, raw_writer
                                 )
@@ -489,6 +683,7 @@ class CaptureDeviceRunner:
                                 self._emit_status()
                                 next_status = now + self.config.status_interval_s
                     except serial_exceptions as exc:
+                        self.serial_open = False
                         self.reconnect_count += 1
                         dropped = self.framer.drop_partial()
                         raw_writer.drop_partial()
@@ -506,6 +701,19 @@ class CaptureDeviceRunner:
                             partial_line_dropped_bytes=dropped,
                             error=str(exc),
                         )
+                        self._emit_status()
+                        if self.config.emergency_command_fifo is not None:
+                            self.emergency_abort_latched = True
+                            if command_fifo is not None:
+                                command_fifo.close()
+                                command_fifo.buffer.clear()
+                            _write_marker(
+                                raw_writer,
+                                "active_command_transport_fail_static_stop",
+                                error=str(exc),
+                            )
+                            self.stop_event.set()
+                            break
                         if self.stop_event.is_set():
                             break
                         _log_event(logging.INFO, "reconnecting", delay_s=backoff)
@@ -516,6 +724,7 @@ class CaptureDeviceRunner:
                         if serial_handle is not None:
                             try:
                                 serial_handle.close()
+                                self.serial_open = False
                             except Exception as exc:  # noqa: BLE001 - close failures are diagnostic only.
                                 _log_event(logging.WARNING, "serial_close_error", error=str(exc))
             finally:
@@ -535,8 +744,15 @@ class CaptureDeviceRunner:
                     reconnect_count=self.reconnect_count,
                     commands_sent=self.commands_sent,
                     commands_rejected=self.commands_rejected,
+                    normal_command_buffered_bytes_discarded=(
+                        self.normal_command_buffered_bytes_discarded
+                    ),
+                    emergency_aborts_sent=self.emergency_aborts_sent,
+                    emergency_abort_latched=self.emergency_abort_latched,
                 )
                 in_progress.unlink(missing_ok=True)
+                self.capture_active = False
+                self.serial_open = False
                 self._emit_status()
         return 0
 
@@ -558,6 +774,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--command-fifo", type=Path, help="Optional run-local FIFO for validated atomic host commands.")
     parser.add_argument(
+        "--emergency-command-fifo",
+        type=Path,
+        help=(
+            "Optional independent priority FIFO accepting ACTIVE ABORT only; "
+            "its presence makes serial transport faults fail-static."
+        ),
+    )
+    parser.add_argument(
+        "--write-timeout-s",
+        type=float,
+        default=1.0,
+        help="Positive serial-command write timeout; no tcdrain flush is used.",
+    )
+    parser.add_argument(
+        "--normal-command-max-age-s",
+        type=float,
+        help=(
+            "Require OTISQ1 monotonic timestamp envelopes on normal commands "
+            "and reject commands older than this positive bound."
+        ),
+    )
+    parser.add_argument(
         "--manifest-template",
         type=Path,
         help="Optional immutable JSON template used only when the run has no manifest; run_id is the run-directory name.",
@@ -570,15 +808,50 @@ def main() -> None:
     args = parser.parse_args()
     if args.duration_s is not None and args.duration_s <= 0:
         parser.error("--duration-s must be positive")
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    if args.write_timeout_s <= 0:
+        parser.error("--write-timeout-s must be positive")
+    if (
+        args.normal_command_max_age_s is not None
+        and args.normal_command_max_age_s <= 0
+    ):
+        parser.error("--normal-command-max-age-s must be positive")
+    if args.emergency_command_fifo is not None and args.command_fifo is None:
+        parser.error("--emergency-command-fifo requires --command-fifo")
+    if (
+        args.emergency_command_fifo is not None
+        and args.normal_command_max_age_s is None
+    ):
+        parser.error(
+            "--emergency-command-fifo requires "
+            "--normal-command-max-age-s"
+        )
+    if (
+        args.emergency_command_fifo is not None
+        and args.command_fifo is not None
+        and args.emergency_command_fifo.absolute()
+        == args.command_fifo.absolute()
+    ):
+        parser.error("normal and emergency command FIFOs must be distinct")
+    log_path = args.run_dir / "reports/capture_device.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        filename=log_path,
+        filemode="a",
+        force=True,
+    )
     device = _detect_single_device() if args.auto_detect else args.device
     config = CaptureDeviceConfig(
         device=device,
         baud=args.baud,
         run_dir=args.run_dir,
         command_fifo=args.command_fifo,
+        emergency_command_fifo=args.emergency_command_fifo,
         manifest_template=args.manifest_template,
         read_size=args.read_size,
+        write_timeout_s=args.write_timeout_s,
+        normal_command_max_age_s=args.normal_command_max_age_s,
         status_interval_s=args.status_interval,
         max_line_bytes=args.max_line_bytes,
         duration_s=args.duration_s,

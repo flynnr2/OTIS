@@ -37,6 +37,65 @@ from .run_loader import (
 )
 from .run_paths import default_csv_files
 
+CAPTURE_TOOL_PATH = Path(__file__).with_name("capture_device.py")
+SERIAL_COMMANDS_PATH = Path(__file__).with_name("serial_commands.py")
+TRANSPORT_INJECTION_PATH = Path(__file__).with_name(
+    "cx317_stage7_transport_fault_inject.py"
+)
+TRANSPORT_ANALYZER_PATH = Path(__file__).with_name(
+    "cx317_stage7_transport_rehearsal_analyze.py"
+)
+
+
+def _transport_rehearsal_binding_valid(binding: dict[str, Any]) -> bool:
+    try:
+        gate_path = Path(binding["path"])
+        manifest_path = Path(binding["run_manifest"]["path"])
+        snapshot_path = Path(binding["evidence_snapshot"]["path"])
+        if (
+            sha256(gate_path.read_bytes()).hexdigest() != binding["sha256"]
+            or sha256(manifest_path.read_bytes()).hexdigest()
+            != binding["run_manifest"]["sha256"]
+            or sha256(snapshot_path.read_bytes()).hexdigest()
+            != binding["evidence_snapshot"]["sha256"]
+        ):
+            return False
+        run_dir = gate_path.parent.parent
+        run_manifest = load_manifest(run_dir)
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        failures, warnings = validate_evidence_snapshot(
+            run_dir, run_manifest
+        )
+        tool_bindings = binding["bindings"]
+        return (
+            gate.get("status") == "pass"
+            and gate.get("tool")
+            == "cx317_stage7_transport_rehearsal_analyze_v1"
+            and gate.get("run_dir") == str(run_dir)
+            and run_manifest.data.get("stage")
+            == "CX317_STAGE7_TRANSPORT_FAULT_REHEARSAL"
+            and (run_dir / COMPLETE_MARKER).is_file()
+            and not (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists()
+            and snapshot.get("run_state") == "complete"
+            and binding["evidence_snapshot"].get("snapshot_digest")
+            == snapshot.get("snapshot_digest")
+            and not failures
+            and not warnings
+            and tool_bindings == gate.get("bindings")
+            and tool_bindings.get("capture_tool_sha256")
+            == sha256(CAPTURE_TOOL_PATH.read_bytes()).hexdigest()
+            and tool_bindings.get("supervisor_sha256")
+            == sha256(SUPERVISOR_PATH.read_bytes()).hexdigest()
+            and tool_bindings.get("serial_commands_sha256")
+            == sha256(SERIAL_COMMANDS_PATH.read_bytes()).hexdigest()
+            and tool_bindings.get("injection_tool_sha256")
+            == sha256(TRANSPORT_INJECTION_PATH.read_bytes()).hexdigest()
+            and tool_bindings.get("analyzer_tool_sha256")
+            == sha256(TRANSPORT_ANALYZER_PATH.read_bytes()).hexdigest()
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
 
 def _utc_now() -> str:
     return (
@@ -79,13 +138,18 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         "exact_clean_build_and_uf2",
         "exact_two_complete_consecutive_transactions",
         "final_device_disarmed_evidence_clear",
+        "host_priority_transport_exact_and_clean",
         "later_cadence_eligible_decision_observed",
+        "priority_transport_fault_rehearsal_passed",
         "partition_capture_and_transport_remained_clean",
         "sixty_query_service_load_completed",
         "supervisor_healthy_stop",
     }
     criteria = gate.get("criteria", {})
     final = gate.get("final", {})
+    transport_binding = gate.get(
+        "priority_transport_fault_rehearsal", {}
+    )
     manifest_valid = (
         manifest_data.get("stage") == "CX317_STAGE7_DIAGNOSTIC_REHEARSAL"
         and manifest_data.get("diagnostic_only") is True
@@ -96,6 +160,13 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         and isinstance(host, dict)
         and host.get("sole_serial_owner") is True
         and host.get("independent_abort_fifo_required") is True
+        and host.get("priority_abort_command_fifo_required") is True
+        and host.get("capture_command_write_timeout_s") == 1.0
+        and host.get("capture_console_log_file_required") is True
+        and host.get("normal_command_batch_limit") == 1
+        and host.get("normal_command_max_age_s") == 2.0
+        and host.get("normal_command_envelope")
+        == "OTISQ1_MONOTONIC_NS"
         and host.get("supervisor_tool")
         == "host.otis_tools.cx317_stage7_supervisor"
         and isinstance(firmware, dict)
@@ -103,7 +174,7 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
     )
     gate_valid = (
         gate.get("status") == "pass"
-        and gate.get("tool") == "cx317_stage7_rehearsal_analyze_v2"
+        and gate.get("tool") == "cx317_stage7_rehearsal_analyze_v3"
         and gate.get("diagnostic_only") is True
         and gate.get("qualification_evidence") is False
         and gate.get("stage7_progression_authority") is False
@@ -116,6 +187,7 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         and isinstance(final, dict)
         and final.get("active_state") == "DISARMED"
         and final.get("evidence_phase") == "evidence_clear"
+        and _transport_rehearsal_binding_valid(transport_binding)
     )
     failures, warnings = validate_evidence_snapshot(run_dir, run_manifest)
     snapshot_valid = (
@@ -152,6 +224,12 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
             "snapshot_digest": snapshot["snapshot_digest"],
         },
         "supervisor_sha256": sha256(SUPERVISOR_PATH.read_bytes()).hexdigest(),
+        "capture_tool_sha256": sha256(
+            CAPTURE_TOOL_PATH.read_bytes()
+        ).hexdigest(),
+        "serial_commands_sha256": sha256(
+            SERIAL_COMMANDS_PATH.read_bytes()
+        ).hexdigest(),
     }
 
 
@@ -168,6 +246,7 @@ def create_stage7_manifest(
     part_b_rehearsal_gate_path: Path | None = None,
     part_b_hil_rehearsal_gate_path: Path | None = None,
     part_b_matrix_path: Path | None = None,
+    rehearsal_kind: str = "active",
 ) -> Path:
     path = run_dir / "run_manifest.json"
     if path.exists():
@@ -177,6 +256,13 @@ def create_stage7_manifest(
     spec, identities = load_stage7_spec(part, start_code)
     timing = stage7_timing(part)
     is_rehearsal = part == "rehearsal"
+    if rehearsal_kind not in {"active", "transport_fault"}:
+        raise ValueError("rehearsal_kind must be active or transport_fault")
+    if not is_rehearsal and rehearsal_kind != "active":
+        raise ValueError("transport_fault rehearsal kind requires part=rehearsal")
+    is_transport_rehearsal = is_rehearsal and (
+        rehearsal_kind == "transport_fault"
+    )
     prerequisite_gates: dict[str, dict[str, Any]] = {}
     part_b_matrix_binding: dict[str, Any] = {}
     if part == "part_b":
@@ -374,13 +460,17 @@ def create_stage7_manifest(
         "created_utc": now,
         "started_at_utc": now,
         "stage": (
-            "CX317_STAGE7_DIAGNOSTIC_REHEARSAL"
+            (
+                "CX317_STAGE7_TRANSPORT_FAULT_REHEARSAL"
+                if is_transport_rehearsal
+                else "CX317_STAGE7_DIAGNOSTIC_REHEARSAL"
+            )
             if is_rehearsal
             else f"CX317_DUAL_CORE_ACTIVE_{part.upper()}"
         ),
-        "closed_loop_control": True,
+        "closed_loop_control": not is_transport_rehearsal,
         "actionable": False,
-        "actuation_authorized": True,
+        "actuation_authorized": not is_transport_rehearsal,
         "diagnostic_only": is_rehearsal,
         "qualification_evidence": not is_rehearsal,
         "stage7_progression_authority": not is_rehearsal,
@@ -412,6 +502,12 @@ def create_stage7_manifest(
             "baud": baud,
             "sole_serial_owner": True,
             "independent_abort_fifo_required": True,
+            "priority_abort_command_fifo_required": True,
+            "capture_command_write_timeout_s": 1.0,
+            "capture_console_log_file_required": True,
+            "normal_command_batch_limit": 1,
+            "normal_command_max_age_s": 2.0,
+            "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
             "shadow_has_serial_or_command_authority": False,
         },
         "active_campaign": {
@@ -513,6 +609,8 @@ def create_stage7_manifest(
         "expected_artifacts": [
             *required_files,
             "raw/serial.log",
+            "reports/capture_device_state.json",
+            "reports/capture_device.log",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
             *(
@@ -526,6 +624,8 @@ def create_stage7_manifest(
             ),
         ],
         "evidence_artifacts": [
+            "reports/capture_device_state.json",
+            "reports/capture_device.log",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
             *(
@@ -585,6 +685,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--part-b-rehearsal-gate", type=Path)
     parser.add_argument("--part-b-hil-rehearsal-gate", type=Path)
     parser.add_argument("--part-b-matrix", type=Path)
+    parser.add_argument(
+        "--rehearsal-kind",
+        choices=("active", "transport_fault"),
+        default="active",
+    )
     args = parser.parse_args(argv)
     print(
         create_stage7_manifest(
@@ -599,6 +704,7 @@ def main(argv: list[str] | None = None) -> int:
             part_b_rehearsal_gate_path=args.part_b_rehearsal_gate,
             part_b_hil_rehearsal_gate_path=args.part_b_hil_rehearsal_gate,
             part_b_matrix_path=args.part_b_matrix,
+            rehearsal_kind=args.rehearsal_kind,
         )
     )
     return 0

@@ -34,6 +34,7 @@ from .cx317_active_campaign import (
     validate_transaction_row,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .serial_commands import send_timestamped_command_to_fifo
 from .timebase import unwrap_ticks
 
 
@@ -62,6 +63,8 @@ REHEARSAL_QUALIFIED_TIMEOUT_S = 20 * 60
 REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
 REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 ACTIVE_ARM_LIFETIME_S = 110
+CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
+CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15
 RP2040_TIMER0_TICKS_PER_SECOND = 16_000_000
 REAL_FC0_STARTUP_INHIBIT_S = 600
 REAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
@@ -471,6 +474,47 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self.state.setdefault("duration_elapsed", False)
         self.state.setdefault("arm_sent_at_utc", None)
         self._save()
+
+    def _command(self, command: str) -> None:
+        send_timestamped_command_to_fifo(self.command_fifo, command)
+        self._event("command_submitted", command=command)
+
+    def _check_capture_transport_state(self) -> None:
+        path = self.run_dir / CAPTURE_TRANSPORT_STATE
+        if not path.is_file():
+            raise ValueError("capture transport state is missing")
+        state = json.loads(path.read_text(encoding="utf-8"))
+        age_s = time.time() - _parse_utc_epoch(str(state["updated_utc"]))
+        if age_s < -1 or age_s > CAPTURE_TRANSPORT_STATE_MAX_AGE_S:
+            raise ValueError(
+                f"capture transport state is stale: age_s={age_s:.3f}"
+            )
+        exact = {
+            "capture_active": True,
+            "serial_open": True,
+            "command_fifo_configured": True,
+            "emergency_command_fifo_configured": True,
+            "normal_command_batch_limit": 1,
+            "normal_command_max_age_s": 2.0,
+            "write_timeout_s": 1.0,
+        }
+        for key, expected in exact.items():
+            if state.get(key) != expected:
+                raise ValueError(
+                    "capture transport state mismatch: "
+                    f"{key}={state.get(key)!r}, expected {expected!r}"
+                )
+        for key in (
+            "malformed_utf8",
+            "parser_errors",
+            "reconnect_count",
+            "commands_rejected",
+            "emergency_aborts_sent",
+        ):
+            if int(state.get(key, -1)) != 0:
+                raise ValueError(
+                    f"capture transport counter {key} is {state.get(key)!r}"
+                )
 
     def _arm_progress_epoch_ready(
         self, preview: dict[str, str] | None, progress: int
@@ -1026,6 +1070,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                     self._abort("supervisor_duration_expired")
                     return 5
                 if now - last_lease >= LEASE_PERIOD_S:
+                    self._check_capture_transport_state()
                     self._renew_lease()
                     last_lease = now
                 if now - last_query >= QUERY_PERIOD_S:
@@ -1054,12 +1099,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start-code", type=lambda value: int(value, 0), required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--command-fifo", type=Path, required=True)
+    parser.add_argument(
+        "--emergency-command-fifo", type=Path, required=True
+    )
     parser.add_argument("--abort-fifo", type=Path, required=True)
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--allow-manual-start", action="store_true")
     parser.add_argument("--allow-arm", action="store_true")
     parser.add_argument("--duration-s", type=float)
+    parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
+    fifo_paths = {
+        args.command_fifo.absolute(),
+        args.emergency_command_fifo.absolute(),
+        args.abort_fifo.absolute(),
+    }
+    if len(fifo_paths) != 3:
+        parser.error(
+            "command, emergency-command and independent-abort FIFOs "
+            "must be distinct"
+        )
     spec, identities = load_stage7_spec(args.part, args.start_code)
     supervisor = Stage7Supervisor(
         part=args.part,
@@ -1072,6 +1131,8 @@ def main(argv: list[str] | None = None) -> int:
         allow_manual_start=args.allow_manual_start,
         allow_arm=args.allow_arm,
         duration_s=args.duration_s,
+        emergency_command_fifo=args.emergency_command_fifo,
+        console_events=args.console_events,
     )
     try:
         return supervisor.run()

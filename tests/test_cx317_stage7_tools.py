@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
@@ -72,6 +73,31 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 
 def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
+    from hashlib import sha256
+
+    transport_gate = _sealed_transport_rehearsal_gate(tmp_path)
+    transport_run = transport_gate.parent.parent
+    transport_manifest = transport_run / "run_manifest.json"
+    transport_snapshot = transport_run / "evidence_manifest.json"
+    transport_document = json.loads(
+        transport_gate.read_text(encoding="utf-8")
+    )
+    transport_binding = {
+        "path": str(transport_gate),
+        "sha256": sha256(transport_gate.read_bytes()).hexdigest(),
+        "run_manifest": {
+            "path": str(transport_manifest),
+            "sha256": sha256(transport_manifest.read_bytes()).hexdigest(),
+        },
+        "evidence_snapshot": {
+            "path": str(transport_snapshot),
+            "sha256": sha256(transport_snapshot.read_bytes()).hexdigest(),
+            "snapshot_digest": json.loads(
+                transport_snapshot.read_text(encoding="utf-8")
+            )["snapshot_digest"],
+        },
+        "bindings": transport_document["bindings"],
+    }
     run = (tmp_path / "sealed_hil_rehearsal").resolve()
     reports = run / "reports"
     csv_dir = run / "csv"
@@ -83,7 +109,7 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "status": "pass",
-                "tool": "cx317_stage7_rehearsal_analyze_v2",
+                "tool": "cx317_stage7_rehearsal_analyze_v3",
                 "diagnostic_only": True,
                 "qualification_evidence": False,
                 "stage7_progression_authority": False,
@@ -95,13 +121,16 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                     "exact_clean_build_and_uf2": True,
                     "exact_two_complete_consecutive_transactions": True,
                     "final_device_disarmed_evidence_clear": True,
+                    "host_priority_transport_exact_and_clean": True,
                     "later_cadence_eligible_decision_observed": True,
                     "partition_capture_and_transport_remained_clean": True,
+                    "priority_transport_fault_rehearsal_passed": True,
                     "sixty_query_service_load_completed": True,
                     "supervisor_healthy_stop": True,
                 },
                 "event_faults": [],
                 "active_contract_errors": [],
+                "priority_transport_fault_rehearsal": transport_binding,
                 "final": {
                     "active_state": "DISARMED",
                     "evidence_phase": "evidence_clear",
@@ -122,6 +151,12 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                 "host": {
                     "sole_serial_owner": True,
                     "independent_abort_fifo_required": True,
+                    "priority_abort_command_fifo_required": True,
+                    "capture_command_write_timeout_s": 1.0,
+                    "capture_console_log_file_required": True,
+                    "normal_command_batch_limit": 1,
+                    "normal_command_max_age_s": 2.0,
+                    "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
                     "supervisor_tool": "host.otis_tools.cx317_stage7_supervisor",
                 },
                 "active_campaign": {"part": "rehearsal"},
@@ -137,6 +172,77 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    create_evidence_snapshot(run)
+    return gate
+
+
+def _sealed_transport_rehearsal_gate(tmp_path: Path) -> Path:
+    from hashlib import sha256
+
+    run = (tmp_path / "sealed_transport_rehearsal").resolve()
+    reports = run / "reports"
+    csv_dir = run / "csv"
+    reports.mkdir(parents=True)
+    csv_dir.mkdir()
+    (csv_dir / "test.csv").write_text("value\npassed\n", encoding="utf-8")
+    tool_dir = Path("host/otis_tools")
+    bindings = {
+        "capture_tool_sha256": sha256(
+            (tool_dir / "capture_device.py").read_bytes()
+        ).hexdigest(),
+        "supervisor_sha256": sha256(
+            (tool_dir / "cx317_stage7_supervisor.py").read_bytes()
+        ).hexdigest(),
+        "serial_commands_sha256": sha256(
+            (tool_dir / "serial_commands.py").read_bytes()
+        ).hexdigest(),
+        "injection_tool_sha256": sha256(
+            (
+                tool_dir / "cx317_stage7_transport_fault_inject.py"
+            ).read_bytes()
+        ).hexdigest(),
+        "analyzer_tool_sha256": sha256(
+            (
+                tool_dir / "cx317_stage7_transport_rehearsal_analyze.py"
+            ).read_bytes()
+        ).hexdigest(),
+    }
+    gate = reports / "stage7_rehearsal_gate.json"
+    gate.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "tool": "cx317_stage7_transport_rehearsal_analyze_v1",
+                "diagnostic_only": True,
+                "qualification_evidence": False,
+                "stage7_progression_authority": False,
+                "run_dir": str(run),
+                "criteria": {"exact_transport_fault_rehearsal": True},
+                "bindings": bindings,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": run.name,
+                "stage": "CX317_STAGE7_TRANSPORT_FAULT_REHEARSAL",
+                "diagnostic_only": True,
+                "qualification_evidence": False,
+                "stage7_progression_authority": False,
+                "files": [
+                    {"path": "csv/test.csv", "contract": "test_v1"}
+                ],
+                "evidence_artifacts": [
+                    "reports/stage7_rehearsal_gate.json"
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "COMPLETE").touch()
     create_evidence_snapshot(run)
     return gate
 
@@ -516,7 +622,17 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
     assert manifest["active_campaign"]["maximum_wall_clock_s"] == 19800
     assert manifest["shadow_contract"]["sha256"] == CONTRACT_SHA256
     assert manifest["host"]["shadow_has_serial_or_command_authority"] is False
+    assert manifest["host"]["priority_abort_command_fifo_required"] is True
+    assert manifest["host"]["capture_command_write_timeout_s"] == 1.0
+    assert manifest["host"]["capture_console_log_file_required"] is True
+    assert manifest["host"]["normal_command_batch_limit"] == 1
+    assert manifest["host"]["normal_command_max_age_s"] == 2.0
+    assert manifest["host"]["normal_command_envelope"] == (
+        "OTISQ1_MONOTONIC_NS"
+    )
     assert set(manifest["evidence_artifacts"]) == {
+        "reports/capture_device_state.json",
+        "reports/capture_device.log",
         "reports/cx317_active_supervisor_state.json",
         "reports/cx317_active_supervisor_events.jsonl",
         "reports/stage7_authoritative_observations_v1.csv",
@@ -1271,9 +1387,51 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     (run / "reports/cx317_active_supervisor_events.jsonl").write_text(
         "", encoding="utf-8"
     )
+    (run / "reports/capture_device.log").write_text(
+        "file-backed capture log\n", encoding="utf-8"
+    )
+    (run / "reports/capture_device_state.json").write_text(
+        json.dumps(
+            {
+                "capture_active": False,
+                "serial_open": False,
+                "normal_command_batch_limit": 1,
+                "normal_command_max_age_s": 2.0,
+                "write_timeout_s": 1.0,
+                "malformed_utf8": 0,
+                "parser_errors": 0,
+                "reconnect_count": 0,
+                "commands_rejected": 0,
+                "emergency_aborts_sent": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    raw_dir = run / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "serial.log").write_text(
+        '\n'.join(
+            [
+                '# OTIS_HOST {"batch_limit":1,"event":"command_ingress_opened",'
+                '"normal_command_max_age_s":2.0,"path":"normal.fifo"}',
+                '# OTIS_HOST {"event":"emergency_command_ingress_opened",'
+                '"path":"emergency.fifo"}',
+                '# OTIS_HOST {"commands_rejected":0,"emergency_aborts_sent":0,'
+                '"event":"capture_stopped","malformed_utf8":0,'
+                '"parser_errors":0,"reconnect_count":0}',
+            ]
+        )
+        + '\n',
+        encoding="utf-8",
+    )
 
     output, result = analyze_rehearsal(
-        run, build_manifest=build_manifest, uf2=uf2
+        run,
+        build_manifest=build_manifest,
+        uf2=uf2,
+        transport_rehearsal_gate=_sealed_transport_rehearsal_gate(
+            tmp_path
+        ),
     )
     assert result["status"] == "pass"
     assert all(result["criteria"].values())
@@ -1359,6 +1517,45 @@ def _supervisor(
         allow_arm=True,
         duration_s=None,
     )
+
+
+def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    state_path = supervisor.run_dir / "reports/capture_device_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state = {
+        "updated_utc": datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "capture_active": True,
+        "serial_open": True,
+        "command_fifo_configured": True,
+        "emergency_command_fifo_configured": True,
+        "normal_command_batch_limit": 1,
+        "normal_command_max_age_s": 2.0,
+        "write_timeout_s": 1.0,
+        "malformed_utf8": 0,
+        "parser_errors": 0,
+        "reconnect_count": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    supervisor._check_capture_transport_state()
+
+    state["commands_rejected"] = 1
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(ValueError, match="commands_rejected"):
+        supervisor._check_capture_transport_state()
+
+    state["commands_rejected"] = 0
+    state["updated_utc"] = "1970-01-01T00:00:00Z"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(ValueError, match="state is stale"):
+        supervisor._check_capture_transport_state()
 
 
 def test_part_a_waits_for_eligible_decision_after_service_interval(

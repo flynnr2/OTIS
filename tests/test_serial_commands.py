@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from host.otis_tools.serial_commands import CommandFifo, parse_serial_command, send_command_to_fifo
+from host.otis_tools.serial_commands import (
+    CommandFifo,
+    parse_serial_command,
+    parse_timestamped_command_line,
+    send_command_to_fifo,
+    send_timestamped_command_to_fifo,
+    timestamped_command_line,
+)
 
 
 @pytest.mark.parametrize(
@@ -76,3 +83,48 @@ def test_send_command_to_fifo_writes_normalized_command(tmp_path) -> None:
     with CommandFifo(fifo) as reader:
         assert send_command_to_fifo(fifo, "dac set 0x8000") == 0
         assert reader.poll() == ["DAC SET 0x8000"]
+
+
+def test_command_fifo_bounded_poll_preserves_remaining_order(tmp_path) -> None:
+    fifo = tmp_path / "control" / "commands.fifo"
+
+    with CommandFifo(fifo) as reader:
+        assert send_command_to_fifo(fifo, "CONFIG?") == 0
+        assert send_command_to_fifo(fifo, "ACTIVE LEASE 1") == 0
+        assert send_command_to_fifo(fifo, "ACTIVE?") == 0
+
+        assert reader.poll(max_lines=1) == ["CONFIG?"]
+        assert reader.poll(max_lines=1) == ["ACTIVE LEASE 1"]
+        assert reader.poll(max_lines=1) == ["ACTIVE?"]
+        assert reader.poll(max_lines=1) == []
+
+
+def test_timestamped_command_envelope_preserves_exact_validated_command() -> None:
+    line = timestamped_command_line(
+        "active arm 8 1234 2500", created_monotonic_ns=123456789
+    )
+    command, created = parse_timestamped_command_line(line)
+
+    assert line == "OTISQ1 123456789 ACTIVE ARM 8 1234 2500"
+    assert command.normalized == "ACTIVE ARM 8 1234 2500"
+    assert created == 123456789
+
+
+def test_timestamped_command_fifo_write_is_atomic_and_parseable(tmp_path) -> None:
+    fifo = tmp_path / "control" / "commands.fifo"
+
+    with CommandFifo(fifo) as reader:
+        assert (
+            send_timestamped_command_to_fifo(
+                fifo,
+                "CONFIG?",
+                created_monotonic_ns=987654321,
+            )
+            == 0
+        )
+        lines = reader.poll()
+
+    assert lines == ["OTISQ1 987654321 CONFIG?"]
+    command, created = parse_timestamped_command_line(lines[0])
+    assert command.normalized == "CONFIG?"
+    assert created == 987654321

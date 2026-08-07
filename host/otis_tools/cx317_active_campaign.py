@@ -335,6 +335,8 @@ class ActiveCampaignSupervisor:
         allow_manual_start: bool,
         allow_arm: bool,
         duration_s: float | None,
+        emergency_command_fifo: Path | None = None,
+        console_events: bool = False,
     ) -> None:
         self.run_dir = run_dir
         self.command_fifo = command_fifo
@@ -345,6 +347,8 @@ class ActiveCampaignSupervisor:
         self.allow_manual_start = allow_manual_start
         self.allow_arm = allow_arm
         self.duration_s = duration_s
+        self.emergency_command_fifo = emergency_command_fifo
+        self.console_events = console_events
         self.state_path = run_dir / SUPERVISOR_STATE
         self.events_path = run_dir / SUPERVISOR_EVENTS
         self.state = self._load_state()
@@ -376,7 +380,8 @@ class ActiveCampaignSupervisor:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-        print(json.dumps(payload, sort_keys=True), flush=True)
+        if self.console_events:
+            print(json.dumps(payload, sort_keys=True), flush=True)
 
     def _command(self, command: str) -> None:
         send_command_to_fifo(self.command_fifo, command)
@@ -384,7 +389,16 @@ class ActiveCampaignSupervisor:
 
     def _abort(self, reason: str) -> None:
         try:
-            self._command("ACTIVE ABORT")
+            if self.emergency_command_fifo is not None:
+                send_command_to_fifo(
+                    self.emergency_command_fifo, "ACTIVE ABORT"
+                )
+                self._event(
+                    "emergency_device_abort_submitted",
+                    reason=reason,
+                )
+            else:
+                self._command("ACTIVE ABORT")
         except (OSError, SystemExit, ValueError) as exc:
             self._event("device_abort_submission_failed", reason=reason, error=str(exc))
         self.state["terminal"] = {"result": "aborted", "reason": reason, "utc": _utc_now()}
@@ -680,12 +694,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--campaign", choices=("A", "B"), required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--command-fifo", type=Path, required=True)
+    parser.add_argument("--emergency-command-fifo", type=Path)
     parser.add_argument("--abort-fifo", type=Path, required=True)
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--allow-manual-start", action="store_true")
     parser.add_argument("--allow-arm", action="store_true")
     parser.add_argument("--duration-s", type=float)
+    parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
+    if args.emergency_command_fifo is not None:
+        fifo_paths = {
+            args.command_fifo.absolute(),
+            args.emergency_command_fifo.absolute(),
+            args.abort_fifo.absolute(),
+        }
+        if len(fifo_paths) != 3:
+            parser.error(
+                "command, emergency-command and independent-abort FIFOs "
+                "must be distinct"
+            )
     spec, identities = load_campaign_spec(args.campaign)
     supervisor = ActiveCampaignSupervisor(
         run_dir=args.run_dir,
@@ -697,6 +724,8 @@ def main(argv: list[str] | None = None) -> int:
         allow_manual_start=args.allow_manual_start,
         allow_arm=args.allow_arm,
         duration_s=args.duration_s,
+        emergency_command_fifo=args.emergency_command_fifo,
+        console_events=args.console_events,
     )
     try:
         return supervisor.run()

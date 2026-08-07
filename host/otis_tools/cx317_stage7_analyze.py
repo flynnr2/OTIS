@@ -61,6 +61,14 @@ from .timebase import unwrap_ticks
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PART_A_STABILITY_MIN_OBSERVATIONS = 36
 PART_A_STABILITY_MIN_DURATION_S = 6 * 60 * 60
+CAPTURE_TOOL_PATH = Path(__file__).with_name("capture_device.py")
+SERIAL_COMMANDS_PATH = Path(__file__).with_name("serial_commands.py")
+TRANSPORT_INJECTION_PATH = Path(__file__).with_name(
+    "cx317_stage7_transport_fault_inject.py"
+)
+TRANSPORT_ANALYZER_PATH = Path(__file__).with_name(
+    "cx317_stage7_transport_rehearsal_analyze.py"
+)
 HISTORICAL_REPLAYS = (
     (
         "campaign_a_v3",
@@ -1353,6 +1361,35 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             f"{STAGE7_QUALIFICATION_TIMEOUT_S}/{expected_duration}/{expected_grace} s",
         )
     )
+    host_contract = manifest.data.get("host", {})
+    checks.append(
+        Check(
+            "priority_fail_static_host_transport_bound",
+            (
+                isinstance(host_contract, dict)
+                and host_contract.get("sole_serial_owner") is True
+                and host_contract.get("independent_abort_fifo_required")
+                is True
+                and host_contract.get(
+                    "priority_abort_command_fifo_required"
+                )
+                is True
+                and host_contract.get("capture_command_write_timeout_s")
+                == 1.0
+                and host_contract.get(
+                    "capture_console_log_file_required"
+                )
+                is True
+                and host_contract.get("normal_command_batch_limit") == 1
+                and host_contract.get("normal_command_max_age_s") == 2.0
+                and host_contract.get("normal_command_envelope")
+                == "OTISQ1_MONOTONIC_NS"
+            ),
+            "separate priority ACTIVE ABORT ingress, bounded serial write, "
+            "file-backed capture logging, one-command normal batches and "
+            "two-second OTISQ1 monotonic freshness envelopes",
+        )
+    )
 
     if part == "part_b":
         prerequisite = manifest.data.get("prerequisite_gates", {})
@@ -1362,9 +1399,16 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         rehearsal = prerequisite.get(
             "part_b_accelerated_control_rehearsal", {}
         )
+        hil_rehearsal = prerequisite.get(
+            "part_b_post_repair_hil_rehearsal", {}
+        )
         a1_document = a1.get("document", {})
         a2_document = a2.get("document", {})
         rehearsal_document = rehearsal.get("document", {})
+        hil_document = hil_rehearsal.get("document", {})
+        transport_hil = hil_document.get(
+            "priority_transport_fault_rehearsal", {}
+        )
         rehearsal_bindings = rehearsal_document.get("bindings", {})
         a2_transactions = a2_document.get("transactions", {})
 
@@ -1384,10 +1428,12 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
                 "part_a1_fixed_code_stability",
                 "part_a2_cross_core_transaction",
                 "part_b_accelerated_control_rehearsal",
+                "part_b_post_repair_hil_rehearsal",
             }
             and gate_file_exact(a1)
             and gate_file_exact(a2)
             and gate_file_exact(rehearsal)
+            and gate_file_exact(hil_rehearsal)
             and a1_document.get("status") == "pass"
             and a1_document.get("test")
             == "part_a_fixed_code_stability"
@@ -1435,6 +1481,52 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             == STAGE7_PROMPT_SHA256
             and _sha256_file(REPO_ROOT / STAGE7_PROMPT)
             == STAGE7_PROMPT_SHA256
+            and hil_document.get("status") == "pass"
+            and hil_document.get("tool")
+            == "cx317_stage7_rehearsal_analyze_v3"
+            and hil_document.get("diagnostic_only") is True
+            and hil_document.get("qualification_evidence") is False
+            and hil_document.get("stage7_progression_authority") is False
+            and bool(hil_document.get("criteria"))
+            and all(
+                value is True
+                for value in hil_document.get("criteria", {}).values()
+            )
+            and gate_file_exact(hil_rehearsal.get("run_manifest", {}))
+            and gate_file_exact(
+                hil_rehearsal.get("evidence_snapshot", {})
+            )
+            and hil_rehearsal.get("supervisor_sha256")
+            == _sha256_file(SUPERVISOR_PATH)
+            and hil_rehearsal.get("capture_tool_sha256")
+            == _sha256_file(CAPTURE_TOOL_PATH)
+            and hil_rehearsal.get("serial_commands_sha256")
+            == _sha256_file(SERIAL_COMMANDS_PATH)
+            and gate_file_exact(transport_hil)
+            and gate_file_exact(transport_hil.get("run_manifest", {}))
+            and gate_file_exact(
+                transport_hil.get("evidence_snapshot", {})
+            )
+            and transport_hil.get("bindings", {}).get(
+                "capture_tool_sha256"
+            )
+            == _sha256_file(CAPTURE_TOOL_PATH)
+            and transport_hil.get("bindings", {}).get(
+                "supervisor_sha256"
+            )
+            == _sha256_file(SUPERVISOR_PATH)
+            and transport_hil.get("bindings", {}).get(
+                "serial_commands_sha256"
+            )
+            == _sha256_file(SERIAL_COMMANDS_PATH)
+            and transport_hil.get("bindings", {}).get(
+                "injection_tool_sha256"
+            )
+            == _sha256_file(TRANSPORT_INJECTION_PATH)
+            and transport_hil.get("bindings", {}).get(
+                "analyzer_tool_sha256"
+            )
+            == _sha256_file(TRANSPORT_ANALYZER_PATH)
         )
         checks.append(
             Check(
@@ -1643,8 +1735,63 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     checks.append(Check("part_specific_duration_and_service_schedule", schedule_ok, schedule_evidence))
 
     markers = _host_markers(run_dir / "raw/serial.log")
-    stopped = _one_marker(markers, "capture_stopped")
-    transport_ok = all(
+    stopped_rows = [
+        row for row in markers if row.get("event") == "capture_stopped"
+    ]
+    forced_stop_path = run_dir / "reports/capture_forced_stop.json"
+    if len(stopped_rows) == 1:
+        stopped = stopped_rows[0]
+        normal_capture_stop = True
+        capture_stop_evidence = (
+            "normal capture_stopped marker with zero "
+            "parser/malformed/reconnect/rejected-command/partial-line faults"
+        )
+    elif not stopped_rows and forced_stop_path.exists():
+        # A forced-stop report is diagnostic evidence only.  It permits the
+        # analyzer to emit an explicit failed gate so the incomplete run can
+        # be sealed, but can never satisfy the clean-transport qualification.
+        stopped = {}
+        normal_capture_stop = False
+        capture_stop_evidence = (
+            "capture_forced_stop.json present; normal capture_stopped marker "
+            "absent, so clean transport qualification is fail-closed"
+        )
+    else:
+        stopped = _one_marker(markers, "capture_stopped")
+        normal_capture_stop = True
+        capture_stop_evidence = "normal capture_stopped marker"
+    normal_ingress = _one_marker(markers, "command_ingress_opened")
+    emergency_ingress = _one_marker(
+        markers, "emergency_command_ingress_opened"
+    )
+    capture_transport_state = json.loads(
+        (run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    live_transport_binding_ok = (
+        normal_ingress.get("batch_limit") == 1
+        and normal_ingress.get("normal_command_max_age_s") == 2.0
+        and bool(emergency_ingress.get("path"))
+        and normal_ingress.get("path") != emergency_ingress.get("path")
+        and capture_transport_state.get("capture_active") is False
+        and capture_transport_state.get("serial_open") is False
+        and capture_transport_state.get("normal_command_batch_limit") == 1
+        and capture_transport_state.get("normal_command_max_age_s") == 2.0
+        and capture_transport_state.get("write_timeout_s") == 1.0
+        and all(
+            int(capture_transport_state.get(key, -1)) == 0
+            for key in (
+                "malformed_utf8",
+                "parser_errors",
+                "reconnect_count",
+                "commands_rejected",
+                "emergency_aborts_sent",
+            )
+        )
+        and (run_dir / "reports/capture_device.log").is_file()
+    )
+    transport_ok = normal_capture_stop and live_transport_binding_ok and all(
         int(stopped.get(key, -1)) == 0
         for key in (
             "malformed_utf8",
@@ -1657,7 +1804,9 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         Check(
             "capture_transport_complete_and_clean",
             transport_ok,
-            "zero parser/malformed/reconnect/rejected-command/partial-line faults",
+            capture_stop_evidence
+            + "; live normal batch limit 1 / max age 2.0 s and distinct "
+            "priority abort ingress",
         )
     )
 

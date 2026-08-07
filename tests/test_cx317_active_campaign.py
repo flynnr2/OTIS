@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -187,3 +188,77 @@ def test_supervisor_fsyncs_capsule_then_submits_exact_phase_one_ack(
     capsule = tmp_path / "run" / "reports" / "step_001" / "record_000002_request_accepted.json"
     assert capsule.exists()
     assert json.loads(capsule.read_text(encoding="utf-8")) == values
+
+
+def test_supervisor_abort_uses_separate_priority_fifo(
+    tmp_path: Path,
+) -> None:
+    spec, identities = load_campaign_spec("A")
+    run_dir = tmp_path / "run"
+    normal_fifo_path = tmp_path / "normal.fifo"
+    emergency_fifo_path = tmp_path / "emergency.fifo"
+    supervisor = ActiveCampaignSupervisor(
+        run_dir=run_dir,
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        allow_manual_start=False,
+        allow_arm=False,
+        duration_s=None,
+    )
+
+    with CommandFifo(normal_fifo_path) as normal_reader, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_reader:
+        supervisor._abort("test_fault")
+        assert emergency_reader.poll() == ["ACTIVE ABORT"]
+        assert normal_reader.poll() == []
+
+    assert supervisor.state["terminal"]["result"] == "aborted"
+    events = (run_dir / "reports/cx317_active_supervisor_events.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert "emergency_device_abort_submitted" in events
+
+
+def test_saturated_normal_fifo_cannot_block_priority_abort(
+    tmp_path: Path,
+) -> None:
+    spec, identities = load_campaign_spec("A")
+    normal_fifo_path = tmp_path / "normal.fifo"
+    emergency_fifo_path = tmp_path / "emergency.fifo"
+    supervisor = ActiveCampaignSupervisor(
+        run_dir=tmp_path / "run",
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        allow_manual_start=False,
+        allow_arm=False,
+        duration_s=None,
+    )
+
+    with CommandFifo(normal_fifo_path), CommandFifo(
+        emergency_fifo_path
+    ) as emergency_reader:
+        writer = os.open(normal_fifo_path, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            while True:
+                try:
+                    os.write(writer, b"CONFIG?\n" * 128)
+                except BlockingIOError:
+                    break
+        finally:
+            os.close(writer)
+
+        with pytest.raises(BlockingIOError):
+            supervisor._command("CONFIG?")
+        supervisor._abort("normal_fifo_saturated")
+        assert emergency_reader.poll() == ["ACTIVE ABORT"]
+
+    assert supervisor.state["terminal"]["reason"] == "normal_fifo_saturated"

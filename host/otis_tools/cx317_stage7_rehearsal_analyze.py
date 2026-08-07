@@ -18,7 +18,12 @@ from .cx317_active_campaign import (
     validate_transaction_history,
 )
 from .cx317_stage7_supervisor import load_stage7_spec
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
+from .run_loader import (
+    CAPTURE_IN_PROGRESS_FLAG,
+    COMPLETE_MARKER,
+    load_manifest,
+)
 
 
 CONTROL_CSV = Path("csv/control_previews_v1.csv")
@@ -26,6 +31,16 @@ ESTIMATES_CSV = Path("csv/estimates_v2.csv")
 SUPERVISOR_STATE = Path("reports/cx317_active_supervisor_state.json")
 SUPERVISOR_EVENTS = Path("reports/cx317_active_supervisor_events.jsonl")
 OUTPUT = Path("reports/stage7_rehearsal_gate.json")
+HOST_MARKER_PREFIX = "# OTIS_HOST "
+CAPTURE_TOOL = Path(__file__).with_name("capture_device.py")
+SUPERVISOR_TOOL = Path(__file__).with_name("cx317_stage7_supervisor.py")
+SERIAL_COMMANDS_TOOL = Path(__file__).with_name("serial_commands.py")
+TRANSPORT_INJECTION_TOOL = Path(__file__).with_name(
+    "cx317_stage7_transport_fault_inject.py"
+)
+TRANSPORT_ANALYZER_TOOL = Path(__file__).with_name(
+    "cx317_stage7_transport_rehearsal_analyze.py"
+)
 
 
 def _sha256(path: Path) -> str:
@@ -42,6 +57,78 @@ def _events(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _host_markers(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    markers: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(HOST_MARKER_PREFIX):
+                markers.append(json.loads(line[len(HOST_MARKER_PREFIX) :]))
+    return markers
+
+
+def _transport_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
+    gate_path = gate_path.resolve()
+    if (
+        gate_path.name != "stage7_rehearsal_gate.json"
+        or gate_path.parent.name != "reports"
+    ):
+        raise ValueError("transport rehearsal gate path is not canonical")
+    run_dir = gate_path.parent.parent
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("transport rehearsal capture is still active")
+    if not (run_dir / COMPLETE_MARKER).is_file():
+        raise ValueError("transport rehearsal is not marked complete")
+    manifest = load_manifest(run_dir)
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    snapshot_path = run_dir / EVIDENCE_MANIFEST
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    bindings = gate.get("bindings", {})
+    criteria = gate.get("criteria", {})
+    failures, warnings = validate_evidence_snapshot(run_dir, manifest)
+    valid = (
+        manifest.data.get("stage")
+        == "CX317_STAGE7_TRANSPORT_FAULT_REHEARSAL"
+        and manifest.data.get("diagnostic_only") is True
+        and manifest.data.get("qualification_evidence") is False
+        and manifest.data.get("stage7_progression_authority") is False
+        and gate.get("status") == "pass"
+        and gate.get("tool")
+        == "cx317_stage7_transport_rehearsal_analyze_v1"
+        and gate.get("run_dir") == str(run_dir)
+        and bool(criteria)
+        and all(value is True for value in criteria.values())
+        and bindings.get("capture_tool_sha256") == _sha256(CAPTURE_TOOL)
+        and bindings.get("supervisor_sha256") == _sha256(SUPERVISOR_TOOL)
+        and bindings.get("serial_commands_sha256")
+        == _sha256(SERIAL_COMMANDS_TOOL)
+        and bindings.get("injection_tool_sha256")
+        == _sha256(TRANSPORT_INJECTION_TOOL)
+        and bindings.get("analyzer_tool_sha256")
+        == _sha256(TRANSPORT_ANALYZER_TOOL)
+        and snapshot.get("run_state") == "complete"
+        and not failures
+        and not warnings
+    )
+    if not valid:
+        raise ValueError("transport rehearsal is not an exact sealed pass")
+    return {
+        "path": str(gate_path),
+        "sha256": _sha256(gate_path),
+        "run_manifest": {
+            "path": str(manifest.path.resolve()),
+            "sha256": _sha256(manifest.path),
+        },
+        "evidence_snapshot": {
+            "path": str(snapshot_path.resolve()),
+            "sha256": _sha256(snapshot_path),
+            "snapshot_digest": snapshot["snapshot_digest"],
+        },
+        "bindings": bindings,
+    }
+
+
 def _selected_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
@@ -55,13 +142,20 @@ def _selected_rows(path: Path) -> list[dict[str, str]]:
 
 
 def analyze(
-    run_dir: Path, *, build_manifest: Path, uf2: Path
+    run_dir: Path,
+    *,
+    build_manifest: Path,
+    uf2: Path,
+    transport_rehearsal_gate: Path,
 ) -> tuple[Path, dict[str, Any]]:
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     state = json.loads((run_dir / SUPERVISOR_STATE).read_text(encoding="utf-8"))
     events = _events(run_dir / SUPERVISOR_EVENTS)
     spec, identities = load_stage7_spec("rehearsal", 0xA800)
     build_identity = manifest["firmware"]["build_identity"]
+    transport_binding = _transport_rehearsal_binding(
+        transport_rehearsal_gate
+    )
 
     act_path = run_dir / ACTIVE_CSV
     validation = validate_csv(
@@ -123,6 +217,25 @@ def analyze(
         }
         or item.get("command") == "ACTIVE ABORT"
     ]
+    host_markers = _host_markers(run_dir / "raw/serial.log")
+    capture_stopped = [
+        row for row in host_markers if row.get("event") == "capture_stopped"
+    ]
+    normal_ingress = [
+        row
+        for row in host_markers
+        if row.get("event") == "command_ingress_opened"
+    ]
+    emergency_ingress = [
+        row
+        for row in host_markers
+        if row.get("event") == "emergency_command_ingress_opened"
+    ]
+    capture_transport_state = json.loads(
+        (run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     build = json.loads(build_manifest.read_text(encoding="utf-8"))
     build_artifact = next(
@@ -138,6 +251,9 @@ def analyze(
             and manifest["firmware"]["profile_id"] == spec.profile
             and manifest["active_campaign"]["run_identity"]
             == spec.run_identity
+        ),
+        "priority_transport_fault_rehearsal_passed": bool(
+            transport_binding
         ),
         "exact_clean_build_and_uf2": (
             build["provenance"]["source"]["state"] == "clean"
@@ -234,6 +350,43 @@ def analyze(
             in {None, "0"}
             and health.get(("dual_core", "telemetry_dropped")) in {None, "0"}
         ),
+        "host_priority_transport_exact_and_clean": (
+            len(capture_stopped) == 1
+            and len(normal_ingress) == 1
+            and len(emergency_ingress) == 1
+            and normal_ingress[0].get("batch_limit") == 1
+            and normal_ingress[0].get("normal_command_max_age_s") == 2.0
+            and normal_ingress[0].get("path")
+            != emergency_ingress[0].get("path")
+            and all(
+                int(capture_stopped[0].get(key, -1)) == 0
+                for key in (
+                    "malformed_utf8",
+                    "parser_errors",
+                    "reconnect_count",
+                    "commands_rejected",
+                    "emergency_aborts_sent",
+                )
+            )
+            and (run_dir / "reports/capture_device.log").is_file()
+            and capture_transport_state.get("capture_active") is False
+            and capture_transport_state.get("serial_open") is False
+            and capture_transport_state.get("normal_command_batch_limit")
+            == 1
+            and capture_transport_state.get("normal_command_max_age_s")
+            == 2.0
+            and capture_transport_state.get("write_timeout_s") == 1.0
+            and all(
+                int(capture_transport_state.get(key, -1)) == 0
+                for key in (
+                    "malformed_utf8",
+                    "parser_errors",
+                    "reconnect_count",
+                    "commands_rejected",
+                    "emergency_aborts_sent",
+                )
+            )
+        ),
         "rehearsal_selected_estimator_observed": len(selected) >= 5,
         "capture_closed_before_gate": not (
             run_dir / CAPTURE_IN_PROGRESS_FLAG
@@ -241,7 +394,7 @@ def analyze(
     }
     result = {
         "schema_version": 1,
-        "tool": "cx317_stage7_rehearsal_analyze_v2",
+        "tool": "cx317_stage7_rehearsal_analyze_v3",
         "status": "pass" if all(criteria.values()) else "fail",
         "diagnostic_only": True,
         "qualification_evidence": False,
@@ -254,6 +407,7 @@ def analyze(
         "active_contract_errors": validation.errors,
         "transaction_history_error": history_error,
         "event_faults": event_faults,
+        "priority_transport_fault_rehearsal": transport_binding,
         "final": {
             "active_state": health.get(("cx317_active", "state")),
             "evidence_phase": health.get(("cx317_active", "evidence_phase")),
@@ -276,11 +430,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--build-manifest", type=Path, required=True)
     parser.add_argument("--uf2", type=Path, required=True)
+    parser.add_argument(
+        "--transport-rehearsal-gate", type=Path, required=True
+    )
     args = parser.parse_args(argv)
     output, result = analyze(
         args.run_dir,
         build_manifest=args.build_manifest,
         uf2=args.uf2,
+        transport_rehearsal_gate=args.transport_rehearsal_gate,
     )
     print(output)
     return 0 if result["status"] == "pass" else 2
