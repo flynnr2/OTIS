@@ -115,6 +115,7 @@ def test_transport_rehearsal_analyzer_passes_exact_priority_abort(
             {
                 "capture_active": False,
                 "serial_open": False,
+                "state_heartbeat_interval_s": 5.0,
                 "normal_command_batch_limit": 1,
                 "normal_command_max_age_s": 2.0,
                 "write_timeout_s": 1.0,

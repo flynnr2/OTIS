@@ -1380,6 +1380,10 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
                     "capture_console_log_file_required"
                 )
                 is True
+                and host_contract.get(
+                    "capture_state_heartbeat_interval_s"
+                )
+                == 5.0
                 and host_contract.get("normal_command_batch_limit") == 1
                 and host_contract.get("normal_command_max_age_s") == 2.0
                 and host_contract.get("normal_command_envelope")
@@ -1776,6 +1780,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         and normal_ingress.get("path") != emergency_ingress.get("path")
         and capture_transport_state.get("capture_active") is False
         and capture_transport_state.get("serial_open") is False
+        and capture_transport_state.get("state_heartbeat_interval_s") == 5.0
         and capture_transport_state.get("normal_command_batch_limit") == 1
         and capture_transport_state.get("normal_command_max_age_s") == 2.0
         and capture_transport_state.get("write_timeout_s") == 1.0

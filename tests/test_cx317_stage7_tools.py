@@ -154,6 +154,7 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                     "priority_abort_command_fifo_required": True,
                     "capture_command_write_timeout_s": 1.0,
                     "capture_console_log_file_required": True,
+                    "capture_state_heartbeat_interval_s": 5.0,
                     "normal_command_batch_limit": 1,
                     "normal_command_max_age_s": 2.0,
                     "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
@@ -625,6 +626,7 @@ def test_stage7_manifest_binds_clean_part_a_artifact(tmp_path: Path) -> None:
     assert manifest["host"]["priority_abort_command_fifo_required"] is True
     assert manifest["host"]["capture_command_write_timeout_s"] == 1.0
     assert manifest["host"]["capture_console_log_file_required"] is True
+    assert manifest["host"]["capture_state_heartbeat_interval_s"] == 5.0
     assert manifest["host"]["normal_command_batch_limit"] == 1
     assert manifest["host"]["normal_command_max_age_s"] == 2.0
     assert manifest["host"]["normal_command_envelope"] == (
@@ -1395,6 +1397,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
             {
                 "capture_active": False,
                 "serial_open": False,
+                "state_heartbeat_interval_s": 5.0,
                 "normal_command_batch_limit": 1,
                 "normal_command_max_age_s": 2.0,
                 "write_timeout_s": 1.0,
@@ -1533,6 +1536,7 @@ def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
         "serial_open": True,
         "command_fifo_configured": True,
         "emergency_command_fifo_configured": True,
+        "state_heartbeat_interval_s": 5.0,
         "normal_command_batch_limit": 1,
         "normal_command_max_age_s": 2.0,
         "write_timeout_s": 1.0,
@@ -1546,6 +1550,12 @@ def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
 
     supervisor._check_capture_transport_state()
 
+    state["state_heartbeat_interval_s"] = 60.0
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(ValueError, match="state_heartbeat_interval_s"):
+        supervisor._check_capture_transport_state()
+
+    state["state_heartbeat_interval_s"] = 5.0
     state["commands_rejected"] = 1
     state_path.write_text(json.dumps(state), encoding="utf-8")
     with pytest.raises(ValueError, match="commands_rejected"):

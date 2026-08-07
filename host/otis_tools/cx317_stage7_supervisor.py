@@ -494,6 +494,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
             "serial_open": True,
             "command_fifo_configured": True,
             "emergency_command_fifo_configured": True,
+            "state_heartbeat_interval_s": 5.0,
             "normal_command_batch_limit": 1,
             "normal_command_max_age_s": 2.0,
             "write_timeout_s": 1.0,

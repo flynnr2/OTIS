@@ -371,6 +371,8 @@ def analyze(
             and (run_dir / "reports/capture_device.log").is_file()
             and capture_transport_state.get("capture_active") is False
             and capture_transport_state.get("serial_open") is False
+            and capture_transport_state.get("state_heartbeat_interval_s")
+            == 5.0
             and capture_transport_state.get("normal_command_batch_limit")
             == 1
             and capture_transport_state.get("normal_command_max_age_s")

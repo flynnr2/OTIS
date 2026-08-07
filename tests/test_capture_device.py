@@ -536,6 +536,61 @@ def test_active_capture_serial_fault_stops_without_reconnect(
     assert b"capture_stopped" in raw
 
 
+def test_capture_state_heartbeat_is_independent_of_human_status_interval(
+    tmp_path: Path, monkeypatch
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=999.0,
+    )
+
+    class IdleSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count >= 8:
+                stop_event.set()
+            return b""
+
+    clock = iter(float(value) for value in range(100))
+    monkeypatch.setattr(
+        capture_device_module.time, "monotonic", lambda: next(clock)
+    )
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: IdleSerial(),
+        stop_event=stop_event,
+    )
+    state_writes = 0
+    original_write_state = runner._write_state
+
+    def record_state_write() -> None:
+        nonlocal state_writes
+        state_writes += 1
+        original_write_state()
+
+    monkeypatch.setattr(runner, "_write_state", record_state_write)
+
+    assert runner.run() == 0
+    assert state_writes >= 5
+    state = json.loads(
+        (config.run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert state["state_heartbeat_interval_s"] == 5.0
+    assert state["capture_active"] is False
+
+
 def test_abort_arriving_during_serial_read_preempts_normal_command(
     tmp_path: Path,
 ) -> None:

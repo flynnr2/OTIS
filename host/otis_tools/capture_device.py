@@ -28,6 +28,7 @@ from .serial_commands import (
 LOGGER = logging.getLogger("otis.capture_device")
 HOST_MARKER_PREFIX = b"# OTIS_HOST"
 CAPTURE_STATE = Path("reports/capture_device_state.json")
+CAPTURE_STATE_HEARTBEAT_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -508,6 +509,9 @@ class CaptureDeviceRunner:
             emergency_aborts_sent=self.emergency_aborts_sent,
             emergency_abort_latched=self.emergency_abort_latched,
         )
+        self._write_state()
+
+    def _write_state(self) -> None:
         _atomic_json(
             self.config.run_dir / CAPTURE_STATE,
             {
@@ -535,6 +539,7 @@ class CaptureDeviceRunner:
                 "emergency_command_fifo_configured": (
                     self.config.emergency_command_fifo is not None
                 ),
+                "state_heartbeat_interval_s": CAPTURE_STATE_HEARTBEAT_S,
                 "normal_command_batch_limit": 1,
                 "normal_command_max_age_s": (
                     self.config.normal_command_max_age_s
@@ -557,6 +562,7 @@ class CaptureDeviceRunner:
         self._emit_status()
         backoff = self.config.reconnect_initial_s
         next_status = time.monotonic() + self.config.status_interval_s
+        next_state = time.monotonic() + CAPTURE_STATE_HEARTBEAT_S
         capture_deadline = (
             time.monotonic() + self.config.duration_s
             if self.config.duration_s is not None
@@ -695,6 +701,10 @@ class CaptureDeviceRunner:
                             if now >= next_status:
                                 self._emit_status()
                                 next_status = now + self.config.status_interval_s
+                                next_state = now + CAPTURE_STATE_HEARTBEAT_S
+                            elif now >= next_state:
+                                self._write_state()
+                                next_state = now + CAPTURE_STATE_HEARTBEAT_S
                     except serial_exceptions as exc:
                         self.serial_open = False
                         self.reconnect_count += 1

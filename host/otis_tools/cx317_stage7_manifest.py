@@ -163,6 +163,7 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         and host.get("priority_abort_command_fifo_required") is True
         and host.get("capture_command_write_timeout_s") == 1.0
         and host.get("capture_console_log_file_required") is True
+        and host.get("capture_state_heartbeat_interval_s") == 5.0
         and host.get("normal_command_batch_limit") == 1
         and host.get("normal_command_max_age_s") == 2.0
         and host.get("normal_command_envelope")
@@ -505,6 +506,7 @@ def create_stage7_manifest(
             "priority_abort_command_fifo_required": True,
             "capture_command_write_timeout_s": 1.0,
             "capture_console_log_file_required": True,
+            "capture_state_heartbeat_interval_s": 5.0,
             "normal_command_batch_limit": 1,
             "normal_command_max_age_s": 2.0,
             "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
