@@ -16,6 +16,7 @@ import argparse
 import json
 import secrets
 import time
+from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
 from .cx317_abort_path import AbortFifo
@@ -65,6 +66,8 @@ REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
 ACTIVE_ARM_LIFETIME_S = 110
 CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
 CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15
+NORMAL_COMMAND_ACK_TIMEOUT_S = 3.0
+NORMAL_COMMAND_ACK_POLL_S = 0.02
 RP2040_TIMER0_TICKS_PER_SECOND = 16_000_000
 REAL_FC0_STARTUP_INHIBIT_S = 600
 REAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
@@ -456,6 +459,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self.part = part
         self.timing = stage7_timing(part)
         self._last_arm_monotonic: float | None = None
+        self._live_command_ack_required = False
         self._arm_progress_control_ref: str | None = None
         self._arm_progress_reset_seen = False
         self._next_service_command_monotonic = 0.0
@@ -476,10 +480,40 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         self._save()
 
     def _command(self, command: str) -> None:
+        before = (
+            self._check_capture_transport_state()
+            if self._live_command_ack_required
+            else None
+        )
         send_timestamped_command_to_fifo(self.command_fifo, command)
         self._event("command_submitted", command=command)
+        if before is None:
+            return
+        before_sent = int(before["commands_sent"])
+        deadline = time.monotonic() + NORMAL_COMMAND_ACK_TIMEOUT_S
+        while True:
+            current = self._check_capture_transport_state()
+            sent = int(current["commands_sent"])
+            if sent == before_sent + 1:
+                self._event(
+                    "command_acknowledged",
+                    command=command,
+                    commands_sent=sent,
+                )
+                return
+            if sent != before_sent:
+                raise ValueError(
+                    "capture command acknowledgement sequence changed "
+                    f"unexpectedly: before={before_sent} current={sent}"
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "capture did not acknowledge the fresh normal command "
+                    f"within {NORMAL_COMMAND_ACK_TIMEOUT_S:.1f} s: {command}"
+                )
+            time.sleep(NORMAL_COMMAND_ACK_POLL_S)
 
-    def _check_capture_transport_state(self) -> None:
+    def _check_capture_transport_state(self) -> dict[str, Any]:
         path = self.run_dir / CAPTURE_TRANSPORT_STATE
         if not path.is_file():
             raise ValueError("capture transport state is missing")
@@ -516,6 +550,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
                 raise ValueError(
                     f"capture transport counter {key} is {state.get(key)!r}"
                 )
+        return state
 
     def _arm_progress_epoch_ready(
         self, preview: dict[str, str] | None, progress: int
@@ -1051,6 +1086,7 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         last_lease = 0.0
         last_query = 0.0
         with AbortFifo(self.abort_fifo) as abort:
+            self._live_command_ack_required = True
             self._event(
                 "stage7_supervisor_started",
                 part=self.part,

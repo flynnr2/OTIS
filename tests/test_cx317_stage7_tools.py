@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import host.otis_tools.cx317_stage7_supervisor as stage7_supervisor_module
+
 from host.otis_tools.cx317_stage7_analyze import (
     _controller_parity,
     _dual_core_queue_health,
@@ -155,6 +157,9 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                     "capture_command_write_timeout_s": 1.0,
                     "capture_console_log_file_required": True,
                     "capture_state_heartbeat_interval_s": 5.0,
+                    "normal_command_ack_required": True,
+                    "normal_command_ack_timeout_s": 3.0,
+                    "normal_command_max_outstanding": 1,
                     "normal_command_batch_limit": 1,
                     "normal_command_max_age_s": 2.0,
                     "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
@@ -1387,7 +1392,15 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state), encoding="utf-8")
     (run / "reports/cx317_active_supervisor_events.jsonl").write_text(
-        "", encoding="utf-8"
+        '\n'.join(
+            json.dumps(row)
+            for row in (
+                {"event": "command_submitted", "command": "CONFIG?"},
+                {"event": "command_acknowledged", "command": "CONFIG?"},
+            )
+        )
+        + '\n',
+        encoding="utf-8",
     )
     (run / "reports/capture_device.log").write_text(
         "file-backed capture log\n", encoding="utf-8"
@@ -1522,13 +1535,8 @@ def _supervisor(
     )
 
 
-def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
-    tmp_path: Path,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    state_path = supervisor.run_dir / "reports/capture_device_state.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state = {
+def _healthy_capture_transport_state() -> dict[str, object]:
+    return {
         "updated_utc": datetime.now(timezone.utc).isoformat().replace(
             "+00:00", "Z"
         ),
@@ -1543,9 +1551,19 @@ def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
         "malformed_utf8": 0,
         "parser_errors": 0,
         "reconnect_count": 0,
+        "commands_sent": 0,
         "commands_rejected": 0,
         "emergency_aborts_sent": 0,
     }
+
+
+def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    state_path = supervisor.run_dir / "reports/capture_device_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state = _healthy_capture_transport_state()
     state_path.write_text(json.dumps(state), encoding="utf-8")
 
     supervisor._check_capture_transport_state()
@@ -1566,6 +1584,71 @@ def test_stage7_supervisor_rejects_stale_or_faulted_capture_transport(
     state_path.write_text(json.dumps(state), encoding="utf-8")
     with pytest.raises(ValueError, match="state is stale"):
         supervisor._check_capture_transport_state()
+
+
+def test_stage7_live_command_waits_for_capture_acknowledgement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    state_path = supervisor.run_dir / "reports/capture_device_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state = _healthy_capture_transport_state()
+    state["commands_sent"] = 7
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    def acknowledge(_path: Path, _command: str) -> None:
+        state["commands_sent"] = int(state["commands_sent"]) + 1
+        state["updated_utc"] = datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    monkeypatch.setattr(
+        stage7_supervisor_module,
+        "send_timestamped_command_to_fifo",
+        acknowledge,
+    )
+    supervisor._live_command_ack_required = True
+    supervisor._command("CONFIG?")
+
+    events = [
+        json.loads(line)
+        for line in (
+            supervisor.run_dir
+            / "reports/cx317_active_supervisor_events.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["event"] for event in events[-2:]] == [
+        "command_submitted",
+        "command_acknowledged",
+    ]
+    assert events[-1]["commands_sent"] == 8
+
+
+def test_stage7_live_command_fails_on_capture_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    state_path = supervisor.run_dir / "reports/capture_device_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state = _healthy_capture_transport_state()
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    def reject(_path: Path, _command: str) -> None:
+        state["commands_rejected"] = 1
+        state["updated_utc"] = datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    monkeypatch.setattr(
+        stage7_supervisor_module,
+        "send_timestamped_command_to_fifo",
+        reject,
+    )
+    supervisor._live_command_ack_required = True
+    with pytest.raises(ValueError, match="commands_rejected"):
+        supervisor._command("CONFIG?")
 
 
 def test_part_a_waits_for_eligible_decision_after_service_interval(

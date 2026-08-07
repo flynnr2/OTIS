@@ -1384,6 +1384,9 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
                     "capture_state_heartbeat_interval_s"
                 )
                 == 5.0
+                and host_contract.get("normal_command_ack_required") is True
+                and host_contract.get("normal_command_ack_timeout_s") == 3.0
+                and host_contract.get("normal_command_max_outstanding") == 1
                 and host_contract.get("normal_command_batch_limit") == 1
                 and host_contract.get("normal_command_max_age_s") == 2.0
                 and host_contract.get("normal_command_envelope")
@@ -1773,6 +1776,27 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             encoding="utf-8"
         )
     )
+    supervisor_events = [
+        json.loads(line)
+        for line in (
+            run_dir / "reports/cx317_active_supervisor_events.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    submitted_commands = [
+        item.get("command")
+        for item in supervisor_events
+        if item.get("event") == "command_submitted"
+    ]
+    acknowledged_commands = [
+        item.get("command")
+        for item in supervisor_events
+        if item.get("event") == "command_acknowledged"
+    ]
+    command_acknowledgements_ok = (
+        bool(submitted_commands)
+        and submitted_commands == acknowledged_commands
+    )
     live_transport_binding_ok = (
         normal_ingress.get("batch_limit") == 1
         and normal_ingress.get("normal_command_max_age_s") == 2.0
@@ -1796,7 +1820,11 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         )
         and (run_dir / "reports/capture_device.log").is_file()
     )
-    transport_ok = normal_capture_stop and live_transport_binding_ok and all(
+    transport_ok = (
+        normal_capture_stop
+        and live_transport_binding_ok
+        and command_acknowledgements_ok
+        and all(
         int(stopped.get(key, -1)) == 0
         for key in (
             "malformed_utf8",
@@ -1804,14 +1832,21 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             "reconnect_count",
             "commands_rejected",
         )
-    ) and not [row for row in markers if row.get("event") == "partial_line_dropped"]
+        )
+        and not [
+            row
+            for row in markers
+            if row.get("event") == "partial_line_dropped"
+        ]
+    )
     checks.append(
         Check(
             "capture_transport_complete_and_clean",
             transport_ok,
             capture_stop_evidence
             + "; live normal batch limit 1 / max age 2.0 s and distinct "
-            "priority abort ingress",
+            "priority abort ingress; every submitted normal command was "
+            "acknowledged before its successor",
         )
     )
 

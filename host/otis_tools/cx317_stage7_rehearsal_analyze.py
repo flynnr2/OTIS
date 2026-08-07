@@ -217,6 +217,16 @@ def analyze(
         }
         or item.get("command") == "ACTIVE ABORT"
     ]
+    submitted_commands = [
+        item.get("command")
+        for item in events
+        if item.get("event") == "command_submitted"
+    ]
+    acknowledged_commands = [
+        item.get("command")
+        for item in events
+        if item.get("event") == "command_acknowledged"
+    ]
     host_markers = _host_markers(run_dir / "raw/serial.log")
     capture_stopped = [
         row for row in host_markers if row.get("event") == "capture_stopped"
@@ -351,7 +361,9 @@ def analyze(
             and health.get(("dual_core", "telemetry_dropped")) in {None, "0"}
         ),
         "host_priority_transport_exact_and_clean": (
-            len(capture_stopped) == 1
+            bool(submitted_commands)
+            and submitted_commands == acknowledged_commands
+            and len(capture_stopped) == 1
             and len(normal_ingress) == 1
             and len(emergency_ingress) == 1
             and normal_ingress[0].get("batch_limit") == 1
