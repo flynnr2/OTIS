@@ -246,6 +246,7 @@ def analyze(
             encoding="utf-8"
         )
     )
+    host_contract = manifest.get("host", {})
 
     build = json.loads(build_manifest.read_text(encoding="utf-8"))
     build_artifact = next(
@@ -363,6 +364,11 @@ def analyze(
         "host_priority_transport_exact_and_clean": (
             bool(submitted_commands)
             and submitted_commands == acknowledged_commands
+            and host_contract.get(
+                "manual_start_before_first_control_required"
+            )
+            is True
+            and host_contract.get("faulted_control_never_armed") is True
             and len(capture_stopped) == 1
             and len(normal_ingress) == 1
             and len(emergency_ingress) == 1

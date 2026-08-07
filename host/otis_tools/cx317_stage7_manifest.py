@@ -167,6 +167,8 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         and host.get("normal_command_ack_required") is True
         and host.get("normal_command_ack_timeout_s") == 3.0
         and host.get("normal_command_max_outstanding") == 1
+        and host.get("manual_start_before_first_control_required") is True
+        and host.get("faulted_control_never_armed") is True
         and host.get("normal_command_batch_limit") == 1
         and host.get("normal_command_max_age_s") == 2.0
         and host.get("normal_command_envelope")
@@ -513,6 +515,8 @@ def create_stage7_manifest(
             "normal_command_ack_required": True,
             "normal_command_ack_timeout_s": 3.0,
             "normal_command_max_outstanding": 1,
+            "manual_start_before_first_control_required": True,
+            "faulted_control_never_armed": True,
             "normal_command_batch_limit": 1,
             "normal_command_max_age_s": 2.0,
             "normal_command_envelope": "OTISQ1_MONOTONIC_NS",

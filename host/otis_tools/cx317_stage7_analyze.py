@@ -1387,6 +1387,11 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
                 and host_contract.get("normal_command_ack_required") is True
                 and host_contract.get("normal_command_ack_timeout_s") == 3.0
                 and host_contract.get("normal_command_max_outstanding") == 1
+                and host_contract.get(
+                    "manual_start_before_first_control_required"
+                )
+                is True
+                and host_contract.get("faulted_control_never_armed") is True
                 and host_contract.get("normal_command_batch_limit") == 1
                 and host_contract.get("normal_command_max_age_s") == 2.0
                 and host_contract.get("normal_command_envelope")

@@ -160,6 +160,8 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                     "normal_command_ack_required": True,
                     "normal_command_ack_timeout_s": 3.0,
                     "normal_command_max_outstanding": 1,
+                    "manual_start_before_first_control_required": True,
+                    "faulted_control_never_armed": True,
                     "normal_command_batch_limit": 1,
                     "normal_command_max_age_s": 2.0,
                     "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
@@ -1649,6 +1651,74 @@ def test_stage7_live_command_fails_on_capture_rejection(
     supervisor._live_command_ack_required = True
     with pytest.raises(ValueError, match="commands_rejected"):
         supervisor._command("CONFIG?")
+
+
+def test_stage7_manual_start_rejects_missed_warmup_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="rehearsal")
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "false",
+        ("cx317_active", "uptime_s"): "57",
+    }
+
+    with pytest.raises(ValueError, match="manual-start deadline missed"):
+        supervisor._maybe_start_or_arm(health)
+    assert commands == []
+
+
+def test_stage7_manual_start_rejects_prior_controller_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="rehearsal")
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    controls.write_text(
+        "control_seq,control_state,decision_reason_code\n"
+        "0,WARMUP_INHIBIT,startup_warmup\n",
+        encoding="utf-8",
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "false",
+        ("cx317_active", "uptime_s"): "20",
+    }
+
+    with pytest.raises(ValueError, match="controller decision already exists"):
+        supervisor._maybe_start_or_arm(health)
+    assert commands == []
+
+
+def test_stage7_never_arms_after_faulted_controller_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, part="rehearsal")
+    supervisor.state["manual_start_sent"] = True
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    controls.write_text(
+        "control_seq,control_state,decision_reason_code,"
+        "preview_available,limited_delta_codes\n"
+        "0,FAULT,requested_applied_mismatch,false,\n",
+        encoding="utf-8",
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "manual_start_confirmed"): "true",
+        ("cx317_active", "correction_count"): "0",
+    }
+
+    with pytest.raises(ValueError, match="controller decision is faulted"):
+        supervisor._maybe_start_or_arm(health)
+    assert commands == []
 
 
 def test_part_a_waits_for_eligible_decision_after_service_interval(

@@ -63,6 +63,7 @@ REHEARSAL_QUALIFICATION_TIMEOUT_S = 7 * 60
 REHEARSAL_QUALIFIED_TIMEOUT_S = 20 * 60
 REHEARSAL_FC0_STARTUP_INHIBIT_S = 60
 REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
+REHEARSAL_STARTUP_WARMUP_S = 60
 ACTIVE_ARM_LIFETIME_S = 110
 CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
 CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15
@@ -71,6 +72,7 @@ NORMAL_COMMAND_ACK_POLL_S = 0.02
 RP2040_TIMER0_TICKS_PER_SECOND = 16_000_000
 REAL_FC0_STARTUP_INHIBIT_S = 600
 REAL_FC0_CONTROL_READY_CLEAN_WINDOWS = 3
+REAL_STARTUP_WARMUP_S = 1800
 
 
 @dataclass(frozen=True)
@@ -130,7 +132,7 @@ def rehearsal_timeline_preflight(
         "pps_backend_control_ready_clean_windows": (
             REHEARSAL_FC0_CONTROL_READY_CLEAN_WINDOWS
         ),
-        "startup_warmup": 60,
+        "startup_warmup": REHEARSAL_STARTUP_WARMUP_S,
         "selected_span": REHEARSAL_SELECTED_INTERVAL_S,
         "settling_exclusion": 60,
         "full_history_reset": 180,
@@ -869,12 +871,31 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         manual_confirmed = (
             health.get(("cx317_active", "manual_start_confirmed")) == "true"
         )
+        preview = _latest_preview(self.run_dir / CONTROL_CSV)
         if (
             self.allow_manual_start
             and not manual_confirmed
             and not self.state["manual_start_sent"]
             and state == "DISARMED"
         ):
+            if preview is not None:
+                raise ValueError(
+                    "manual-start window missed: a controller decision "
+                    "already exists"
+                )
+            uptime = int(health.get(("cx317_active", "uptime_s"), "-1"))
+            startup_warmup_s = (
+                REHEARSAL_STARTUP_WARMUP_S
+                if self.part == "rehearsal"
+                else REAL_STARTUP_WARMUP_S
+            )
+            if uptime < 0 or (
+                uptime + NORMAL_COMMAND_ACK_TIMEOUT_S >= startup_warmup_s
+            ):
+                raise ValueError(
+                    "manual-start deadline missed: "
+                    f"uptime={uptime} warmup={startup_warmup_s}"
+                )
             self._command(f"DAC SET 0x{self.spec.start_code:04X}")
             self.state["manual_start_sent"] = True
             self._save()
@@ -916,7 +937,11 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         )
         if correction_count >= self.spec.correction_limit:
             return
-        preview = _latest_preview(self.run_dir / CONTROL_CSV)
+        if preview is not None and preview.get("control_state") == "FAULT":
+            raise ValueError(
+                "latest controller decision is faulted: "
+                f"{preview.get('decision_reason_code', 'unavailable')}"
+            )
         if self.part == "part_b":
             if self.state["part_b_service_burst_index"] is not None:
                 return
