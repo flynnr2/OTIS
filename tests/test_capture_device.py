@@ -17,7 +17,11 @@ from host.otis_tools.capture_device import (
     RawEvidenceWriter,
 )
 from host.otis_tools.run_paths import RunPaths, default_csv_files
-from host.otis_tools.serial_commands import CommandFifo, send_command_to_fifo
+from host.otis_tools.serial_commands import (
+    CommandFifo,
+    send_command_to_fifo,
+    send_timestamped_command_to_fifo,
+)
 
 
 class FakeSerial:
@@ -530,6 +534,52 @@ def test_active_capture_serial_fault_stops_without_reconnect(
     assert b"active_command_transport_fail_static_stop" in raw
     assert b"reconnecting" not in raw
     assert b"capture_stopped" in raw
+
+
+def test_abort_arriving_during_serial_read_preempts_normal_command(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    normal_fifo = tmp_path / "control/commands.fifo"
+    emergency_fifo = tmp_path / "control/emergency.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo,
+        emergency_command_fifo=emergency_fifo,
+        normal_command_max_age_s=2.0,
+        status_interval_s=base.status_interval_s,
+    )
+
+    class AbortDuringRead(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count == 1:
+                send_timestamped_command_to_fifo(
+                    normal_fifo, "ACTIVE ARM 1 2 3"
+                )
+                send_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
+            else:
+                stop_event.set()
+            return b""
+
+    serial = AbortDuringRead()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert runner.emergency_aborts_sent == 1
+    assert runner.commands_rejected == 0
 
 
 def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:

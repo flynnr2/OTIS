@@ -645,6 +645,19 @@ class CaptureDeviceRunner:
                                 not self.graceful_stop_requested
                                 and not self.emergency_abort_latched
                             ):
+                                # Abort may arrive while the serial read is
+                                # blocked.  Recheck the priority path at the
+                                # final boundary before any normal command.
+                                self._poll_emergency_command(
+                                    emergency_fifo,
+                                    command_fifo,
+                                    serial_handle,
+                                    raw_writer,
+                                )
+                            if (
+                                not self.graceful_stop_requested
+                                and not self.emergency_abort_latched
+                            ):
                                 self._poll_commands(
                                     command_fifo, serial_handle, raw_writer
                                 )
