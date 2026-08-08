@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx318_stage1_contracts_v1",
+  "status": "frozen_before_relative_phase_estimator_implementation",
+  "bindings": {
+    "master_prompt": {
+      "path": "docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/00_MASTER_UNATTENDED_PROMPT.md",
+      "sha256": "e34db8b7b948af2b6e8cdecd8fc07b54e63ed10ac913778d7e6d75f64772b711"
+    },
+    "cx317_final_report": {
+      "path": "docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md",
+      "sha256": "17078255d56e26ae02264d989e046d1071f7f2448f8c18d4abd02d99ad9d32f1"
+    },
+    "frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+      "method": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+      "authoritative_span_s": 600,
+      "authoritative_output_mode": "non_overlapping"
+    },
+    "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
+    "snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1"
+  },
+  "oscillator_contract": {
+    "oscillator_identity": "CX317",
+    "nominal_frequency_hz": 10000000,
+    "period_ns_per_cycle": 100,
+    "counter_width_bits": 32,
+    "counter_direction": "down",
+    "interval_edges_rule": "(previous_cumulative_down_counter-current_cumulative_down_counter)_mod_2^32",
+    "edge_error_rule": "interval_edges-10000000"
+  },
+  "raw_relative_phase_observation": {
+    "record_type": "RPH",
+    "record_schema_version": 1,
+    "phase_zero": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch",
+    "positive_sign_meaning": "oscillator_produced_excess_cycles_and_is_inferred_advanced_relative_to_nominal_pps_interval_sequence",
+    "accumulation_rule": "sum_accepted_interval_edge_error_within_phase_epoch",
+    "time_conversion_rule": "relative_phase_cycles_times_100_ns",
+    "required_identity_fields": [
+      "phase_epoch",
+      "observation_sequence",
+      "capture_session",
+      "opening_snapshot_sequence",
+      "closing_snapshot_sequence",
+      "opening_reference_sequence",
+      "closing_reference_sequence",
+      "dac_epoch",
+      "source_backend",
+      "source_file_sha256",
+      "method_id",
+      "configuration_sha256"
+    ],
+    "required_value_fields": [
+      "interval_edges",
+      "edge_error_cycles",
+      "relative_phase_cycles",
+      "relative_phase_time_ns",
+      "qualification_state",
+      "observation_age_s",
+      "discontinuity_reason",
+      "calibrated_uncertainty_status"
+    ],
+    "calibrated_uncertainty_default": "unavailable",
+    "raw_source_preserved": true
+  },
+  "phase_estimator_output": {
+    "record_type": "PHE",
+    "record_schema_version": 1,
+    "required_fields": [
+      "phase_epoch",
+      "observation_sequence",
+      "source_relative_phase_observation",
+      "raw_relative_phase_cycles",
+      "raw_relative_phase_time_ns",
+      "filtered_relative_phase_cycles",
+      "estimated_frequency_error_hz",
+      "estimator_id",
+      "configuration_sha256",
+      "estimate_age_s",
+      "qualification_state",
+      "uncertainty_status",
+      "reason_codes"
+    ],
+    "raw_and_filtered_fields_must_remain_distinct": true,
+    "calibrated_uncertainty_default": "unavailable",
+    "may_join_epochs_by_guessed_offset": false
+  },
+  "phase_epoch_policy": {
+    "start_new_epoch_on": [
+      "capture_session_change",
+      "reset",
+      "unbridgeable_reference_discontinuity",
+      "snapshot_sequence_or_association_discontinuity",
+      "ambiguous_counter_wrap"
+    ],
+    "preserve_epoch_on": [
+      "healthy_dac_epoch_transition",
+      "visible_phase_step_with_valid_snapshot_and_reference_continuity"
+    ],
+    "invalidating_conditions": [
+      "missing_duplicate_short_or_long_pps",
+      "invalid_or_stale_gnss_qualification",
+      "snapshot_gap_or_association_mismatch",
+      "counter_zero_saturation_or_ambiguous_wrap",
+      "fifo_dma_ring_parser_or_non_droppable_queue_loss",
+      "capture_transport_or_session_discontinuity"
+    ],
+    "no_retroactive_repair": true
+  },
+  "hybrid_preview_decision": {
+    "record_type": "HPR",
+    "record_schema_version": 1,
+    "formula": "combined_frequency_error_hz=frequency_term_hz+clamp(-relative_phase_cycles/pull_in_time_s,-phase_bias_cap_hz,+phase_bias_cap_hz)",
+    "phase_bias_sign_check": "positive_relative_phase_requires_negative_phase_frequency_bias",
+    "pull_in_times_s": [3600, 10800, 21600],
+    "absolute_phase_bias_caps_hz": [0.0016666666666666668, 0.0033333333333333335],
+    "frequency_band_semantics": [
+      "historical_v2",
+      "tight_hysteretic_two_count_entry_four_count_release"
+    ],
+    "states": [
+      "RELATIVE_PHASE_ACQUIRE",
+      "FREQUENCY_ACQUIRED_PREVIEW",
+      "HYBRID_TRACKING_PREVIEW",
+      "PHASE_STEP_HOLD_PREVIEW",
+      "REFERENCE_LOST_PREVIEW",
+      "RECOVER_PREVIEW",
+      "FAULT_PREVIEW"
+    ],
+    "required_fields": [
+      "candidate_id",
+      "source_phase_estimate",
+      "source_frequency_estimate",
+      "frequency_term_hz",
+      "phase_bias_hz",
+      "combined_frequency_error_hz",
+      "counterfactual_delta_codes",
+      "counterfactual_code",
+      "modeled_not_observed_after_divergence",
+      "preview_state",
+      "decision_reason",
+      "actionable",
+      "actuation_authorized",
+      "authorization_consumed"
+    ],
+    "one_coherent_counterfactual_output": true,
+    "independent_fll_and_pll_actuators": false,
+    "state_named_locked_permitted": false
+  },
+  "tight_hysteretic_deadband": {
+    "record_type": "TDB",
+    "record_schema_version": 1,
+    "authoritative_input": "integer_accumulated_edge_error_over_fresh_600s_non_overlapping_estimate",
+    "initial_and_rearm_state": "REQUALIFY_OUTSIDE",
+    "inside_state": "INSIDE",
+    "tight_entry_absolute_counts_lte": 2,
+    "tight_entry_consecutive_fresh_estimates": 2,
+    "loose_release_absolute_counts_gte": 4,
+    "loose_release_consecutive_fresh_estimates": 2,
+    "three_count_rule": "retain_previous_band_state",
+    "pending_counter_reset_on": [
+      "opposite_evidence",
+      "invalidity",
+      "dac_epoch_transition",
+      "capture_session_transition"
+    ],
+    "historical_v2_threshold_hz": 0.006249995628992717,
+    "historical_v2_role": "loose_release_boundary_and_comparison_not_tight_entry_success",
+    "required_fields": [
+      "estimate_id",
+      "integer_edge_error_counts",
+      "state_before",
+      "state_after",
+      "entry_counter",
+      "release_counter",
+      "transition",
+      "eligibility",
+      "reason_codes",
+      "policy_sha256"
+    ]
+  },
+  "programme_manifest": {
+    "record_id": "CX318_RUN_MANIFEST_V1",
+    "required_identity_classes": [
+      "repository_commit_and_cleanliness",
+      "source_and_build_hashes",
+      "board_usb_and_wiring_identity",
+      "capture_session_and_owner",
+      "measurement_and_snapshot_backend",
+      "frequency_and_phase_estimator_hashes",
+      "plant_model_and_response_policy_hashes",
+      "tight_deadband_and_hybrid_candidate_hashes",
+      "evidence_source_hashes_and_seals",
+      "authority_abort_and_budget_state"
+    ],
+    "material_transitions_are_append_only": true,
+    "sealed_successful_stage_never_repeated_for_context_loss": true
+  },
+  "authority_separation": {
+    "phase_preview_actionable": false,
+    "phase_preview_actuation_authorized": false,
+    "phase_preview_authorization_consumed": false,
+    "phase_preview_may_import_or_call_actuator_serial_or_i2c": false,
+    "phase_preview_may_mutate_frequency_controller_response_or_budget": false,
+    "tight_frequency_authority_is_separate": true,
+    "phase_or_hybrid_value_may_influence_live_delta_or_eligibility": false
+  },
+  "claims_not_made": [
+    "utc",
+    "absolute_time_error",
+    "calibrated_cable_receiver_or_aperture_delay",
+    "generated_output_pps_phase",
+    "continuity_across_reset_session_loss_or_unqualified_reference",
+    "phase_lock",
+    "calibrated_absolute_frequency_accuracy",
+    "holdover"
+  ]
+}

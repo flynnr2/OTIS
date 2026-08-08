@@ -9,7 +9,11 @@ import argparse
 import json
 from typing import Any
 
-from .cx317_stage7_shadow import CONTRACT_SHA256, DEFAULT_CONTRACT
+from .cx317_stage7_shadow import (
+    CONTRACT_SHA256,
+    DEFAULT_CONTRACT,
+    frozen_content_binding_matches,
+)
 from .cx317_stage7_part_b_matrix import (
     PART_B_PROFILE,
     STAGE7_PROMPT,
@@ -338,10 +342,10 @@ def create_stage7_manifest(
             != sha256(TOOL_PATH.read_bytes()).hexdigest()
             or rehearsal_bindings.get("stage7_prompt_sha256")
             != STAGE7_PROMPT_SHA256
-            or sha256(
-                (POLICY_PATH.parents[2] / STAGE7_PROMPT).read_bytes()
-            ).hexdigest()
-            != STAGE7_PROMPT_SHA256
+            or not frozen_content_binding_matches(
+                POLICY_PATH.parents[2] / STAGE7_PROMPT,
+                STAGE7_PROMPT_SHA256,
+            )
         ):
             raise ValueError("Stage 7 Part B accelerated rehearsal is not passed")
         final_code = int(
