@@ -12,6 +12,7 @@ from host.otis_tools.cx317_stage7_shadow import (
     ShadowObservation,
     V1_CONTRACT,
     V1_CONTRACT_SHA256,
+    frozen_content_binding_matches,
     load_contract,
     run_shadow,
 )
@@ -84,6 +85,19 @@ def test_v3_initial_condition_binding_preserves_v1_numerics_and_history() -> Non
     assert current.authoritative_deadband_hz == historical.authoritative_deadband_hz
     assert current.candidates == historical.candidates
     assert current.budgets == historical.budgets
+
+
+def test_frozen_prompt_binding_resolves_exact_tracked_history() -> None:
+    prompt = Path(
+        "docs/60_EXPERIMENTS/"
+        "CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/"
+        "07_DUAL_CORE_ACTIVE_ENDURANCE_PROMPT.md"
+    )
+    assert frozen_content_binding_matches(
+        prompt,
+        "0ab20ab75c58583789fad512f0eb326ef58bfd467e73ebb35fa2281c94efc512",
+    )
+    assert not frozen_content_binding_matches(prompt, "0" * 64)
 
 
 def test_stage7_shadow_contract_rejects_any_post_freeze_change(
