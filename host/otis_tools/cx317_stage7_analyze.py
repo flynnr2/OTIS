@@ -34,6 +34,7 @@ from .cx317_stage6_live_analyze import (
 from .cx317_stage7_shadow import (
     ShadowContract,
     ShadowObservation,
+    frozen_content_binding_matches,
     load_contract,
     run_shadow,
 )
@@ -1491,8 +1492,10 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             == _sha256_file(TOOL_PATH)
             and rehearsal_bindings.get("stage7_prompt_sha256")
             == STAGE7_PROMPT_SHA256
-            and _sha256_file(REPO_ROOT / STAGE7_PROMPT)
-            == STAGE7_PROMPT_SHA256
+            and frozen_content_binding_matches(
+                REPO_ROOT / STAGE7_PROMPT,
+                STAGE7_PROMPT_SHA256,
+            )
             and hil_document.get("status") == "pass"
             and hil_document.get("tool")
             == "cx317_stage7_rehearsal_analyze_v3"

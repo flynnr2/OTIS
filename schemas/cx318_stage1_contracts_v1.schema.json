@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/cx318_stage1_contracts_v1.schema.json",
+  "title": "OTIS CX318 Stage 1 contract bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "bindings",
+    "oscillator_contract",
+    "raw_relative_phase_observation",
+    "phase_estimator_output",
+    "phase_epoch_policy",
+    "hybrid_preview_decision",
+    "tight_hysteretic_deadband",
+    "programme_manifest",
+    "authority_separation",
+    "claims_not_made"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx318_stage1_contracts_v1"},
+    "status": {"const": "frozen_before_relative_phase_estimator_implementation"},
+    "bindings": {"$ref": "#/$defs/bindings"},
+    "oscillator_contract": {"$ref": "#/$defs/oscillator"},
+    "raw_relative_phase_observation": {"$ref": "#/$defs/rawPhase"},
+    "phase_estimator_output": {"$ref": "#/$defs/phaseEstimate"},
+    "phase_epoch_policy": {"$ref": "#/$defs/epoch"},
+    "hybrid_preview_decision": {"$ref": "#/$defs/hybrid"},
+    "tight_hysteretic_deadband": {"$ref": "#/$defs/deadband"},
+    "programme_manifest": {"$ref": "#/$defs/manifest"},
+    "authority_separation": {"$ref": "#/$defs/authority"},
+    "claims_not_made": {
+      "type": "array",
+      "minItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "shaBinding": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "bindings": {
+      "type": "object",
+      "required": ["master_prompt", "cx317_final_report", "frequency_estimator", "measurement_backend", "snapshot_backend"],
+      "properties": {
+        "master_prompt": {"$ref": "#/$defs/shaBinding"},
+        "cx317_final_report": {"$ref": "#/$defs/shaBinding"},
+        "frequency_estimator": {
+          "allOf": [
+            {"$ref": "#/$defs/shaBinding"},
+            {
+              "type": "object",
+              "required": ["method", "authoritative_span_s", "authoritative_output_mode"],
+              "properties": {
+                "method": {"const": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"},
+                "authoritative_span_s": {"const": 600},
+                "authoritative_output_mode": {"const": "non_overlapping"}
+              }
+            }
+          ]
+        },
+        "measurement_backend": {"const": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"},
+        "snapshot_backend": {"const": "pio_wait_cumulative_snapshot_dma_v1"}
+      }
+    },
+    "oscillator": {
+      "type": "object",
+      "required": ["oscillator_identity", "nominal_frequency_hz", "period_ns_per_cycle", "counter_width_bits", "counter_direction", "interval_edges_rule", "edge_error_rule"],
+      "properties": {
+        "oscillator_identity": {"const": "CX317"},
+        "nominal_frequency_hz": {"const": 10000000},
+        "period_ns_per_cycle": {"const": 100},
+        "counter_width_bits": {"const": 32},
+        "counter_direction": {"const": "down"},
+        "interval_edges_rule": {"type": "string", "minLength": 1},
+        "edge_error_rule": {"type": "string", "minLength": 1}
+      }
+    },
+    "rawPhase": {
+      "type": "object",
+      "required": ["record_type", "record_schema_version", "phase_zero", "positive_sign_meaning", "accumulation_rule", "time_conversion_rule", "required_identity_fields", "required_value_fields", "calibrated_uncertainty_default", "raw_source_preserved"],
+      "properties": {
+        "record_type": {"const": "RPH"},
+        "record_schema_version": {"const": 1},
+        "phase_zero": {"type": "string", "minLength": 1},
+        "positive_sign_meaning": {"type": "string", "minLength": 1},
+        "accumulation_rule": {"type": "string", "minLength": 1},
+        "time_conversion_rule": {"type": "string", "minLength": 1},
+        "required_identity_fields": {"$ref": "#/$defs/stringArray"},
+        "required_value_fields": {"$ref": "#/$defs/stringArray"},
+        "calibrated_uncertainty_default": {"const": "unavailable"},
+        "raw_source_preserved": {"const": true}
+      }
+    },
+    "phaseEstimate": {
+      "type": "object",
+      "required": ["record_type", "record_schema_version", "required_fields", "raw_and_filtered_fields_must_remain_distinct", "calibrated_uncertainty_default", "may_join_epochs_by_guessed_offset"],
+      "properties": {
+        "record_type": {"const": "PHE"},
+        "record_schema_version": {"const": 1},
+        "required_fields": {"$ref": "#/$defs/stringArray"},
+        "raw_and_filtered_fields_must_remain_distinct": {"const": true},
+        "calibrated_uncertainty_default": {"const": "unavailable"},
+        "may_join_epochs_by_guessed_offset": {"const": false}
+      }
+    },
+    "epoch": {
+      "type": "object",
+      "required": ["start_new_epoch_on", "preserve_epoch_on", "invalidating_conditions", "no_retroactive_repair"],
+      "properties": {
+        "start_new_epoch_on": {"$ref": "#/$defs/stringArray"},
+        "preserve_epoch_on": {"$ref": "#/$defs/stringArray"},
+        "invalidating_conditions": {"$ref": "#/$defs/stringArray"},
+        "no_retroactive_repair": {"const": true}
+      }
+    },
+    "hybrid": {
+      "type": "object",
+      "required": ["record_type", "record_schema_version", "formula", "phase_bias_sign_check", "pull_in_times_s", "absolute_phase_bias_caps_hz", "frequency_band_semantics", "states", "required_fields", "one_coherent_counterfactual_output", "independent_fll_and_pll_actuators", "state_named_locked_permitted"],
+      "properties": {
+        "record_type": {"const": "HPR"},
+        "record_schema_version": {"const": 1},
+        "formula": {"type": "string", "minLength": 1},
+        "phase_bias_sign_check": {"type": "string", "minLength": 1},
+        "pull_in_times_s": {"const": [3600, 10800, 21600]},
+        "absolute_phase_bias_caps_hz": {"const": [0.0016666666666666668, 0.0033333333333333335]},
+        "frequency_band_semantics": {"const": ["historical_v2", "tight_hysteretic_two_count_entry_four_count_release"]},
+        "states": {"$ref": "#/$defs/stringArray"},
+        "required_fields": {"$ref": "#/$defs/stringArray"},
+        "one_coherent_counterfactual_output": {"const": true},
+        "independent_fll_and_pll_actuators": {"const": false},
+        "state_named_locked_permitted": {"const": false}
+      }
+    },
+    "deadband": {
+      "type": "object",
+      "required": ["record_type", "record_schema_version", "authoritative_input", "initial_and_rearm_state", "inside_state", "tight_entry_absolute_counts_lte", "tight_entry_consecutive_fresh_estimates", "loose_release_absolute_counts_gte", "loose_release_consecutive_fresh_estimates", "three_count_rule", "pending_counter_reset_on", "historical_v2_threshold_hz", "historical_v2_role", "required_fields"],
+      "properties": {
+        "record_type": {"const": "TDB"},
+        "record_schema_version": {"const": 1},
+        "authoritative_input": {"type": "string", "minLength": 1},
+        "initial_and_rearm_state": {"const": "REQUALIFY_OUTSIDE"},
+        "inside_state": {"const": "INSIDE"},
+        "tight_entry_absolute_counts_lte": {"const": 2},
+        "tight_entry_consecutive_fresh_estimates": {"const": 2},
+        "loose_release_absolute_counts_gte": {"const": 4},
+        "loose_release_consecutive_fresh_estimates": {"const": 2},
+        "three_count_rule": {"const": "retain_previous_band_state"},
+        "pending_counter_reset_on": {"$ref": "#/$defs/stringArray"},
+        "historical_v2_threshold_hz": {"const": 0.006249995628992717},
+        "historical_v2_role": {"type": "string", "minLength": 1},
+        "required_fields": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["record_id", "required_identity_classes", "material_transitions_are_append_only", "sealed_successful_stage_never_repeated_for_context_loss"],
+      "properties": {
+        "record_id": {"const": "CX318_RUN_MANIFEST_V1"},
+        "required_identity_classes": {"$ref": "#/$defs/stringArray"},
+        "material_transitions_are_append_only": {"const": true},
+        "sealed_successful_stage_never_repeated_for_context_loss": {"const": true}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase_preview_actionable", "phase_preview_actuation_authorized", "phase_preview_authorization_consumed", "phase_preview_may_import_or_call_actuator_serial_or_i2c", "phase_preview_may_mutate_frequency_controller_response_or_budget", "tight_frequency_authority_is_separate", "phase_or_hybrid_value_may_influence_live_delta_or_eligibility"],
+      "properties": {
+        "phase_preview_actionable": {"const": false},
+        "phase_preview_actuation_authorized": {"const": false},
+        "phase_preview_authorization_consumed": {"const": false},
+        "phase_preview_may_import_or_call_actuator_serial_or_i2c": {"const": false},
+        "phase_preview_may_mutate_frequency_controller_response_or_budget": {"const": false},
+        "tight_frequency_authority_is_separate": {"const": true},
+        "phase_or_hybrid_value_may_influence_live_delta_or_eligibility": {"const": false}
+      }
+    }
+  }
+}

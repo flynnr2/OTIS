@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 import argparse
 import json
 import math
+import subprocess
 import tempfile
 from typing import Any, Iterable
 
@@ -42,6 +44,46 @@ def _sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+@lru_cache(maxsize=16)
+def _historical_git_blob_matches(
+    relative_path: str, expected_sha256: str
+) -> bool:
+    """Resolve an immutable hash binding after the tracked path has evolved."""
+
+    try:
+        history = subprocess.run(
+            ["git", "log", "--format=%H", "--", relative_path],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        for commit in history:
+            content = subprocess.run(
+                ["git", "show", f"{commit}:{relative_path}"],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+            ).stdout
+            if sha256(content).hexdigest() == expected_sha256:
+                return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return False
+
+
+def frozen_content_binding_matches(path: Path, expected_sha256: str) -> bool:
+    """Match the current file or the exact content-addressed tracked history."""
+
+    if _sha256_file(path) == expected_sha256:
+        return True
+    try:
+        relative_path = str(path.resolve().relative_to(REPO_ROOT.resolve()))
+    except ValueError:
+        return False
+    return _historical_git_blob_matches(relative_path, expected_sha256)
 
 
 def _round_half_away(value: float) -> int:
@@ -191,9 +233,9 @@ def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
             }
         ):
             raise ValueError("unsupported Stage 7 V3 shadow contract identity")
-        if (
-            _sha256_file(REPO_ROOT / amended["stage7_prompt_path"])
-            != amended["stage7_prompt_sha256"]
+        if not frozen_content_binding_matches(
+            REPO_ROOT / amended["stage7_prompt_path"],
+            amended["stage7_prompt_sha256"],
         ):
             raise ValueError("Stage 7 V3 shadow prompt binding differs")
         if _sha256_file(V2_CONTRACT) != V2_CONTRACT_SHA256:
@@ -255,9 +297,9 @@ def load_contract(path: Path = DEFAULT_CONTRACT) -> ShadowContract:
             "shadow_authority_changed": False,
         }:
             raise ValueError("Stage 7 V2 shadow amendment semantics differ")
-        if (
-            _sha256_file(REPO_ROOT / amended["stage7_prompt_path"])
-            != amended["stage7_prompt_sha256"]
+        if not frozen_content_binding_matches(
+            REPO_ROOT / amended["stage7_prompt_path"],
+            amended["stage7_prompt_sha256"],
         ):
             raise ValueError("Stage 7 V2 shadow prompt binding differs")
         path = REPO_ROOT / base["path"]

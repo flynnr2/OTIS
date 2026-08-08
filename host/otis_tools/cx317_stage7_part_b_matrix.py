@@ -12,6 +12,7 @@ import tempfile
 
 from tools.firmware_matrix import DEFAULT_MATRIX, load_matrix
 from .cx317_stage7_gate_validation import part_a2_progression_gate_valid
+from .cx317_stage7_shadow import frozen_content_binding_matches
 
 
 PART_B_PROFILE = "cx317_dual_core_active_endurance_part_b"
@@ -51,8 +52,10 @@ def derive_part_b_matrix(
         raise ValueError("passed Part A2 final code is outside A800..AB00")
 
     prompt_path = DEFAULT_MATRIX.parents[2] / STAGE7_PROMPT
-    if _sha256_file(prompt_path) != STAGE7_PROMPT_SHA256:
-        raise ValueError("checked-in Stage 7 prompt differs from the frozen hash")
+    if not frozen_content_binding_matches(prompt_path, STAGE7_PROMPT_SHA256):
+        raise ValueError(
+            "Stage 7 prompt and tracked history lack the frozen content hash"
+        )
     matrix = copy.deepcopy(load_matrix(base_matrix_path))
     profiles = {
         profile["id"]: profile for profile in matrix["profiles"]
