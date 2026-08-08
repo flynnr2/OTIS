@@ -17,7 +17,7 @@ from host.otis_tools.contracts import (
 from host.otis_tools.cx317_i_only_preview_replay import (
     IOnlyPreviewEngine,
     Observation,
-    load_policy,
+    load_post_campaign_policy,
 )
 from host.otis_tools.pps_cumulative_span_estimator import (
     IntervalEvidence,
@@ -92,7 +92,7 @@ def cx317_estimator_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def _python_rows() -> dict[str, list[dict[str, object]]]:
-    policy = load_policy()
+    policy = load_post_campaign_policy()
     base = lambda timestamp: Observation(timestamp, 0.02, policy.fail_static_code, 29.0)
     output: dict[str, list[dict[str, object]]] = {}
 
@@ -151,6 +151,24 @@ def test_cpp_controller_matches_host_replay(cx317_engine_harness: Path) -> None:
         assert row["actionable"] == "0"
         if host["preview_available"]:
             assert float(row["raw_delta_codes"]) == pytest.approx(host["raw_delta_codes"])
+
+
+def test_stage6_firmware_binds_exact_post_campaign_policy() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    engine = (FIRMWARE / "otis_cx317_i_only_engine.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1" in preview
+    assert (
+        "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f"
+        in preview
+    )
+    assert "0.00017072602587382669" in preview
+    assert "kDecisionCadenceS = 1800u" in engine
+    assert "kActiveLiveUpdateCodes = 0" in engine
 
 
 def test_cpp_estimator_matches_host_cumulative_snapshot_method(
@@ -234,6 +252,32 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
         assert result.errors == ()
 
 
+def test_live_preview_controlled_fault_requires_explicit_fresh_recovery(
+    cx317_live_harness: Path,
+) -> None:
+    completed = subprocess.run(
+        [str(cx317_live_harness), "recovery"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    lines = completed.stdout.splitlines()
+    controls = list(csv.DictReader([
+        lines[1], *[line for line in lines[2:] if line.startswith("CTL,")]
+    ]))
+
+    assert completed.stderr.strip() == "recovery_fixture_pass"
+    assert any(row["control_state"] == "FAULT" for row in controls)
+    assert any(
+        row["decision_reason_code"] == "explicit_recovery_fresh_support"
+        for row in controls
+    )
+    assert controls[-1]["decision_reason_code"] == "inside_evidence_deadband"
+    assert controls[-1]["preview_available"] == "true"
+    assert all(row["actuation_authorized"] == "false" for row in controls)
+    assert all(row["actionable"] == "false" for row in controls)
+
+
 def test_preview_sources_have_no_actuator_dependency_or_actionable_path() -> None:
     sources = "\n".join(
         (FIRMWARE / name).read_text(encoding="utf-8")
@@ -258,6 +302,9 @@ def test_stage6_profile_keeps_dac_manual_only() -> None:
     profile = next(item for item in matrix["profiles"] if item["id"] == "cx317_pps_gated_i_only_preview")
     defines = profile["defines"]
     assert defines["OTIS_ENABLE_CX317_I_ONLY_PREVIEW"] == "1"
+    assert defines["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
+    assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
+    assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
     assert defines["OTIS_ENABLE_DAC_AD5693R"] == "1"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"

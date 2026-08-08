@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
+import signal
 import shutil
 import threading
 
+import pytest
+
+import host.otis_tools.capture_device as capture_device_module
 from host.otis_tools.capture_device import (
     CaptureDeviceConfig,
     CaptureDeviceRunner,
@@ -12,6 +17,11 @@ from host.otis_tools.capture_device import (
     RawEvidenceWriter,
 )
 from host.otis_tools.run_paths import RunPaths, default_csv_files
+from host.otis_tools.serial_commands import (
+    CommandFifo,
+    send_command_to_fifo,
+    send_timestamped_command_to_fifo,
+)
 
 
 class FakeSerial:
@@ -21,10 +31,15 @@ class FakeSerial:
         self.fail_after = fail_after
         self.closed = False
         self.writes: list[bytes] = []
+        self.flush_calls = 0
 
-    def read(self, _size: int) -> bytes:
+    def read(self, size: int) -> bytes:
         if self.chunks:
-            return self.chunks.pop(0)
+            chunk = self.chunks.pop(0)
+            if len(chunk) > size:
+                self.chunks.insert(0, chunk[size:])
+                return chunk[:size]
+            return chunk
         if self.fail_after is not None:
             raise self.fail_after
         if self.stop_event is not None:
@@ -39,7 +54,7 @@ class FakeSerial:
         return len(data)
 
     def flush(self) -> None:
-        return None
+        self.flush_calls += 1
 
 
 def _config(tmp_path: Path) -> CaptureDeviceConfig:
@@ -294,6 +309,90 @@ def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> Non
     assert "partial" not in RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
 
 
+def test_sigint_shutdown_drains_exactly_one_partial_device_line(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    runner: CaptureDeviceRunner
+
+    class SignalAfterFirstRead(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__(
+                [
+                    b"STS,1,1,1,rp2040_timer0,system,mode",
+                    b",SW1_GPS_PPS,INFO,32768\n"
+                    b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+                ]
+            )
+            self.first_read = True
+
+        def read(self, size: int) -> bytes:
+            data = super().read(size)
+            if self.first_read:
+                self.first_read = False
+                runner.request_stop(signal.SIGINT)
+            return data
+
+    serial = SignalAfterFirstRead()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert (
+        b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n"
+        in raw
+    )
+    assert b"REF,1,1001" not in raw
+    assert b"graceful_shutdown_complete" in raw
+    assert b"partial_line_dropped" not in raw
+
+
+def test_planned_duration_stops_after_completing_partial_device_line(
+    tmp_path: Path, monkeypatch
+) -> None:
+    clock_ticks = iter(range(1000))
+    monkeypatch.setattr(
+        capture_device_module.time,
+        "monotonic",
+        lambda: float(next(clock_ticks)),
+    )
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+        duration_s=1.0,
+    )
+    serial = FakeSerial(
+        [
+            b"STS,1,1,1,rp2040_timer0,system,mode",
+            b",SW1_GPS_PPS,INFO,32768\n"
+            b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+        ]
+    )
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    paths = RunPaths(config.run_dir)
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n" in raw
+    assert b"REF,1,1001" not in raw
+    assert b"planned_duration_complete" in raw
+    assert b"partial_line_dropped" not in raw
+    assert runner.parser_errors == 0
+
+
 def test_capture_device_sends_audited_atomic_command_without_polluting_raw_stream(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)
@@ -307,10 +406,235 @@ def test_capture_device_sends_audited_atomic_command_without_polluting_raw_strea
 
     raw = paths.raw_serial_log.read_bytes()
     assert serial.writes == [b"DAC MID\n"]
+    assert serial.flush_calls == 0
     assert b"host_command_accepted" in raw
     assert b"host_command_sent" in raw
     assert b"\nDAC MID\n" not in raw
     assert runner.commands_sent == 1
+
+
+def test_emergency_abort_preempts_and_revokes_normal_command_ingress(
+    tmp_path: Path,
+) -> None:
+    base = _config(tmp_path)
+    normal_fifo_path = tmp_path / "control/commands.fifo"
+    emergency_fifo_path = tmp_path / "control/emergency.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        status_interval_s=base.status_interval_s,
+    )
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+
+    with CommandFifo(normal_fifo_path) as normal_fifo, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_fifo, paths.raw_serial_log.open("a+b") as raw_handle:
+        assert send_command_to_fifo(
+            normal_fifo_path, "ACTIVE ARM 1 2 3"
+        ) == 0
+        assert send_command_to_fifo(
+            emergency_fifo_path, "ACTIVE ABORT"
+        ) == 0
+
+        runner._poll_emergency_command(
+            emergency_fifo,
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+        runner._poll_commands(
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+
+        assert normal_fifo.fd is None
+        with pytest.raises(SystemExit, match="no capture_device command reader"):
+            send_command_to_fifo(normal_fifo_path, "ACTIVE?")
+
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert runner.emergency_abort_latched is True
+    assert runner.emergency_aborts_sent == 1
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"emergency_abort_latched" in raw
+    assert b"normal_command_ingress_revoked" in raw
+    assert b"emergency_abort_sent" in raw
+
+
+def test_emergency_fifo_unknown_command_fails_closed_to_abort(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    normal_fifo_path = tmp_path / "control/commands.fifo"
+    emergency_fifo_path = tmp_path / "control/emergency.fifo"
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+
+    with CommandFifo(normal_fifo_path) as normal_fifo, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_fifo, paths.raw_serial_log.open("a+b") as raw_handle:
+        writer_fd = os.open(
+            emergency_fifo_path,
+            os.O_WRONLY | os.O_NONBLOCK,
+        )
+        try:
+            os.write(writer_fd, b"DAC MID\n")
+        finally:
+            os.close(writer_fd)
+        runner._poll_emergency_command(
+            emergency_fifo,
+            normal_fifo,
+            serial,
+            RawEvidenceWriter(raw_handle),
+        )
+
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert b"emergency_command_ingress_fault" in (
+        paths.raw_serial_log.read_bytes()
+    )
+
+
+def test_active_capture_serial_fault_stops_without_reconnect(
+    tmp_path: Path,
+) -> None:
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=tmp_path / "control/commands.fifo",
+        emergency_command_fifo=tmp_path / "control/emergency.fifo",
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+    )
+    serial = FakeSerial([], fail_after=OSError("serial transport stalled"))
+    factory_calls: list[dict[str, object]] = []
+
+    def factory(*_args, **kwargs):
+        factory_calls.append(kwargs)
+        return serial
+
+    runner = CaptureDeviceRunner(config, serial_factory=factory)
+
+    assert runner.run() == 0
+    assert len(factory_calls) == 1
+    assert factory_calls[0]["write_timeout"] == 1.0
+    assert runner.reconnect_count == 1
+    assert not (config.run_dir / "capture_in_progress.flag").exists()
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert b"active_command_transport_fail_static_stop" in raw
+    assert b"reconnecting" not in raw
+    assert b"capture_stopped" in raw
+
+
+def test_capture_state_heartbeat_is_independent_of_human_status_interval(
+    tmp_path: Path, monkeypatch
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=999.0,
+    )
+
+    class IdleSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count >= 8:
+                stop_event.set()
+            return b""
+
+    clock = iter(float(value) for value in range(100))
+    monkeypatch.setattr(
+        capture_device_module.time, "monotonic", lambda: next(clock)
+    )
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: IdleSerial(),
+        stop_event=stop_event,
+    )
+    state_writes = 0
+    original_write_state = runner._write_state
+
+    def record_state_write() -> None:
+        nonlocal state_writes
+        state_writes += 1
+        original_write_state()
+
+    monkeypatch.setattr(runner, "_write_state", record_state_write)
+
+    assert runner.run() == 0
+    assert state_writes >= 5
+    state = json.loads(
+        (config.run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert state["state_heartbeat_interval_s"] == 5.0
+    assert state["capture_active"] is False
+
+
+def test_abort_arriving_during_serial_read_preempts_normal_command(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    normal_fifo = tmp_path / "control/commands.fifo"
+    emergency_fifo = tmp_path / "control/emergency.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo,
+        emergency_command_fifo=emergency_fifo,
+        normal_command_max_age_s=2.0,
+        status_interval_s=base.status_interval_s,
+    )
+
+    class AbortDuringRead(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count == 1:
+                send_timestamped_command_to_fifo(
+                    normal_fifo, "ACTIVE ARM 1 2 3"
+                )
+                send_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
+            else:
+                stop_event.set()
+            return b""
+
+    serial = AbortDuringRead()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+    assert serial.writes == [b"ACTIVE ABORT\n"]
+    assert runner.emergency_aborts_sent == 1
+    assert runner.commands_rejected == 0
 
 
 def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
@@ -328,6 +652,41 @@ def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
     assert serial.writes == []
     assert b"host_command_rejected" in raw
     assert runner.commands_rejected == 1
+
+
+def test_capture_device_rejects_stale_or_unwrapped_normal_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    base = _config(tmp_path)
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        normal_command_max_age_s=2.0,
+    )
+    runner = CaptureDeviceRunner(config)
+    serial = FakeSerial([])
+    paths = RunPaths(config.run_dir)
+    paths.raw_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        capture_device_module.time, "monotonic_ns", lambda: 10_000_000_000
+    )
+
+    with paths.raw_serial_log.open("a+b") as raw_handle:
+        writer = RawEvidenceWriter(raw_handle)
+        runner._send_command("ACTIVE ARM 1 2 3", serial, writer)
+        runner._send_command(
+            "OTISQ1 7000000000 ACTIVE ARM 1 2 3", serial, writer
+        )
+        runner._send_command(
+            "OTISQ1 9000000000 ACTIVE LEASE 4", serial, writer
+        )
+
+    assert serial.writes == [b"ACTIVE LEASE 4\n"]
+    assert runner.commands_rejected == 2
+    raw = paths.raw_serial_log.read_bytes()
+    assert b"lacks required OTISQ1" in raw
+    assert b"timestamp is stale" in raw
 
 
 def test_raw_evidence_writer_defers_host_marker_until_partial_device_line_completes(tmp_path: Path) -> None:

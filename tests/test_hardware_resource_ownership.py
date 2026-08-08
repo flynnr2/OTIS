@@ -172,14 +172,29 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     assert "otis_emit_pps_snapshot" in drain_body
     assert "another_reference_waiting" in drain_body
 
-    loop_body = sketch_source[sketch_source.index("void loop()") :]
-    assert loop_body.index("otis_capture_backend_service()") < loop_body.index(
+    loop1 = sketch_source[
+        sketch_source.index("void loop1()") : sketch_source.index("void loop()")
+    ]
+    assert loop1.index("otis_capture_backend_service()") < loop1.index(
         "service_tcxo_gate()"
     )
-    assert loop_body.index("drain_pps_count_boundary_ring()") < loop_body.index(
+    assert loop1.index("drain_pps_count_boundary_ring()") < loop1.index(
+        "service_tcxo_gate()"
+    )
+    assert loop1.index("drain_capture_ring()") < loop1.index(
+        "service_tcxo_gate()"
+    )
+    assert "service_serial_commands()" not in loop1
+
+    loop_body = sketch_source[sketch_source.index("void loop()") :]
+    legacy = loop_body[loop_body.index("// Capture service always runs first") :]
+    assert legacy.index("otis_capture_backend_service()") < legacy.index(
+        "service_tcxo_gate()"
+    )
+    assert legacy.index("drain_pps_count_boundary_ring()") < legacy.index(
         "service_serial_commands()"
     )
-    assert loop_body.index("drain_capture_ring()") < loop_body.index(
+    assert legacy.index("drain_capture_ring()") < legacy.index(
         "service_tcxo_gate()"
     )
 

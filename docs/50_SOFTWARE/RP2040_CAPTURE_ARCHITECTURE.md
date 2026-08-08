@@ -2,11 +2,11 @@
 
 ## Scope
 
-This document describes the intended H0/SW1 RP2040 capture architecture.
-
-It is intentionally a design note rather than a finalized implementation.
-The Arduino backend boundary and future PIO/DMA connection point are documented
-in `ARDUINO_CAPTURE_BACKENDS.md`.
+This document describes the H0/SW1 RP2040 capture architecture and its staged
+implementation. Historical bring-up sections remain labelled by their SW1
+stage; the current PPS-gated ratio backend and the dual-core ownership split
+below are implemented architecture, not future placeholders. The Arduino
+backend boundary is documented in `ARDUINO_CAPTURE_BACKENDS.md`.
 
 ## Design Principles
 
@@ -18,21 +18,24 @@ in `ARDUINO_CAPTURE_BACKENDS.md`.
 
 ## Core Separation
 
-Suggested first-pass division:
+The frozen Arduino-Pico division is:
 
 | Core | Responsibility |
 |---|---|
 | Core 0 | USB/serial transport, status emission, host commands and service I/O |
 | Core 1 | timing capture, DMA/ring ownership, timestamp-domain integrity and discipline |
 
-The exact split may evolve, but timing capture must remain isolated from non-deterministic host/service work.
+Timing capture and discipline state remain isolated from non-deterministic
+host/service work. Any later change to this convention requires a new
+architecture decision and new isolation evidence.
 
 For the Arduino Nano RP2040 Connect path, SW1 targets the Earle Philhower
-`arduino-pico` core. Its Arduino-facing multicore model maps naturally onto the
-intended split: `setup()` / `loop()` can own host-facing USB serial transport on
-core 0, while `setup1()` / `loop1()` can later own capture/ring-buffer work on
-core 1. The first GPIO proof may remain single-core until the record contract
-and live edge path are proven.
+`arduino-pico` core. `setup()` / `loop()` own host-facing USB serial transport,
+GNSS/environment service and physical DAC I2C execution on Core 0;
+`setup1()` / `loop1()` own PIO/DMA draining, raw timing construction,
+estimation and control state on Core 1. Bounded immutable queues are the only
+cross-core contract. Earlier GPIO bring-up proofs were single-core; that is
+historical evidence and not the current discipline architecture.
 
 ## Capture Families
 

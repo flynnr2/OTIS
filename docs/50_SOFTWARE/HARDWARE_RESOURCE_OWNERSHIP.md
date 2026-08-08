@@ -9,9 +9,10 @@ or reserves. It also records the shared I2C controller because its SDA/SCL GPIOs
 are part of the same conflict boundary.
 
 The ledger does not assign unused RP2040 peripherals merely to make the table
-look complete. An unallocated resource is not an OTIS resource. In particular,
-the current firmware has no DMA backend and claims no DMA channel. That zero
-claim is emitted explicitly at boot.
+look complete. An unallocated resource is not an OTIS resource. Profiles using
+the PPS-gated ratio backend claim and report exactly the dynamically allocated
+DMA channel used by its snapshot ring. Profiles using another count backend
+claim no DMA channel and emit that zero claim explicitly at boot.
 
 ## Enforced invariants
 
@@ -175,7 +176,7 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 | Core/library GPIO use outside the OTIS ledger | The registry enforces OTIS ownership, but cannot introspect arbitrary third-party code that directly reconfigures a GPIO. | Compile with the pinned Philhower core and inspect any newly added library before enabling it. |
 | Dynamic PIO allocation | SDK allocation prevents hardware double-claiming; actual SM/offset can change when another library uses PIO. Registry telemetry preserves the assigned identity. | On the combined PIO build, confirm distinct SMs and non-overlapping program offsets, then verify both `REF` and `CNT`. |
 | PIO allocation exhaustion | A backend can remain uninitialized with a pending claim. Existing backend failure telemetry and registry completeness expose the condition, but current mode setup does not turn every allocation failure into a boot fatal. | Exhaust or reserve PIO resources in a bench test and verify `complete=false`, backend `init=failed`, and no clean measurement is inferred. |
-| I2C concurrency | One owner removes duplicate initialization. The current single-core foreground execution is serialized; no cross-core lock is added. | PPS ownership/multicore work must define bus access placement before moving any I2C client across cores. |
+| I2C concurrency | Core 0 is the sole physical I2C execution plane for the DAC and environment sensors. Core 1 never accesses `Wire` or mutable device state; actuator work crosses through bounded immutable request/acknowledgement records. No cross-core I2C lock is required because ownership does not migrate. | Native queue/guard tests and the dual-core live proof must show exact request/acknowledgement accounting, one physical DAC call site, and continued timing capture under service-plane I2C and telemetry load. |
 | Hardware mux not exercised in host tests | Host tests cover collision semantics and ownership call paths; compile tests cover supported configurations. | Bench-check pin functions, IRQ activity, PIO allocations, and status evidence on the Nano RP2040 Connect. |
 
 ## PPS qualification handoff

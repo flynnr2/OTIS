@@ -34,6 +34,19 @@ def test_live_firmware_embeds_every_exact_frozen_identity() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_stage7_rehearsal_policy_hash_is_bound_into_both_live_paths() -> None:
+    policy_hash = _hash("profiles/discipline/cx317_stage7_rehearsal_v1.json")
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert active.count(policy_hash) == 2
+    assert preview.count(policy_hash) == 1
+
+
 def test_only_actuator_owner_has_controller_to_dac_call_and_no_retry() -> None:
     owner = (FIRMWARE / "otis_cx317_active_actuator.cpp").read_text(
         encoding="utf-8"
@@ -69,7 +82,8 @@ def test_prewrite_capsule_requires_exact_phase_ack_before_single_i2c_attempt() -
         active.index("bool otis_cx317_active_live_manual_start_allowed")
     ]
 
-    assert 'queue_frame("request_accepted"' in decision
+    assert '"request_created"' in decision
+    assert '"request_accepted"' in decision
     assert "otis_cx317_active_actuator_apply_once" not in decision
     assert acknowledgement.index("phase_sequence !=") < acknowledgement.index(
         "otis_cx317_active_actuator_apply_once"
@@ -78,8 +92,27 @@ def test_prewrite_capsule_requires_exact_phase_ack_before_single_i2c_attempt() -
         "otis_cx317_active_actuator_apply_once"
     )
     assert acknowledgement.count("otis_cx317_active_actuator_apply_once") == 1
+    assert "OtisCriticalMessageKind::ActuatorRequest" in acknowledgement
+    assert "OtisCriticalMessageKind::ActuatorExecute" in acknowledgement
+    assert "otis_cx317_active_live_on_cross_core_ack" in acknowledgement
+    assert "EvidencePhase::Acceptance" in acknowledgement
     assert "EvidencePhase::Application" in acknowledgement
     assert "evidence_acknowledgement_timeout" in active
+
+
+def test_serialized_act_evidence_never_copies_private_actionability() -> None:
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    serializer = active[
+        active.index("bool queue_frame(") : active.index(
+            "bool queue_manual_start_frame("
+        )
+    ]
+    assert '"false", evidence_state_name()' in serializer
+    assert "transaction.request.actionable" not in serializer
+    assert "cross.actionable = request.actionable" in active
+    assert "pending_actionable_request = request" in active
 
 
 def test_active_commands_cannot_supply_feedback_code_or_actionability() -> None:
@@ -95,7 +128,8 @@ def test_active_commands_cannot_supply_feedback_code_or_actionability() -> None:
     assert "parse_u16_code" not in arm_parse
     assert "actionable" not in arm_parse.lower()
     assert "values[3]" in sketch
-    assert "otis_cx317_active_live_arm(values[0], values[1], values[2]" in sketch
+    assert "otis_cx317_active_live_arm(" in sketch
+    assert "queue_dual_core_active_control(" in sketch
     assert "requested_code" not in sketch[
         sketch.index("OtisSerialCommandKind::ActiveArm") :
         sketch.index("OtisSerialCommandKind::ActiveAbort")
@@ -204,6 +238,84 @@ def test_status_formatting_cannot_mutate_controller_state() -> None:
     assert "otis_cx317_active_actuator_apply_once" not in emitter
 
 
+def test_cross_core_status_preserves_full_build_identity_and_aborted_state() -> None:
+    contract = (FIRMWARE / "otis_dual_core_contract.h").read_text(
+        encoding="utf-8"
+    )
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    capacity_match = re.search(
+        r"OTIS_TELEMETRY_VALUE_CAPACITY\s*=\s*(\d+)u", contract
+    )
+
+    assert capacity_match is not None
+    assert int(capacity_match.group(1)) >= 130
+    assert "char value[OTIS_TELEMETRY_VALUE_CAPACITY]" in contract
+    assert "telemetry value must preserve a full build identity" in contract
+
+    status = live[live.index("void otis_cx317_active_live_get_status") :]
+    dual_start = status.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION")
+    dual_status = status[dual_start : status.index("#else", dual_start)]
+    assert "otis_dual_core_fail_static()" in dual_status
+    assert "OtisCx317ActiveState::Fault" in dual_status
+    assert "OtisCx317ActiveState::Aborted" in dual_status
+
+
+def test_stage7_dual_core_authority_has_four_durable_phases_and_one_owner() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    timing_inputs = sketch[
+        sketch.index("void service_dual_core_timing_inputs") :
+        sketch.index("void service_dual_core_outputs")
+    ]
+    core0_actuator = sketch[
+        sketch.index("void service_dual_core_actuator_request") :
+        sketch.index("void service_dual_core_outputs")
+    ]
+    loop1 = sketch[sketch.index("void loop1()") : sketch.index("void loop()")]
+
+    assert 'queue_frame("core0_accepted"' in live
+    assert "EvidencePhase::Request" in live
+    assert "EvidencePhase::Acceptance" in live
+    assert "EvidencePhase::Application" in live
+    assert "EvidencePhase::Response" in live
+    assert "OtisCriticalMessageKind::ActuatorRequest" in live
+    assert "OtisCriticalMessageKind::ActuatorExecute" in live
+    assert "OtisServiceMessageKind::ActuatorAcknowledgement" in timing_inputs
+    assert "otis_cx317_active_live_on_cross_core_ack" in timing_inputs
+    assert core0_actuator.count("otis_cx317_active_actuator_apply_once") == 1
+    assert "otis_actuator_guard_check_deadline" in core0_actuator
+    assert "exact_release" in core0_actuator
+    assert "retry" not in core0_actuator.lower()
+    assert "restore" not in core0_actuator.lower()
+    assert "service_cx317_active_health();" in loop1
+    assert "service_cx317_active_application_outcome();" in loop1
+    assert "queue_dual_core_active_control" in sketch
+
+
+def test_stage7_part_b_prospective_dither_guards_are_prewrite() -> None:
+    source = (FIRMWARE / "otis_cx317_active_transaction.cpp").read_text(
+        encoding="utf-8"
+    )
+    make_request = source[
+        source.index("bool otis_cx317_active_make_request") :
+        source.index("bool otis_cx317_active_accept")
+    ]
+    assert "prospective_third_consecutive_reversal_dither_stop" in make_request
+    assert "prospective_low_net_excess_path_dither_stop" in make_request
+    assert make_request.index(
+        "prospective_third_consecutive_reversal_dither_stop"
+    ) < make_request.index("transaction->request = *request")
+    assert make_request.index(
+        "prospective_low_net_excess_path_dither_stop"
+    ) < make_request.index("transaction->request = *request")
+
+
 def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
     matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
     for profile in matrix["profiles"]:
@@ -214,7 +326,10 @@ def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
         )
         if profile["id"] in {
             "cx317_bounded_active_campaign_a",
-            "cx317_bounded_active_campaign_b",
+                "cx317_bounded_active_campaign_b",
+                "cx317_dual_core_active_part_a",
+                "cx317_dual_core_active_rehearsal",
+                "cx317_dual_core_active_endurance_part_b",
         }:
             assert enabled == "1"
         else:

@@ -173,3 +173,22 @@ state.
 Neither state exposes a retry function or restoration target. The last exactly
 confirmed applied code remains the controller state; recovery requires a new
 run as defined by the programme.
+
+## Stage 7 dual-core evidence extension
+
+Stage 7 adds a fourth durable phase before physical application:
+
+`request_created -> core0_accepted -> application -> response`
+
+The authority layer's private request is `actionable=true` only between its
+creation on Core 1 and exact acceptance on Core 0. The ACT CSV row is an
+observational copy and remains `actionable=false` in every phase, including
+`request_created`; it cannot be replayed as an actuator command. After the
+host has fsynced that row, `ACTIVE EVIDENCE <request_sequence> 1` releases the
+private request already held by firmware. Core 0 acceptance clears the private
+actionable flag before `core0_accepted` is emitted. Phases 2, 3 and 4 then
+durably gate acceptance, application and response respectively.
+
+This distinction is intentional: internal request actionability is exercised
+and checked by the firmware transaction/queue guards, while durable host
+evidence records the exact request identity without carrying authority.

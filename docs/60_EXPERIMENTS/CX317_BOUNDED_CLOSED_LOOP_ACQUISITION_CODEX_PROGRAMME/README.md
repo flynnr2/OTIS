@@ -3,6 +3,24 @@
 This folder contains the staged programme that follows the successful
 PPS-gated estimator and observe-only controller campaign.
 
+## Completed outcome
+
+The programme completed on 2026-08-08 with the evidence-gated decision
+`dual_core_frequency_control_endurance_passed`. The authoritative report is
+[`../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md`](../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md).
+
+The final 24-hour dual-core endurance run applied one exact `+19`-code
+correction from `0xA815` to `0xA828`, then retained `0xA828` inside the frozen
+deadband for 150 consecutive qualified observations / 90,000 s. All four
+service bursts, cross-core transaction phases, replay, transport and fail-
+static gates passed. The board remains static at `0xA828`.
+
+The selected next goal is a replayable phase estimator and a non-actionable
+bounded hybrid phase/frequency preview. The completed programme does not claim
+calibrated absolute accuracy, UTC traceability, phase lock, holdover or
+oscilloscope-qualified waveform margin, and it grants no authority for those
+functions.
+
 The programme is deliberately ambitious. It moves from the proved preview
 chain to bounded automatic frequency acquisition, learns from repeated
 actuation in both directions, then introduces the RP2040 dual-core boundary

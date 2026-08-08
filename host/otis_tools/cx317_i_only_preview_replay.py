@@ -16,6 +16,18 @@ from .cx317_pps_plant_characterize import PROVENANCE_FIELDS, _markdown_table
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json"
+POST_CAMPAIGN_POLICY = (
+    REPO_ROOT
+    / "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z"
+    / "stage5/campaign_b_20260804T022822Z/reports"
+    / "post_campaign_frequency_control_policy_v1.json"
+)
+POST_CAMPAIGN_POLICY_SHA256 = (
+    "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f"
+)
+POST_CAMPAIGN_CONTRACT_SHA256 = (
+    "d275d73e21bf44e9b34cda047d4265fe4ade787475933227fc86dd6c78be7c90"
+)
 TOOL_VERSION = "cx317_i_only_preview_replay_v2"
 
 
@@ -203,6 +215,155 @@ def load_policy(path: Path = DEFAULT_POLICY) -> Policy:
     )
 
 
+def load_post_campaign_policy(path: Path = POST_CAMPAIGN_POLICY) -> Policy:
+    """Load the sealed A/B result used by Stage 6 firmware and parity tests.
+
+    The earlier DEFAULT_POLICY remains available for reproducing the historical
+    single-core preview.  This loader intentionally accepts only the sealed
+    post-Campaign-B schema and cross-checks it against the combined A/B
+    contract rather than silently translating it into the older profile.
+    """
+    value = _read_json(path)
+    if set(value) != {
+        "authority", "bindings", "parameters", "policy_id", "provenance",
+        "rationale", "rules", "schema_version", "status",
+    }:
+        raise ValueError("post-campaign policy top-level fields differ")
+    if (
+        value["schema_version"] != 1
+        or value["policy_id"] != "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1"
+        or value["status"]
+        != "frozen_for_dual_core_preview_and_parity_no_live_authority"
+    ):
+        raise ValueError("unsupported post-campaign policy identity")
+    if _sha256_file(path) != POST_CAMPAIGN_POLICY_SHA256:
+        raise ValueError("sealed post-campaign policy hash differs")
+
+    authority = value["authority"]
+    if (
+        authority.get("actionable") is not False
+        or authority.get("actuation_authorized") is not False
+        or authority.get("automatic_restore") is not False
+        or authority.get("automatic_retry") is not False
+    ):
+        raise ValueError("post-campaign authority invariant differs")
+
+    bindings = value["bindings"]
+    bound_paths = {
+        "plant_model_sha256": REPO_ROOT / "profiles/plant_models/cx317_pps_gated_v2.json",
+        "selected_estimator_sha256": REPO_ROOT / "profiles/estimators/cx317_pps_gated_selected_v1.json",
+        "response_policy_sha256": REPO_ROOT / "profiles/discipline/cx317_response_classification_v2.json",
+        "active_policy_sha256": REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json",
+    }
+    for field, bound_path in bound_paths.items():
+        if _sha256_file(bound_path) != bindings.get(field):
+            raise ValueError(f"post-campaign {field} binding differs")
+
+    provenance = value["provenance"]
+    contract_path = path.parent.parent / str(provenance["combined_contract"])
+    if _sha256_file(contract_path) != POST_CAMPAIGN_CONTRACT_SHA256:
+        raise ValueError("sealed combined A/B contract hash differs")
+    contract = _read_json(contract_path)
+    parameters = value["parameters"]
+    plant = contract["plant_contract"]
+    response = contract["response_contract"]
+    settling = contract["settling_contract"]
+    campaigns = contract["campaigns"]
+    temperature = contract["temperature_context_c"]
+
+    integer_fields = (
+        "dac_max_code", "dac_min_code", "fresh_support_after_settling_s",
+        "full_history_reset_s", "maximum_update_codes",
+        "minimum_applied_correction_cadence_s", "nominal_frequency_hz",
+        "settling_exclusion_s", "startup_warmup_s",
+    )
+    if any(type(parameters[name]) is not int for name in integer_fields):
+        raise ValueError("post-campaign integer policy field is not an integer")
+    numeric_values = [
+        item for item in parameters.values()
+        if isinstance(item, (int, float)) and not isinstance(item, bool)
+    ]
+    if any(not math.isfinite(float(item)) for item in numeric_values):
+        raise ValueError("post-campaign policy contains a non-finite number")
+    if not (
+        0 < parameters["gain_min_hz_per_code"]
+        <= parameters["gain_nominal_hz_per_code"]
+        <= parameters["gain_max_hz_per_code"]
+    ):
+        raise ValueError("post-campaign plant gain envelope is invalid")
+    if parameters["full_history_reset_s"] != (
+        parameters["settling_exclusion_s"]
+        + parameters["fresh_support_after_settling_s"]
+    ):
+        raise ValueError("post-campaign full-history reset calculation differs")
+    if parameters["minimum_applied_correction_cadence_s"] < parameters["full_history_reset_s"]:
+        raise ValueError("post-campaign cadence is shorter than history reset")
+    expected_update = math.ceil(
+        response["empirical_detection_floor_hz"]
+        / parameters["gain_min_hz_per_code"]
+    )
+    if parameters["maximum_update_codes"] != expected_update:
+        raise ValueError("post-campaign update size is not evidence-derived")
+    expected_integrator_gain = 1.0 / (2.0 * parameters["gain_max_hz_per_code"])
+    if not math.isclose(
+        parameters["integrator_gain_codes_per_hz_per_decision"],
+        expected_integrator_gain,
+        rel_tol=0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError("post-campaign integrator gain derivation differs")
+    exact_pairs = (
+        (parameters["gain_min_hz_per_code"], plant["observed_gain_min_for_post_campaign_envelope"]),
+        (parameters["gain_nominal_hz_per_code"], plant["combined_ols_gain_hz_per_code"]),
+        (parameters["gain_max_hz_per_code"], plant["observed_gain_max_for_post_campaign_envelope"]),
+        (parameters["error_deadband_hz"], response["deadband_hz"]),
+        (parameters["settling_exclusion_s"], settling["post_application_exclusion_s"]),
+        (parameters["fresh_support_after_settling_s"], settling["fresh_support_after_exclusion_s"]),
+        (parameters["minimum_applied_correction_cadence_s"], settling["minimum_applied_cadence_s"]),
+    )
+    if any(left != right for left, right in exact_pairs):
+        raise ValueError("post-campaign policy differs from combined A/B contract")
+    fail_static_code = int(campaigns["B"]["final_code"])
+    if not parameters["dac_min_code"] <= fail_static_code <= parameters["dac_max_code"]:
+        raise ValueError("post-campaign final code is outside the clamp")
+    if parameters["temperature_required_for_control_eligibility"] is not False:
+        raise ValueError("post-campaign temperature role differs")
+
+    return Policy(
+        policy_id=str(value["policy_id"]),
+        config_hash=_sha256_file(path),
+        plant_model_hash=str(bindings["plant_model_sha256"]),
+        characterization_hash=POST_CAMPAIGN_CONTRACT_SHA256,
+        estimator_hash=str(bindings["selected_estimator_sha256"]),
+        nominal_frequency_hz=float(parameters["nominal_frequency_hz"]),
+        gain_min=float(parameters["gain_min_hz_per_code"]),
+        gain_nominal=float(parameters["gain_nominal_hz_per_code"]),
+        gain_max=float(parameters["gain_max_hz_per_code"]),
+        estimator_span_s=int(parameters["fresh_support_after_settling_s"]),
+        decision_cadence_s=int(parameters["minimum_applied_correction_cadence_s"]),
+        settling_exclusion_s=int(parameters["settling_exclusion_s"]),
+        fresh_support_s=int(parameters["fresh_support_after_settling_s"]),
+        full_history_reset_s=int(parameters["full_history_reset_s"]),
+        future_cadence_s=int(parameters["minimum_applied_correction_cadence_s"]),
+        warmup_s=int(parameters["startup_warmup_s"]),
+        detection_floor_hz=float(response["empirical_detection_floor_hz"]),
+        deadband_hz=float(parameters["error_deadband_hz"]),
+        integrator_gain=float(parameters["integrator_gain_codes_per_hz_per_decision"]),
+        integrator_limit_codes=int(parameters["maximum_update_codes"]),
+        proposed_max_update_codes=int(parameters["maximum_update_codes"]),
+        active_update_codes=0,
+        minimum_code=int(parameters["dac_min_code"]),
+        maximum_code=int(parameters["dac_max_code"]),
+        fail_static_code=fail_static_code,
+        temperature_min_c=float(temperature["active_campaign_minimum"]),
+        temperature_max_c=float(temperature["active_campaign_maximum"]),
+        temperature_required_for_control=False,
+        out_of_model_hold=False,
+        recovery_support_s=int(parameters["fresh_support_after_settling_s"]),
+        provenance=(dict(provenance), dict(value["rationale"])),
+    )
+
+
 @dataclass(frozen=True)
 class Observation:
     timestamp_s: int
@@ -230,6 +391,15 @@ class IOnlyPreviewEngine:
         self.qualifying_since_s = startup_s + policy.warmup_s
         self.inhibit_until_s = self.qualifying_since_s
         self.latched_reason = "startup_warmup"
+
+    def note_dac_epoch(self, timestamp_s: int) -> None:
+        """Reset history at the actual application time, between observations."""
+        self.state = "SETTLING_INHIBIT"
+        self.latched_reason = "dac_epoch_full_history_reset"
+        self.inhibit_until_s = timestamp_s + self.policy.full_history_reset_s
+        self.qualifying_since_s = self.inhibit_until_s
+        self.integrator_codes = 0.0
+        self.last_decision_s = None
 
     def _result(self, observation: Observation, **values: Any) -> dict[str, Any]:
         result = {
@@ -303,11 +473,7 @@ class IOnlyPreviewEngine:
             self.last_decision_s = None
             return self._result(observation)
         if observation.dac_epoch:
-            self.state, self.latched_reason = "SETTLING_INHIBIT", "dac_epoch_full_history_reset"
-            self.inhibit_until_s = observation.timestamp_s + self.policy.full_history_reset_s
-            self.qualifying_since_s = self.inhibit_until_s
-            self.integrator_codes = 0.0
-            self.last_decision_s = None
+            self.note_dac_epoch(observation.timestamp_s)
             return self._result(observation)
         if observation.timestamp_s < self.startup_s + self.policy.warmup_s:
             self.state, self.latched_reason = "WARMUP_INHIBIT", "startup_warmup"
@@ -376,6 +542,9 @@ def _scenario(identifier: str, category: str, passed: bool, evidence: Any) -> di
 
 def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
     scenarios: list[dict[str, Any]] = []
+    next_decision_s = (
+        policy.warmup_s + policy.estimator_span_s + policy.decision_cadence_s
+    )
     for label, gain in (("minimum", policy.gain_min), ("nominal", policy.gain_nominal), ("maximum", policy.gain_max)):
         _, rows = _prime(policy, code=policy.fail_static_code, error=0.02)
         decision = rows[-1]
@@ -419,11 +588,11 @@ def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
     if not policy.temperature_required_for_control:
         missing_engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
         missing = missing_engine.process(
-            Observation(3000, 0.02, policy.fail_static_code, None)
+            Observation(next_decision_s, 0.02, policy.fail_static_code, None)
         )
         outside_engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
         outside = outside_engine.process(
-            Observation(3000, 0.02, policy.fail_static_code,
+            Observation(next_decision_s, 0.02, policy.fail_static_code,
                         policy.temperature_max_c + 10.0)
         )
         scenarios.append(_scenario(
@@ -432,7 +601,9 @@ def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
             [missing, outside],
         ))
     engine, _ = _prime(policy, code=policy.maximum_code, error=-1.0)
-    clamp = engine.process(Observation(3000, -1.0, policy.maximum_code, 29.0))
+    clamp = engine.process(
+        Observation(next_decision_s, -1.0, policy.maximum_code, 29.0)
+    )
     scenarios.append(_scenario("dac_clamp_slew_and_anti_windup", "limits", clamp["preview_available"] and clamp["range_clamped"] and clamp["proposed_code"] == policy.maximum_code and clamp["integrator_codes"] == 0.0, clamp))
     engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
     aborted = engine.process(Observation(3000, 0.02, policy.fail_static_code, 29.0, operator_abort=True))

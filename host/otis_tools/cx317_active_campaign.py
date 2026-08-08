@@ -167,7 +167,9 @@ def validate_transaction_row(
         raise ValueError("requested code/delta violates the immutable step relation")
     if not spec.minimum_code <= requested <= spec.maximum_code:
         raise ValueError("requested code is outside the immutable range")
-    if accepted != requested:
+    if event == "request_created" and accepted != 0:
+        raise ValueError("unaccepted cross-core request has a non-zero accepted code")
+    if event != "request_created" and accepted != requested:
         raise ValueError("accepted code differs from the immutable request")
     if not 1 <= ordinal <= spec.correction_limit:
         raise ValueError("correction ordinal exceeds the campaign limit")
@@ -188,6 +190,138 @@ def validate_transaction_row(
             raise ValueError("application acknowledgement is not exact and unambiguous")
 
 
+IMMUTABLE_REQUEST_FIELDS = (
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "session_id",
+    "authorization_sequence",
+    "nonce",
+    "request_sequence",
+    "decision_sequence",
+    "source_first_sequence",
+    "source_last_sequence",
+    "decision_timestamp_s",
+    "current_applied_code",
+    "requested_delta_codes",
+    "requested_code",
+    "correction_ordinal",
+    "cumulative_after_codes",
+    "pre_error_hz",
+    "estimator_sha256",
+    "model_sha256",
+    "active_policy_sha256",
+    "response_policy_sha256",
+    "numerical_policy_sha256",
+)
+
+
+def validate_transaction_history(
+    rows: list[dict[str, str]],
+    spec: CampaignSpec,
+    identities: dict[str, str],
+    expected_build_identity: str,
+    *,
+    dual_core: bool,
+) -> None:
+    """Validate the complete durable prefix before releasing any phase.
+
+    Per-row schema checks are insufficient for actuator release: a later row
+    could be individually in range while referring to a different request.
+    This check binds every phase to the exact request_created/request_accepted
+    capsule, enforces event order and budgets cumulatively, and accepts only a
+    final incomplete prefix while the corresponding live phase is pending.
+    """
+    if not rows:
+        return
+    sequences = [int(row["transaction_record_sequence"]) for row in rows]
+    if sequences != list(range(1, len(rows) + 1)):
+        raise ValueError("ACT transaction record sequence is not contiguous")
+    for row in rows:
+        validate_transaction_row(
+            row, spec, identities, expected_build_identity
+        )
+    if rows[0].get("event") != "manual_start" or any(
+        row.get("event") == "manual_start" for row in rows[1:]
+    ):
+        raise ValueError("ACT history requires exactly one leading manual_start")
+
+    expected_events = (
+        ("request_created", "core0_accepted", "application", "response")
+        if dual_core
+        else ("request_accepted", "application", "response")
+    )
+    automatic = rows[1:]
+    index = 0
+    expected_request_sequence = 1
+    expected_ordinal = 1
+    previous_code = spec.start_code
+    previous_cumulative = 0
+    while index < len(automatic):
+        first = automatic[index]
+        request_sequence = int(first["request_sequence"])
+        if request_sequence != expected_request_sequence:
+            raise ValueError("ACT request sequence is not contiguous")
+        group: list[dict[str, str]] = []
+        while index < len(automatic) and int(
+            automatic[index]["request_sequence"]
+        ) == request_sequence:
+            group.append(automatic[index])
+            index += 1
+        events = [row["event"] for row in group]
+        failure_index = len(expected_events) - 2
+        valid_failure = (
+            len(events) == failure_index + 1
+            and events[:failure_index] == list(expected_events[:failure_index])
+            and events[-1] == "application_fault"
+        )
+        valid_prefix = events == list(expected_events[: len(events)])
+        if not valid_prefix and not valid_failure:
+            raise ValueError(
+                f"ACT request {request_sequence} phase order is invalid: {events}"
+            )
+        if len(events) > len(expected_events):
+            raise ValueError("ACT request contains too many phases")
+        if index < len(automatic) and not (
+            len(events) == len(expected_events) and valid_prefix
+        ):
+            raise ValueError("a new ACT request follows an incomplete transaction")
+        if valid_failure and index < len(automatic):
+            raise ValueError("ACT application fault is not terminal")
+
+        for row in group[1:]:
+            changed = [
+                field
+                for field in IMMUTABLE_REQUEST_FIELDS
+                if row.get(field) != first.get(field)
+            ]
+            if changed:
+                raise ValueError(
+                    f"ACT request {request_sequence} immutable fields changed: "
+                    + ", ".join(changed)
+                )
+        delta = int(first["requested_delta_codes"])
+        cumulative_after = int(first["cumulative_after_codes"])
+        if int(first["correction_ordinal"]) != expected_ordinal:
+            raise ValueError("ACT correction ordinal is not contiguous")
+        if int(first["current_applied_code"]) != previous_code:
+            raise ValueError("ACT request does not start at the last applied code")
+        if cumulative_after != previous_cumulative + abs(delta):
+            raise ValueError("ACT cumulative movement does not equal prior plus step")
+
+        application = next(
+            (row for row in group if row["event"] == "application"), None
+        )
+        if application is not None:
+            previous_code = int(application["applied_code"])
+            previous_cumulative = cumulative_after
+        if len(events) == len(expected_events) and valid_prefix:
+            expected_request_sequence += 1
+            expected_ordinal += 1
+        elif index < len(automatic):
+            raise ValueError("ACT history continues after an incomplete prefix")
+
+
 class ActiveCampaignSupervisor:
     def __init__(
         self,
@@ -201,6 +335,8 @@ class ActiveCampaignSupervisor:
         allow_manual_start: bool,
         allow_arm: bool,
         duration_s: float | None,
+        emergency_command_fifo: Path | None = None,
+        console_events: bool = False,
     ) -> None:
         self.run_dir = run_dir
         self.command_fifo = command_fifo
@@ -211,6 +347,8 @@ class ActiveCampaignSupervisor:
         self.allow_manual_start = allow_manual_start
         self.allow_arm = allow_arm
         self.duration_s = duration_s
+        self.emergency_command_fifo = emergency_command_fifo
+        self.console_events = console_events
         self.state_path = run_dir / SUPERVISOR_STATE
         self.events_path = run_dir / SUPERVISOR_EVENTS
         self.state = self._load_state()
@@ -242,7 +380,8 @@ class ActiveCampaignSupervisor:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-        print(json.dumps(payload, sort_keys=True), flush=True)
+        if self.console_events:
+            print(json.dumps(payload, sort_keys=True), flush=True)
 
     def _command(self, command: str) -> None:
         send_command_to_fifo(self.command_fifo, command)
@@ -250,7 +389,16 @@ class ActiveCampaignSupervisor:
 
     def _abort(self, reason: str) -> None:
         try:
-            self._command("ACTIVE ABORT")
+            if self.emergency_command_fifo is not None:
+                send_command_to_fifo(
+                    self.emergency_command_fifo, "ACTIVE ABORT"
+                )
+                self._event(
+                    "emergency_device_abort_submitted",
+                    reason=reason,
+                )
+            else:
+                self._command("ACTIVE ABORT")
         except (OSError, SystemExit, ValueError) as exc:
             self._event("device_abort_submission_failed", reason=reason, error=str(exc))
         self.state["terminal"] = {"result": "aborted", "reason": reason, "utc": _utc_now()}
@@ -321,9 +469,17 @@ class ActiveCampaignSupervisor:
         )
         if validation.errors:
             raise ValueError("ACT contract validation failed: " + "; ".join(validation.errors))
+        rows = _read_csv(path)
+        validate_transaction_history(
+            rows,
+            self.spec,
+            self.identities,
+            self.expected_build_identity,
+            dual_core=False,
+        )
         acknowledged = set(self.state["acknowledged_record_sequences"])
         observed_manual = set(self.state["observed_manual_record_sequences"])
-        for row in _read_csv(path):
+        for row in rows:
             record_sequence = int(row["transaction_record_sequence"])
             validate_transaction_row(
                 row, self.spec, self.identities, self.expected_build_identity
@@ -538,12 +694,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--campaign", choices=("A", "B"), required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--command-fifo", type=Path, required=True)
+    parser.add_argument("--emergency-command-fifo", type=Path)
     parser.add_argument("--abort-fifo", type=Path, required=True)
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--allow-manual-start", action="store_true")
     parser.add_argument("--allow-arm", action="store_true")
     parser.add_argument("--duration-s", type=float)
+    parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
+    if args.emergency_command_fifo is not None:
+        fifo_paths = {
+            args.command_fifo.absolute(),
+            args.emergency_command_fifo.absolute(),
+            args.abort_fifo.absolute(),
+        }
+        if len(fifo_paths) != 3:
+            parser.error(
+                "command, emergency-command and independent-abort FIFOs "
+                "must be distinct"
+            )
     spec, identities = load_campaign_spec(args.campaign)
     supervisor = ActiveCampaignSupervisor(
         run_dir=args.run_dir,
@@ -555,6 +724,8 @@ def main(argv: list[str] | None = None) -> int:
         allow_manual_start=args.allow_manual_start,
         allow_arm=args.allow_arm,
         duration_s=args.duration_s,
+        emergency_command_fifo=args.emergency_command_fifo,
+        console_events=args.console_events,
     )
     try:
         return supervisor.run()

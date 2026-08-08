@@ -57,6 +57,9 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx317_pps_gated_i_only_preview",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
+        "cx317_dual_core_active_part_a",
+        "cx317_dual_core_active_rehearsal",
+        "cx317_dual_core_active_endurance_part_b",
         "cx317_pps_gated_gnss_smoke",
         "cx317_pps_gated_gnss_actuator_preflight",
         "phase4_observe_only",
@@ -75,7 +78,7 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "invalid_active_campaign_a_parameters",
         "invalid_active_missing_gnss",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 19
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 22
     assert sum(item["expect"] == "fail" for item in profiles.values()) == 7
 
 
@@ -91,6 +94,9 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert set(active) == {
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
+        "cx317_dual_core_active_part_a",
+        "cx317_dual_core_active_rehearsal",
+        "cx317_dual_core_active_endurance_part_b",
     }
     assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA950u"
     assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "16u"
@@ -98,11 +104,28 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "8u"
     assert active["cx317_bounded_active_campaign_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "168u"
+    assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
+    assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
+    assert active["cx317_dual_core_active_part_a"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
+    rehearsal = active["cx317_dual_core_active_rehearsal"]
+    assert rehearsal["OTIS_CX317_ACTIVE_START_CODE"] == "0xA800u"
+    assert rehearsal["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "2u"
+    assert rehearsal["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "42u"
+    assert rehearsal["OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG"] == "120u"
+    assert rehearsal["OTIS_FC0_STARTUP_INHIBIT_MS"] == "60000u"
+    assert rehearsal["OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS"] == "3u"
+    assert rehearsal["OTIS_CX317_DECISION_CADENCE_S"] == "240u"
+    assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA82Au"
+    assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "32u"
+    assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "672u"
     for defines in active.values():
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
         assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
         assert defines["OTIS_DAC_MIN_CODE"] == "0xA800u"
         assert defines["OTIS_DAC_MAX_CODE"] == "0xAB00u"
+    assert active["cx317_dual_core_active_part_a"]["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
+    assert active["cx317_dual_core_active_rehearsal"]["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
+    assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
 
 
 def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:

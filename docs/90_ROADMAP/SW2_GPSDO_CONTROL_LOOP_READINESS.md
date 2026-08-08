@@ -2,58 +2,43 @@
 
 ## Decision
 
-SW2 active GPSDO steering is **not ready**.
+The bounded frequency-control programme reached
+**`dual_core_frequency_control_endurance_passed`** on 2026-08-08. The
+authoritative review is
+`../60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md`.
 
-The completed CX317 PPS-gated estimator/control programme reached the narrower
-decision **`ready_for_more_observe_only_testing`** on 2026-08-03. This is a
-positive observe-only result, not an actuation approval. The authoritative
-review is
-`../60_EXPERIMENTS/CX317_PPS_GATED_ESTIMATOR_CONTROL_FINAL_READINESS.md`.
+This is a positive, evidence-sealed result for the exact CX317/AD5693R rig,
+PPS-gated 600 s estimator, bounded I-only policy, `0xA800..0xAB00` clamp and
+dual-core ownership contract tested by the programme. It is not a claim that a
+complete GPSDO product, calibrated frequency standard or UTC/phase discipline
+system is ready.
 
-The sealed replacement Stage 6 run used the exact preserved firmware artifact,
-held the independently applied DAC code at `0xA950`, captured 22,200 continuous
-PPS-gated `REF`/`SNP`/`CNT` rows, produced 34 selected 600 s estimates and 34
-explainable I-only previews, and passed all 17 live analyzer checks. The one
-bounded service exercise sent exactly 60 non-actuating `CONFIG?` requests.
-Control readiness, enablement, authorization and actionability stayed false;
-active live update stayed zero. Four Stage 1/3/5/6 evidence snapshots and the
-final software/firmware verification all revalidate.
+The final Stage 7B run qualified all 151 authoritative observations, applied
+one exact `+19`-code correction from `0xA815` to `0xA828`, and then remained
+inside the frozen deadband for 150 consecutive observations / 90,000 s. All
+four service bursts and re-arm interlocks passed. The host transport recorded
+21,279 accepted commands with zero rejection, parser error, reconnect,
+malformed UTF-8 or emergency abort. The sealed Stage 7B snapshot and every
+earlier mandatory gate revalidate.
 
-Active steering remains blocked by unavailable calibrated combined frequency
-uncertainty, unavailable measured CX317 `t95`, unavailable fresh connected
-low/centre/high `Vc` characterization with accepted voltage uncertainty,
-untested D8 duty/rise/fall/phase margin, and unavailable GNSS
-fix/lock/UTC/PPS-quality qualification. Historical Run 020 timing and voltage
-evidence remains useful context but is not substituted for these current
-same-backend evidence gaps.
+Final offline verification passed 790 tests with two expected evidence-
+availability skips, all 22 supported firmware profiles, all seven intended
+unsafe-profile guards, three wire validators and synthetic validate/report
+checks. The board remains static at the last confirmed applied code `0xA828`.
 
-The repo now contains useful H1 evidence for DAC I2C operation, DAC clamping,
-connected tune-voltage sanity checks, scripted long-gate open-loop sweeps,
-PPS/reference telemetry, environmental telemetry, session-aware host reporting,
-startup/control-eligibility status, a completed clean `run_014` after the
-G17 conditioning fault was repaired, and corrected local-PPS analysis.
-`run_019` supplies the broad CX317/AD5693R plant evidence. `run_020` completed
-the intended focused profile, directly brackets 10 MHz near `0xA950`, and
-supplies local gain and settling evidence. Model version 3 is now validated for
-observe-only use. Earlier evidence showed that the
-count-observation path could produce post-startup zero-count faults under the
-faulted bench configuration; `run_014` now explains that failure as a hardware
-short on the SN74LVC1G17 breakout rather than a host analysis, logging, or
-firmware-counting artifact. `run_016` did not repeat the `run_014` PPS anomaly
-burst and provides clean reference/capture evidence for the repaired topology,
-but its small-step DAC response was not sign-stable enough by itself.
+The next primary goal is
+**phase-estimator definition and bounded hybrid phase/frequency preview**. It
+must begin non-actionable and replayable. Phase steering, calibrated absolute
+frequency, UTC traceability, holdover, timing-grade GNSS provisioning and
+oscilloscope-based waveform margin remain unsupported; none is authorized by
+the completed frequency-control programme.
 
-The current state supports SW2 design work, telemetry contracts, safety gates,
-manual nominal restore, observe-only firmware scaffolding, deterministic host
-`EST`/`CTL` replay, an exact live non-actionable I-only preview, and an accepted
-observe-only PPS-gated measurement backend. It does **not**
-support automatic DAC actuation from PPS or count error. Phase 3 has frozen the
-local evidence, crossing band, applicability, and disabled candidate envelope;
-Phase 4 host replay enforces those bounds and preserves source hashes. The next
-gate is a separately authorized **observe-only evidence-closure campaign**,
-beginning static at `0xA950`. Exact future step codes, sample cadence and dwell
-remain unavailable until derived from the missing physical evidence; no
-guarded-actuation policy is eligible for review yet.
+The sections below preserve the precursor observe-only/backend evidence as
+historical context. Where they describe active frequency control as incomplete,
+the 2026-08-08 final report supersedes that status without erasing the evidence
+that led to it.
+
+## Historical precursor readiness evidence
 
 ## Phase 4 host replay readiness
 

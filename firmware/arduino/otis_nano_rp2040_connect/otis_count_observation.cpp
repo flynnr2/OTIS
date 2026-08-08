@@ -5,12 +5,14 @@
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include <hardware/pio_instructions.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "otis_board.h"
 #include "otis_capture_irq.h"
 #include "otis_config.h"
+#include "otis_dual_core_partition.h"
 #include "otis_emit.h"
 #include "otis_pio_counter_math.h"
 #include "otis_pps_count_boundary.h"
@@ -21,6 +23,10 @@
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_timebase.h"
+
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+#include <pico/platform.h>
+#endif
 
 namespace {
 
@@ -250,12 +256,34 @@ OtisPpsDiagnostics pps_diagnostics = {};
 void emit_status(OtisStatusEmitContext *context, const char *component,
                  const char *key, const char *value, const char *severity,
                  uint32_t flags) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
+    OtisTelemetryMessage message = {};
+    message.timestamp_ticks = otis_capture_ticks_now();
+    message.flags = flags;
+    snprintf(message.component, sizeof(message.component), "%s", component);
+    snprintf(message.key, sizeof(message.key), "%s", key);
+    snprintf(message.value, sizeof(message.value), "%s", value);
+    snprintf(message.severity, sizeof(message.severity), "%s", severity);
+    otis_dual_core_publish_telemetry(&message);
+    return;
+  }
+#endif
   otis_status_emit(context, component, key, value, severity, flags);
 }
 
 void emit_status_u32(OtisStatusEmitContext *context, const char *component,
                      const char *key, uint32_t value, const char *severity,
                      uint32_t flags) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
+    char formatted[24];
+    snprintf(formatted, sizeof(formatted), "%lu",
+             static_cast<unsigned long>(value));
+    emit_status(context, component, key, formatted, severity, flags);
+    return;
+  }
+#endif
   otis_status_emit_u32(context, component, key, value, severity, flags);
 }
 
@@ -858,6 +886,25 @@ void update_control_gate(OtisRuntimeState *runtime_state,
 void emit_count_observation(OtisRuntimeState *runtime_state,
                             const OtisCountObservationConfig *config,
                             uint64_t counted_edges, uint32_t flags) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
+    OtisObservationMessage message = {};
+    message.kind = OtisObservationMessageKind::CountObservation;
+    message.count.sequence = runtime_state->sequences.count_seq++;
+    message.count.channel_id = OTIS_CHANNEL_OSC_OBSERVATION;
+    message.count.gate_open_ticks =
+        runtime_state->tcxo.last_gate_open_ticks;
+    message.count.gate_close_ticks =
+        runtime_state->tcxo.last_gate_close_ticks;
+    message.count.counted_edges = counted_edges;
+    message.count.flags = flags;
+    snprintf(message.count.source_domain,
+             sizeof(message.count.source_domain), "%s",
+             config->source_domain);
+    otis_dual_core_publish_observation(&message);
+    return;
+  }
+#endif
   otis_emit_count_observation(
       runtime_state->sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
       runtime_state->tcxo.last_gate_open_ticks,
