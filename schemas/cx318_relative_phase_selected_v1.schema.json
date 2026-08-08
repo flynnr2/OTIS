@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/cx318_relative_phase_selected_v1.schema.json",
+  "title": "CX318 selected relative-phase estimator profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "oscillator_identity",
+    "programme_label",
+    "bindings",
+    "selection",
+    "epoch_and_reset",
+    "outputs",
+    "selection_evidence",
+    "authority",
+    "claims_not_made"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx318_relative_phase_selected_v1"},
+    "status": {"const": "selected_after_complete_stage2_replay"},
+    "oscillator_identity": {"const": "CX317"},
+    "programme_label": {"const": "CX318"},
+    "bindings": {
+      "type": "object",
+      "minProperties": 5,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "selection": {"$ref": "#/$defs/nonempty_object"},
+    "epoch_and_reset": {"$ref": "#/$defs/nonempty_object"},
+    "outputs": {"$ref": "#/$defs/nonempty_object"},
+    "selection_evidence": {"$ref": "#/$defs/nonempty_object"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": {"const": false},
+      "minProperties": 6
+    },
+    "claims_not_made": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "nonempty_object": {"type": "object", "minProperties": 1}
+  }
+}

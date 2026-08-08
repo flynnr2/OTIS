@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/cx318_relative_phase_candidates_v1.schema.json",
+  "title": "CX318 relative-phase estimator candidate profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "bindings",
+    "raw_boundary",
+    "validity",
+    "rolling_regression",
+    "alpha_beta",
+    "selection",
+    "authority",
+    "claims_not_made"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx318_relative_phase_candidates_v1"},
+    "status": {"const": "candidate_parameters_frozen_before_stage4_live_record"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      },
+      "required": ["stage2_prompt", "stage1_contract"]
+    },
+    "raw_boundary": {"$ref": "#/$defs/nonempty_object"},
+    "validity": {"$ref": "#/$defs/nonempty_object"},
+    "rolling_regression": {"$ref": "#/$defs/nonempty_object"},
+    "alpha_beta": {
+      "allOf": [
+        {"$ref": "#/$defs/nonempty_object"},
+        {
+          "type": "object",
+          "required": ["parameter_grid"],
+          "properties": {
+            "parameter_grid": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["candidate_id", "alpha", "beta"],
+                "properties": {
+                  "candidate_id": {"type": "string", "minLength": 1},
+                  "alpha": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                  "beta": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "selection": {"$ref": "#/$defs/nonempty_object"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": {"const": false},
+      "minProperties": 6
+    },
+    "claims_not_made": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "nonempty_object": {
+      "type": "object",
+      "minProperties": 1
+    }
+  }
+}
