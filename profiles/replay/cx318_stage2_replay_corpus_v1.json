@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "corpus_id": "cx318_stage2_replay_corpus_v1",
+  "status": "frozen_before_candidate_comparison",
+  "explicit_runs": [
+    {
+      "class": "phase5_pseudo_clean",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T160928Z_pseudo_clean_strict",
+      "nominal_frequency_hz_override": "16000000_from_phase5_campaign_configuration_missing_from_legacy_manifest"
+    },
+    {
+      "class": "phase5_pseudo_fault",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T162222Z_pseudo_faults_strict",
+      "nominal_frequency_hz_override": "16000000_from_phase5_campaign_configuration_missing_from_legacy_manifest"
+    },
+    {
+      "class": "phase5_real_gps_short_quiet",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T170231Z_real_gps_quiet"
+    },
+    {
+      "class": "phase5_real_gps_short_sequential_load",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T191840Z_real_gps_quiet_load_v3"
+    },
+    {
+      "class": "phase5_real_gps_short_bracketed_load",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T201514Z_real_gps_bracketed_load_diagnostic"
+    },
+    {
+      "class": "phase5_real_gps_extended",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260731T212402Z_real_gps_extended_alternating_load_v4"
+    },
+    {
+      "class": "phase5_real_gps_overnight",
+      "path": "runs/phase5_pps_backend/pps_remediation_20260801T004553Z_real_gps_overnight_alternating_load_v4"
+    },
+    {
+      "class": "cx317_stage3_fixed_code_sealed",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z"
+    },
+    {
+      "class": "cx317_campaign_a_sealed",
+      "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/campaign_a_v3_20260803T183120Z"
+    },
+    {
+      "class": "cx317_campaign_b_sealed",
+      "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage5/campaign_b_20260804T022822Z"
+    },
+    {
+      "class": "cx317_stage6_dual_core_sealed",
+      "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage6/dual_core_live_v3_20260804T110756Z"
+    }
+  ],
+  "discovered_run_groups": [
+    {
+      "class": "cx317_stage7_every_attempt",
+      "directory": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage7",
+      "child_directory_glob": "*"
+    }
+  ],
+  "adequate_raw_input": {
+    "required_run_manifest": "run_manifest.json",
+    "snapshot_candidates": ["csv/pps_snapshots.csv", "csv/snp.csv"],
+    "count_candidates": ["csv/count_observations.csv", "csv/cnt.csv"],
+    "minimum_snapshot_rows": 2,
+    "missing_or_inadequate_disposition": "record_explicitly_without_phase_records"
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "hardware_access": false
+  }
+}

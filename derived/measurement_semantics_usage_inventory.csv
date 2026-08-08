@@ -525,6 +525,10 @@ host/otis_tools/cx317_stage6_live_analyze.py,876,uncertainty,measurement_uncerta
 host/otis_tools/cx317_stage6_live_analyze.py,1284,uncertainty,measurement_uncertainty_semantics,"""combined_uncertainty"","
 host/otis_tools/cx317_stage8_final_review.py,749,uncertainty,measurement_uncertainty_semantics,"""Full fixed-code distributions, residence segments, autocorrelation, Newey–West uncertainty, service/environment associations, candidate replay, dither and hysteresis records remain verbatim in the immutable Stage 7B gate listed above."","
 host/otis_tools/cx317_stage8_final_review.py,791,uncertainty,measurement_uncertainty_semantics,"""- no calibrated absolute-frequency accuracy or combined uncertainty claim"","
+host/otis_tools/cx318_relative_phase.py,78,uncertainty,measurement_uncertainty_semantics,calibrated_uncertainty_status: str
+host/otis_tools/cx318_relative_phase.py,95,uncertainty,measurement_uncertainty_semantics,uncertainty_status: str
+host/otis_tools/cx318_relative_phase.py,172,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
+host/otis_tools/cx318_relative_phase.py,484,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
 host/otis_tools/cx318_stage1_handoff.py,212,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
 host/otis_tools/cx318_stage1_handoff.py,505,uncertainty,measurement_uncertainty_semantics,- calibrated uncertainty: `{phase['calibrated_uncertainty_status']}`
 host/otis_tools/cx318_stage1_handoff.py,536,uncertainty,measurement_uncertainty_semantics,"No UTC, absolute time error, calibrated delay/uncertainty, generated-output PPS"
@@ -719,6 +723,8 @@ profiles/discipline/cx318_stage1_contracts_v1.json,64,uncertainty,measurement_un
 profiles/discipline/cx318_stage1_contracts_v1.json,82,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"","
 profiles/discipline/cx318_stage1_contracts_v1.json,86,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_default"": ""unavailable"","
 profiles/estimators/cx317_pps_gated_selected_v1.json,73,uncertainty,measurement_uncertainty_semantics,"""Counter-aperture, reference, calibration and combined uncertainty remain unavailable."","
+profiles/estimators/cx318_relative_phase_candidates_v1.json,24,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"""
+profiles/estimators/cx318_relative_phase_selected_v1.json,59,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
 profiles/estimators/pps_cumulative_snapshot_span_v1.json,14,uncertainty,measurement_uncertainty_semantics,"""uncertainty_policy"": ""unknown_components_unavailable"","
 profiles/plant_models/cx317_h1_bench_v1.json,128,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"
 profiles/plant_models/cx317_h1_bench_v2.json,75,uncertainty,measurement_uncertainty_semantics,"""uncertainty"": {"

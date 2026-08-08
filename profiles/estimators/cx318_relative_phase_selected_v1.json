@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx318_relative_phase_selected_v1",
+  "status": "selected_after_complete_stage2_replay",
+  "oscillator_identity": "CX317",
+  "programme_label": "CX318",
+  "bindings": {
+    "stage1_contract": {
+      "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
+      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+    },
+    "candidate_profile": {
+      "path": "profiles/estimators/cx318_relative_phase_candidates_v1.json",
+      "sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb"
+    },
+    "replay_corpus": {
+      "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",
+      "sha256": "6f8520609c570fb8027cc60dd0b27bfb6758ee40ccdfa02706d304e011631ee4"
+    },
+    "replay_result": {
+      "path": "runs/cx318_relative_phase_hybrid_preview/campaign_20260808T110942Z/stage2/stage2_replay_corpus_v1.json",
+      "sha256": "a2f7b3b111235a5441170bf749ca313b8d30b2c6f84cb6ef95748798d3a24c07"
+    },
+    "existing_frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    }
+  },
+  "selection": {
+    "selected_estimator_id": "CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
+    "raw_phase_method": "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1",
+    "filtered_phase_method": "identity_from_raw_relative_phase_no_smoothing_selected",
+    "frequency_method": "cx317_selected_600s_nonoverlap_v1",
+    "frequency_support_intervals": 600,
+    "reason": "raw phase is exact and step-preserving; the existing 600-interval frequency result replays with effectively exact parity; no filtered candidate demonstrates an independently verifiable improvement that justifies fitting away real phase movement",
+    "more_complex_candidates_retained_for_diagnostic_comparison_only": true
+  },
+  "epoch_and_reset": {
+    "new_raw_epoch_on": [
+      "capture_session_change",
+      "reset",
+      "unbridgeable_reference_discontinuity",
+      "snapshot_sequence_or_association_discontinuity",
+      "ambiguous_counter_wrap",
+      "reference_invalid_or_stale"
+    ],
+    "preserve_raw_epoch_on": [
+      "healthy_dac_epoch_transition",
+      "visible_phase_step_with_valid_continuity"
+    ],
+    "frequency_support_resets_on_dac_epoch": true,
+    "no_guessed_epoch_offset": true
+  },
+  "outputs": {
+    "raw_relative_phase_cycles": "exact_integer_accumulator",
+    "raw_relative_phase_time_ns_for_cx317": "raw_relative_phase_cycles_times_100",
+    "filtered_relative_phase_cycles": "equal_to_raw_relative_phase_cycles",
+    "estimated_frequency_error_hz": "existing_authoritative_600_interval_nonoverlap_result",
+    "calibrated_uncertainty_status": "unavailable",
+    "phase_zero": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch"
+  },
+  "selection_evidence": {
+    "declared_runs": 40,
+    "replayed_runs": 39,
+    "explicit_missing_source_runs": 1,
+    "total_snapshots_replayed": 390511,
+    "total_accepted_intervals": 390385,
+    "false_continuity_count": 0,
+    "false_recovery_count": 0,
+    "all_sources_unchanged": true,
+    "sealed_stage7b_phase_epochs": 1,
+    "sealed_stage7b_accepted_intervals": 93828,
+    "sealed_stage7b_terminal_relative_phase_cycles": -297,
+    "sealed_stage7b_existing_600_comparison_count": 151,
+    "sealed_stage7b_raw_frequency_parity_rms_hz": 5.216238588166286e-10
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_issue_command": false,
+    "may_write_dac": false,
+    "may_change_frequency_controller_state_response_or_budget": false
+  },
+  "claims_not_made": [
+    "utc",
+    "absolute_time_error",
+    "calibrated_absolute_phase",
+    "phase_lock",
+    "calibrated_absolute_frequency_accuracy",
+    "holdover"
+  ]
+}

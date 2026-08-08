@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx318_relative_phase_candidates_v1",
+  "status": "candidate_parameters_frozen_before_stage4_live_record",
+  "bindings": {
+    "stage2_prompt": {
+      "path": "docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/02_RELATIVE_PHASE_ESTIMATOR_AND_REPLAY_PROMPT.md",
+      "sha256": "6aac9844bfe9c5bc2ed4d0a6f11d50255dca1587b080a8357eb10c1015a997ca"
+    },
+    "stage1_contract": {
+      "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
+      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+    }
+  },
+  "raw_boundary": {
+    "candidate_id": "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1",
+    "counter_width_bits": 32,
+    "counter_direction": "down",
+    "interval_edges_rule": "(previous-current)_mod_2^32",
+    "edge_error_rule": "interval_edges-run_declared_nominal_edges_per_pps_interval",
+    "phase_rule": "sum_accepted_edge_error_within_phase_epoch",
+    "time_conversion_for_cx317_ns_per_cycle": 100,
+    "authoritative_frequency_support_intervals": 600,
+    "calibrated_uncertainty_status": "unavailable"
+  },
+  "validity": {
+    "reference_interval_minimum_s": 0.8,
+    "reference_duplicate_maximum_s": 0.1,
+    "reference_interval_maximum_s": 1.2,
+    "rp2040_reference_timestamp_modulus_rule": "2^32_microseconds_times_timer_ticks_per_microsecond",
+    "require_snapshot_status_zero": true,
+    "require_exact_snapshot_and_reference_sequence_increment": true,
+    "require_exact_cnt_parity": true,
+    "require_qualified_reference": true,
+    "new_epoch_on": [
+      "capture_session_change",
+      "reset",
+      "unbridgeable_reference_discontinuity",
+      "snapshot_sequence_or_association_discontinuity",
+      "ambiguous_counter_wrap",
+      "reference_invalid_or_stale"
+    ],
+    "preserve_raw_epoch_on": [
+      "healthy_dac_epoch_transition",
+      "visible_phase_step_with_valid_continuity"
+    ],
+    "no_guessed_epoch_offset": true
+  },
+  "rolling_regression": {
+    "candidate_family_id": "CX318_RELATIVE_PHASE_ROLLING_OLS_V1",
+    "window_intervals": [600, 1800, 3600],
+    "minimum_points_rule": "window_intervals_plus_one",
+    "independent_variable": "accepted_nominal_interval_ordinal_within_phase_epoch",
+    "frequency_output_units": "cycles_per_nominal_second_equivalent_hz",
+    "reset_on_phase_epoch": true,
+    "reset_on_dac_epoch": true,
+    "may_change_raw_phase": false
+  },
+  "alpha_beta": {
+    "candidate_family_id": "CX318_RELATIVE_PHASE_ALPHA_BETA_V1",
+    "nominal_update_interval_s": 1,
+    "parameter_grid": [
+      {
+        "candidate_id": "alpha_beta_fast",
+        "alpha": 0.2,
+        "beta": 0.02
+      },
+      {
+        "candidate_id": "alpha_beta_balanced",
+        "alpha": 0.05,
+        "beta": 0.001
+      },
+      {
+        "candidate_id": "alpha_beta_slow",
+        "alpha": 0.01,
+        "beta": 0.00005
+      }
+    ],
+    "reset_on_phase_epoch": true,
+    "reseed_on_dac_epoch_from_current_raw_phase": true,
+    "initial_frequency_error_hz": 0.0,
+    "may_change_raw_phase": false
+  },
+  "selection": {
+    "raw_accumulator_always_authoritative_at_boundary": true,
+    "derived_candidate_may_only_supply_filtered_phase_and_frequency": true,
+    "prefer_simplest_explainable_candidate": true,
+    "do_not_optimize_only_residual_rms": true,
+    "selection_deferred_until_complete_stage2_replay": true
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_issue_command": false,
+    "may_write_dac": false,
+    "may_change_frequency_controller_state_response_or_budget": false
+  },
+  "claims_not_made": [
+    "utc",
+    "absolute_time_error",
+    "calibrated_absolute_phase",
+    "phase_lock",
+    "calibrated_absolute_frequency_accuracy",
+    "holdover"
+  ]
+}
