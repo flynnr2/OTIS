@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx318_hybrid_preview_selected_v1",
+  "status": "selected_for_stage4_nonactionable_live_preview",
+  "oscillator_identity": "CX317",
+  "programme_label": "CX318",
+  "bindings": {
+    "stage1_contract": {
+      "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
+      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+    },
+    "selected_phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "hybrid_candidate_profile": {
+      "path": "profiles/discipline/cx318_hybrid_preview_candidates_v1.json",
+      "sha256": "4c316e81f2b87cc66652027b2d9884538022213f6aee08ea063aa4be5d87953c"
+    },
+    "replay_corpus": {
+      "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",
+      "sha256": "6f8520609c570fb8027cc60dd0b27bfb6758ee40ccdfa02706d304e011631ee4"
+    },
+    "stage3_replay_result": {
+      "path": "runs/cx318_relative_phase_hybrid_preview/campaign_20260808T110942Z/stage3/stage3_hybrid_replay_v1.json",
+      "sha256": "43fb7a679766b6f7cf2e23f49ccc6cd7c2714e4afc90949c8dfcff8771a5a920"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+    }
+  },
+  "selection": {
+    "selected_candidate_id": "p21600_cap1_v2",
+    "pull_in_time_s": 21600,
+    "absolute_phase_bias_cap_hz": 0.0016666666666666668,
+    "frequency_band_policy": "historical_v2",
+    "selected_candidate_count": 1,
+    "selection_reason": "slowest pull-in and lower cap reduced modeled phase movement substantially on sealed Stage 7B, improved rather than degraded modeled 600-second RMS frequency across the plant-gain envelope, stayed inside code/path/correction budgets, and did not trigger repeated-alternation, low-efficiency, clamp, or fault guards",
+    "tight_hysteretic_counterpart_disposition": "rejected_after_prospective_repeated_alternation_guard_on_sealed_stage7b",
+    "more_aggressive_candidates": "diagnostic_replay_only"
+  },
+  "sealed_stage7b_nominal_evidence": {
+    "observed_phase_absolute_segment_movement_cycles": 297.0,
+    "modeled_phase_absolute_segment_movement_cycles": 27.920744535618873,
+    "phase_movement_reduction_cycles": 269.0792554643811,
+    "observed_600s_frequency_rms_hz": 0.003290041452604604,
+    "modeled_600s_frequency_rms_hz": 0.0013782680310378157,
+    "frequency_rms_degradation_hz": -0.0019117734215667883,
+    "counterfactual_corrections": 29,
+    "cumulative_movement_codes": 118,
+    "nonconsecutive_direction_changes": 8,
+    "repeated_alternation_guard_triggered": false,
+    "range_clamped_count": 0,
+    "terminal_fault_preview": false,
+    "terminal_shadow_code": 43067,
+    "minimum_code_range_distance": 21,
+    "first_frequency_acquired_s": 637.9969219999999,
+    "first_hybrid_tracking_s": 1238.994038
+  },
+  "gain_sensitivity": {
+    "minimum": {
+      "modeled_phase_movement_cycles": 28.58187649775668,
+      "phase_movement_reduction_cycles": 268.4181235022433,
+      "modeled_600s_frequency_rms_hz": 0.0013600715449482795,
+      "counterfactual_corrections": 30,
+      "cumulative_movement_codes": 126,
+      "terminal_fault_preview": false
+    },
+    "nominal": {
+      "modeled_phase_movement_cycles": 27.920744535618873,
+      "phase_movement_reduction_cycles": 269.0792554643811,
+      "modeled_600s_frequency_rms_hz": 0.0013782680310378157,
+      "counterfactual_corrections": 29,
+      "cumulative_movement_codes": 118,
+      "terminal_fault_preview": false
+    },
+    "maximum": {
+      "modeled_phase_movement_cycles": 26.49508231217854,
+      "phase_movement_reduction_cycles": 270.5049176878215,
+      "modeled_600s_frequency_rms_hz": 0.0013601659675653867,
+      "counterfactual_corrections": 27,
+      "cumulative_movement_codes": 115,
+      "terminal_fault_preview": false
+    }
+  },
+  "parity_and_fault_evidence": {
+    "frequency_only_phase_forced_zero_observations": 151,
+    "frequency_only_phase_forced_zero_mismatches": 0,
+    "frequency_only_phase_forced_zero_exact": true,
+    "declared_corpus_runs": 40,
+    "replayed_corpus_runs": 39,
+    "explicit_inadequate_source_runs": 1,
+    "source_mutations": 0,
+    "reference_loss_transitions": 22,
+    "recovery_transitions": 22,
+    "historical_selected_candidate_fault_preview_runs": 1,
+    "historical_fault_run_disposition": "part_b_retry_20260806T050640Z correctly entered repeated-alternation fault preview; final sealed Stage7B did not"
+  },
+  "stage4_boundary": {
+    "host_firmware_parity_required_before_live_preview": true,
+    "live_preview_must_remain_static_code_and_nonactionable": true,
+    "modeled_values_after_shadow_divergence_must_be_labeled": true,
+    "phase_or_hybrid_value_may_influence_actual_delta_or_eligibility": false
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_issue_command": false,
+    "may_write_dac": false,
+    "may_change_actual_applied_code": false,
+    "may_mutate_live_frequency_controller": false,
+    "may_mutate_response_classifier": false,
+    "may_mutate_live_budget": false
+  },
+  "claims_not_made": [
+    "utc",
+    "absolute_time_error",
+    "phase_lock",
+    "calibrated_absolute_phase",
+    "calibrated_absolute_frequency_accuracy",
+    "observed_post_divergence_response",
+    "actuation_readiness"
+  ]
+}
