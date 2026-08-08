@@ -1,21 +1,20 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Status:** revised through the completed and sealed CX317 PPS-gated
-estimator/control programme on 3 August 2026; decision
-`ready_for_more_observe_only_testing`, with actuation still disabled
+**Status:** revised through the completed and sealed CX317 bounded closed-loop
+acquisition programme on 8 August 2026; decision
+`dual_core_frequency_control_endurance_passed`
 
 **Scope:** H1 completion through SW2 observe-only, guarded actuation, hybrid discipline, holdover, and timing-platform scaffolding
 
-**Current evidence caveat:** `run_019` and sealed `run_020` remain historical
-FC0/long-gate plant references, not CX317 specifications. The current
-same-topology PPS-gated programme selected a 600 s non-overlapping estimator,
-characterized a local finite-run gain of
-`0.000163574222825..0.000173340100446 Hz/code`, and completed a 22,200 s live
-non-actionable I-only preview at static `0xA950`. Its hard reviewed clamp is
-`0xA800..0xAB00`, but that range and every proposed controller parameter remain
-observe-only values. Calibrated combined uncertainty, measured `t95`, fresh
-connected `Vc`, D8 waveform/phase and GNSS-quality evidence remain unresolved,
-so automatic actuation remains disabled.
+**Current evidence caveat:** the programme has now demonstrated bounded
+single-core acquisition, dual-core transaction-safe active control and a
+sealed 24-hour endurance pass on the exact tested rig. Stage 7B moved once from
+`0xA815` to `0xA828`, then remained inside the frozen frequency deadband for
+90,000 s while all service and transport gates passed. This establishes the
+bounded frequency-control layer, not calibrated absolute accuracy, UTC
+traceability, phase lock, holdover, timing-grade receiver performance or
+physical waveform margin. Historical `run_019`/`run_020` remain contextual
+plant evidence rather than CX317 specifications.
 
 ---
 
@@ -71,23 +70,31 @@ The earlier generic SW2 roadmap had the right long-term shape, but it treated OT
 
 SW2 should therefore **extend the existing observation-and-replay architecture**, not introduce a parallel set of generic `Observation`, `Estimator`, `Controller`, and `Actuator` abstractions simply because they look tidy.
 
-The recommended path is:
+The recommended path is now:
 
-1. use the completed, versioned H1 plant model as an observe-only input;
-2. make the measurement backend suitable for live discipline;
-3. add a replayable, observe-only discipline engine that emits decisions but cannot actuate;
-4. validate live observe-only parity and model-applicability diagnostics — **complete**;
-5. close the enumerated metrology/model-applicability gaps in a new separately
-   authorized observe-only experiment, with no convenient placeholder step,
-   cadence or dwell values;
-6. define and review a deliberately limited frequency-control experiment only
-   after those evidence gaps close;
-7. conduct guarded actuation only after its separate policy and safety gate passes;
-8. add phase-aware hybrid behaviour only after frequency control is understood;
-9. add holdover and recovery;
-10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic, or the DAC driver.
+1. preserve the qualified PPS-gated measurement backend and canonical evidence contracts — **complete**;
+2. preserve deterministic host/firmware estimator and controller replay — **complete**;
+3. preserve bounded single-core bidirectional acquisition evidence — **complete**;
+4. preserve the Core 0 service / Core 1 timing ownership and fail-static transport contract — **complete**;
+5. preserve the sealed 24-hour bounded dual-core frequency-control endurance result — **complete**;
+6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority;
+7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics;
+8. authorize any hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed;
+9. add reference-loss holdover and controlled recovery;
+10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic or the DAC driver.
 
-### 2026-08-03 observe-only milestone
+### 2026-08-08 bounded frequency-control milestone
+
+The CX317 bounded closed-loop acquisition programme passed all eight stages.
+The final decision is `dual_core_frequency_control_endurance_passed`; the
+sealed report is
+`../60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md`.
+The terminal hardware state is static `0xA828`. Final verification recorded
+790 passed tests, two expected skips, 22/22 supported firmware profiles and
+7/7 intended guards. The one selected next programme is phase-estimator
+definition and a non-actionable bounded hybrid phase/frequency preview.
+
+### Historical 2026-08-03 observe-only milestone
 
 The CX317 PPS-gated programme completed Stages 1 through 7 with four valid
 evidence seals and a 16/16 final-readiness gate pass. The final integrated
