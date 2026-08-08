@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import time
 
 
 KNOWN_SWEEP_PROFILES = frozenset(
@@ -42,6 +43,9 @@ SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
         "CONFIG?",
+        "DUALCORE?",
+        "DUALCORE INVALIDATE_GNSS",
+        "DUALCORE RECOVER",
         "DAC?",
         "DAC LIMITS?",
         "DAC MID",
@@ -60,6 +64,7 @@ SIMPLE_COMMANDS = frozenset(
         "ACTIVE ABORT",
     }
 )
+TIMESTAMPED_COMMAND_PREFIX = "OTISQ1"
 
 
 @dataclass(frozen=True)
@@ -136,13 +141,45 @@ def parse_serial_command(text: str) -> SerialCommand:
             raise ValueError(
                 "ACTIVE EVIDENCE requires non-zero request and phase sequences"
             )
-        if int(fields[1], 10) not in {1, 2, 3}:
-            raise ValueError("ACTIVE EVIDENCE phase sequence must be 1, 2, or 3")
+        if int(fields[1], 10) not in {1, 2, 3, 4}:
+            raise ValueError(
+                "ACTIVE EVIDENCE phase sequence must be 1, 2, 3, or 4"
+            )
         return SerialCommand(
             f"ACTIVE EVIDENCE {int(fields[0], 10)} {int(fields[1], 10)}"
         )
 
     raise ValueError("unknown or unsupported command")
+
+
+def timestamped_command_line(
+    command: str, *, created_monotonic_ns: int | None = None
+) -> str:
+    parsed = parse_serial_command(command)
+    created = (
+        time.monotonic_ns()
+        if created_monotonic_ns is None
+        else created_monotonic_ns
+    )
+    if created <= 0:
+        raise ValueError("created_monotonic_ns must be positive")
+    return f"{TIMESTAMPED_COMMAND_PREFIX} {created} {parsed.normalized}"
+
+
+def parse_timestamped_command_line(
+    line: str,
+) -> tuple[SerialCommand, int | None]:
+    normalized = " ".join(line.strip().split())
+    prefix = TIMESTAMPED_COMMAND_PREFIX + " "
+    if not normalized.startswith(prefix):
+        return parse_serial_command(normalized), None
+    fields = normalized.split(" ", 2)
+    if len(fields) != 3 or not fields[1].isdigit():
+        raise ValueError("invalid OTISQ1 command envelope")
+    created = int(fields[1], 10)
+    if created <= 0:
+        raise ValueError("OTISQ1 monotonic timestamp must be positive")
+    return parse_serial_command(fields[2]), created
 
 
 class CommandFifo:
@@ -164,13 +201,18 @@ class CommandFifo:
         return self
 
     def __exit__(self, *_exc_info: object) -> None:
+        self.close()
+
+    def close(self) -> None:
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None
 
-    def poll(self) -> list[str]:
+    def poll(self, *, max_lines: int | None = None) -> list[str]:
         if self.fd is None:
             return []
+        if max_lines is not None and max_lines <= 0:
+            raise ValueError("max_lines must be positive when provided")
         chunks: list[bytes] = []
         while True:
             try:
@@ -180,28 +222,37 @@ class CommandFifo:
             if not chunk:
                 break
             chunks.append(chunk)
-        if not chunks:
+        if chunks:
+            self.buffer.extend(b"".join(chunks))
+        if not self.buffer:
             return []
 
-        self.buffer.extend(b"".join(chunks))
         lines: list[str] = []
         while True:
+            if max_lines is not None and len(lines) >= max_lines:
+                break
             try:
                 newline_index = self.buffer.index(0x0A)
             except ValueError:
                 break
+            if newline_index > self.max_line_bytes:
+                del self.buffer[: newline_index + 1]
+                lines.append("")
+                continue
             line = bytes(self.buffer[:newline_index]).rstrip(b"\r")
             del self.buffer[: newline_index + 1]
             lines.append(line.decode("utf-8", errors="replace"))
-        if len(self.buffer) > self.max_line_bytes:
+        if (
+            (max_lines is None or len(lines) < max_lines)
+            and b"\n" not in self.buffer
+            and len(self.buffer) > self.max_line_bytes
+        ):
             self.buffer.clear()
             lines.append("")
         return lines
 
 
-def send_command_to_fifo(fifo: Path, command: str) -> int:
-    parsed = parse_serial_command(command)
-    payload = (parsed.normalized + "\n").encode("ascii")
+def _write_fifo_payload(fifo: Path, payload: bytes) -> int:
     try:
         fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
     except OSError as exc:
@@ -209,10 +260,32 @@ def send_command_to_fifo(fifo: Path, command: str) -> int:
             raise SystemExit(f"no capture_device command reader is active for {fifo}") from exc
         raise
     try:
-        os.write(fd, payload)
+        bytes_written = os.write(fd, payload)
+        if bytes_written != len(payload):
+            raise OSError(
+                f"short FIFO write: expected {len(payload)}, wrote {bytes_written}"
+            )
     finally:
         os.close(fd)
     return 0
+
+
+def send_command_to_fifo(fifo: Path, command: str) -> int:
+    parsed = parse_serial_command(command)
+    payload = (parsed.normalized + "\n").encode("ascii")
+    return _write_fifo_payload(fifo, payload)
+
+
+def send_timestamped_command_to_fifo(
+    fifo: Path,
+    command: str,
+    *,
+    created_monotonic_ns: int | None = None,
+) -> int:
+    line = timestamped_command_line(
+        command, created_monotonic_ns=created_monotonic_ns
+    )
+    return _write_fifo_payload(fifo, (line + "\n").encode("ascii"))
 
 
 def main() -> None:

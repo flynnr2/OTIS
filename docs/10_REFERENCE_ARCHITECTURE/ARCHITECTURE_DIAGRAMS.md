@@ -109,9 +109,13 @@ input |  hardware capture latch      |                 |  serial / USB reader   
       |  drain capture rings         |                 |  format / package records    |
       |  maintain ordering           |                 |  optional display updates    |
       |  attach timing provenance    |                 |  optional sensor polling     |
-      |  run discipline loop         |                 |  command queue handling      |
-      |  enqueue telemetry           +---------------->|  host-link service           |
+      |  run discipline loop         | raw + critical  |  command queue handling      |
+      |  immutable bounded queues    +---------------->|  host-link / DAC I2C service |
       +---------------+--------------+                 +------------------------------+
+                      ^                                                |
+                      | qualified GNSS / environment /                 |
+                      | applied-DAC / run-control values               |
+                      +------------------------------------------------+
                       |
                       | bounded internal state
                       v
@@ -129,6 +133,11 @@ input |  hardware capture latch      |                 |  serial / USB reader   
 
 Core 1 should be able to continue preserving timing semantics even when displays,
 filesystems, dashboards, network services, or hosts fall behind.
+
+For the Arduino-Pico RP2040 implementation, Core 1 is the protected timing and
+discipline plane and Core 0 is the service/I/O and physical-actuator plane.
+Non-droppable queue exhaustion is a fail-static fault; only redundant formatted
+summaries may drop, and every such drop is counted.
 
 ---
 

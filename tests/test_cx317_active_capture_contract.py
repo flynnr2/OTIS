@@ -111,6 +111,42 @@ def test_act_contract_rejects_actionable_or_wrong_evidence_phase(tmp_path: Path)
     assert any("requires evidence_state=request_pending" in error for error in result.errors)
 
 
+def test_request_created_is_non_actionable_durable_evidence(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "active_transactions_v1.csv"
+    row = _row(1, "request_created", "request_pending")
+    row.update(
+        {
+            "accepted_code": "0",
+            "accepted_timestamp_s": "0",
+            "applied_code": "0",
+            "application_sequence": "0",
+            "application_timestamp_s": "0",
+            "i2c_ok": "false",
+            "dac_epoch": "0",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "active_state": "REQUEST_PENDING",
+            "actionable": "false",
+        }
+    )
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V1_FIELDS)
+        writer.writeheader()
+        writer.writerow(row)
+
+    result = validate_csv(
+        path,
+        CsvValidationContext(
+            "active_transactions_v1", frozenset(), frozenset()
+        ),
+    )
+    assert result.row_count == 1
+    assert result.errors == ()
+
+
 def test_act_contract_accepts_durable_out_of_model_hold_response(
     tmp_path: Path,
 ) -> None:

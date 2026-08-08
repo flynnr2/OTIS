@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "contract_id": "CX317_STAGE7_SHADOW_DEADBAND_V2",
+  "status": "frozen_before_stage7_part_a2_non_actionable",
+  "base_contract": {
+    "path": "profiles/discipline/cx317_stage7_shadow_deadband_v1.json",
+    "sha256": "85c686f9e2ca7997ddf00cf8039c1c8d0d61bfdb217d4104bdbc5519a66e3bf9"
+  },
+  "amendment": {
+    "stage7_prompt_path": "docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/07_DUAL_CORE_ACTIVE_ENDURANCE_PROMPT.md",
+    "stage7_prompt_sha256": "0ab20ab75c58583789fad512f0eb326ef58bfd467e73ebb35fa2281c94efc512",
+    "scope": "finite_runtime_and_composite_part_a_procedure_only",
+    "numerical_contract_changed": false,
+    "candidate_set_changed": false,
+    "shadow_authority_changed": false
+  }
+}

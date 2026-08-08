@@ -8,25 +8,42 @@
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_i_only_engine.h"
 #include "otis_cx317_snapshot_estimator.h"
+#include "otis_dual_core_partition.h"
 #include "otis_protocol.h"
+#include "otis_spsc_queue.h"
 #include "otis_transport_serial.h"
 
 namespace {
 
 constexpr char kEstimatorMethod[] = "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1";
+#if OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+constexpr char kSelectedEstimatorVersion[] =
+    "cx317_rehearsal_selected_120s_nonoverlap_v1";
+constexpr char kSelectedEstimatorReference[] = "selected120rehearsal";
+constexpr char kSelectedEstimatorHash[] =
+    "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977";
+constexpr char kPolicyId[] = "CX317_STAGE7_HIL_REHEARSAL_V1";
+constexpr char kPolicyHash[] =
+    "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
+#else
+constexpr char kSelectedEstimatorVersion[] =
+    "cx317_selected_600s_nonoverlap_v1";
+constexpr char kSelectedEstimatorReference[] = "selected600";
 constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
-constexpr char kPolicyId[] = "CX317_PPS_GATED_I_ONLY_PREVIEW_V2";
+constexpr char kPolicyId[] = "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1";
 constexpr char kPolicyHash[] =
-    "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
+    "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f";
+#endif
 constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
 constexpr char kPlantModelHash[] =
     "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
 constexpr char kTimeDomain[] = "rp2040_timer0";
 constexpr double kNominalFrequencyHz = 10000000.0;
-constexpr double kNominalGainHzPerCode = 0.00017008467693813145;
-constexpr uint32_t kStartupWarmupS = 1800u;
-constexpr uint32_t kSettlingExclusionS = 900u;
+constexpr double kNominalGainHzPerCode = 0.00017072602587382669;
+constexpr uint32_t kStartupWarmupS = OTIS_CX317_STARTUP_WARMUP_S;
+constexpr uint32_t kSettlingExclusionS = OTIS_CX317_SETTLING_EXCLUSION_S;
 constexpr int32_t kActiveLiveUpdateCodes = 0;
 constexpr uint8_t kQueueDepth = 4u;
 constexpr size_t kFrameCapacity = 1536u;
@@ -40,12 +57,11 @@ struct Frame {
 
 OtisCx317SnapshotEstimator estimator;
 OtisCx317IOnlyEngine controller;
-Frame queue[kQueueDepth];
-uint8_t queue_head = 0u;
-uint8_t queue_tail = 0u;
-uint8_t queue_count = 0u;
-uint8_t queue_high_water = 0u;
+OtisSpscQueue<Frame, kQueueDepth> queue;
+Frame transport_frame = {};
+bool transport_frame_active = false;
 uint32_t dropped_frames = 0u;
+uint32_t evidence_frame_sequence = 0u;
 uint32_t estimate_seq = 0u;
 uint32_t control_seq = 0u;
 uint32_t startup_s = 0u;
@@ -56,22 +72,44 @@ bool temperature_available = false;
 double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
+bool recovery_requested = false;
 
 bool enqueue(const char *data, size_t length) {
-  if (data == nullptr || length == 0u || length >= kFrameCapacity ||
-      queue_count >= kQueueDepth) {
-    if (dropped_frames < UINT32_MAX) dropped_frames++;
+  if (data == nullptr || length == 0u || length >= kFrameCapacity) {
+    uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
+    while (observed != UINT32_MAX &&
+           !__atomic_compare_exchange_n(&dropped_frames, &observed,
+                                        observed + 1u, false,
+                                        __ATOMIC_RELAXED,
+                                        __ATOMIC_RELAXED)) {
+    }
     return false;
   }
-  Frame &frame = queue[queue_tail];
+  Frame frame = {};
   memcpy(frame.data, data, length);
   frame.data[length] = '\0';
   frame.length = static_cast<uint16_t>(length);
   frame.sent = 0u;
-  queue_tail = static_cast<uint8_t>((queue_tail + 1u) % kQueueDepth);
-  queue_count++;
-  if (queue_count > queue_high_water) queue_high_water = queue_count;
-  return true;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisEvidenceFrameMessage message = {};
+  message.sequence = evidence_frame_sequence + 1u;
+  message.length = frame.length;
+  memcpy(message.data, frame.data, frame.length + 1u);
+  if (otis_dual_core_publish_evidence(&message)) {
+    evidence_frame_sequence = message.sequence;
+    return true;
+  }
+#else
+  if (queue.try_push(frame)) return true;
+#endif
+  uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
+  while (observed != UINT32_MAX &&
+         !__atomic_compare_exchange_n(&dropped_frames, &observed,
+                                      observed + 1u, false,
+                                      __ATOMIC_RELAXED,
+                                      __ATOMIC_RELAXED)) {
+  }
+  return false;
 }
 
 bool code_context_valid(const OtisCx317StaticCodeState *code) {
@@ -137,14 +175,15 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       "diagnostic_healthy,%.12f,%lu,unavailable,%.12f,%.12f,,unavailable,"
       "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
       ",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n",
-      static_cast<unsigned long>(seq), selected ? "selected600" : "diagnostic60",
+      static_cast<unsigned long>(seq),
+      selected ? kSelectedEstimatorReference : "diagnostic60",
       static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(first),
       static_cast<unsigned long>(span.last_sequence), OTIS_FIRMWARE_CONFIG_ID,
-      selected ? "cx317_selected_600s_nonoverlap_v1"
+      selected ? kSelectedEstimatorVersion
                : "cx317_diagnostic_60s_overlap_v1",
       kSelectedEstimatorHash, frequency, static_cast<unsigned long>(samples),
       frequency, frequency - kNominalFrequencyHz,
@@ -154,8 +193,11 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
                : "diagnostic_non_authoritative");
   if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
     enqueue(frame, static_cast<size_t>(used));
-  else if (dropped_frames < UINT32_MAX)
-    dropped_frames++;
+  else {
+    uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
+    if (observed != UINT32_MAX)
+      __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
+  }
 }
 
 void emit_control(const OtisCx317PreviewDecision &decision,
@@ -177,13 +219,27 @@ void emit_control(const OtisCx317PreviewDecision &decision,
   char frame[kFrameCapacity];
   const uint32_t seq = control_seq++;
   const bool applicable = code_context_valid(code);
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (decision.state_transition && otis_dual_core_timing_owner_active()) {
+    OtisCriticalRecordMessage transition = {};
+    transition.kind = OtisCriticalMessageKind::StateTransition;
+    transition.sequence = seq;
+    transition.timestamp_ticks = timestamp_ticks;
+    snprintf(transition.component, sizeof(transition.component), "%s",
+             "cx317_preview");
+    snprintf(transition.reason, sizeof(transition.reason), "%s",
+             decision.reason);
+    otis_dual_core_publish_critical(&transition);
+  }
+#endif
   int used = snprintf(
       frame, sizeof(frame),
-      "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:selected600:%06lu,"
+      "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:%s:%06lu,"
       "profile:plant_models/cx317_pps_gated_v2.json,%s,2,%s,%s,%s,%s,%s,%s,%s,"
       "%s,%s,healthy,%s,%s,%u,%s,%.15g,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
       static_cast<unsigned long>(seq), static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
+      kSelectedEstimatorReference,
       static_cast<unsigned long>(source_estimate_seq), kPlantModelId,
       kPlantModelHash, kPolicyId, kPolicyHash,
       otis_cx317_preview_state_name(decision.state),
@@ -199,8 +255,11 @@ void emit_control(const OtisCx317PreviewDecision &decision,
       decision.preview_available ? "true" : "false", decision.reason);
   if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
     enqueue(frame, static_cast<size_t>(used));
-  else if (dropped_frames < UINT32_MAX)
-    dropped_frames++;
+  else {
+    uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
+    if (observed != UINT32_MAX)
+      __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
+  }
 }
 
 }  // namespace
@@ -212,8 +271,14 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   startup_s = startup_uptime_s;
   settling_until_s = startup_uptime_s;
   initialized = true;
+  queue.reset();
+  evidence_frame_sequence = 0u;
+  transport_frame = {};
+  transport_frame_active = false;
+  __atomic_store_n(&dropped_frames, 0u, __ATOMIC_RELAXED);
   selected_estimator_valid = false;
   selected_model_applicable = false;
+  recovery_requested = false;
   return true;
 #else
   (void)startup_uptime_s;
@@ -288,6 +353,20 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;
+    return;
+  }
+  if (recovery_requested && interval_valid) {
+    otis_cx317_snapshot_estimator_reset(&estimator);
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
+    OtisCx317PreviewInput input = controller_input(
+        uptime_s, 0.0, false, true, true, true, static_code);
+    input.recovery_requested = true;
+    OtisCx317PreviewDecision decision;
+    otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
+    recovery_requested = false;
+    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+                 estimate_seq);
     return;
   }
   OtisCx317SpanEstimate span;
@@ -371,6 +450,17 @@ void otis_cx317_preview_live_on_capture_fault(
 #endif
 }
 
+bool otis_cx317_preview_live_request_recovery(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  if (!initialized || controller.state != OtisCx317PreviewState::Fault)
+    return false;
+  recovery_requested = true;
+  return true;
+#else
+  return false;
+#endif
+}
+
 void otis_cx317_preview_live_get_authority_state(
     OtisCx317PreviewAuthorityState *state) {
   if (state == nullptr) return;
@@ -386,10 +476,16 @@ void otis_cx317_preview_live_get_authority_state(
 
 void otis_cx317_preview_live_service_transport(void) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
-  if (queue_count == 0u) return;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return;
+#else
+  if (!transport_frame_active) {
+    if (!queue.try_pop(&transport_frame)) return;
+    transport_frame_active = true;
+  }
   size_t available = otis_transport_available_for_write();
   if (available == 0u) return;
-  Frame &frame = queue[queue_head];
+  Frame &frame = transport_frame;
   size_t remaining = static_cast<size_t>(frame.length - frame.sent);
   size_t chunk = remaining < available ? remaining : available;
   if (chunk > kTransportChunkLimit) chunk = kTransportChunkLimit;
@@ -397,15 +493,20 @@ void otis_cx317_preview_live_service_transport(void) {
       reinterpret_cast<const uint8_t *>(frame.data) + frame.sent, chunk);
   frame.sent = static_cast<uint16_t>(frame.sent + written);
   if (frame.sent == frame.length) {
-    queue_head = static_cast<uint8_t>((queue_head + 1u) % kQueueDepth);
-    queue_count--;
+    transport_frame_active = false;
+    transport_frame = {};
   }
+#endif
 #endif
 }
 
 bool otis_cx317_preview_live_transport_busy(void) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
-  return queue_count > 0u && queue[queue_head].sent > 0u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return false;
+#else
+  return transport_frame_active && transport_frame.sent > 0u;
+#endif
 #else
   return false;
 #endif
@@ -434,14 +535,21 @@ void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context) {
            static_cast<long>(kActiveLiveUpdateCodes));
   otis_status_emit(context, "cx317_preview", "active_live_update_codes", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  snprintf(value, sizeof(value), "%lu",
-           static_cast<unsigned long>(dropped_frames));
+  const uint32_t dropped =
+      __atomic_load_n(&dropped_frames, __ATOMIC_ACQUIRE);
+  snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(dropped));
   otis_status_emit(context, "cx317_preview", "telemetry_dropped_frames", value,
-                   dropped_frames == 0u ? OTIS_SEVERITY_INFO
-                                        : OTIS_SEVERITY_WARN,
-                   dropped_frames == 0u ? OTIS_FLAG_NONE
-                                        : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
-  snprintf(value, sizeof(value), "%u", queue_high_water);
+                   dropped == 0u ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+                   dropped == 0u ? OTIS_FLAG_NONE
+                                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  uint32_t queue_high_water = queue.high_water();
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisDualCoreQueueStats queue_stats = {};
+  otis_dual_core_get_stats(&queue_stats);
+  queue_high_water = queue_stats.evidence_high_water;
+#endif
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(queue_high_water));
   otis_status_emit(context, "cx317_preview", "queue_high_water", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 #else

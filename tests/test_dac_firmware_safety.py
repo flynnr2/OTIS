@@ -35,7 +35,10 @@ def test_preview_and_status_fail_unavailable_before_explicit_write() -> None:
         encoding="utf-8"
     )
 
-    assert sketch.count("applied_code_known &&") == 6
+    # Six legacy/static consumers plus the Core-0 immutable DAC metadata
+    # publisher must all preserve the explicit-write validity requirement.
+    assert sketch.count("applied_code_known &&") == 7
+    assert "applied.dac.requested_applied_match" in sketch
     assert "OtisCx317StaticCodeState cx317_static_code_state" in sketch
     assert 'emit_status(component, "applied_code_known"' in sketch
     assert 'emit_status(component, "last_applied_code", "unavailable"' in sketch

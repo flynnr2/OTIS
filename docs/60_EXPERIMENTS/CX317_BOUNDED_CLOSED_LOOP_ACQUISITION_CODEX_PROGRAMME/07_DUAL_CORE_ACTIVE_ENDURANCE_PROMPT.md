@@ -55,11 +55,41 @@ change live controller or response-classifier state, alter a budget or cause a
 DAC write. Preserve the source-observation references and exact counterfactual
 decision for replay.
 
-## Part A: active cross-core confirmation
+## Finite test matrix and terminal semantics
+
+No Stage 7 test may wait indefinitely for a deadband crossing, qualification,
+response or clear state. The following clocks and outcomes are frozen before
+the next hardware run:
+
+| Test | Intention | Nominal duration | Absolute bound | Success | Bounded non-pass outcome |
+|---|---|---:|---:|---|---|
+| Part A1: fixed-code stability (complete; do not repeat) | Establish natural fixed-code in-deadband stability at retained A82A while continuously exercising dual-core timing, GNSS, queue and shadow paths | sealed actual duration: 43 consecutive qualified 600 s observations, 7 h 10 min | completed at the first eligible boundary after the missing finite endpoint was identified | all 43 observations qualified and inside V2 deadband, zero automatic applications/movement, exact estimator/controller/shadow replay, no pre-stop health or transport fault | preserve as diagnostic evidence for the separate transaction gate; never erase its stability success merely because no actuator transaction occurred |
+| Part A2: A800 supplemental active confirmation | Exercise at least one complete live Core 1 request, Core 0 acceptance/application and Core 1 response using a previously characterized safe acquisition initial condition; do not repeat A1 | normally 1.5--2.5 h including warmup | 90 min to qualify, then 4 h qualified; no more than 5.5 h total | 1--4 exact four-phase responses, 60 one-second service queries, a later healthy eligible decision, `DISARMED/evidence_clear`, clean replay and no limit violation | fail-static abort, seal diagnostic evidence and do not enter Part B |
+| Part B: endurance | Demonstrate bounded closed-loop service for exactly 24 h after qualification, including fixed-code no-write occupancy | about 24 h 40 min including normal warmup | 90 min to qualify; 24 h qualified plus at most 1 h only to finish an already-outstanding transaction and reach clear state; no more than 26.5 h total | exact 24 h qualified duration, all four scheduled service bursts, every transaction exact, terminal clear, clean health/replay and all budgets respected; zero corrections is a valid pass when every decision stays inside deadband | fail-static abort at qualification or clearance deadline, seal diagnostic evidence and stop hardware progression |
+| Frozen shadow replay | Compare predeclared candidate deadbands/hysteresis against the exact live estimates with zero authority | concurrent with Parts A and B | ends with its associated live part | every authoritative observation preserved and every candidate decision replays exactly with zero command/authorization authority | fail Stage 7 analysis; never change the live threshold or extend a run |
+
+The optional host `--duration-s` remains an additional, possibly shorter
+emergency ceiling. It can never extend the frozen internal deadlines. A
+timeout is diagnostic evidence, never a healthy stop and never permission to
+advance.
+
+## Part A: combined stability and active cross-core confirmation
+
+Part A is a composite gate. Preserve the completed A82A run
+`part_a_20260804T222508Z` as Part A1 fixed-code stability evidence and do not
+repeat its long residency interval. Its overall single-run analyzer correctly
+does not claim the separate active transaction gate, but the Stage 7 report
+must record the independently proved A1 stability criterion as passed.
+
+Run only the supplemental Part A2 transaction criterion below.
 
 Create one unique run and arm a maximum of four automatic corrections:
 
-- start from the last confirmed safe applied code, recorded exactly at entry;
+- use exact code `0xA800` as the declared acquisition stimulus and record its
+  one-shot manual acknowledgement exactly at entry; this code is inside the
+  frozen hard range, was directly exercised in Campaign B and has the sealed
+  connected-voltage screen, so it is a bounded initial condition rather than
+  an opportunistic controller write;
 - maximum individual correction no greater than the frozen post-Campaign-B
   value and never greater than 21 codes;
 - maximum total absolute movement 84 codes;
@@ -68,6 +98,12 @@ Create one unique run and arm a maximum of four automatic corrections:
 - hard range `0xA800..0xAB00`;
 - all GNSS, capture, estimator, model, response, queue, actuator and abort
   gates active.
+
+Qualification must occur within 90 minutes of supervisor start. After
+qualification, the complete Part A exit gate must occur within four hours.
+Zero live transactions cannot pass Part A2; the already sealed Part A1 run
+separately supplies the fixed-code stability result. Do not force later
+reversals or writes after the declared A800 initial condition.
 
 Include a bounded Core 0 service-load interval between eligible decisions.
 Confirm the exact request crosses Core 1 to Core 0 and the exact applied
@@ -78,8 +114,8 @@ estimator evidence emitted by Core 1 and agrees with exact host replay. The
 maximum four corrections are confirmation evidence, not sufficient support to
 select or adopt a refined deadband.
 
-Analyze and seal immediately. If healthy, continue to Part B without requiring
-a separate long observe-only run or per-step operator approvals.
+Analyze and seal immediately. If healthy, combine Part A1 and A2 without
+rerunning A1, then continue to Part B without per-step operator approvals.
 
 ## Part B: 24-hour bounded frequency-control endurance
 
@@ -88,6 +124,10 @@ Use a new run identity and exact preserved artifact.
 Limits:
 
 - duration: 24 hours after warmup/qualification;
+- qualification deadline: 90 minutes after supervisor start;
+- after the exact 24-hour boundary, inhibit all new arming and allow at most
+  one hour only for an already-outstanding transaction to finish and for the
+  device to return to `DISARMED/evidence_clear`; otherwise abort fail-static;
 - maximum automatic applied corrections: 32;
 - maximum individual correction: frozen policy, never above 21 codes;
 - maximum sum of absolute automatic movement: 672 codes;
@@ -100,6 +140,11 @@ Limits:
 Inside the evidence deadband, continue observing but do not write. Add a
 pre-frozen dither/limit-cycle rule that stops repeated alternating corrections
 or excessive path length even when net movement is small.
+
+A Part B run that remains inside deadband for all 24 qualified hours may pass
+with zero corrections: Part A supplies the required live transaction proof,
+while Part B then proves stable no-write endurance, service-load tolerance,
+health and exact replay. Lack of a Part B crossing must not extend its clock.
 
 ### Part B deadband-refinement evidence plan
 
@@ -220,6 +265,7 @@ and exact candidate replay, updated plant/control profiles where justified,
 full verification, and a Stage 7 report. Clearly distinguish a V3 candidate or
 recommendation from the authoritative V2 policy used to pass Stage 7.
 
-Pass if the cross-core controller performs every transaction exactly, the
-24-hour run completes without unexplained fault or capture degradation, the
-loop remains bounded and non-oscillatory, and every decision replays.
+Pass if Part A1's fixed-code stability criterion is sealed, Part A2 performs
+every cross-core transaction exactly, the 24-hour Part B run completes within
+its finite clearance bound without unexplained fault or capture degradation,
+the loop remains bounded and non-oscillatory, and every decision replays.

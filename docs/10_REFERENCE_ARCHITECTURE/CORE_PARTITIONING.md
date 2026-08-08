@@ -33,6 +33,35 @@ Core 0             service, I/O and instrumentation core
 OTIS Host          archival, replay, dashboards, analysis
 ```
 
+## Arduino-Pico implementation decision
+
+The Nano RP2040 Connect firmware uses the Arduino-Pico core convention
+explicitly: Arduino `setup()` / `loop()` execute the Core 0 service plane and
+`setup1()` / `loop1()` execute the Core 1 timing plane.  This convention is an
+architectural invariant, not a scheduler hint.
+
+Core 1 owns PIO/DMA setup and draining, raw reference/snapshot/count sequence
+construction, reference continuity, estimators, preview/control state and
+actuator-request generation.  Core 0 owns USB transport and command framing,
+GNSS parsing, environment I2C, telemetry export, run control and physical DAC
+I2C execution.  GNSS qualification crosses to Core 1 as immutable metadata;
+PPS timestamps never cross from the GNSS service.
+
+The concrete cross-core queues are fixed-size, allocation-free SPSC queues:
+
+| Direction | Content | Depth | Loss rule |
+|---|---|---:|---|
+| Core 0 to Core 1 | receiver/environment/applied-DAC/run-control values | 16 | non-droppable; exhaustion latches fail-static |
+| Core 1 to Core 0 | raw edge, PPS snapshot and count observations | 96 | non-droppable; exhaustion latches fail-static |
+| Core 1 to Core 0 | actuator and critical state/fault records | 16 | non-droppable; exhaustion latches fail-static |
+| Core 1 to Core 0 | redundant formatted summaries | 96 | droppable with saturating drop counter |
+
+Actuator transactions use a request sequence, decision reference, requested
+code, deadline, one-time authorization sequence and nonce.  Acceptance and
+application are separate acknowledgements.  A stale, duplicate, mismatched or
+late acknowledgement faults fail-static; there is no automatic retry or
+restoration write.
+
 ---
 
 # Timing Fabric

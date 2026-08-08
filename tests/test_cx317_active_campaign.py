@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -137,9 +138,36 @@ def test_supervisor_fsyncs_capsule_then_submits_exact_phase_one_ack(
     )
     active_csv = tmp_path / "run" / "csv" / "active_transactions_v1.csv"
     active_csv.parent.mkdir(parents=True)
+    manual = dict(values)
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "current_applied_code": str(spec.start_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(spec.start_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0",
+            "accepted_code": str(spec.start_code),
+            "applied_code": str(spec.start_code),
+            "i2c_ok": "true",
+            "active_state": "DISARMED",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+    values["transaction_record_sequence"] = "2"
     with active_csv.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V1_FIELDS)
         writer.writeheader()
+        writer.writerow(manual)
         writer.writerow(values)
 
     command_fifo = tmp_path / "commands.fifo"
@@ -157,6 +185,80 @@ def test_supervisor_fsyncs_capsule_then_submits_exact_phase_one_ack(
     with CommandFifo(command_fifo) as reader:
         supervisor._process_transactions()
         assert reader.poll() == ["ACTIVE EVIDENCE 1 1"]
-    capsule = tmp_path / "run" / "reports" / "step_001" / "record_000001_request_accepted.json"
+    capsule = tmp_path / "run" / "reports" / "step_001" / "record_000002_request_accepted.json"
     assert capsule.exists()
     assert json.loads(capsule.read_text(encoding="utf-8")) == values
+
+
+def test_supervisor_abort_uses_separate_priority_fifo(
+    tmp_path: Path,
+) -> None:
+    spec, identities = load_campaign_spec("A")
+    run_dir = tmp_path / "run"
+    normal_fifo_path = tmp_path / "normal.fifo"
+    emergency_fifo_path = tmp_path / "emergency.fifo"
+    supervisor = ActiveCampaignSupervisor(
+        run_dir=run_dir,
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        allow_manual_start=False,
+        allow_arm=False,
+        duration_s=None,
+    )
+
+    with CommandFifo(normal_fifo_path) as normal_reader, CommandFifo(
+        emergency_fifo_path
+    ) as emergency_reader:
+        supervisor._abort("test_fault")
+        assert emergency_reader.poll() == ["ACTIVE ABORT"]
+        assert normal_reader.poll() == []
+
+    assert supervisor.state["terminal"]["result"] == "aborted"
+    events = (run_dir / "reports/cx317_active_supervisor_events.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert "emergency_device_abort_submitted" in events
+
+
+def test_saturated_normal_fifo_cannot_block_priority_abort(
+    tmp_path: Path,
+) -> None:
+    spec, identities = load_campaign_spec("A")
+    normal_fifo_path = tmp_path / "normal.fifo"
+    emergency_fifo_path = tmp_path / "emergency.fifo"
+    supervisor = ActiveCampaignSupervisor(
+        run_dir=tmp_path / "run",
+        command_fifo=normal_fifo_path,
+        emergency_command_fifo=emergency_fifo_path,
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        allow_manual_start=False,
+        allow_arm=False,
+        duration_s=None,
+    )
+
+    with CommandFifo(normal_fifo_path), CommandFifo(
+        emergency_fifo_path
+    ) as emergency_reader:
+        writer = os.open(normal_fifo_path, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            while True:
+                try:
+                    os.write(writer, b"CONFIG?\n" * 128)
+                except BlockingIOError:
+                    break
+        finally:
+            os.close(writer)
+
+        with pytest.raises(BlockingIOError):
+            supervisor._command("CONFIG?")
+        supervisor._abort("normal_fifo_saturated")
+        assert emergency_reader.poll() == ["ACTIVE ABORT"]
+
+    assert supervisor.state["terminal"]["reason"] == "normal_fifo_saturated"
