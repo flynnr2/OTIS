@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx318_hybrid_preview_candidates_v1",
+  "status": "frozen_before_stage4_live_record",
+  "oscillator_identity": "CX317",
+  "programme_label": "CX318",
+  "bindings": {
+    "stage3_prompt": {
+      "path": "docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/03_BOUNDED_HYBRID_PREVIEW_PROMPT.md",
+      "sha256": "92dbc6ba1294b80533387d45b030d1e84c0aa16540d8638b54b831043004f8e6"
+    },
+    "stage1_contract": {
+      "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
+      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+    },
+    "selected_phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+    },
+    "frequency_preview_policy": {
+      "path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
+      "sha256": "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521"
+    },
+    "replay_corpus": {
+      "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",
+      "sha256": "6f8520609c570fb8027cc60dd0b27bfb6758ee40ccdfa02706d304e011631ee4"
+    }
+  },
+  "numerical_policy": {
+    "gain_hz_per_code": {
+      "minimum": 0.00016357422282453626,
+      "nominal": 0.00017008467693813145,
+      "maximum": 0.00017334010044578463
+    },
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "maximum_step_codes": 21,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "counterfactual_seed_code_when_source_unavailable": 43344,
+    "frequency_support_s": 600,
+    "preview_update_cadence_s": 1,
+    "counterfactual_decision_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 600,
+    "phase_step_detection": "explicit_external_detected_event_only_no_inference_from_single_interval_edge_error",
+    "phase_step_hold_s": 600,
+    "maximum_corrections": 32,
+    "maximum_cumulative_movement_codes": 672,
+    "rounding": "half_away_from_zero",
+    "range_clamp": "hard_after_step_limit",
+    "integrator_rule": "one_incremental_integrator_on_combined_desired_frequency_change_only",
+    "anti_windup": "reset_after_counterfactual_correction_or_hold_and_back_calculate_after_limit",
+    "counterfactual_frequency_rule": "observed_frequency_error_hz+gain_hz_per_code*(shadow_code-actual_applied_code)",
+    "modeled_phase_rule": "previous_modeled_phase+observed_raw_phase_increment+gain_hz_per_code*(shadow_code-actual_applied_code)*interval_s",
+    "frequency_term_rule": "negative_modeled_frequency_error_hz",
+    "phase_bias_rule": "clamp(-modeled_relative_phase_cycles/pull_in_time_s,-phase_bias_cap_hz,+phase_bias_cap_hz)",
+    "combined_rule": "frequency_term_hz+phase_bias_hz",
+    "phase_direction_coherence_guard": "inside_band_hold_a_delta_opposite_to_nonzero_phase_bias_until_band_release_or_phase_sign_change",
+    "actual_dac_epoch_rule": "reseed_piecewise_counterfactual_code_and_modeled_phase_from_observed_raw_phase_without_resetting_raw_phase",
+    "phase_epoch_rule": "never_join_by_guessed_offset",
+    "post_divergence_claim": "model_based_counterfactual_not_observed"
+  },
+  "band_policies": {
+    "historical_v2": {
+      "kind": "symmetric",
+      "initial_state": "OUTSIDE",
+      "entry_absolute_hz_lte": 0.006249995628992717,
+      "release_absolute_hz_gte": 0.006249995628992717,
+      "entry_consecutive_fresh_estimates": 1,
+      "release_consecutive_fresh_estimates": 1
+    },
+    "tight_hysteretic": {
+      "kind": "hysteretic",
+      "initial_state": "REQUALIFY_OUTSIDE",
+      "entry_absolute_600s_counts_lte": 2,
+      "release_absolute_600s_counts_gte": 4,
+      "three_count_rule": "retain_previous_state",
+      "entry_consecutive_fresh_estimates": 2,
+      "release_consecutive_fresh_estimates": 2
+    }
+  },
+  "candidates": [
+    {"candidate_id": "p3600_cap1_v2", "pull_in_time_s": 3600, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "historical_v2"},
+    {"candidate_id": "p3600_cap1_tight", "pull_in_time_s": 3600, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "tight_hysteretic"},
+    {"candidate_id": "p3600_cap2_v2", "pull_in_time_s": 3600, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "historical_v2"},
+    {"candidate_id": "p3600_cap2_tight", "pull_in_time_s": 3600, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "tight_hysteretic"},
+    {"candidate_id": "p10800_cap1_v2", "pull_in_time_s": 10800, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "historical_v2"},
+    {"candidate_id": "p10800_cap1_tight", "pull_in_time_s": 10800, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "tight_hysteretic"},
+    {"candidate_id": "p10800_cap2_v2", "pull_in_time_s": 10800, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "historical_v2"},
+    {"candidate_id": "p10800_cap2_tight", "pull_in_time_s": 10800, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "tight_hysteretic"},
+    {"candidate_id": "p21600_cap1_v2", "pull_in_time_s": 21600, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "historical_v2"},
+    {"candidate_id": "p21600_cap1_tight", "pull_in_time_s": 21600, "phase_bias_cap_hz": 0.0016666666666666668, "band_policy": "tight_hysteretic"},
+    {"candidate_id": "p21600_cap2_v2", "pull_in_time_s": 21600, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "historical_v2"},
+    {"candidate_id": "p21600_cap2_tight", "pull_in_time_s": 21600, "phase_bias_cap_hz": 0.0033333333333333335, "band_policy": "tight_hysteretic"}
+  ],
+  "state_machine": {
+    "states": [
+      "RELATIVE_PHASE_ACQUIRE",
+      "FREQUENCY_ACQUIRED_PREVIEW",
+      "HYBRID_TRACKING_PREVIEW",
+      "PHASE_STEP_HOLD_PREVIEW",
+      "REFERENCE_LOST_PREVIEW",
+      "RECOVER_PREVIEW",
+      "FAULT_PREVIEW"
+    ],
+    "phase_step": "hold_counterfactual_correction_preserve_raw_phase_then_require_fresh_frequency_support",
+    "reference_loss": "clear_derived_state_and_enter_reference_lost_without_joining_epochs",
+    "recovery": "require_new_epoch_and_fresh_600s_frequency_support",
+    "counterfactual_divergence": "continue_with_modeled_frequency_and_phase_and_label_every_output_modeled_not_observed",
+    "locked_state_forbidden": true
+  },
+  "dither_guard": {
+    "alternation_window_corrections": 4,
+    "maximum_consecutive_direction_reversals": 3,
+    "low_efficiency_minimum_path_codes": 168,
+    "low_efficiency_maximum_absolute_net_to_path_ratio": 0.25,
+    "outcome": "FAULT_PREVIEW_without_counterfactual_correction"
+  },
+  "selection_gate": {
+    "require_modeled_phase_movement_reduction": true,
+    "maximum_material_frequency_rms_degradation_hz": 0.0016666666666666668,
+    "maximum_repeated_alternation_faults": 0,
+    "require_frequency_only_zero_phase_exact_parity": true,
+    "require_gain_minimum_nominal_maximum_sensitivity": true
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_issue_command": false,
+    "may_write_dac": false,
+    "may_import_actuator_serial_or_i2c": false,
+    "may_mutate_live_frequency_controller": false,
+    "may_mutate_response_classifier": false,
+    "may_mutate_live_budget": false,
+    "may_change_actual_applied_code": false
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.invalid/schemas/cx318_hybrid_preview_selected_v1.schema.json",
+  "title": "CX318 selected bounded hybrid preview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "status", "oscillator_identity", "programme_label", "bindings", "selection", "sealed_stage7b_nominal_evidence", "gain_sensitivity", "parity_and_fault_evidence", "stage4_boundary", "authority", "claims_not_made"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx318_hybrid_preview_selected_v1"},
+    "status": {"const": "selected_for_stage4_nonactionable_live_preview"},
+    "oscillator_identity": {"const": "CX317"},
+    "programme_label": {"const": "CX318"},
+    "bindings": {
+      "type": "object",
+      "minProperties": 6,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "selection": {"type": "object", "minProperties": 8},
+    "sealed_stage7b_nominal_evidence": {"type": "object", "minProperties": 15},
+    "gain_sensitivity": {
+      "type": "object",
+      "required": ["minimum", "nominal", "maximum"],
+      "additionalProperties": {"type": "object", "minProperties": 6}
+    },
+    "parity_and_fault_evidence": {"type": "object", "minProperties": 10},
+    "stage4_boundary": {"type": "object", "minProperties": 4},
+    "authority": {
+      "type": "object",
+      "minProperties": 9,
+      "additionalProperties": {"const": false}
+    },
+    "claims_not_made": {"type": "array", "minItems": 7, "items": {"type": "string"}}
+  }
+}

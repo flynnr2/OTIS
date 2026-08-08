@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.invalid/schemas/cx318_hybrid_preview_candidates_v1.schema.json",
+  "title": "CX318 bounded hybrid preview candidate profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "status", "oscillator_identity", "programme_label", "bindings", "numerical_policy", "band_policies", "candidates", "state_machine", "dither_guard", "selection_gate", "authority"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "cx318_hybrid_preview_candidates_v1"},
+    "status": {"const": "frozen_before_stage4_live_record"},
+    "oscillator_identity": {"const": "CX317"},
+    "programme_label": {"const": "CX318"},
+    "bindings": {
+      "type": "object",
+      "minProperties": 6,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "numerical_policy": {"type": "object", "minProperties": 20},
+    "band_policies": {
+      "type": "object",
+      "required": ["historical_v2", "tight_hysteretic"],
+      "properties": {
+        "historical_v2": {"type": "object"},
+        "tight_hysteretic": {"type": "object"}
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidate_id", "pull_in_time_s", "phase_bias_cap_hz", "band_policy"],
+        "properties": {
+          "candidate_id": {"type": "string", "minLength": 1},
+          "pull_in_time_s": {"enum": [3600, 10800, 21600]},
+          "phase_bias_cap_hz": {"enum": [0.0016666666666666668, 0.0033333333333333335]},
+          "band_policy": {"enum": ["historical_v2", "tight_hysteretic"]}
+        }
+      }
+    },
+    "state_machine": {"type": "object", "minProperties": 5},
+    "dither_guard": {"type": "object", "minProperties": 5},
+    "selection_gate": {"type": "object", "minProperties": 5},
+    "authority": {
+      "type": "object",
+      "minProperties": 9,
+      "additionalProperties": {"const": false}
+    }
+  }
+}

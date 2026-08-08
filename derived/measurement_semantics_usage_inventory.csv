@@ -525,6 +525,7 @@ host/otis_tools/cx317_stage6_live_analyze.py,876,uncertainty,measurement_uncerta
 host/otis_tools/cx317_stage6_live_analyze.py,1284,uncertainty,measurement_uncertainty_semantics,"""combined_uncertainty"","
 host/otis_tools/cx317_stage8_final_review.py,749,uncertainty,measurement_uncertainty_semantics,"""Full fixed-code distributions, residence segments, autocorrelation, Newey–West uncertainty, service/environment associations, candidate replay, dither and hysteresis records remain verbatim in the immutable Stage 7B gate listed above."","
 host/otis_tools/cx317_stage8_final_review.py,791,uncertainty,measurement_uncertainty_semantics,"""- no calibrated absolute-frequency accuracy or combined uncertainty claim"","
+host/otis_tools/cx318_hybrid_preview.py,106,uncertainty,measurement_uncertainty_semantics,"uncertainty_status: str = ""unavailable"""
 host/otis_tools/cx318_relative_phase.py,78,uncertainty,measurement_uncertainty_semantics,calibrated_uncertainty_status: str
 host/otis_tools/cx318_relative_phase.py,95,uncertainty,measurement_uncertainty_semantics,uncertainty_status: str
 host/otis_tools/cx318_relative_phase.py,172,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
@@ -532,6 +533,7 @@ host/otis_tools/cx318_relative_phase.py,484,uncertainty,measurement_uncertainty_
 host/otis_tools/cx318_stage1_handoff.py,212,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
 host/otis_tools/cx318_stage1_handoff.py,505,uncertainty,measurement_uncertainty_semantics,- calibrated uncertainty: `{phase['calibrated_uncertainty_status']}`
 host/otis_tools/cx318_stage1_handoff.py,536,uncertainty,measurement_uncertainty_semantics,"No UTC, absolute time error, calibrated delay/uncertainty, generated-output PPS"
+host/otis_tools/cx318_stage3_replay.py,473,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
 host/otis_tools/diagnostics.py,81,confidence,confidence_semantics,"confidence: str = ""1"","
 host/otis_tools/diagnostics.py,134,confidence,confidence_semantics,"""diagnostic_confidence"": confidence,"
 host/otis_tools/h1_characterize.py,2376,standard_deviation,sample_dispersion_or_repeatability,"f""- local_vs_legacy_difference_hz: median={_format(_median(differences))}, stddev={_format(_stddev(differences))}, span={_format(max(differences) - min(differences) if differences else None)}"","
@@ -800,6 +802,8 @@ tests/test_cx317_stage5_safety_gate.py,236,uncertainty,measurement_uncertainty_s
 tests/test_cx317_stage6_live_analyze.py,80,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
 tests/test_cx317_stage6_live_analyze.py,81,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ""counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable"","
 tests/test_cx317_stage6_live_analyze.py,83,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""unavailable:combined_uncertainty"","
+tests/test_cx318_hybrid_preview.py,48,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
+tests/test_cx318_hybrid_preview.py,68,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
 tests/test_measurement_semantics.py,19,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
 tests/test_measurement_semantics.py,20,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
 tests/test_measurement_semantics.py,51,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
