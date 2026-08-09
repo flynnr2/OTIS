@@ -4115,6 +4115,9 @@ void setup1() {
   boot_phase_preview_init();
   boot_phase_capability_audit();
   boot_phase_run_mode();
+  // Do not overlap the first large periodic timing-health burst with the
+  // final bounded boot-status drain on Core 0.
+  dual_core_last_timing_status_ms = millis();
   __atomic_store_n(&dual_core_timing_boot_in_progress, false,
                    __ATOMIC_RELEASE);
   __atomic_store_n(&dual_core_timing_boot_complete, true,
