@@ -15,10 +15,15 @@ constexpr uint32_t OTIS_CX318_PREVIEW_QUEUE_DEPTH = 32u;
 // two clocks can align during endurance, so keep enough space for both bursts
 // plus margin while Core 0 is occupied with the serial transport.
 constexpr uint32_t OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST = 115u;
-constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 128u;
+// The Stage 4 split boot produces 163 one-time status records before Core 0
+// can completely drain the timing-side initialization burst.
+constexpr uint32_t OTIS_STAGE4_BOOT_TELEMETRY_BURST = 163u;
+constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 192u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                   OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
               "telemetry queue must absorb concurrent health and ACTIVE? bursts");
+static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >= OTIS_STAGE4_BOOT_TELEMETRY_BURST,
+              "telemetry queue must absorb the Stage 4 split-boot burst");
 
 enum class OtisPartitionFault : uint8_t {
   None,
