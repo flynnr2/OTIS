@@ -87,6 +87,10 @@ bool run_mode_status_emitted = false;
 bool transport_started = false;
 bool config_query_provenance_emitted = false;
 
+#if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
+bool cx318_stage4_premise_write_consumed = false;
+#endif
+
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 constexpr uint32_t kDualCoreTimingTracePeriodMs = 250u;
 bool dual_core_service_boot_ready = false;
@@ -1524,6 +1528,23 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_cx318_stage4_preview",
                   OTIS_ENABLE_CX318_STAGE4_PREVIEW, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_cx318_stage4_premise_setup",
+                  OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
+  emit_status_u16_hex("cx318_premise", "allowed_code",
+                      OTIS_CX318_STAGE4_PREMISE_SETUP_CODE,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx318_premise", "write_consumed",
+              cx318_stage4_premise_write_consumed ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx318_premise", "actionable", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx318_premise", "actuation_authorized", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx318_premise", "automatic_authority", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW
   emit_status_u16_hex("cx318_preview", "confirmed_static_code",
                       OTIS_CX318_STAGE4_STATIC_CODE, OTIS_SEVERITY_INFO,
@@ -3431,6 +3452,19 @@ void emit_fc0_status(void) {
 void handle_dac_set(uint16_t requested_code) {
   emit_status_u16_hex("dac", "requested_code", requested_code,
                       OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
+  if (requested_code != OTIS_CX318_STAGE4_PREMISE_SETUP_CODE ||
+      cx318_stage4_premise_write_consumed) {
+    emit_status("cx318_premise", "write_attempt",
+                "rejected_not_exact_one_shot_a828", OTIS_SEVERITY_ERROR,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+    return;
+  }
+  // Consume before I2C so a failed application cannot be retried in this boot.
+  cx318_stage4_premise_write_consumed = true;
+  emit_status("cx318_premise", "write_consumed", "true",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (requested_code != OTIS_CX317_ACTIVE_START_CODE ||
@@ -3754,6 +3788,19 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status("cx318_preview", "dac_command_attempt",
                 "rejected_write_surface_compiled_out", OTIS_SEVERITY_ERROR,
                 OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
+  } else if (command.kind == OtisSerialCommandKind::DacMid ||
+             command.kind == OtisSerialCommandKind::DacZero) {
+    emit_status("cx318_premise", "alternate_write_surface",
+                "rejected_setup_accepts_explicit_dac_set_only",
+                OTIS_SEVERITY_ERROR, OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (command.kind == OtisSerialCommandKind::DacSet) {
+    if (command.arguments_valid) {
+      handle_dac_set(command.code);
+    } else {
+      emit_status("dac", "set", "rejected_parse_error", OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_NONE);
+    }
 #else
   } else if (command.kind == OtisSerialCommandKind::DacMid) {
     uint16_t mid = (uint16_t)(((uint32_t)OTIS_DAC_MIN_CODE +

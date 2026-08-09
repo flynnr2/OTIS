@@ -76,6 +76,16 @@ unknowable. It is a separately captured setup stimulus, not automatic control
 authority. No second Stage 4 DAC write is permitted, and phase/hybrid authority
 remains zero.
 
+The installed legacy Stage 7 profile rejected the first setup command as
+`rejected_active_profile_start_only`; its captured DAC and active-transaction
+files remained header-only, so no physical DAC write occurred. The replacement
+setup path must first flash the dedicated `cx318_stage4_premise_setup` image.
+That image is compile-time restricted to one explicit `DAC SET 0xA828` attempt
+per boot, clamps both DAC limits to A828, consumes the attempt before I2C, and
+excludes alternate DAC commands, sweeps, previews, controllers, dual-core
+authority and GPS transmission. The host must durably latch that sole attempt
+before enqueueing it and must never retry it after failure, reset or reflash.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the

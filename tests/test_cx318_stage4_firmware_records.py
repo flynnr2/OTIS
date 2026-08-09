@@ -129,13 +129,47 @@ def test_stage4_sketch_compiles_out_dac_write_dispatch() -> None:
     ]
     guarded = dispatch[
         dispatch.index("#if OTIS_ENABLE_CX318_STAGE4_PREVIEW") :
-        dispatch.index("#else", dispatch.index("#if OTIS_ENABLE_CX318_STAGE4_PREVIEW"))
+        dispatch.index("#elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP")
     ]
 
     for command_kind in ("DacMid", "DacZero", "DacSet"):
         assert f"OtisSerialCommandKind::{command_kind}" in guarded
     assert "rejected_write_surface_compiled_out" in guarded
     assert "handle_dac_set" not in guarded
+
+
+def test_stage4_premise_dispatch_is_explicit_a828_one_shot_only() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    handler = sketch[
+        sketch.index("void handle_dac_set(uint16_t requested_code)") :
+        sketch.index("#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE", sketch.index("void handle_dac_set"))
+    ]
+    dispatch = sketch[
+        sketch.index("} else if (command.kind == OtisSerialCommandKind::DacQuery)") :
+        sketch.index("} else if (command.kind == OtisSerialCommandKind::Fc0Query)")
+    ]
+    premise = dispatch[
+        dispatch.index("#elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP") :
+        dispatch.index("#else", dispatch.index("#elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP"))
+    ]
+
+    declaration = "bool cx318_stage4_premise_write_consumed = false;"
+    assert declaration in sketch
+    namespace_start = sketch.index("namespace {")
+    dual_core_state_block = sketch.index(
+        "#if OTIS_ENABLE_DUAL_CORE_PARTITION", namespace_start
+    )
+    assert sketch.index(declaration) < dual_core_state_block
+    assert "cx318_stage4_premise_write_consumed" in handler
+    assert "requested_code != OTIS_CX318_STAGE4_PREMISE_SETUP_CODE" in handler
+    assert handler.index("cx318_stage4_premise_write_consumed = true") < sketch[
+        sketch.index("void handle_dac_set(uint16_t requested_code)") :
+    ].index("otis_dac_ad5693r_set_raw")
+    assert "DacMid" in premise and "DacZero" in premise
+    assert "rejected_setup_accepts_explicit_dac_set_only" in premise
+    assert premise.count("handle_dac_set(command.code)") == 1
 
 
 def test_stage4_transport_finishes_a_record_group_before_other_core0_output() -> None:

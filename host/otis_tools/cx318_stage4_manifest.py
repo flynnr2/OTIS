@@ -14,6 +14,11 @@ from .cx318_stage4_flash import (
     validate_build_inputs,
     validate_flash_record,
 )
+from .cx318_stage4_premise_flash import (
+    PROFILE_ID as PREMISE_PROFILE_ID,
+    validate_premise_build_artifacts,
+    validate_premise_flash_record,
+)
 from .cx318_stage4_static_code_preflight import (
     EXPECTED_CODE,
     EXPECTED_COMMANDS,
@@ -52,6 +57,13 @@ def _write_manifest(run_dir: Path, manifest: dict[str, Any]) -> Path:
         json.dump(manifest, handle, indent=2, sort_keys=True)
         handle.write("\n")
     return path
+
+
+def _relative_inside(run_dir: Path, path: Path, label: str) -> str:
+    try:
+        return path.resolve().relative_to(run_dir.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"{label} must be inside its run") from exc
 
 
 def _files(*, live: bool) -> list[dict[str, Any]]:
@@ -136,8 +148,38 @@ def _common(
     }
 
 
-def create_setup_manifest(*, run_dir: Path, serial_device: str) -> Path:
+def create_setup_manifest(
+    *, run_dir: Path, serial_device: str, premise_matrix_path: Path,
+    premise_build_manifest_path: Path, premise_uf2_path: Path,
+    premise_flash_record_path: Path,
+) -> Path:
     run_dir = run_dir.resolve()
+    premise_matrix_path = premise_matrix_path.resolve()
+    premise_build_manifest_path = premise_build_manifest_path.resolve()
+    premise_uf2_path = premise_uf2_path.resolve()
+    premise_flash_record_path = premise_flash_record_path.resolve()
+    binding = validate_premise_build_artifacts(
+        matrix_path=premise_matrix_path,
+        build_manifest_path=premise_build_manifest_path,
+        uf2_path=premise_uf2_path,
+    )
+    flash_record = json.loads(premise_flash_record_path.read_text(encoding="utf-8"))
+    validate_premise_flash_record(
+        flash_record,
+        matrix_path=premise_matrix_path,
+        build_manifest_path=premise_build_manifest_path,
+        uf2_path=premise_uf2_path,
+    )
+    premise_paths = {
+        "matrix": _relative_inside(run_dir, premise_matrix_path, "premise matrix"),
+        "build_manifest": _relative_inside(
+            run_dir, premise_build_manifest_path, "premise build manifest",
+        ),
+        "uf2": _relative_inside(run_dir, premise_uf2_path, "premise UF2"),
+        "flash_record": _relative_inside(
+            run_dir, premise_flash_record_path, "premise flash record",
+        ),
+    }
     files = _files(live=False)
     manifest = _common(
         run_dir=run_dir, stage=SETUP_STAGE,
@@ -150,7 +192,9 @@ def create_setup_manifest(*, run_dir: Path, serial_device: str) -> Path:
         "stage4_static_setup": {
             "premise_amendment": "operator_authorized_single_setup_write",
             "authorized_code": f"0x{EXPECTED_CODE:04X}",
+            "maximum_setup_attempts": 1,
             "maximum_setup_writes": 1,
+            "retry_after_failure": False,
             "opening_dac_epoch": 0,
             "resulting_dac_epoch": EXPECTED_DAC_EPOCH,
             "automatic_authority": False,
@@ -159,10 +203,37 @@ def create_setup_manifest(*, run_dir: Path, serial_device: str) -> Path:
             "exact_command_sequence": list(EXPECTED_COMMANDS),
             "stop_on_any_additional_dac_or_active_record": True,
         },
+        "premise_firmware": {
+            "profile_id": PREMISE_PROFILE_ID,
+            "matrix": {
+                "path": premise_paths["matrix"],
+                "sha256": _sha256_file(premise_matrix_path),
+            },
+            "build_manifest": {
+                "path": premise_paths["build_manifest"],
+                "sha256": _sha256_file(premise_build_manifest_path),
+            },
+            "uf2": {
+                "path": premise_paths["uf2"],
+                "sha256": _sha256_file(premise_uf2_path),
+                "size_bytes": premise_uf2_path.stat().st_size,
+            },
+            "flash_record": {
+                "path": premise_paths["flash_record"],
+                "sha256": _sha256_file(premise_flash_record_path),
+            },
+            "artifact_binding": binding,
+        },
+        "evidence_artifacts": [
+            *premise_paths.values(),
+            "control/premise_attempt_latch.json",
+        ],
         "expected_artifacts": [
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
+            "control/premise_attempt_latch.json",
+            *premise_paths.values(),
         ],
     })
     return _write_manifest(run_dir, manifest)
@@ -472,6 +543,10 @@ def main(argv: list[str] | None = None) -> int:
     setup = subparsers.add_parser("setup")
     setup.add_argument("--run-dir", type=Path, required=True)
     setup.add_argument("--serial-device", required=True)
+    setup.add_argument("--premise-matrix", type=Path, required=True)
+    setup.add_argument("--premise-build-manifest", type=Path, required=True)
+    setup.add_argument("--premise-uf2", type=Path, required=True)
+    setup.add_argument("--premise-flash-record", type=Path, required=True)
     live = subparsers.add_parser("live")
     live.add_argument("--run-dir", type=Path, required=True)
     live.add_argument("--build-manifest", type=Path, required=True)
@@ -497,7 +572,14 @@ def main(argv: list[str] | None = None) -> int:
     rehearsal.add_argument("--duration-s", type=int, default=720)
     args = parser.parse_args(argv)
     if args.kind == "setup":
-        path = create_setup_manifest(run_dir=args.run_dir, serial_device=args.serial_device)
+        path = create_setup_manifest(
+            run_dir=args.run_dir,
+            serial_device=args.serial_device,
+            premise_matrix_path=args.premise_matrix,
+            premise_build_manifest_path=args.premise_build_manifest,
+            premise_uf2_path=args.premise_uf2,
+            premise_flash_record_path=args.premise_flash_record,
+        )
     elif args.kind == "live":
         path = create_live_manifest(
             run_dir=args.run_dir,

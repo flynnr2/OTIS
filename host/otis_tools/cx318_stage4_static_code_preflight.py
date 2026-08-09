@@ -19,6 +19,16 @@ from typing import Any
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
 from .cx318_stage4_flash import validate_build_inputs, validate_flash_record
+from .cx318_stage4_premise_flash import (
+    PROFILE_ID as PREMISE_PROFILE_ID,
+    validate_premise_flash_record,
+)
+from .cx318_stage4_premise_command import (
+    CAMPAIGN_LATCH_PATH as PREMISE_CAMPAIGN_LATCH_PATH,
+    COMMAND as PREMISE_COMMAND,
+    LATCH_PATH as PREMISE_LATCH_PATH,
+    TOOL_ID as PREMISE_LATCH_TOOL,
+)
 from .evidence import validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .service_plane_probe import HOST_MARKER_PREFIX
@@ -209,7 +219,7 @@ def _safe_health_history(rows: list[dict[str, str]]) -> dict[tuple[str, str], st
             "arm_eligible",
         } and lowered == "true":
             violations.append(f"{component}.{key}={value}")
-        if ("dropped" in key or key.endswith("_drop_count")):
+        if "dropped" in key or "overflow" in key or key.endswith("_drop_count"):
             try:
                 nonzero = int(value, 0) != 0
             except ValueError:
@@ -248,6 +258,104 @@ def _raw_records(raw_log: Path, record_type: str) -> list[list[str]]:
     return records
 
 
+def _campaign_root(run_dir: Path) -> Path:
+    for candidate in (run_dir, *run_dir.parents):
+        if (candidate / "PROGRAMME_STATE.md").is_file():
+            return candidate
+    raise ValueError("setup run is not inside the durable CX318 campaign ledger")
+
+
+def _raw_setup_transition(raw_log: Path, expected_dac: list[str]) -> None:
+    """Prove the raw-stream ordering unknown -> one write -> known."""
+    lines = raw_log.read_text(encoding="utf-8", errors="replace").splitlines()
+    sent: list[tuple[str, int]] = []
+    for index, line in enumerate(lines):
+        if not line.startswith(HOST_MARKER_PREFIX):
+            continue
+        marker = json.loads(line[len(HOST_MARKER_PREFIX) :])
+        if isinstance(marker, dict) and marker.get("event") == "host_command_sent":
+            sent.append((str(marker.get("command", "")), index))
+    if tuple(command for command, _ in sent) != EXPECTED_COMMANDS:
+        raise ValueError("raw setup command ordering differs")
+    initial_query = sent[2][1]
+    write = sent[3][1]
+    final_query = sent[4][1]
+    if not initial_query < write < final_query:
+        raise ValueError("raw setup command positions are not strictly ordered")
+
+    def status_values(start: int, stop: int) -> dict[tuple[str, str], str]:
+        latest: dict[tuple[str, str], str] = {}
+        fields = CONTRACT_FIELDS["health_v1"]
+        for line in lines[start + 1 : stop]:
+            if line.split(",", 1)[0] != "STS":
+                continue
+            values = next(csv.reader([line]))
+            if len(values) != len(fields):
+                raise ValueError("raw setup STS record has the wrong field count")
+            row = dict(zip(fields, values))
+            latest[(row["component"].strip(), row["status_key"].strip())] = (
+                row["status_value"].strip()
+            )
+        return latest
+
+    initial = status_values(initial_query, write)
+    expected_initial = {
+        ("dac", "applied_code_known"): "false",
+        ("dac", "last_write_ok"): "false",
+        ("dac", "last_requested_code"): "0x0000",
+        ("dac", "last_applied_code"): "unavailable",
+    }
+    if any(initial.get(key) != value for key, value in expected_initial.items()):
+        raise ValueError("raw setup lacks ordered pre-write unknown-DAC evidence")
+
+    between_write_and_query = [
+        next(csv.reader([line]))
+        for line in lines[write + 1 : final_query]
+        if line.split(",", 1)[0] == "DAC"
+    ]
+    if between_write_and_query != [expected_dac]:
+        raise ValueError("raw setup lacks exactly one ordered A828 DAC record")
+
+    final = status_values(final_query, len(lines))
+    expected_final = {
+        ("dac", "applied_code_known"): "true",
+        ("dac", "last_write_ok"): "true",
+        ("dac", "last_requested_code"): "0xA828",
+        ("dac", "last_applied_code"): "0xA828",
+    }
+    if any(final.get(key) != value for key, value in expected_final.items()):
+        raise ValueError("raw setup lacks ordered post-write known-A828 evidence")
+
+
+def _validate_premise_lineage(
+    run_dir: Path, manifest: Any,
+) -> tuple[dict[str, Any], dict[str, Path]]:
+    lineage = manifest.data.get("premise_firmware", {})
+    if not isinstance(lineage, dict) or lineage.get("profile_id") != PREMISE_PROFILE_ID:
+        raise ValueError("setup manifest lacks the exact premise firmware identity")
+    resolved: dict[str, Path] = {}
+    for name in ("matrix", "build_manifest", "uf2", "flash_record"):
+        reference = lineage.get(name, {})
+        if not isinstance(reference, dict):
+            raise ValueError(f"premise {name} reference is malformed")
+        _, path = _safe_run_path(run_dir, reference.get("path"))
+        if reference.get("sha256") != _sha256_file(path):
+            raise ValueError(f"premise {name} hash differs")
+        if name == "uf2" and reference.get("size_bytes") != path.stat().st_size:
+            raise ValueError("premise UF2 size differs")
+        resolved[name] = path
+    record = json.loads(resolved["flash_record"].read_text(encoding="utf-8"))
+    binding = validate_premise_flash_record(
+        record,
+        matrix_path=resolved["matrix"],
+        build_manifest_path=resolved["build_manifest"],
+        uf2_path=resolved["uf2"],
+    )
+    if lineage.get("artifact_binding") != binding:
+        raise ValueError("setup premise artifact binding differs from flash lineage")
+    return binding, resolved
+
+
 def validate_setup_run(run_dir: Path) -> SetupEvidence:
     """Return exact evidence only for the single authorized A828 setup run."""
     run_dir = run_dir.resolve()
@@ -262,7 +370,9 @@ def validate_setup_run(run_dir: Path) -> SetupEvidence:
     expected_authorization = {
         "premise_amendment": "operator_authorized_single_setup_write",
         "authorized_code": "0xA828",
+        "maximum_setup_attempts": 1,
         "maximum_setup_writes": 1,
+        "retry_after_failure": False,
         "opening_dac_epoch": 0,
         "resulting_dac_epoch": EXPECTED_DAC_EPOCH,
         "automatic_authority": False,
@@ -273,6 +383,7 @@ def validate_setup_run(run_dir: Path) -> SetupEvidence:
         authorization.get(key) != value for key, value in expected_authorization.items()
     ):
         raise ValueError("setup manifest lacks the exact operator-authorized premise amendment")
+    premise_binding, premise_paths = _validate_premise_lineage(run_dir, manifest)
 
     snapshot_path = run_dir / "evidence_manifest.json"
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -321,6 +432,36 @@ def validate_setup_run(run_dir: Path) -> SetupEvidence:
     if any(state.get(key) != value for key, value in expected_state.items()):
         raise ValueError("setup capture state is not clean: " + json.dumps(state, sort_keys=True))
 
+    campaign_root = _campaign_root(run_dir)
+    latch_path = run_dir / PREMISE_LATCH_PATH
+    campaign_latch_path = campaign_root / PREMISE_CAMPAIGN_LATCH_PATH
+    latch = json.loads(latch_path.read_text(encoding="utf-8"))
+    campaign_latch = json.loads(campaign_latch_path.read_text(encoding="utf-8"))
+    expected_latch = {
+        "schema_version": 1,
+        "tool": PREMISE_LATCH_TOOL,
+        "status": "attempt_latched_before_enqueue",
+        "run_id": run_dir.name,
+        "command": PREMISE_COMMAND,
+        "maximum_attempts": 1,
+        "retry_authorized": False,
+        "capture_pid": state.get("pid"),
+        "precommand_sequence": list(EXPECTED_COMMANDS[:3]),
+        "campaign_id": campaign_root.name,
+        "campaign_latch_path": PREMISE_CAMPAIGN_LATCH_PATH.as_posix(),
+    }
+    if any(latch.get(key) != value for key, value in expected_latch.items()):
+        raise ValueError("setup premise attempt latch is invalid")
+    expected_campaign_latch = {
+        **expected_latch,
+        "run_latch_path": latch_path.relative_to(campaign_root).as_posix(),
+    }
+    if any(
+        campaign_latch.get(key) != value
+        for key, value in expected_campaign_latch.items()
+    ) or campaign_latch.get("created_utc") != latch.get("created_utc"):
+        raise ValueError("campaign-wide premise attempt latch is invalid")
+
     raw_log = run_dir / "raw/serial.log"
     commands = _host_commands(raw_log)
     if commands != EXPECTED_COMMANDS:
@@ -344,9 +485,46 @@ def validate_setup_run(run_dir: Path) -> SetupEvidence:
     ]
     if _raw_records(raw_log, "DAC") != expected_raw_dac:
         raise ValueError("raw serial DAC record does not exactly match the single split CSV row")
+    _raw_setup_transition(raw_log, expected_raw_dac[0])
     if _read_rows(paths["active_transactions_v1"]):
         raise ValueError("setup run contains an active transaction")
-    _health_is_safe(_read_rows(paths["health_v1"]), EXPECTED_CODE)
+    health_rows = _read_rows(paths["health_v1"])
+    _health_is_safe(health_rows, EXPECTED_CODE)
+    if not any(
+        row["component"].strip() == "dac"
+        and row["status_key"].strip() == "applied_code_known"
+        and row["status_value"].strip().lower() == "false"
+        for row in health_rows
+    ):
+        raise ValueError("setup run lacks pre-write evidence that the DAC code was unknown")
+    latest = _safe_health_history(health_rows)
+    required_premise = {
+        ("firmware", "git_commit"): premise_binding["git_commit"],
+        ("firmware", "source_state"): "clean",
+        ("firmware", "source_hash"): premise_binding["source_sha256"],
+        ("firmware", "config_hash"): premise_binding["configuration_sha256"],
+        ("build", "profile_id"): PREMISE_PROFILE_ID,
+        ("build", "enable_cx318_stage4_premise_setup"): "1",
+        ("build", "enable_cx318_stage4_preview"): "0",
+        ("build", "enable_cx317_i_only_preview"): "0",
+        ("build", "enable_cx317_bounded_active"): "0",
+        ("build", "enable_dac_ad5693r"): "1",
+        ("cx318_premise", "allowed_code"): "0xA828",
+        ("cx318_premise", "write_consumed"): "true",
+        ("cx318_premise", "actionable"): "false",
+        ("cx318_premise", "actuation_authorized"): "false",
+        ("cx318_premise", "automatic_authority"): "false",
+    }
+    premise_mismatches = {
+        f"{component}.{key}": {"expected": expected, "actual": latest.get((component, key))}
+        for (component, key), expected in required_premise.items()
+        if latest.get((component, key)) != expected
+    }
+    if premise_mismatches:
+        raise ValueError(
+            "setup premise health mismatch: "
+            + json.dumps(premise_mismatches, sort_keys=True)
+        )
     sources = {row["source"].strip().lower() for row in _read_rows(paths["environment_v1"])}
     if not {"sht4x", "bmp280"} <= sources:
         raise ValueError(f"setup run lacks both environment streams: {sorted(sources)}")
@@ -361,6 +539,16 @@ def validate_setup_run(run_dir: Path) -> SetupEvidence:
         "health_sha256": _sha256_file(paths["health_v1"]),
         "dac_steps_sha256": _sha256_file(paths["dac_steps_v1"]),
         "active_transactions_sha256": _sha256_file(paths["active_transactions_v1"]),
+        "premise_matrix_sha256": _sha256_file(premise_paths["matrix"]),
+        "premise_build_manifest_sha256": _sha256_file(
+            premise_paths["build_manifest"]
+        ),
+        "premise_uf2_sha256": _sha256_file(premise_paths["uf2"]),
+        "premise_flash_record_sha256": _sha256_file(
+            premise_paths["flash_record"]
+        ),
+        "premise_attempt_latch_sha256": _sha256_file(latch_path),
+        "premise_campaign_latch_sha256": _sha256_file(campaign_latch_path),
     }
     return SetupEvidence(
         source_run_path=_repo_relative(run_dir),

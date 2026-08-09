@@ -55,6 +55,7 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx317_fixed_code_baseline",
         "cx317_pps_gated_open_loop",
         "cx317_pps_gated_i_only_preview",
+        "cx318_stage4_premise_setup",
         "cx318_stage4_nonactuating_preview",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
@@ -79,12 +80,16 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "invalid_active_campaign_a_parameters",
         "invalid_active_missing_gnss",
         "invalid_cx318_stage4_with_dac",
+        "invalid_cx318_stage4_premise_wrong_code",
+        "invalid_cx318_stage4_premise_without_dac",
+        "invalid_cx318_stage4_premise_with_sweep",
+        "invalid_cx318_stage4_premise_with_preview_and_dual_core",
         "invalid_cx318_stage4_without_dual_core",
         "invalid_cx318_stage4_with_cx317_preview",
         "invalid_cx318_stage4_unqualified_backend",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 23
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 11
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 24
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 15
 
 
 def test_only_exact_programme_profiles_have_active_controller_reachability() -> None:
@@ -190,6 +195,44 @@ def test_cx318_stage4_profile_is_static_nonactuating_and_core1_only() -> None:
     header = provenance_header(provenance)
     assert "OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX318_STAGE4_PREVIEW 1" in header
     assert "OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_STATIC_CODE 0xA950u" in header
+
+
+def test_cx318_stage4_premise_profile_is_exact_one_shot_and_noncontrolling() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profile = _profile(matrix, "cx318_stage4_premise_setup")
+    defines = profile["defines"]
+
+    assert "one-shot premise setup" in profile["purpose"]
+    assert defines["OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP"] == "1"
+    assert defines["OTIS_CX318_STAGE4_PREMISE_SETUP_CODE"] == "0xA828u"
+    assert defines["OTIS_ENABLE_DAC_AD5693R"] == "1"
+    assert defines["OTIS_DAC_MIN_CODE"] == "0xA828u"
+    assert defines["OTIS_DAC_MAX_CODE"] == "0xA828u"
+    assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
+    assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
+    for disabled in (
+        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+        "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
+        "OTIS_ENABLE_CX318_STAGE4_PREVIEW",
+        "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
+        "OTIS_ENABLE_DUAL_CORE_PARTITION",
+        "OTIS_ENABLE_H1_DAC_SWEEP",
+        "OTIS_ENABLE_PSEUDO_PPS_GENERATOR",
+    ):
+        assert defines[disabled] == "0"
+
+    provenance = build_provenance(
+        matrix,
+        profile,
+        _environment(),
+        git_commit="d" * 40,
+        source_state="dirty",
+        source_sha256="e" * 64,
+        build_session_id=TEST_BUILD_SESSION,
+    )
+    header = provenance_header(provenance)
+    assert "OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP 1" in header
+    assert "OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_PREMISE_SETUP_CODE 0xA828u" in header
 
 
 def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:

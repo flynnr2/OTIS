@@ -165,6 +165,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
     ]
     assert qualified == [
         "cx317_pps_gated_i_only_preview",
+        "cx318_stage4_premise_setup",
         "cx318_stage4_nonactuating_preview",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
