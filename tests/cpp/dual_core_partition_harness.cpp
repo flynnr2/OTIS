@@ -54,6 +54,19 @@ void full_build_identity_crosses_telemetry_queue_without_truncation() {
   OtisTelemetryMessage received = {};
   assert(otis_dual_core_take_telemetry(&received));
   assert(strcmp(received.value, kBuildIdentity) == 0);
+
+  static const char kLongestHealthKey[] =
+      "boundary_sequence_duplicate_count";
+  static_assert(OTIS_TELEMETRY_KEY_CAPACITY >= sizeof(kLongestHealthKey),
+                "telemetry contract cannot carry the longest health key");
+  OtisTelemetryMessage keyed = {};
+  strcpy(keyed.component, "pps_gate");
+  strcpy(keyed.key, kLongestHealthKey);
+  strcpy(keyed.value, "0");
+  strcpy(keyed.severity, "INFO");
+  assert(otis_dual_core_publish_telemetry(&keyed));
+  assert(otis_dual_core_take_telemetry(&received));
+  assert(strcmp(received.key, kLongestHealthKey) == 0);
 }
 
 OtisEvidenceFrameMessage evidence(uint32_t sequence) {
@@ -67,10 +80,24 @@ OtisEvidenceFrameMessage evidence(uint32_t sequence) {
   return value;
 }
 
+OtisCx318PreviewRecordMessage cx318_preview(uint32_t sequence) {
+  OtisCx318PreviewRecordMessage value = {};
+  value.preview_sequence = sequence;
+  value.phase_epoch = 1u;
+  value.observation_sequence = sequence;
+  value.capture_session = 7u;
+  value.relative_phase_cycles = static_cast<int64_t>(sequence);
+  value.actual_applied_code = 0xA950u;
+  snprintf(value.preview_state, sizeof(value.preview_state), "%s",
+           "RELATIVE_PHASE_ACQUIRE");
+  return value;
+}
+
 OtisServiceMessage receiver_metadata(uint32_t sequence) {
   OtisServiceMessage value = {};
   value.kind = OtisServiceMessageKind::ReceiverQualification;
   value.receiver.sequence = sequence;
+  value.receiver.published_ticks = static_cast<uint64_t>(sequence) * 100u;
   value.receiver.satellites = 10u;
   value.receiver.fix_quality = 2u;
   value.receiver.fix_type = 3u;
@@ -215,6 +242,29 @@ void complete_evidence_frames_cross_by_value_in_order() {
   }
 }
 
+void cx318_numerical_records_cross_by_value_in_order() {
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    const OtisCx318PreviewRecordMessage record = cx318_preview(sequence);
+    assert(otis_dual_core_publish_cx318_preview(&record));
+  }
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.cx318_preview_depth == OTIS_CX318_PREVIEW_QUEUE_DEPTH);
+  assert(stats.cx318_preview_high_water == OTIS_CX318_PREVIEW_QUEUE_DEPTH);
+  assert(!stats.fail_static);
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    OtisCx318PreviewRecordMessage record = {};
+    assert(otis_dual_core_take_cx318_preview(&record));
+    assert(record.preview_sequence == sequence);
+    assert(record.observation_sequence == sequence);
+    assert(record.relative_phase_cycles == static_cast<int64_t>(sequence));
+    assert(strcmp(record.preview_state, "RELATIVE_PHASE_ACQUIRE") == 0);
+  }
+}
+
 void service_plane_load_matrix_preserves_timing_state() {
   // These modes exercise the common architectural effect of each required
   // Core 0 load: delayed Core 0 draining while Core 1 continues publishing
@@ -331,6 +381,80 @@ void every_non_droppable_queue_exhaustion_is_fail_static() {
   otis_dual_core_get_stats(&stats);
   assert(stats.fail_static);
   assert(stats.fault == OtisPartitionFault::EvidenceExhausted);
+
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    const OtisCx318PreviewRecordMessage record = cx318_preview(sequence);
+    assert(otis_dual_core_publish_cx318_preview(&record));
+  }
+  const OtisCx318PreviewRecordMessage cx318_overflow =
+      cx318_preview(OTIS_CX318_PREVIEW_QUEUE_DEPTH + 1u);
+  assert(!otis_dual_core_publish_cx318_preview(&cx318_overflow));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.fail_static);
+  assert(stats.fault == OtisPartitionFault::Cx318PreviewExhausted);
+}
+
+void service_exhaustion_freezes_core1_progress_capsule_once() {
+  otis_dual_core_partition_reset();
+  otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopEnter,
+                                      1000u);
+  otis_dual_core_note_timing_snapshot(7u, 83305u);
+  otis_dual_core_note_timing_count(83305u);
+  otis_dual_core_note_timing_estimate(278u);
+
+  const OtisServiceMessage first = receiver_metadata(1u);
+  assert(otis_dual_core_publish_service(&first));
+  OtisServiceMessage consumed = {};
+  assert(otis_dual_core_take_service(&consumed));
+  assert(consumed.receiver.sequence == 1u);
+
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317EstimateFormat, 2000u);
+  for (uint32_t sequence = 2u; sequence <= 17u; ++sequence) {
+    const OtisServiceMessage message = receiver_metadata(sequence);
+    assert(otis_dual_core_publish_service(&message));
+  }
+  const OtisServiceMessage overflow = receiver_metadata(18u);
+  assert(!otis_dual_core_publish_service(&overflow));
+
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.service_activity.publish_attempts == 18u);
+  assert(stats.service_activity.publish_successes == 17u);
+  assert(stats.service_activity.publish_failures == 1u);
+  assert(stats.service_activity.take_successes == 1u);
+  assert(stats.service_fault.valid);
+  assert(stats.service_fault.failing_kind ==
+         OtisServiceMessageKind::ReceiverQualification);
+  assert(stats.service_fault.failing_sequence == 18u);
+  assert(stats.service_fault.failing_published_ticks == 1800u);
+  assert(stats.service_fault.queue_depth ==
+         OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH);
+  assert(stats.service_fault.breadcrumb_coherent);
+  assert(stats.service_fault.breadcrumb_generation == 12u);
+  assert(stats.service_fault.last_taken_sequence == 1u);
+  assert(stats.service_fault.last_taken_ticks == 100u);
+  assert(stats.service_fault.timing_phase ==
+         OtisTimingProgressPhase::Cx317EstimateFormat);
+  assert(stats.service_fault.timing_loop_sequence == 1u);
+  assert(stats.service_fault.timing_last_progress_ticks == 2000u);
+  assert(stats.service_fault.last_snapshot_session == 7u);
+  assert(stats.service_fault.last_snapshot_sequence == 83305u);
+  assert(stats.service_fault.last_count_sequence == 83305u);
+  assert(stats.service_fault.last_estimate_sequence == 278u);
+
+  otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
+                                      3000u);
+  const OtisServiceMessage later = receiver_metadata(19u);
+  assert(!otis_dual_core_publish_service(&later));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.service_activity.publish_failures == 2u);
+  assert(stats.service_fault.failing_sequence == 18u);
+  assert(stats.service_fault.timing_phase ==
+         OtisTimingProgressPhase::Cx317EstimateFormat);
+  assert(stats.service_fault.breadcrumb_generation == 12u);
 }
 
 void actuator_transaction_requires_exact_two_phase_ack() {
@@ -421,8 +545,10 @@ int main() {
   stage7_concurrent_health_and_active_query_burst_does_not_drop();
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();
+  cx318_numerical_records_cross_by_value_in_order();
   non_droppable_exhaustion_is_fail_static();
   every_non_droppable_queue_exhaustion_is_fail_static();
+  service_exhaustion_freezes_core1_progress_capsule_once();
   actuator_transaction_requires_exact_two_phase_ack();
   stale_ack_and_timeout_fault_without_retry();
   applied_ack_advances_stale_periodic_dac_state_before_health();

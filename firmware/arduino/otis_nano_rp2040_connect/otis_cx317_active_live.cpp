@@ -5,6 +5,7 @@
 
 #include "otis_config.h"
 #include "otis_cx317_active_actuator.h"
+#include "otis_decimal_format.h"
 #include "otis_dual_core_partition.h"
 #include "otis_protocol.h"
 #include "otis_transport_serial.h"
@@ -258,10 +259,36 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
       response == nullptr ? "unavailable"
                           : otis_cx317_response_class_name(response->classification);
   const char *reason = response == nullptr ? transaction.reason : response->reason;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  const uint64_t progress_ticks =
+      static_cast<uint64_t>(transaction.request.timestamp_s) *
+      kCaptureTicksPerSecond;
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317ActivePrepare, progress_ticks);
+#endif
+  char pre_error[32] = "";
+  char post_error[32] = "";
+  char observed_response[32] = "";
+  char cumulative_response[32] = "";
+  if (!otis_format_fixed(transaction.request.pre_error_hz, 9u, pre_error,
+                         sizeof(pre_error)) ||
+      !otis_format_fixed(post_error_hz, 9u, post_error,
+                         sizeof(post_error)) ||
+      !otis_format_fixed(
+          response == nullptr ? 0.0 : response->observed_response_hz, 9u,
+          observed_response, sizeof(observed_response)) ||
+      !otis_format_fixed(
+          response == nullptr ? 0.0 : response->cumulative_response_hz, 9u,
+          cumulative_response, sizeof(cumulative_response)))
+    return false;
   const uint32_t next_record_sequence = transaction_record_sequence + 1u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317ActiveFormat, progress_ticks);
+#endif
   const int used = snprintf(
       frame.data, sizeof(frame.data),
-      "ACT,1,%lu,%s,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%ld,%u,%u,%u,%.9f,%u,%lu,%u,%u,%lu,%s,%s,%s,%u,%s,%u,%u,%.9f,%.9f,%.9f,%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n",
+      "ACT,1,%lu,%s,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%ld,%u,%u,%u,%s,%u,%lu,%u,%u,%lu,%s,%s,%s,%u,%s,%u,%u,%s,%s,%s,%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n",
       static_cast<unsigned long>(next_record_sequence), event, kRunIdentity,
       kBuildIdentity, OTIS_BUILD_PROFILE_ID,
       static_cast<unsigned long>(transaction.expected_binding.session_id),
@@ -276,7 +303,7 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
       static_cast<long>(transaction.request.requested_delta_codes),
       transaction.request.requested_code, transaction.request.correction_ordinal,
       transaction.request.cumulative_after_codes,
-      transaction.request.pre_error_hz,
+      pre_error,
       transaction.accepted.accepted_code,
       static_cast<unsigned long>(transaction.accepted.accepted_timestamp_s),
       transaction.applied.applied_code, transaction.applied.application_sequence,
@@ -286,9 +313,8 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
       transaction.applied.ambiguous ? "true" : "false",
       transaction.dac_epoch, estimator_history_reset ? "true" : "false",
       transaction.correction_count,
-      transaction.cumulative_movement_codes, post_error_hz,
-      response == nullptr ? 0.0 : response->observed_response_hz,
-      response == nullptr ? 0.0 : response->cumulative_response_hz,
+      transaction.cumulative_movement_codes, post_error, observed_response,
+      cumulative_response,
       response == nullptr ? 0u : response->consecutive_indeterminate,
       otis_cx317_active_state_name(transaction.state), response_name, reason,
       kEstimatorHash, kModelHash, kActivePolicyHash, kResponsePolicyHash,
@@ -318,6 +344,10 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
   frame = {};
 #endif
   transaction_record_sequence = next_record_sequence;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317ActivePublish, progress_ticks);
+#endif
   return true;
 }
 

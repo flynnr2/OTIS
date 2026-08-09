@@ -144,7 +144,7 @@ def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
     assert "OTIS_FLAG_GATE_INCOMPLETE" in association_loss
 
 
-def test_only_stage6_profile_consumes_accepted_backend_qualification() -> None:
+def test_only_explicit_qualified_profiles_consume_backend_qualification() -> None:
     matrix = json.loads(
         (ROOT / "firmware/arduino/firmware_matrix.json").read_text(
             encoding="utf-8"
@@ -165,6 +165,7 @@ def test_only_stage6_profile_consumes_accepted_backend_qualification() -> None:
     ]
     assert qualified == [
         "cx317_pps_gated_i_only_preview",
+        "cx318_stage4_nonactuating_preview",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
         "cx317_dual_core_active_part_a",

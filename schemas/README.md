@@ -29,3 +29,11 @@ authoritative raw-contract notes live in
 `run_evidence_v1.schema.json` defines the immutable SHA-256 snapshot that binds
 a completed run to its manifest, configuration, selected profile, raw evidence,
 and manifest-declared artifacts. It is enforced by the host validator.
+
+CX318's `RPH` and `HPR` v1 CSV contracts are executable field lists and
+semantic validation in `host.otis_tools.contracts`; their normative field
+documentation is `data_contracts/relative_phase_observations_v1.csv.md` and
+`data_contracts/phase_estimator_outputs_v1.csv.md`, and
+`data_contracts/hybrid_preview_decisions_v1.csv.md`. They do not use a JSON
+Schema because CSV header and row validation is the repository convention for
+serial products.

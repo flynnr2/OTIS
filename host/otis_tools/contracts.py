@@ -332,6 +332,103 @@ ACTIVE_TRANSACTION_V1_FIELDS = [
     "evidence_state",
 ]
 
+# CX318 Stage 4 telemetry is deliberately separate from the accepted frequency
+# control products.  RPH is the immutable raw relative-phase boundary; HPR is
+# a candidate-specific, counterfactual hybrid-preview boundary.  Neither
+# record is an authority or an actuator request.
+RELATIVE_PHASE_OBSERVATION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "phase_epoch",
+    "observation_sequence",
+    "capture_session",
+    "opening_snapshot_sequence",
+    "closing_snapshot_sequence",
+    "opening_reference_sequence",
+    "closing_reference_sequence",
+    "dac_epoch",
+    "source_backend",
+    "source_file_sha256",
+    "method_id",
+    "configuration_sha256",
+    "interval_edges",
+    "edge_error_cycles",
+    "relative_phase_cycles",
+    "relative_phase_time_ns",
+    "qualification_state",
+    "observation_age_s",
+    "discontinuity_reason",
+    "calibrated_uncertainty_status",
+]
+
+PHASE_ESTIMATOR_OUTPUT_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "phase_epoch",
+    "observation_sequence",
+    "source_relative_phase_observation",
+    "raw_relative_phase_cycles",
+    "raw_relative_phase_time_ns",
+    "filtered_relative_phase_cycles",
+    "estimated_frequency_error_hz",
+    "estimator_id",
+    "configuration_sha256",
+    "estimate_age_s",
+    "qualification_state",
+    "uncertainty_status",
+    "reason_codes",
+]
+
+HYBRID_PREVIEW_DECISION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "preview_sequence",
+    "candidate_id",
+    "candidate_configuration_sha256",
+    "phase_estimator_id",
+    "phase_estimator_configuration_sha256",
+    "frequency_estimator_id",
+    "frequency_estimator_configuration_sha256",
+    "configuration_sha256",
+    "phase_epoch",
+    "observation_sequence",
+    "dac_epoch",
+    "decision_timestamp_ticks",
+    "time_domain",
+    "source_phase_estimate",
+    "source_frequency_estimate",
+    "raw_relative_phase_cycles",
+    "modeled_relative_phase_cycles",
+    "observed_frequency_error_hz",
+    "modeled_frequency_error_hz",
+    "frequency_term_hz",
+    "phase_bias_hz",
+    "combined_frequency_error_hz",
+    "actual_applied_code",
+    "shadow_code_before",
+    "shadow_code_after",
+    "band_state_before",
+    "band_state_after",
+    "preview_state",
+    "decision_reason",
+    "frequency_observation_event",
+    "counterfactual_decision",
+    "counterfactual_correction",
+    "raw_counterfactual_delta_codes",
+    "counterfactual_delta_codes",
+    "counterfactual_code",
+    "step_limited",
+    "range_clamped",
+    "correction_count",
+    "cumulative_movement_codes",
+    "alternating_correction_count",
+    "modeled_not_observed_after_divergence",
+    "uncertainty_status",
+    "actionable",
+    "actuation_authorized",
+    "authorization_consumed",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
@@ -347,6 +444,9 @@ CONTRACT_FIELDS = {
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
     "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
+    "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
+    "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
+    "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -364,6 +464,9 @@ CONTRACT_RECORD_TYPES = {
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
     "active_transactions_v1": {"ACT"},
+    "relative_phase_observations_v1": {"RPH"},
+    "phase_estimator_outputs_v1": {"PHE"},
+    "hybrid_preview_decisions_v1": {"HPR"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -381,6 +484,9 @@ CONTRACT_SCHEMA_VERSIONS = {
     "estimates_v2": 2,
     "control_previews_v1": 1,
     "active_transactions_v1": 1,
+    "relative_phase_observations_v1": 1,
+    "phase_estimator_outputs_v1": 1,
+    "hybrid_preview_decisions_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -398,6 +504,9 @@ SEQUENCE_FIELDS = {
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
     "active_transactions_v1": "transaction_record_sequence",
+    "relative_phase_observations_v1": "observation_sequence",
+    "phase_estimator_outputs_v1": "observation_sequence",
+    "hybrid_preview_decisions_v1": "preview_sequence",
 }
 
 TIMESTAMP_FIELDS = {
@@ -415,6 +524,9 @@ TIMESTAMP_FIELDS = {
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
     "active_transactions_v1": (),
+    "relative_phase_observations_v1": (),
+    "phase_estimator_outputs_v1": (),
+    "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -437,6 +549,9 @@ DOMAIN_FIELDS = {
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
     "active_transactions_v1": (),
+    "relative_phase_observations_v1": (),
+    "phase_estimator_outputs_v1": (),
+    "hybrid_preview_decisions_v1": ("time_domain",),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -544,6 +659,24 @@ VALID_CONTROL_STATES = {
     "MANUAL_OPEN_LOOP",
     "FAULT",
 }
+VALID_RELATIVE_PHASE_QUALIFICATION_STATES = {"epoch_open", "qualified", "invalid"}
+VALID_PHASE_ESTIMATOR_QUALIFICATION_STATES = {
+    "initializing",
+    "qualified",
+    "unavailable",
+    "invalid",
+}
+VALID_CALIBRATED_UNCERTAINTY_STATUS = {"available", "unavailable"}
+VALID_HYBRID_PREVIEW_STATES = {
+    "RELATIVE_PHASE_ACQUIRE",
+    "FREQUENCY_ACQUIRED_PREVIEW",
+    "HYBRID_TRACKING_PREVIEW",
+    "PHASE_STEP_HOLD_PREVIEW",
+    "REFERENCE_LOST_PREVIEW",
+    "RECOVER_PREVIEW",
+    "FAULT_PREVIEW",
+}
+VALID_HYBRID_BAND_STATES = {"INSIDE", "OUTSIDE"}
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
@@ -645,7 +778,11 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     # Snapshot ordinals restart at zero when the firmware opens a new capture
     # session, and wrap modulo 2^32 inside a sufficiently long session.  The
     # reconstruction layer validates adjacency using both session and ordinal.
-    if contract == "pps_snapshots_v1":
+    if contract in {
+        "pps_snapshots_v1",
+        "relative_phase_observations_v1",
+        "phase_estimator_outputs_v1",
+    }:
         return current if current is not None else previous
     if current is not None and previous is not None and current <= previous:
         errors.append(f"row {row_number}: {field_name} must be strictly increasing; previous={previous}, current={current}")
@@ -1500,6 +1637,313 @@ def _check_active_transaction_v1(
         errors.append(f"row {row_number}: response requires a response classification")
 
 
+def _check_sha256(row: dict[str, str], field_name: str, row_number: int, errors: list[str]) -> None:
+    value = row.get(field_name, "")
+    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        errors.append(f"row {row_number}: {field_name} must be a lowercase SHA-256")
+
+
+def _check_rph_source_identity(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    """Allow only the live RPH sentinel until the raw serial file is sealed."""
+    if row.get("source_file_sha256") != "live_stream_unsealed":
+        _check_sha256(row, "source_file_sha256", row_number, errors)
+
+
+def _check_relative_phase_observation_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "source_backend",
+            "source_file_sha256",
+            "method_id",
+            "configuration_sha256",
+            "qualification_state",
+            "calibrated_uncertainty_status",
+        ),
+    )
+    for field_name in (
+        "phase_epoch",
+        "observation_sequence",
+        "capture_session",
+        "opening_snapshot_sequence",
+        "closing_snapshot_sequence",
+        "opening_reference_sequence",
+        "closing_reference_sequence",
+        "dac_epoch",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    for field_name in ("interval_edges", "edge_error_cycles", "relative_phase_cycles"):
+        if row.get(field_name):
+            _parse_int(row[field_name], field_name, row_number, errors)
+    for field_name in ("relative_phase_time_ns", "observation_age_s"):
+        value = _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+        if field_name == "observation_age_s" and value is not None and value < 0:
+            errors.append(f"row {row_number}: observation_age_s must be non-negative")
+    if row.get("qualification_state") not in VALID_RELATIVE_PHASE_QUALIFICATION_STATES:
+        errors.append(
+            f"row {row_number}: qualification_state must be one of "
+            f"{sorted(VALID_RELATIVE_PHASE_QUALIFICATION_STATES)}"
+        )
+    if row.get("calibrated_uncertainty_status") not in VALID_CALIBRATED_UNCERTAINTY_STATUS:
+        errors.append(
+            f"row {row_number}: calibrated_uncertainty_status must be one of "
+            f"{sorted(VALID_CALIBRATED_UNCERTAINTY_STATUS)}"
+        )
+    _check_rph_source_identity(row, row_number, errors)
+    _check_sha256(row, "configuration_sha256", row_number, errors)
+    accepted = row.get("qualification_state") == "qualified"
+    interval_fields = ("interval_edges", "edge_error_cycles")
+    if accepted and any(not row.get(field_name) for field_name in interval_fields):
+        errors.append(f"row {row_number}: qualified RPH requires interval_edges and edge_error_cycles")
+    if not accepted and any(row.get(field_name) for field_name in interval_fields):
+        errors.append(f"row {row_number}: non-qualified RPH must not claim interval edge values")
+    if not accepted and not row.get("discontinuity_reason"):
+        errors.append(f"row {row_number}: non-qualified RPH requires discontinuity_reason")
+
+
+def _check_phase_estimator_output_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "source_relative_phase_observation",
+            "estimator_id",
+            "configuration_sha256",
+            "qualification_state",
+            "uncertainty_status",
+            "reason_codes",
+        ),
+    )
+    for field_name in ("phase_epoch", "observation_sequence"):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    _parse_int(
+        row.get("raw_relative_phase_cycles", ""),
+        "raw_relative_phase_cycles",
+        row_number,
+        errors,
+    )
+    for field_name in (
+        "raw_relative_phase_time_ns",
+        "filtered_relative_phase_cycles",
+        "estimated_frequency_error_hz",
+        "estimate_age_s",
+    ):
+        value = _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+        if field_name == "estimate_age_s" and value is not None and value < 0:
+            errors.append(f"row {row_number}: estimate_age_s must be non-negative")
+    if row.get("qualification_state") not in VALID_PHASE_ESTIMATOR_QUALIFICATION_STATES:
+        errors.append(
+            f"row {row_number}: qualification_state must be one of "
+            f"{sorted(VALID_PHASE_ESTIMATOR_QUALIFICATION_STATES)}"
+        )
+    if row.get("uncertainty_status") not in VALID_UNCERTAINTY_STATUS:
+        errors.append(
+            f"row {row_number}: uncertainty_status must be one of "
+            f"{sorted(VALID_UNCERTAINTY_STATUS)}"
+        )
+    _check_sha256(row, "configuration_sha256", row_number, errors)
+    expected_source = (
+        f"RPH:{row.get('phase_epoch', '')}:{row.get('observation_sequence', '')}"
+    )
+    if row.get("source_relative_phase_observation") != expected_source:
+        errors.append(
+            f"row {row_number}: source_relative_phase_observation must equal "
+            f"{expected_source}"
+        )
+    for field_name in (
+        "raw_relative_phase_time_ns",
+        "filtered_relative_phase_cycles",
+    ):
+        if not row.get(field_name):
+            errors.append(f"row {row_number}: {field_name} is required")
+    frequency_available = bool(row.get("estimated_frequency_error_hz"))
+    if row.get("qualification_state") == "qualified":
+        if not frequency_available or not row.get("estimate_age_s"):
+            errors.append(
+                f"row {row_number}: qualified PHE requires frequency and age"
+            )
+    elif frequency_available or row.get("estimate_age_s"):
+        errors.append(
+            f"row {row_number}: non-qualified PHE must not claim frequency or age"
+        )
+
+
+def _check_hybrid_preview_decision_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "candidate_id",
+            "candidate_configuration_sha256",
+            "phase_estimator_id",
+            "phase_estimator_configuration_sha256",
+            "frequency_estimator_id",
+            "frequency_estimator_configuration_sha256",
+            "configuration_sha256",
+            "time_domain",
+            "source_phase_estimate",
+            "source_frequency_estimate",
+            "band_state_before",
+            "band_state_after",
+            "preview_state",
+            "decision_reason",
+            "uncertainty_status",
+        ),
+    )
+    for field_name in (
+        "phase_epoch",
+        "observation_sequence",
+        "dac_epoch",
+        "decision_timestamp_ticks",
+        "actual_applied_code",
+        "shadow_code_before",
+        "shadow_code_after",
+        "correction_count",
+        "cumulative_movement_codes",
+        "alternating_correction_count",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    if row.get("counterfactual_code"):
+        _parse_non_negative_int(
+            row["counterfactual_code"], "counterfactual_code", row_number, errors
+        )
+    _parse_int(
+        row.get("raw_relative_phase_cycles", ""),
+        "raw_relative_phase_cycles",
+        row_number,
+        errors,
+    )
+    for field_name in (
+        "modeled_relative_phase_cycles",
+        "observed_frequency_error_hz",
+        "modeled_frequency_error_hz",
+        "frequency_term_hz",
+        "phase_bias_hz",
+        "combined_frequency_error_hz",
+        "raw_counterfactual_delta_codes",
+        "counterfactual_delta_codes",
+    ):
+        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+    for field_name in (
+        "frequency_observation_event",
+        "counterfactual_decision",
+        "counterfactual_correction",
+        "step_limited",
+        "range_clamped",
+        "modeled_not_observed_after_divergence",
+        "actionable",
+        "actuation_authorized",
+        "authorization_consumed",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("preview_state") not in VALID_HYBRID_PREVIEW_STATES:
+        errors.append(
+            f"row {row_number}: preview_state must be one of "
+            f"{sorted(VALID_HYBRID_PREVIEW_STATES)}"
+        )
+    for field_name in ("band_state_before", "band_state_after"):
+        if row.get(field_name) not in VALID_HYBRID_BAND_STATES:
+            errors.append(
+                f"row {row_number}: {field_name} must be one of "
+                f"{sorted(VALID_HYBRID_BAND_STATES)}"
+            )
+    if row.get("uncertainty_status") not in VALID_UNCERTAINTY_STATUS:
+        errors.append(
+            f"row {row_number}: uncertainty_status must be one of "
+            f"{sorted(VALID_UNCERTAINTY_STATUS)}"
+        )
+    for field_name in (
+        "candidate_configuration_sha256",
+        "phase_estimator_configuration_sha256",
+        "frequency_estimator_configuration_sha256",
+        "configuration_sha256",
+    ):
+        _check_sha256(row, field_name, row_number, errors)
+    for field_name in ("actionable", "actuation_authorized", "authorization_consumed"):
+        if row.get(field_name) != "false":
+            errors.append(f"row {row_number}: {field_name} must remain false for CX318 HPR")
+    expected_phase_source = (
+        f"PHE:{row.get('phase_epoch', '')}:{row.get('observation_sequence', '')}"
+    )
+    if row.get("source_phase_estimate") != expected_phase_source:
+        errors.append(
+            f"row {row_number}: source_phase_estimate must equal "
+            f"{expected_phase_source}"
+        )
+    frequency_fields = (
+        "observed_frequency_error_hz",
+        "modeled_frequency_error_hz",
+        "frequency_term_hz",
+        "combined_frequency_error_hz",
+    )
+    frequency_available = bool(row.get("observed_frequency_error_hz"))
+    if any(bool(row.get(field_name)) != frequency_available for field_name in frequency_fields):
+        errors.append(
+            f"row {row_number}: HPR frequency values must be all present or all empty"
+        )
+    expected_frequency_source = expected_phase_source if frequency_available else "unavailable"
+    if row.get("source_frequency_estimate") != expected_frequency_source:
+        errors.append(
+            f"row {row_number}: source_frequency_estimate must equal "
+            f"{expected_frequency_source}"
+        )
+    try:
+        counterfactual_code = int(row.get("counterfactual_code", ""), 10)
+        shadow_code_after = int(row.get("shadow_code_after", ""), 10)
+        if counterfactual_code != shadow_code_after:
+            errors.append(
+                f"row {row_number}: counterfactual_code must equal shadow_code_after"
+            )
+    except (TypeError, ValueError):
+        pass
+    try:
+        shadow_code_before = int(row.get("shadow_code_before", ""), 10)
+        shadow_code_after = int(row.get("shadow_code_after", ""), 10)
+        counterfactual_delta = row.get("counterfactual_delta_codes", "")
+        if counterfactual_delta and not math.isclose(
+            float(counterfactual_delta),
+            shadow_code_after - shadow_code_before,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            errors.append(
+                f"row {row_number}: counterfactual_delta_codes must equal "
+                "shadow_code_after-shadow_code_before"
+            )
+        actual_applied_code = int(row.get("actual_applied_code", ""), 10)
+        modeled_divergence = row.get("modeled_not_observed_after_divergence")
+        expected_divergence = shadow_code_after != actual_applied_code
+        if modeled_divergence in VALID_BOOLEAN_TEXT and (
+            (modeled_divergence == "true") != expected_divergence
+        ):
+            errors.append(
+                f"row {row_number}: modeled_not_observed_after_divergence must "
+                "equal shadow_code_after != actual_applied_code"
+            )
+    except (TypeError, ValueError):
+        pass
+    if row.get("counterfactual_decision") == "false":
+        for field_name in (
+            "raw_counterfactual_delta_codes",
+            "counterfactual_delta_codes",
+        ):
+            if row.get(field_name):
+                errors.append(
+                    f"row {row_number}: {field_name} must be empty without a "
+                    "counterfactual decision"
+                )
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1580,6 +2024,12 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_control_preview_v1(row, row_count, errors)
             if context.contract == "active_transactions_v1":
                 _check_active_transaction_v1(row, row_count, errors)
+            if context.contract == "relative_phase_observations_v1":
+                _check_relative_phase_observation_v1(row, row_count, errors)
+            if context.contract == "phase_estimator_outputs_v1":
+                _check_phase_estimator_output_v1(row, row_count, errors)
+            if context.contract == "hybrid_preview_decisions_v1":
+                _check_hybrid_preview_decision_v1(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")

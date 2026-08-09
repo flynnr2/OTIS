@@ -33,6 +33,20 @@
 #define OTIS_ENABLE_CX317_I_ONLY_PREVIEW 0
 #endif
 
+// CX318 Stage 4 is a separate, non-actionable relative-phase/hybrid preview.
+// Its static code is a build-bound preflight fact, never a write request.
+#ifndef OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#define OTIS_ENABLE_CX318_STAGE4_PREVIEW 0
+#endif
+
+#ifndef OTIS_CX318_STAGE4_STATIC_CODE
+#define OTIS_CX318_STAGE4_STATIC_CODE 0u
+#endif
+
+#ifndef OTIS_CX318_STAGE4_DAC_EPOCH
+#define OTIS_CX318_STAGE4_DAC_EPOCH 0u
+#endif
+
 // Stage 6 dedicates Arduino-Pico Core 0 to services/I/O and Core 1 to timing,
 // estimation and control preview.  It remains disabled for all legacy and
 // single-core profiles.
@@ -204,7 +218,9 @@
 #endif
 
 #ifndef OTIS_FIRMWARE_VERSION
-#if OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#define OTIS_FIRMWARE_VERSION "CX318_RELATIVE_PHASE_HYBRID_PREVIEW_STAGE4_V1"
+#elif OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_ACTIVE_I_ONLY_V1"
 #elif OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
@@ -756,13 +772,52 @@
 #error "OTIS_ENABLE_CX317_I_ONLY_PREVIEW must be 0 or 1."
 #endif
 
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW != 0 && \
+    OTIS_ENABLE_CX318_STAGE4_PREVIEW != 1
+#error "OTIS_ENABLE_CX318_STAGE4_PREVIEW must be 0 or 1."
+#endif
+
 #if OTIS_ENABLE_DUAL_CORE_PARTITION != 0 && \
     OTIS_ENABLE_DUAL_CORE_PARTITION != 1
 #error "OTIS_ENABLE_DUAL_CORE_PARTITION must be 0 or 1."
 #endif
 
-#if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW
-#error "The dual-core partition requires the selected I-only preview/estimator."
+#if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW && \
+    !OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#error "The dual-core partition requires an explicit protected timing preview."
+#endif
+
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW && !OTIS_ENABLE_DUAL_CORE_PARTITION
+#error "CX318 Stage 4 preview requires the dual-core partition."
+#endif
+
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW && \
+    (OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || \
+     OTIS_ENABLE_CX317_I_ONLY_PREVIEW || \
+     OTIS_ENABLE_CX317_BOUNDED_ACTIVE)
+#error "CX318 Stage 4 preview is mutually exclusive with legacy and active control paths."
+#endif
+
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW && \
+    (OTIS_ENABLE_DAC_AD5693R || OTIS_ENABLE_H1_DAC_SWEEP)
+#error "CX318 Stage 4 preview structurally excludes every DAC and sweep path."
+#endif
+
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW && \
+    (OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_H1_OCXO_OBSERVE || \
+     OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ || \
+     OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
+     !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || \
+     !OTIS_ENABLE_PPS_DUAL_OBSERVER || !OTIS_ENABLE_GNSS_RECEIVER || \
+     OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
+     OTIS_ENABLE_PSEUDO_PPS_GENERATOR)
+#error "CX318 Stage 4 preview requires qualified dual-observer PPS capture, RX-only GNSS, and environment telemetry."
+#endif
+
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW && \
+    (OTIS_CX318_STAGE4_STATIC_CODE < 0xA800u || \
+     OTIS_CX318_STAGE4_STATIC_CODE > 0xAB00u)
+#error "CX318 Stage 4 preview requires an exact preflight-bound static DAC code in A800..AB00."
 #endif
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
@@ -981,6 +1036,22 @@
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #error "Effective OTIS_ENABLE_CX317_I_ONLY_PREVIEW differs from the generated profile."
 #endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_STAGE4_PREVIEW != OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#error "Effective OTIS_ENABLE_CX318_STAGE4_PREVIEW differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_STATIC_CODE
+#if OTIS_CX318_STAGE4_STATIC_CODE != OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_STATIC_CODE
+#error "Effective OTIS_CX318_STAGE4_STATIC_CODE differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_DAC_EPOCH
+#if OTIS_CX318_STAGE4_DAC_EPOCH != OTIS_BUILD_EXPECTED_OTIS_CX318_STAGE4_DAC_EPOCH
+#error "Effective OTIS_CX318_STAGE4_DAC_EPOCH differs from the generated profile."
+#endif
+#endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #if OTIS_ENABLE_DUAL_CORE_PARTITION != OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #error "Effective OTIS_ENABLE_DUAL_CORE_PARTITION differs from the generated profile."
@@ -1054,7 +1125,6 @@
 #ifdef OTIS_BUILD_EXPECTED_OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS
 #if OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS != OTIS_BUILD_EXPECTED_OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS
 #error "Effective OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS differs from the generated profile."
-#endif
 #endif
 #endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_GNSS_RECEIVER

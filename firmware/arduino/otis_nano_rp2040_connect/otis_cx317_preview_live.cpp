@@ -8,6 +8,7 @@
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_i_only_engine.h"
 #include "otis_cx317_snapshot_estimator.h"
+#include "otis_decimal_format.h"
 #include "otis_dual_core_partition.h"
 #include "otis_protocol.h"
 #include "otis_spsc_queue.h"
@@ -42,6 +43,10 @@ constexpr char kPlantModelHash[] =
 constexpr char kTimeDomain[] = "rp2040_timer0";
 constexpr double kNominalFrequencyHz = 10000000.0;
 constexpr double kNominalGainHzPerCode = 0.00017072602587382669;
+static_assert(kNominalGainHzPerCode > 0.0,
+              "the selected plant gain must remain positive");
+// Deterministic wire representation of the exact selected gain above.
+constexpr char kNominalGainHzPerCodeText[] = "0.000170726025874";
 constexpr uint32_t kStartupWarmupS = OTIS_CX317_STARTUP_WARMUP_S;
 constexpr uint32_t kSettlingExclusionS = OTIS_CX317_SETTLING_EXCLUSION_S;
 constexpr int32_t kActiveLiveUpdateCodes = 0;
@@ -158,6 +163,12 @@ const char *model_reason(const OtisCx317StaticCodeState *code) {
 void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
                    const OtisCx317StaticCodeState *code,
                    uint64_t timestamp_ticks) {
+  const uint32_t seq = estimate_seq++;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_note_timing_estimate(seq);
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317EstimatePrepare, timestamp_ticks);
+#endif
   const double frequency =
       selected ? span.selected_frequency_hz : span.diagnostic_frequency_hz;
   const uint32_t first = selected ? span.selected_first_sequence
@@ -165,14 +176,29 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
   const uint32_t samples = selected ? OTIS_CX317_SELECTED_SPAN_INTERVALS
                                     : OTIS_CX317_DIAGNOSTIC_SPAN_INTERVALS;
   const bool applicable = code_context_valid(code);
+  char frequency_text[32] = "";
+  char frequency_error_text[32] = "";
+  if (!otis_format_fixed(frequency, 12u, frequency_text,
+                         sizeof(frequency_text)) ||
+      !otis_format_fixed(frequency - kNominalFrequencyHz, 12u,
+                         frequency_error_text,
+                         sizeof(frequency_error_text))) {
+    uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
+    if (observed != UINT32_MAX)
+      __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
+    return;
+  }
   char frame[kFrameCapacity];
-  const uint32_t seq = estimate_seq++;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317EstimateFormat, timestamp_ticks);
+#endif
   int used = snprintf(
       frame, sizeof(frame),
       "EST,2,%lu,est:cx317:%s:%06lu,%llu,%s,%lu,live:CNT:%lu,%lu,%lu,"
       "live:STS:pps_gate,live:DAC:static,firmware_config:%s,%s,%s,"
       "valid,contiguous_snapshot_span,valid,0,true,valid,0,true,healthy,"
-      "diagnostic_healthy,%.12f,%lu,unavailable,%.12f,%.12f,,unavailable,"
+      "diagnostic_healthy,%s,%lu,unavailable,%s,%s,,unavailable,"
       "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
       ",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n",
       static_cast<unsigned long>(seq),
@@ -185,8 +211,9 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       static_cast<unsigned long>(span.last_sequence), OTIS_FIRMWARE_CONFIG_ID,
       selected ? kSelectedEstimatorVersion
                : "cx317_diagnostic_60s_overlap_v1",
-      kSelectedEstimatorHash, frequency, static_cast<unsigned long>(samples),
-      frequency, frequency - kNominalFrequencyHz,
+      kSelectedEstimatorHash, frequency_text,
+      static_cast<unsigned long>(samples), frequency_text,
+      frequency_error_text,
       selected && applicable ? "true" : "false",
       selected ? (applicable ? "preview_input_observe_only"
                              : model_reason(code))
@@ -198,6 +225,10 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
     if (observed != UINT32_MAX)
       __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  otis_dual_core_note_timing_progress(
+      OtisTimingProgressPhase::Cx317EstimatePublish, timestamp_ticks);
+#endif
 }
 
 void emit_control(const OtisCx317PreviewDecision &decision,
@@ -207,11 +238,14 @@ void emit_control(const OtisCx317PreviewDecision &decision,
   char raw_delta[32] = "";
   char limited_delta[24] = "";
   char proposed[16] = "";
-  if (decision.frequency_available)
-    snprintf(frequency_error, sizeof(frequency_error), "%.12f",
-             decision.frequency_error_hz);
+  if (decision.frequency_available &&
+      !otis_format_fixed(decision.frequency_error_hz, 12u, frequency_error,
+                         sizeof(frequency_error)))
+    return;
   if (decision.preview_available) {
-    snprintf(raw_delta, sizeof(raw_delta), "%.12f", decision.raw_delta_codes);
+    if (!otis_format_fixed(decision.raw_delta_codes, 12u, raw_delta,
+                           sizeof(raw_delta)))
+      return;
     snprintf(limited_delta, sizeof(limited_delta), "%ld",
              static_cast<long>(decision.limited_delta_codes));
     snprintf(proposed, sizeof(proposed), "%u", decision.proposed_code);
@@ -236,7 +270,7 @@ void emit_control(const OtisCx317PreviewDecision &decision,
       frame, sizeof(frame),
       "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:%s:%06lu,"
       "profile:plant_models/cx317_pps_gated_v2.json,%s,2,%s,%s,%s,%s,%s,%s,%s,"
-      "%s,%s,healthy,%s,%s,%u,%s,%.15g,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
+      "%s,%s,healthy,%s,%s,%u,%s,%s,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
       static_cast<unsigned long>(seq), static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
       kSelectedEstimatorReference,
@@ -249,7 +283,8 @@ void emit_control(const OtisCx317PreviewDecision &decision,
       decision.preview_available ? "preview_available_observe_only"
                                  : decision.reason,
       applicable ? "applicable" : "not_applicable", model_reason(code),
-      decision.current_code, frequency_error, kNominalGainHzPerCode, raw_delta,
+      decision.current_code, frequency_error, kNominalGainHzPerCodeText,
+      raw_delta,
       limited_delta, proposed, decision.step_limited ? "true" : "false",
       decision.range_clamped ? "true" : "false",
       decision.preview_available ? "true" : "false", decision.reason);

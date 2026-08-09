@@ -18,6 +18,7 @@ enum class OtisBootCapability : uint8_t {
   Sensors,
   GnssReceiver,
   Phase4Preview,
+  Cx318Preview,
   Transport,
   HostConnection,
   Count,

@@ -27,6 +27,9 @@ RECORD_CONTRACTS = {
     "CTL": "control_previews_v1",
     "PGT": "pseudo_pps_truth_v1",
     "ACT": "active_transactions_v1",
+    "RPH": "relative_phase_observations_v1",
+    "PHE": "phase_estimator_outputs_v1",
+    "HPR": "hybrid_preview_decisions_v1",
 }
 
 

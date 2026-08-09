@@ -16,11 +16,58 @@ OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>
     evidence_to_service;
 OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>
     telemetry_to_service;
+OtisSpscQueue<OtisCx318PreviewRecordMessage, OTIS_CX318_PREVIEW_QUEUE_DEPTH>
+    cx318_preview_to_service;
 
 uint32_t telemetry_dropped = 0u;
 uint8_t partition_fault = static_cast<uint8_t>(OtisPartitionFault::None);
 bool fail_static = false;
 bool timing_owner_active = false;
+
+uint32_t timing_loop_sequence = 0u;
+uint8_t timing_progress_phase =
+    static_cast<uint8_t>(OtisTimingProgressPhase::Reset);
+uint64_t timing_phase_enter_ticks = 0u;
+uint64_t timing_last_progress_ticks = 0u;
+uint32_t timing_last_snapshot_session = 0u;
+uint32_t timing_last_snapshot_sequence = 0u;
+uint32_t timing_last_count_sequence = 0u;
+uint32_t timing_last_estimate_sequence = 0u;
+uint32_t timing_breadcrumb_generation = 0u;
+
+uint32_t service_publish_attempts = 0u;
+uint32_t service_publish_successes = 0u;
+uint32_t service_publish_failures = 0u;
+uint32_t service_take_successes = 0u;
+uint8_t service_last_published_kind =
+    static_cast<uint8_t>(OtisServiceMessageKind::ReceiverQualification);
+uint32_t service_last_published_sequence = 0u;
+uint64_t service_last_published_ticks = 0u;
+uint8_t service_last_taken_kind =
+    static_cast<uint8_t>(OtisServiceMessageKind::ReceiverQualification);
+uint32_t service_last_taken_sequence = 0u;
+uint64_t service_last_taken_ticks = 0u;
+
+bool service_fault_valid = false;
+uint8_t service_fault_kind =
+    static_cast<uint8_t>(OtisServiceMessageKind::ReceiverQualification);
+uint32_t service_fault_sequence = 0u;
+uint64_t service_fault_published_ticks = 0u;
+uint32_t service_fault_depth = 0u;
+bool service_fault_breadcrumb_coherent = false;
+uint32_t service_fault_breadcrumb_generation = 0u;
+uint8_t service_fault_last_taken_kind =
+    static_cast<uint8_t>(OtisServiceMessageKind::ReceiverQualification);
+uint32_t service_fault_last_taken_sequence = 0u;
+uint64_t service_fault_last_taken_ticks = 0u;
+uint8_t service_fault_timing_phase =
+    static_cast<uint8_t>(OtisTimingProgressPhase::Reset);
+uint32_t service_fault_timing_loop_sequence = 0u;
+uint64_t service_fault_timing_last_progress_ticks = 0u;
+uint32_t service_fault_last_snapshot_session = 0u;
+uint32_t service_fault_last_snapshot_sequence = 0u;
+uint32_t service_fault_last_count_sequence = 0u;
+uint32_t service_fault_last_estimate_sequence = 0u;
 
 void increment_saturating(uint32_t *value) {
   uint32_t observed = __atomic_load_n(value, __ATOMIC_RELAXED);
@@ -40,6 +87,158 @@ bool acknowledgement_matches(const OtisCrossCoreActuatorRequest &request,
          ack.requested_code == request.requested_code;
 }
 
+uint32_t service_sequence(const OtisServiceMessage &message) {
+  switch (message.kind) {
+    case OtisServiceMessageKind::ReceiverQualification:
+      return message.receiver.sequence;
+    case OtisServiceMessageKind::Environment:
+      return message.environment.sequence;
+    case OtisServiceMessageKind::AppliedDacState:
+      return message.dac.sequence;
+    case OtisServiceMessageKind::RunControl:
+      return message.run_control.sequence;
+    case OtisServiceMessageKind::ActuatorAcknowledgement:
+      return message.actuator_acknowledgement.request_sequence;
+  }
+  return 0u;
+}
+
+uint64_t service_ticks(const OtisServiceMessage &message) {
+  switch (message.kind) {
+    case OtisServiceMessageKind::ReceiverQualification:
+      return message.receiver.published_ticks;
+    case OtisServiceMessageKind::Environment:
+      return message.environment.timestamp_ticks;
+    case OtisServiceMessageKind::AppliedDacState:
+      return message.dac.published_ticks;
+    case OtisServiceMessageKind::RunControl:
+      return message.run_control.published_ticks;
+    case OtisServiceMessageKind::ActuatorAcknowledgement:
+      return message.actuator_acknowledgement.acknowledgement_ticks;
+  }
+  return 0u;
+}
+
+void begin_timing_breadcrumb_write() {
+  // Core 1 is the sole writer.  Odd means a multi-field update is in flight.
+  __atomic_add_fetch(&timing_breadcrumb_generation, 1u, __ATOMIC_ACQ_REL);
+}
+
+void end_timing_breadcrumb_write() {
+  // Publish the complete update with the next even generation.
+  __atomic_add_fetch(&timing_breadcrumb_generation, 1u, __ATOMIC_RELEASE);
+}
+
+void copy_timing_breadcrumb(OtisServiceFaultCapsule *capsule) {
+  if (capsule == nullptr) return;
+  constexpr uint8_t kMaximumSnapshotAttempts = 3u;
+  for (uint8_t attempt = 0u; attempt < kMaximumSnapshotAttempts; ++attempt) {
+    const uint32_t before =
+        __atomic_load_n(&timing_breadcrumb_generation, __ATOMIC_ACQUIRE);
+    if ((before & 1u) != 0u) continue;
+    capsule->last_taken_kind = static_cast<OtisServiceMessageKind>(
+        __atomic_load_n(&service_last_taken_kind, __ATOMIC_RELAXED));
+    capsule->last_taken_sequence =
+        __atomic_load_n(&service_last_taken_sequence, __ATOMIC_RELAXED);
+    capsule->last_taken_ticks =
+        __atomic_load_n(&service_last_taken_ticks, __ATOMIC_RELAXED);
+    capsule->timing_phase = static_cast<OtisTimingProgressPhase>(
+        __atomic_load_n(&timing_progress_phase, __ATOMIC_RELAXED));
+    capsule->timing_loop_sequence =
+        __atomic_load_n(&timing_loop_sequence, __ATOMIC_RELAXED);
+    capsule->timing_last_progress_ticks =
+        __atomic_load_n(&timing_last_progress_ticks, __ATOMIC_RELAXED);
+    capsule->last_snapshot_session =
+        __atomic_load_n(&timing_last_snapshot_session, __ATOMIC_RELAXED);
+    capsule->last_snapshot_sequence =
+        __atomic_load_n(&timing_last_snapshot_sequence, __ATOMIC_RELAXED);
+    capsule->last_count_sequence =
+        __atomic_load_n(&timing_last_count_sequence, __ATOMIC_RELAXED);
+    capsule->last_estimate_sequence =
+        __atomic_load_n(&timing_last_estimate_sequence, __ATOMIC_RELAXED);
+    const uint32_t after =
+        __atomic_load_n(&timing_breadcrumb_generation, __ATOMIC_ACQUIRE);
+    if (before == after && (after & 1u) == 0u) {
+      capsule->breadcrumb_coherent = true;
+      capsule->breadcrumb_generation = after;
+      return;
+    }
+  }
+
+  // Never let diagnostics spin behind a timing-core failure.  Preserve a
+  // best-effort capsule and say explicitly that the cross-field snapshot was
+  // not coherent.
+  capsule->last_taken_kind = static_cast<OtisServiceMessageKind>(
+      __atomic_load_n(&service_last_taken_kind, __ATOMIC_RELAXED));
+  capsule->last_taken_sequence =
+      __atomic_load_n(&service_last_taken_sequence, __ATOMIC_RELAXED);
+  capsule->last_taken_ticks =
+      __atomic_load_n(&service_last_taken_ticks, __ATOMIC_RELAXED);
+  capsule->timing_phase = static_cast<OtisTimingProgressPhase>(
+      __atomic_load_n(&timing_progress_phase, __ATOMIC_RELAXED));
+  capsule->timing_loop_sequence =
+      __atomic_load_n(&timing_loop_sequence, __ATOMIC_RELAXED);
+  capsule->timing_last_progress_ticks =
+      __atomic_load_n(&timing_last_progress_ticks, __ATOMIC_RELAXED);
+  capsule->last_snapshot_session =
+      __atomic_load_n(&timing_last_snapshot_session, __ATOMIC_RELAXED);
+  capsule->last_snapshot_sequence =
+      __atomic_load_n(&timing_last_snapshot_sequence, __ATOMIC_RELAXED);
+  capsule->last_count_sequence =
+      __atomic_load_n(&timing_last_count_sequence, __ATOMIC_RELAXED);
+  capsule->last_estimate_sequence =
+      __atomic_load_n(&timing_last_estimate_sequence, __ATOMIC_RELAXED);
+  capsule->breadcrumb_coherent = false;
+  capsule->breadcrumb_generation =
+      __atomic_load_n(&timing_breadcrumb_generation, __ATOMIC_ACQUIRE);
+}
+
+void freeze_service_fault(const OtisServiceMessage *message) {
+  if (__atomic_load_n(&service_fault_valid, __ATOMIC_ACQUIRE)) return;
+  const OtisServiceMessageKind kind =
+      message == nullptr ? OtisServiceMessageKind::ReceiverQualification
+                         : message->kind;
+  __atomic_store_n(&service_fault_kind, static_cast<uint8_t>(kind),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_sequence,
+                   message == nullptr ? 0u : service_sequence(*message),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_published_ticks,
+                   message == nullptr ? 0u : service_ticks(*message),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_depth, service_to_timing.depth(),
+                   __ATOMIC_RELAXED);
+  OtisServiceFaultCapsule breadcrumb = {};
+  copy_timing_breadcrumb(&breadcrumb);
+  __atomic_store_n(&service_fault_breadcrumb_coherent,
+                   breadcrumb.breadcrumb_coherent, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_breadcrumb_generation,
+                   breadcrumb.breadcrumb_generation, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_taken_kind,
+                   static_cast<uint8_t>(breadcrumb.last_taken_kind),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_taken_sequence,
+                   breadcrumb.last_taken_sequence, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_taken_ticks,
+                   breadcrumb.last_taken_ticks, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_timing_phase,
+                   static_cast<uint8_t>(breadcrumb.timing_phase),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_timing_loop_sequence,
+                   breadcrumb.timing_loop_sequence, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_timing_last_progress_ticks,
+                   breadcrumb.timing_last_progress_ticks, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_snapshot_session,
+                   breadcrumb.last_snapshot_session, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_snapshot_sequence,
+                   breadcrumb.last_snapshot_sequence, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_count_sequence,
+                   breadcrumb.last_count_sequence, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_last_estimate_sequence,
+                   breadcrumb.last_estimate_sequence, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_valid, true, __ATOMIC_RELEASE);
+}
+
 void guard_fault(OtisActuatorTransactionGuard *guard, const char *reason,
                  OtisPartitionFault fault) {
   guard->state = OtisActuatorGuardState::Fault;
@@ -55,12 +254,37 @@ void otis_dual_core_partition_reset(void) {
   critical_to_service.reset();
   evidence_to_service.reset();
   telemetry_to_service.reset();
+  cx318_preview_to_service.reset();
   __atomic_store_n(&telemetry_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&partition_fault,
                    static_cast<uint8_t>(OtisPartitionFault::None),
                    __ATOMIC_RELEASE);
   __atomic_store_n(&fail_static, false, __ATOMIC_RELEASE);
   __atomic_store_n(&timing_owner_active, false, __ATOMIC_RELEASE);
+  __atomic_store_n(&timing_loop_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_progress_phase,
+                   static_cast<uint8_t>(OtisTimingProgressPhase::Reset),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_phase_enter_ticks, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_progress_ticks, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_snapshot_session, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_snapshot_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_count_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_estimate_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_breadcrumb_generation, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_publish_attempts, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_publish_successes, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_publish_failures, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_take_successes, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_published_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_published_ticks, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_taken_sequence, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_taken_ticks, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_valid, false, __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_breadcrumb_coherent, false,
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_fault_breadcrumb_generation, 0u,
+                   __ATOMIC_RELAXED);
 }
 
 void otis_dual_core_set_timing_owner_active(bool active) {
@@ -72,13 +296,37 @@ bool otis_dual_core_timing_owner_active(void) {
 }
 
 bool otis_dual_core_publish_service(const OtisServiceMessage *message) {
-  if (message != nullptr && service_to_timing.try_push(*message)) return true;
+  increment_saturating(&service_publish_attempts);
+  if (message != nullptr && service_to_timing.try_push(*message)) {
+    increment_saturating(&service_publish_successes);
+    __atomic_store_n(&service_last_published_kind,
+                     static_cast<uint8_t>(message->kind), __ATOMIC_RELAXED);
+    __atomic_store_n(&service_last_published_sequence,
+                     service_sequence(*message), __ATOMIC_RELAXED);
+    __atomic_store_n(&service_last_published_ticks, service_ticks(*message),
+                     __ATOMIC_RELEASE);
+    return true;
+  }
+  increment_saturating(&service_publish_failures);
+  freeze_service_fault(message);
   otis_dual_core_latch_fault(OtisPartitionFault::ServiceToTimingExhausted);
   return false;
 }
 
 bool otis_dual_core_take_service(OtisServiceMessage *message) {
-  return service_to_timing.try_pop(message);
+  // The empty poll is the Core 1 hot path.  Do not add diagnostic atomic
+  // traffic to it; account only actual cross-core transfers.
+  if (!service_to_timing.try_pop(message)) return false;
+  increment_saturating(&service_take_successes);
+  begin_timing_breadcrumb_write();
+  __atomic_store_n(&service_last_taken_kind,
+                   static_cast<uint8_t>(message->kind), __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_taken_sequence, service_sequence(*message),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&service_last_taken_ticks, service_ticks(*message),
+                   __ATOMIC_RELEASE);
+  end_timing_breadcrumb_write();
+  return true;
 }
 
 bool otis_dual_core_publish_observation(
@@ -128,6 +376,51 @@ bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message) {
   return telemetry_to_service.try_pop(message);
 }
 
+bool otis_dual_core_publish_cx318_preview(
+    const OtisCx318PreviewRecordMessage *message) {
+  if (message != nullptr && cx318_preview_to_service.try_push(*message))
+    return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewExhausted);
+  return false;
+}
+
+bool otis_dual_core_take_cx318_preview(
+    OtisCx318PreviewRecordMessage *message) {
+  return cx318_preview_to_service.try_pop(message);
+}
+
+void otis_dual_core_note_timing_progress(OtisTimingProgressPhase phase,
+                                         uint64_t now_ticks) {
+  begin_timing_breadcrumb_write();
+  if (phase == OtisTimingProgressPhase::LoopEnter)
+    increment_saturating(&timing_loop_sequence);
+  __atomic_store_n(&timing_progress_phase, static_cast<uint8_t>(phase),
+                   __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_phase_enter_ticks, now_ticks, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_progress_ticks, now_ticks, __ATOMIC_RELEASE);
+  end_timing_breadcrumb_write();
+}
+
+void otis_dual_core_note_timing_snapshot(uint32_t session, uint32_t sequence) {
+  begin_timing_breadcrumb_write();
+  __atomic_store_n(&timing_last_snapshot_session, session, __ATOMIC_RELAXED);
+  __atomic_store_n(&timing_last_snapshot_sequence, sequence,
+                   __ATOMIC_RELEASE);
+  end_timing_breadcrumb_write();
+}
+
+void otis_dual_core_note_timing_count(uint32_t sequence) {
+  begin_timing_breadcrumb_write();
+  __atomic_store_n(&timing_last_count_sequence, sequence, __ATOMIC_RELEASE);
+  end_timing_breadcrumb_write();
+}
+
+void otis_dual_core_note_timing_estimate(uint32_t sequence) {
+  begin_timing_breadcrumb_write();
+  __atomic_store_n(&timing_last_estimate_sequence, sequence, __ATOMIC_RELEASE);
+  end_timing_breadcrumb_write();
+}
+
 void otis_dual_core_latch_fault(OtisPartitionFault fault) {
   if (fault == OtisPartitionFault::None) return;
   uint8_t expected = static_cast<uint8_t>(OtisPartitionFault::None);
@@ -143,22 +436,73 @@ bool otis_dual_core_fail_static(void) {
 
 void otis_dual_core_get_stats(OtisDualCoreQueueStats *stats) {
   if (stats == nullptr) return;
-  *stats = {
-      service_to_timing.depth(),
-      service_to_timing.high_water(),
-      observation_to_service.depth(),
-      observation_to_service.high_water(),
-      critical_to_service.depth(),
-      critical_to_service.high_water(),
-      evidence_to_service.depth(),
-      evidence_to_service.high_water(),
-      telemetry_to_service.depth(),
-      telemetry_to_service.high_water(),
-      __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE),
-      static_cast<OtisPartitionFault>(
-          __atomic_load_n(&partition_fault, __ATOMIC_ACQUIRE)),
-      __atomic_load_n(&fail_static, __ATOMIC_ACQUIRE),
+  *stats = {};
+  stats->service_to_timing_depth = service_to_timing.depth();
+  stats->service_to_timing_high_water = service_to_timing.high_water();
+  stats->observation_depth = observation_to_service.depth();
+  stats->observation_high_water = observation_to_service.high_water();
+  stats->critical_depth = critical_to_service.depth();
+  stats->critical_high_water = critical_to_service.high_water();
+  stats->evidence_depth = evidence_to_service.depth();
+  stats->evidence_high_water = evidence_to_service.high_water();
+  stats->telemetry_depth = telemetry_to_service.depth();
+  stats->telemetry_high_water = telemetry_to_service.high_water();
+  stats->telemetry_dropped =
+      __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE);
+  stats->cx318_preview_depth = cx318_preview_to_service.depth();
+  stats->cx318_preview_high_water = cx318_preview_to_service.high_water();
+  stats->timing_progress = {
+      __atomic_load_n(&timing_loop_sequence, __ATOMIC_ACQUIRE),
+      static_cast<OtisTimingProgressPhase>(
+          __atomic_load_n(&timing_progress_phase, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&timing_phase_enter_ticks, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&timing_last_progress_ticks, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&timing_last_snapshot_session, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&timing_last_snapshot_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&timing_last_count_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&timing_last_estimate_sequence, __ATOMIC_ACQUIRE),
   };
+  stats->service_activity = {
+      __atomic_load_n(&service_publish_attempts, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_publish_successes, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_publish_failures, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_take_successes, __ATOMIC_ACQUIRE),
+      static_cast<OtisServiceMessageKind>(
+          __atomic_load_n(&service_last_published_kind, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&service_last_published_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_last_published_ticks, __ATOMIC_ACQUIRE),
+      static_cast<OtisServiceMessageKind>(
+          __atomic_load_n(&service_last_taken_kind, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&service_last_taken_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_last_taken_ticks, __ATOMIC_ACQUIRE),
+  };
+  stats->service_fault = {
+      __atomic_load_n(&service_fault_valid, __ATOMIC_ACQUIRE),
+      static_cast<OtisServiceMessageKind>(
+          __atomic_load_n(&service_fault_kind, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&service_fault_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_published_ticks, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_depth, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_breadcrumb_coherent, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_breadcrumb_generation,
+                      __ATOMIC_ACQUIRE),
+      static_cast<OtisServiceMessageKind>(
+          __atomic_load_n(&service_fault_last_taken_kind, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&service_fault_last_taken_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_last_taken_ticks, __ATOMIC_ACQUIRE),
+      static_cast<OtisTimingProgressPhase>(
+          __atomic_load_n(&service_fault_timing_phase, __ATOMIC_ACQUIRE)),
+      __atomic_load_n(&service_fault_timing_loop_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_timing_last_progress_ticks,
+                      __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_last_snapshot_session, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_last_snapshot_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_last_count_sequence, __ATOMIC_ACQUIRE),
+      __atomic_load_n(&service_fault_last_estimate_sequence, __ATOMIC_ACQUIRE),
+  };
+  stats->fault = static_cast<OtisPartitionFault>(
+      __atomic_load_n(&partition_fault, __ATOMIC_ACQUIRE));
+  stats->fail_static = __atomic_load_n(&fail_static, __ATOMIC_ACQUIRE);
 }
 
 const char *otis_partition_fault_name(OtisPartitionFault fault) {
@@ -173,12 +517,72 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
       return "critical_queue_exhausted";
     case OtisPartitionFault::EvidenceExhausted:
       return "evidence_queue_exhausted";
+    case OtisPartitionFault::Cx318PreviewExhausted:
+      return "cx318_preview_queue_exhausted";
+    case OtisPartitionFault::Cx318PreviewFault:
+      return "cx318_preview_processing_fault";
     case OtisPartitionFault::ActuatorTimeout:
       return "actuator_acknowledgement_timeout";
     case OtisPartitionFault::ActuatorAcknowledgementMismatch:
       return "actuator_acknowledgement_mismatch";
   }
   return "unknown_partition_fault";
+}
+
+const char *otis_timing_progress_phase_name(OtisTimingProgressPhase phase) {
+  switch (phase) {
+    case OtisTimingProgressPhase::Reset:
+      return "reset";
+    case OtisTimingProgressPhase::LoopEnter:
+      return "loop_enter";
+    case OtisTimingProgressPhase::ServiceInput:
+      return "service_input";
+    case OtisTimingProgressPhase::PpsObserver:
+      return "pps_observer";
+    case OtisTimingProgressPhase::CaptureBackend:
+      return "capture_backend";
+    case OtisTimingProgressPhase::BoundaryDrain:
+      return "boundary_drain";
+    case OtisTimingProgressPhase::CaptureDrain:
+      return "capture_drain";
+    case OtisTimingProgressPhase::GateService:
+      return "gate_service";
+    case OtisTimingProgressPhase::Cx317EstimatePrepare:
+      return "cx317_estimate_prepare";
+    case OtisTimingProgressPhase::Cx317EstimateFormat:
+      return "cx317_estimate_format";
+    case OtisTimingProgressPhase::Cx317EstimatePublish:
+      return "cx317_estimate_publish";
+    case OtisTimingProgressPhase::Cx317ActivePrepare:
+      return "cx317_active_prepare";
+    case OtisTimingProgressPhase::Cx317ActiveFormat:
+      return "cx317_active_format";
+    case OtisTimingProgressPhase::Cx317ActivePublish:
+      return "cx317_active_publish";
+    case OtisTimingProgressPhase::Cx318Preview:
+      return "cx318_preview";
+    case OtisTimingProgressPhase::TimingHealth:
+      return "timing_health";
+    case OtisTimingProgressPhase::LoopIdle:
+      return "loop_idle";
+  }
+  return "unknown";
+}
+
+const char *otis_service_message_kind_name(OtisServiceMessageKind kind) {
+  switch (kind) {
+    case OtisServiceMessageKind::ReceiverQualification:
+      return "receiver_qualification";
+    case OtisServiceMessageKind::Environment:
+      return "environment";
+    case OtisServiceMessageKind::AppliedDacState:
+      return "applied_dac_state";
+    case OtisServiceMessageKind::RunControl:
+      return "run_control";
+    case OtisServiceMessageKind::ActuatorAcknowledgement:
+      return "actuator_acknowledgement";
+  }
+  return "unknown";
 }
 
 void otis_actuator_guard_init(OtisActuatorTransactionGuard *guard) {
