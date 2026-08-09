@@ -142,7 +142,9 @@ def read_board_identity(device: str, *, arduino_cli: str = "arduino-cli") -> dic
     boards = item.get("matching_boards", [])
     identity = {
         "address": str(port.get("address", "")),
-        "hardware_id": str(item.get("hardware_id", "")),
+        # Arduino CLI 1.2 reports hardware_id inside the port object; retain
+        # compatibility with older output that placed it on the detected item.
+        "hardware_id": str(port.get("hardware_id", item.get("hardware_id", ""))),
         "serial_number": str(properties.get("serialNumber", "")),
         "vid": str(properties.get("vid", "")),
         "pid": str(properties.get("pid", "")),
