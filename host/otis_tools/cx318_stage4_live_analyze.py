@@ -30,7 +30,9 @@ from .cx318_stage4_firmware_parity import (
     _boundaries,
     _host_outputs,
 )
-from .evidence import validate_evidence_snapshot
+from .cx318_stage4_static_code_preflight import (
+    validate_static_proof as _validate_setup_static_proof,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .service_plane_probe import HOST_MARKER_PREFIX
 
@@ -208,89 +210,8 @@ def _safe_repo_artifact(value: Any) -> tuple[str, Path]:
 
 
 def _validate_static_proof(proof: dict[str, Any]) -> tuple[int, int, str]:
-    if proof.get("schema_version") != 1:
-        raise ValueError("static-code proof schema_version must be 1")
-    if proof.get("proof_type") != "cx318_stage4_exact_static_code_preflight_v1":
-        raise ValueError("static-code proof type is not CX318 Stage 4 preflight v1")
-    if proof.get("producer_tool") != "cx318_stage4_static_code_preflight_v1":
-        raise ValueError("static-code proof producer is not the frozen preflight tool")
-    if proof.get("status") != "passed":
-        raise ValueError("static-code preflight did not pass")
-    code = _parse_code(proof["confirmed_code"])
-    if isinstance(proof.get("dac_epoch"), bool):
-        raise ValueError("static-code proof dac_epoch cannot be Boolean")
-    dac_epoch = int(proof["dac_epoch"])
-    if proof.get("physical_code_status") != "confirmed_exact_static_code":
-        raise ValueError("static-code proof does not claim an exact physical code")
-    if proof.get("continuous_identity_to_flash") is not True:
-        raise ValueError("static-code proof lacks continuous identity to flash")
-    if proof.get("intervening_dac_writes") != 0:
-        raise ValueError("static-code proof records an intervening DAC write")
-    if proof.get("intervening_power_losses") != 0:
-        raise ValueError("static-code proof records an intervening power loss")
-
-    source_relative, source_run = _safe_repo_artifact(proof["source_run_path"])
-    source_manifest = load_manifest(source_run)
-    if source_manifest.is_template or not (source_run / "COMPLETE").is_file():
-        raise ValueError("static-code proof source run is not complete evidence")
-    evidence_snapshot = source_run / "evidence_manifest.json"
-    raw_log = source_run / "raw/serial.log"
-    health_path = _contract_path(source_manifest, "health_v1")
-    identities = proof["source_identities"]
-    expected_identities = {
-        "run_manifest_sha256": _sha256_file(source_manifest.path),
-        "evidence_snapshot_sha256": _sha256_file(evidence_snapshot),
-        "raw_serial_sha256": _sha256_file(raw_log),
-        "health_sha256": _sha256_file(health_path),
-    }
-    if not isinstance(identities, dict) or any(
-        identities.get(name) != digest for name, digest in expected_identities.items()
-    ):
-        raise ValueError("static-code proof source identities do not match source files")
-    snapshot = json.loads(evidence_snapshot.read_text(encoding="utf-8"))
-    if snapshot.get("run_state") != "complete":
-        raise ValueError("static-code proof source snapshot is not complete")
-    failures, _warnings = validate_evidence_snapshot(source_run, source_manifest)
-    if failures:
-        raise ValueError("static-code proof source snapshot is invalid: " + "; ".join(failures[:4]))
-
-    source_health = _read_rows(health_path)
-    expected_code_text = f"0x{code:04X}"
-    source_expected = {
-        ("dac", "applied_code_known"): "true",
-        ("dac", "last_write_ok"): "true",
-        ("dac", "last_requested_code"): expected_code_text,
-        ("dac", "last_applied_code"): expected_code_text,
-    }
-    seen: set[tuple[str, str]] = set()
-    source_mismatches: list[str] = []
-    for row in source_health:
-        key = (row["component"], row["status_key"])
-        if key not in source_expected:
-            continue
-        seen.add(key)
-        if row["status_value"].strip() != source_expected[key]:
-            source_mismatches.append(
-                f"{key[0]}.{key[1]}={row['status_value'].strip()!r}"
-            )
-    if seen != set(source_expected) or source_mismatches:
-        raise ValueError("source health does not prove the exact requested/applied DAC code")
-    markers = _host_markers(raw_log)
-    commands = [
-        str(item.get("command", ""))
-        for item in markers
-        if item.get("event") == "host_command_sent"
-    ]
-    if "DAC?" not in commands:
-        raise ValueError("source capture has no DAC? confirmation query")
-    forbidden = [
-        command
-        for command in commands
-        if command.startswith(("DAC SET", "DAC MID", "DAC ZERO", "ACTIVE "))
-    ]
-    if forbidden:
-        raise ValueError(f"source confirmation capture contains prohibited commands: {forbidden}")
-    return code, dac_epoch, source_relative
+    setup = _validate_setup_static_proof(proof)
+    return setup.confirmed_code, setup.dac_epoch, setup.source_run_path
 
 
 def _static_code_binding(run_dir: Path, manifest_data: dict[str, Any]) -> tuple[Check, dict[str, Any]]:
@@ -1012,6 +933,10 @@ def analyze_run(
     *,
     build_manifest_path: Path | None = None,
     uf2_path: Path | None = None,
+    expected_stage: str = EXPECTED_STAGE,
+    hard_minimum_frequency_events: int = 2,
+    hard_minimum_duration_s: float = 7200,
+    tool_version: str = TOOL_VERSION,
 ) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
@@ -1038,7 +963,7 @@ def analyze_run(
     rows = {name: _read_rows(paths[name]) for name in ("counts", "snapshots", "health", "environment", "dac", "active", "rph", "phe", "hpr")}
     capture_state = json.loads(paths["capture_state"].read_text(encoding="utf-8"))
     checks = _validate_contracts(manifest, paths)
-    checks.append(Check("stage_identity", manifest_data.get("stage") == EXPECTED_STAGE, f"stage={manifest_data.get('stage')!r}"))
+    checks.append(Check("stage_identity", manifest_data.get("stage") == expected_stage, f"stage={manifest_data.get('stage')!r}"))
     checks.append(
         Check(
             "finite_capture_complete",
@@ -1099,15 +1024,15 @@ def analyze_run(
         minimum_frequency_events = math.ceil(
             _declared_minimum(
                 manifest_data.get("stage4_live_preview", {}).get(
-                    "minimum_authoritative_frequency_estimates", 2
+                    "minimum_authoritative_frequency_estimates", hard_minimum_frequency_events
                 ),
-                hard_minimum=2,
+                hard_minimum=hard_minimum_frequency_events,
                 name="minimum_authoritative_frequency_estimates",
             )
         )
         minimum_duration_s = _declared_minimum(
-            manifest_data.get("stage4_live_preview", {}).get("minimum_duration_s", 7200),
-            hard_minimum=7200,
+            manifest_data.get("stage4_live_preview", {}).get("minimum_duration_s", hard_minimum_duration_s),
+            hard_minimum=hard_minimum_duration_s,
             name="minimum_duration_s",
         )
         checks.extend(
@@ -1141,7 +1066,7 @@ def analyze_run(
     }
     return {
         "schema_version": 1,
-        "tool": TOOL_VERSION,
+        "tool": tool_version,
         "status": "passed" if passed else "failed",
         "run_id": manifest.run_id,
         "run_dir": str(run_dir),

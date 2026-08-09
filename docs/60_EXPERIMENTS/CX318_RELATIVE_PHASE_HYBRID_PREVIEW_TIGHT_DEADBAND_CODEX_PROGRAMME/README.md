@@ -62,6 +62,20 @@ sides of the tighter frequency band.
 Failure is useful when it is bounded, replayable and leaves the last confirmed
 DAC state known. Do not extend a run merely to rescue a hypothesis.
 
+## Operator amendments during execution
+
+On 2026-08-09 the operator required a finite evidence-bearing rehearsal before
+every subsequent long hardware run in this programme. The rehearsal must use
+the same exact firmware/profile, authority boundary and stop conditions as the
+long run, and it must pass before that long run starts. A failed rehearsal is a
+stop, not permission to weaken a gate.
+
+The operator also authorized one controlled Stage 4 premise-setting
+`DAC SET 0xA828` transaction after the reboot made the external DAC register
+unknowable. It is a separately captured setup stimulus, not automatic control
+authority. No second Stage 4 DAC write is permitted, and phase/hybrid authority
+remains zero.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the
