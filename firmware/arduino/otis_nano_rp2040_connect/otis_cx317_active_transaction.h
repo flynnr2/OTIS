@@ -42,6 +42,11 @@ struct OtisCx317ActiveBinding {
   uint16_t correction_limit;
   uint16_t cumulative_limit_codes;
   bool prospective_dither_stop_enabled;
+  // Historical campaigns classify the V2 float deadband in the response
+  // transaction.  CX318 Stage 5 disables that classification because V2 is
+  // a zero-authority shadow and tight integer-count residence is owned by the
+  // separate Stage 5 state machine.
+  bool legacy_response_deadband_enabled;
 };
 
 struct OtisCx317ActiveEligibility {

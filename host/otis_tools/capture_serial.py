@@ -30,6 +30,7 @@ RECORD_CONTRACTS = {
     "RPH": "relative_phase_observations_v1",
     "PHE": "phase_estimator_outputs_v1",
     "HPR": "hybrid_preview_decisions_v1",
+    "TDB": "tight_deadband_decisions_v1",
 }
 
 

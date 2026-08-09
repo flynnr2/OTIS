@@ -6,7 +6,8 @@
 int main() {
   OtisCx317SnapshotEstimator estimator;
   otis_cx317_snapshot_estimator_init(&estimator);
-  std::cout << "kind,first_sequence,last_sequence,frequency_hz\n";
+  std::cout << "kind,first_sequence,last_sequence,frequency_hz,"
+               "selected_accumulated_edge_error_counts\n";
   for (uint32_t sequence = 1u; sequence <= 1261u; ++sequence) {
     const bool invalid = sequence == 661u;
     const uint32_t count = 10000000u + (sequence % 17u == 0u ? 1u : 0u);
@@ -16,12 +17,13 @@ int main() {
     if (output.diagnostic_available) {
       std::cout << "diagnostic," << output.diagnostic_first_sequence << ','
                 << output.last_sequence << ',' << std::setprecision(17)
-                << output.diagnostic_frequency_hz << '\n';
+                << output.diagnostic_frequency_hz << ",\n";
     }
     if (output.selected_available) {
       std::cout << "selected," << output.selected_first_sequence << ','
                 << output.last_sequence << ',' << std::setprecision(17)
-                << output.selected_frequency_hz << '\n';
+                << output.selected_frequency_hz << ','
+                << output.selected_accumulated_edge_error_counts << '\n';
     }
   }
   return 0;

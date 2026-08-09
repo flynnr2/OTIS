@@ -22,7 +22,12 @@ bool reset_pending = false;
 uint64_t previous_reference_timestamp = 0u;
 uint64_t unwrapped_reference_timestamp = 0u;
 uint16_t static_code = 0u;
-uint32_t static_dac_epoch = 0u;
+// The timing owner is the sole writer after it consumes Core 0's confirmed
+// application acknowledgement.  The generation still makes the separately
+// atomic code and epoch one coherent boundary-time publication.
+uint32_t applied_code_generation = 0u;
+uint32_t published_applied_code = 0u;
+uint32_t published_dac_epoch = 0u;
 uint32_t preview_sequence = 0u;
 uint32_t published_records = 0u;
 uint32_t last_phase_epoch = 0u;
@@ -38,6 +43,50 @@ T atomic_load_acquire(const T *value) {
 template <typename T>
 void atomic_store_release(T *destination, T value) {
   __atomic_store_n(destination, value, __ATOMIC_RELEASE);
+}
+
+template <typename T>
+T atomic_load_seq_cst(const T *value) {
+  return __atomic_load_n(value, __ATOMIC_SEQ_CST);
+}
+
+template <typename T>
+void atomic_store_seq_cst(T *destination, T value) {
+  __atomic_store_n(destination, value, __ATOMIC_SEQ_CST);
+}
+
+bool characterized_code(uint16_t code) {
+  return code >= kMinimumCharacterizedCode &&
+         code <= kMaximumCharacterizedCode;
+}
+
+void initialize_applied_code(uint16_t code, uint32_t dac_epoch) {
+  // begin() has withdrawn initialized before reaching here, so Core 1 cannot
+  // consume this state.  Reset the sequence for a fresh preview lifetime.
+  atomic_store_release(&applied_code_generation, static_cast<uint32_t>(0));
+  atomic_store_release(&published_applied_code,
+                       static_cast<uint32_t>(code));
+  atomic_store_release(&published_dac_epoch, dac_epoch);
+}
+
+void snapshot_applied_code(uint16_t *code, uint32_t *dac_epoch) {
+  // Sequential consistency makes the generation checks bracket the code/epoch
+  // reads in one cross-core order.  A boundary therefore observes either the
+  // complete old pair or the complete new pair, never a mixed pair.
+  for (;;) {
+    const uint32_t before = atomic_load_seq_cst(&applied_code_generation);
+    if ((before & 1u) != 0u) continue;
+    const uint32_t published_code =
+        atomic_load_seq_cst(&published_applied_code);
+    const uint32_t published_epoch =
+        atomic_load_seq_cst(&published_dac_epoch);
+    const uint32_t after = atomic_load_seq_cst(&applied_code_generation);
+    if (before == after && (after & 1u) == 0u) {
+      *code = static_cast<uint16_t>(published_code);
+      *dac_epoch = published_epoch;
+      return;
+    }
+  }
 }
 
 template <size_t Capacity>
@@ -70,14 +119,12 @@ uint64_t unwrap_reference_timestamp(uint64_t raw_ticks) {
 
 bool otis_cx318_preview_live_begin(uint16_t confirmed_static_code,
                                    uint32_t dac_epoch) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   // Core 0 publishes status while Core 1 owns the preview engine.  Withdraw
   // readiness before changing the immutable binding and publish it only after
   // the complete state has been initialized.
   atomic_store_release(&initialized, false);
-  if (confirmed_static_code < kMinimumCharacterizedCode ||
-      confirmed_static_code > kMaximumCharacterizedCode)
-    return false;
+  if (!characterized_code(confirmed_static_code)) return false;
   engine = {};
   if (!otis_cx318_selected_preview_init(&engine, confirmed_static_code))
     return false;
@@ -86,7 +133,7 @@ bool otis_cx318_preview_live_begin(uint16_t confirmed_static_code,
   previous_reference_timestamp = 0u;
   unwrapped_reference_timestamp = 0u;
   static_code = confirmed_static_code;
-  static_dac_epoch = dac_epoch;
+  initialize_applied_code(confirmed_static_code, dac_epoch);
   preview_sequence = 0u;
   have_frequency_event_timestamp = false;
   last_frequency_event_timestamp = 0u;
@@ -102,15 +149,51 @@ bool otis_cx318_preview_live_begin(uint16_t confirmed_static_code,
 #endif
 }
 
+bool otis_cx318_preview_live_update_applied_code(
+    uint16_t confirmed_applied_code, uint32_t dac_epoch) {
+#if OTIS_ENABLE_CX318_PREVIEW
+  if (!atomic_load_acquire(&initialized) ||
+      !characterized_code(confirmed_applied_code))
+    return false;
+
+  // The timing owner is the only writer, so the stable even generation gives
+  // it the last pair without a compare/exchange or secondary ownership.
+  const uint32_t generation =
+      atomic_load_seq_cst(&applied_code_generation);
+  if ((generation & 1u) != 0u) return false;
+  const uint32_t current_epoch = atomic_load_seq_cst(&published_dac_epoch);
+  const uint16_t current_code = static_cast<uint16_t>(
+      atomic_load_seq_cst(&published_applied_code));
+  if (dac_epoch < current_epoch ||
+      (dac_epoch == current_epoch && confirmed_applied_code != current_code))
+    return false;
+  if (dac_epoch == current_epoch) return true;
+
+  atomic_store_seq_cst(&applied_code_generation, generation + 1u);
+  atomic_store_seq_cst(&published_applied_code,
+                       static_cast<uint32_t>(confirmed_applied_code));
+  atomic_store_seq_cst(&published_dac_epoch, dac_epoch);
+  atomic_store_seq_cst(&applied_code_generation, generation + 2u);
+  return true;
+#else
+  (void)confirmed_applied_code;
+  (void)dac_epoch;
+  return false;
+#endif
+}
+
 void otis_cx318_preview_live_on_boundary(
     const OtisPpsCountBoundaryObservation *observation,
     uint32_t snapshot_status, uint32_t counted_edges,
     bool counted_edges_available, bool reference_qualified,
     bool phase_step_detected) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   if (!atomic_load_acquire(&initialized) || observation == nullptr ||
       otis_dual_core_fail_static())
     return;
+  uint16_t actual_applied_code = 0u;
+  uint32_t dac_epoch = 0u;
+  snapshot_applied_code(&actual_applied_code, &dac_epoch);
   const uint64_t unwrapped_ticks =
       unwrap_reference_timestamp(observation->pps_timestamp_ticks);
   const OtisCx318SelectedPreviewInput input = {
@@ -121,10 +204,10 @@ void otis_cx318_preview_live_on_boundary(
       observation->pps_timestamp_ticks,
       snapshot_status,
       counted_edges,
-      static_dac_epoch,
+      dac_epoch,
       static_cast<double>(unwrapped_ticks) /
           static_cast<double>(kReferenceTicksPerSecond),
-      static_code,
+      actual_applied_code,
       counted_edges_available,
       reference_qualified,
       reset_pending,
@@ -223,7 +306,7 @@ void otis_cx318_preview_live_on_boundary(
 }
 
 void otis_cx318_preview_live_note_reset(void) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   reset_pending = true;
   have_reference_timestamp = false;
   have_frequency_event_timestamp = false;
@@ -239,7 +322,8 @@ void otis_cx318_preview_live_get_status(OtisCx318PreviewLiveStatus *status) {
   status->static_code_bound = ready;
   if (ready) {
     status->static_code = static_code;
-    status->dac_epoch = static_dac_epoch;
+    status->applied_code_bound = true;
+    snapshot_applied_code(&status->applied_code, &status->dac_epoch);
   }
   status->published_records = atomic_load_acquire(&published_records);
   status->last_phase_epoch = atomic_load_acquire(&last_phase_epoch);

@@ -55,6 +55,9 @@ void otis_cx317_snapshot_estimator_ingest(
     output->selected_frequency_hz =
         static_cast<double>(estimator->selected_sum) /
         OTIS_CX317_SELECTED_SPAN_INTERVALS;
+    output->selected_accumulated_edge_error_counts =
+        static_cast<int64_t>(estimator->selected_sum) -
+        static_cast<int64_t>(OTIS_CX317_SELECTED_SPAN_INTERVALS) * 10000000ll;
     output->selected_first_sequence = estimator->selected_first_sequence;
     estimator->selected_sum = 0u;
     estimator->selected_count = 0u;

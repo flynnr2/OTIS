@@ -250,7 +250,7 @@ void configure_selected_capabilities(void) {
     OTIS_ENABLE_ENV_SENSORS && \
     (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
   otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Sensors,
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
                               OtisBootCapabilityRequirement::Required);
 #else
                               OtisBootCapabilityRequirement::Optional);
@@ -266,7 +266,7 @@ void configure_selected_capabilities(void) {
                               OtisBootCapability::Phase4Preview,
                               OtisBootCapabilityRequirement::Required);
 #endif
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   otis_boot_capability_select(&boot_capabilities,
                               OtisBootCapability::Cx318Preview,
                               OtisBootCapabilityRequirement::Required);
@@ -1072,6 +1072,13 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
 
 OtisCx317StaticCodeState cx317_static_code_state(void) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+  // The no-write rehearsal consumes the Stage 4-sealed A828 premise as a
+  // build-bound observation context only.  Active health remains unconfirmed
+  // until the exact Stage 5 setup write creates real Core 0 DAC evidence.
+  if (!dual_core_static_code.available)
+    return {true, true, true, OTIS_CX318_STAGE5_INITIAL_CODE};
+#endif
   return dual_core_static_code;
 #else
   OtisDacAd5693rStatus status;
@@ -1160,9 +1167,20 @@ void service_cx317_active_health(void) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (dual_core_static_code.available &&
       otis_cx317_active_live_manual_start_allowed(
-          dual_core_static_code.applied_code))
+          dual_core_static_code.applied_code)) {
     otis_cx317_active_live_note_manual_start(
         dual_core_static_code.applied_code, true, now_ms / 1000u);
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+    OtisCx317ActiveLiveStatus active_status = {};
+    otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
+    otis_cx317_preview_live_on_dac_applied_epoch(
+        dual_core_static_code.applied_code, active_status.dac_epoch,
+        now_ms / 1000u);
+    if (!otis_cx318_preview_live_update_applied_code(
+            dual_core_static_code.applied_code, active_status.dac_epoch))
+      otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewFault);
+#endif
+  }
 #endif
   otis_cx317_active_live_service(now_ms / 1000u);
 #endif
@@ -1229,7 +1247,7 @@ void emit_pps_count_boundary(
       window_completed && runtime_state.tcxo.last_observation_valid &&
           preview_receiver_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   otis_cx318_preview_live_on_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
@@ -1292,9 +1310,19 @@ void service_cx317_active_application_outcome(void) {
       active_outcome.applied ? OTIS_FLAG_NONE
                              : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 #endif
-  if (active_outcome.applied)
+  if (active_outcome.applied) {
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+    otis_cx317_preview_live_on_dac_applied_epoch(
+        active_outcome.applied_code, active_outcome.dac_epoch,
+        millis() / 1000u);
+    if (!otis_cx318_preview_live_update_applied_code(
+            active_outcome.applied_code, active_outcome.dac_epoch))
+      otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewFault);
+#else
     otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
                                            millis() / 1000u);
+#endif
+  }
   otis_cx317_active_live_complete_application_evidence(
       active_outcome.request_sequence, active_outcome.applied,
       millis() / 1000u);
@@ -1534,6 +1562,9 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_cx318_stage4_preview",
                   OTIS_ENABLE_CX318_STAGE4_PREVIEW, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_cx318_stage5_preview",
+                  OTIS_ENABLE_CX318_STAGE5_PREVIEW, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_cx318_stage4_premise_setup",
                   OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -1551,6 +1582,7 @@ void emit_common_boot_status(void) {
   emit_status("cx318_premise", "automatic_authority", "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
+#if OTIS_ENABLE_CX318_PREVIEW
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW
   emit_status_u16_hex("cx318_preview", "confirmed_static_code",
                       OTIS_CX318_STAGE4_STATIC_CODE, OTIS_SEVERITY_INFO,
@@ -1558,6 +1590,14 @@ void emit_common_boot_status(void) {
   emit_status_u32("cx318_preview", "dac_epoch",
                   OTIS_CX318_STAGE4_DAC_EPOCH, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
+  emit_status_u16_hex("cx318_preview", "confirmed_initial_code",
+                      OTIS_CX318_STAGE5_INITIAL_CODE, OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("cx318_preview", "initial_dac_epoch",
+                  OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
   emit_status("cx318_preview", "actionable", "false", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("cx318_preview", "actuation_authorized", "false",
@@ -2213,7 +2253,7 @@ void emit_periodic_status(void) {
 #if OTIS_ENABLE_GNSS_RECEIVER
   emit_gnss_receiver_status(now_ms);
 #endif
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   OtisCx318PreviewLiveStatus cx318 = {};
   otis_cx318_preview_live_get_status(&cx318);
   emit_status("cx318_preview", "initialized",
@@ -2223,6 +2263,10 @@ void emit_periodic_status(void) {
                                 : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   emit_status_u16_hex("cx318_preview", "static_code", cx318.static_code,
                       OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u16_hex("cx318_preview", "applied_code", cx318.applied_code,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("cx318_preview", "dac_epoch", cx318.dac_epoch,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("cx318_preview", "published_records",
                   cx318.published_records, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
@@ -3255,6 +3299,13 @@ void boot_phase_preview_init(void) {
       otis_cx317_preview_live_begin(millis() / 1000u) &&
       otis_cx317_active_live_begin();
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+  const bool cx318_preview_ready = otis_cx318_preview_live_begin(
+      OTIS_CX318_STAGE5_INITIAL_CODE,
+      OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH);
+  record_capability_result(OtisBootCapability::Cx318Preview,
+                           cx318_preview_ready);
+#endif
 #elif OTIS_ENABLE_CX318_STAGE4_PREVIEW
   const bool preview_ready = otis_cx318_preview_live_begin(
       OTIS_CX318_STAGE4_STATIC_CODE, OTIS_CX318_STAGE4_DAC_EPOCH);

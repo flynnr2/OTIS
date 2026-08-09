@@ -79,13 +79,36 @@ int main() {
   assert(!record.frequency_observation_event);
   assert(record.frequency_estimate_age_s == 1.0);
 
+  // Core 0 may only publish a confirmed, characterized code with a forward
+  // epoch.  Core 1 must consume the pair as one boundary-time context.
+  assert(!otis_cx318_preview_live_update_applied_code(0xA7FFu, 1u));
+  assert(!otis_cx318_preview_live_update_applied_code(0xA951u, 0u));
+  assert(otis_cx318_preview_live_update_applied_code(0xA951u, 1u));
+  assert(otis_cx318_preview_live_update_applied_code(0xA951u, 1u));
+  assert(!otis_cx318_preview_live_update_applied_code(0xA952u, 0u));
+
+  rolling.sequence = 603u;
+  rolling.reference_sequence = 703u;
+  rolling.pps_timestamp_ticks += 16000000ull;
+  rolling.cumulative_down_counter -= 10000000u;
+  otis_cx318_preview_live_on_boundary(&rolling, 0u, 10000000u, true, true,
+                                      false);
+  assert(otis_dual_core_take_cx318_preview(&record));
+  assert(record.dac_epoch == 1u);
+  assert(record.actual_applied_code == 0xA951u);
+  assert(!record.modeled_frequency_available);
+  assert(strcmp(record.decision_reason, "dac_epoch_bumpless_reseed") == 0);
+
   OtisCx318PreviewLiveStatus status = {};
   otis_cx318_preview_live_get_status(&status);
   assert(status.initialized);
   assert(status.static_code_bound);
   assert(status.static_code == 0xA950u);
-  assert(status.published_records == 602u);
+  assert(status.applied_code_bound);
+  assert(status.applied_code == 0xA951u);
+  assert(status.dac_epoch == 1u);
+  assert(status.published_records == 603u);
   assert(status.last_phase_epoch == 1u);
-  assert(status.last_observation_sequence == 601u);
+  assert(status.last_observation_sequence == 602u);
   return 0;
 }

@@ -28,6 +28,11 @@ constexpr char kNumericalPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
+#elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
+constexpr char kNumericalPolicyHash[] =
+    "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
+constexpr char kActivePolicyHash[] =
+    "bd4738dd89266591f143fda1c243615c1e9933799d6d0f0c1f6101c8d8810c4f";
 #else
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
@@ -59,6 +64,14 @@ constexpr char kExpectedProfile[] =
     OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
 constexpr char kRunIdentity[] = "cx317_stage7_rehearsal:3170005";
 constexpr char kExpectedProfile[] = "cx317_dual_core_active_rehearsal";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_LOWER
+constexpr char kRunIdentity[] = "cx318_stage5_tight_lower:3185001";
+constexpr char kExpectedProfile[] = "cx318_stage5_tight_lower";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER
+constexpr char kRunIdentity[] = "cx318_stage5_tight_upper:3185002";
+constexpr char kExpectedProfile[] = "cx318_stage5_tight_upper";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -137,10 +150,19 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
       21u,
       static_cast<uint16_t>(OTIS_CX317_ACTIVE_CORRECTION_LIMIT),
       static_cast<uint16_t>(OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES),
-#if OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B
+#if OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_B || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_LOWER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER
       true,
 #else
       false,
+#endif
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+      false,
+#else
+      true,
 #endif
   };
 }
@@ -696,6 +718,7 @@ bool otis_cx317_active_live_on_cross_core_ack(
   deferred_application_outcome.application_attempted = true;
   deferred_application_outcome.request_sequence =
       acknowledgement->request_sequence;
+  deferred_application_outcome.dac_epoch = transaction.dac_epoch;
   deferred_application_outcome.requested_code =
       acknowledgement->requested_code;
   deferred_application_outcome.applied_code = acknowledgement->applied_code;
@@ -723,6 +746,9 @@ bool otis_cx317_active_live_manual_start_allowed(uint16_t code) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   return initialized && code == OTIS_CX317_ACTIVE_START_CODE &&
          !manual_start_confirmed &&
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+         transaction_bound &&
+#endif
          (!transaction_bound ||
           (transaction.state == OtisCx317ActiveState::Disarmed &&
            transaction.correction_count == 0u && !transaction.have_request));
@@ -742,7 +768,14 @@ void otis_cx317_active_live_note_manual_start(uint16_t code, bool i2c_ok,
     return;
   }
   manual_start_confirmed = true;
-  if (transaction_bound) transaction.applied_code = code;
+  if (transaction_bound) {
+    transaction.applied_code = code;
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+    transaction.dac_epoch = 1u;
+    transaction.last_application_s = now_s;
+    transaction.have_last_application = true;
+#endif
+  }
   if (!queue_manual_start_frame(code, true, now_s) && transaction_bound)
     otis_cx317_active_fault(&transaction, "manual_start_evidence_queue_fault");
 #else
@@ -807,6 +840,27 @@ void otis_cx317_active_live_on_decision(
       decision->frequency_error_hz,
   };
   OtisCx317ActionableRequest request;
+#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+  // A short-lived arm is issued before the next 600 s observation is known.
+  // If that observation enters or retains the tight band, the Stage 5 engine
+  // emits an exact zero-delta hold.  Consume the one-shot arm by passing that
+  // zero through the transaction guard, which disarms without producing a
+  // request.  A non-zero ineligible delta would be authority contamination.
+  if (!decision->control_eligible && decision->requested_delta_codes != 0) {
+    otis_cx317_active_fault(
+        &transaction, "tight_deadband_ineligible_nonzero_delta");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+    return;
+  }
+  const bool request_created = otis_cx317_active_make_request(
+      &transaction, &request_input, &health, decision->timestamp_s, &request);
+  if (!request_created) {
+    outcome->faulted = transaction.state == OtisCx317ActiveState::Fault;
+    outcome->reason = transaction.reason;
+    return;
+  }
+#else
   if (!decision->control_eligible ||
       !otis_cx317_active_make_request(&transaction, &request_input, &health,
                                       decision->timestamp_s, &request)) {
@@ -814,6 +868,7 @@ void otis_cx317_active_live_on_decision(
     outcome->reason = transaction.reason;
     return;
   }
+#endif
   OtisCx317AcceptedRequest accepted;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   pending_actionable_request = request;
@@ -1008,6 +1063,10 @@ void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
   otis_status_emit(context, "cx317_active", "cumulative_movement_codes", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   snprintf(value, sizeof(value), "%u",
+           transaction_bound ? transaction.dac_epoch : 0u);
+  otis_status_emit(context, "cx317_active", "dac_epoch", value,
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u",
            have_health ? latest_health.selected_interval_count : 0u);
   otis_status_emit(context, "cx317_active", "selected_interval_count", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -1050,6 +1109,7 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
       transaction_bound ? transaction.correction_count : 0u;
   status->cumulative_movement_codes =
       transaction_bound ? transaction.cumulative_movement_codes : 0u;
+  status->dac_epoch = transaction_bound ? transaction.dac_epoch : 0u;
   status->selected_interval_count =
       have_health ? latest_health.selected_interval_count : 0u;
   status->transaction_bound = transaction_bound;

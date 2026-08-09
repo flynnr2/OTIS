@@ -214,6 +214,10 @@ def test_cpp_estimator_matches_host_cumulative_snapshot_method(
         assert int(actual["first_sequence"]) == expected.first_snapshot_sequence
         assert int(actual["last_sequence"]) == expected.last_snapshot_sequence
         assert float(actual["frequency_hz"]) == pytest.approx(expected.authoritative_frequency_hz)
+        if expected.span_seconds == 600:
+            assert int(actual["selected_accumulated_edge_error_counts"]) == (
+                expected.total_contiguous_counted_edges - 600 * 10_000_000
+            )
 
 
 def test_live_wire_records_are_well_shaped_and_non_actionable(

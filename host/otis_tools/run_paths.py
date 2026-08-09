@@ -23,6 +23,7 @@ ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
 HYBRID_PREVIEW_DECISIONS_CSV = "hybrid_preview_decisions_v1.csv"
+TIGHT_DEADBAND_DECISIONS_CSV = "tight_deadband_decisions_v1.csv"
 PSEUDO_PPS_TRUTH_CSV = "pseudo_pps_truth.csv"
 
 
@@ -94,6 +95,10 @@ class RunPaths:
     def hybrid_preview_decisions_csv(self) -> Path:
         return self.csv_dir / HYBRID_PREVIEW_DECISIONS_CSV
 
+    @property
+    def tight_deadband_decisions_csv(self) -> Path:
+        return self.csv_dir / TIGHT_DEADBAND_DECISIONS_CSV
+
 
 def default_csv_files() -> list[dict[str, str]]:
     return [
@@ -141,6 +146,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {
             "path": f"{CSV_DIR}/{HYBRID_PREVIEW_DECISIONS_CSV}",
             "contract": "hybrid_preview_decisions_v1",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{TIGHT_DEADBAND_DECISIONS_CSV}",
+            "contract": "tight_deadband_decisions_v1",
             "optional": True,
         },
         {"path": f"{CSV_DIR}/{PSEUDO_PPS_TRUTH_CSV}", "contract": "pseudo_pps_truth_v1", "optional": True},

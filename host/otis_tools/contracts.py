@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import csv
 import math
+import re
 
 from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
 
@@ -429,6 +430,35 @@ HYBRID_PREVIEW_DECISION_V1_FIELDS = [
     "authorization_consumed",
 ]
 
+TIGHT_DEADBAND_DECISION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "decision_sequence",
+    "estimate_id",
+    "decision_timestamp_ticks",
+    "time_domain",
+    "capture_session",
+    "dac_epoch",
+    "integer_edge_error_counts",
+    "absolute_edge_error_counts",
+    "state_before",
+    "state_after",
+    "entry_counter",
+    "release_counter",
+    "transition",
+    "frequency_controller_eligible",
+    "requalified",
+    "requalification_reason",
+    "historical_v2_inside",
+    "symmetric_two_count_inside",
+    "policy_id",
+    "policy_sha256",
+    "actionable",
+    "actuation_authorized",
+    "authorization_consumed",
+    "reason_codes",
+]
+
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
@@ -447,6 +477,7 @@ CONTRACT_FIELDS = {
     "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
     "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
+    "tight_deadband_decisions_v1": TIGHT_DEADBAND_DECISION_V1_FIELDS,
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -467,6 +498,7 @@ CONTRACT_RECORD_TYPES = {
     "relative_phase_observations_v1": {"RPH"},
     "phase_estimator_outputs_v1": {"PHE"},
     "hybrid_preview_decisions_v1": {"HPR"},
+    "tight_deadband_decisions_v1": {"TDB"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -487,6 +519,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "relative_phase_observations_v1": 1,
     "phase_estimator_outputs_v1": 1,
     "hybrid_preview_decisions_v1": 1,
+    "tight_deadband_decisions_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -507,6 +540,7 @@ SEQUENCE_FIELDS = {
     "relative_phase_observations_v1": "observation_sequence",
     "phase_estimator_outputs_v1": "observation_sequence",
     "hybrid_preview_decisions_v1": "preview_sequence",
+    "tight_deadband_decisions_v1": "decision_sequence",
 }
 
 TIMESTAMP_FIELDS = {
@@ -527,6 +561,7 @@ TIMESTAMP_FIELDS = {
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
+    "tight_deadband_decisions_v1": ("decision_timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -552,6 +587,7 @@ DOMAIN_FIELDS = {
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("time_domain",),
+    "tight_deadband_decisions_v1": ("time_domain",),
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -677,6 +713,24 @@ VALID_HYBRID_PREVIEW_STATES = {
     "FAULT_PREVIEW",
 }
 VALID_HYBRID_BAND_STATES = {"INSIDE", "OUTSIDE"}
+VALID_TIGHT_DEADBAND_STATES = {"REQUALIFY_OUTSIDE", "OUTSIDE", "TIGHT_INSIDE"}
+VALID_TIGHT_DEADBAND_REASONS = {
+    "invalid_or_stale_requalify",
+    "tight_entry_pending",
+    "tight_entry_confirmed",
+    "three_count_outside_hold",
+    "outside_loose_evidence",
+    "loose_release_pending",
+    "loose_release_confirmed",
+    "three_count_inside_hold",
+    "tight_inside_hold",
+}
+VALID_TIGHT_DEADBAND_REQUALIFICATION_REASONS = {
+    "session_changed_requalify",
+    "dac_epoch_changed_requalify",
+}
+TIGHT_DEADBAND_POLICY_ID = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1"
+TIGHT_DEADBAND_POLICY_SHA256 = "bd4738dd89266591f143fda1c243615c1e9933799d6d0f0c1f6101c8d8810c4f"
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
@@ -1944,6 +1998,133 @@ def _check_hybrid_preview_decision_v1(
                 )
 
 
+def _check_tight_deadband_decision_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "estimate_id",
+            "time_domain",
+            "state_before",
+            "state_after",
+            "policy_id",
+            "policy_sha256",
+            "reason_codes",
+        ),
+    )
+    for field_name in (
+        "capture_session",
+        "dac_epoch",
+        "absolute_edge_error_counts",
+        "entry_counter",
+        "release_counter",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    signed_counts = _parse_int(
+        row.get("integer_edge_error_counts", ""),
+        "integer_edge_error_counts",
+        row_number,
+        errors,
+    )
+    if signed_counts is not None and not (-(2**63) <= signed_counts < 2**63):
+        errors.append(
+            f"row {row_number}: integer_edge_error_counts must fit signed 64-bit firmware storage"
+        )
+    absolute_counts = _parse_non_negative_int(
+        row.get("absolute_edge_error_counts", ""),
+        "absolute_edge_error_counts",
+        row_number,
+        errors,
+    )
+    if (
+        signed_counts is not None
+        and absolute_counts is not None
+        and absolute_counts != abs(signed_counts)
+    ):
+        errors.append(
+            f"row {row_number}: absolute_edge_error_counts must equal "
+            "abs(integer_edge_error_counts)"
+        )
+    for field_name in (
+        "transition",
+        "frequency_controller_eligible",
+        "requalified",
+        "historical_v2_inside",
+        "symmetric_two_count_inside",
+        "actionable",
+        "actuation_authorized",
+        "authorization_consumed",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    for field_name in ("state_before", "state_after"):
+        if row.get(field_name) not in VALID_TIGHT_DEADBAND_STATES:
+            errors.append(
+                f"row {row_number}: {field_name} must be one of "
+                f"{sorted(VALID_TIGHT_DEADBAND_STATES)}"
+            )
+    if row.get("reason_codes") not in VALID_TIGHT_DEADBAND_REASONS:
+        errors.append(
+            f"row {row_number}: reason_codes must be one of "
+            f"{sorted(VALID_TIGHT_DEADBAND_REASONS)}"
+        )
+    if row.get("transition") in VALID_BOOLEAN_TEXT and (
+        (row.get("transition") == "true")
+        != (row.get("state_before") != row.get("state_after"))
+    ):
+        errors.append(
+            f"row {row_number}: transition must equal state_before != state_after"
+        )
+    requalified = row.get("requalified") == "true"
+    requalification_reason = row.get("requalification_reason", "")
+    if requalified and requalification_reason not in VALID_TIGHT_DEADBAND_REQUALIFICATION_REASONS:
+        errors.append(
+            f"row {row_number}: requalified decision requires a session or dac "
+            "epoch requalification_reason"
+        )
+    if not requalified and requalification_reason:
+        errors.append(
+            f"row {row_number}: non-requalified decision must not carry requalification_reason"
+        )
+    if row.get("policy_id") != TIGHT_DEADBAND_POLICY_ID:
+        errors.append(
+            f"row {row_number}: policy_id must equal {TIGHT_DEADBAND_POLICY_ID}"
+        )
+    if not re.fullmatch(r"est:cx317:selected600:[0-9]+", row.get("estimate_id", "")):
+        errors.append(
+            f"row {row_number}: estimate_id must identify a selected600 CX317 estimate"
+        )
+    _check_sha256(row, "policy_sha256", row_number, errors)
+    if row.get("policy_sha256") != TIGHT_DEADBAND_POLICY_SHA256:
+        errors.append(
+            f"row {row_number}: policy_sha256 must equal the frozen Stage 5 policy hash"
+        )
+    for field_name in ("actionable", "actuation_authorized", "authorization_consumed"):
+        if row.get(field_name) != "false":
+            errors.append(
+                f"row {row_number}: {field_name} must remain false for CX318 TDB"
+            )
+    if absolute_counts is not None:
+        expected_historical_v2 = absolute_counts <= 3
+        expected_symmetric = absolute_counts <= 2
+        if row.get("historical_v2_inside") in VALID_BOOLEAN_TEXT and (
+            (row.get("historical_v2_inside") == "true") != expected_historical_v2
+        ):
+            errors.append(
+                f"row {row_number}: historical_v2_inside must equal "
+                "absolute_edge_error_counts <= 3"
+            )
+        if row.get("symmetric_two_count_inside") in VALID_BOOLEAN_TEXT and (
+            (row.get("symmetric_two_count_inside") == "true") != expected_symmetric
+        ):
+            errors.append(
+                f"row {row_number}: symmetric_two_count_inside must equal "
+                "absolute_edge_error_counts <= 2"
+            )
+
+
 def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -2030,6 +2211,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_phase_estimator_output_v1(row, row_count, errors)
             if context.contract == "hybrid_preview_decisions_v1":
                 _check_hybrid_preview_decision_v1(row, row_count, errors)
+            if context.contract == "tight_deadband_decisions_v1":
+                _check_tight_deadband_decision_v1(row, row_count, errors)
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")

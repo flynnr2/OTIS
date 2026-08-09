@@ -1,0 +1,210 @@
+#include "otis_cx318_stage5_tight_deadband.h"
+
+namespace {
+
+constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1";
+
+void requalify(OtisCx318Stage5TightDeadband *deadband) {
+  deadband->state = OTIS_CX318_STAGE5_REQUALIFY_OUTSIDE;
+  deadband->entry_pending_count = 0u;
+  deadband->release_pending_count = 0u;
+}
+
+uint64_t absolute_counts(int64_t counts) {
+  // Conversion to unsigned is defined modulo 2^64, including INT64_MIN.
+  return counts < 0 ? 0u - static_cast<uint64_t>(counts)
+                    : static_cast<uint64_t>(counts);
+}
+
+void set_decision(OtisCx318Stage5TightDeadbandDecision *decision,
+                  const OtisCx318Stage5TightDeadband *deadband,
+                  OtisCx318Stage5TightDeadbandState state_before,
+                  OtisCx318Stage5TightDeadbandReason reason,
+                  bool absolute_available, uint64_t absolute,
+                  bool requalified = false,
+                  OtisCx318Stage5TightDeadbandReason requalification_reason =
+                      OTIS_CX318_STAGE5_INVALID_OR_STALE_REQUALIFY) {
+  decision->policy_id = kPolicyId;
+  decision->state_before = state_before;
+  decision->state_after = deadband->state;
+  decision->reason = reason;
+  decision->absolute_edge_error_counts_available = absolute_available;
+  decision->absolute_edge_error_counts = absolute;
+  decision->entry_pending_count = deadband->entry_pending_count;
+  decision->release_pending_count = deadband->release_pending_count;
+  decision->frequency_controller_eligible =
+      otis_cx318_stage5_frequency_controller_eligible(deadband);
+  decision->requalified = requalified;
+  decision->requalification_reason_available = requalified;
+  decision->requalification_reason = requalification_reason;
+  decision->actionable = false;
+  decision->actuation_authorized = false;
+  decision->authorization_consumed = false;
+}
+
+}  // namespace
+
+void otis_cx318_stage5_tight_deadband_init(
+    OtisCx318Stage5TightDeadband *deadband) {
+  if (deadband == nullptr) return;
+  deadband->state = OTIS_CX318_STAGE5_REQUALIFY_OUTSIDE;
+  deadband->entry_pending_count = 0u;
+  deadband->release_pending_count = 0u;
+  deadband->session_seen = false;
+  deadband->session = 0u;
+  deadband->dac_epoch_seen = false;
+  deadband->dac_epoch = 0u;
+}
+
+void otis_cx318_stage5_tight_deadband_requalify(
+    OtisCx318Stage5TightDeadband *deadband) {
+  if (deadband == nullptr) return;
+  requalify(deadband);
+}
+
+bool otis_cx318_stage5_tight_deadband_observe(
+    OtisCx318Stage5TightDeadband *deadband,
+    const OtisCx318Stage5TightDeadbandInput *input,
+    OtisCx318Stage5TightDeadbandDecision *decision) {
+  if (deadband == nullptr || input == nullptr || decision == nullptr) return false;
+
+  const OtisCx318Stage5TightDeadbandState state_before = deadband->state;
+  bool identity_requalified = false;
+  OtisCx318Stage5TightDeadbandReason identity_requalification_reason =
+      OTIS_CX318_STAGE5_INVALID_OR_STALE_REQUALIFY;
+  if (deadband->session_seen && input->session != deadband->session) {
+    deadband->session = input->session;
+    deadband->session_seen = true;
+    deadband->dac_epoch = input->dac_epoch;
+    deadband->dac_epoch_seen = true;
+    requalify(deadband);
+    identity_requalified = true;
+    identity_requalification_reason =
+        OTIS_CX318_STAGE5_SESSION_CHANGED_REQUALIFY;
+  } else if (deadband->dac_epoch_seen && input->dac_epoch != deadband->dac_epoch) {
+    deadband->session = input->session;
+    deadband->session_seen = true;
+    deadband->dac_epoch = input->dac_epoch;
+    deadband->dac_epoch_seen = true;
+    requalify(deadband);
+    identity_requalified = true;
+    identity_requalification_reason =
+        OTIS_CX318_STAGE5_DAC_EPOCH_CHANGED_REQUALIFY;
+  } else {
+    deadband->session = input->session;
+    deadband->session_seen = true;
+    deadband->dac_epoch = input->dac_epoch;
+    deadband->dac_epoch_seen = true;
+  }
+
+  if (!input->fresh || !input->accumulated_edge_error_counts_available) {
+    requalify(deadband);
+    set_decision(decision, deadband, state_before,
+                 OTIS_CX318_STAGE5_INVALID_OR_STALE_REQUALIFY, false, 0u,
+                 identity_requalified, identity_requalification_reason);
+    return true;
+  }
+
+  const uint64_t absolute = absolute_counts(input->accumulated_edge_error_counts);
+  if (deadband->state == OTIS_CX318_STAGE5_REQUALIFY_OUTSIDE)
+    deadband->state = OTIS_CX318_STAGE5_OUTSIDE;
+
+  if (deadband->state == OTIS_CX318_STAGE5_OUTSIDE) {
+    deadband->release_pending_count = 0u;
+    if (absolute <= kOtisCx318Stage5TightEntryAbsCounts) {
+      ++deadband->entry_pending_count;
+      if (deadband->entry_pending_count >= kOtisCx318Stage5PersistenceEstimates) {
+        deadband->state = OTIS_CX318_STAGE5_TIGHT_INSIDE;
+        deadband->entry_pending_count = 0u;
+        set_decision(decision, deadband, state_before,
+                     OTIS_CX318_STAGE5_TIGHT_ENTRY_CONFIRMED, true, absolute,
+                     identity_requalified, identity_requalification_reason);
+        return true;
+      }
+      set_decision(decision, deadband, state_before,
+                   OTIS_CX318_STAGE5_TIGHT_ENTRY_PENDING, true, absolute,
+                   identity_requalified, identity_requalification_reason);
+      return true;
+    }
+    deadband->entry_pending_count = 0u;
+    set_decision(decision, deadband, state_before,
+                 absolute == 3u ? OTIS_CX318_STAGE5_THREE_COUNT_OUTSIDE_HOLD
+                                : OTIS_CX318_STAGE5_OUTSIDE_LOOSE_EVIDENCE,
+                 true, absolute, identity_requalified,
+                 identity_requalification_reason);
+    return true;
+  }
+
+  deadband->entry_pending_count = 0u;
+  if (absolute >= kOtisCx318Stage5LooseReleaseAbsCounts) {
+    ++deadband->release_pending_count;
+    if (deadband->release_pending_count >= kOtisCx318Stage5PersistenceEstimates) {
+      deadband->state = OTIS_CX318_STAGE5_OUTSIDE;
+      deadband->release_pending_count = 0u;
+      set_decision(decision, deadband, state_before,
+                   OTIS_CX318_STAGE5_LOOSE_RELEASE_CONFIRMED, true, absolute,
+                   identity_requalified, identity_requalification_reason);
+      return true;
+    }
+    set_decision(decision, deadband, state_before,
+                 OTIS_CX318_STAGE5_LOOSE_RELEASE_PENDING, true, absolute,
+                 identity_requalified, identity_requalification_reason);
+    return true;
+  }
+  deadband->release_pending_count = 0u;
+  set_decision(decision, deadband, state_before,
+               absolute == 3u ? OTIS_CX318_STAGE5_THREE_COUNT_INSIDE_HOLD
+                              : OTIS_CX318_STAGE5_TIGHT_INSIDE_HOLD,
+               true, absolute, identity_requalified,
+               identity_requalification_reason);
+  return true;
+}
+
+bool otis_cx318_stage5_frequency_controller_eligible(
+    const OtisCx318Stage5TightDeadband *deadband) {
+  return deadband != nullptr && deadband->state == OTIS_CX318_STAGE5_OUTSIDE &&
+         deadband->entry_pending_count == 0u &&
+         deadband->release_pending_count == 0u;
+}
+
+const char *otis_cx318_stage5_tight_deadband_state_name(
+    OtisCx318Stage5TightDeadbandState state) {
+  switch (state) {
+    case OTIS_CX318_STAGE5_REQUALIFY_OUTSIDE:
+      return "REQUALIFY_OUTSIDE";
+    case OTIS_CX318_STAGE5_OUTSIDE:
+      return "OUTSIDE";
+    case OTIS_CX318_STAGE5_TIGHT_INSIDE:
+      return "TIGHT_INSIDE";
+  }
+  return "UNKNOWN";
+}
+
+const char *otis_cx318_stage5_tight_deadband_reason_name(
+    OtisCx318Stage5TightDeadbandReason reason) {
+  switch (reason) {
+    case OTIS_CX318_STAGE5_SESSION_CHANGED_REQUALIFY:
+      return "session_changed_requalify";
+    case OTIS_CX318_STAGE5_DAC_EPOCH_CHANGED_REQUALIFY:
+      return "dac_epoch_changed_requalify";
+    case OTIS_CX318_STAGE5_INVALID_OR_STALE_REQUALIFY:
+      return "invalid_or_stale_requalify";
+    case OTIS_CX318_STAGE5_TIGHT_ENTRY_PENDING:
+      return "tight_entry_pending";
+    case OTIS_CX318_STAGE5_TIGHT_ENTRY_CONFIRMED:
+      return "tight_entry_confirmed";
+    case OTIS_CX318_STAGE5_THREE_COUNT_OUTSIDE_HOLD:
+      return "three_count_outside_hold";
+    case OTIS_CX318_STAGE5_OUTSIDE_LOOSE_EVIDENCE:
+      return "outside_loose_evidence";
+    case OTIS_CX318_STAGE5_LOOSE_RELEASE_PENDING:
+      return "loose_release_pending";
+    case OTIS_CX318_STAGE5_LOOSE_RELEASE_CONFIRMED:
+      return "loose_release_confirmed";
+    case OTIS_CX318_STAGE5_THREE_COUNT_INSIDE_HOLD:
+      return "three_count_inside_hold";
+    case OTIS_CX318_STAGE5_TIGHT_INSIDE_HOLD:
+      return "tight_inside_hold";
+  }
+  return "unknown";
+}

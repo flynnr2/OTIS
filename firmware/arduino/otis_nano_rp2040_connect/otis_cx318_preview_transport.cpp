@@ -38,7 +38,7 @@ bool format_current_phase(void) {
 }  // namespace
 
 void otis_cx318_preview_transport_emit_headers(void) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   otis_transport_write_cstr(otis_cx318_rph_header());
   otis_transport_write_cstr(otis_cx318_phe_header());
   otis_transport_write_cstr(otis_cx318_hpr_header());
@@ -46,7 +46,7 @@ void otis_cx318_preview_transport_emit_headers(void) {
 }
 
 bool otis_cx318_preview_transport_busy(void) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   if (message_active) return true;
   OtisDualCoreQueueStats stats = {};
   otis_dual_core_get_stats(&stats);
@@ -57,7 +57,7 @@ bool otis_cx318_preview_transport_busy(void) {
 }
 
 void otis_cx318_preview_transport_service(void) {
-#if OTIS_ENABLE_CX318_STAGE4_PREVIEW
+#if OTIS_ENABLE_CX318_PREVIEW
   if (!message_active) {
     if (!otis_dual_core_take_cx318_preview(&active_message)) return;
     record_phase = 0u;

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "otis_cx318_stage5_tight_deadband.h"
+
 enum class OtisCx317PreviewState : uint8_t {
   WarmupInhibit,
   Qualifying,
@@ -29,6 +31,10 @@ struct OtisCx317PreviewInput {
   bool recovery_requested;
   bool dac_epoch;
   bool operator_abort;
+  int64_t accumulated_edge_error_counts = 0;
+  uint64_t capture_session = 0u;
+  uint64_t dac_epoch_identity = 0u;
+  bool accumulated_edge_error_counts_available = false;
 };
 
 struct OtisCx317PreviewDecision {
@@ -53,6 +59,8 @@ struct OtisCx317PreviewDecision {
   bool actuation_authorized;
   bool actionable;
   int32_t active_update_codes;
+  bool tight_deadband_decision_available;
+  OtisCx318Stage5TightDeadbandDecision tight_deadband;
 };
 
 struct OtisCx317IOnlyEngine {
@@ -63,6 +71,9 @@ struct OtisCx317IOnlyEngine {
   uint32_t last_decision_s;
   bool have_last_decision;
   const char *reason;
+  OtisCx318Stage5TightDeadband tight_deadband;
+  OtisCx318Stage5TightDeadbandDecision tight_deadband_decision;
+  bool tight_deadband_decision_available;
 };
 
 void otis_cx317_i_only_engine_init(OtisCx317IOnlyEngine *engine,

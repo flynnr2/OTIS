@@ -47,6 +47,7 @@ struct OtisCx317ActiveLiveOutcome {
   uint16_t requested_code;
   uint16_t applied_code;
   uint32_t request_sequence;
+  uint32_t dac_epoch;
   OtisCx317ResponseClass response_class;
   const char *reason;
 };
@@ -69,6 +70,7 @@ struct OtisCx317ActiveLiveStatus {
   uint16_t applied_code;
   uint16_t correction_count;
   uint16_t cumulative_movement_codes;
+  uint32_t dac_epoch;
   uint16_t selected_interval_count;
   bool transaction_bound;
   bool capture_lease_live;

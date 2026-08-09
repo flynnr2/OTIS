@@ -47,7 +47,9 @@ bool binding_equal(const OtisCx317ActiveBinding &left,
          left.correction_limit == right.correction_limit &&
          left.cumulative_limit_codes == right.cumulative_limit_codes &&
          left.prospective_dither_stop_enabled ==
-             right.prospective_dither_stop_enabled;
+             right.prospective_dither_stop_enabled &&
+         left.legacy_response_deadband_enabled ==
+             right.legacy_response_deadband_enabled;
 }
 
 bool request_equal(const OtisCx317ActionableRequest &left,
@@ -77,7 +79,8 @@ void disarm(OtisCx317ActiveTransaction *transaction, const char *reason) {
 OtisCx317ResponseResult classify_response(
     OtisCx317ResponseClassifier *classifier, double pre_error_hz,
     double post_error_hz, int32_t applied_delta_codes, uint16_t current_code,
-    uint16_t minimum_code, uint16_t maximum_code, bool evidence_healthy) {
+    uint16_t minimum_code, uint16_t maximum_code, bool evidence_healthy,
+    bool legacy_response_deadband_enabled) {
   OtisCx317ResponseResult result = {
       OtisCx317ResponseClass::MeasurementOrActuatorFault,
       "invalid_response_evidence", 0.0, 0.0,
@@ -98,12 +101,15 @@ OtisCx317ResponseResult classify_response(
   result.observed_response_hz = observed;
   result.cumulative_response_hz = cumulative;
 
-  if (fabs(post_error_hz) <= kDeadbandHz) {
+  if (legacy_response_deadband_enabled &&
+      fabs(post_error_hz) <= kDeadbandHz) {
     classifier->consecutive_indeterminate = 0u;
     result.classification = OtisCx317ResponseClass::InsideDeadband;
     result.reason = "post_error_inside_frozen_deadband";
-  } else if ((current_code <= minimum_code && post_error_hz > kDeadbandHz) ||
-             (current_code >= maximum_code && post_error_hz < -kDeadbandHz)) {
+  } else if (legacy_response_deadband_enabled &&
+             ((current_code <= minimum_code && post_error_hz > kDeadbandHz) ||
+              (current_code >= maximum_code &&
+               post_error_hz < -kDeadbandHz))) {
     classifier->consecutive_indeterminate = 0u;
     result.classification = OtisCx317ResponseClass::LimitReached;
     result.reason = "hard_code_endpoint_blocks_required_direction";
@@ -509,7 +515,8 @@ bool otis_cx317_active_record_response(
       &transaction->response_classifier, transaction->request.pre_error_hz,
       post_error_hz, transaction->request.requested_delta_codes,
       transaction->applied_code, transaction->expected_binding.minimum_code,
-      transaction->expected_binding.maximum_code, measurement_healthy);
+      transaction->expected_binding.maximum_code, measurement_healthy,
+      transaction->expected_binding.legacy_response_deadband_enabled);
   transaction->have_request = false;
   transaction->have_acceptance = false;
   transaction->have_application = false;

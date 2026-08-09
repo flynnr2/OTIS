@@ -51,6 +51,9 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_DAC_MAX_CODE",
     "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
     "OTIS_ENABLE_CX318_STAGE4_PREVIEW",
+    "OTIS_ENABLE_CX318_STAGE5_PREVIEW",
+    "OTIS_CX318_STAGE5_INITIAL_CODE",
+    "OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH",
     "OTIS_CX318_STAGE4_STATIC_CODE",
     "OTIS_CX318_STAGE4_DAC_EPOCH",
     "OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP",
@@ -250,6 +253,8 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx317_dual_core_active_part_a",
                 "cx317_dual_core_active_rehearsal",
                 "cx317_dual_core_active_endurance_part_b",
+                "cx318_stage5_tight_lower",
+                "cx318_stage5_tight_upper",
             }
         ):
             raise MatrixError(

@@ -59,6 +59,7 @@ void complete_rehearsal_sequence() {
       2u,
       42u,
       false,
+      true,
   };
   OtisCx317ActiveTransaction transaction = {};
   otis_cx317_active_transaction_init(&transaction, &binding);
