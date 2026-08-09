@@ -4088,6 +4088,12 @@ void setup() {
   __atomic_store_n(&dual_core_service_boot_ready, true, __ATOMIC_RELEASE);
   while (!__atomic_load_n(&dual_core_timing_boot_complete,
                           __ATOMIC_ACQUIRE)) {
+#if OTIS_ENABLE_GNSS_RECEIVER
+    // The receiver is already live at this point; drain its small UART FIFO
+    // while Core 1 completes boot so startup cannot manufacture a truncated
+    // NMEA frame or a false receiver-identity outage.
+    otis_gnss_receiver_service(millis());
+#endif
     service_dual_core_outputs();
     delay(1);
   }
