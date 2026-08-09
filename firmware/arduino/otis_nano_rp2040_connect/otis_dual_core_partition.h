@@ -148,6 +148,10 @@ bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message);
 // Core 1 producer / Core 0 consumer. Duplicate summaries may drop, always
 // with an explicit saturating counter.
 bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message);
+// Boot is a bounded Core 0/Core 1 handshake, so its one-time status burst can
+// apply backpressure instead of contaminating the live drop counter.
+bool otis_dual_core_publish_boot_telemetry(
+    const OtisTelemetryMessage *message);
 bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message);
 
 // Core 1 producer / Core 0 consumer. Numerical Stage 4 evidence is

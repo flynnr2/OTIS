@@ -373,7 +373,7 @@ void emit_status(const char *component, const char *key, const char *value,
     snprintf(message.key, sizeof(message.key), "%s", key);
     snprintf(message.value, sizeof(message.value), "%s", value);
     snprintf(message.severity, sizeof(message.severity), "%s", severity);
-    otis_dual_core_publish_telemetry(&message);
+    otis_dual_core_publish_boot_telemetry(&message);
     return;
   }
 #endif

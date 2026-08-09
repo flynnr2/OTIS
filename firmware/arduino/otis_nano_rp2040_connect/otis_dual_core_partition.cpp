@@ -372,6 +372,17 @@ bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message) {
   return false;
 }
 
+bool otis_dual_core_publish_boot_telemetry(
+    const OtisTelemetryMessage *message) {
+  if (message == nullptr) return false;
+  // setup() drains this queue while setup1() performs the bounded timing-side
+  // boot.  Backpressure here prevents a deterministic startup burst from
+  // being misreported as lost live telemetry.
+  while (!telemetry_to_service.try_push(*message)) {
+  }
+  return true;
+}
+
 bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message) {
   return telemetry_to_service.try_pop(message);
 }
