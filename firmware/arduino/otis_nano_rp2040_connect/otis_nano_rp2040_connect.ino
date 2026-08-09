@@ -974,6 +974,12 @@ void service_dual_core_outputs(void) {
          otis_dual_core_take_telemetry(&telemetry)) {
     emit_status(telemetry.component, telemetry.key, telemetry.value,
                 telemetry.severity, telemetry.flags);
+#if OTIS_ENABLE_GNSS_RECEIVER
+    if (__atomic_load_n(&dual_core_timing_boot_in_progress,
+                        __ATOMIC_ACQUIRE)) {
+      otis_gnss_receiver_service(millis());
+    }
+#endif
   }
 }
 
