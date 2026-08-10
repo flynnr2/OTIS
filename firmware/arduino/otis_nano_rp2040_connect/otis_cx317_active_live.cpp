@@ -125,6 +125,9 @@ bool last_application_acknowledged = false;
 bool estimator_history_reset = false;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 OtisActuatorTransactionGuard timing_actuator_guard = {};
+// Core 1 is the sole active-evidence producer. Reuse one module-owned copy
+// buffer instead of reserving a complete evidence frame in each call stack.
+OtisEvidenceFrameMessage evidence_frame_scratch = {};
 #endif
 
 bool capture_lease_live(uint32_t now_s) {
@@ -355,11 +358,11 @@ bool queue_frame(const char *event, const OtisCx317ResponseResult *response,
   frame.length = static_cast<uint16_t>(used);
   frame.sent = 0u;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-  OtisEvidenceFrameMessage message = {};
-  message.sequence = next_record_sequence;
-  message.length = frame.length;
-  memcpy(message.data, frame.data, frame.length + 1u);
-  if (!otis_dual_core_publish_evidence(&message)) {
+  evidence_frame_scratch = {};
+  evidence_frame_scratch.sequence = next_record_sequence;
+  evidence_frame_scratch.length = frame.length;
+  memcpy(evidence_frame_scratch.data, frame.data, frame.length + 1u);
+  if (!otis_dual_core_publish_evidence(&evidence_frame_scratch)) {
     frame = {};
     return false;
   }
@@ -402,11 +405,11 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s) {
   frame.length = static_cast<uint16_t>(used);
   frame.sent = 0u;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-  OtisEvidenceFrameMessage message = {};
-  message.sequence = next_record_sequence;
-  message.length = frame.length;
-  memcpy(message.data, frame.data, frame.length + 1u);
-  if (!otis_dual_core_publish_evidence(&message)) {
+  evidence_frame_scratch = {};
+  evidence_frame_scratch.sequence = next_record_sequence;
+  evidence_frame_scratch.length = frame.length;
+  memcpy(evidence_frame_scratch.data, frame.data, frame.length + 1u);
+  if (!otis_dual_core_publish_evidence(&evidence_frame_scratch)) {
     frame = {};
     return false;
   }

@@ -101,6 +101,23 @@ manifest from the passed seal, and only then rotates into the live segment.
 There is no serial close/reopen or ownerless analysis interval. This complete
 promotion path must pass rehearsal before another long Stage 5 run.
 
+A later 2026-08-10 retry exposed a separate timing-core stack defect before
+promotion or any DAC transaction. The first long `CTL` record contained a
+12-byte overwrite inside an otherwise intact 522-byte frame, with no USB
+reconnect, parser burst or surrounding record damage. Exact-build stack-usage
+analysis showed that total SRAM was comfortable, but the first post-warm-up
+Core 1 call chain could exceed its separate 8 KiB stack because several
+1536-byte formatting and evidence-copy buffers were nested. The repair gives
+each sole-producer module static formatting/copy scratch storage. On the exact
+Stage 5 profile the largest timing-path frames then fell from 2224/2008/1824
+bytes to 712/520/496 bytes, while static SRAM use remained approximately 52%.
+A short accelerated physical discriminator subsequently emitted 247/247 intact
+`CTL` records with valid UTF-8 and zero capture parser errors or reconnects.
+That discriminator is diagnostic evidence only: capture began after boot and
+the firmware drop counter was already 27, remaining unchanged throughout. A
+fresh exact-profile no-write rehearsal from a clean build remains mandatory
+before either Stage 5 setup write.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the

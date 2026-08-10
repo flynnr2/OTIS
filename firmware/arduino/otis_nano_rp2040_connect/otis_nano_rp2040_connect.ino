@@ -107,6 +107,10 @@ uint32_t dual_core_last_timing_trace_ms = 0u;
 uint32_t dual_core_association_loss_decision_sequence = 0u;
 OtisCx317StaticCodeState dual_core_static_code = {};
 OtisReceiverQualificationMessage dual_core_receiver = {};
+// Association-loss publication runs on the bounded timing-core stack. Keep
+// its full evidence-frame formatter in static storage; Core 1 is the only
+// producer and the publication is synchronous.
+OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};
 OtisEvidenceFrameMessage dual_core_evidence_transport = {};
 uint16_t dual_core_evidence_transport_sent = 0u;
 bool dual_core_evidence_transport_active = false;
@@ -1082,12 +1086,14 @@ void publish_dual_core_association_loss_decision(
                         ? "timeout_no_snapshot"
                         : "no_unread_snapshot_healthy_backend"));
 
-  OtisEvidenceFrameMessage message = {};
-  message.sequence = dual_core_association_loss_decision_sequence++;
+  dual_core_association_loss_scratch = {};
+  dual_core_association_loss_scratch.sequence =
+      dual_core_association_loss_decision_sequence++;
   const int used = snprintf(
-      message.data, sizeof(message.data),
+      dual_core_association_loss_scratch.data,
+      sizeof(dual_core_association_loss_scratch.data),
       "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
-      static_cast<unsigned long>(message.sequence),
+      static_cast<unsigned long>(dual_core_association_loss_scratch.sequence),
       reason == nullptr ? "association_loss_unspecified" : reason,
       classification, static_cast<unsigned long long>(decision_ticks),
       static_cast<unsigned long>(pending_reference.reference_sequence),
@@ -1123,12 +1129,13 @@ void publish_dual_core_association_loss_decision(
           queue_stats.timing_progress.phase_enter_ticks),
       static_cast<unsigned long long>(
           queue_stats.timing_progress.last_progress_ticks));
-  if (used <= 0 || static_cast<size_t>(used) >= sizeof(message.data)) {
+  if (used <= 0 || static_cast<size_t>(used) >=
+                       sizeof(dual_core_association_loss_scratch.data)) {
     otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
     return;
   }
-  message.length = static_cast<uint16_t>(used);
-  otis_dual_core_publish_evidence(&message);
+  dual_core_association_loss_scratch.length = static_cast<uint16_t>(used);
+  otis_dual_core_publish_evidence(&dual_core_association_loss_scratch);
 }
 #endif
 

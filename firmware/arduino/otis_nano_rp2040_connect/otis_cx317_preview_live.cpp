@@ -75,11 +75,11 @@ OtisCx317SnapshotEstimator estimator;
 OtisCx317IOnlyEngine controller;
 OtisSpscQueue<Frame, kQueueDepth> queue;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-// Core 1 is the sole evidence producer for this module.  Keep its cross-core
-// copy buffer out of the timing-core stack: emit_control() already owns a
-// complete 1536-byte formatting frame, and nesting another Frame plus an
-// OtisEvidenceFrameMessage here can exhaust the bounded Core 1 stack exactly
-// when the first post-warmup CTL record is emitted.
+// Core 1 is the sole producer for this module and these calls are sequential,
+// not re-entrant. Keep both complete-frame buffers out of its bounded stack.
+// enqueue() copies formatter_scratch synchronously before another formatter
+// can run, so the two buffers cannot alias live data.
+char formatter_scratch[kFrameCapacity] = {};
 OtisEvidenceFrameMessage evidence_frame_scratch = {};
 #endif
 Frame transport_frame = {};
@@ -118,9 +118,15 @@ bool emit_tight_deadband(const OtisCx317PreviewDecision &decision,
   const bool symmetric_two_count_inside =
       tight.absolute_edge_error_counts_available &&
       tight.absolute_edge_error_counts <= 2u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  char *frame = formatter_scratch;
+  constexpr size_t frame_capacity = sizeof(formatter_scratch);
+#else
   char frame[kFrameCapacity];
+  constexpr size_t frame_capacity = sizeof(frame);
+#endif
   const int used = snprintf(
-      frame, sizeof(frame),
+      frame, frame_capacity,
       "TDB,1,%lu,est:cx317:%s:%06lu,%llu,%s,%llu,%llu,%lld,%llu,%s,%s,%u,%u,%s,%s,%s,%s,%s,%s,%s,%s,false,false,false,%s\r\n",
       static_cast<unsigned long>(tight_deadband_seq++),
       kSelectedEstimatorReference,
@@ -144,7 +150,7 @@ bool emit_tight_deadband(const OtisCx317PreviewDecision &decision,
       symmetric_two_count_inside ? "true" : "false", tight.policy_id,
       kPolicyHash,
       otis_cx318_stage5_tight_deadband_reason_name(tight.reason));
-  return used > 0 && static_cast<size_t>(used) < sizeof(frame) &&
+  return used > 0 && static_cast<size_t>(used) < frame_capacity &&
          enqueue(frame, static_cast<size_t>(used));
 }
 #endif
@@ -258,13 +264,19 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
     return;
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  char *frame = formatter_scratch;
+  constexpr size_t frame_capacity = sizeof(formatter_scratch);
+#else
   char frame[kFrameCapacity];
+  constexpr size_t frame_capacity = sizeof(frame);
+#endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   otis_dual_core_note_timing_progress(
       OtisTimingProgressPhase::Cx317EstimateFormat, timestamp_ticks);
 #endif
   int used = snprintf(
-      frame, sizeof(frame),
+      frame, frame_capacity,
       "EST,2,%lu,est:cx317:%s:%06lu,%llu,%s,%lu,live:CNT:%lu,%lu,%lu,"
       "live:STS:pps_gate,live:DAC:static,firmware_config:%s,%s,%s,"
       "valid,contiguous_snapshot_span,valid,0,true,valid,0,true,healthy,"
@@ -288,7 +300,7 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       selected ? (applicable ? "preview_input_observe_only"
                              : model_reason(code))
                : "diagnostic_non_authoritative");
-  if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
+  if (used > 0 && static_cast<size_t>(used) < frame_capacity)
     enqueue(frame, static_cast<size_t>(used));
   else {
     uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
@@ -320,7 +332,13 @@ void emit_control(const OtisCx317PreviewDecision &decision,
              static_cast<long>(decision.limited_delta_codes));
     snprintf(proposed, sizeof(proposed), "%u", decision.proposed_code);
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  char *frame = formatter_scratch;
+  constexpr size_t frame_capacity = sizeof(formatter_scratch);
+#else
   char frame[kFrameCapacity];
+  constexpr size_t frame_capacity = sizeof(frame);
+#endif
   const uint32_t seq = control_seq++;
   const bool applicable = code_context_valid(code);
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -337,7 +355,7 @@ void emit_control(const OtisCx317PreviewDecision &decision,
   }
 #endif
   int used = snprintf(
-      frame, sizeof(frame),
+      frame, frame_capacity,
       "CTL,1,%lu,ctl:cx317:%06lu,%llu,%s,est:cx317:%s:%06lu,"
       "profile:plant_models/cx317_pps_gated_v2.json,%s,2,%s,%s,%s,%s,%s,%s,%s,"
       "%s,%s,healthy,%s,%s,%u,%s,%s,%s,%s,%s,%s,%s,%s,true,false,false,%s\r\n",
@@ -358,7 +376,7 @@ void emit_control(const OtisCx317PreviewDecision &decision,
       limited_delta, proposed, decision.step_limited ? "true" : "false",
       decision.range_clamped ? "true" : "false",
       decision.preview_available ? "true" : "false", decision.reason);
-  if (used > 0 && static_cast<size_t>(used) < sizeof(frame))
+  if (used > 0 && static_cast<size_t>(used) < frame_capacity)
     enqueue(frame, static_cast<size_t>(used));
   else {
     uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);

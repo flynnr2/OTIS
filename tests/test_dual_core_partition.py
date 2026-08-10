@@ -224,6 +224,38 @@ def test_dual_core_cx317_preview_copy_does_not_nest_full_frames_on_core1_stack()
     assert "OtisEvidenceFrameMessage message = {};" not in dual_core_path
 
 
+def test_dual_core_timing_paths_keep_full_formatters_out_of_automatic_storage() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+
+    assert "char formatter_scratch[kFrameCapacity] = {};" in preview
+    assert preview.count("char frame[kFrameCapacity];") == 3
+    assert preview.count("#if OTIS_ENABLE_DUAL_CORE_PARTITION\n  char *frame = formatter_scratch;") == 3
+
+    assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in active
+    assert "OtisEvidenceFrameMessage message = {};" not in active
+    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 2
+
+    assert "OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};" in sketch
+    association_start = sketch.index(
+        "void publish_dual_core_association_loss_decision("
+    )
+    association_end = sketch.index("\n}\n#endif", association_start)
+    association = sketch[association_start:association_end]
+    assert "OtisEvidenceFrameMessage message = {};" not in association
+    assert (
+        "otis_dual_core_publish_evidence(&dual_core_association_loss_scratch);"
+        in association
+    )
+
+
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
