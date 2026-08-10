@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import cx318_stage5_rehearsal_analyze as analyzer
+from host.otis_tools.cx318_stage5_runtime_contract import ACTIVE_STATUS_KEYS
 
 
 @dataclass(frozen=True)
@@ -166,26 +167,57 @@ def _fixture_run(
         known_domains=frozenset(),
     )
     identities = {"firmware_identity": "fixture-firmware"}
-    spec = SimpleNamespace(run_identity="fixture-run", profile="fixture-profile")
+    spec = SimpleNamespace(
+        run_identity="fixture-run", profile="fixture-profile", start_code=0xA808
+    )
     health = {
+        **{
+            ("cx317_active", key): "present"
+            for key in ACTIVE_STATUS_KEYS
+        },
         ("cx317_active", "run_identity"): spec.run_identity,
         ("cx317_active", "build_identity"): "source:configuration",
         ("cx317_active", "profile_identity"): spec.profile,
         ("cx317_active", "firmware_identity"): identities["firmware_identity"],
         ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "enabled"): "true",
+        ("cx317_active", "reason"): "initialized_disarmed",
+        ("cx317_active", "evidence_pending"): "false",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "capture_lease_live"): "true",
         ("cx317_active", "manual_start_confirmed"): "false",
         ("cx317_active", "arm_eligible"): "false",
+        ("cx317_active", "session_id"): "1",
+        ("cx317_active", "uptime_s"): "2700",
+        ("cx317_active", "evidence_request_sequence"): "0",
+        ("cx317_active", "expected_setup_code"): "0xA808",
+        ("cx317_active", "confirmed_applied_code_known"): "false",
+        ("cx317_active", "confirmed_applied_code"): "unavailable",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
         ("cx317_active", "dac_epoch"): "0",
+        ("cx317_active", "selected_interval_count"): "1",
+        ("cx317_active", "automatic_retry"): "false",
+        ("cx317_active", "automatic_restore"): "false",
         ("cx318_preview", "static_code"): "0xA828",
         ("cx318_preview", "applied_code"): "0xA828",
         ("cx318_preview", "dac_epoch"): "0",
+        ("cx317_preview", "actionable"): "false",
+        ("cx317_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "actionable"): "false",
+        ("cx318_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "authorization_consumed"): "false",
+        ("dac", "applied_code_known"): "false",
+        ("dac", "last_write_ok"): "false",
+        ("dac", "last_applied_code"): "unavailable",
         ("capture", "dropped_count"): "0",
         ("capture", "pps_count_boundary_dropped_count"): "0",
         ("dual_core", "telemetry_dropped"): "0",
+        ("dual_core", "service_publish_failures"): "0",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
         ("cx317_active", "fail_static"): "false",
-        ("cx318_preview", "telemetry_dropped_frames"): "0",
+        ("cx317_preview", "telemetry_dropped_frames"): "0",
     }
     authority_row = {
         "actionable": "true" if authority else "false",
@@ -238,7 +270,7 @@ def test_analyzer_seals_exact_2700_second_no_write_rehearsal_and_never_overwrite
 
     assert result["status"] == "passed"
     assert result["checks"]["finite_capture_at_least_2700s"] is True
-    assert result["checks"]["zero_dac_or_active_rows"] is True
+    assert result["checks"]["stage5_prewrite_runtime_contract_exact"] is True
     assert result["checks"]["phase_hybrid_and_tdb_zero_authority"] is True
     assert result["checks"]["sealed_evidence_snapshot_valid"] is True
     assert result["source_artifacts_sha256"]["raw/serial.log"]
@@ -329,7 +361,7 @@ def test_capture_closure_accepts_only_proven_same_owner_logical_rotation(
         ({"duration_s": 2699}, "finite_capture_at_least_2700s"),
         ({"authority": True}, "phase_hybrid_and_tdb_zero_authority"),
         ({"evidence_failures": ["tampered evidence"]}, "sealed_evidence_snapshot_valid"),
-        ({"active_rows": True}, "zero_dac_or_active_rows"),
+        ({"active_rows": True}, "stage5_prewrite_runtime_contract_exact"),
     ],
 )
 def test_analyzer_emits_failed_nonseal_when_no_write_guards_do_not_hold(

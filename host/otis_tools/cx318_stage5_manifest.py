@@ -18,6 +18,12 @@ from typing import Any
 
 from .run_paths import default_csv_files
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER
+from .cx318_stage5_runtime_contract import (
+    ACTIVE_STATUS_KEYS,
+    INHERITED_PREVIEW_BASELINE_PROVENANCE,
+    RUNTIME_CONTRACT_ID,
+)
+from tools.firmware_matrix import configuration_hash, load_matrix
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -38,9 +44,13 @@ HOST_TOOL_PATHS = {
     ),
     "segment_rotation": Path(__file__).with_name("cx318_capture_segment.py"),
     "promotion": Path(__file__).with_name("cx318_stage5_promote.py"),
+    "runtime_contract": Path(__file__).with_name(
+        "cx318_stage5_runtime_contract.py"
+    ),
+    "preflight": Path(__file__).with_name("cx318_stage5_preflight.py"),
 }
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 REHEARSAL_STAGE = "CX318_STAGE5_TIGHT_ACTIVE_REHEARSAL"
 LIVE_STAGE = "CX318_STAGE5_TIGHT_ACTIVE_LIVE"
 STAGE4_BINDING_TYPE = "cx318_stage4_post_capture_external_binding_v1"
@@ -195,8 +205,13 @@ def _validate_build(build_manifest_path: Path, uf2_path: Path, profile_id: str) 
     matrix_profile = _matrix_profile(profile_id)
     if configuration.get("defines") != matrix_profile["defines"]:
         raise ValueError("firmware build defines differ from the exact Stage 5 profile; accelerated or relaxed limits are forbidden")
-    if not _is_sha256(configuration.get("sha256")):
-        raise ValueError("firmware build configuration hash is malformed")
+    matrix = load_matrix(FIRMWARE_MATRIX_PATH)
+    expected_configuration_sha256 = configuration_hash(matrix, matrix_profile)
+    if configuration.get("sha256") != expected_configuration_sha256:
+        raise ValueError(
+            "firmware build configuration hash differs from the exact current "
+            "Stage 5 matrix/configuration input"
+        )
     if not uf2_path.is_file():
         raise ValueError(f"UF2 is not a file: {uf2_path}")
     if not isinstance(artifacts, list):
@@ -531,8 +546,20 @@ def create_manifest(
         "leg": leg,
         "firmware_profile": leg_policy["firmware_profile"],
         "run_binding_tag": leg_policy["run_binding_tag"],
-        "pre_setup_identity": {"code": rehearsal["reconfirmed_pre_setup_code"], "code_hex": rehearsal["reconfirmed_pre_setup_code_hex"], "dac_epoch": 0},
-        "setup": {
+        "runtime_contract": {
+            "id": RUNTIME_CONTRACT_ID,
+            "active_status_keys": list(ACTIVE_STATUS_KEYS),
+            "missing_status_is_failure": True,
+            "startup_grace_s": 30,
+        },
+        "inherited_preview_baseline": {
+            "code": rehearsal["reconfirmed_pre_setup_code"],
+            "code_hex": rehearsal["reconfirmed_pre_setup_code_hex"],
+            "dac_epoch": 0,
+            "provenance": INHERITED_PREVIEW_BASELINE_PROVENANCE,
+            "physical_dac_confirmation": False,
+        },
+        "planned_live_stimulus": {
             "code": leg_policy["exact_setup_code"], "code_hex": leg_policy["exact_setup_code_hex"],
             "maximum_writes": 0 if no_write else 1, "authorized": not no_write,
         },
@@ -655,14 +682,29 @@ def validate_manifest(path: Path) -> dict[str, Any]:
     stage4 = manifest.get("stage4_seal")
     if not isinstance(stage4, dict) or stage4 != _validate_stage4_seal(Path(stage4.get("path", ""))):
         raise ValueError("Stage 5 manifest Stage 4 seal binding is stale")
-    setup = stage5.get("setup", {})
+    setup = stage5.get("planned_live_stimulus", {})
     automatic = stage5.get("automatic_frequency_control", {})
     controller = policy["frequency_controller"]
     finite = policy["finite_runtime"]
-    pre_setup = stage5.get("pre_setup_identity", {})
+    pre_setup = stage5.get("inherited_preview_baseline", {})
+    runtime_contract = stage5.get("runtime_contract", {})
     if (
         stage5.get("firmware_profile") != leg_policy["firmware_profile"]
-        or pre_setup != {"code": 0xA828, "code_hex": "0xA828", "dac_epoch": 0}
+        or pre_setup
+        != {
+            "code": 0xA828,
+            "code_hex": "0xA828",
+            "dac_epoch": 0,
+            "provenance": INHERITED_PREVIEW_BASELINE_PROVENANCE,
+            "physical_dac_confirmation": False,
+        }
+        or runtime_contract
+        != {
+            "id": RUNTIME_CONTRACT_ID,
+            "active_status_keys": list(ACTIVE_STATUS_KEYS),
+            "missing_status_is_failure": True,
+            "startup_grace_s": 30,
+        }
         or setup.get("code") != leg_policy["exact_setup_code"]
         or setup.get("code_hex") != leg_policy["exact_setup_code_hex"]
         or automatic.get("required_direction") != leg_policy["required_automatic_direction"]

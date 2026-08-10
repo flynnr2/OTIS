@@ -471,87 +471,16 @@ void publish_dual_core_timing_status_u32(const char *component,
 }
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+void publish_dual_core_active_status_field(void *, const char *key,
+                                           const char *value,
+                                           const char *severity,
+                                           uint32_t flags) {
+  publish_dual_core_timing_status("cx317_active", key, value, severity, flags);
+}
+
 void publish_dual_core_active_status(uint32_t now_ms) {
-  OtisCx317ActiveLiveStatus active;
-  otis_cx317_active_live_get_status(&active, now_ms / 1000u);
-  publish_dual_core_timing_status("cx317_active", "run_identity",
-                                  active.run_identity, OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "build_identity",
-                                  active.build_identity, OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "profile_identity",
-                                  active.profile_identity,
-                                  OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "estimator_sha256",
-                                  active.estimator_sha256,
-                                  OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "model_sha256",
-                                  active.model_sha256, OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "active_policy_sha256",
-                                  active.active_policy_sha256,
-                                  OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "response_policy_sha256",
-                                  active.response_policy_sha256,
-                                  OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status(
-      "cx317_active", "numerical_policy_sha256",
-      active.numerical_policy_sha256, OTIS_SEVERITY_INFO,
-      OTIS_FLAG_PROFILE_ASSUMPTION);
-  publish_dual_core_timing_status("cx317_active", "state", active.state,
-                                  active.fail_static ? OTIS_SEVERITY_ERROR
-                                                     : OTIS_SEVERITY_INFO,
-                                  OTIS_FLAG_NONE);
-  publish_dual_core_timing_status("cx317_active", "reason", active.reason,
-                                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status("cx317_active", "evidence_phase",
-                                  active.evidence_state,
-                                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status(
-      "cx317_active", "capture_lease_live",
-      active.capture_lease_live ? "true" : "false",
-      active.capture_lease_live ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
-      OTIS_FLAG_NONE);
-  publish_dual_core_timing_status(
-      "cx317_active", "manual_start_confirmed",
-      active.manual_start_confirmed ? "true" : "false",
-      active.manual_start_confirmed ? OTIS_SEVERITY_INFO
-                                    : OTIS_SEVERITY_WARN,
-      OTIS_FLAG_NONE);
-  publish_dual_core_timing_status(
-      "cx317_active", "arm_eligible",
-      active.arm_eligible ? "true" : "false", OTIS_SEVERITY_INFO,
-      OTIS_FLAG_NONE);
-  publish_dual_core_timing_status(
-      "cx317_active", "fail_static", active.fail_static ? "true" : "false",
-      active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
-      active.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT : OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32("cx317_active", "session_id",
-                                      active.session_id, OTIS_SEVERITY_INFO,
-                                      OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32("cx317_active", "uptime_s",
-                                      active.uptime_s, OTIS_SEVERITY_INFO,
-                                      OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "cx317_active", "evidence_request_sequence",
-      active.evidence_request_sequence, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "cx317_active", "confirmed_applied_code", active.applied_code,
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "cx317_active", "correction_count", active.correction_count,
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "cx317_active", "cumulative_movement_codes",
-      active.cumulative_movement_codes, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "cx317_active", "selected_interval_count",
-      active.selected_interval_count, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  otis_cx317_active_live_visit_status(
+      nullptr, publish_dual_core_active_status_field, now_ms / 1000u);
 }
 #endif
 

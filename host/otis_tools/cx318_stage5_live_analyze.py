@@ -57,6 +57,7 @@ from .cx318_stage5_supervisor import (
 )
 from .cx318_stage5_tight_replay import replay_tight_deadband
 from .cx318_stage5_tight_replay import replay_tight_deadband_chain
+from .cx318_stage5_runtime_contract import evaluate_health_integrity
 from .cx317_i_only_preview_replay import (
     IOnlyPreviewEngine,
     Observation,
@@ -959,6 +960,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     previews_present = all(_read_csv(run_dir / relative) for relative in preview_paths)
     zero_authority = all(_authority_false(run_dir / relative) for relative in preview_paths)
     health = _latest_health(run_dir / HEALTH_CSV)
+    health_integrity = evaluate_health_integrity(health)
     sources = {
         row.get("source", "").lower()
         for row in _read_csv(run_dir / ENVIRONMENT_CSV)
@@ -1022,13 +1024,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             previews_present and preview_continuity and zero_authority
         ),
         "both_environment_streams_present": {"sht4x", "bmp280"} <= sources,
-        "live_health_has_no_drop_or_fault": (
-            health.get(("capture", "dropped_count"), "0") == "0"
-            and health.get(("capture", "pps_count_boundary_dropped_count"), "0") == "0"
-            and health.get(("dual_core", "telemetry_dropped"), "0") == "0"
-            and health.get(("dual_core", "partition_fault"), "none") == "none"
-            and health.get(("cx317_preview", "telemetry_dropped_frames"), "0") == "0"
-        ),
+        "live_health_has_no_drop_or_fault": health_integrity.clean,
         "sealed_evidence_snapshot_valid": (
             evidence.get("run_state") == "complete"
             and not evidence_failures
@@ -1046,7 +1042,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         "terminal_disarmed_and_evidence_clear": (
             health.get(("cx317_active", "state")) == "DISARMED"
             and health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
-            and health.get(("cx317_active", "fail_static"), "false") == "false"
+            and health.get(("cx317_active", "fail_static")) == "false"
             and supervisor_state.get("arm_pending") is False
             and len(responses) >= 1
         ),
@@ -1104,6 +1100,11 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "snapshot_digest": evidence.get("snapshot_digest"),
         },
         "terminal": terminal,
+        "runtime_health_integrity": {
+            "clean": health_integrity.clean,
+            "missing": health_integrity.missing,
+            "mismatches": health_integrity.mismatches,
+        },
         "checks": checks,
         "contract_validation": validations,
         "transactions": {

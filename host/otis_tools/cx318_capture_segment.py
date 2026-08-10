@@ -126,10 +126,30 @@ def request_rotation(
     command_fifo: Path | None = None,
     emergency_command_fifo: Path | None = None,
     wait_timeout_s: float = 10.0,
+    operation_id: str | None = None,
 ) -> dict[str, Any]:
     if not capability:
         raise ValueError("segment capability must be non-empty")
     control_dir = control_dir.resolve()
+    if operation_id is not None and not operation_id.strip():
+        raise ValueError("segment operation_id must be non-empty when supplied")
+    request_id = (
+        sha256(f"{PROTOCOL_ID}:{operation_id}".encode("utf-8")).hexdigest()[:32]
+        if operation_id is not None
+        else secrets.token_hex(16)
+    )
+    response_path = control_dir / SEGMENT_RESPONSE_DIR / f"{request_id}.json"
+    if response_path.is_file():
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+        if response.get("status") != "completed":
+            raise ValueError(f"segment rotation rejected: {response.get('error')}")
+        if (
+            Path(str(response.get("to_run", ""))).resolve() != to_run.resolve()
+            or response.get("request_id") != request_id
+        ):
+            raise ValueError("stored segment rotation response differs from request")
+        return response
+
     carrier_path = control_dir / SEGMENT_CARRIER_STATE
     carrier = json.loads(carrier_path.read_text(encoding="utf-8"))
     if carrier.get("status") != "running" or carrier.get("serial_open") is not True:
@@ -138,7 +158,6 @@ def request_rotation(
     manifest_path = to_run / "run_manifest.json"
     if not manifest_path.is_file():
         raise ValueError("target segment manifest is unavailable")
-    request_id = secrets.token_hex(16)
     request: dict[str, Any] = {
         "schema_version": 1,
         "protocol": PROTOCOL_ID,
@@ -156,8 +175,19 @@ def request_rotation(
             str(emergency_command_fifo.resolve()) if emergency_command_fifo else None
         ),
     }
-    _atomic_new_json(control_dir / SEGMENT_REQUEST, request)
-    response_path = control_dir / SEGMENT_RESPONSE_DIR / f"{request_id}.json"
+    request_path = control_dir / SEGMENT_REQUEST
+    if request_path.is_file():
+        pending = json.loads(request_path.read_text(encoding="utf-8"))
+        comparable = {
+            key: value for key, value in request.items() if key != "created_utc"
+        }
+        observed = {
+            key: value for key, value in pending.items() if key != "created_utc"
+        }
+        if observed != comparable:
+            raise FileExistsError("a different segment rotation request is pending")
+    else:
+        _atomic_new_json(request_path, request)
     deadline = time.monotonic() + wait_timeout_s
     while time.monotonic() < deadline:
         if response_path.is_file():
@@ -183,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     rotate.add_argument("--command-fifo", type=Path)
     rotate.add_argument("--emergency-command-fifo", type=Path)
     rotate.add_argument("--wait-timeout-s", type=float, default=10.0)
+    rotate.add_argument("--operation-id")
     args = parser.parse_args(argv)
     if args.command == "prepare-transition":
         print(prepare_transition(args.source_manifest, args.run_dir))
@@ -203,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         command_fifo=args.command_fifo,
         emergency_command_fifo=args.emergency_command_fifo,
         wait_timeout_s=args.wait_timeout_s,
+        operation_id=args.operation_id,
     )
     print(json.dumps(response, sort_keys=True))
     return 0

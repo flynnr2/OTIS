@@ -32,7 +32,7 @@ constexpr char kActivePolicyHash[] =
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
-    "057c07ec46290fd097a8a88b019dd46844decc383d57985c3e3bf2b456a4f7b8";
+    "434d6ad25d20d5b1bb93c5657782c24d7280772bd906241cfc34af69e1ddd563";
 #else
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
@@ -982,105 +982,118 @@ void otis_cx317_active_live_service_transport(void) {
 #endif
 }
 
-void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
-                                        uint32_t now_s) {
+void otis_cx317_active_live_visit_status(
+    void *context, OtisCx317ActiveStatusVisitor visitor, uint32_t now_s) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
-  if (context == nullptr) return;
-  const char *state = transaction_bound
-                          ? otis_cx317_active_state_name(transaction.state)
-                          : "UNBOUND";
-  otis_status_emit(context, "cx317_active", "enabled", "true",
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "run_identity", kRunIdentity,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "build_identity", kBuildIdentity,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "profile_identity",
-                   OTIS_BUILD_PROFILE_ID, OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "estimator_sha256", kEstimatorHash,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "model_sha256", kModelHash,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "active_policy_sha256",
-                   kActivePolicyHash, OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "response_policy_sha256",
-                   kResponsePolicyHash, OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "numerical_policy_sha256",
-                   kNumericalPolicyHash, OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "state", state,
-                   transaction_bound &&
-                           transaction.state == OtisCx317ActiveState::Fault
-                       ? OTIS_SEVERITY_ERROR
-                       : OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "reason",
-                   transaction_bound ? transaction.reason : "session_unbound",
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "capture_lease_live",
-                   capture_lease_live(now_s) ? "true" : "false",
-                   capture_lease_live(now_s) ? OTIS_SEVERITY_INFO
-                                             : OTIS_SEVERITY_WARN,
-                   OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "manual_start_confirmed",
-                   manual_start_confirmed ? "true" : "false",
-                   manual_start_confirmed ? OTIS_SEVERITY_INFO
-                                          : OTIS_SEVERITY_WARN,
-                   OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "evidence_pending",
-                   evidence_phase != EvidencePhase::None ? "true" : "false",
-                   evidence_phase != EvidencePhase::None ? OTIS_SEVERITY_WARN
-                                                         : OTIS_SEVERITY_INFO,
-                   OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "evidence_phase",
-                   evidence_state_name(), OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  if (visitor == nullptr) return;
+  OtisCx317ActiveLiveStatus active = {};
+  otis_cx317_active_live_get_status(&active, now_s);
+  visitor(context, "enabled", "true", OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "run_identity", active.run_identity, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "build_identity", active.build_identity,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "profile_identity", active.profile_identity,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "estimator_sha256", active.estimator_sha256,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "model_sha256", active.model_sha256, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "active_policy_sha256", active.active_policy_sha256,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "response_policy_sha256", active.response_policy_sha256,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "numerical_policy_sha256",
+          active.numerical_policy_sha256, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "state", active.state,
+          active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "reason", active.reason, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "evidence_pending",
+          active.evidence_pending ? "true" : "false",
+          active.evidence_pending ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "evidence_phase", active.evidence_state,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "capture_lease_live",
+          active.capture_lease_live ? "true" : "false",
+          active.capture_lease_live ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+          OTIS_FLAG_NONE);
+  visitor(context, "manual_start_confirmed",
+          active.manual_start_confirmed ? "true" : "false",
+          active.manual_start_confirmed ? OTIS_SEVERITY_INFO
+                                        : OTIS_SEVERITY_WARN,
+          OTIS_FLAG_NONE);
+  visitor(context, "arm_eligible", active.arm_eligible ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "fail_static", active.fail_static ? "true" : "false",
+          active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
+          active.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                             : OTIS_FLAG_NONE);
   char value[24];
-  snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(now_s));
-  otis_status_emit(context, "cx317_active", "uptime_s", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   snprintf(value, sizeof(value), "%lu",
-           static_cast<unsigned long>(transaction_bound
-                                          ? transaction.expected_binding.session_id
-                                          : 0u));
-  otis_status_emit(context, "cx317_active", "session_id", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  const OtisCx317ActiveEligibility current_eligibility = eligibility(now_s);
-  otis_status_emit(
-      context, "cx317_active", "arm_eligible",
-      otis_cx317_active_arm_eligibility_valid(&current_eligibility) ? "true"
-                                                                    : "false",
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  snprintf(value, sizeof(value), "%u",
-           transaction_bound ? transaction.applied_code : 0u);
-  otis_status_emit(context, "cx317_active", "confirmed_applied_code", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  snprintf(value, sizeof(value), "%u",
-           transaction_bound ? transaction.correction_count : 0u);
-  otis_status_emit(context, "cx317_active", "correction_count", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  snprintf(value, sizeof(value), "%u",
-           transaction_bound ? transaction.cumulative_movement_codes : 0u);
-  otis_status_emit(context, "cx317_active", "cumulative_movement_codes", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  snprintf(value, sizeof(value), "%u",
-           transaction_bound ? transaction.dac_epoch : 0u);
-  otis_status_emit(context, "cx317_active", "dac_epoch", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  snprintf(value, sizeof(value), "%u",
-           have_health ? latest_health.selected_interval_count : 0u);
-  otis_status_emit(context, "cx317_active", "selected_interval_count", value,
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  otis_status_emit(context, "cx317_active", "automatic_retry", "false",
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  otis_status_emit(context, "cx317_active", "automatic_restore", "false",
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+           static_cast<unsigned long>(active.session_id));
+  visitor(context, "session_id", value, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(active.uptime_s));
+  visitor(context, "uptime_s", value, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(active.evidence_request_sequence));
+  visitor(context, "evidence_request_sequence", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "0x%04X",
+           static_cast<unsigned int>(active.expected_setup_code));
+  visitor(context, "expected_setup_code", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "confirmed_applied_code_known",
+          active.confirmed_applied_code_known ? "true" : "false",
+          active.confirmed_applied_code_known ? OTIS_SEVERITY_INFO
+                                              : OTIS_SEVERITY_WARN,
+          OTIS_FLAG_NONE);
+  if (active.confirmed_applied_code_known)
+    snprintf(value, sizeof(value), "%u", active.applied_code);
+  else
+    snprintf(value, sizeof(value), "%s", "unavailable");
+  visitor(context, "confirmed_applied_code", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u", active.correction_count);
+  visitor(context, "correction_count", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u", active.cumulative_movement_codes);
+  visitor(context, "cumulative_movement_codes", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(active.dac_epoch));
+  visitor(context, "dac_epoch", value, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u", active.selected_interval_count);
+  visitor(context, "selected_interval_count", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "automatic_retry", "false", OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "automatic_restore", "false", OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
 #else
   (void)context;
+  (void)visitor;
   (void)now_s;
 #endif
+}
+
+static void emit_direct_active_status(void *context, const char *key,
+                                      const char *value,
+                                      const char *severity, uint32_t flags) {
+  otis_status_emit(static_cast<OtisStatusEmitContext *>(context),
+                   "cx317_active", key, value, severity, flags);
+}
+
+void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
+                                        uint32_t now_s) {
+  if (context == nullptr) return;
+  otis_cx317_active_live_visit_status(context, emit_direct_active_status,
+                                      now_s);
 }
 
 void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
@@ -1107,6 +1120,8 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
                            : 0u;
   status->evidence_request_sequence = evidence_request_sequence;
   status->uptime_s = now_s;
+  status->expected_setup_code =
+      static_cast<uint16_t>(OTIS_CX317_ACTIVE_START_CODE);
   status->applied_code = transaction_bound ? transaction.applied_code : 0u;
   status->correction_count =
       transaction_bound ? transaction.correction_count : 0u;
@@ -1116,6 +1131,9 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->selected_interval_count =
       have_health ? latest_health.selected_interval_count : 0u;
   status->transaction_bound = transaction_bound;
+  status->evidence_pending = evidence_phase != EvidencePhase::None;
+  status->confirmed_applied_code_known =
+      transaction_bound && manual_start_confirmed;
   status->capture_lease_live = capture_lease_live(now_s);
   status->manual_start_confirmed = manual_start_confirmed;
   status->arm_eligible =

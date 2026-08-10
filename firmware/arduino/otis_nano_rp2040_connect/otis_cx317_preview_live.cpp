@@ -35,7 +35,7 @@ constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "057c07ec46290fd097a8a88b019dd46844decc383d57985c3e3bf2b456a4f7b8";
+    "434d6ad25d20d5b1bb93c5657782c24d7280772bd906241cfc34af69e1ddd563";
 #else
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";

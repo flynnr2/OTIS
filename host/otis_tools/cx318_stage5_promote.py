@@ -19,6 +19,7 @@ from typing import Any
 
 from .capture_device import CAPTURE_STATE, SEGMENT_CARRIER_STATE
 from .cx318_capture_segment import prepare_transition, request_rotation
+from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _latest_health, _read_csv
 from .cx318_stage5_manifest import (
     REHEARSAL_STAGE,
     create_manifest,
@@ -29,12 +30,16 @@ from .cx318_stage5_rehearsal_analyze import (
     SUPERVISOR_STATE,
     analyze,
 )
+from .cx318_stage5_runtime_contract import evaluate_prewrite_readiness
+from .cx318_stage5_supervisor import DAC_CSV, load_stage5_spec
 from .evidence import create_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER
 
 
 TOOL_ID = "cx318_stage5_promote_v1"
 REPORT = Path("reports/cx318_stage5_promotion_v1.json")
+STATE = Path("reports/cx318_stage5_promotion_state_v2.json")
+EVENTS = Path("reports/cx318_stage5_promotion_events_v2.jsonl")
 
 
 def _utc_now() -> str:
@@ -74,6 +79,43 @@ def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
         os.link(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _atomic_replace_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _advance(state_path: Path, state: dict[str, Any], phase: str, **fields: Any) -> None:
+    state.update(fields)
+    state["phase"] = phase
+    state["updated_utc"] = _utc_now()
+    _atomic_replace_json(state_path, state)
+    events_path = state_path.parent / EVENTS.name
+    with events_path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {"utc": state["updated_utc"], "phase": phase, **fields},
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n"
+        )
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def _write_complete(run_dir: Path, rotation: dict[str, Any]) -> Path:
@@ -120,6 +162,35 @@ def _require_healthy_rehearsal(run_dir: Path, manifest: dict[str, Any]) -> str:
     return leg
 
 
+def _require_prewrite_runtime_contract(
+    run_dir: Path, manifest: dict[str, Any], leg: str
+) -> dict[str, object]:
+    spec, identities, _ = load_stage5_spec(leg)
+    expected_build = (
+        manifest["firmware"]["source_sha256"]
+        + ":"
+        + manifest["firmware"]["configuration_sha256"]
+    )
+    readiness = evaluate_prewrite_readiness(
+        _latest_health(run_dir / HEALTH_CSV),
+        expected_identity={
+            "run_identity": spec.run_identity,
+            "build_identity": expected_build,
+            "profile_identity": spec.profile,
+            **identities,
+        },
+        planned_live_stimulus_code=spec.start_code,
+        active_row_count=len(_read_csv(run_dir / ACTIVE_CSV)),
+        dac_row_count=len(_read_csv(run_dir / DAC_CSV)),
+    )
+    if not readiness.ready:
+        raise ValueError(
+            "rehearsal terminal does not satisfy the shared Stage 5 pre-write "
+            f"runtime contract: {readiness.diagnostic()}"
+        )
+    return readiness.as_dict()
+
+
 def promote(
     *,
     rehearsal_run: Path,
@@ -136,6 +207,28 @@ def promote(
     rehearsal_manifest_path = rehearsal_run / "run_manifest.json"
     rehearsal_manifest = validate_manifest(rehearsal_manifest_path)
     leg = _require_healthy_rehearsal(rehearsal_run, rehearsal_manifest)
+    readiness = _require_prewrite_runtime_contract(
+        rehearsal_run, rehearsal_manifest, leg
+    )
+
+    state_path = transition_run / STATE
+    if state_path.is_file():
+        existing = _read_object(state_path, "Stage 5 promotion state")
+        if existing.get("phase") == "T_TO_L_COMPLETE" and (
+            transition_run / REPORT
+        ).is_file():
+            return _read_object(
+                transition_run / REPORT, "completed Stage 5 promotion report"
+            )
+        if existing.get("phase") == "REHEARSAL_RETRY_REQUIRED":
+            raise ValueError(
+                "promotion is terminal REHEARSAL_RETRY_REQUIRED; a fresh "
+                "rehearsal is required and no rotation was reissued"
+            )
+        raise ValueError(
+            "promotion has an incomplete durable state at phase "
+            f"{existing.get('phase')}; refusing to reissue a rotation"
+        )
 
     carrier = _read_object(
         control_dir / SEGMENT_CARRIER_STATE, "capture carrier state"
@@ -159,11 +252,26 @@ def promote(
     transition_manifest = prepare_transition(
         rehearsal_manifest_path, transition_run
     )
+    promotion_state: dict[str, Any] = {
+        "schema_version": 2,
+        "tool": TOOL_ID,
+        "phase": "PREPARED",
+        "created_utc": _utc_now(),
+        "updated_utc": _utc_now(),
+        "leg": leg,
+        "rehearsal_run": str(rehearsal_run),
+        "transition_run": str(transition_run),
+        "live_run": str(live_run),
+        "owner_pid": carrier["pid"],
+        "prewrite_runtime_contract": readiness,
+    }
+    _advance(state_path, promotion_state, "PREPARED")
     rehearsal_rotation = request_rotation(
         control_dir=control_dir,
         capability=capability,
         to_run=transition_run,
         mode="transition",
+        operation_id=f"stage5:{rehearsal_run}:R_TO_T",
     )
     if (
         rehearsal_rotation.get("from_run") != str(rehearsal_run)
@@ -173,12 +281,33 @@ def promote(
         or int(rehearsal_rotation.get("reconnect_count", -1)) != 0
     ):
         raise ValueError("rehearsal-to-transition rotation acknowledgement differs")
+    _advance(
+        state_path,
+        promotion_state,
+        "R_TO_T_COMPLETE",
+        rehearsal_rotation=rehearsal_rotation,
+    )
 
     _write_complete(rehearsal_run, rehearsal_rotation)
     evidence_path = create_evidence_snapshot(rehearsal_run)
     rehearsal_seal_path, rehearsal_seal = analyze(rehearsal_run)
     if rehearsal_seal.get("status") != "passed":
+        _advance(
+            state_path,
+            promotion_state,
+            "REHEARSAL_RETRY_REQUIRED",
+            rehearsal_seal=str(rehearsal_seal_path),
+            rehearsal_seal_status=rehearsal_seal.get("status"),
+            retained_segment="no_authority_transition",
+        )
         raise ValueError("rehearsal did not produce a passed immutable seal")
+    _advance(
+        state_path,
+        promotion_state,
+        "REHEARSAL_SEALED_PASSED",
+        evidence_snapshot=str(evidence_path),
+        rehearsal_seal=str(rehearsal_seal_path),
+    )
 
     firmware = rehearsal_manifest["firmware"]
     stage4 = rehearsal_manifest["stage4_seal"]
@@ -195,6 +324,12 @@ def promote(
         serial_device=str(host["serial_device"]),
         baud=int(host["baud"]),
     )
+    _advance(
+        state_path,
+        promotion_state,
+        "LIVE_MANIFEST_PREPARED",
+        live_manifest=str(live_manifest),
+    )
     normal_fifo = live_run / "control/commands.fifo"
     emergency_fifo = live_run / "control/emergency.fifo"
     live_rotation = request_rotation(
@@ -204,6 +339,7 @@ def promote(
         mode="live",
         command_fifo=normal_fifo,
         emergency_command_fifo=emergency_fifo,
+        operation_id=f"stage5:{rehearsal_run}:T_TO_L",
     )
     if (
         live_rotation.get("from_run") != str(transition_run)
@@ -253,8 +389,17 @@ def promote(
         "live_rotation": live_rotation,
         "serial_reopened": False,
         "reconnect_count": 0,
+        "promotion_state": str(state_path),
+        "status": "completed",
     }
     _atomic_new_json(transition_run / REPORT, result)
+    _advance(
+        state_path,
+        promotion_state,
+        "T_TO_L_COMPLETE",
+        promotion_report=str(transition_run / REPORT),
+        live_rotation=live_rotation,
+    )
     return result
 
 

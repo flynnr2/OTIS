@@ -82,6 +82,26 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
+    header = (FIRMWARE / "otis_dual_core_partition.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST = 29u" in header
+    assert "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 71u" in header
+    assert (
+        "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
+        "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
+    ) in header
+    assert (
+        "OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +\n"
+        "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
+    ) in header
+    assert "OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u" in header
+    assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
+    assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
+
+
 def test_service_queue_fault_diagnostics_are_complete_and_bounded() -> None:
     source = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
         encoding="utf-8"

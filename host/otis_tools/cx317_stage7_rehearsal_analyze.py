@@ -348,6 +348,8 @@ def analyze(
             health.get(("cx317_active", "state")) == "DISARMED"
             and health.get(("cx317_active", "evidence_phase"))
             == "evidence_clear"
+            and health.get(("cx317_active", "confirmed_applied_code_known"))
+            == "true"
             and health.get(("cx317_active", "confirmed_applied_code"))
             == second_application.get("applied_code")
             and health.get(("cx317_active", "correction_count")) == "2"
@@ -433,6 +435,9 @@ def analyze(
             "evidence_phase": health.get(("cx317_active", "evidence_phase")),
             "applied_code": health.get(
                 ("cx317_active", "confirmed_applied_code")
+            ),
+            "applied_code_known": health.get(
+                ("cx317_active", "confirmed_applied_code_known")
             ),
         },
     }

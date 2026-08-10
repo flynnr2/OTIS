@@ -71,6 +71,11 @@ def test_promotion_orders_rotation_seal_manifest_and_live_activation(
     rehearsal, transition, live, control, manifest = _fixture(tmp_path)
     events: list[str] = []
     monkeypatch.setattr(promote, "validate_manifest", lambda _: manifest)
+    monkeypatch.setattr(
+        promote,
+        "_require_prewrite_runtime_contract",
+        lambda *_: {"ready": True},
+    )
 
     def prepare(source: Path, target: Path) -> Path:
         events.append("prepare_transition")
@@ -180,6 +185,11 @@ def test_failed_rehearsal_seal_stays_in_no_authority_transition(
 ) -> None:
     rehearsal, transition, live, control, manifest = _fixture(tmp_path)
     monkeypatch.setattr(promote, "validate_manifest", lambda _: manifest)
+    monkeypatch.setattr(
+        promote,
+        "_require_prewrite_runtime_contract",
+        lambda *_: {"ready": True},
+    )
 
     def prepare(source: Path, target: Path) -> Path:
         target.mkdir()
@@ -229,3 +239,36 @@ def test_failed_rehearsal_seal_stays_in_no_authority_transition(
         )
     assert not live.exists()
     assert transition.is_dir()
+    state = json.loads((transition / promote.STATE).read_text(encoding="utf-8"))
+    assert state["phase"] == "REHEARSAL_RETRY_REQUIRED"
+
+
+def test_retry_required_state_never_reissues_a_rotation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rehearsal, transition, live, control, manifest = _fixture(tmp_path)
+    transition.mkdir()
+    _write_json(
+        transition / promote.STATE,
+        {"schema_version": 2, "phase": "REHEARSAL_RETRY_REQUIRED"},
+    )
+    monkeypatch.setattr(promote, "validate_manifest", lambda _: manifest)
+    monkeypatch.setattr(
+        promote,
+        "_require_prewrite_runtime_contract",
+        lambda *_: {"ready": True},
+    )
+    monkeypatch.setattr(
+        promote,
+        "request_rotation",
+        lambda **_: pytest.fail("terminal promotion state must not rotate"),
+    )
+
+    with pytest.raises(ValueError, match="fresh rehearsal is required"):
+        promote.promote(
+            rehearsal_run=rehearsal,
+            transition_run=transition,
+            live_run=live,
+            control_dir=control,
+            capability="capability",
+        )

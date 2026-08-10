@@ -22,8 +22,18 @@ Before any write:
   qualification and fail-static gates;
 - prove phase/hybrid data cannot influence the active delta or eligibility;
 - bind exact run/build/profile/estimator/model/policy/response hashes;
-- query or otherwise reconfirm the physical last-applied code without writing;
+- bind the inherited Stage-4-sealed `0xA828` preview baseline without claiming
+  that it is a fresh post-flash DAC read, and require the physical DAC driver
+  confirmation to remain explicitly unknown before the planned live stimulus;
 - verify independent host and bounded device abort paths.
+
+Run the versioned no-I/O Stage 5 preflight against the exact rehearsal
+manifest before starting its capture. It must validate current host-tool,
+policy, build, UF2 and Stage 4 seal bindings; the single canonical 29-field
+active-status vocabulary; the shared fail-closed pre-write predicate; and
+missing-field rejection. The preflight must report zero serial commands, FIFO
+creations and DAC writes. A preflight pass is necessary but does not replace
+the physical rehearsal.
 
 Before each live leg, run at least 2700 seconds with the exact leg firmware,
 profile and limits but with setup and automatic writes disabled. Promote a
@@ -36,6 +46,23 @@ The firmware USB transport must retain one exclusive chunked-frame owner until
 the complete record or declared record group closes. Any `ASL` association-loss
 decision, parser error, malformed record, serial reconnect, owner mismatch or
 logical-rotation ambiguity rejects the rehearsal or leg without retry.
+The supervisor must reject an incomplete or mismatched pre-write status burst
+after at most 30 seconds, rather than deferring that contract check to the
+2700-second endpoint. The supervisor, rehearsal analyzer, promotion defence
+and preflight must call the same versioned predicate.
+
+Use these terms consistently in firmware, manifests, monitors and reports:
+
+- inherited preview baseline: Stage-4-sealed `0xA828`, DAC epoch 0; this is
+  preview provenance, not a fresh physical DAC read after reboot or flash;
+- planned live stimulus: Leg A `0xA808` or Leg B `0xA848`;
+- confirmed physical applied code: explicitly unknown before the live
+  stimulus, and known only after a successful matching DAC transaction.
+
+Promotion is one durable state machine. Each logical rotation has a stable
+operation identity. An immutable failed rehearsal seal leaves the owner in the
+no-authority transition with terminal state `REHEARSAL_RETRY_REQUIRED`; rerun
+must not reissue either rotation or create a live manifest.
 
 ## Finite legs
 

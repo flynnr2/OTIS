@@ -32,6 +32,10 @@ from .cx318_stage5_supervisor import (
     TDB_CSV,
     load_stage5_spec,
 )
+from .cx318_stage5_runtime_contract import (
+    environment_streams_ready,
+    evaluate_prewrite_readiness,
+)
 from .cx318_stage5_tight_replay import replay_tight_deadband
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
@@ -284,9 +288,12 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         "profile_identity": spec.profile,
         **identities,
     }
-    identity_exact = all(
-        health.get(("cx317_active", key)) == expected
-        for key, expected in identity.items()
+    readiness = evaluate_prewrite_readiness(
+        health,
+        expected_identity=identity,
+        planned_live_stimulus_code=spec.start_code,
+        active_row_count=len(active_rows),
+        dac_row_count=len(dac_rows),
     )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
@@ -340,19 +347,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
                 for item in supervisor_events
             )
         ),
-        "zero_dac_or_active_rows": not dac_rows and not active_rows,
-        "exact_active_identity_without_setup_or_arm": (
-            identity_exact
-            and health.get(("cx317_active", "state")) == "DISARMED"
-            and health.get(("cx317_active", "manual_start_confirmed")) == "false"
-            and health.get(("cx317_active", "arm_eligible")) == "false"
-            and health.get(("cx317_active", "dac_epoch")) == "0"
-        ),
-        "build_bound_pre_setup_a828_epoch0": (
-            health.get(("cx318_preview", "static_code")) == "0xA828"
-            and health.get(("cx318_preview", "applied_code")) == "0xA828"
-            and health.get(("cx318_preview", "dac_epoch")) == "0"
-        ),
+        "stage5_prewrite_runtime_contract_exact": readiness.ready,
         "selected_600s_estimate_present": len(estimates) >= 1,
         "tight_deadband_replay_exact": tdb_replay.exact
         and tdb_replay.row_count >= 1,
@@ -360,18 +355,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             _authority_false(run_dir / relative)
             for relative in (CONTROL_CSV, RPH_CSV, PHE_CSV, HPR_CSV, TDB_CSV)
         ),
-        "both_environment_streams_present": {"sht4x", "bmp280"} <= sources,
-        "live_health_has_no_drop_or_fault": (
-            health.get(("capture", "dropped_count"), "0") == "0"
-            and health.get(("capture", "pps_count_boundary_dropped_count"), "0")
-            == "0"
-            and health.get(("dual_core", "telemetry_dropped"), "0") == "0"
-            and health.get(("dual_core", "partition_fault"), "none") == "none"
-            and health.get(("dual_core", "fail_static"), "false") == "false"
-            and health.get(("cx317_active", "fail_static"), "false") == "false"
-            and health.get(("cx317_preview", "telemetry_dropped_frames"), "0")
-            == "0"
-        ),
+        "both_environment_streams_present": environment_streams_ready(sources),
         "sealed_evidence_snapshot_valid": (
             evidence.get("run_state") == "complete"
             and not evidence_failures
@@ -411,6 +395,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "accelerated_or_relaxed_limits": False,
             "capture_closure": capture_closure,
         },
+        "runtime_contract": readiness.as_dict(),
         "run": {
             "path": str(run_dir),
             "manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),

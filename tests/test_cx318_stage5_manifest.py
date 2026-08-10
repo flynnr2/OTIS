@@ -14,6 +14,8 @@ from host.otis_tools.cx318_stage5_manifest import (
     create_manifest,
     validate_manifest,
 )
+from host.otis_tools.cx318_stage5_preflight import preflight
+from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,16 +36,33 @@ def _profile_defines(profile_id: str) -> dict[str, str]:
     return next(item["defines"] for item in matrix["profiles"] if item["id"] == profile_id)
 
 
-def _build(tmp_path: Path, profile_id: str) -> tuple[Path, Path]:
+def _build(
+    tmp_path: Path,
+    profile_id: str,
+    *,
+    source_sha256: str | None = None,
+) -> tuple[Path, Path]:
     uf2 = tmp_path / f"{profile_id}.uf2"
     uf2.write_bytes(b"exact UF2 fixture\n")
     build = tmp_path / f"{profile_id}_build.json"
+    matrix = load_matrix(ROOT / "firmware/arduino/firmware_matrix.json")
+    profile = next(
+        item for item in matrix["profiles"] if item["id"] == profile_id
+    )
     build.write_text(json.dumps({
         "schema_version": 1,
         "artifacts": [{"name": uf2.name, "sha256": _sha(uf2), "size_bytes": uf2.stat().st_size}],
         "provenance": {
-            "source": {"state": "clean", "sha256": "a" * 64, "git_commit": "b" * 40},
-            "configuration": {"profile_id": profile_id, "sha256": "c" * 64, "defines": _profile_defines(profile_id)},
+            "source": {
+                "state": "clean",
+                "sha256": source_sha256 or source_input_hash(),
+                "git_commit": "b" * 40,
+            },
+            "configuration": {
+                "profile_id": profile_id,
+                "sha256": configuration_hash(matrix, profile),
+                "defines": _profile_defines(profile_id),
+            },
         },
     }), encoding="utf-8")
     return build, uf2
@@ -196,9 +215,18 @@ def test_rehearsal_manifest_is_exact_same_profile_no_write_and_validates(tmp_pat
     )
     manifest = validate_manifest(path)
     assert manifest["stage5"]["firmware_profile"] == "cx318_stage5_tight_lower"
-    assert manifest["stage5"]["setup"] == {
+    assert manifest["stage5"]["planned_live_stimulus"] == {
         "code": 0xA808, "code_hex": "0xA808", "maximum_writes": 0, "authorized": False,
     }
+    assert manifest["stage5"]["inherited_preview_baseline"] == {
+        "code": 0xA828,
+        "code_hex": "0xA828",
+        "dac_epoch": 0,
+        "provenance": "stage4_sealed_build_bound_preview_not_physical_dac_confirmation",
+        "physical_dac_confirmation": False,
+    }
+    assert manifest["stage5"]["runtime_contract"]["missing_status_is_failure"] is True
+    assert "dac_epoch" in manifest["stage5"]["runtime_contract"]["active_status_keys"]
     automatic = manifest["stage5"]["automatic_frequency_control"]
     assert automatic["required_direction"] == "positive"
     assert (automatic["maximum_corrections"], automatic["maximum_cumulative_movement_codes"]) == (0, 0)
@@ -211,6 +239,38 @@ def test_rehearsal_manifest_is_exact_same_profile_no_write_and_validates(tmp_pat
     assert manifest["policy"]["bindings"]["master_prompt"]
     assert manifest["policy"]["bindings"]["stage5_prompt"]
     assert "tight_deadband_decisions_v1" in manifest["contracts"]
+
+    result = preflight(path)
+    assert result["status"] == "passed"
+    assert result["serial_commands_attempted"] == 0
+    assert result["checks"]["every_missing_active_status_key_rejected"] is True
+    assert result["checks"]["build_source_matches_current_contract_source"] is True
+    assert result["checks"]["firmware_health_status_producers_present"] is True
+
+
+def test_preflight_rejects_an_old_binary_source_even_when_its_manifest_is_clean(
+    tmp_path: Path,
+) -> None:
+    build, uf2 = _build(
+        tmp_path, "cx318_stage5_tight_lower", source_sha256="a" * 64
+    )
+    path = create_manifest(
+        mode="rehearsal",
+        leg="A",
+        run_dir=tmp_path / "rehearsal-old-source",
+        build_manifest_path=build,
+        uf2_path=uf2,
+        stage4_seal_path=_stage4_seal(tmp_path),
+        serial_device="/dev/cu.fixture",
+    )
+
+    result = preflight(path)
+
+    assert result["status"] == "failed"
+    assert (
+        result["checks"]["build_source_matches_current_contract_source"]
+        is False
+    )
 
 
 def test_live_manifest_requires_and_binds_matching_passed_rehearsal_seal(tmp_path: Path) -> None:
@@ -225,7 +285,7 @@ def test_live_manifest_requires_and_binds_matching_passed_rehearsal_seal(tmp_pat
     )
     manifest = validate_manifest(path)
     stage5 = manifest["stage5"]
-    assert stage5["setup"]["code"] == 0xA848
+    assert stage5["planned_live_stimulus"]["code"] == 0xA848
     assert stage5["automatic_frequency_control"]["required_direction"] == "negative"
     assert (stage5["automatic_frequency_control"]["maximum_corrections"], stage5["automatic_frequency_control"]["maximum_cumulative_movement_codes"]) == (4, 84)
     assert stage5["rehearsal_seal"]["sha256"] == _sha(seal)

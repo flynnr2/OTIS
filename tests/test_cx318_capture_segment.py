@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 import threading
 import time
@@ -10,7 +11,11 @@ import pytest
 import host.otis_tools.capture_device as capture_device
 import host.otis_tools.cx318_stage5_manifest as stage5_manifest
 from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner
-from host.otis_tools.cx318_capture_segment import prepare_transition, request_rotation
+from host.otis_tools.cx318_capture_segment import (
+    PROTOCOL_ID,
+    prepare_transition,
+    request_rotation,
+)
 from host.otis_tools.run_paths import default_csv_files, ensure_run_layout
 from host.otis_tools.serial_commands import send_command_to_fifo
 
@@ -153,3 +158,40 @@ def test_same_open_serial_rotates_rehearsal_transition_live_and_only_live_can_wr
     assert json.loads(
         (live / capture_device.SEGMENT_CLOSURE).read_text()
     )["closure_mode"] == "physical_serial_close"
+
+
+def test_rotation_operation_id_reuses_completed_response_without_reissuing(
+    tmp_path: Path,
+) -> None:
+    control = tmp_path / "control"
+    target = (tmp_path / "target").resolve()
+    target.mkdir()
+    operation_id = "stage5-leg-a-rehearsal-to-transition"
+    request_id = sha256(
+        f"{PROTOCOL_ID}:{operation_id}".encode("utf-8")
+    ).hexdigest()[:32]
+    response = {
+        "schema_version": 1,
+        "request_id": request_id,
+        "status": "completed",
+        "from_run": str((tmp_path / "source").resolve()),
+        "to_run": str(target),
+        "pid": 123,
+        "transport_generation": 2,
+        "serial_reopened": False,
+        "reconnect_count": 0,
+    }
+    response_path = control / capture_device.SEGMENT_RESPONSE_DIR / f"{request_id}.json"
+    response_path.parent.mkdir(parents=True)
+    response_path.write_text(json.dumps(response), encoding="utf-8")
+
+    observed = request_rotation(
+        control_dir=control,
+        capability="unused-on-resume",
+        to_run=target,
+        mode="transition",
+        operation_id=operation_id,
+    )
+
+    assert observed == response
+    assert not (control / capture_device.SEGMENT_REQUEST).exists()
