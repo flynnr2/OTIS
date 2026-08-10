@@ -1,5 +1,12 @@
 # OTIS Engineering Culture
 
+This document explains the human-facing rationale for OTIS engineering
+culture. General preferences live in `~/.codex/AGENTS.md`; the repository-root
+`AGENTS.md` contains the concise OTIS-specific operational instructions
+automatically applied by Codex. A lasting preference change should update the
+applicable instruction layer and this document when it affects both human
+contributors and Codex.
+
 OTIS aims to cultivate a culture of careful scientific instrumentation engineering.
 
 The project values:
