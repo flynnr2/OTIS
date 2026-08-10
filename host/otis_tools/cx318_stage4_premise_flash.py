@@ -15,7 +15,12 @@ from typing import Any
 
 from tools.firmware_matrix import DEFAULT_MATRIX, load_matrix, source_input_hash
 
-from .cx318_stage4_flash import EXPECTED_SERIAL, read_board_identity
+from .cx318_stage4_flash import (
+    EXPECTED_SERIAL,
+    _git_blob,
+    _historical_source_input_hash,
+    read_board_identity,
+)
 
 
 PROFILE_ID = "cx318_stage4_premise_setup"
@@ -72,24 +77,37 @@ def _premise_profile(matrix: dict[str, Any]) -> dict[str, Any]:
 
 def validate_premise_build_artifacts(
     *, matrix_path: Path, build_manifest_path: Path, uf2_path: Path,
+    allow_historical_clean_build: bool = False,
 ) -> dict[str, Any]:
     """Validate immutable premise artifacts without consulting current git state."""
     matrix_path = matrix_path.resolve()
     build_manifest_path = build_manifest_path.resolve()
     uf2_path = uf2_path.resolve()
     matrix = load_matrix(matrix_path)
-    tracked = load_matrix(DEFAULT_MATRIX.resolve())
-    if matrix != tracked or _sha256_file(matrix_path) != _sha256_file(DEFAULT_MATRIX):
+    build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
+    provenance = build["provenance"]
+    configuration = provenance["configuration"]
+    source = provenance["source"]
+    source_commit = source.get("git_commit")
+    if allow_historical_clean_build:
+        tracked_bytes = _git_blob(
+            source_commit, "firmware/arduino/firmware_matrix.json"
+        )
+        tracked = json.loads(tracked_bytes)
+        expected_source_sha256 = _historical_source_input_hash(
+            commit=source_commit, matrix_path=matrix_path,
+        )
+    else:
+        tracked_bytes = DEFAULT_MATRIX.read_bytes()
+        tracked = load_matrix(DEFAULT_MATRIX.resolve())
+        expected_source_sha256 = None
+    if matrix != tracked or _sha256_file(matrix_path) != sha256(tracked_bytes).hexdigest():
         raise ValueError("premise matrix differs from the exact tracked firmware matrix")
     profile = _premise_profile(matrix)
     defines = profile["defines"]
     if any(defines.get(key) != value for key, value in SAFETY_DEFINES.items()):
         raise ValueError("premise profile violates the exact one-shot zero-authority contract")
 
-    build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
-    provenance = build["provenance"]
-    configuration = provenance["configuration"]
-    source = provenance["source"]
     config_payload = {
         key: value for key, value in configuration.items() if key != "sha256"
     }
@@ -102,6 +120,10 @@ def validate_premise_build_artifacts(
         or len(source["git_commit"]) != 40
         or not isinstance(source.get("sha256"), str)
         or len(source["sha256"]) != 64
+        or (
+            expected_source_sha256 is not None
+            and source.get("sha256") != expected_source_sha256
+        )
     ):
         raise ValueError("premise build provenance is not the exact clean profile input")
     matches = [item for item in build["artifacts"] if item.get("name") == uf2_path.name]
@@ -157,11 +179,13 @@ def validate_premise_build_inputs(
 def validate_premise_flash_record(
     record: dict[str, Any], *, matrix_path: Path,
     build_manifest_path: Path, uf2_path: Path,
+    allow_historical_clean_build: bool = False,
 ) -> dict[str, Any]:
     binding = validate_premise_build_artifacts(
         matrix_path=matrix_path,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
+        allow_historical_clean_build=allow_historical_clean_build,
     )
     if record.get("schema_version") != 1 or record.get("tool") != TOOL_ID:
         raise ValueError("premise flash record schema/tool is invalid")

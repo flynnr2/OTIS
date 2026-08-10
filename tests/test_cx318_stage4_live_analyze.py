@@ -233,6 +233,34 @@ def test_live_parity_replays_two_authoritative_frequency_events() -> None:
     assert result["duration_s"] == 1200.0
 
 
+def test_phase_continuity_allows_frequency_initialization_recover_preview() -> None:
+    snapshots, counts, rph, phe, hpr = _live_rows()
+    # The installed firmware reports RECOVER_PREVIEW while a valid, newly
+    # opened phase epoch waits for its first 600-second frequency estimate.
+    # That state must not be confused with a reference discontinuity.
+    hpr[0]["preview_state"] = "RECOVER_PREVIEW"
+
+    checks, result = _live_parity(
+        snapshots,
+        counts,
+        rph,
+        phe,
+        hpr,
+        static_code=STATIC_CODE,
+        dac_epoch=DAC_EPOCH,
+    )
+
+    continuity = next(
+        check
+        for check in checks
+        if check.identifier == "single_continuous_qualified_phase_epoch"
+    )
+    assert continuity.passed
+    # The independent exact-parity check still reports the deliberate HPR
+    # mutation, so this test does not weaken field-for-field replay.
+    assert result["mismatch_count"] == 1
+
+
 def test_live_parity_reports_bounded_field_mismatch() -> None:
     snapshots, counts, rph, phe, hpr = _live_rows(4)
     hpr[2]["phase_bias_hz"] = "0.001"

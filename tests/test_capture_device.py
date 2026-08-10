@@ -6,6 +6,7 @@ import os
 import signal
 import shutil
 import threading
+import time
 
 import pytest
 
@@ -465,6 +466,73 @@ def test_emergency_abort_preempts_and_revokes_normal_command_ingress(
     assert b"emergency_abort_latched" in raw
     assert b"normal_command_ingress_revoked" in raw
     assert b"emergency_abort_sent" in raw
+
+
+def test_sigint_stop_remains_bounded_when_normal_fifo_is_saturated(
+    tmp_path: Path,
+) -> None:
+    """The Stage 4 stop path must not depend on normal-command drainage."""
+    base = _config(tmp_path)
+    normal_fifo = tmp_path / "control/commands.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo,
+        normal_command_max_age_s=2.0,
+        status_interval_s=base.status_interval_s,
+    )
+    read_entered = threading.Event()
+    release_read = threading.Event()
+
+    class ObstructedSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+
+        def read(self, _size: int) -> bytes:
+            read_entered.set()
+            assert release_read.wait(timeout=2.0)
+            return b""
+
+    serial = ObstructedSerial()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+    result: list[int] = []
+    worker = threading.Thread(target=lambda: result.append(runner.run()))
+    worker.start()
+    assert read_entered.wait(timeout=2.0)
+
+    writer_fd = os.open(normal_fifo, os.O_WRONLY | os.O_NONBLOCK)
+    saturated = False
+    try:
+        payload = b"OTISQ1 0 CONFIG?\n" * 256
+        for _ in range(1024):
+            try:
+                os.write(writer_fd, payload)
+            except BlockingIOError:
+                saturated = True
+                break
+        assert saturated
+
+        started = time.monotonic()
+        runner.request_stop(signal.SIGINT)
+        release_read.set()
+        worker.join(timeout=2.0)
+        elapsed = time.monotonic() - started
+    finally:
+        os.close(writer_fd)
+        release_read.set()
+        worker.join(timeout=2.0)
+
+    assert not worker.is_alive()
+    assert result == [0]
+    assert elapsed < 2.0
+    assert runner.commands_sent == 0
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert b"graceful_shutdown_complete" in raw
+    assert b"host_command_sent" not in raw
 
 
 def test_emergency_fifo_unknown_command_fails_closed_to_abort(

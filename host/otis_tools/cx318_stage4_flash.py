@@ -13,7 +13,13 @@ import tempfile
 import time
 from typing import Any
 
-from tools.firmware_matrix import DEFAULT_MATRIX, load_matrix, source_input_hash
+from tools.firmware_matrix import (
+    DEFAULT_MATRIX,
+    GENERATED_HEADER_NAME,
+    SKETCH,
+    load_matrix,
+    source_input_hash,
+)
 
 
 PROFILE_ID = "cx318_stage4_nonactuating_preview"
@@ -49,8 +55,65 @@ def _profile(matrix: dict[str, Any]) -> dict[str, Any]:
     return matches[0]
 
 
+def _git_blob(commit: str, path: str) -> bytes:
+    if not len(commit) == 40 or any(character not in "0123456789abcdef" for character in commit):
+        raise ValueError("build provenance contains a malformed Git commit")
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{path}"],
+        cwd=DEFAULT_MATRIX.parents[2], capture_output=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"build provenance Git object is unavailable: {commit}:{path}")
+    return result.stdout
+
+
+def _historical_source_input_hash(*, commit: str, matrix_path: Path) -> str:
+    """Rebuild the firmware source digest from an exact historical commit.
+
+    The Stage 4 rebound matrix is an ignored run artifact, so its current exact
+    bytes and repo-relative name are combined with the tracked sketch/builder
+    bytes from the clean build commit.
+    """
+    repo_root = DEFAULT_MATRIX.parents[2].resolve()
+    sketch_relative = SKETCH.resolve().relative_to(repo_root).as_posix()
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "-z", commit, "--", sketch_relative],
+        cwd=repo_root, capture_output=True, check=False,
+    )
+    if listing.returncode != 0:
+        raise ValueError(f"cannot enumerate firmware source at build commit {commit}")
+    tracked_names = [
+        item.decode("utf-8")
+        for item in listing.stdout.split(b"\0")
+        if item and Path(item.decode("utf-8")).name != GENERATED_HEADER_NAME
+    ]
+    if not tracked_names:
+        raise ValueError(f"build commit {commit} contains no firmware sketch source")
+
+    try:
+        matrix_name = matrix_path.resolve().relative_to(repo_root).as_posix()
+    except ValueError:
+        matrix_name = matrix_path.resolve().as_posix()
+    builder_name = "tools/firmware_matrix.py"
+    sources = [
+        (name, _git_blob(commit, name)) for name in tracked_names
+    ] + [
+        (matrix_name, matrix_path.read_bytes()),
+        (builder_name, _git_blob(commit, builder_name)),
+    ]
+    digest = sha256()
+    for name, data in sorted(sources, key=lambda item: item[0]):
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def validate_build_inputs(
     *, rebound_matrix_path: Path, build_manifest_path: Path, uf2_path: Path,
+    allow_historical_clean_build: bool = False,
 ) -> dict[str, Any]:
     rebound_matrix_path = rebound_matrix_path.resolve()
     build_manifest_path = build_manifest_path.resolve()
@@ -59,13 +122,6 @@ def validate_build_inputs(
     derivation = matrix.get("cx318_stage4_rebound_derivation", {})
     if not isinstance(derivation, dict):
         raise ValueError("matrix lacks the Stage 4 rebound derivation")
-    tracked_base = DEFAULT_MATRIX.resolve()
-    if (
-        derivation.get("base_matrix_sha256") != _sha256_file(tracked_base)
-        or derivation.get("exact_static_code") != 0xA828
-        or derivation.get("exact_dac_epoch") != 1
-    ):
-        raise ValueError("rebound matrix is not derived from the exact tracked A828/epoch-1 contract")
     profile = _profile(matrix)
     defines = profile["defines"]
     safety = {
@@ -84,15 +140,7 @@ def validate_build_inputs(
     provenance = build["provenance"]
     configuration = provenance["configuration"]
     source = provenance["source"]
-    config_payload = {key: value for key, value in configuration.items() if key != "sha256"}
-    if (
-        configuration.get("profile_id") != PROFILE_ID
-        or configuration.get("defines") != defines
-        or configuration.get("sha256") != _canonical_sha256(config_payload)
-        or source.get("state") != "clean"
-        or source.get("sha256") != source_input_hash(matrix_path=rebound_matrix_path)
-    ):
-        raise ValueError("build provenance is not the exact clean rebound matrix input")
+    source_commit = source.get("git_commit")
     current_commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=DEFAULT_MATRIX.parents[2],
         text=True, capture_output=True, check=True,
@@ -101,7 +149,33 @@ def validate_build_inputs(
         ["git", "status", "--porcelain=v1", "--untracked-files=all"],
         cwd=DEFAULT_MATRIX.parents[2], text=True, capture_output=True, check=True,
     ).stdout
-    if source.get("git_commit") != current_commit or current_status:
+    historical = source_commit != current_commit
+    if historical and not allow_historical_clean_build:
+        raise ValueError("repository no longer matches the exact clean build commit")
+    if historical:
+        base_bytes = _git_blob(source_commit, "firmware/arduino/firmware_matrix.json")
+        expected_source_sha256 = _historical_source_input_hash(
+            commit=source_commit, matrix_path=rebound_matrix_path,
+        )
+    else:
+        base_bytes = DEFAULT_MATRIX.read_bytes()
+        expected_source_sha256 = source_input_hash(matrix_path=rebound_matrix_path)
+    if (
+        derivation.get("base_matrix_sha256") != sha256(base_bytes).hexdigest()
+        or derivation.get("exact_static_code") != 0xA828
+        or derivation.get("exact_dac_epoch") != 1
+    ):
+        raise ValueError("rebound matrix is not derived from the exact tracked A828/epoch-1 contract")
+    config_payload = {key: value for key, value in configuration.items() if key != "sha256"}
+    if (
+        configuration.get("profile_id") != PROFILE_ID
+        or configuration.get("defines") != defines
+        or configuration.get("sha256") != _canonical_sha256(config_payload)
+        or source.get("state") != "clean"
+        or source.get("sha256") != expected_source_sha256
+    ):
+        raise ValueError("build provenance is not the exact clean rebound matrix input")
+    if not historical and current_status:
         raise ValueError("repository no longer matches the exact clean build commit")
     matches = [item for item in build["artifacts"] if item.get("name") == uf2_path.name]
     if len(matches) != 1:
@@ -117,7 +191,7 @@ def validate_build_inputs(
         "build_manifest_sha256": _sha256_file(build_manifest_path),
         "uf2_sha256": _sha256_file(uf2_path),
         "uf2_size_bytes": uf2_path.stat().st_size,
-        "git_commit": current_commit,
+        "git_commit": source_commit,
         "source_sha256": source["sha256"],
         "configuration_sha256": configuration["sha256"],
         "fqbn": configuration["fqbn"],

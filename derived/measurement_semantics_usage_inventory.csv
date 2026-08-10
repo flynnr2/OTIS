@@ -1,4 +1,5 @@
 path,line,matched_terms,classification,source_text
+AGENTS.md,160,uncertainty,measurement_uncertainty_semantics,"- Distinguish provenance uncertainty (for example, an unknown applied code)"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,23,confidence,confidence_semantics,"`diagnostic`, `health`, `confidence`, `valid`, `eligible`, `fault`, `EST`,"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,30,uncertainty,measurement_uncertainty_semantics,and uncertainty;
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,36,confidence,confidence_semantics,"state/transition, confidence in the diagnosis, first/last seen, evidence"
@@ -83,8 +84,8 @@ derived/stage1_diagnostics_metrology_reference_closure.md,51,uncertainty,measure
 derived/stage1_diagnostics_metrology_reference_closure.md,57,uncertainty,measurement_uncertainty_semantics,"uncertainty, and staleness. Unsupported values remain unknown/empty."
 derived/stage1_diagnostics_metrology_reference_closure.md,73,uncertainty,measurement_uncertainty_semantics,"PPS-gated physical aperture and latency, reference/calibration uncertainty,"
 derived/stage1_diagnostics_metrology_reference_closure.md,75,uncertainty,measurement_uncertainty_semantics,"evidence is promoted through versioned contracts, uncertainty remains"
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,146,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,151,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,153,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,158,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,56,uncertainty,measurement_uncertainty_semantics,uncertainty from measurements using explicit assumptions and provenance.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,81,uncertainty,measurement_uncertainty_semantics,- Make uncertainty and reason codes visible.
 docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md,72,uncertainty,measurement_uncertainty_semantics,"Component quality affects uncertainty, noise floor, holdover, lock robustness,"
@@ -556,9 +557,9 @@ host/otis_tools/cx318_stage1_handoff.py,212,uncertainty,measurement_uncertainty_
 host/otis_tools/cx318_stage1_handoff.py,505,uncertainty,measurement_uncertainty_semantics,- calibrated uncertainty: `{phase['calibrated_uncertainty_status']}`
 host/otis_tools/cx318_stage1_handoff.py,536,uncertainty,measurement_uncertainty_semantics,"No UTC, absolute time error, calibrated delay/uncertainty, generated-output PPS"
 host/otis_tools/cx318_stage3_replay.py,473,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
-host/otis_tools/cx318_stage4_live_analyze.py,761,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
-host/otis_tools/cx318_stage4_live_analyze.py,791,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
-host/otis_tools/cx318_stage4_live_analyze.py,837,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
+host/otis_tools/cx318_stage4_live_analyze.py,788,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
+host/otis_tools/cx318_stage4_live_analyze.py,818,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
+host/otis_tools/cx318_stage4_live_analyze.py,864,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
 host/otis_tools/diagnostics.py,81,confidence,confidence_semantics,"confidence: str = ""1"","
 host/otis_tools/diagnostics.py,134,confidence,confidence_semantics,"""diagnostic_confidence"": confidence,"
 host/otis_tools/h1_characterize.py,2376,standard_deviation,sample_dispersion_or_repeatability,"f""- local_vs_legacy_difference_hz: median={_format(_median(differences))}, stddev={_format(_stddev(differences))}, span={_format(max(differences) - min(differences) if differences else None)}"","
@@ -829,6 +830,9 @@ tests/test_cx317_stage6_live_analyze.py,81,uncertainty,measurement_uncertainty_s
 tests/test_cx317_stage6_live_analyze.py,83,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"": ""unavailable:combined_uncertainty"","
 tests/test_cx318_hybrid_preview.py,48,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""unavailable"","
 tests/test_cx318_hybrid_preview.py,68,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
+tests/test_cx318_stage4_capture_chain.py,88,uncertainty,measurement_uncertainty_semantics,"discontinuity_reason="""", calibrated_uncertainty_status=""unavailable"","
+tests/test_cx318_stage4_capture_chain.py,96,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"", reason_codes=""initializing"","
+tests/test_cx318_stage4_capture_chain.py,115,uncertainty,measurement_uncertainty_semantics,"modeled_not_observed_after_divergence=""false"", uncertainty_status=""unavailable"", actionable=""false"","
 tests/test_cx318_stage4_contracts.py,50,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
 tests/test_cx318_stage4_contracts.py,71,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
 tests/test_cx318_stage4_contracts.py,123,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
@@ -838,6 +842,7 @@ tests/test_cx318_stage4_live_analyze.py,208,uncertainty,measurement_uncertainty_
 tests/test_cx318_stage4_seal.py,49,uncertainty,measurement_uncertainty_semantics,"""calibrated_uncertainty_status"": ""unavailable"","
 tests/test_cx318_stage4_seal.py,63,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
 tests/test_cx318_stage4_seal.py,104,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
+tests/test_cx318_stage4_static_code_preflight.py,452,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
 tests/test_measurement_semantics.py,19,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
 tests/test_measurement_semantics.py,20,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
 tests/test_measurement_semantics.py,51,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
