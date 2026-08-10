@@ -12,6 +12,7 @@ RAW_SERIAL_LOG = "serial.log"
 RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
+ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
@@ -64,6 +65,10 @@ class RunPaths:
         return self.csv_dir / PPS_SNAPSHOTS_CSV
 
     @property
+    def association_loss_decisions_csv(self) -> Path:
+        return self.csv_dir / ASSOCIATION_LOSS_DECISIONS_CSV
+
+    @property
     def health_csv(self) -> Path:
         return self.csv_dir / HEALTH_CSV
 
@@ -105,6 +110,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
+        {
+            "path": f"{CSV_DIR}/{ASSOCIATION_LOSS_DECISIONS_CSV}",
+            "contract": "association_loss_decisions_v1",
+            "optional": True,
+        },
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},
         {"path": f"{CSV_DIR}/{DAC_STEPS_CSV}", "contract": "dac_steps_v1", "optional": True},
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},

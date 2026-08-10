@@ -32,7 +32,7 @@ constexpr char kActivePolicyHash[] =
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
-    "bd4738dd89266591f143fda1c243615c1e9933799d6d0f0c1f6101c8d8810c4f";
+    "057c07ec46290fd097a8a88b019dd46844decc383d57985c3e3bf2b456a4f7b8";
 #else
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";

@@ -178,13 +178,19 @@ def test_stage4_transport_finishes_a_record_group_before_other_core0_output() ->
     )
     loop = sketch[sketch.index("void loop()") :]
     busy_block = loop[
-        loop.index("if (otis_phase4_observe_preview_transport_busy()") :
+        loop.index("if (service_dual_core_serial_frame_transport())") :
         loop.index("service_dual_core_outputs();")
     ]
 
-    assert "otis_cx318_preview_transport_busy()" in busy_block
-    assert "otis_cx318_preview_transport_service();" in busy_block
+    assert "service_dual_core_serial_frame_transport()" in busy_block
     assert "return;" in busy_block
+
+    dispatch = sketch[
+        sketch.index("bool service_dual_core_serial_frame_transport(void)") :
+        sketch.index("#endif", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
+    ]
+    assert "otis_cx318_preview_transport_service();" in dispatch
+    assert "otis_cx318_preview_transport_frame_active();" in dispatch
 
 
 def test_stage4_cross_core_status_is_published_atomically() -> None:

@@ -390,7 +390,12 @@ class StepCapsule:
 
 
 class ResponseClassifier:
-    def __init__(self, response_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        response_path: Path | None = None,
+        *,
+        legacy_response_deadband_enabled: bool = True,
+    ) -> None:
         response_path = response_path or (
             REPO_ROOT / "profiles/discipline/cx317_response_classification_v2.json"
         )
@@ -409,6 +414,7 @@ class ResponseClassifier:
         self.growth_margin = float(p["growing_error_margin_hz"])
         self.excess_margin = float(p["excess_response_additive_margin_hz"])
         self.maximum_indeterminate = int(p["maximum_consecutive_indeterminate"])
+        self.legacy_response_deadband_enabled = legacy_response_deadband_enabled
         self.baseline_error_hz: float | None = None
         self.cumulative_delta_codes = 0
         self.consecutive_indeterminate = 0
@@ -444,7 +450,10 @@ class ResponseClassifier:
         observed = post_error_hz - pre_error_hz
         cumulative = post_error_hz - self.baseline_error_hz
 
-        if abs(post_error_hz) <= self.deadband:
+        if (
+            self.legacy_response_deadband_enabled
+            and abs(post_error_hz) <= self.deadband
+        ):
             self.consecutive_indeterminate = 0
             return ResponseResult(
                 ResponseClass.INSIDE_DEADBAND,
@@ -453,10 +462,9 @@ class ResponseClassifier:
                 cumulative,
                 0,
             )
-        if (
-            current_code <= minimum_code and post_error_hz > self.deadband
-        ) or (
-            current_code >= maximum_code and post_error_hz < -self.deadband
+        if self.legacy_response_deadband_enabled and (
+            (current_code <= minimum_code and post_error_hz > self.deadband)
+            or (current_code >= maximum_code and post_error_hz < -self.deadband)
         ):
             self.consecutive_indeterminate = 0
             return ResponseResult(

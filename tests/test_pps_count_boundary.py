@@ -152,6 +152,11 @@ int main(void) {
   assert(!otis_pps_count_boundary_ring_push_from_isr(observation(capacity)));
   assert(otis_pps_count_boundary_ring_dropped_count() == 1u);
 
+  OtisPpsCountBoundaryObservation peeked = {};
+  assert(otis_pps_count_boundary_ring_peek(&peeked));
+  assert(peeked.sequence == 0u);
+  assert(otis_pps_count_boundary_ring_depth() == capacity);
+
   OtisPpsCountBoundaryObservation popped = {};
   assert(otis_pps_count_boundary_ring_pop(&popped));
   assert(popped.sequence == 0u);
@@ -241,6 +246,39 @@ def test_pio_boundary_path_is_hardware_owned_and_reason_contract_is_explicit() -
     for reason in required_reasons:
         assert f'"{reason}"' in source
 
+
+def test_association_loss_freezes_decision_local_backend_evidence_before_rearm() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    drain_start = sketch.index("void drain_pps_count_boundary_ring(void)")
+    drain = sketch[drain_start : sketch.index("void emit_build_provenance_status(void)", drain_start)]
+    publish = "publish_dual_core_association_loss_decision("
+    assert publish in drain
+    assert "otis_pps_count_boundary_ring_peek(&next_reference)" in drain
+    assert drain.index(publish) < drain.index("otis_count_observation_note_association_loss(")
+    assert drain.index(publish) < drain.index("otis_pps_snapshot_backend_rearm()")
+    assert drain.index(publish) < drain.index("otis_pps_count_boundary_ring_reset()")
+
+    capsule = sketch[
+        sketch.index("void publish_dual_core_association_loss_decision(") :
+        sketch.index("#endif", sketch.index("void publish_dual_core_association_loss_decision("))
+    ]
+    for evidence in (
+        '"ASL,1,',
+        "pending_reference.reference_sequence",
+        "pending_reference.pps_timestamp_ticks",
+        "pending_age_ticks",
+        "snapshot_stats.producer_ordinal",
+        "snapshot_stats.consumer_ordinal",
+        "snapshot_stats.backlog_depth",
+        "snapshot_stats.fault_flags",
+        "queue_stats.timing_progress.loop_sequence",
+        "queue_stats.timing_progress.phase_enter_ticks",
+        '"unread_snapshot_present_when_decision_made"',
+        '"no_unread_snapshot_healthy_backend"',
+    ):
+        assert evidence in capsule
 
 def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(

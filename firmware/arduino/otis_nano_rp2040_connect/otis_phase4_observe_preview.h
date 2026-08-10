@@ -31,6 +31,7 @@ void otis_phase4_observe_preview_poll(uint64_t now_ticks,
                                      const OtisPhase4LiveDacState *dac);
 void otis_phase4_observe_preview_service_transport(void);
 bool otis_phase4_observe_preview_transport_busy(void);
+bool otis_phase4_observe_preview_transport_pending(void);
 void otis_phase4_observe_preview_emit_status(
     OtisStatusEmitContext *status_context);
 uint32_t otis_phase4_observe_preview_dropped_pair_count(void);

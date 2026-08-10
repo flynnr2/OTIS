@@ -5,6 +5,7 @@
 // PHE, and HPR records.
 void otis_cx318_preview_transport_emit_headers(void);
 bool otis_cx318_preview_transport_busy(void);
+bool otis_cx318_preview_transport_frame_active(void);
 void otis_cx318_preview_transport_service(void);
 
 #endif

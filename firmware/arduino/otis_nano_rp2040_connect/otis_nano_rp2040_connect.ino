@@ -36,6 +36,7 @@
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
+#include "otis_serial_frame_arbiter.h"
 #include "otis_serial_command.h"
 #include "otis_status_emit.h"
 #include "otis_status_led.h"
@@ -103,11 +104,16 @@ uint32_t dual_core_receiver_invalidation_until_ms = 0u;
 bool dual_core_receiver_fixture_invalid = false;
 bool dual_core_timing_trace_started = false;
 uint32_t dual_core_last_timing_trace_ms = 0u;
+uint32_t dual_core_association_loss_decision_sequence = 0u;
 OtisCx317StaticCodeState dual_core_static_code = {};
 OtisReceiverQualificationMessage dual_core_receiver = {};
 OtisEvidenceFrameMessage dual_core_evidence_transport = {};
 uint16_t dual_core_evidence_transport_sent = 0u;
 bool dual_core_evidence_transport_active = false;
+OtisSerialFrameArbiter dual_core_serial_frame_arbiter = {
+    OtisSerialFrameOwner::None,
+    static_cast<uint8_t>(OtisSerialFrameOwner::DualCoreEvidence),
+};
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 OtisActuatorTransactionGuard dual_core_service_actuator_guard = {};
 bool dual_core_manual_start_consumed = false;
@@ -987,6 +993,13 @@ bool dual_core_evidence_transport_busy(void) {
   return dual_core_evidence_transport_active;
 }
 
+bool dual_core_evidence_transport_pending(void) {
+  if (dual_core_evidence_transport_active) return true;
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  return stats.evidence_depth != 0u;
+}
+
 void service_dual_core_evidence_transport(void) {
   if (!dual_core_evidence_transport_active) {
     if (!otis_dual_core_take_evidence(&dual_core_evidence_transport)) return;
@@ -1010,6 +1023,112 @@ void service_dual_core_evidence_transport(void) {
     dual_core_evidence_transport_sent = 0u;
     dual_core_evidence_transport_active = false;
   }
+}
+
+bool service_dual_core_serial_frame_transport(void) {
+  const OtisSerialFrameReadiness readiness = {
+      dual_core_evidence_transport_pending(),
+      otis_phase4_observe_preview_transport_pending(),
+      otis_cx317_preview_live_transport_pending(),
+      otis_cx318_preview_transport_busy(),
+  };
+  const OtisSerialFrameOwner owner = otis_serial_frame_arbiter_claim(
+      &dual_core_serial_frame_arbiter, readiness);
+  if (owner == OtisSerialFrameOwner::None) return false;
+
+  bool frame_active = false;
+  switch (owner) {
+    case OtisSerialFrameOwner::DualCoreEvidence:
+      service_dual_core_evidence_transport();
+      frame_active = dual_core_evidence_transport_busy();
+      break;
+    case OtisSerialFrameOwner::Phase4Preview:
+      otis_phase4_observe_preview_service_transport();
+      frame_active = otis_phase4_observe_preview_transport_busy();
+      break;
+    case OtisSerialFrameOwner::Cx317Preview:
+      otis_cx317_preview_live_service_transport();
+      frame_active = otis_cx317_preview_live_transport_busy();
+      break;
+    case OtisSerialFrameOwner::Cx318Preview:
+      otis_cx318_preview_transport_service();
+      frame_active = otis_cx318_preview_transport_frame_active();
+      break;
+    case OtisSerialFrameOwner::None:
+      return false;
+  }
+  if (!frame_active)
+    otis_serial_frame_arbiter_release(&dual_core_serial_frame_arbiter, owner);
+  return true;
+}
+
+void publish_dual_core_association_loss_decision(
+    const char *reason, uint64_t decision_ticks,
+    const OtisPpsCountBoundaryObservation &pending_reference,
+    uint64_t pending_age_ticks, uint32_t boundary_depth,
+    uint32_t boundary_dropped_count,
+    const OtisPpsCountBoundaryObservation *next_reference,
+    const OtisPpsSnapshotBackendStats &snapshot_stats) {
+  OtisDualCoreQueueStats queue_stats = {};
+  otis_dual_core_get_stats(&queue_stats);
+  const bool unread_snapshot = snapshot_stats.backlog_depth != 0u;
+  const char *classification =
+      snapshot_stats.fault_latched
+          ? "backend_fault"
+          : (unread_snapshot
+                 ? "unread_snapshot_present_when_decision_made"
+                 : (reason != nullptr &&
+                            strcmp(reason, "snapshot_association_timeout") == 0
+                        ? "timeout_no_snapshot"
+                        : "no_unread_snapshot_healthy_backend"));
+
+  OtisEvidenceFrameMessage message = {};
+  message.sequence = dual_core_association_loss_decision_sequence++;
+  const int used = snprintf(
+      message.data, sizeof(message.data),
+      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
+      static_cast<unsigned long>(message.sequence),
+      reason == nullptr ? "association_loss_unspecified" : reason,
+      classification, static_cast<unsigned long long>(decision_ticks),
+      static_cast<unsigned long>(pending_reference.reference_sequence),
+      static_cast<unsigned long long>(pending_reference.pps_timestamp_ticks),
+      static_cast<unsigned long long>(pending_age_ticks),
+      static_cast<unsigned long>(boundary_depth),
+      static_cast<unsigned long>(boundary_dropped_count),
+      next_reference == nullptr ? "false" : "true",
+      static_cast<unsigned long>(next_reference == nullptr
+                                     ? 0u
+                                     : next_reference->reference_sequence),
+      static_cast<unsigned long long>(
+          next_reference == nullptr ? 0u : next_reference->pps_timestamp_ticks),
+      snapshot_stats.initialized ? "true" : "false",
+      snapshot_stats.running ? "true" : "false",
+      snapshot_stats.fault_latched ? "true" : "false",
+      static_cast<unsigned long>(snapshot_stats.fault_flags),
+      static_cast<unsigned long>(snapshot_stats.session),
+      static_cast<unsigned long>(snapshot_stats.producer_ordinal),
+      static_cast<unsigned long>(snapshot_stats.consumer_ordinal),
+      static_cast<unsigned long>(snapshot_stats.backlog_depth),
+      static_cast<unsigned long>(snapshot_stats.backlog_high_water),
+      static_cast<unsigned long>(snapshot_stats.overwrite_count),
+      static_cast<unsigned long>(snapshot_stats.continuity_loss_count),
+      static_cast<unsigned long>(snapshot_stats.pio_rxstall_count),
+      static_cast<unsigned long>(snapshot_stats.dma_error_count),
+      static_cast<unsigned long>(snapshot_stats.dma_stopped_count),
+      static_cast<unsigned long>(queue_stats.timing_progress.loop_sequence),
+      static_cast<unsigned long>(queue_stats.timing_progress.last_snapshot_session),
+      static_cast<unsigned long>(queue_stats.timing_progress.last_snapshot_sequence),
+      otis_timing_progress_phase_name(queue_stats.timing_progress.phase),
+      static_cast<unsigned long long>(
+          queue_stats.timing_progress.phase_enter_ticks),
+      static_cast<unsigned long long>(
+          queue_stats.timing_progress.last_progress_ticks));
+  if (used <= 0 || static_cast<size_t>(used) >= sizeof(message.data)) {
+    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+    return;
+  }
+  message.length = static_cast<uint16_t>(used);
+  otis_dual_core_publish_evidence(&message);
 }
 #endif
 
@@ -1362,6 +1481,16 @@ void drain_pps_count_boundary_ring(void) {
             ? "snapshot_backend_fault"
             : (another_reference_waiting ? "ref_without_snapshot"
                                          : "snapshot_association_timeout");
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisPpsCountBoundaryObservation next_reference = {};
+    const bool have_next_reference =
+        otis_pps_count_boundary_ring_peek(&next_reference);
+    publish_dual_core_association_loss_decision(
+        association_reason, otis_capture_ticks_now(), pending_reference,
+        pending_age_ticks, otis_pps_count_boundary_ring_depth(),
+        otis_pps_count_boundary_ring_dropped_count(),
+        have_next_reference ? &next_reference : nullptr, stats);
+#endif
     otis_count_observation_note_association_loss(
         &runtime_state, &status_emit_context,
         pending_reference.reference_sequence, association_reason);
@@ -4247,30 +4376,16 @@ void loop() {
   }
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-  // A preview frame may require several bounded USB writes.  Once the first
-  // chunk has been sent, finish that frame before allowing any other Core 0
-  // record producer to write to the shared serial transport.  Core 1 timing
-  // capture continues independently into the cross-core queues.
-  if (otis_phase4_observe_preview_transport_busy() ||
-      otis_cx317_preview_live_transport_busy() ||
-      otis_cx318_preview_transport_busy() ||
-      dual_core_evidence_transport_busy()) {
-    service_dual_core_evidence_transport();
-    otis_phase4_observe_preview_service_transport();
-    otis_cx317_preview_live_service_transport();
-    otis_cx318_preview_transport_service();
+  // The USB byte stream has one chunked-frame owner.  A producer that starts
+  // a record keeps ownership through its complete CRLF (or the complete
+  // RPH/PHE/HPR record group) while Core 1 timing capture continues into the
+  // cross-core queues.  No status, command, sensor, or competing frame writer
+  // runs in this pass.
+  if (service_dual_core_serial_frame_transport()) {
     otis_status_led_poll(millis());
     return;
   }
   service_dual_core_outputs();
-  service_dual_core_evidence_transport();
-  // The call above can start a multi-chunk EST/CTL/ACT frame in this same
-  // loop iteration.  Re-check before any status or command producer writes to
-  // USB, otherwise its STS bytes can split the newly-started evidence record.
-  if (dual_core_evidence_transport_busy()) {
-    otis_status_led_poll(millis());
-    return;
-  }
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
   emit_resource_ownership_status();
@@ -4279,9 +4394,6 @@ void loop() {
   service_environment_sensors();
   publish_dual_core_service_metadata(millis());
   emit_periodic_status();
-  otis_phase4_observe_preview_service_transport();
-  otis_cx317_preview_live_service_transport();
-  otis_cx318_preview_transport_service();
   otis_status_led_poll(millis());
   return;
 #endif

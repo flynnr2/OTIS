@@ -171,14 +171,12 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
         loop0.index("#endif", loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
     ]
     busy_guard_start = dual_core0.index(
-        "if (otis_phase4_observe_preview_transport_busy()"
+        "if (service_dual_core_serial_frame_transport())"
     )
     ordinary_writers_start = dual_core0.index("service_dual_core_outputs();")
     busy_guard = dual_core0[busy_guard_start:ordinary_writers_start]
 
     assert busy_guard_start < ordinary_writers_start
-    assert "otis_phase4_observe_preview_service_transport();" in busy_guard
-    assert "otis_cx317_preview_live_service_transport();" in busy_guard
     assert "otis_status_led_poll(millis());" in busy_guard
     assert "return;" in busy_guard
     for interleaving_writer in (
@@ -192,22 +190,19 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
     ):
         assert interleaving_writer not in busy_guard
 
-    evidence_start = dual_core0.index(
-        "service_dual_core_evidence_transport();", ordinary_writers_start
-    )
-    banner_start = dual_core0.index(
-        "emit_protocol_banner_if_serial_ready();", evidence_start
-    )
-    newly_started_frame_guard = dual_core0[evidence_start:banner_start]
-    assert "if (dual_core_evidence_transport_busy())" in newly_started_frame_guard
-    assert "return;" in newly_started_frame_guard
-
-    evidence_busy = sketch[
-        sketch.index("bool dual_core_evidence_transport_busy(void)") :
-        sketch.index("void service_dual_core_evidence_transport(void)")
+    dispatch = sketch[
+        sketch.index("bool service_dual_core_serial_frame_transport(void)") :
+        sketch.index("#endif", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
     ]
-    assert "return dual_core_evidence_transport_active;" in evidence_busy
-    assert "dual_core_evidence_transport_sent > 0u" not in evidence_busy
+    assert "switch (owner)" in dispatch
+    assert "otis_serial_frame_arbiter_release" in dispatch
+    for writer in (
+        "service_dual_core_evidence_transport();",
+        "otis_phase4_observe_preview_service_transport();",
+        "otis_cx317_preview_live_service_transport();",
+        "otis_cx318_preview_transport_service();",
+    ):
+        assert dispatch.count(writer) == 1
 
 
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:

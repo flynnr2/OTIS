@@ -25,6 +25,18 @@ Before any write:
 - query or otherwise reconfirm the physical last-applied code without writing;
 - verify independent host and bounded device abort paths.
 
+Before each live leg, run at least 2700 seconds with the exact leg firmware,
+profile and limits but with setup and automatic writes disabled. Promote a
+passing rehearsal through the same-owner logical-segment protocol: rehearsal
+to a command-free transition spool, immutable evidence snapshot and rehearsal
+seal, live-manifest creation, then transition to live. The capture PID and open
+serial handle must remain unchanged and reconnect count must remain zero.
+
+The firmware USB transport must retain one exclusive chunked-frame owner until
+the complete record or declared record group closes. Any `ASL` association-loss
+decision, parser error, malformed record, serial reconnect, owner mismatch or
+logical-rotation ambiguity rejects the rehearsal or leg without retry.
+
 ## Finite legs
 
 Run two new, separately sealed legs:

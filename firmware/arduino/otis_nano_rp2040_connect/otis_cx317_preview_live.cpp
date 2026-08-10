@@ -35,7 +35,7 @@ constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "bd4738dd89266591f143fda1c243615c1e9933799d6d0f0c1f6101c8d8810c4f";
+    "057c07ec46290fd097a8a88b019dd46844decc383d57985c3e3bf2b456a4f7b8";
 #else
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
@@ -639,6 +639,18 @@ bool otis_cx317_preview_live_transport_busy(void) {
   return false;
 #else
   return transport_frame_active && transport_frame.sent > 0u;
+#endif
+#else
+  return false;
+#endif
+}
+
+bool otis_cx317_preview_live_transport_pending(void) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  return false;
+#else
+  return transport_frame_active || queue.depth() != 0u;
 #endif
 #else
   return false;

@@ -154,6 +154,37 @@ def _selected_estimates(path: Path) -> list[dict[str, str]]:
     ]
 
 
+def healthy_required_direction_applications(
+    rows: list[dict[str, str]], required_direction: int
+) -> list[dict[str, str]]:
+    """Return applications whose own completed response remained healthy."""
+
+    applications = {
+        int(row["request_sequence"]): row
+        for row in rows
+        if row.get("event") == "application"
+    }
+    healthy_response_classes = {
+        "healthy_detected",
+        "healthy_indeterminate_near_resolution",
+    }
+    result: list[dict[str, str]] = []
+    for response in rows:
+        if (
+            response.get("event") != "response"
+            or response.get("response_class") not in healthy_response_classes
+        ):
+            continue
+        application = applications.get(int(response["request_sequence"]))
+        if application is None:
+            continue
+        delta = int(application["requested_delta_codes"])
+        direction = (delta > 0) - (delta < 0)
+        if direction == required_direction:
+            result.append(application)
+    return result
+
+
 class Stage5Supervisor(Stage7Supervisor):
     """Exact Stage 5 authority supervisor built on the proven dual-core path."""
 
@@ -262,16 +293,13 @@ class Stage5Supervisor(Stage7Supervisor):
                     applied_code=self.spec.start_code,
                     dac_epoch=int(manual[0]["dac_epoch"]),
                 )
-        applications = [row for row in rows if row.get("event") == "application"]
         # The prompt declares this as a required demonstrated outcome, not a
         # one-sided actuator clamp: a bounded convergence path may legitimately
-        # make a later opposite adjustment.  Require at least one completed
-        # application in the setup-implied direction at the leg pass gate.
-        if any(
-            (int(row["requested_delta_codes"]) > 0)
-            - (int(row["requested_delta_codes"]) < 0)
-            == self.leg.required_direction
-            for row in applications
+        # make a later opposite adjustment.  Bind the direction claim to the
+        # response from that same completed transaction; an application alone,
+        # or an unrelated healthy response, cannot satisfy the pass gate.
+        if healthy_required_direction_applications(
+            rows, self.leg.required_direction
         ):
             if not self.state["expected_direction_seen"]:
                 self.state["expected_direction_seen"] = True
@@ -500,6 +528,7 @@ class Stage5Supervisor(Stage7Supervisor):
             )
         if (
             self.state["tight_entry_seen"]
+            and tight
             and self.state["expected_direction_seen"]
             and int(self.state["response_count"]) >= 1
             and not self.state["arm_pending"]

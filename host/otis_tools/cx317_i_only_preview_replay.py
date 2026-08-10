@@ -379,6 +379,8 @@ class Observation:
     operator_abort: bool = False
     recovery_requested: bool = False
     dac_epoch: bool = False
+    frequency_controller_eligible: bool | None = None
+    frequency_gate_reason: str | None = None
 
 
 class IOnlyPreviewEngine:
@@ -392,14 +394,16 @@ class IOnlyPreviewEngine:
         self.inhibit_until_s = self.qualifying_since_s
         self.latched_reason = "startup_warmup"
 
-    def note_dac_epoch(self, timestamp_s: int) -> None:
+    def note_dac_epoch(
+        self, timestamp_s: int, *, preserve_applied_cadence: bool = False
+    ) -> None:
         """Reset history at the actual application time, between observations."""
         self.state = "SETTLING_INHIBIT"
         self.latched_reason = "dac_epoch_full_history_reset"
         self.inhibit_until_s = timestamp_s + self.policy.full_history_reset_s
         self.qualifying_since_s = self.inhibit_until_s
         self.integrator_codes = 0.0
-        self.last_decision_s = None
+        self.last_decision_s = timestamp_s if preserve_applied_cadence else None
 
     def _result(self, observation: Observation, **values: Any) -> dict[str, Any]:
         result = {
@@ -489,6 +493,21 @@ class IOnlyPreviewEngine:
             self.state, self.latched_reason = "QUALIFYING", "dac_epoch_fresh_history_complete"
         if self.state == "QUALIFYING" and observation.timestamp_s < self.inhibit_until_s:
             return self._result(observation)
+        if observation.frequency_controller_eligible is False:
+            if not observation.frequency_gate_reason:
+                raise ValueError(
+                    "an ineligible frequency gate requires an exact reason"
+                )
+            self.state = "TRACKING"
+            self.latched_reason = observation.frequency_gate_reason
+            self.integrator_codes = 0.0
+            return self._result(
+                observation,
+                preview_available=True,
+                raw_delta_codes=0.0,
+                limited_delta_codes=0,
+                proposed_code=observation.current_code,
+            )
         if self.last_decision_s is not None and observation.timestamp_s - self.last_decision_s < self.policy.decision_cadence_s:
             self.state, self.latched_reason = "TRACKING", "decision_cadence_hold"
             return self._result(observation)
@@ -498,7 +517,10 @@ class IOnlyPreviewEngine:
         error = observation.frequency_error_hz
         self.last_decision_s = observation.timestamp_s
         self.state = "TRACKING"
-        if abs(error) <= self.policy.deadband_hz:
+        if (
+            observation.frequency_controller_eligible is None
+            and abs(error) <= self.policy.deadband_hz
+        ):
             self.integrator_codes, self.latched_reason = 0.0, "inside_evidence_deadband"
             return self._result(
                 observation, preview_available=True, raw_delta_codes=0.0,

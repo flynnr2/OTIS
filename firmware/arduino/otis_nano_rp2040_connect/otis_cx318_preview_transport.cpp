@@ -56,6 +56,14 @@ bool otis_cx318_preview_transport_busy(void) {
 #endif
 }
 
+bool otis_cx318_preview_transport_frame_active(void) {
+#if OTIS_ENABLE_CX318_PREVIEW
+  return message_active;
+#else
+  return false;
+#endif
+}
+
 void otis_cx318_preview_transport_service(void) {
 #if OTIS_ENABLE_CX318_PREVIEW
   if (!message_active) {

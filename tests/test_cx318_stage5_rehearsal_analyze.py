@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,8 +51,8 @@ def _fixture_run(
     (run_dir / "COMPLETE").touch()
     (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
     (run_dir / "raw/serial.log").write_text(
-        "# OTIS_HOST {\"event\": \"capture_started\", \"utc\": \"2026-08-10T00:00:00Z\"}\n"
-        f"# OTIS_HOST {{\"event\": \"capture_stopped\", \"utc\": \"2026-08-10T00:{duration_s // 60:02d}:{duration_s % 60:02d}Z\"}}\n",
+        "# OTIS_HOST {\"event\": \"capture_started\", \"utc\": \"2026-08-10T00:00:00Z\", \"owner_pid\": 42, \"transport_generation\": 1}\n"
+        f"# OTIS_HOST {{\"event\": \"capture_stopped\", \"utc\": \"2026-08-10T00:{duration_s // 60:02d}:{duration_s % 60:02d}Z\", \"owner_pid\": 42, \"transport_generation\": 1, \"logical_rotation\": false, \"next_run\": null}}\n",
         encoding="utf-8",
     )
 
@@ -78,17 +79,57 @@ def _fixture_run(
         target.write_text("fixture\n", encoding="utf-8")
         files.append({"path": str(relative), "contract": contract})
         contracts[contract] = 1
+    association_relative = Path("csv/association_loss_decisions_v1.csv")
+    (run_dir / association_relative).write_text("fixture\n", encoding="utf-8")
+    files.append(
+        {
+            "path": str(association_relative),
+            "contract": "association_loss_decisions_v1",
+        }
+    )
+    contracts["association_loss_decisions_v1"] = 1
 
     _write_json(
         run_dir / analyzer.CAPTURE_STATE,
         {
+            "pid": 42,
             "capture_active": False,
             "serial_open": False,
+            "logical_segment_closed": True,
+            "physical_serial_open": False,
+            "transport_generation": 1,
             "reconnect_count": 0,
             "parser_errors": 0,
             "malformed_utf8": 0,
             "commands_rejected": 0,
             "emergency_aborts_sent": 0,
+        },
+    )
+    _write_json(
+        run_dir / analyzer.SEGMENT_CLOSURE,
+        {
+            "schema_version": 1,
+            "protocol": analyzer.SEGMENT_PROTOCOL_ID,
+            "run": str(run_dir.resolve()),
+            "run_manifest_sha256": sha256(
+                (run_dir / "run_manifest.json").read_bytes()
+            ).hexdigest(),
+            "owner_pid": 42,
+            "transport_generation": 1,
+            "closure_mode": "physical_serial_close",
+            "logical_segment_closed": True,
+            "physical_serial_open": False,
+            "serial_reopened": False,
+            "next_run": None,
+            "request_id": None,
+            "serial_owner_check": None,
+            "counters": {
+                "reconnect_count": 0,
+                "parser_errors": 0,
+                "malformed_utf8": 0,
+                "commands_rejected": 0,
+                "emergency_aborts_sent": 0,
+            },
         },
     )
     _write_json(
@@ -171,11 +212,12 @@ def _fixture_run(
         "load_stage5_spec",
         lambda leg: (spec, identities, object()),
     )
-    monkeypatch.setattr(
-        analyzer,
-        "validate_csv",
-        lambda *args, **kwargs: SimpleNamespace(ok=True, row_count=1, errors=[]),
-    )
+    def validate_csv(*args, **kwargs):
+        context = args[1]
+        rows = 0 if context.contract == "association_loss_decisions_v1" else 1
+        return SimpleNamespace(ok=True, row_count=rows, errors=[])
+
+    monkeypatch.setattr(analyzer, "validate_csv", validate_csv)
     monkeypatch.setattr(analyzer, "_read_csv", read_csv)
     monkeypatch.setattr(analyzer, "_latest_health", lambda _: health)
     monkeypatch.setattr(analyzer, "replay_tight_deadband", lambda _: _Replay())
@@ -210,6 +252,75 @@ def test_analyzer_seals_exact_2700_second_no_write_rehearsal_and_never_overwrite
     with pytest.raises(FileExistsError, match="refusing to overwrite"):
         analyzer.analyze(run_dir)
     assert output.read_bytes() == original
+
+
+def test_capture_closure_accepts_only_proven_same_owner_logical_rotation(
+    tmp_path: Path,
+) -> None:
+    run_dir = (tmp_path / "rehearsal").resolve()
+    run_dir.mkdir()
+    (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+    state = {
+        "pid": 42,
+        "capture_active": False,
+        "serial_open": True,
+        "logical_segment_closed": True,
+        "physical_serial_open": True,
+        "transport_generation": 1,
+        "reconnect_count": 0,
+        "parser_errors": 0,
+        "malformed_utf8": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    markers = [
+        {
+            "event": "capture_started",
+            "owner_pid": 42,
+            "transport_generation": 1,
+        },
+        {
+            "event": "capture_stopped",
+            "owner_pid": 42,
+            "transport_generation": 1,
+            "logical_rotation": True,
+            "next_run": str(tmp_path / "transition"),
+        },
+    ]
+    closure = {
+        "schema_version": 1,
+        "protocol": analyzer.SEGMENT_PROTOCOL_ID,
+        "run": str(run_dir),
+        "run_manifest_sha256": sha256(
+            (run_dir / "run_manifest.json").read_bytes()
+        ).hexdigest(),
+        "owner_pid": 42,
+        "transport_generation": 1,
+        "closure_mode": "same_owner_logical_rotation",
+        "logical_segment_closed": True,
+        "physical_serial_open": True,
+        "serial_reopened": False,
+        "next_run": str(tmp_path / "transition"),
+        "request_id": "0" * 32,
+        "serial_owner_check": {"performed": True, "owner_pids": [42]},
+        "counters": {
+            "reconnect_count": 0,
+            "parser_errors": 0,
+            "malformed_utf8": 0,
+            "commands_rejected": 0,
+            "emergency_aborts_sent": 0,
+        },
+    }
+    _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
+
+    result = analyzer._capture_closure(run_dir, state, markers)
+    assert result["ok"] is True
+    assert result["mode"] == "same_owner_logical_rotation"
+
+    closure["serial_owner_check"]["owner_pids"] = [99]
+    _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
+    result = analyzer._capture_closure(run_dir, state, markers)
+    assert result["ok"] is False
 
 
 @pytest.mark.parametrize(

@@ -207,6 +207,32 @@ CSV parsing. Firmware `STS`/`DAC` records remain the command acknowledgement
 source; `capture_device` should not block capture waiting for synchronous
 responses.
 
+## Same-owner logical capture segments
+
+Long evidence workflows sometimes need an immutable run and its seal before a
+subsequent manifest can legally exist. `capture_device` can rotate logical
+evidence sinks without closing or reopening the physical serial handle:
+
+```text
+rehearsal sink → no-authority transition sink → validated live sink
+                 same PID and serial handle
+```
+
+`cx318_capture_segment` writes a capability-bound local request containing the
+expected PID, transport generation, source run, target manifest hash and exact
+target command FIFOs. The capture owner verifies the real `lsof` owner set,
+waits for a complete device-record boundary, closes the source with an
+immutable `capture_segment_closure_v1.json`, and opens command ingress only for
+a fully validated live manifest. The transition manifest forbids command
+ingress and all actuation authority. A serial exception anywhere in a managed
+multi-segment carrier stops fail-static; it never reconnects into another
+logical segment.
+
+`cx318_stage5_promote` performs the Stage 5 sequence in its required order:
+rotate to transition, mark and snapshot the closed rehearsal, require a passed
+rehearsal seal, create the live manifest, then rotate to live. It never opens
+the serial device or transmits a command.
+
 ---
 
 # SW1 Bring-Up Host Path
@@ -215,7 +241,7 @@ For SW1/H0 bring-up, host tooling intentionally stays small:
 
 - `python3 -m host.otis_tools.capture_serial` reads firmware serial text from
   stdin, preserves it in `raw/serial.log`, and splits only complete,
-  contract-width `EVT`/`REF`, `CNT`, `STS`, `DAC`, and `ENV` rows into a run
+  contract-width `EVT`/`REF`, `CNT`, `SNP`, `ASL`, `STS`, `DAC`, and `ENV` rows into a run
   directory based on a template manifest. It creates
   `capture_in_progress.flag` while capture is active and removes it after stdin
   closes cleanly.

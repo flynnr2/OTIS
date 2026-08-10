@@ -255,3 +255,63 @@ def test_opposite_only_leg_stops_nonpass_at_frozen_endpoint(tmp_path: Path) -> N
     assert supervisor.state["terminal"]["reason"] == (
         "stage5_finite_qualified_endpoint_nonpass"
     )
+
+
+def test_historical_tight_entry_cannot_pass_after_current_release(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    _write_tight_entry(supervisor)
+    rows = list(
+        csv.DictReader(
+            (supervisor.run_dir / "csv/tight_deadband_decisions_v1.csv").open()
+        )
+    )
+    pending_release = dict(rows[-1])
+    pending_release.update(
+        decision_sequence="2",
+        estimate_id="est:cx317:selected600:000003",
+        integer_edge_error_counts="4",
+        absolute_edge_error_counts="4",
+        state_before="TIGHT_INSIDE",
+        state_after="TIGHT_INSIDE",
+        release_counter="1",
+        transition="false",
+        frequency_controller_eligible="false",
+        reason_codes="loose_release_pending",
+        historical_v2_inside="false",
+        symmetric_two_count_inside="false",
+    )
+    released = dict(pending_release)
+    released.update(
+        decision_sequence="3",
+        estimate_id="est:cx317:selected600:000004",
+        release_counter="0",
+        state_after="OUTSIDE",
+        transition="true",
+        frequency_controller_eligible="true",
+        reason_codes="loose_release_confirmed",
+    )
+    rows.extend((pending_release, released))
+    path = supervisor.run_dir / "csv/tight_deadband_decisions_v1.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=CONTRACT_FIELDS["tight_deadband_decisions_v1"]
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    now = 1_800_000_000.0
+    supervisor.state.update(
+        setup_confirmed_utc=_utc(now - 2000),
+        qualification_started_utc=_utc(now - 1000),
+        expected_direction_seen=True,
+        response_count=1,
+        arm_pending=False,
+        tight_entry_seen=True,
+    )
+
+    supervisor._maybe_finish(
+        _health(supervisor, manual_start_confirmed="true"), now, 3000.0
+    )
+
+    assert supervisor.state["terminal"] is None

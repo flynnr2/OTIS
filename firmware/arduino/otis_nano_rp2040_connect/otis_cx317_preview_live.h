@@ -42,6 +42,7 @@ void otis_cx317_preview_live_on_capture_fault(const char *reason,
 bool otis_cx317_preview_live_request_recovery(void);
 void otis_cx317_preview_live_service_transport(void);
 bool otis_cx317_preview_live_transport_busy(void);
+bool otis_cx317_preview_live_transport_pending(void);
 void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context);
 void otis_cx317_preview_live_get_authority_state(
     OtisCx317PreviewAuthorityState *state);

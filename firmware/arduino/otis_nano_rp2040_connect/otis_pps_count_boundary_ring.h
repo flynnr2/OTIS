@@ -10,6 +10,8 @@ bool otis_pps_count_boundary_ring_push_from_isr(
     const OtisPpsCountBoundaryObservation &observation);
 bool otis_pps_count_boundary_ring_pop(
     OtisPpsCountBoundaryObservation *observation);
+bool otis_pps_count_boundary_ring_peek(
+    OtisPpsCountBoundaryObservation *observation);
 uint32_t otis_pps_count_boundary_ring_dropped_count(void);
 uint8_t otis_pps_count_boundary_ring_depth(void);
 uint8_t otis_pps_count_boundary_ring_capacity(void);

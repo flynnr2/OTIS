@@ -86,6 +86,21 @@ excludes alternate DAC commands, sweeps, previews, controllers, dual-core
 authority and GPS transmission. The host must durably latch that sole attempt
 before enqueueing it and must never retry it after failure, reset or reflash.
 
+On 2026-08-10 the first Stage 5 Leg A no-write rehearsal exposed two distinct
+platform facts before any DAC transaction. The measurement path lost one
+reference-to-snapshot association and correctly entered fail-static; the old
+telemetry path then byte-interleaved independent chunked records. The repaired
+bundle therefore gives the USB stream one exclusive chunked-frame owner and
+emits a structured decision-local `ASL` record before any association-loss
+rearm. A healthy Stage 5 leg requires zero `ASL` rows.
+
+The exact rehearsal-to-live path also retains one capture PID and one open
+serial handle. At the rehearsal endpoint it rotates into a command-free
+transition spool, seals and analyzes the immutable rehearsal, creates the live
+manifest from the passed seal, and only then rotates into the live segment.
+There is no serial close/reopen or ownerless analysis interval. This complete
+promotion path must pass rehearsal before another long Stage 5 run.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the
