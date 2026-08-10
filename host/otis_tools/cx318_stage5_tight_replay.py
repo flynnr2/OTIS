@@ -1,0 +1,172 @@
+"""Exact, non-authorizing replay validator for CX318 Stage 5 TDB evidence."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from .contracts import (
+    CsvValidationContext,
+    TIGHT_DEADBAND_POLICY_SHA256,
+    validate_csv,
+)
+from .cx318_stage5_tight_deadband import TightHystereticDeadband
+from .run_paths import TIGHT_DEADBAND_DECISIONS_CSV
+
+
+CONTRACT = "tight_deadband_decisions_v1"
+
+
+@dataclass(frozen=True)
+class TightDeadbandReplayResult:
+    """The full evidence result; a mismatch is evidence, never an authority."""
+
+    source_path: Path
+    row_count: int
+    comparisons: tuple[dict[str, Any], ...]
+    errors: tuple[str, ...]
+
+    @property
+    def exact(self) -> bool:
+        return not self.errors
+
+    @property
+    def ok(self) -> bool:
+        return self.exact
+
+    def as_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        result["source_path"] = str(self.source_path)
+        result["exact"] = self.exact
+        result["ok"] = self.ok
+        return result
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def _expected_fields(row: dict[str, str], deadband: TightHystereticDeadband) -> dict[str, str]:
+    counts = int(row["integer_edge_error_counts"], 10)
+    decision = deadband.observe(
+        accumulated_edge_error_counts=counts,
+        fresh=True,
+        session=int(row["capture_session"], 10),
+        dac_epoch=int(row["dac_epoch"], 10),
+    )
+    absolute = abs(counts)
+    return {
+        "policy_id": decision.policy_id,
+        "policy_sha256": TIGHT_DEADBAND_POLICY_SHA256,
+        "absolute_edge_error_counts": str(absolute),
+        "state_before": decision.state_before,
+        "state_after": decision.state_after,
+        "entry_counter": str(decision.entry_pending_count),
+        "release_counter": str(decision.release_pending_count),
+        "transition": _bool_text(decision.state_before != decision.state_after),
+        "frequency_controller_eligible": _bool_text(
+            decision.frequency_controller_eligible
+        ),
+        "requalified": _bool_text(decision.requalified),
+        "requalification_reason": decision.requalification_reason or "",
+        "historical_v2_inside": _bool_text(absolute <= 3),
+        "symmetric_two_count_inside": _bool_text(absolute <= 2),
+        "actionable": "false",
+        "actuation_authorized": "false",
+        "authorization_consumed": "false",
+        "reason_codes": decision.reason,
+    }
+
+
+def replay_tight_deadband(path: Path) -> TightDeadbandReplayResult:
+    """Replay every captured TDB row and require exact active/shadow parity.
+
+    The wire record is only emitted for fresh authoritative 600-second integer
+    count observations.  Therefore replay intentionally supplies ``fresh=True``
+    and treats the captured session and DAC epoch as the identity boundary.
+    """
+
+    validation = validate_csv(
+        path,
+        CsvValidationContext(
+            contract=CONTRACT,
+            known_channels=frozenset(),
+            known_domains=frozenset(),
+        ),
+    )
+    errors = list(validation.errors)
+    comparisons: list[dict[str, Any]] = []
+    if errors:
+        return TightDeadbandReplayResult(
+            source_path=path,
+            row_count=validation.row_count,
+            comparisons=tuple(comparisons),
+            errors=tuple(errors),
+        )
+
+    deadband = TightHystereticDeadband()
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row_number, row in enumerate(reader, start=1):
+            expected = _expected_fields(row, deadband)
+            mismatches = {
+                field_name: {"observed": row.get(field_name, ""), "expected": value}
+                for field_name, value in expected.items()
+                if row.get(field_name, "") != value
+            }
+            comparisons.append(
+                {
+                    "row": row_number,
+                    "decision_sequence": row.get("decision_sequence", ""),
+                    "pass": not mismatches,
+                    "mismatches": mismatches,
+                }
+            )
+            for field_name, values in mismatches.items():
+                errors.append(
+                    f"row {row_number}: {field_name} replay mismatch; "
+                    f"observed={values['observed']!r}, expected={values['expected']!r}"
+                )
+    return TightDeadbandReplayResult(
+        source_path=path,
+        row_count=validation.row_count,
+        comparisons=tuple(comparisons),
+        errors=tuple(errors),
+    )
+
+
+def replay_run(run_dir: Path) -> TightDeadbandReplayResult:
+    """Replay the canonical captured TDB product in a run directory."""
+
+    return replay_tight_deadband(run_dir / "csv" / TIGHT_DEADBAND_DECISIONS_CSV)
+
+
+def validate_replay(path: Path) -> TightDeadbandReplayResult:
+    """Compatibility-friendly name for callers using this as a validator."""
+
+    return replay_tight_deadband(path)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Exact replay validator for CX318 Stage 5 TDB evidence."
+    )
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--csv", type=Path, help="TDB CSV product to replay.")
+    source.add_argument("--run-dir", type=Path, help="Run directory containing the TDB CSV product.")
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    result = replay_run(args.run_dir) if args.run_dir is not None else replay_tight_deadband(args.csv)
+    print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    raise SystemExit(0 if result.exact else 1)
+
+
+if __name__ == "__main__":
+    main()

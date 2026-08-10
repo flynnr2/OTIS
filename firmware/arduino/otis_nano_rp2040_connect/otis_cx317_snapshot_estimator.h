@@ -14,6 +14,7 @@ struct OtisCx317SpanEstimate {
   bool selected_available;
   double diagnostic_frequency_hz;
   double selected_frequency_hz;
+  int64_t selected_accumulated_edge_error_counts;
   uint32_t diagnostic_first_sequence;
   uint32_t selected_first_sequence;
   uint32_t last_sequence;

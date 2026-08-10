@@ -51,6 +51,8 @@ def test_cross_core_messages_are_pointer_free_fixed_values() -> None:
     assert "malloc" not in queue
     assert "try_push(const Message &message)" in queue
     assert "try_pop(Message *message)" in queue
+    assert "OTIS_TELEMETRY_KEY_CAPACITY = 40u" in contract
+    assert "char key[OTIS_TELEMETRY_KEY_CAPACITY]" in contract
 
 
 def test_queue_classes_match_stage6_loss_contract() -> None:
@@ -66,6 +68,8 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
         "ObservationExhausted",
         "CriticalExhausted",
         "EvidenceExhausted",
+        "Cx318PreviewExhausted",
+        "Cx318PreviewFault",
         "ActuatorTimeout",
         "ActuatorAcknowledgementMismatch",
     ):
@@ -76,6 +80,40 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
     assert "deadline_ticks" in (
         FIRMWARE / "otis_dual_core_contract.h"
     ).read_text(encoding="utf-8")
+
+
+def test_service_queue_fault_diagnostics_are_complete_and_bounded() -> None:
+    source = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    take_start = source.index("bool otis_dual_core_take_service(")
+    take_end = source.index("bool otis_dual_core_publish_observation(", take_start)
+    take = source[take_start:take_end]
+    loop_start = sketch.index("void loop1()")
+    loop_end = sketch.index("void loop()", loop_start)
+    loop = sketch[loop_start:loop_end]
+
+    assert "kDualCoreTimingTracePeriodMs = 250u" in sketch
+    assert "dual_core_timing_trace_due(now_ms)" in loop
+    assert "if (trace_timing_loop)" in loop
+    assert "consumed < OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH" in sketch
+    assert "increment_saturating" not in take.split(
+        "if (!service_to_timing.try_pop(message)) return false;", 1
+    )[0]
+    assert "service_take_accounting\", \"successful_only" in sketch
+    assert "fault_breadcrumb_coherent" in sketch
+    assert "timing_breadcrumb_generation" in source
+    for key in (
+        "fault_failing_publish_ticks",
+        "fault_last_taken_kind",
+        "fault_last_taken_sequence",
+        "fault_last_taken_ticks",
+        "fault_last_snapshot_session",
+    ):
+        assert key in sketch
 
 
 def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:

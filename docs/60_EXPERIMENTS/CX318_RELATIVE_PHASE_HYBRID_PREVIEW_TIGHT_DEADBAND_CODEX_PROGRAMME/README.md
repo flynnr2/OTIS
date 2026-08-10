@@ -62,6 +62,30 @@ sides of the tighter frequency band.
 Failure is useful when it is bounded, replayable and leaves the last confirmed
 DAC state known. Do not extend a run merely to rescue a hypothesis.
 
+## Operator amendments during execution
+
+On 2026-08-09 the operator required a finite evidence-bearing rehearsal before
+every subsequent long hardware run in this programme. The rehearsal must use
+the same exact firmware/profile, authority boundary and stop conditions as the
+long run, and it must pass before that long run starts. A failed rehearsal is a
+stop, not permission to weaken a gate.
+
+The operator also authorized one controlled Stage 4 premise-setting
+`DAC SET 0xA828` transaction after the reboot made the external DAC register
+unknowable. It is a separately captured setup stimulus, not automatic control
+authority. No second Stage 4 DAC write is permitted, and phase/hybrid authority
+remains zero.
+
+The installed legacy Stage 7 profile rejected the first setup command as
+`rejected_active_profile_start_only`; its captured DAC and active-transaction
+files remained header-only, so no physical DAC write occurred. The replacement
+setup path must first flash the dedicated `cx318_stage4_premise_setup` image.
+That image is compile-time restricted to one explicit `DAC SET 0xA828` attempt
+per boot, clamps both DAC limits to A828, consumes the attempt before I2C, and
+excludes alternate DAC commands, sweeps, previews, controllers, dual-core
+authority and GPS transmission. The host must durably latch that sole attempt
+before enqueueing it and must never retry it after failure, reset or reflash.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the
