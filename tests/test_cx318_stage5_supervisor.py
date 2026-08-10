@@ -12,10 +12,12 @@ from host.otis_tools.contracts import (
 )
 from host.otis_tools.cx318_stage5_supervisor import (
     MAXIMUM_QUALIFIED_DURATION_S,
+    PREWRITE_CONTRACT_STARTUP_GRACE_S,
     REHEARSAL_DURATION_S,
     Stage5Supervisor,
     load_stage5_spec,
 )
+from host.otis_tools.cx318_stage5_runtime_contract import ACTIVE_STATUS_KEYS
 
 
 BUILD_IDENTITY = "a" * 64 + ":" + "b" * 64
@@ -43,22 +45,54 @@ def _supervisor(tmp_path: Path, *, mode: str, leg_name: str = "A") -> Stage5Supe
 
 def _health(supervisor: Stage5Supervisor, **values: str) -> dict[tuple[str, str], str]:
     result = {
+        **{
+            ("cx317_active", key): "present"
+            for key in ACTIVE_STATUS_KEYS
+        },
         ("cx317_active", "run_identity"): supervisor.spec.run_identity,
         ("cx317_active", "build_identity"): BUILD_IDENTITY,
         ("cx317_active", "profile_identity"): supervisor.spec.profile,
         ("cx317_active", "session_id"): "1",
         ("cx317_active", "state"): "DISARMED",
         ("cx317_active", "reason"): "initialized_disarmed",
+        ("cx317_active", "enabled"): "true",
+        ("cx317_active", "evidence_pending"): "false",
         ("cx317_active", "manual_start_confirmed"): "false",
         ("cx317_active", "arm_eligible"): "false",
         ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "capture_lease_live"): "true",
+        ("cx317_active", "fail_static"): "false",
+        ("cx317_active", "evidence_request_sequence"): "0",
+        ("cx317_active", "expected_setup_code"): (
+            f"0x{supervisor.spec.start_code:04X}"
+        ),
+        ("cx317_active", "confirmed_applied_code_known"): "false",
+        ("cx317_active", "confirmed_applied_code"): "unavailable",
         ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
         ("cx317_active", "dac_epoch"): "0",
         ("cx317_active", "selected_interval_count"): "0",
         ("cx317_active", "uptime_s"): "3000",
+        ("cx317_active", "automatic_retry"): "false",
+        ("cx317_active", "automatic_restore"): "false",
         ("cx318_preview", "static_code"): "0xA828",
         ("cx318_preview", "applied_code"): "0xA828",
         ("cx318_preview", "dac_epoch"): "0",
+        ("cx317_preview", "actionable"): "false",
+        ("cx317_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "actionable"): "false",
+        ("cx318_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "authorization_consumed"): "false",
+        ("dac", "applied_code_known"): "false",
+        ("dac", "last_write_ok"): "false",
+        ("dac", "last_applied_code"): "unavailable",
+        ("capture", "dropped_count"): "0",
+        ("capture", "pps_count_boundary_dropped_count"): "0",
+        ("dual_core", "telemetry_dropped"): "0",
+        ("dual_core", "service_publish_failures"): "0",
+        ("dual_core", "partition_fault"): "none",
+        ("dual_core", "fail_static"): "false",
+        ("cx317_preview", "telemetry_dropped_frames"): "0",
     }
     for key, value in supervisor.identities.items():
         result[("cx317_active", key)] = value
@@ -190,6 +224,34 @@ def test_live_setup_waits_for_exact_a828_epoch_zero_identity(tmp_path: Path) -> 
     assert supervisor.state["manual_start_sent"] is False
 
 
+def test_missing_required_status_fails_after_cheap_startup_grace(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="rehearsal")
+    health = _health(supervisor)
+    del health[("cx317_active", "dac_epoch")]
+
+    supervisor._check_prewrite_contract(
+        health, PREWRITE_CONTRACT_STARTUP_GRACE_S - 1
+    )
+    with pytest.raises(ValueError, match="missing cx317_active.dac_epoch"):
+        supervisor._check_prewrite_contract(
+            health, PREWRITE_CONTRACT_STARTUP_GRACE_S
+        )
+
+
+def test_health_field_loss_after_readiness_fails_immediately(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    health = _health(supervisor)
+    supervisor._check_prewrite_contract(health, 0)
+    del health[("cx317_preview", "telemetry_dropped_frames")]
+
+    with pytest.raises(ValueError, match="continuous runtime health contract"):
+        supervisor._check_fail_static_health(health)
+
+
 def test_rehearsal_has_a_finite_no_write_terminal(tmp_path: Path) -> None:
     supervisor = _supervisor(tmp_path, mode="rehearsal")
     health = _health(supervisor)
@@ -255,3 +317,63 @@ def test_opposite_only_leg_stops_nonpass_at_frozen_endpoint(tmp_path: Path) -> N
     assert supervisor.state["terminal"]["reason"] == (
         "stage5_finite_qualified_endpoint_nonpass"
     )
+
+
+def test_historical_tight_entry_cannot_pass_after_current_release(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    _write_tight_entry(supervisor)
+    rows = list(
+        csv.DictReader(
+            (supervisor.run_dir / "csv/tight_deadband_decisions_v1.csv").open()
+        )
+    )
+    pending_release = dict(rows[-1])
+    pending_release.update(
+        decision_sequence="2",
+        estimate_id="est:cx317:selected600:000003",
+        integer_edge_error_counts="4",
+        absolute_edge_error_counts="4",
+        state_before="TIGHT_INSIDE",
+        state_after="TIGHT_INSIDE",
+        release_counter="1",
+        transition="false",
+        frequency_controller_eligible="false",
+        reason_codes="loose_release_pending",
+        historical_v2_inside="false",
+        symmetric_two_count_inside="false",
+    )
+    released = dict(pending_release)
+    released.update(
+        decision_sequence="3",
+        estimate_id="est:cx317:selected600:000004",
+        release_counter="0",
+        state_after="OUTSIDE",
+        transition="true",
+        frequency_controller_eligible="true",
+        reason_codes="loose_release_confirmed",
+    )
+    rows.extend((pending_release, released))
+    path = supervisor.run_dir / "csv/tight_deadband_decisions_v1.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=CONTRACT_FIELDS["tight_deadband_decisions_v1"]
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    now = 1_800_000_000.0
+    supervisor.state.update(
+        setup_confirmed_utc=_utc(now - 2000),
+        qualification_started_utc=_utc(now - 1000),
+        expected_direction_seen=True,
+        response_count=1,
+        arm_pending=False,
+        tight_entry_seen=True,
+    )
+
+    supervisor._maybe_finish(
+        _health(supervisor, manual_start_confirmed="true"), now, 3000.0
+    )
+
+    assert supervisor.state["terminal"] is None

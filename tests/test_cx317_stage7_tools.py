@@ -1286,6 +1286,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
     health_values = {
         ("cx317_active", "state"): "DISARMED",
         ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "confirmed_applied_code_known"): "true",
         ("cx317_active", "confirmed_applied_code"): str(0xA82A),
         ("cx317_active", "correction_count"): "2",
         ("cx317_active", "fail_static"): "false",

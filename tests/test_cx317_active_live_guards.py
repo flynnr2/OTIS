@@ -262,6 +262,80 @@ def test_cross_core_status_preserves_full_build_identity_and_aborted_state() -> 
     assert "OtisCx317ActiveState::Aborted" in dual_status
 
 
+def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    visitor = active[
+        active.index("void otis_cx317_active_live_visit_status") : active.index(
+            "static void emit_direct_active_status"
+        )
+    ]
+    dual = sketch[
+        sketch.index("void publish_dual_core_active_status") : sketch.index(
+            "void publish_dual_core_timing_health"
+        )
+    ]
+    expected = (
+        "enabled",
+        "run_identity",
+        "build_identity",
+        "profile_identity",
+        "estimator_sha256",
+        "model_sha256",
+        "active_policy_sha256",
+        "response_policy_sha256",
+        "numerical_policy_sha256",
+        "state",
+        "reason",
+        "evidence_pending",
+        "evidence_phase",
+        "capture_lease_live",
+        "manual_start_confirmed",
+        "arm_eligible",
+        "fail_static",
+        "session_id",
+        "uptime_s",
+        "evidence_request_sequence",
+        "expected_setup_code",
+        "confirmed_applied_code_known",
+        "confirmed_applied_code",
+        "correction_count",
+        "cumulative_movement_codes",
+        "dac_epoch",
+        "selected_interval_count",
+        "automatic_retry",
+        "automatic_restore",
+    )
+    visitor_keys = re.findall(r'visitor\(context, "([^"]+)"', visitor)
+
+    assert tuple(visitor_keys) == expected
+    assert "otis_cx317_active_live_visit_status(context," in active
+    assert "emit_direct_active_status" in active
+    assert "otis_cx317_active_live_visit_status(" in dual
+    assert "publish_dual_core_active_status_field" in dual
+
+    header = (FIRMWARE / "otis_cx317_active_live.h").read_text(
+        encoding="utf-8"
+    )
+    status_getter = active[
+        active.index("void otis_cx317_active_live_get_status") : active.index(
+            "const char *otis_cx317_active_live_run_identity"
+        )
+    ]
+    assert "bool evidence_pending;" in header
+    assert "bool confirmed_applied_code_known;" in header
+    assert "status->evidence_pending = evidence_phase != EvidencePhase::None;" in (
+        status_getter
+    )
+    assert "transaction_bound && manual_start_confirmed" in status_getter
+    assert '"0x%04X"' in visitor
+    assert '"unavailable"' in visitor
+
+
 def test_stage7_dual_core_authority_has_four_durable_phases_and_one_owner() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"

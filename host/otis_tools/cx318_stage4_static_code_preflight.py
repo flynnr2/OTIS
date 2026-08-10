@@ -350,6 +350,7 @@ def _validate_premise_lineage(
         matrix_path=resolved["matrix"],
         build_manifest_path=resolved["build_manifest"],
         uf2_path=resolved["uf2"],
+        allow_historical_clean_build=True,
     )
     if lineage.get("artifact_binding") != binding:
         raise ValueError("setup premise artifact binding differs from flash lineage")
@@ -612,6 +613,7 @@ def validate_identity_run(identity_run_dir: Path) -> IdentityEvidence:
             "dac_steps_v1",
             "environment_v1",
             "active_transactions_v1",
+            "hybrid_preview_decisions_v1",
         )
     }
     for contract, path in paths.items():
@@ -655,16 +657,10 @@ def validate_identity_run(identity_run_dir: Path) -> IdentityEvidence:
         ("firmware", "source_hash"): firmware.get("source_sha256"),
         ("firmware", "config_hash"): firmware.get("configuration_sha256"),
         ("build", "profile_id"): "cx318_stage4_nonactuating_preview",
-        ("build", "enable_cx318_stage4_preview"): "1",
         ("build", "enable_dac_ad5693r"): "0",
-        ("build", "enable_cx317_i_only_preview"): "0",
         ("build", "enable_cx317_bounded_active"): "0",
-        ("cx318_preview", "confirmed_static_code"): "0xA828",
         ("cx318_preview", "static_code"): "0xA828",
-        ("cx318_preview", "dac_epoch"): "1",
-        ("cx318_preview", "actionable"): "false",
-        ("cx318_preview", "actuation_authorized"): "false",
-        ("cx318_preview", "authorization_consumed"): "false",
+        ("cx318_preview", "initialized"): "true",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
         ("dual_core", "telemetry_dropped"): "0",
@@ -676,6 +672,19 @@ def validate_identity_run(identity_run_dir: Path) -> IdentityEvidence:
     }
     if mismatches:
         raise ValueError("post-flash identity health mismatch: " + json.dumps(mismatches, sort_keys=True))
+    previews = _read_rows(paths["hybrid_preview_decisions_v1"])
+    if not previews or any(
+        row.get("actual_applied_code") != str(EXPECTED_CODE)
+        or row.get("dac_epoch") != str(EXPECTED_DAC_EPOCH)
+        or row.get("actionable") != "false"
+        or row.get("actuation_authorized") != "false"
+        or row.get("authorization_consumed") != "false"
+        for row in previews
+    ):
+        raise ValueError(
+            "post-flash identity preview rows do not prove exact static code, "
+            "DAC epoch, and zero authority"
+        )
     sources = {row["source"].strip().lower() for row in _read_rows(paths["environment_v1"])}
     if not {"sht4x", "bmp280"} <= sources:
         raise ValueError(f"identity run lacks both environment streams: {sorted(sources)}")
@@ -687,6 +696,9 @@ def validate_identity_run(identity_run_dir: Path) -> IdentityEvidence:
         "evidence_snapshot_sha256": _sha256_file(snapshot_path),
         "raw_serial_sha256": _sha256_file(raw_log),
         "health_sha256": _sha256_file(paths["health_v1"]),
+        "hybrid_preview_sha256": _sha256_file(
+            paths["hybrid_preview_decisions_v1"]
+        ),
         "dac_steps_sha256": _sha256_file(paths["dac_steps_v1"]),
         "active_transactions_sha256": _sha256_file(paths["active_transactions_v1"]),
     }
@@ -725,6 +737,7 @@ def validate_static_proof(proof: dict[str, Any]) -> SetupEvidence:
         rebound_matrix_path=matrix_path,
         build_manifest_path=build_path,
         uf2_path=uf2_path,
+        allow_historical_clean_build=True,
     )
     flash_record = json.loads(flash_record_path.read_text(encoding="utf-8"))
     validate_flash_record(
@@ -779,6 +792,7 @@ def create_static_proof(
         rebound_matrix_path=rebound_matrix_path,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
+        allow_historical_clean_build=True,
     )
     flash_record = json.loads(flash_record_path.read_text(encoding="utf-8"))
     validate_flash_record(

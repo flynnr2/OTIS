@@ -82,6 +82,26 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
+    header = (FIRMWARE / "otis_dual_core_partition.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST = 29u" in header
+    assert "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 71u" in header
+    assert (
+        "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
+        "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
+    ) in header
+    assert (
+        "OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +\n"
+        "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
+    ) in header
+    assert "OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u" in header
+    assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
+    assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
+
+
 def test_service_queue_fault_diagnostics_are_complete_and_bounded() -> None:
     source = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
         encoding="utf-8"
@@ -171,14 +191,12 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
         loop0.index("#endif", loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
     ]
     busy_guard_start = dual_core0.index(
-        "if (otis_phase4_observe_preview_transport_busy()"
+        "if (service_dual_core_serial_frame_transport())"
     )
     ordinary_writers_start = dual_core0.index("service_dual_core_outputs();")
     busy_guard = dual_core0[busy_guard_start:ordinary_writers_start]
 
     assert busy_guard_start < ordinary_writers_start
-    assert "otis_phase4_observe_preview_service_transport();" in busy_guard
-    assert "otis_cx317_preview_live_service_transport();" in busy_guard
     assert "otis_status_led_poll(millis());" in busy_guard
     assert "return;" in busy_guard
     for interleaving_writer in (
@@ -192,22 +210,70 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
     ):
         assert interleaving_writer not in busy_guard
 
-    evidence_start = dual_core0.index(
-        "service_dual_core_evidence_transport();", ordinary_writers_start
-    )
-    banner_start = dual_core0.index(
-        "emit_protocol_banner_if_serial_ready();", evidence_start
-    )
-    newly_started_frame_guard = dual_core0[evidence_start:banner_start]
-    assert "if (dual_core_evidence_transport_busy())" in newly_started_frame_guard
-    assert "return;" in newly_started_frame_guard
-
-    evidence_busy = sketch[
-        sketch.index("bool dual_core_evidence_transport_busy(void)") :
-        sketch.index("void service_dual_core_evidence_transport(void)")
+    dispatch = sketch[
+        sketch.index("bool service_dual_core_serial_frame_transport(void)") :
+        sketch.index("#endif", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
     ]
-    assert "return dual_core_evidence_transport_active;" in evidence_busy
-    assert "dual_core_evidence_transport_sent > 0u" not in evidence_busy
+    assert "switch (owner)" in dispatch
+    assert "otis_serial_frame_arbiter_release" in dispatch
+    for writer in (
+        "service_dual_core_evidence_transport();",
+        "otis_phase4_observe_preview_service_transport();",
+        "otis_cx317_preview_live_service_transport();",
+        "otis_cx318_preview_transport_service();",
+    ):
+        assert dispatch.count(writer) == 1
+
+
+def test_dual_core_cx317_preview_copy_does_not_nest_full_frames_on_core1_stack() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    enqueue_start = preview.index("bool enqueue(const char *data, size_t length) {")
+    enqueue_end = preview.index("bool code_context_valid(", enqueue_start)
+    enqueue = preview[enqueue_start:enqueue_end]
+    dual_core_path = enqueue[
+        enqueue.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
+        enqueue.index("#else", enqueue.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+    ]
+
+    assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in preview
+    assert "evidence_frame_scratch.data[length] = '\\0';" in dual_core_path
+    assert "otis_dual_core_publish_evidence(&evidence_frame_scratch)" in dual_core_path
+    assert "Frame frame = {};" not in dual_core_path
+    assert "OtisEvidenceFrameMessage message = {};" not in dual_core_path
+
+
+def test_dual_core_timing_paths_keep_full_formatters_out_of_automatic_storage() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+
+    assert "char formatter_scratch[kFrameCapacity] = {};" in preview
+    assert preview.count("char frame[kFrameCapacity];") == 3
+    assert preview.count("#if OTIS_ENABLE_DUAL_CORE_PARTITION\n  char *frame = formatter_scratch;") == 3
+
+    assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in active
+    assert "OtisEvidenceFrameMessage message = {};" not in active
+    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 2
+
+    assert "OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};" in sketch
+    association_start = sketch.index(
+        "void publish_dual_core_association_loss_decision("
+    )
+    association_end = sketch.index("\n}\n#endif", association_start)
+    association = sketch[association_start:association_end]
+    assert "OtisEvidenceFrameMessage message = {};" not in association
+    assert (
+        "otis_dual_core_publish_evidence(&dual_core_association_loss_scratch);"
+        in association
+    )
 
 
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:

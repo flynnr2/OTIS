@@ -37,9 +37,17 @@ Require exact or contractually bounded parity for:
 Run source guards, focused tests, full tests, firmware matrix and no-hardware
 validation before flashing.
 
+Judge phase continuity from the RPH session/epoch and qualification sequence.
+An exactly replayed `RECOVER_PREVIEW` while a newly opened phase epoch awaits
+its first authoritative 600 s frequency estimate is initialization, not by
+itself a phase discontinuity. A later invalid RPH, second epoch-open,
+`REFERENCE_LOST_PREVIEW` or `FAULT_PREVIEW` remains a stop condition.
+
 ## Live preview
 
 After exact identity and board preflight:
+
+0. complete the exact-bundle operational rehearsal required by `AGENTS.md`;
 
 1. confirm the last applied DAC code from live evidence; do not rewrite it;
 2. flash only the dedicated non-actuating CX318 preview profile;

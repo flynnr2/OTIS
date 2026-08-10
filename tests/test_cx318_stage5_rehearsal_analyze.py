@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from host.otis_tools import cx318_stage5_rehearsal_analyze as analyzer
+from host.otis_tools.cx318_stage5_runtime_contract import ACTIVE_STATUS_KEYS
 
 
 @dataclass(frozen=True)
@@ -50,8 +52,8 @@ def _fixture_run(
     (run_dir / "COMPLETE").touch()
     (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
     (run_dir / "raw/serial.log").write_text(
-        "# OTIS_HOST {\"event\": \"capture_started\", \"utc\": \"2026-08-10T00:00:00Z\"}\n"
-        f"# OTIS_HOST {{\"event\": \"capture_stopped\", \"utc\": \"2026-08-10T00:{duration_s // 60:02d}:{duration_s % 60:02d}Z\"}}\n",
+        "# OTIS_HOST {\"event\": \"capture_started\", \"utc\": \"2026-08-10T00:00:00Z\", \"owner_pid\": 42, \"transport_generation\": 1}\n"
+        f"# OTIS_HOST {{\"event\": \"capture_stopped\", \"utc\": \"2026-08-10T00:{duration_s // 60:02d}:{duration_s % 60:02d}Z\", \"owner_pid\": 42, \"transport_generation\": 1, \"logical_rotation\": false, \"next_run\": null}}\n",
         encoding="utf-8",
     )
 
@@ -78,17 +80,57 @@ def _fixture_run(
         target.write_text("fixture\n", encoding="utf-8")
         files.append({"path": str(relative), "contract": contract})
         contracts[contract] = 1
+    association_relative = Path("csv/association_loss_decisions_v1.csv")
+    (run_dir / association_relative).write_text("fixture\n", encoding="utf-8")
+    files.append(
+        {
+            "path": str(association_relative),
+            "contract": "association_loss_decisions_v1",
+        }
+    )
+    contracts["association_loss_decisions_v1"] = 1
 
     _write_json(
         run_dir / analyzer.CAPTURE_STATE,
         {
+            "pid": 42,
             "capture_active": False,
             "serial_open": False,
+            "logical_segment_closed": True,
+            "physical_serial_open": False,
+            "transport_generation": 1,
             "reconnect_count": 0,
             "parser_errors": 0,
             "malformed_utf8": 0,
             "commands_rejected": 0,
             "emergency_aborts_sent": 0,
+        },
+    )
+    _write_json(
+        run_dir / analyzer.SEGMENT_CLOSURE,
+        {
+            "schema_version": 1,
+            "protocol": analyzer.SEGMENT_PROTOCOL_ID,
+            "run": str(run_dir.resolve()),
+            "run_manifest_sha256": sha256(
+                (run_dir / "run_manifest.json").read_bytes()
+            ).hexdigest(),
+            "owner_pid": 42,
+            "transport_generation": 1,
+            "closure_mode": "physical_serial_close",
+            "logical_segment_closed": True,
+            "physical_serial_open": False,
+            "serial_reopened": False,
+            "next_run": None,
+            "request_id": None,
+            "serial_owner_check": None,
+            "counters": {
+                "reconnect_count": 0,
+                "parser_errors": 0,
+                "malformed_utf8": 0,
+                "commands_rejected": 0,
+                "emergency_aborts_sent": 0,
+            },
         },
     )
     _write_json(
@@ -125,26 +167,57 @@ def _fixture_run(
         known_domains=frozenset(),
     )
     identities = {"firmware_identity": "fixture-firmware"}
-    spec = SimpleNamespace(run_identity="fixture-run", profile="fixture-profile")
+    spec = SimpleNamespace(
+        run_identity="fixture-run", profile="fixture-profile", start_code=0xA808
+    )
     health = {
+        **{
+            ("cx317_active", key): "present"
+            for key in ACTIVE_STATUS_KEYS
+        },
         ("cx317_active", "run_identity"): spec.run_identity,
         ("cx317_active", "build_identity"): "source:configuration",
         ("cx317_active", "profile_identity"): spec.profile,
         ("cx317_active", "firmware_identity"): identities["firmware_identity"],
         ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "enabled"): "true",
+        ("cx317_active", "reason"): "initialized_disarmed",
+        ("cx317_active", "evidence_pending"): "false",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "capture_lease_live"): "true",
         ("cx317_active", "manual_start_confirmed"): "false",
         ("cx317_active", "arm_eligible"): "false",
+        ("cx317_active", "session_id"): "1",
+        ("cx317_active", "uptime_s"): "2700",
+        ("cx317_active", "evidence_request_sequence"): "0",
+        ("cx317_active", "expected_setup_code"): "0xA808",
+        ("cx317_active", "confirmed_applied_code_known"): "false",
+        ("cx317_active", "confirmed_applied_code"): "unavailable",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
         ("cx317_active", "dac_epoch"): "0",
+        ("cx317_active", "selected_interval_count"): "1",
+        ("cx317_active", "automatic_retry"): "false",
+        ("cx317_active", "automatic_restore"): "false",
         ("cx318_preview", "static_code"): "0xA828",
         ("cx318_preview", "applied_code"): "0xA828",
         ("cx318_preview", "dac_epoch"): "0",
+        ("cx317_preview", "actionable"): "false",
+        ("cx317_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "actionable"): "false",
+        ("cx318_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "authorization_consumed"): "false",
+        ("dac", "applied_code_known"): "false",
+        ("dac", "last_write_ok"): "false",
+        ("dac", "last_applied_code"): "unavailable",
         ("capture", "dropped_count"): "0",
         ("capture", "pps_count_boundary_dropped_count"): "0",
         ("dual_core", "telemetry_dropped"): "0",
+        ("dual_core", "service_publish_failures"): "0",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
         ("cx317_active", "fail_static"): "false",
-        ("cx318_preview", "telemetry_dropped_frames"): "0",
+        ("cx317_preview", "telemetry_dropped_frames"): "0",
     }
     authority_row = {
         "actionable": "true" if authority else "false",
@@ -171,11 +244,12 @@ def _fixture_run(
         "load_stage5_spec",
         lambda leg: (spec, identities, object()),
     )
-    monkeypatch.setattr(
-        analyzer,
-        "validate_csv",
-        lambda *args, **kwargs: SimpleNamespace(ok=True, row_count=1, errors=[]),
-    )
+    def validate_csv(*args, **kwargs):
+        context = args[1]
+        rows = 0 if context.contract == "association_loss_decisions_v1" else 1
+        return SimpleNamespace(ok=True, row_count=rows, errors=[])
+
+    monkeypatch.setattr(analyzer, "validate_csv", validate_csv)
     monkeypatch.setattr(analyzer, "_read_csv", read_csv)
     monkeypatch.setattr(analyzer, "_latest_health", lambda _: health)
     monkeypatch.setattr(analyzer, "replay_tight_deadband", lambda _: _Replay())
@@ -196,7 +270,7 @@ def test_analyzer_seals_exact_2700_second_no_write_rehearsal_and_never_overwrite
 
     assert result["status"] == "passed"
     assert result["checks"]["finite_capture_at_least_2700s"] is True
-    assert result["checks"]["zero_dac_or_active_rows"] is True
+    assert result["checks"]["stage5_prewrite_runtime_contract_exact"] is True
     assert result["checks"]["phase_hybrid_and_tdb_zero_authority"] is True
     assert result["checks"]["sealed_evidence_snapshot_valid"] is True
     assert result["source_artifacts_sha256"]["raw/serial.log"]
@@ -212,13 +286,82 @@ def test_analyzer_seals_exact_2700_second_no_write_rehearsal_and_never_overwrite
     assert output.read_bytes() == original
 
 
+def test_capture_closure_accepts_only_proven_same_owner_logical_rotation(
+    tmp_path: Path,
+) -> None:
+    run_dir = (tmp_path / "rehearsal").resolve()
+    run_dir.mkdir()
+    (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+    state = {
+        "pid": 42,
+        "capture_active": False,
+        "serial_open": True,
+        "logical_segment_closed": True,
+        "physical_serial_open": True,
+        "transport_generation": 1,
+        "reconnect_count": 0,
+        "parser_errors": 0,
+        "malformed_utf8": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    markers = [
+        {
+            "event": "capture_started",
+            "owner_pid": 42,
+            "transport_generation": 1,
+        },
+        {
+            "event": "capture_stopped",
+            "owner_pid": 42,
+            "transport_generation": 1,
+            "logical_rotation": True,
+            "next_run": str(tmp_path / "transition"),
+        },
+    ]
+    closure = {
+        "schema_version": 1,
+        "protocol": analyzer.SEGMENT_PROTOCOL_ID,
+        "run": str(run_dir),
+        "run_manifest_sha256": sha256(
+            (run_dir / "run_manifest.json").read_bytes()
+        ).hexdigest(),
+        "owner_pid": 42,
+        "transport_generation": 1,
+        "closure_mode": "same_owner_logical_rotation",
+        "logical_segment_closed": True,
+        "physical_serial_open": True,
+        "serial_reopened": False,
+        "next_run": str(tmp_path / "transition"),
+        "request_id": "0" * 32,
+        "serial_owner_check": {"performed": True, "owner_pids": [42]},
+        "counters": {
+            "reconnect_count": 0,
+            "parser_errors": 0,
+            "malformed_utf8": 0,
+            "commands_rejected": 0,
+            "emergency_aborts_sent": 0,
+        },
+    }
+    _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
+
+    result = analyzer._capture_closure(run_dir, state, markers)
+    assert result["ok"] is True
+    assert result["mode"] == "same_owner_logical_rotation"
+
+    closure["serial_owner_check"]["owner_pids"] = [99]
+    _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
+    result = analyzer._capture_closure(run_dir, state, markers)
+    assert result["ok"] is False
+
+
 @pytest.mark.parametrize(
     ("kwargs", "failed_check"),
     [
         ({"duration_s": 2699}, "finite_capture_at_least_2700s"),
         ({"authority": True}, "phase_hybrid_and_tdb_zero_authority"),
         ({"evidence_failures": ["tampered evidence"]}, "sealed_evidence_snapshot_valid"),
-        ({"active_rows": True}, "zero_dac_or_active_rows"),
+        ({"active_rows": True}, "stage5_prewrite_runtime_contract_exact"),
     ],
 )
 def test_analyzer_emits_failed_nonseal_when_no_write_guards_do_not_hold(

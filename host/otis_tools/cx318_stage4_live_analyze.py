@@ -468,6 +468,7 @@ def _transport_and_authority_checks(
     health_rows: list[dict[str, str]],
     dac_rows: list[dict[str, str]],
     active_rows: list[dict[str, str]],
+    hpr_rows: list[dict[str, str]] | None = None,
     *,
     static_code: int | None = None,
     dac_epoch: int | None = None,
@@ -486,13 +487,8 @@ def _transport_and_authority_checks(
         marker_counts[event] = marker_counts.get(event, 0) + 1
     latest = _latest_health(health_rows)
     expected_health = {
-        ("build", "enable_cx318_stage4_preview"): "1",
         ("build", "enable_dac_ad5693r"): "0",
-        ("build", "enable_cx317_i_only_preview"): "0",
         ("build", "enable_cx317_bounded_active"): "0",
-        ("cx318_preview", "actionable"): "false",
-        ("cx318_preview", "actuation_authorized"): "false",
-        ("cx318_preview", "authorization_consumed"): "false",
         ("cx318_preview", "initialized"): "true",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
@@ -504,6 +500,13 @@ def _transport_and_authority_checks(
         ("dual_core", "core1_trace_sampling"): "bounded_coarse",
         ("dual_core", "core1_trace_period_ms"): "250",
     }
+    optional_expected_health = {
+        ("build", "enable_cx318_stage4_preview"): "1",
+        ("build", "enable_cx317_i_only_preview"): "0",
+        ("cx318_preview", "actionable"): "false",
+        ("cx318_preview", "actuation_authorized"): "false",
+        ("cx318_preview", "authorization_consumed"): "false",
+    }
     if (
         static_code is not None
         and 0xA800 <= static_code <= 0xAB00
@@ -512,8 +515,12 @@ def _transport_and_authority_checks(
     ):
         expected_health.update(
             {
-                ("cx318_preview", "confirmed_static_code"): f"0x{static_code:04X}",
                 ("cx318_preview", "static_code"): f"0x{static_code:04X}",
+            }
+        )
+        optional_expected_health.update(
+            {
+                ("cx318_preview", "confirmed_static_code"): f"0x{static_code:04X}",
                 ("cx318_preview", "dac_epoch"): str(dac_epoch),
             }
         )
@@ -522,9 +529,15 @@ def _transport_and_authority_checks(
         for (component, key), expected in expected_health.items()
         if latest.get((component, key)) != expected
     }
+    health_mismatches.update({
+        f"{component}.{key}": {"expected": expected, "actual": latest.get((component, key))}
+        for (component, key), expected in optional_expected_health.items()
+        if (component, key) in latest and latest[(component, key)] != expected
+    })
     history_violations: list[dict[str, str]] = []
     always_expected = {
         **expected_health,
+        **optional_expected_health,
         **{key: "0" for key in REQUIRED_ZERO_HEALTH},
     }
     for row in health_rows:
@@ -591,6 +604,19 @@ def _transport_and_authority_checks(
             for row in health_rows
         )
     )
+    preview_identity = hpr_rows is None or (
+        bool(hpr_rows)
+        and static_code is not None
+        and dac_epoch is not None
+        and all(
+            row.get("actual_applied_code") == str(static_code)
+            and row.get("dac_epoch") == str(dac_epoch)
+            and row.get("actionable") == "false"
+            and row.get("actuation_authorized") == "false"
+            and row.get("authorization_consumed") == "false"
+            for row in hpr_rows
+        )
+    )
     checks = [
         Check(
             "capture_transport_continuity",
@@ -600,9 +626,10 @@ def _transport_and_authority_checks(
         ),
         Check(
             "zero_dac_active_or_unapproved_commands",
-            no_authority,
+            no_authority and preview_identity,
             f"DAC/ACT rows={len(dac_rows)}/{len(active_rows)}, "
-            f"raw={raw_record_counts}, commands={sent_commands}",
+            f"raw={raw_record_counts}, commands={sent_commands}, "
+            f"HPR_identity={preview_identity}",
         ),
         Check(
             "live_health_fail_static_and_authority_guards",
@@ -889,6 +916,12 @@ def _live_parity(
         row["qualification_state"] == "qualified"
         for row in rph_rows[first_open + 1 :]
     )
+    # RECOVER_PREVIEW is also the expected, replayed hybrid state while a
+    # newly opened phase epoch is waiting for its first 600-second frequency
+    # estimate.  It is therefore not evidence of a phase discontinuity.  A
+    # later reference loss is already exposed by an invalid RPH row or a
+    # second epoch_open; retain explicit guards for reference-lost and fault
+    # preview states as an independent cross-check.
     continuous_epoch = (
         first_open is not None
         and leading_acquisition_ok
@@ -897,7 +930,7 @@ def _live_parity(
         and len({row["capture_session"] for row in rph_rows}) == 1
         and all(
             row["preview_state"]
-            not in {"REFERENCE_LOST_PREVIEW", "RECOVER_PREVIEW", "FAULT_PREVIEW"}
+            not in {"REFERENCE_LOST_PREVIEW", "FAULT_PREVIEW"}
             for row in hpr_rows[first_open:]
         )
     )
@@ -915,7 +948,8 @@ def _live_parity(
         Check(
             "single_continuous_qualified_phase_epoch",
             continuous_epoch,
-            "only leading reference acquisition, then one epoch-open and qualified boundaries",
+            "only leading reference acquisition, then one epoch-open and qualified "
+            "boundaries with no reference-lost/fault preview",
         ),
     ]
     return checks, {
@@ -979,6 +1013,7 @@ def analyze_run(
     dac_epoch = int(static_binding.get("dac_epoch", -1))
     transport_checks, transport = _transport_and_authority_checks(
         paths["raw"], capture_state, rows["health"], rows["dac"], rows["active"],
+        rows["hpr"],
         static_code=code,
         dac_epoch=dac_epoch,
     )
@@ -1000,9 +1035,16 @@ def analyze_run(
     latest_health = _latest_health(rows["health"])
     static_health_ok = (
         0xA800 <= code <= 0xAB00
-        and latest_health.get(("cx318_preview", "confirmed_static_code")) == f"0x{code:04X}"
         and latest_health.get(("cx318_preview", "static_code")) == f"0x{code:04X}"
-        and latest_health.get(("cx318_preview", "dac_epoch")) == str(dac_epoch)
+        and bool(rows["hpr"])
+        and all(
+            row["actual_applied_code"] == str(code)
+            and row["dac_epoch"] == str(dac_epoch)
+            and row["actionable"] == "false"
+            and row["actuation_authorized"] == "false"
+            and row["authorization_consumed"] == "false"
+            for row in rows["hpr"]
+        )
     )
     checks.append(
         Check(

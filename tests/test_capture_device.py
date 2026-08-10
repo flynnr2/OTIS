@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
 import json
 import os
 import signal
 import shutil
 import threading
+import time
 
 import pytest
 
@@ -15,8 +17,10 @@ from host.otis_tools.capture_device import (
     CaptureDeviceRunner,
     LineFramer,
     RawEvidenceWriter,
+    SEGMENT_PROTOCOL_ID,
 )
-from host.otis_tools.run_paths import RunPaths, default_csv_files
+from host.otis_tools.cx318_capture_segment import prepare_transition
+from host.otis_tools.run_paths import RunPaths, default_csv_files, ensure_run_layout
 from host.otis_tools.serial_commands import (
     CommandFifo,
     send_command_to_fifo,
@@ -66,6 +70,39 @@ def _config(tmp_path: Path) -> CaptureDeviceConfig:
         reconnect_max_s=0.001,
         status_interval_s=999,
     )
+
+
+def _prepared_transition(
+    tmp_path: Path, config: CaptureDeviceConfig
+) -> Path:
+    ensure_run_layout(config.run_dir)
+    capture_device_module._create_manifest_if_missing(
+        config.run_dir, config.device, config.baud
+    )
+    target = tmp_path / "transition"
+    prepare_transition(config.run_dir / "run_manifest.json", target)
+    return target
+
+
+def _rotation_request(
+    *, config: CaptureDeviceConfig, target: Path, generation: int
+) -> tuple[str, dict[str, object]]:
+    request_id = "0123456789abcdef0123456789abcdef"
+    manifest_path = target / "run_manifest.json"
+    return request_id, {
+        "schema_version": 1,
+        "protocol": SEGMENT_PROTOCOL_ID,
+        "request_id": request_id,
+        "capability": config.segment_capability,
+        "expected_pid": os.getpid(),
+        "expected_generation": generation,
+        "from_run": str(config.run_dir.resolve()),
+        "to_run": str(target.resolve()),
+        "mode": "transition",
+        "expected_manifest_sha256": sha256(manifest_path.read_bytes()).hexdigest(),
+        "command_fifo": None,
+        "emergency_command_fifo": None,
+    }
 
 
 def test_line_framer_holds_partial_lines() -> None:
@@ -467,6 +504,73 @@ def test_emergency_abort_preempts_and_revokes_normal_command_ingress(
     assert b"emergency_abort_sent" in raw
 
 
+def test_sigint_stop_remains_bounded_when_normal_fifo_is_saturated(
+    tmp_path: Path,
+) -> None:
+    """The Stage 4 stop path must not depend on normal-command drainage."""
+    base = _config(tmp_path)
+    normal_fifo = tmp_path / "control/commands.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo,
+        normal_command_max_age_s=2.0,
+        status_interval_s=base.status_interval_s,
+    )
+    read_entered = threading.Event()
+    release_read = threading.Event()
+
+    class ObstructedSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+
+        def read(self, _size: int) -> bytes:
+            read_entered.set()
+            assert release_read.wait(timeout=2.0)
+            return b""
+
+    serial = ObstructedSerial()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+    result: list[int] = []
+    worker = threading.Thread(target=lambda: result.append(runner.run()))
+    worker.start()
+    assert read_entered.wait(timeout=2.0)
+
+    writer_fd = os.open(normal_fifo, os.O_WRONLY | os.O_NONBLOCK)
+    saturated = False
+    try:
+        payload = b"OTISQ1 0 CONFIG?\n" * 256
+        for _ in range(1024):
+            try:
+                os.write(writer_fd, payload)
+            except BlockingIOError:
+                saturated = True
+                break
+        assert saturated
+
+        started = time.monotonic()
+        runner.request_stop(signal.SIGINT)
+        release_read.set()
+        worker.join(timeout=2.0)
+        elapsed = time.monotonic() - started
+    finally:
+        os.close(writer_fd)
+        release_read.set()
+        worker.join(timeout=2.0)
+
+    assert not worker.is_alive()
+    assert result == [0]
+    assert elapsed < 2.0
+    assert runner.commands_sent == 0
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert b"graceful_shutdown_complete" in raw
+    assert b"host_command_sent" not in raw
+
+
 def test_emergency_fifo_unknown_command_fails_closed_to_abort(
     tmp_path: Path,
 ) -> None:
@@ -573,10 +677,10 @@ def test_capture_state_heartbeat_is_independent_of_human_status_interval(
     state_writes = 0
     original_write_state = runner._write_state
 
-    def record_state_write() -> None:
+    def record_state_write(*args, **kwargs) -> None:
         nonlocal state_writes
         state_writes += 1
-        original_write_state()
+        original_write_state(*args, **kwargs)
 
     monkeypatch.setattr(runner, "_write_state", record_state_write)
 
@@ -589,6 +693,150 @@ def test_capture_state_heartbeat_is_independent_of_human_status_interval(
     )
     assert state["state_heartbeat_interval_s"] == 5.0
     assert state["capture_active"] is False
+
+
+def test_same_owner_segment_rotation_waits_for_record_boundary_and_never_reopens_serial(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    control_dir = tmp_path / "segment-control"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+        segment_control_dir=control_dir,
+        segment_capability="test-capability",
+    )
+    target = _prepared_transition(tmp_path, config)
+    request_id, request = _rotation_request(
+        config=config, target=target, generation=1
+    )
+
+    class RotatingSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count == 1:
+                control_dir.mkdir(parents=True, exist_ok=True)
+                (control_dir / "request.json").write_text(
+                    json.dumps(request), encoding="utf-8"
+                )
+                return b"REF,1,1000"
+            if self.read_count == 2:
+                return b",1,R,16000000,rp2040_timer0,16\n"
+            if self.read_count == 3:
+                return b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"
+            stop_event.set()
+            return b""
+
+    serial = RotatingSerial()
+    factory_calls = 0
+
+    def factory(*_args, **_kwargs):
+        nonlocal factory_calls
+        factory_calls += 1
+        return serial
+
+    runner = CaptureDeviceRunner(
+        config, serial_factory=factory, stop_event=stop_event
+    )
+
+    assert runner.run() == 0
+    assert factory_calls == 1
+    assert serial.closed is True
+    assert serial.writes == []
+    source_raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    target_raw = RunPaths(target).raw_serial_log.read_bytes()
+    assert b"REF,1,1000,1,R,16000000" in source_raw
+    assert b"REF,1,1001" not in source_raw
+    assert b"REF,1,1001,1,R,32000000" in target_raw
+    assert b"REF,1,1000" not in target_raw
+    source_state = json.loads(
+        (config.run_dir / "reports/capture_device_state.json").read_text()
+    )
+    target_state = json.loads(
+        (target / "reports/capture_device_state.json").read_text()
+    )
+    assert source_state["logical_segment_closed"] is True
+    assert source_state["physical_serial_open"] is True
+    assert source_state["serial_open"] is True
+    assert source_state["transport_generation"] == 1
+    assert target_state["physical_serial_open"] is False
+    assert target_state["transport_generation"] == 2
+    response = json.loads(
+        (control_dir / "responses" / f"{request_id}.json").read_text()
+    )
+    assert response["status"] == "completed"
+    assert response["serial_reopened"] is False
+    assert response["pid"] == os.getpid()
+    assert response["reconnect_count"] == 0
+    assert not (control_dir / "request.json").exists()
+    carrier = json.loads((control_dir / "carrier_state.json").read_text())
+    assert carrier["status"] == "stopped"
+    assert carrier["transport_generation"] == 2
+    assert carrier["reconnect_count"] == 0
+
+
+def test_segment_rotation_rejects_wrong_generation_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    control_dir = tmp_path / "segment-control"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        reconnect_initial_s=base.reconnect_initial_s,
+        reconnect_max_s=base.reconnect_max_s,
+        status_interval_s=base.status_interval_s,
+        segment_control_dir=control_dir,
+        segment_capability="test-capability",
+    )
+    target = _prepared_transition(tmp_path, config)
+    request_id, request = _rotation_request(
+        config=config, target=target, generation=2
+    )
+
+    class RejectingSerial(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count == 1:
+                control_dir.mkdir(parents=True, exist_ok=True)
+                (control_dir / "request.json").write_text(
+                    json.dumps(request), encoding="utf-8"
+                )
+                return b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"
+            stop_event.set()
+            return b""
+
+    serial = RejectingSerial()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+    response = json.loads(
+        (control_dir / "responses" / f"{request_id}.json").read_text()
+    )
+    assert response["status"] == "rejected"
+    assert "generation mismatch" in response["error"]
+    assert not (target / "raw/serial.log").exists()
+    assert not (target / "reports/capture_device_state.json").exists()
+    assert runner.transport_generation == 1
 
 
 def test_abort_arriving_during_serial_read_preempts_normal_command(

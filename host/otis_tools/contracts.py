@@ -46,6 +46,43 @@ PPS_SNAPSHOT_FIELDS = [
     "backend",
 ]
 
+ASSOCIATION_LOSS_DECISION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "decision_sequence",
+    "reason",
+    "classification",
+    "decision_ticks",
+    "pending_reference_sequence",
+    "pending_reference_ticks",
+    "pending_age_ticks",
+    "boundary_depth",
+    "boundary_dropped_count",
+    "next_reference_present",
+    "next_reference_sequence",
+    "next_reference_ticks",
+    "snapshot_initialized",
+    "snapshot_running",
+    "snapshot_fault_latched",
+    "snapshot_fault_flags",
+    "snapshot_session",
+    "snapshot_producer_ordinal",
+    "snapshot_consumer_ordinal",
+    "snapshot_backlog_depth",
+    "snapshot_backlog_high_water",
+    "snapshot_overwrite_count",
+    "snapshot_continuity_loss_count",
+    "snapshot_pio_rxstall_count",
+    "snapshot_dma_error_count",
+    "snapshot_dma_stopped_count",
+    "core1_loop_sequence",
+    "core1_last_snapshot_session",
+    "core1_last_snapshot_sequence",
+    "core1_phase",
+    "core1_phase_enter_ticks",
+    "core1_last_progress_ticks",
+]
+
 HEALTH_FIELDS = [
     "record_type",
     "schema_version",
@@ -463,6 +500,7 @@ CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
+    "association_loss_decisions_v1": ASSOCIATION_LOSS_DECISION_V1_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
@@ -484,6 +522,7 @@ CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
     "pps_snapshots_v1": {"SNP"},
+    "association_loss_decisions_v1": {"ASL"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
@@ -505,6 +544,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "raw_events_v1": 1,
     "count_observations_v1": 1,
     "pps_snapshots_v1": 1,
+    "association_loss_decisions_v1": 1,
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
@@ -526,6 +566,7 @@ SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
     "pps_snapshots_v1": "snapshot_sequence",
+    "association_loss_decisions_v1": "decision_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
@@ -547,6 +588,7 @@ TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "pps_snapshots_v1": ("reference_timestamp_ticks",),
+    "association_loss_decisions_v1": ("decision_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
@@ -573,6 +615,7 @@ DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
     "pps_snapshots_v1": (),
+    "association_loss_decisions_v1": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
@@ -730,7 +773,7 @@ VALID_TIGHT_DEADBAND_REQUALIFICATION_REASONS = {
     "dac_epoch_changed_requalify",
 }
 TIGHT_DEADBAND_POLICY_ID = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1"
-TIGHT_DEADBAND_POLICY_SHA256 = "bd4738dd89266591f143fda1c243615c1e9933799d6d0f0c1f6101c8d8810c4f"
+TIGHT_DEADBAND_POLICY_SHA256 = "434d6ad25d20d5b1bb93c5657782c24d7280772bd906241cfc34af69e1ddd563"
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
@@ -941,6 +984,93 @@ def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str])
             )
     if not row.get("backend"):
         errors.append(f"row {row_number}: backend must not be empty")
+
+
+def _check_association_loss_decision_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    classifications = {
+        "backend_fault",
+        "unread_snapshot_present_when_decision_made",
+        "timeout_no_snapshot",
+        "no_unread_snapshot_healthy_backend",
+    }
+    if row.get("classification") not in classifications:
+        errors.append(
+            f"row {row_number}: classification must be one of "
+            f"{sorted(classifications)}"
+        )
+    for field_name in (
+        "next_reference_present",
+        "snapshot_initialized",
+        "snapshot_running",
+        "snapshot_fault_latched",
+    ):
+        if row.get(field_name) not in {"true", "false"}:
+            errors.append(
+                f"row {row_number}: {field_name} must be 'true' or 'false'"
+            )
+    numeric_fields = (
+        "pending_reference_sequence",
+        "pending_reference_ticks",
+        "pending_age_ticks",
+        "boundary_depth",
+        "boundary_dropped_count",
+        "next_reference_sequence",
+        "next_reference_ticks",
+        "snapshot_fault_flags",
+        "snapshot_session",
+        "snapshot_producer_ordinal",
+        "snapshot_consumer_ordinal",
+        "snapshot_backlog_depth",
+        "snapshot_backlog_high_water",
+        "snapshot_overwrite_count",
+        "snapshot_continuity_loss_count",
+        "snapshot_pio_rxstall_count",
+        "snapshot_dma_error_count",
+        "snapshot_dma_stopped_count",
+        "core1_loop_sequence",
+        "core1_last_snapshot_session",
+        "core1_last_snapshot_sequence",
+        "core1_phase_enter_ticks",
+        "core1_last_progress_ticks",
+    )
+    parsed = {
+        field_name: _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in numeric_fields
+    }
+    for field_name in ("reason", "core1_phase"):
+        if not row.get(field_name):
+            errors.append(f"row {row_number}: {field_name} must not be empty")
+    if row.get("next_reference_present") == "false" and (
+        parsed["next_reference_sequence"] not in {None, 0}
+        or parsed["next_reference_ticks"] not in {None, 0}
+    ):
+        errors.append(
+            f"row {row_number}: absent next reference must carry zero identity"
+        )
+    backlog = parsed["snapshot_backlog_depth"]
+    classification = row.get("classification")
+    if classification == "unread_snapshot_present_when_decision_made" and backlog == 0:
+        errors.append(
+            f"row {row_number}: unread-snapshot classification requires backlog"
+        )
+    if classification in {
+        "timeout_no_snapshot",
+        "no_unread_snapshot_healthy_backend",
+    } and backlog not in {None, 0}:
+        errors.append(
+            f"row {row_number}: no-snapshot classification requires zero backlog"
+        )
+    if (
+        classification == "backend_fault"
+        and row.get("snapshot_fault_latched") != "true"
+    ):
+        errors.append(
+            f"row {row_number}: backend_fault requires snapshot_fault_latched=true"
+        )
 
 
 def _check_health(row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -2183,6 +2313,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_count_observation(row, row_count, errors)
             if context.contract == "pps_snapshots_v1":
                 _check_pps_snapshot(row, row_count, errors)
+            if context.contract == "association_loss_decisions_v1":
+                _check_association_loss_decision_v1(row, row_count, errors)
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
             if context.contract == "dac_steps_v1":

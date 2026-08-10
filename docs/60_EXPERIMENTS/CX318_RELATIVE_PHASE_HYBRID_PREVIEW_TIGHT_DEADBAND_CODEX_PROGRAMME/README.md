@@ -86,6 +86,69 @@ excludes alternate DAC commands, sweeps, previews, controllers, dual-core
 authority and GPS transmission. The host must durably latch that sole attempt
 before enqueueing it and must never retry it after failure, reset or reflash.
 
+On 2026-08-10 the first Stage 5 Leg A no-write rehearsal exposed two distinct
+platform facts before any DAC transaction. The measurement path lost one
+reference-to-snapshot association and correctly entered fail-static; the old
+telemetry path then byte-interleaved independent chunked records. The repaired
+bundle therefore gives the USB stream one exclusive chunked-frame owner and
+emits a structured decision-local `ASL` record before any association-loss
+rearm. A healthy Stage 5 leg requires zero `ASL` rows.
+
+The exact rehearsal-to-live path also retains one capture PID and one open
+serial handle. At the rehearsal endpoint it rotates into a command-free
+transition spool, seals and analyzes the immutable rehearsal, creates the live
+manifest from the passed seal, and only then rotates into the live segment.
+There is no serial close/reopen or ownerless analysis interval. This complete
+promotion path must pass rehearsal before another long Stage 5 run.
+
+A later 2026-08-10 retry exposed a separate timing-core stack defect before
+promotion or any DAC transaction. The first long `CTL` record contained a
+12-byte overwrite inside an otherwise intact 522-byte frame, with no USB
+reconnect, parser burst or surrounding record damage. Exact-build stack-usage
+analysis showed that total SRAM was comfortable, but the first post-warm-up
+Core 1 call chain could exceed its separate 8 KiB stack because several
+1536-byte formatting and evidence-copy buffers were nested. The repair gives
+each sole-producer module static formatting/copy scratch storage. On the exact
+Stage 5 profile the largest timing-path frames then fell from 2224/2008/1824
+bytes to 712/520/496 bytes, while static SRAM use remained approximately 52%.
+A short accelerated physical discriminator subsequently emitted 247/247 intact
+`CTL` records with valid UTF-8 and zero capture parser errors or reconnects.
+That discriminator is diagnostic evidence only: capture began after boot and
+the firmware drop counter was already 27, remaining unchanged throughout. A
+fresh exact-profile no-write rehearsal from a clean build remains mandatory
+before either Stage 5 setup write.
+
+The stack-hardened exact-profile rehearsal then completed its full 2700 s
+window cleanly, including an intact long `CTL` stream, both environmental
+sensors, a selected 600 s estimate, exact TDB replay, zero transport or
+firmware drops, and header-only DAC/active files. Promotion nevertheless
+stopped in its no-authority transition because the immutable seal required
+`cx317_active.dac_epoch=0`, while the dual-core status publisher had omitted
+that field. The direct publisher and internal status object did contain it.
+This was a host/firmware contract-integration escape, not a physical rig
+failure and not evidence of a DAC write.
+
+Before another Stage 5 hardware run, the bounded cleanup replaces the two
+hand-written active-status lists with one shared 29-field firmware visitor and
+uses one versioned host pre-write predicate in the supervisor, rehearsal seal,
+promotion defence and offline preflight. Missing telemetry is no longer
+treated as clean. The supervisor allows at most 30 s for the first complete
+status burst, so the omitted-field defect would now stop cheaply rather than
+at the end of a long rehearsal. Terminology is explicit throughout: `0xA828`
+is the inherited Stage-4-sealed preview baseline, `0xA808`/`0xA848` is the
+planned live stimulus, and physical DAC confirmation remains `unknown` until
+a successful live setup transaction. The no-I/O preflight also requires the
+bound clean UF2 source identity to equal the current contract-bearing firmware
+source, preventing an older clean binary from borrowing the new source-tree
+checks. Promotion uses deterministic rotation
+operation identities plus a durable phase ledger; an immutable failed seal
+ends at `REHEARSAL_RETRY_REQUIRED` and can never be retried into live.
+
+After Stage 5, perform the operator-requested broader programme audit for
+similar contract duplication, missing-as-clean predicates, late-only checks,
+ambiguous state provenance and special-case lifecycle paths before entering a
+later long-running stage.
+
 ## Authorization boundary
 
 These files are a proposed programme, not standing permission to actuate the

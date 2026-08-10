@@ -82,6 +82,73 @@ def _expected_fields(row: dict[str, str], deadband: TightHystereticDeadband) -> 
     }
 
 
+def replay_tight_deadband_chain(paths: list[Path]) -> TightDeadbandReplayResult:
+    """Replay consecutive logical segments through one deadband instance.
+
+    Same-owner Stage 5 promotion rotates files, not firmware state.  Replaying
+    each file from a fresh deadband could therefore reject the first row after
+    a logical rotation or, worse, conceal a bad transition.  This entry point
+    validates each file independently while preserving the state machine over
+    the complete ordered chain.
+    """
+
+    if not paths:
+        raise ValueError("tight-deadband replay chain is empty")
+    resolved = [Path(path).resolve() for path in paths]
+    errors: list[str] = []
+    comparisons: list[dict[str, Any]] = []
+    row_count = 0
+    deadband = TightHystereticDeadband()
+    for path in resolved:
+        validation = validate_csv(
+            path,
+            CsvValidationContext(
+                contract=CONTRACT,
+                known_channels=frozenset(),
+                known_domains=frozenset(),
+            ),
+        )
+        for error in validation.errors:
+            errors.append(f"{path}: {error}")
+        if validation.errors:
+            continue
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for local_row, row in enumerate(reader, start=1):
+                row_count += 1
+                expected = _expected_fields(row, deadband)
+                mismatches = {
+                    field_name: {
+                        "observed": row.get(field_name, ""),
+                        "expected": value,
+                    }
+                    for field_name, value in expected.items()
+                    if row.get(field_name, "") != value
+                }
+                comparisons.append(
+                    {
+                        "source_path": str(path),
+                        "source_row": local_row,
+                        "row": row_count,
+                        "decision_sequence": row.get("decision_sequence", ""),
+                        "pass": not mismatches,
+                        "mismatches": mismatches,
+                    }
+                )
+                for field_name, values in mismatches.items():
+                    errors.append(
+                        f"{path} row {local_row}: {field_name} replay mismatch; "
+                        f"observed={values['observed']!r}, "
+                        f"expected={values['expected']!r}"
+                    )
+    return TightDeadbandReplayResult(
+        source_path=resolved[-1],
+        row_count=row_count,
+        comparisons=tuple(comparisons),
+        errors=tuple(errors),
+    )
+
+
 def replay_tight_deadband(path: Path) -> TightDeadbandReplayResult:
     """Replay every captured TDB row and require exact active/shadow parity.
 
@@ -90,53 +157,7 @@ def replay_tight_deadband(path: Path) -> TightDeadbandReplayResult:
     and treats the captured session and DAC epoch as the identity boundary.
     """
 
-    validation = validate_csv(
-        path,
-        CsvValidationContext(
-            contract=CONTRACT,
-            known_channels=frozenset(),
-            known_domains=frozenset(),
-        ),
-    )
-    errors = list(validation.errors)
-    comparisons: list[dict[str, Any]] = []
-    if errors:
-        return TightDeadbandReplayResult(
-            source_path=path,
-            row_count=validation.row_count,
-            comparisons=tuple(comparisons),
-            errors=tuple(errors),
-        )
-
-    deadband = TightHystereticDeadband()
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row_number, row in enumerate(reader, start=1):
-            expected = _expected_fields(row, deadband)
-            mismatches = {
-                field_name: {"observed": row.get(field_name, ""), "expected": value}
-                for field_name, value in expected.items()
-                if row.get(field_name, "") != value
-            }
-            comparisons.append(
-                {
-                    "row": row_number,
-                    "decision_sequence": row.get("decision_sequence", ""),
-                    "pass": not mismatches,
-                    "mismatches": mismatches,
-                }
-            )
-            for field_name, values in mismatches.items():
-                errors.append(
-                    f"row {row_number}: {field_name} replay mismatch; "
-                    f"observed={values['observed']!r}, expected={values['expected']!r}"
-                )
-    return TightDeadbandReplayResult(
-        source_path=path,
-        row_count=validation.row_count,
-        comparisons=tuple(comparisons),
-        errors=tuple(errors),
-    )
+    return replay_tight_deadband_chain([path])
 
 
 def replay_run(run_dir: Path) -> TightDeadbandReplayResult:

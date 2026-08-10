@@ -67,20 +67,29 @@ struct OtisCx317ActiveLiveStatus {
   uint32_t session_id;
   uint32_t evidence_request_sequence;
   uint32_t uptime_s;
+  uint16_t expected_setup_code;
   uint16_t applied_code;
   uint16_t correction_count;
   uint16_t cumulative_movement_codes;
   uint32_t dac_epoch;
   uint16_t selected_interval_count;
   bool transaction_bound;
+  bool evidence_pending;
+  bool confirmed_applied_code_known;
   bool capture_lease_live;
   bool manual_start_confirmed;
   bool arm_eligible;
   bool fail_static;
 };
 
+typedef void (*OtisCx317ActiveStatusVisitor)(
+    void *context, const char *key, const char *value, const char *severity,
+    uint32_t flags);
+
 bool otis_cx317_active_live_begin(void);
 void otis_cx317_active_live_emit_headers(void);
+void otis_cx317_active_live_visit_status(
+    void *context, OtisCx317ActiveStatusVisitor visitor, uint32_t now_s);
 void otis_cx317_active_live_update_health(
     const OtisCx317ActiveLiveHealth *health, uint32_t now_s);
 void otis_cx317_active_live_service(uint32_t now_s);

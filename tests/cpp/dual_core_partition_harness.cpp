@@ -196,6 +196,17 @@ void bounded_core0_stall_preserves_raw_evidence() {
 }
 
 void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
+  static_assert(OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST == 29u,
+                "ACTIVE status vocabulary must remain complete");
+  static_assert(OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 71u,
+                "fixture must bind the measured non-active health burst");
+  static_assert(OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST == 100u,
+                "health burst must include one complete ACTIVE status");
+  static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u,
+                "fixture must bind health plus one ACTIVE? response");
+  static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
+                    OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
+                "telemetry queue must contain the declared concurrent burst");
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u;
        sequence <= OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST; ++sequence) {

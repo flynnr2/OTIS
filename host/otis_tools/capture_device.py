@@ -4,12 +4,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import argparse
-from contextlib import nullcontext
+from contextlib import ExitStack
 import glob
+from hashlib import sha256
 import json
 import logging
 import os
 import signal
+import subprocess
 import tempfile
 import time
 import threading
@@ -29,6 +31,12 @@ LOGGER = logging.getLogger("otis.capture_device")
 HOST_MARKER_PREFIX = b"# OTIS_HOST"
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_STATE_HEARTBEAT_S = 5.0
+SEGMENT_REQUEST = Path("request.json")
+SEGMENT_CARRIER_STATE = Path("carrier_state.json")
+SEGMENT_RESPONSE_DIR = Path("responses")
+SEGMENT_TRANSITION_STAGE = "CX318_STAGE5_TRANSITION_SPOOL"
+SEGMENT_PROTOCOL_ID = "otis_same_owner_logical_segment_rotation_v1"
+SEGMENT_CLOSURE = Path("reports/capture_segment_closure_v1.json")
 
 
 @dataclass(frozen=True)
@@ -48,6 +56,8 @@ class CaptureDeviceConfig:
     status_interval_s: float = 60.0
     max_line_bytes: int = 65536
     duration_s: float | None = None
+    segment_control_dir: Path | None = None
+    segment_capability: str | None = None
 
 
 def _utc_now() -> str:
@@ -78,6 +88,29 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
         handle.write("\n")
         temporary = Path(handle.name)
     temporary.replace(path)
+
+
+def _atomic_new_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"refusing to overwrite immutable capture artifact: {path}")
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    try:
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class RawEvidenceWriter:
@@ -224,6 +257,7 @@ def _create_manifest_if_missing(
             "raw_events_v1": 1,
             "count_observations_v1": 1,
             "pps_snapshots_v1": 1,
+            "association_loss_decisions_v1": 1,
             "health_v1": 1,
             "dac_steps_v1": 1,
             "environment_v1": 1,
@@ -313,6 +347,183 @@ class LineFramer:
         return dropped
 
 
+class CaptureSegmentSink:
+    """One logical evidence sink carried by an already-open serial owner."""
+
+    def __init__(
+        self,
+        runner: "CaptureDeviceRunner",
+        *,
+        run_dir: Path,
+        command_fifo_path: Path | None,
+        emergency_fifo_path: Path | None,
+        manifest_template: Path | None = None,
+    ) -> None:
+        self.runner = runner
+        self.run_dir = run_dir.resolve()
+        self.command_fifo_path = command_fifo_path
+        self.emergency_fifo_path = emergency_fifo_path
+        paths = ensure_run_layout(self.run_dir)
+        _create_manifest_if_missing(
+            self.run_dir,
+            runner.config.device,
+            runner.config.baud,
+            manifest_template,
+        )
+        if (self.run_dir / SEGMENT_CLOSURE).exists():
+            raise FileExistsError(
+                "refusing to reopen a logically or physically closed capture segment: "
+                f"{self.run_dir}"
+            )
+        self._stack = ExitStack()
+        try:
+            file_by_contract, file_by_record_type = _split_targets(self.run_dir)
+            self.raw_handle = self._stack.enter_context(
+                paths.raw_serial_log.open("a+b")
+            )
+            self.splitter = self._stack.enter_context(
+                CsvRecordSplitter(
+                    file_by_contract,
+                    file_by_record_type,
+                    append=True,
+                    on_parser_error=runner._parser_error,
+                )
+            )
+            self.command_fifo = (
+                self._stack.enter_context(CommandFifo(command_fifo_path))
+                if command_fifo_path is not None
+                else None
+            )
+            self.emergency_fifo = (
+                self._stack.enter_context(CommandFifo(emergency_fifo_path))
+                if emergency_fifo_path is not None
+                else None
+            )
+            self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
+            self.in_progress.touch(exist_ok=True)
+            self.raw_writer = RawEvidenceWriter(self.raw_handle)
+            self.closed = False
+        except BaseException:
+            self._stack.close()
+            raise
+
+    def start(self, *, generation: int, previous_run: str | None = None) -> None:
+        _write_marker(
+            self.raw_writer,
+            "capture_started",
+            device=self.runner.config.device,
+            baud=self.runner.config.baud,
+            owner_pid=os.getpid(),
+            transport_generation=generation,
+            previous_run=previous_run,
+        )
+        if self.command_fifo_path is not None:
+            _write_marker(
+                self.raw_writer,
+                "command_ingress_opened",
+                path=str(self.command_fifo_path),
+                batch_limit=1,
+                normal_command_max_age_s=self.runner.config.normal_command_max_age_s,
+            )
+        if self.emergency_fifo_path is not None:
+            _write_marker(
+                self.raw_writer,
+                "emergency_command_ingress_opened",
+                path=str(self.emergency_fifo_path),
+            )
+
+    def close(
+        self,
+        *,
+        generation: int,
+        next_run: str | None,
+        physical_serial_open: bool,
+        logical_rotation: bool,
+        request_id: str | None = None,
+        serial_owner_check: dict[str, object] | None = None,
+    ) -> None:
+        if self.closed:
+            return
+        _write_marker(
+            self.raw_writer,
+            "capture_stopped",
+            bytes_written=self.runner.bytes_written,
+            lines_seen=self.runner.lines_seen,
+            lines_parsed=self.runner.lines_parsed,
+            malformed_utf8=self.runner.malformed_utf8,
+            parser_errors=self.runner.parser_errors,
+            reconnect_count=self.runner.reconnect_count,
+            commands_sent=self.runner.commands_sent,
+            commands_rejected=self.runner.commands_rejected,
+            normal_command_buffered_bytes_discarded=(
+                self.runner.normal_command_buffered_bytes_discarded
+            ),
+            emergency_aborts_sent=self.runner.emergency_aborts_sent,
+            emergency_abort_latched=self.runner.emergency_abort_latched,
+            owner_pid=os.getpid(),
+            transport_generation=generation,
+            logical_rotation=logical_rotation,
+            next_run=next_run,
+        )
+        manifest_path = find_manifest_path(self.run_dir)
+        if manifest_path is None:
+            raise FileNotFoundError("capture segment has no manifest to bind")
+        _atomic_new_json(
+            self.run_dir / SEGMENT_CLOSURE,
+            {
+                "schema_version": 1,
+                "protocol": SEGMENT_PROTOCOL_ID,
+                "closed_utc": _utc_now(),
+                "run": str(self.run_dir),
+                "run_manifest_sha256": sha256(manifest_path.read_bytes()).hexdigest(),
+                "device": self.runner.config.device,
+                "baud": self.runner.config.baud,
+                "owner_pid": os.getpid(),
+                "transport_generation": generation,
+                "closure_mode": (
+                    "same_owner_logical_rotation"
+                    if logical_rotation
+                    else "physical_serial_close"
+                ),
+                "logical_segment_closed": True,
+                "physical_serial_open": physical_serial_open,
+                "serial_reopened": False,
+                "next_run": next_run,
+                "request_id": request_id,
+                "serial_owner_check": serial_owner_check,
+                "counters": {
+                    "bytes_written": self.runner.bytes_written,
+                    "lines_seen": self.runner.lines_seen,
+                    "lines_parsed": self.runner.lines_parsed,
+                    "malformed_utf8": self.runner.malformed_utf8,
+                    "parser_errors": self.runner.parser_errors,
+                    "reconnect_count": self.runner.reconnect_count,
+                    "commands_sent": self.runner.commands_sent,
+                    "commands_rejected": self.runner.commands_rejected,
+                    "emergency_aborts_sent": self.runner.emergency_aborts_sent,
+                },
+            },
+        )
+        self.in_progress.unlink(missing_ok=True)
+        self.runner._write_state(
+            run_dir=self.run_dir,
+            capture_active=False,
+            serial_open=physical_serial_open,
+            logical_segment_closed=True,
+            physical_serial_open=physical_serial_open,
+            transport_generation=generation,
+        )
+        self._stack.close()
+        self.closed = True
+
+    def abandon_incomplete(self) -> None:
+        """Close host resources while retaining the in-progress flag as evidence."""
+        if self.closed:
+            return
+        self._stack.close()
+        self.closed = True
+
+
 class CaptureDeviceRunner:
     def __init__(
         self,
@@ -340,6 +551,13 @@ class CaptureDeviceRunner:
         self.serial_open = False
         self.framer = LineFramer(config.max_line_bytes)
         self.graceful_stop_requested = False
+        self.current_run_dir = config.run_dir.resolve()
+        self.transport_generation = 1
+        self.current_command_fifo_configured = config.command_fifo is not None
+        self.current_emergency_fifo_configured = (
+            config.emergency_command_fifo is not None
+        )
+        self.last_rotation_serial_owner_check: dict[str, object] | None = None
 
     def request_stop(self, signum: int | None = None) -> None:
         if signum == signal.SIGINT and not self.graceful_stop_requested:
@@ -515,15 +733,40 @@ class CaptureDeviceRunner:
         )
         self._write_state()
 
-    def _write_state(self) -> None:
+    def _write_state(
+        self,
+        *,
+        run_dir: Path | None = None,
+        capture_active: bool | None = None,
+        serial_open: bool | None = None,
+        logical_segment_closed: bool = False,
+        physical_serial_open: bool | None = None,
+        transport_generation: int | None = None,
+    ) -> None:
+        target = self.current_run_dir if run_dir is None else run_dir
+        effective_capture_active = (
+            self.capture_active if capture_active is None else capture_active
+        )
+        effective_serial_open = self.serial_open if serial_open is None else serial_open
         _atomic_json(
-            self.config.run_dir / CAPTURE_STATE,
+            target / CAPTURE_STATE,
             {
                 "schema_version": 1,
                 "updated_utc": _utc_now(),
                 "pid": os.getpid(),
-                "capture_active": self.capture_active,
-                "serial_open": self.serial_open,
+                "capture_active": effective_capture_active,
+                "serial_open": effective_serial_open,
+                "logical_segment_closed": logical_segment_closed,
+                "physical_serial_open": (
+                    effective_serial_open
+                    if physical_serial_open is None
+                    else physical_serial_open
+                ),
+                "transport_generation": (
+                    self.transport_generation
+                    if transport_generation is None
+                    else transport_generation
+                ),
                 "bytes_written": self.bytes_written,
                 "lines_seen": self.lines_seen,
                 "lines_parsed": self.lines_parsed,
@@ -538,10 +781,10 @@ class CaptureDeviceRunner:
                 "emergency_aborts_sent": self.emergency_aborts_sent,
                 "emergency_abort_latched": self.emergency_abort_latched,
                 "command_fifo_configured": (
-                    self.config.command_fifo is not None
+                    self.current_command_fifo_configured
                 ),
                 "emergency_command_fifo_configured": (
-                    self.config.emergency_command_fifo is not None
+                    self.current_emergency_fifo_configured
                 ),
                 "state_heartbeat_interval_s": CAPTURE_STATE_HEARTBEAT_S,
                 "normal_command_batch_limit": 1,
@@ -552,16 +795,268 @@ class CaptureDeviceRunner:
             },
         )
 
-    def run(self) -> int:
-        paths = ensure_run_layout(self.config.run_dir)
-        _create_manifest_if_missing(
-            self.config.run_dir,
-            self.config.device,
-            self.config.baud,
-            self.config.manifest_template,
+    def _write_carrier_state(self, *, status: str) -> None:
+        if self.config.segment_control_dir is None:
+            return
+        _atomic_json(
+            self.config.segment_control_dir / SEGMENT_CARRIER_STATE,
+            {
+                "schema_version": 1,
+                "updated_utc": _utc_now(),
+                "pid": os.getpid(),
+                "status": status,
+                "device": self.config.device,
+                "baud": self.config.baud,
+                "serial_open": self.serial_open,
+                "current_run": str(self.current_run_dir),
+                "transport_generation": self.transport_generation,
+                "reconnect_count": self.reconnect_count,
+            },
         )
-        file_by_contract, file_by_record_type = _split_targets(self.config.run_dir)
-        in_progress = self.config.run_dir / CAPTURE_IN_PROGRESS_FLAG
+
+    def _reset_logical_segment_counters(self) -> None:
+        self.bytes_written = 0
+        self.lines_seen = 0
+        self.lines_parsed = 0
+        self.malformed_utf8 = 0
+        self.parser_errors = 0
+        self.commands_sent = 0
+        self.commands_rejected = 0
+        self.normal_command_buffered_bytes_discarded = 0
+        self.emergency_aborts_sent = 0
+        self.emergency_abort_latched = False
+
+    def _segment_response(self, request_id: str, **payload: object) -> None:
+        assert self.config.segment_control_dir is not None
+        _atomic_json(
+            self.config.segment_control_dir
+            / SEGMENT_RESPONSE_DIR
+            / f"{request_id}.json",
+            {"schema_version": 1, "request_id": request_id, "utc": _utc_now(), **payload},
+        )
+
+    def _verify_sole_serial_owner(self) -> dict[str, object]:
+        device = Path(self.config.device)
+        if not device.exists():
+            return {
+                "performed": False,
+                "reason": "device_path_not_present",
+                "owner_pids": [],
+            }
+        try:
+            result = subprocess.run(
+                ["lsof", "-t", "--", self.config.device],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"cannot verify sole serial owner: {exc}") from exc
+        owners = sorted(
+            {
+                int(line)
+                for line in result.stdout.splitlines()
+                if line.strip().isdigit()
+            }
+        )
+        if owners != [os.getpid()]:
+            raise ValueError(
+                f"serial owner set is not the capture PID: owners={owners}"
+            )
+        return {"performed": True, "owner_pids": owners}
+
+    def _validate_segment_request(
+        self, request: dict[str, object]
+    ) -> tuple[str, Path, Path | None, Path | None]:
+        request_id = request.get("request_id")
+        if (
+            not isinstance(request_id, str)
+            or len(request_id) != 32
+            or any(character not in "0123456789abcdef" for character in request_id)
+        ):
+            raise ValueError("segment request_id must be exactly 32 lowercase hex characters")
+        if request.get("schema_version") != 1:
+            raise ValueError("segment request schema version mismatch")
+        if request.get("protocol") != SEGMENT_PROTOCOL_ID:
+            raise ValueError("segment rotation protocol mismatch")
+        if request.get("capability") != self.config.segment_capability:
+            raise ValueError("segment capability mismatch")
+        if int(request.get("expected_pid", -1)) != os.getpid():
+            raise ValueError("segment owner PID mismatch")
+        if int(request.get("expected_generation", -1)) != self.transport_generation:
+            raise ValueError("segment generation mismatch")
+        if Path(str(request.get("from_run", ""))).resolve() != self.current_run_dir:
+            raise ValueError("segment source run mismatch")
+        self.last_rotation_serial_owner_check = self._verify_sole_serial_owner()
+        target = Path(str(request.get("to_run", ""))).resolve()
+        if target == self.current_run_dir or not target.is_dir():
+            raise ValueError("segment target must be a distinct prepared directory")
+        manifest_path = target / "run_manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError("segment target has no manifest")
+        if (target / CAPTURE_IN_PROGRESS_FLAG).exists():
+            raise ValueError("segment target already has an active capture flag")
+        if (target / CAPTURE_STATE).exists():
+            raise ValueError("segment target already has capture state")
+        raw_path = target / "raw/serial.log"
+        if raw_path.exists() and raw_path.stat().st_size:
+            raise ValueError("segment target raw evidence is not empty")
+        expected_manifest_sha = request.get("expected_manifest_sha256")
+        actual_manifest_sha = sha256(manifest_path.read_bytes()).hexdigest()
+        if expected_manifest_sha != actual_manifest_sha:
+            raise ValueError("segment target manifest hash mismatch")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = manifest.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError("segment target manifest has no file inventory")
+        for entry in files:
+            relative_value = entry.get("path") if isinstance(entry, dict) else None
+            if not isinstance(relative_value, str):
+                raise ValueError("segment target file inventory is malformed")
+            relative = Path(relative_value)
+            artifact = (target / relative).resolve()
+            try:
+                artifact.relative_to(target)
+            except ValueError:
+                raise ValueError("segment target artifact path escapes its run") from None
+            if relative.is_absolute() or artifact.exists():
+                raise ValueError("segment target already contains a declared artifact")
+        host = manifest.get("host", {})
+        if (
+            not isinstance(host, dict)
+            or host.get("serial_device") != self.config.device
+            or int(host.get("baud", -1)) != self.config.baud
+        ):
+            raise ValueError("segment target device or baud differs from carrier")
+        mode = str(request.get("mode", ""))
+        command_path: Path | None = None
+        emergency_path: Path | None = None
+        if mode == "transition":
+            if (
+                manifest.get("stage") != SEGMENT_TRANSITION_STAGE
+                or manifest.get("actionable") is not False
+                or manifest.get("actuation_authorized") is not False
+                or request.get("command_fifo") is not None
+                or request.get("emergency_command_fifo") is not None
+            ):
+                raise ValueError("transition segment is not exact no-authority drainage")
+        elif mode == "live":
+            from .cx318_stage5_manifest import LIVE_STAGE, validate_manifest
+
+            validated = validate_manifest(manifest_path)
+            if validated.get("stage") != LIVE_STAGE:
+                raise ValueError("live segment is not a validated Stage 5 live manifest")
+            command_value = request.get("command_fifo")
+            emergency_value = request.get("emergency_command_fifo")
+            if not isinstance(command_value, str) or not isinstance(emergency_value, str):
+                raise ValueError("live segment requires both command FIFOs")
+            command_path = Path(command_value).resolve()
+            emergency_path = Path(emergency_value).resolve()
+            if command_path == emergency_path:
+                raise ValueError("live segment command FIFOs must be distinct")
+            for fifo in (command_path, emergency_path):
+                try:
+                    fifo.relative_to(target)
+                except ValueError:
+                    raise ValueError("live segment command FIFO escapes target run") from None
+        else:
+            raise ValueError("segment mode must be transition or live")
+        return request_id, target, command_path, emergency_path
+
+    def _poll_segment_rotation(
+        self, sink: CaptureSegmentSink
+    ) -> CaptureSegmentSink:
+        control_dir = self.config.segment_control_dir
+        if control_dir is None:
+            return sink
+        request_path = control_dir / SEGMENT_REQUEST
+        if not request_path.is_file():
+            return sink
+        try:
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            if not isinstance(request, dict):
+                raise ValueError("segment request must be a JSON object")
+            request_id, target, command_path, emergency_path = (
+                self._validate_segment_request(request)
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            request_id = "invalid"
+            try:
+                candidate = json.loads(request_path.read_text(encoding="utf-8"))
+                candidate_id = candidate.get("request_id") if isinstance(candidate, dict) else None
+                if (
+                    isinstance(candidate_id, str)
+                    and len(candidate_id) == 32
+                    and all(character in "0123456789abcdef" for character in candidate_id)
+                ):
+                    request_id = candidate_id
+            except (OSError, json.JSONDecodeError):
+                pass
+            self._segment_response(request_id, status="rejected", error=str(exc))
+            request_path.unlink(missing_ok=True)
+            return sink
+
+        if self.framer.buffer or self.framer.discarding_oversize or sink.raw_writer.partial:
+            return sink
+        new_sink: CaptureSegmentSink | None = None
+        try:
+            new_sink = CaptureSegmentSink(
+                self,
+                run_dir=target,
+                command_fifo_path=command_path,
+                emergency_fifo_path=emergency_path,
+            )
+            previous_run = self.current_run_dir
+            next_generation = self.transport_generation + 1
+            new_sink.start(
+                generation=next_generation, previous_run=str(previous_run)
+            )
+            sink.close(
+                generation=self.transport_generation,
+                next_run=str(target),
+                physical_serial_open=True,
+                logical_rotation=True,
+                request_id=request_id,
+                serial_owner_check=self.last_rotation_serial_owner_check,
+            )
+            self.transport_generation = next_generation
+            self.current_run_dir = target
+            self._reset_logical_segment_counters()
+            self.current_command_fifo_configured = command_path is not None
+            self.current_emergency_fifo_configured = emergency_path is not None
+            self.capture_active = True
+            self._write_state()
+            self._write_carrier_state(status="running")
+            self._segment_response(
+                request_id,
+                status="completed",
+                pid=os.getpid(),
+                from_run=str(previous_run),
+                to_run=str(target),
+                transport_generation=self.transport_generation,
+                serial_reopened=False,
+                reconnect_count=self.reconnect_count,
+            )
+            request_path.unlink(missing_ok=True)
+            return new_sink
+        except BaseException:
+            if new_sink is not None:
+                new_sink.abandon_incomplete()
+            raise
+
+    def run(self) -> int:
+        if self.config.segment_control_dir is not None:
+            self.config.segment_control_dir.mkdir(parents=True, exist_ok=True)
+            if not self.config.segment_capability:
+                raise ValueError("segment control requires a non-empty capability")
+        sink = CaptureSegmentSink(
+            self,
+            run_dir=self.current_run_dir,
+            command_fifo_path=self.config.command_fifo,
+            emergency_fifo_path=self.config.emergency_command_fifo,
+            manifest_template=self.config.manifest_template,
+        )
         self.capture_active = True
         self._emit_status()
         backoff = self.config.reconnect_initial_s
@@ -573,45 +1068,14 @@ class CaptureDeviceRunner:
             else None
         )
         duration_reached = False
-
-        command_fifo_context = (
-            CommandFifo(self.config.command_fifo)
-            if self.config.command_fifo is not None
-            else nullcontext(None)
-        )
-        emergency_fifo_context = (
-            CommandFifo(self.config.emergency_command_fifo)
-            if self.config.emergency_command_fifo is not None
-            else nullcontext(None)
-        )
-        with paths.raw_serial_log.open("a+b") as raw_handle, CsvRecordSplitter(
-            file_by_contract,
-            file_by_record_type,
-            append=True,
-            on_parser_error=self._parser_error,
-        ) as splitter, command_fifo_context as command_fifo, (
-            emergency_fifo_context
-        ) as emergency_fifo:
-            in_progress.touch(exist_ok=True)
-            raw_writer = RawEvidenceWriter(raw_handle)
-            _write_marker(raw_writer, "capture_started", device=self.config.device, baud=self.config.baud)
-            if self.config.command_fifo is not None:
-                _write_marker(
-                    raw_writer,
-                    "command_ingress_opened",
-                    path=str(self.config.command_fifo),
-                    batch_limit=1,
-                    normal_command_max_age_s=(
-                        self.config.normal_command_max_age_s
-                    ),
-                )
-            if self.config.emergency_command_fifo is not None:
-                _write_marker(
-                    raw_writer,
-                    "emergency_command_ingress_opened",
-                    path=str(self.config.emergency_command_fifo),
-                )
+        try:
+            sink.start(generation=self.transport_generation)
+            raw_writer = sink.raw_writer
+            splitter = sink.splitter
+            command_fifo = sink.command_fifo
+            emergency_fifo = sink.emergency_fifo
             self._emit_status()
+            self._write_carrier_state(status="opening")
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
@@ -628,6 +1092,7 @@ class CaptureDeviceRunner:
                         _log_event(logging.INFO, "serial_opened", device=self.config.device, baud=self.config.baud)
                         self.serial_open = True
                         self._emit_status()
+                        self._write_carrier_state(status="running")
                         _write_marker(raw_writer, "serial_opened", device=self.config.device, baud=self.config.baud)
                         backoff = self.config.reconnect_initial_s
 
@@ -651,6 +1116,17 @@ class CaptureDeviceRunner:
                             data = serial_handle.read(read_size)
                             if data:
                                 self._process_bytes(data, splitter, raw_writer)
+                            # A prepared rotation is applied at this complete
+                            # device-record boundary before polling either old
+                            # command ingress.  The serial handle remains the
+                            # same object throughout.
+                            rotated_sink = self._poll_segment_rotation(sink)
+                            if rotated_sink is not sink:
+                                sink = rotated_sink
+                                raw_writer = sink.raw_writer
+                                splitter = sink.splitter
+                                command_fifo = sink.command_fifo
+                                emergency_fifo = sink.emergency_fifo
                             if (
                                 not self.graceful_stop_requested
                                 and not self.emergency_abort_latched
@@ -729,7 +1205,10 @@ class CaptureDeviceRunner:
                             error=str(exc),
                         )
                         self._emit_status()
-                        if self.config.emergency_command_fifo is not None:
+                        if (
+                            self.current_emergency_fifo_configured
+                            or self.config.segment_control_dir is not None
+                        ):
                             self.emergency_abort_latched = True
                             if command_fifo is not None:
                                 command_fifo.close()
@@ -760,27 +1239,26 @@ class CaptureDeviceRunner:
                 if dropped:
                     _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
                     _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                _write_marker(
-                    raw_writer,
-                    "capture_stopped",
-                    bytes_written=self.bytes_written,
-                    lines_seen=self.lines_seen,
-                    lines_parsed=self.lines_parsed,
-                    malformed_utf8=self.malformed_utf8,
-                    parser_errors=self.parser_errors,
-                    reconnect_count=self.reconnect_count,
-                    commands_sent=self.commands_sent,
-                    commands_rejected=self.commands_rejected,
-                    normal_command_buffered_bytes_discarded=(
-                        self.normal_command_buffered_bytes_discarded
-                    ),
-                    emergency_aborts_sent=self.emergency_aborts_sent,
-                    emergency_abort_latched=self.emergency_abort_latched,
-                )
-                in_progress.unlink(missing_ok=True)
                 self.capture_active = False
                 self.serial_open = False
-                self._emit_status()
+                sink.close(
+                    generation=self.transport_generation,
+                    next_run=None,
+                    physical_serial_open=False,
+                    logical_rotation=False,
+                )
+                self._write_carrier_state(status="stopped")
+        finally:
+            if not sink.closed:
+                self.capture_active = False
+                self.serial_open = False
+                sink.close(
+                    generation=self.transport_generation,
+                    next_run=None,
+                    physical_serial_open=False,
+                    logical_rotation=False,
+                )
+                self._write_carrier_state(status="stopped")
         return 0
 
 
@@ -827,6 +1305,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Optional immutable JSON template used only when the run has no manifest; run_id is the run-directory name.",
     )
+    parser.add_argument(
+        "--segment-control-dir",
+        type=Path,
+        help=(
+            "Optional carrier control directory for same-PID logical segment "
+            "rotation without closing or reopening the serial device."
+        ),
+    )
+    parser.add_argument(
+        "--segment-capability",
+        help="Exact non-empty capability required by every segment rotation request.",
+    )
     return parser
 
 
@@ -859,6 +1349,10 @@ def main() -> None:
         == args.command_fifo.absolute()
     ):
         parser.error("normal and emergency command FIFOs must be distinct")
+    if (args.segment_control_dir is None) != (args.segment_capability is None):
+        parser.error(
+            "--segment-control-dir and --segment-capability must be supplied together"
+        )
     log_path = args.run_dir / "reports/capture_device.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -882,6 +1376,8 @@ def main() -> None:
         status_interval_s=args.status_interval,
         max_line_bytes=args.max_line_bytes,
         duration_s=args.duration_s,
+        segment_control_dir=args.segment_control_dir,
+        segment_capability=args.segment_capability,
     )
     runner = CaptureDeviceRunner(config)
     signal.signal(signal.SIGINT, lambda signum, _frame: runner.request_stop(signum))

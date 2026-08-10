@@ -43,6 +43,12 @@ from .cx318_stage5_manifest import (
     REHEARSAL_STAGE,
     validate_manifest,
 )
+from .cx318_stage5_runtime_contract import (
+    Stage5Readiness,
+    environment_streams_ready,
+    evaluate_health_integrity,
+    evaluate_prewrite_readiness,
+)
 from .cx318_stage5_tight_replay import replay_tight_deadband
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 from .run_paths import TIGHT_DEADBAND_DECISIONS_CSV
@@ -63,6 +69,7 @@ SELECTED_INTERVAL_S = 600
 DECISION_CADENCE_S = 1800
 ARM_PROGRESS_THRESHOLD = 520
 ARM_LIFETIME_S = 110
+PREWRITE_CONTRACT_STARTUP_GRACE_S = 30
 
 
 @dataclass(frozen=True)
@@ -154,6 +161,37 @@ def _selected_estimates(path: Path) -> list[dict[str, str]]:
     ]
 
 
+def healthy_required_direction_applications(
+    rows: list[dict[str, str]], required_direction: int
+) -> list[dict[str, str]]:
+    """Return applications whose own completed response remained healthy."""
+
+    applications = {
+        int(row["request_sequence"]): row
+        for row in rows
+        if row.get("event") == "application"
+    }
+    healthy_response_classes = {
+        "healthy_detected",
+        "healthy_indeterminate_near_resolution",
+    }
+    result: list[dict[str, str]] = []
+    for response in rows:
+        if (
+            response.get("event") != "response"
+            or response.get("response_class") not in healthy_response_classes
+        ):
+            continue
+        application = applications.get(int(response["request_sequence"]))
+        if application is None:
+            continue
+        delta = int(application["requested_delta_codes"])
+        direction = (delta > 0) - (delta < 0)
+        if direction == required_direction:
+            result.append(application)
+    return result
+
+
 class Stage5Supervisor(Stage7Supervisor):
     """Exact Stage 5 authority supervisor built on the proven dual-core path."""
 
@@ -188,7 +226,67 @@ class Stage5Supervisor(Stage7Supervisor):
         self.state.setdefault("tight_entry_seen", False)
         self.state.setdefault("latest_replayed_tdb_rows", 0)
         self.state.setdefault("rehearsal_started_monotonic", None)
+        self.state.setdefault("prewrite_contract_ready_utc", None)
+        self.state.setdefault("latest_prewrite_readiness", None)
+        self.state.setdefault("terminal_event_emitted", False)
         self._save()
+
+    def _prewrite_readiness(
+        self, health: dict[tuple[str, str], str]
+    ) -> Stage5Readiness:
+        identity = {
+            "run_identity": self.spec.run_identity,
+            "build_identity": self.expected_build_identity,
+            "profile_identity": self.spec.profile,
+            **self.identities,
+        }
+        return evaluate_prewrite_readiness(
+            health,
+            expected_identity=identity,
+            planned_live_stimulus_code=self.spec.start_code,
+            active_row_count=len(_read_csv(self.run_dir / ACTIVE_CSV)),
+            dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
+        )
+
+    def _check_prewrite_contract(
+        self,
+        health: dict[tuple[str, str], str],
+        elapsed_monotonic_s: float,
+    ) -> Stage5Readiness | None:
+        # After the one live stimulus, the pre-write contract has served its
+        # purpose and the existing live transaction/terminal gates take over.
+        if self.mode == "live" and self.state["manual_start_sent"]:
+            return None
+        readiness = self._prewrite_readiness(health)
+        value = readiness.as_dict()
+        if self.state.get("latest_prewrite_readiness") != value:
+            self.state["latest_prewrite_readiness"] = value
+            self._save()
+        if readiness.ready:
+            if self.state["prewrite_contract_ready_utc"] is None:
+                self.state["prewrite_contract_ready_utc"] = _utc_now()
+                self._save()
+                self._event(
+                    "stage5_prewrite_runtime_contract_ready",
+                    contract_id=readiness.contract_id,
+                    inherited_preview_baseline=(
+                        readiness.inherited_preview_baseline_code
+                    ),
+                    inherited_preview_provenance=(
+                        readiness.inherited_preview_baseline_provenance
+                    ),
+                    planned_live_stimulus=readiness.planned_live_stimulus_code,
+                )
+            return readiness
+        if (
+            self.state["prewrite_contract_ready_utc"] is not None
+            or elapsed_monotonic_s >= PREWRITE_CONTRACT_STARTUP_GRACE_S
+        ):
+            raise ValueError(
+                "Stage 5 pre-write runtime contract failed: "
+                + readiness.diagnostic()
+            )
+        return readiness
 
     def _latest_tdb(self) -> dict[str, str] | None:
         path = self.run_dir / TDB_CSV
@@ -226,22 +324,15 @@ class Stage5Supervisor(Stage7Supervisor):
         self, health: dict[tuple[str, str], str]
     ) -> None:
         super()._check_fail_static_health(health)
-        exact_false = (
-            ("cx317_preview", "actuation_authorized"),
-            ("cx317_preview", "actionable"),
-            ("cx318_preview", "actuation_authorized"),
-            ("cx318_preview", "actionable"),
-            ("cx318_preview", "authorization_consumed"),
-        )
-        for key in exact_false:
-            observed = health.get(key)
-            if observed not in {None, "false"}:
-                raise ValueError(f"live zero-authority status violated: {key}={observed}")
-        if health.get(("cx317_preview", "telemetry_dropped_frames")) not in {
-            None,
-            "0",
-        }:
-            raise ValueError("Stage 5 frequency/TDB preview telemetry dropped")
+        integrity = evaluate_health_integrity(health)
+        if integrity.mismatches or (
+            self.state["prewrite_contract_ready_utc"] is not None
+            and integrity.missing
+        ):
+            raise ValueError(
+                "Stage 5 continuous runtime health contract failed: "
+                + integrity.diagnostic()
+            )
         self._check_zero_authority_preview()
 
     def _process_transactions(self) -> None:
@@ -262,16 +353,13 @@ class Stage5Supervisor(Stage7Supervisor):
                     applied_code=self.spec.start_code,
                     dac_epoch=int(manual[0]["dac_epoch"]),
                 )
-        applications = [row for row in rows if row.get("event") == "application"]
         # The prompt declares this as a required demonstrated outcome, not a
         # one-sided actuator clamp: a bounded convergence path may legitimately
-        # make a later opposite adjustment.  Require at least one completed
-        # application in the setup-implied direction at the leg pass gate.
-        if any(
-            (int(row["requested_delta_codes"]) > 0)
-            - (int(row["requested_delta_codes"]) < 0)
-            == self.leg.required_direction
-            for row in applications
+        # make a later opposite adjustment.  Bind the direction claim to the
+        # response from that same completed transaction; an application alone,
+        # or an unrelated healthy response, cannot satisfy the pass gate.
+        if healthy_required_direction_applications(
+            rows, self.leg.required_direction
         ):
             if not self.state["expected_direction_seen"]:
                 self.state["expected_direction_seen"] = True
@@ -319,19 +407,11 @@ class Stage5Supervisor(Stage7Supervisor):
             and not self.state["manual_start_sent"]
             and state == "DISARMED"
         ):
-            # The setup consumes the leg's sole predetermined stimulus.  Wait
-            # for the same-profile A828/epoch-0 preview identity and an empty
-            # live-run transaction history before sending it.
-            pre_setup_exact = (
-                health.get(("cx318_preview", "static_code")) == "0xA828"
-                and health.get(("cx318_preview", "applied_code")) == "0xA828"
-                and health.get(("cx318_preview", "dac_epoch")) == "0"
-                and health.get(("cx317_active", "dac_epoch")) == "0"
-                and health.get(("cx317_active", "correction_count")) == "0"
-                and not _rows_present(self.run_dir / ACTIVE_CSV)
-                and not _rows_present(self.run_dir / DAC_CSV)
-            )
-            if not pre_setup_exact:
+            # The setup consumes the leg's sole planned stimulus.  The shared
+            # contract distinguishes it from the inherited A828 preview
+            # baseline and requires physical DAC confirmation to remain
+            # explicitly unknown before this command.
+            if not self._prewrite_readiness(health).ready:
                 return
             self._command(f"DAC SET 0x{self.spec.start_code:04X}")
             self.state["manual_start_sent"] = True
@@ -423,16 +503,8 @@ class Stage5Supervisor(Stage7Supervisor):
     def _rehearsal_evidence_ready(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
-        if not self._identity_ready(health):
+        if not self._prewrite_readiness(health).ready:
             return False
-        if health.get(("cx317_active", "manual_start_confirmed")) != "false":
-            raise ValueError("Stage 5 rehearsal observed a manual setup")
-        if health.get(("cx317_active", "arm_eligible")) == "true":
-            raise ValueError("Stage 5 rehearsal unexpectedly became arm eligible")
-        if _rows_present(self.run_dir / ACTIVE_CSV) or _rows_present(
-            self.run_dir / DAC_CSV
-        ):
-            raise ValueError("Stage 5 rehearsal contains a DAC or ACT row")
         if not _selected_estimates(self.run_dir / ESTIMATES_CSV):
             return False
         if self._latest_tdb() is None:
@@ -446,13 +518,9 @@ class Stage5Supervisor(Stage7Supervisor):
             row.get("source", "").lower()
             for row in _read_csv(self.run_dir / ENVIRONMENT_CSV)
         }
-        if not {"sht4x", "bmp280"} <= sources:
+        if not environment_streams_ready(sources):
             return False
-        return (
-            health.get(("cx318_preview", "static_code")) == "0xA828"
-            and health.get(("cx318_preview", "applied_code")) == "0xA828"
-            and health.get(("cx318_preview", "dac_epoch")) == "0"
-        )
+        return True
 
     def _maybe_finish(
         self,
@@ -500,6 +568,7 @@ class Stage5Supervisor(Stage7Supervisor):
             )
         if (
             self.state["tight_entry_seen"]
+            and tight
             and self.state["expected_direction_seen"]
             and int(self.state["response_count"]) >= 1
             and not self.state["arm_pending"]
@@ -539,6 +608,16 @@ class Stage5Supervisor(Stage7Supervisor):
                     self._abort("independent_host_abort_fifo")
                     return 3
                 if not capture_flag.exists():
+                    if (
+                        self.mode == "rehearsal"
+                        and self.state["terminal"] is not None
+                        and self.state["terminal"].get("result")
+                        == "healthy_stop"
+                    ):
+                        self._event(
+                            "stage5_rehearsal_promotion_handoff_observed"
+                        )
+                        return 0
                     self._abort("capture_owner_lost")
                     return 4
                 if self.duration_s is not None and now - started > self.duration_s:
@@ -554,12 +633,27 @@ class Stage5Supervisor(Stage7Supervisor):
                 self._process_transactions()
                 health = _latest_health(self.run_dir / HEALTH_CSV)
                 self._check_fail_static_health(health)
+                self._check_prewrite_contract(health, now - started)
                 self._maybe_qualify(health)
                 self._maybe_finish(health, time.time(), now - started)
                 if self.state["terminal"] is None:
                     self._maybe_start_or_arm(health)
                 if self.state["terminal"] is not None:
-                    self._event("stage5_campaign_terminal", **self.state["terminal"])
+                    if not self.state["terminal_event_emitted"]:
+                        self._event(
+                            "stage5_campaign_terminal", **self.state["terminal"]
+                        )
+                        self.state["terminal_event_emitted"] = True
+                        self._save()
+                    if (
+                        self.mode == "rehearsal"
+                        and self.state["terminal"]["result"] == "healthy_stop"
+                    ):
+                        # Remain read-only and keep the 30-second capture lease
+                        # alive until same-owner promotion removes this run's
+                        # capture flag. This eliminates monitor-timing races.
+                        time.sleep(0.2)
+                        continue
                     return (
                         0
                         if self.state["terminal"]["result"] == "healthy_stop"

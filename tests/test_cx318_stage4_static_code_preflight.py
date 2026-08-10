@@ -4,6 +4,7 @@ from hashlib import sha256
 from pathlib import Path
 import csv
 import json
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -46,10 +47,22 @@ def _premise_artifacts(run: Path) -> tuple[dict[str, object], dict[str, str]]:
     ).encode("utf-8")).hexdigest()
     uf2_path = firmware / "otis_nano_rp2040_connect.ino.uf2"
     uf2_path.write_bytes(b"premise-uf2")
+    source_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
     build = {
         "schema_version": 1,
         "provenance": {
-            "source": {"git_commit": "a" * 40, "state": "clean", "sha256": "b" * 64},
+            "source": {
+                "git_commit": source_commit,
+                "state": "clean",
+                "sha256": stage4_flash._historical_source_input_hash(
+                    commit=source_commit, matrix_path=matrix_path,
+                ),
+            },
             "configuration": config,
             "invocation": {"id": "d" * 64},
         },
@@ -318,6 +331,7 @@ def _identity_run(root: Path, flash_record: dict[str, object]) -> Path:
         "dac_steps_v1": "csv/dac_steps.csv",
         "environment_v1": "csv/environment.csv",
         "active_transactions_v1": "csv/active_transactions.csv",
+        "hybrid_preview_decisions_v1": "csv/hybrid_preview_decisions_v1.csv",
     }
     firmware = {
         "git_commit": "a" * 40,
@@ -377,16 +391,10 @@ def _identity_run(root: Path, flash_record: dict[str, object]) -> Path:
         ("firmware", "source_hash"): firmware["source_sha256"],
         ("firmware", "config_hash"): firmware["configuration_sha256"],
         ("build", "profile_id"): "cx318_stage4_nonactuating_preview",
-        ("build", "enable_cx318_stage4_preview"): "1",
         ("build", "enable_dac_ad5693r"): "0",
-        ("build", "enable_cx317_i_only_preview"): "0",
         ("build", "enable_cx317_bounded_active"): "0",
-        ("cx318_preview", "confirmed_static_code"): "0xA828",
         ("cx318_preview", "static_code"): "0xA828",
-        ("cx318_preview", "dac_epoch"): "1",
-        ("cx318_preview", "actionable"): "false",
-        ("cx318_preview", "actuation_authorized"): "false",
-        ("cx318_preview", "authorization_consumed"): "false",
+        ("cx318_preview", "initialized"): "true",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
         ("dual_core", "telemetry_dropped"): "0",
@@ -400,6 +408,53 @@ def _identity_run(root: Path, flash_record: dict[str, object]) -> Path:
     ])
     _write_csv(run / files["dac_steps_v1"], "dac_steps_v1", [])
     _write_csv(run / files["active_transactions_v1"], "active_transactions_v1", [])
+    _write_csv(
+        run / files["hybrid_preview_decisions_v1"],
+        "hybrid_preview_decisions_v1",
+        [{
+            "record_type": "HPR",
+            "schema_version": 1,
+            "preview_sequence": 1,
+            "candidate_id": "test_candidate",
+            "candidate_configuration_sha256": "d" * 64,
+            "phase_estimator_id": "test_phase",
+            "phase_estimator_configuration_sha256": "e" * 64,
+            "frequency_estimator_id": "test_frequency",
+            "frequency_estimator_configuration_sha256": "f" * 64,
+            "configuration_sha256": "1" * 64,
+            "phase_epoch": 1,
+            "observation_sequence": 1,
+            "actual_applied_code": preflight.EXPECTED_CODE,
+            "dac_epoch": preflight.EXPECTED_DAC_EPOCH,
+            "decision_timestamp_ticks": 16_000_000,
+            "time_domain": "rp2040_timer0",
+            "source_phase_estimate": "PHE:1:1",
+            "source_frequency_estimate": "unavailable",
+            "raw_relative_phase_cycles": 0,
+            "modeled_relative_phase_cycles": "0.0",
+            "phase_bias_hz": "0.0",
+            "shadow_code_before": preflight.EXPECTED_CODE,
+            "shadow_code_after": preflight.EXPECTED_CODE,
+            "band_state_before": "OUTSIDE",
+            "band_state_after": "OUTSIDE",
+            "preview_state": "RECOVER_PREVIEW",
+            "decision_reason": "frequency_support_hold",
+            "frequency_observation_event": "false",
+            "counterfactual_decision": "false",
+            "counterfactual_correction": "false",
+            "counterfactual_code": preflight.EXPECTED_CODE,
+            "step_limited": "false",
+            "range_clamped": "false",
+            "correction_count": 0,
+            "cumulative_movement_codes": 0,
+            "alternating_correction_count": 0,
+            "modeled_not_observed_after_divergence": "false",
+            "uncertainty_status": "unavailable",
+            "actionable": "false",
+            "actuation_authorized": "false",
+            "authorization_consumed": "false",
+        }],
+    )
     _write_csv(run / files["environment_v1"], "environment_v1", [
         {"record_type": "ENV", "schema_version": 1, "env_seq": index,
          "timestamp_ticks": index * 16_000_000, "observation_domain": "rp2040_timer0",

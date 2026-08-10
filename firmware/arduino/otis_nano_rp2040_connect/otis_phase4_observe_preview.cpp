@@ -1233,6 +1233,14 @@ bool otis_phase4_observe_preview_transport_busy(void) {
 #endif
 }
 
+bool otis_phase4_observe_preview_transport_pending(void) {
+#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+  return queue_count > 0u;
+#else
+  return false;
+#endif
+}
+
 void otis_phase4_observe_preview_emit_status(
     OtisStatusEmitContext *status_context) {
 #if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW

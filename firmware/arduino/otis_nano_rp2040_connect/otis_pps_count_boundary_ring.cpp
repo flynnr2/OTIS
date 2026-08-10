@@ -95,6 +95,19 @@ bool otis_pps_count_boundary_ring_pop(
   return have_observation;
 }
 
+bool otis_pps_count_boundary_ring_peek(
+    OtisPpsCountBoundaryObservation *observation) {
+  if (observation == nullptr) return false;
+  bool have_observation = false;
+  noInterrupts();
+  if (boundary_tail != boundary_head) {
+    load_observation(observation, &boundary_ring[boundary_tail]);
+    have_observation = true;
+  }
+  interrupts();
+  return have_observation;
+}
+
 uint32_t otis_pps_count_boundary_ring_dropped_count(void) {
   noInterrupts();
   uint32_t count = boundary_dropped_count;

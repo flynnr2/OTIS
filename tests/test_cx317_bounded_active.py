@@ -389,6 +389,30 @@ def test_response_classifier_covers_frozen_classes() -> None:
     assert limited.classification is ResponseClass.LIMIT_REACHED
 
 
+def test_stage5_response_replay_disables_only_legacy_float_deadband() -> None:
+    legacy = ResponseClassifier().classify(
+        pre_error_hz=0.001,
+        post_error_hz=0.005,
+        applied_delta_codes=21,
+        current_code=0xA81D,
+        minimum_code=0xA800,
+        maximum_code=0xAB00,
+    )
+    stage5 = ResponseClassifier(
+        legacy_response_deadband_enabled=False
+    ).classify(
+        pre_error_hz=0.001,
+        post_error_hz=0.005,
+        applied_delta_codes=21,
+        current_code=0xA81D,
+        minimum_code=0xA800,
+        maximum_code=0xAB00,
+    )
+    assert legacy.classification is ResponseClass.INSIDE_DEADBAND
+    assert stage5.classification is ResponseClass.HEALTHY_DETECTED
+    assert stage5.reason == "response_detected_with_commanded_sign"
+
+
 def test_cumulative_indeterminate_detection_and_persistent_absence() -> None:
     classifier = ResponseClassifier()
     first = classifier.classify(

@@ -10,11 +10,20 @@ constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
 constexpr uint32_t OTIS_CX318_PREVIEW_QUEUE_DEPTH = 32u;
-// The Stage 7 timing-health publication reaches a measured 93-message burst.
-// ACTIVE? independently publishes 22 active-status messages from Core 1.  The
-// two clocks can align during endurance, so keep enough space for both bursts
-// plus margin while Core 0 is occupied with the serial transport.
-constexpr uint32_t OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST = 115u;
+// The non-active portion of Stage 7 timing health reaches 71 telemetry
+// messages. ACTIVE status has one fixed 29-key vocabulary in both the direct
+// and cross-core publishers. A periodic health burst and one ACTIVE? response
+// can align while Core 0 is occupied with serial transport.
+constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST = 29u;
+constexpr uint32_t OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 71u;
+constexpr uint32_t OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST =
+    OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
+    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
+constexpr uint32_t OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST =
+    OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +
+    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
+static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u,
+              "Stage 7 health plus one ACTIVE? response must remain exact");
 // The Stage 4 split boot produces 163 one-time status records before Core 0
 // can completely drain the timing-side initialization burst.
 constexpr uint32_t OTIS_STAGE4_BOOT_TELEMETRY_BURST = 163u;

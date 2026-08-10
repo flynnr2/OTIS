@@ -11,7 +11,7 @@
     },
     "stage5_prompt": {
       "path": "docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/05_TIGHT_DEADBAND_BIDIRECTIONAL_ACTIVE_TRIAL_PROMPT.md",
-      "sha256": "34752a2489beecee7f539c362ded63d71f446a34ff6dd21ef5d39267e623f210"
+      "sha256": "23eda3ee982d8f13dacc32e7acd3b96d3a104e59dcab3c3b3e41eaaaef88c566"
     },
     "stage1_contract": {
       "path": "profiles/discipline/cx318_stage1_contracts_v1.json",

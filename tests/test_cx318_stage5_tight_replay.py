@@ -10,7 +10,10 @@ from host.otis_tools.contracts import (
     TIGHT_DEADBAND_POLICY_SHA256,
     validate_csv,
 )
-from host.otis_tools.cx318_stage5_tight_replay import replay_tight_deadband
+from host.otis_tools.cx318_stage5_tight_replay import (
+    replay_tight_deadband,
+    replay_tight_deadband_chain,
+)
 
 
 CONTRACT = "tight_deadband_decisions_v1"
@@ -115,6 +118,28 @@ def test_tdb_replay_reports_exact_field_mismatch(tmp_path: Path) -> None:
 
     assert not replay.exact
     assert any("symmetric_two_count_inside" in error for error in replay.errors)
+
+
+def test_tdb_chain_preserves_state_across_same_owner_logical_rotation(
+    tmp_path: Path,
+) -> None:
+    rows = _exact_rows()
+    first = tmp_path / "rehearsal.csv"
+    second = tmp_path / "transition.csv"
+    third = tmp_path / "live.csv"
+    _write(first, rows[:2])
+    _write(second, rows[2:3])
+    _write(third, rows[3:])
+
+    assert replay_tight_deadband(third).exact is False
+    replay = replay_tight_deadband_chain([first, second, third])
+    assert replay.exact is True
+    assert replay.row_count == len(rows)
+    assert {item["source_path"] for item in replay.comparisons} == {
+        str(first.resolve()),
+        str(second.resolve()),
+        str(third.resolve()),
+    }
 
 
 def test_tdb_capture_route_writes_only_exact_26_column_frames(tmp_path: Path) -> None:

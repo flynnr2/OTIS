@@ -17,6 +17,13 @@ import tempfile
 from typing import Any
 
 from .run_paths import default_csv_files
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER
+from .cx318_stage5_runtime_contract import (
+    ACTIVE_STATUS_KEYS,
+    INHERITED_PREVIEW_BASELINE_PROVENANCE,
+    RUNTIME_CONTRACT_ID,
+)
+from tools.firmware_matrix import configuration_hash, load_matrix
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,13 +38,24 @@ HOST_TOOL_PATHS = {
     "rehearsal_analyzer": Path(__file__).with_name(
         "cx318_stage5_rehearsal_analyze.py"
     ),
+    "live_analyzer": Path(__file__).with_name("cx318_stage5_live_analyze.py"),
+    "bidirectional_gate": Path(__file__).with_name(
+        "cx318_stage5_bidirectional_gate.py"
+    ),
+    "segment_rotation": Path(__file__).with_name("cx318_capture_segment.py"),
+    "promotion": Path(__file__).with_name("cx318_stage5_promote.py"),
+    "runtime_contract": Path(__file__).with_name(
+        "cx318_stage5_runtime_contract.py"
+    ),
+    "preflight": Path(__file__).with_name("cx318_stage5_preflight.py"),
 }
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 REHEARSAL_STAGE = "CX318_STAGE5_TIGHT_ACTIVE_REHEARSAL"
 LIVE_STAGE = "CX318_STAGE5_TIGHT_ACTIVE_LIVE"
 STAGE4_BINDING_TYPE = "cx318_stage4_post_capture_external_binding_v1"
 REHEARSAL_SEAL_TYPE = "cx318_stage5_rehearsal_no_write_seal_v1"
+LIVE_LEG_SEAL_TYPE = "cx318_stage5_live_leg_seal_v1"
 
 
 def _utc_now() -> str:
@@ -79,6 +97,23 @@ def _binding(path: Path, *, label: str) -> dict[str, str]:
     if not path.is_file():
         raise ValueError(f"{label} is not a file: {path}")
     return {"path": str(path), "sha256": _sha256_file(path)}
+
+
+def _require_sealed_run_state(run_root: Path, *, label: str) -> None:
+    """Reassert mutable terminal conditions when a historical seal is reused."""
+
+    if not (run_root / COMPLETE_MARKER).is_file():
+        raise ValueError(f"{label} COMPLETE marker is unavailable")
+    if (run_root / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError(f"{label} has been reopened after sealing")
+    state = _read_object(
+        run_root / "reports/capture_device_state.json", f"{label} capture state"
+    )
+    if (
+        state.get("capture_active") is not False
+        or state.get("logical_segment_closed") is not True
+    ):
+        raise ValueError(f"{label} is not an immutable closed capture segment")
 
 
 def _host_tool_bindings() -> dict[str, dict[str, str]]:
@@ -170,8 +205,13 @@ def _validate_build(build_manifest_path: Path, uf2_path: Path, profile_id: str) 
     matrix_profile = _matrix_profile(profile_id)
     if configuration.get("defines") != matrix_profile["defines"]:
         raise ValueError("firmware build defines differ from the exact Stage 5 profile; accelerated or relaxed limits are forbidden")
-    if not _is_sha256(configuration.get("sha256")):
-        raise ValueError("firmware build configuration hash is malformed")
+    matrix = load_matrix(FIRMWARE_MATRIX_PATH)
+    expected_configuration_sha256 = configuration_hash(matrix, matrix_profile)
+    if configuration.get("sha256") != expected_configuration_sha256:
+        raise ValueError(
+            "firmware build configuration hash differs from the exact current "
+            "Stage 5 matrix/configuration input"
+        )
     if not uf2_path.is_file():
         raise ValueError(f"UF2 is not a file: {uf2_path}")
     if not isinstance(artifacts, list):
@@ -273,6 +313,7 @@ def _validate_rehearsal_seal(path: Path, *, leg: str, firmware: dict[str, Any]) 
     rehearsal_root = Path(rehearsal_root_value).resolve()
     if not rehearsal_root.is_dir():
         raise ValueError("Stage 5 rehearsal source run is unavailable")
+    _require_sealed_run_state(rehearsal_root, label="Stage 5 rehearsal")
     for relative, expected_sha256 in source_hashes.items():
         relative_path = Path(relative)
         source_path = (rehearsal_root / relative_path).resolve()
@@ -305,6 +346,120 @@ def _validate_rehearsal_seal(path: Path, *, leg: str, firmware: dict[str, Any]) 
     if not evidence_path.is_file() or _sha256_file(evidence_path) != evidence["sha256"]:
         raise ValueError("Stage 5 rehearsal evidence snapshot changed after sealing")
     return {**_binding(path, label="Stage 5 rehearsal seal"), "seal_sha256": claimed}
+
+
+def _validate_live_leg_seal(path: Path, *, expected_leg: str) -> dict[str, Any]:
+    path = path.resolve()
+    seal = _read_object(path, "Stage 5 live leg seal")
+    claimed = seal.get("seal_sha256")
+    unsigned = {key: value for key, value in seal.items() if key != "seal_sha256"}
+    run = seal.get("run")
+    source_hashes = seal.get("source_artifacts_sha256")
+    transition_source = seal.get("transition_source")
+    policy = _policy()
+    leg_policy = _leg(policy, expected_leg)
+    exact = (
+        seal.get("seal_type") == LIVE_LEG_SEAL_TYPE
+        and seal.get("tool") == "cx318_stage5_live_analyze_v1"
+        and seal.get("tool_sha256") == _sha256_file(HOST_TOOL_PATHS["live_analyzer"])
+        and seal.get("status") == "passed"
+        and seal.get("failure_class") == "none"
+        and seal.get("leg") == expected_leg
+        and seal.get("profile_id") == leg_policy["firmware_profile"]
+        and seal.get("policy_sha256") == _sha256_file(POLICY_PATH)
+        and isinstance(seal.get("checks"), dict)
+        and bool(seal["checks"])
+        and all(value is True for value in seal["checks"].values())
+        and isinstance(run, dict)
+        and isinstance(run.get("path"), str)
+        and _is_sha256(run.get("manifest_sha256"))
+        and isinstance(source_hashes, dict)
+        and bool(source_hashes)
+        and all(
+            isinstance(relative, str) and relative and _is_sha256(digest)
+            for relative, digest in source_hashes.items()
+        )
+        and isinstance(transition_source, dict)
+        and isinstance(transition_source.get("root"), str)
+        and type(transition_source.get("owner_pid")) is int
+        and type(transition_source.get("transport_generation")) is int
+        and _is_sha256(transition_source.get("manifest_sha256"))
+        and isinstance(transition_source.get("checks"), dict)
+        and bool(transition_source["checks"])
+        and all(value is True for value in transition_source["checks"].values())
+        and isinstance(transition_source.get("source_artifacts_sha256"), dict)
+        and bool(transition_source["source_artifacts_sha256"])
+        and all(
+            isinstance(relative, str) and relative and _is_sha256(digest)
+            for relative, digest in transition_source[
+                "source_artifacts_sha256"
+            ].items()
+        )
+        and _is_sha256(claimed)
+        and claimed == _canonical_digest(unsigned)
+    )
+    if not exact:
+        raise ValueError(f"Stage 5 leg {expected_leg} seal is not a canonical passed seal")
+    run_root = Path(run["path"]).resolve()
+    if not run_root.is_dir():
+        raise ValueError("Stage 5 live leg source run is unavailable")
+    _require_sealed_run_state(run_root, label=f"Stage 5 leg {expected_leg}")
+    for relative, expected_sha256 in source_hashes.items():
+        relative_path = Path(relative)
+        source_path = (run_root / relative_path).resolve()
+        try:
+            source_path.relative_to(run_root)
+        except ValueError:
+            raise ValueError("Stage 5 live seal source path escapes its run directory") from None
+        if relative_path.is_absolute() or not source_path.is_file():
+            raise ValueError("Stage 5 live seal source artifact is unavailable")
+        if _sha256_file(source_path) != expected_sha256:
+            raise ValueError("Stage 5 live source artifact changed after sealing")
+    manifest_path = run_root / "run_manifest.json"
+    if not manifest_path.is_file() or _sha256_file(manifest_path) != run["manifest_sha256"]:
+        raise ValueError("Stage 5 live manifest changed after sealing")
+    transition_root = Path(transition_source["root"]).resolve()
+    if not transition_root.is_dir():
+        raise ValueError("Stage 5 transition source is unavailable")
+    for relative, expected_sha256 in transition_source[
+        "source_artifacts_sha256"
+    ].items():
+        relative_path = Path(relative)
+        source_path = (transition_root / relative_path).resolve()
+        try:
+            source_path.relative_to(transition_root)
+        except ValueError:
+            raise ValueError(
+                "Stage 5 transition seal source path escapes its run directory"
+            ) from None
+        if relative_path.is_absolute() or not source_path.is_file():
+            raise ValueError("Stage 5 transition source artifact is unavailable")
+        if _sha256_file(source_path) != expected_sha256:
+            raise ValueError("Stage 5 transition source artifact changed after sealing")
+    if (
+        transition_source["source_artifacts_sha256"].get("run_manifest.json")
+        != transition_source["manifest_sha256"]
+    ):
+        raise ValueError("Stage 5 transition manifest binding differs")
+    manifest = validate_manifest(manifest_path)
+    if (
+        manifest.get("stage") != LIVE_STAGE
+        or manifest.get("stage5", {}).get("leg") != expected_leg
+        or manifest.get("firmware", {}).get("sha256")
+        != seal.get("build_manifest_sha256")
+        or manifest.get("firmware", {}).get("uf2", {}).get("sha256")
+        != seal.get("uf2_sha256")
+        or manifest.get("stage4_seal", {}).get("binding_sha256")
+        != seal.get("stage4_binding_sha256")
+        or manifest.get("stage5", {}).get("rehearsal_seal", {}).get(
+            "seal_sha256"
+        )
+        != seal.get("rehearsal_seal_sha256")
+        or seal.get("required_direction")
+        != leg_policy["required_automatic_direction"]
+    ):
+        raise ValueError("Stage 5 live seal differs from its source manifest")
+    return {**_binding(path, label=f"Stage 5 leg {expected_leg} seal"), "seal_sha256": claimed}
 
 
 def _required_files() -> list[dict[str, Any]]:
@@ -345,7 +500,7 @@ def _write_json_new_atomic(path: Path, value: dict[str, Any]) -> None:
 def create_manifest(
     *, mode: str, leg: str, run_dir: Path, build_manifest_path: Path, uf2_path: Path,
     stage4_seal_path: Path, serial_device: str, rehearsal_seal_path: Path | None = None,
-    baud: int = 115200,
+    leg_a_seal_path: Path | None = None, baud: int = 115200,
 ) -> Path:
     """Create one exact Stage 5 rehearsal or live manifest.
 
@@ -366,12 +521,19 @@ def create_manifest(
     firmware = _validate_build(build_manifest_path, uf2_path, leg_policy["firmware_profile"])
     stage4_seal = _validate_stage4_seal(stage4_seal_path)
     rehearsal_seal = None
+    leg_a_seal = None
     if mode == "live":
         if rehearsal_seal_path is None:
             raise ValueError("live Stage 5 manifest requires --rehearsal-seal")
         rehearsal_seal = _validate_rehearsal_seal(rehearsal_seal_path, leg=leg, firmware=firmware)
     elif rehearsal_seal_path is not None:
         raise ValueError("a rehearsal manifest cannot bind a rehearsal seal")
+    if mode == "live" and leg == "B":
+        if leg_a_seal_path is None:
+            raise ValueError("live Stage 5 leg B requires --leg-a-seal")
+        leg_a_seal = _validate_live_leg_seal(leg_a_seal_path, expected_leg="A")
+    elif leg_a_seal_path is not None:
+        raise ValueError("only live Stage 5 leg B may bind a leg A seal")
 
     controller = policy["frequency_controller"]
     finite = policy["finite_runtime"]
@@ -384,8 +546,20 @@ def create_manifest(
         "leg": leg,
         "firmware_profile": leg_policy["firmware_profile"],
         "run_binding_tag": leg_policy["run_binding_tag"],
-        "pre_setup_identity": {"code": rehearsal["reconfirmed_pre_setup_code"], "code_hex": rehearsal["reconfirmed_pre_setup_code_hex"], "dac_epoch": 0},
-        "setup": {
+        "runtime_contract": {
+            "id": RUNTIME_CONTRACT_ID,
+            "active_status_keys": list(ACTIVE_STATUS_KEYS),
+            "missing_status_is_failure": True,
+            "startup_grace_s": 30,
+        },
+        "inherited_preview_baseline": {
+            "code": rehearsal["reconfirmed_pre_setup_code"],
+            "code_hex": rehearsal["reconfirmed_pre_setup_code_hex"],
+            "dac_epoch": 0,
+            "provenance": INHERITED_PREVIEW_BASELINE_PROVENANCE,
+            "physical_dac_confirmation": False,
+        },
+        "planned_live_stimulus": {
             "code": leg_policy["exact_setup_code"], "code_hex": leg_policy["exact_setup_code_hex"],
             "maximum_writes": 0 if no_write else 1, "authorized": not no_write,
         },
@@ -417,6 +591,8 @@ def create_manifest(
         }
     else:
         stage5["rehearsal_seal"] = rehearsal_seal
+        if leg_a_seal is not None:
+            stage5["leg_a_seal"] = leg_a_seal
 
     manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -435,6 +611,8 @@ def create_manifest(
             "capture_tool": "host.otis_tools.capture_device", "supervisor_tool": "host.otis_tools.cx318_stage5_supervisor",
             "serial_device": serial_device, "baud": baud, "sole_serial_owner": True,
             "independent_abort_fifo_required": True,
+            "same_owner_segment_rotation_required": True,
+            "segment_rotation_protocol": "otis_same_owner_logical_segment_rotation_v1",
             "tool_bindings": _host_tool_bindings(),
         },
         "stage5": stage5,
@@ -446,6 +624,7 @@ def create_manifest(
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
+            "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
         ],
@@ -494,20 +673,38 @@ def validate_manifest(path: Path) -> dict[str, Any]:
         != "host.otis_tools.cx318_stage5_supervisor"
         or host.get("sole_serial_owner") is not True
         or host.get("independent_abort_fifo_required") is not True
+        or host.get("same_owner_segment_rotation_required") is not True
+        or host.get("segment_rotation_protocol")
+        != "otis_same_owner_logical_segment_rotation_v1"
         or host.get("tool_bindings") != _host_tool_bindings()
     ):
         raise ValueError("Stage 5 manifest host tool binding is stale")
     stage4 = manifest.get("stage4_seal")
     if not isinstance(stage4, dict) or stage4 != _validate_stage4_seal(Path(stage4.get("path", ""))):
         raise ValueError("Stage 5 manifest Stage 4 seal binding is stale")
-    setup = stage5.get("setup", {})
+    setup = stage5.get("planned_live_stimulus", {})
     automatic = stage5.get("automatic_frequency_control", {})
     controller = policy["frequency_controller"]
     finite = policy["finite_runtime"]
-    pre_setup = stage5.get("pre_setup_identity", {})
+    pre_setup = stage5.get("inherited_preview_baseline", {})
+    runtime_contract = stage5.get("runtime_contract", {})
     if (
         stage5.get("firmware_profile") != leg_policy["firmware_profile"]
-        or pre_setup != {"code": 0xA828, "code_hex": "0xA828", "dac_epoch": 0}
+        or pre_setup
+        != {
+            "code": 0xA828,
+            "code_hex": "0xA828",
+            "dac_epoch": 0,
+            "provenance": INHERITED_PREVIEW_BASELINE_PROVENANCE,
+            "physical_dac_confirmation": False,
+        }
+        or runtime_contract
+        != {
+            "id": RUNTIME_CONTRACT_ID,
+            "active_status_keys": list(ACTIVE_STATUS_KEYS),
+            "missing_status_is_failure": True,
+            "startup_grace_s": 30,
+        }
         or setup.get("code") != leg_policy["exact_setup_code"]
         or setup.get("code_hex") != leg_policy["exact_setup_code_hex"]
         or automatic.get("required_direction") != leg_policy["required_automatic_direction"]
@@ -517,6 +714,8 @@ def validate_manifest(path: Path) -> dict[str, Any]:
         or automatic.get("fresh_support_after_settling_s") != 600
         or stage5.get("qualification", {}).get("deadline_s") != 5400
         or stage5.get("qualification", {}).get("maximum_qualified_duration_s") != 14400
+        or stage5.get("phase_and_hybrid")
+        != policy["phase_and_hybrid_authority"]
         or controller["maximum_automatic_step_codes"] != 21
         or finite["qualification_deadline_s"] != 5400
         or finite["maximum_qualified_duration_s"] != 14400
@@ -550,6 +749,16 @@ def validate_manifest(path: Path) -> dict[str, Any]:
             Path(rehearsal_seal["path"]), leg=leg, firmware=expected_firmware
         ):
             raise ValueError("Stage 5 rehearsal seal binding is stale")
+        leg_a_seal = stage5.get("leg_a_seal")
+        if leg == "B":
+            if not isinstance(leg_a_seal, dict) or not isinstance(leg_a_seal.get("path"), str):
+                raise ValueError("Stage 5 leg B lacks its required passed leg A seal")
+            if leg_a_seal != _validate_live_leg_seal(
+                Path(leg_a_seal["path"]), expected_leg="A"
+            ):
+                raise ValueError("Stage 5 leg B leg A seal binding is stale")
+        elif leg_a_seal is not None:
+            raise ValueError("Stage 5 leg A must not carry a prior-leg seal")
     return manifest
 
 
@@ -564,6 +773,7 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--uf2", type=Path, required=True)
     create.add_argument("--stage4-seal", type=Path, required=True)
     create.add_argument("--rehearsal-seal", type=Path)
+    create.add_argument("--leg-a-seal", type=Path)
     create.add_argument("--serial-device", required=True)
     create.add_argument("--baud", type=int, default=115200)
     validate = commands.add_parser("validate", help="validate an existing manifest and bindings")
@@ -576,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
         print(create_manifest(
             mode=args.mode, leg=args.leg, run_dir=args.run_dir, build_manifest_path=args.build_manifest,
             uf2_path=args.uf2, stage4_seal_path=args.stage4_seal, rehearsal_seal_path=args.rehearsal_seal,
+            leg_a_seal_path=args.leg_a_seal,
             serial_device=args.serial_device, baud=args.baud,
         ))
     return 0

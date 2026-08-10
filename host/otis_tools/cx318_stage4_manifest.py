@@ -253,11 +253,20 @@ def create_live_manifest(
     rebound_matrix_path = rebound_matrix_path.resolve()
     proof = json.loads(static_proof_path.read_text(encoding="utf-8"))
     setup = validate_static_proof(proof)
-    validate_build_inputs(
-        rebound_matrix_path=rebound_matrix_path,
-        build_manifest_path=build_manifest_path,
-        uf2_path=uf2_path,
-    )
+    proof_artifacts = proof.get("artifact_identities", {})
+    copied_artifacts = {
+        "rebound_matrix_sha256": _sha256_file(rebound_matrix_path),
+        "build_manifest_sha256": _sha256_file(build_manifest_path),
+        "uf2_sha256": _sha256_file(uf2_path),
+    }
+    if not isinstance(proof_artifacts, dict) or any(
+        proof_artifacts.get(key) != value
+        for key, value in copied_artifacts.items()
+    ):
+        raise ValueError(
+            "Stage 4 run-local artifact copies differ from the validated "
+            "static-code proof"
+        )
     build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     provenance = build["provenance"]
     configuration = provenance["configuration"]
@@ -367,6 +376,7 @@ def create_identity_manifest(
         rebound_matrix_path=rebound_matrix_path,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
+        allow_historical_clean_build=True,
     )
     record = json.loads(flash_record_path.read_text(encoding="utf-8"))
     validate_flash_record(
@@ -469,11 +479,26 @@ def create_rehearsal_manifest(
         raise ValueError("Stage 4 rehearsal proof must be inside its run") from exc
     proof = json.loads(static_proof_path.read_text(encoding="utf-8"))
     setup = validate_static_proof(proof)
-    binding = validate_build_inputs(
-        rebound_matrix_path=rebound_matrix_path,
-        build_manifest_path=build_manifest_path,
-        uf2_path=uf2_path,
-    )
+    proof_artifacts = proof.get("artifact_identities", {})
+    copied_artifacts = {
+        "rebound_matrix_sha256": _sha256_file(rebound_matrix_path),
+        "build_manifest_sha256": _sha256_file(build_manifest_path),
+        "uf2_sha256": _sha256_file(uf2_path),
+    }
+    if not isinstance(proof_artifacts, dict) or any(
+        proof_artifacts.get(key) != value
+        for key, value in copied_artifacts.items()
+    ):
+        raise ValueError(
+            "Stage 4 rehearsal artifact copies differ from the validated "
+            "static-code proof"
+        )
+    try:
+        build_relative = build_manifest_path.relative_to(run_dir).as_posix()
+        matrix_relative = rebound_matrix_path.relative_to(run_dir).as_posix()
+        uf2_relative = uf2_path.relative_to(run_dir).as_posix()
+    except ValueError as exc:
+        raise ValueError("Stage 4 rehearsal build artifacts must be inside its run") from exc
     build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     provenance = build["provenance"]
     source = provenance["source"]
@@ -501,12 +526,12 @@ def create_rehearsal_manifest(
             "source_state": source["state"],
             "source_sha256": source["sha256"],
             "configuration_sha256": configuration["sha256"],
-            "uf2_sha256": binding["uf2_sha256"],
-            "uf2_size_bytes": binding["uf2_size_bytes"],
-            "build_manifest_path": str(build_manifest_path),
-            "build_manifest_sha256": binding["build_manifest_sha256"],
-            "rebound_matrix_path": str(rebound_matrix_path),
-            "rebound_matrix_sha256": binding["matrix_sha256"],
+            "uf2_sha256": copied_artifacts["uf2_sha256"],
+            "uf2_size_bytes": uf2_path.stat().st_size,
+            "build_manifest_path": build_relative,
+            "build_manifest_sha256": copied_artifacts["build_manifest_sha256"],
+            "rebound_matrix_path": matrix_relative,
+            "rebound_matrix_sha256": copied_artifacts["rebound_matrix_sha256"],
             "build_provenance_required": True,
         },
         "stage4_live_preview": {
@@ -525,12 +550,21 @@ def create_rehearsal_manifest(
             "active_rows_permitted": 0,
             "phase_hybrid_authority": False,
         },
-        "evidence_artifacts": [proof_relative, analysis_relative],
+        "evidence_artifacts": [
+            proof_relative,
+            matrix_relative,
+            build_relative,
+            uf2_relative,
+            analysis_relative,
+        ],
         "expected_artifacts": [
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
             proof_relative,
+            matrix_relative,
+            build_relative,
+            uf2_relative,
             analysis_relative,
         ],
     })
