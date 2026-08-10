@@ -62,6 +62,8 @@ constexpr int32_t kActiveLiveUpdateCodes = 0;
 constexpr uint8_t kQueueDepth = 4u;
 constexpr size_t kFrameCapacity = 1536u;
 constexpr size_t kTransportChunkLimit = 192u;
+static_assert(kFrameCapacity == OTIS_EVIDENCE_FRAME_CAPACITY,
+              "preview and evidence frame capacities must match");
 
 struct Frame {
   char data[kFrameCapacity];
@@ -72,6 +74,14 @@ struct Frame {
 OtisCx317SnapshotEstimator estimator;
 OtisCx317IOnlyEngine controller;
 OtisSpscQueue<Frame, kQueueDepth> queue;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+// Core 1 is the sole evidence producer for this module.  Keep its cross-core
+// copy buffer out of the timing-core stack: emit_control() already owns a
+// complete 1536-byte formatting frame, and nesting another Frame plus an
+// OtisEvidenceFrameMessage here can exhaust the bounded Core 1 stack exactly
+// when the first post-warmup CTL record is emitted.
+OtisEvidenceFrameMessage evidence_frame_scratch = {};
+#endif
 Frame transport_frame = {};
 bool transport_frame_active = false;
 uint32_t dropped_frames = 0u;
@@ -150,21 +160,21 @@ bool enqueue(const char *data, size_t length) {
     }
     return false;
   }
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  evidence_frame_scratch.sequence = evidence_frame_sequence + 1u;
+  evidence_frame_scratch.length = static_cast<uint16_t>(length);
+  memcpy(evidence_frame_scratch.data, data, length);
+  evidence_frame_scratch.data[length] = '\0';
+  if (otis_dual_core_publish_evidence(&evidence_frame_scratch)) {
+    evidence_frame_sequence = evidence_frame_scratch.sequence;
+    return true;
+  }
+#else
   Frame frame = {};
   memcpy(frame.data, data, length);
   frame.data[length] = '\0';
   frame.length = static_cast<uint16_t>(length);
   frame.sent = 0u;
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
-  OtisEvidenceFrameMessage message = {};
-  message.sequence = evidence_frame_sequence + 1u;
-  message.length = frame.length;
-  memcpy(message.data, frame.data, frame.length + 1u);
-  if (otis_dual_core_publish_evidence(&message)) {
-    evidence_frame_sequence = message.sequence;
-    return true;
-  }
-#else
   if (queue.try_push(frame)) return true;
 #endif
   uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);

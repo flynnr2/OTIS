@@ -205,6 +205,25 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
         assert dispatch.count(writer) == 1
 
 
+def test_dual_core_cx317_preview_copy_does_not_nest_full_frames_on_core1_stack() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    enqueue_start = preview.index("bool enqueue(const char *data, size_t length) {")
+    enqueue_end = preview.index("bool code_context_valid(", enqueue_start)
+    enqueue = preview[enqueue_start:enqueue_end]
+    dual_core_path = enqueue[
+        enqueue.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
+        enqueue.index("#else", enqueue.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+    ]
+
+    assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in preview
+    assert "evidence_frame_scratch.data[length] = '\\0';" in dual_core_path
+    assert "otis_dual_core_publish_evidence(&evidence_frame_scratch)" in dual_core_path
+    assert "Frame frame = {};" not in dual_core_path
+    assert "OtisEvidenceFrameMessage message = {};" not in dual_core_path
+
+
 def test_stage6_routes_raw_evidence_and_environment_by_value() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
