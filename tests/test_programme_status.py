@@ -31,7 +31,7 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_v7_live_authorized_awaiting_fresh_restart"
+    assert successor["state"] == "g2_v7_live_in_progress"
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
         CX319_G2_LIVE_LEG,
@@ -218,6 +218,31 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
         "ordinary_telemetry_attach_baseline_stable_observations": 2,
         "post_attach_ordinary_telemetry_increment_forbidden": True,
         "effective": True,
+    }
+    assert successor["g3_conditional_upper_flash_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md"
+        ),
+        "currently_executable": False,
+        "requires_passing_g2_analysis_and_seal": True,
+        "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": True,
+        "firmware_profile": "cx319_tight_upper",
+        "exact_firmware_flash_limit": 1,
+        "g3_live_execution": True,
+        "existing_bounded_envelope": True,
+        "manual_reset_expected_after_successful_upload": False,
+        "operator_assistance_required_if_upload_or_reenumeration_fails": True,
+    }
+    assert successor["active_g2_v7_execution"] == {
+        "run_id": "live_leg_a_v7_20260811T170842Z",
+        "activation_sha256": (
+            "b7ce4ba75fd2ff2f5c67b1a90b6a25ff"
+            "f1cd1bf16d18ff6e201f703415947787"
+        ),
+        "board_restart_confirmed": True,
+        "started_utc": "2026-08-11T17:08:42Z",
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",

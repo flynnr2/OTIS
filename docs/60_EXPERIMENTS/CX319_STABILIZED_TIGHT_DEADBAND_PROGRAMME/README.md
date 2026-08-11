@@ -20,9 +20,9 @@ are retired. The replacement path now distinguishes a cumulative pre-host
 ordinary-telemetry count from post-attachment health: it freezes a stable
 read-only attachment baseline and forbids any later increment, while retaining
 absolute evidence, capture, partition and control gates. Neither event is a G2
-scientific result. The exact v7 replacement has passed structural preflight and
-the accelerated operational-path rehearsal but is not authorized; G3 remains
-blocked.
+scientific result. The exact v7 replacement passed structural preflight and the
+accelerated operational-path rehearsal and is now running under its exact
+authority. G3 remains blocked until G2 passes.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -72,3 +72,7 @@ passing offline evidence are recorded in
 
 The operator's exact v7 live authority and physical boundary are recorded in
 [`11_G2_V7_LIVE_AUTHORITY.md`](11_G2_V7_LIVE_AUTHORITY.md).
+
+The operator's conditional authority for one exact upper-profile flash and G3
+execution after a passing G2 seal is recorded in
+[`12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md`](12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md).
