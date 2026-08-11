@@ -223,6 +223,17 @@ def _git_identity() -> tuple[str, str]:
     return commit, "dirty" if status else "clean"
 
 
+def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def _load_policy() -> dict[str, Any]:
     policy = _read_object(POLICY_PATH, "CX319 policy")
     if (
@@ -323,7 +334,11 @@ def leg_spec(leg: str) -> dict[str, Any]:
 
 
 def validate_build(
-    *, leg: str, build_manifest_path: Path, uf2_path: Path
+    *,
+    leg: str,
+    build_manifest_path: Path,
+    uf2_path: Path,
+    allow_clean_ancestor_source: bool = False,
 ) -> dict[str, Any]:
     spec = leg_spec(leg)
     matrix = load_matrix(MATRIX_PATH)
@@ -353,9 +368,16 @@ def validate_build(
     current_commit, current_state = _git_identity()
     if current_state != "clean":
         raise ValueError("G1 exact bundle requires a clean repository source state")
+    source_commit = source.get("git_commit")
+    source_revision_allowed = source_commit == current_commit or (
+        allow_clean_ancestor_source
+        and isinstance(source_commit, str)
+        and len(source_commit) == 40
+        and _git_is_ancestor(source_commit, current_commit)
+    )
     if (
         source.get("state") != "clean"
-        or source.get("git_commit") != current_commit
+        or not source_revision_allowed
         or source.get("sha256") != source_input_hash(matrix_path=MATRIX_PATH)
     ):
         raise ValueError("CX319 build does not bind the current clean source")
@@ -393,7 +415,7 @@ def validate_build(
         "profile_id": spec["profile_id"],
         "build_manifest": _binding(build_manifest_path),
         "uf2": _binding(uf2_path),
-        "git_commit": current_commit,
+        "git_commit": source_commit,
         "source_state": "clean",
         "source_sha256": source["sha256"],
         "configuration_sha256": configuration["sha256"],
@@ -474,7 +496,11 @@ def create_bundle(
         leg=leg,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
+        allow_clean_ancestor_source=(confirmed_flash_record_path is not None),
     )
+    host_source_revision, host_source_state = _git_identity()
+    if host_source_state != "clean":
+        raise ValueError("G1 exact bundle requires a clean host source state")
     firmware_entry = (
         {
             "mode": "single_exact_flash",
@@ -494,6 +520,7 @@ def create_bundle(
         "bundle_id": BUNDLE_ID,
         "created_utc": _utc_now(),
         "programme_id": PROGRAMME_ID,
+        "host_source_revision": host_source_revision,
         "gate": "G1",
         "leg": spec,
         "firmware": firmware,
@@ -747,17 +774,27 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     firmware = bundle["firmware"]
     if bundle["leg"] != leg_spec(leg):
         raise ValueError("CX319 G1 bundle leg identity is stale")
-    current = validate_build(
-        leg=leg,
-        build_manifest_path=Path(firmware["build_manifest"]["path"]),
-        uf2_path=Path(firmware["uf2"]["path"]),
-    )
-    if firmware != current:
-        raise ValueError("CX319 G1 firmware binding differs from current exact inputs")
     firmware_entry = bundle.get(
         "firmware_entry",
         {"mode": "single_exact_flash", "firmware_flashes_allowed": 1},
     )
+    current = validate_build(
+        leg=leg,
+        build_manifest_path=Path(firmware["build_manifest"]["path"]),
+        uf2_path=Path(firmware["uf2"]["path"]),
+        allow_clean_ancestor_source=(
+            firmware_entry.get("mode")
+            == "reuse_confirmed_installed_firmware"
+        ),
+    )
+    if firmware != current:
+        raise ValueError("CX319 G1 firmware binding differs from current exact inputs")
+    current_host_revision, current_host_state = _git_identity()
+    if (
+        current_host_state != "clean"
+        or bundle.get("host_source_revision") != current_host_revision
+    ):
+        raise ValueError("CX319 G1 bundle host source binding is stale")
     if firmware_entry.get("mode") == "reuse_confirmed_installed_firmware":
         source_flash = firmware_entry.get("source_flash_record", {})
         if not isinstance(source_flash, dict):

@@ -193,6 +193,39 @@ def test_build_must_bind_current_clean_commit(
         )
 
 
+def test_no_flash_reuse_accepts_an_ancestor_with_identical_firmware_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, uf2 = _fake_build(tmp_path)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+
+    firmware = bundle_tool.validate_build(
+        leg="A",
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+        allow_clean_ancestor_source=True,
+    )
+
+    assert firmware["git_commit"] == "1" * 40
+
+
+def test_no_flash_reuse_rejects_a_nonancestor_firmware_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, uf2 = _fake_build(tmp_path)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: False)
+
+    with pytest.raises(ValueError, match="current clean source"):
+        bundle_tool.validate_build(
+            leg="A",
+            build_manifest_path=manifest,
+            uf2_path=uf2,
+            allow_clean_ancestor_source=True,
+        )
+
+
 def test_no_flash_entry_binds_one_prior_exact_installation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
