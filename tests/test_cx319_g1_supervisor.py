@@ -7,6 +7,8 @@ import pytest
 from host.otis_tools.cx318_stage5_supervisor import Stage5Supervisor
 from host.otis_tools.cx319_g1_supervisor import (
     Cx319G1Supervisor,
+    POLICY_PATH,
+    _sha256,
     load_cx319_spec,
 )
 
@@ -81,3 +83,12 @@ def test_any_active_transaction_is_terminal_failure(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="active transaction"):
         supervisor._process_transactions()
+
+
+def test_supervisor_replay_identity_is_current_policy() -> None:
+    supervisor = Cx319G1Supervisor.__new__(Cx319G1Supervisor)
+    supervisor.tight_deadband_policy_sha256 = _sha256(POLICY_PATH)
+
+    assert supervisor.tight_deadband_policy_sha256 == (
+        "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70"
+    )

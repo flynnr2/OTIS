@@ -95,6 +95,7 @@ def test_exact_bundle_manifest_and_offline_preflight_cross_all_surfaces(
         run_manifest
     )
     assert run_manifest["actuation_authorized"] is False
+    assert run_manifest["h_phase"] == "H1"
     assert run_manifest["operator_authority"] == value["operator_authority"]
 
     preflight = cx319_g1_preflight.evaluate(path)

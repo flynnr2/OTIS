@@ -88,6 +88,38 @@ def test_tdb_contract_and_replay_cover_active_and_both_zero_authority_shadows(
     assert all(item["pass"] for item in replay.comparisons)
 
 
+def test_tdb_contract_and_replay_accept_manifest_bound_successor_policy(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "tight_deadband_decisions_v1.csv"
+    successor_policy_sha256 = "e" * 64
+    rows = _exact_rows()
+    for row in rows:
+        row["policy_sha256"] = successor_policy_sha256
+    _write(path, rows)
+
+    default_validation = validate_csv(
+        path,
+        CsvValidationContext(CONTRACT, frozenset(), frozenset()),
+    )
+    bound_validation = validate_csv(
+        path,
+        CsvValidationContext(
+            CONTRACT,
+            frozenset(),
+            frozenset(),
+            tight_deadband_policy_sha256=successor_policy_sha256,
+        ),
+    )
+    replay = replay_tight_deadband(
+        path, policy_sha256=successor_policy_sha256
+    )
+
+    assert not default_validation.ok
+    assert bound_validation.ok
+    assert replay.exact
+
+
 def test_tdb_contract_rejects_noninteger_counts_bad_shadows_and_authority(
     tmp_path: Path,
 ) -> None:

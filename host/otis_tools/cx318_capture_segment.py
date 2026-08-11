@@ -85,6 +85,9 @@ def prepare_transition(source_manifest: Path, run_dir: Path) -> Path:
         "created_utc": now,
         "started_at_utc": now,
         "stage": SEGMENT_TRANSITION_STAGE,
+        "h_phase": source.get("h_phase"),
+        "board": source.get("board"),
+        "capture_mode": source.get("capture_mode"),
         "actionable": False,
         "actuation_authorized": False,
         "host": {

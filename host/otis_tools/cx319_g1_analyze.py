@@ -148,6 +148,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 known_channels=manifest.known_channels,
                 known_domains=manifest.known_domains,
                 allow_rp2040_timer0_wrap=True,
+                tight_deadband_policy_sha256=manifest_value["policy"][
+                    "sha256"
+                ],
             ),
         )
         validations[contract] = {
@@ -164,7 +167,10 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if row.get("estimator_version")
         == "cx317_selected_600s_nonoverlap_v1"
     ]
-    tdb_replay = replay_tight_deadband(run_dir / TDB_CSV)
+    tdb_replay = replay_tight_deadband(
+        run_dir / TDB_CSV,
+        policy_sha256=manifest_value["policy"]["sha256"],
+    )
     health_rows = _read_csv(run_dir / HEALTH_CSV)
     health = latest_complete_health(run_dir / HEALTH_CSV)
     expected_build = (

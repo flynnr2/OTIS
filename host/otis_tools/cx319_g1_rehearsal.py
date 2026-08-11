@@ -63,6 +63,9 @@ SEGMENT_CONTROL_DIR = Path("control/segment_carrier")
 ROTATION_OPERATION_ID = "cx319-g1-no-write-owner-handoff"
 CAPTURE_LAUNCHER_LOG = Path("reports/cx319_g1_capture_launcher.log")
 SUPERVISOR_LOG = Path("reports/cx319_g1_supervisor.log")
+ORCHESTRATION_FAILURE_PATH = Path(
+    "reports/cx319_g1_orchestration_failure_v1.json"
+)
 
 
 def _utc_now() -> str:
@@ -200,6 +203,69 @@ def _copy_exact_bundle(source: Path, destination: Path) -> None:
         os.close(descriptor)
 
 
+def _read_json_if_present(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _retain_orchestration_failure(
+    *,
+    run_dir: Path,
+    bundle: dict[str, Any],
+    evidence_index_path: Path,
+    error: Exception,
+) -> dict[str, Any]:
+    """Record and index any failure before the normal analyzer boundary."""
+
+    supervisor_state = _read_json_if_present(
+        run_dir / "reports/cx317_active_supervisor_state.json"
+    )
+    capture_state = _read_json_if_present(
+        run_dir / "reports/capture_device_state.json"
+    )
+    failure = {
+        "schema_version": 1,
+        "report_type": "cx319_g1_orchestration_failure_v1",
+        "tool": TOOL_ID,
+        "programme_id": PROGRAMME_ID,
+        "gate": "G1",
+        "leg": bundle["leg"]["leg"],
+        "attempt_classification": "failed_rehearsal",
+        "failure_class": "platform_defect_caught_in_rehearsal",
+        "recorded_utc": _utc_now(),
+        "error_type": type(error).__name__,
+        "error": str(error),
+        "supervisor_terminal": (
+            supervisor_state.get("terminal") if supervisor_state else None
+        ),
+        "capture_state": capture_state,
+        "bundle_sha256": bundle["bundle_sha256"],
+        "source_revision": bundle["firmware"]["git_commit"],
+        "build_manifest_sha256": bundle["firmware"]["build_manifest"][
+            "sha256"
+        ],
+        "profile_id": bundle["firmware"]["profile_id"],
+        "claims_boundary": (
+            "Retained failed-rehearsal evidence only; this record grants no "
+            "G2, live-write, control-arm, or actuation authority."
+        ),
+    }
+    _atomic_new_json(run_dir / ORCHESTRATION_FAILURE_PATH, failure)
+    return register_package(
+        index_path=evidence_index_path,
+        package_path=run_dir,
+        source_revision=bundle["firmware"]["git_commit"],
+        build_identity=bundle["firmware"]["build_manifest"]["sha256"],
+        profile_identity=bundle["firmware"]["profile_id"],
+        attempt_classification="failed_rehearsal",
+        result_or_failure_reason=f"CX319 G1 orchestration failed: {error}",
+        analyzer_identity=_sha256_file(Path(__file__)),
+    )
+
+
 def run_rehearsal(
     *,
     bundle_path: Path,
@@ -274,6 +340,7 @@ def run_rehearsal(
     )
     supervisor: subprocess.Popen[str] | None = None
     transport: dict[str, Any] | None = None
+    orchestration_error: Exception | None = None
     try:
         _wait_until(
             lambda: (
@@ -337,10 +404,24 @@ def run_rehearsal(
             "explicit PPS queue capacity status",
         )
         _wait_until(
-            lambda: _supervisor_terminal(run_dir),
+            lambda: (
+                _supervisor_terminal(run_dir)
+                or supervisor.poll() is not None
+            ),
             REHEARSAL_DURATION_S + 90.0,
             "2700 second no-write supervisor terminal",
         )
+        if not _supervisor_terminal(run_dir):
+            state = _read_json_if_present(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            )
+            raise RuntimeError(
+                "G1 no-write supervisor reached a non-healthy terminal: "
+                + json.dumps(
+                    state.get("terminal") if state else None,
+                    sort_keys=True,
+                )
+            )
         try:
             supervisor_exit = supervisor.wait(timeout=15.0)
         except subprocess.TimeoutExpired as exc:
@@ -381,6 +462,8 @@ def run_rehearsal(
             raise RuntimeError("G1 capture did not close within bounded duration") from exc
         if capture_exit != 0:
             raise RuntimeError(f"G1 capture exited with status {capture_exit}")
+    except Exception as exc:
+        orchestration_error = exc
     finally:
         capture_log.close()
         supervisor_log.close()
@@ -398,6 +481,18 @@ def run_rehearsal(
             except subprocess.TimeoutExpired:
                 capture.kill()
                 capture.wait(timeout=5.0)
+
+    if orchestration_error is not None:
+        indexed = _retain_orchestration_failure(
+            run_dir=run_dir,
+            bundle=bundle,
+            evidence_index_path=evidence_index_path,
+            error=orchestration_error,
+        )
+        raise RuntimeError(
+            "CX319 G1 orchestration failed; retained evidence "
+            f"{indexed['content_sha256']}: {orchestration_error}"
+        ) from orchestration_error
 
     analysis = analyze(run_dir)
     _atomic_new_json(run_dir / ANALYSIS_PATH, analysis)

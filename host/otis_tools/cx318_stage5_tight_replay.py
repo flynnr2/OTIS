@@ -50,7 +50,12 @@ def _bool_text(value: bool) -> str:
     return "true" if value else "false"
 
 
-def _expected_fields(row: dict[str, str], deadband: TightHystereticDeadband) -> dict[str, str]:
+def _expected_fields(
+    row: dict[str, str],
+    deadband: TightHystereticDeadband,
+    *,
+    policy_sha256: str,
+) -> dict[str, str]:
     counts = int(row["integer_edge_error_counts"], 10)
     decision = deadband.observe(
         accumulated_edge_error_counts=counts,
@@ -61,7 +66,7 @@ def _expected_fields(row: dict[str, str], deadband: TightHystereticDeadband) -> 
     absolute = abs(counts)
     return {
         "policy_id": decision.policy_id,
-        "policy_sha256": TIGHT_DEADBAND_POLICY_SHA256,
+        "policy_sha256": policy_sha256,
         "absolute_edge_error_counts": str(absolute),
         "state_before": decision.state_before,
         "state_after": decision.state_after,
@@ -82,7 +87,11 @@ def _expected_fields(row: dict[str, str], deadband: TightHystereticDeadband) -> 
     }
 
 
-def replay_tight_deadband_chain(paths: list[Path]) -> TightDeadbandReplayResult:
+def replay_tight_deadband_chain(
+    paths: list[Path],
+    *,
+    policy_sha256: str = TIGHT_DEADBAND_POLICY_SHA256,
+) -> TightDeadbandReplayResult:
     """Replay consecutive logical segments through one deadband instance.
 
     Same-owner Stage 5 promotion rotates files, not firmware state.  Replaying
@@ -106,6 +115,7 @@ def replay_tight_deadband_chain(paths: list[Path]) -> TightDeadbandReplayResult:
                 contract=CONTRACT,
                 known_channels=frozenset(),
                 known_domains=frozenset(),
+                tight_deadband_policy_sha256=policy_sha256,
             ),
         )
         for error in validation.errors:
@@ -116,7 +126,9 @@ def replay_tight_deadband_chain(paths: list[Path]) -> TightDeadbandReplayResult:
             reader = csv.DictReader(handle)
             for local_row, row in enumerate(reader, start=1):
                 row_count += 1
-                expected = _expected_fields(row, deadband)
+                expected = _expected_fields(
+                    row, deadband, policy_sha256=policy_sha256
+                )
                 mismatches = {
                     field_name: {
                         "observed": row.get(field_name, ""),
@@ -149,7 +161,11 @@ def replay_tight_deadband_chain(paths: list[Path]) -> TightDeadbandReplayResult:
     )
 
 
-def replay_tight_deadband(path: Path) -> TightDeadbandReplayResult:
+def replay_tight_deadband(
+    path: Path,
+    *,
+    policy_sha256: str = TIGHT_DEADBAND_POLICY_SHA256,
+) -> TightDeadbandReplayResult:
     """Replay every captured TDB row and require exact active/shadow parity.
 
     The wire record is only emitted for fresh authoritative 600-second integer
@@ -157,7 +173,9 @@ def replay_tight_deadband(path: Path) -> TightDeadbandReplayResult:
     and treats the captured session and DAC epoch as the identity boundary.
     """
 
-    return replay_tight_deadband_chain([path])
+    return replay_tight_deadband_chain(
+        [path], policy_sha256=policy_sha256
+    )
 
 
 def replay_run(run_dir: Path) -> TightDeadbandReplayResult:

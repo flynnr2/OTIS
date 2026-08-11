@@ -29,6 +29,7 @@ from .cx317_active_campaign import (
     _utc_now,
 )
 from .active_status_contract import latest_complete_health
+from .contracts import TIGHT_DEADBAND_POLICY_SHA256
 from .cx317_stage7_supervisor import (
     ESTIMATES_CSV,
     Stage7Supervisor,
@@ -208,11 +209,18 @@ class Stage5Supervisor(Stage7Supervisor):
             raise ValueError("Stage 5 rehearsal cannot have setup or arm authority")
         if mode == "live" and not (allow_manual_start and allow_arm):
             raise ValueError("Stage 5 live requires explicit setup and arm authority")
+        tight_deadband_policy_sha256 = str(
+            kwargs.pop(
+                "tight_deadband_policy_sha256",
+                TIGHT_DEADBAND_POLICY_SHA256,
+            )
+        )
         # Part B selects the long-lived, dual-core transaction implementation;
         # every Stage 7 timing/service decision is overridden below.
         super().__init__(part="part_b", **kwargs)
         self.mode = mode
         self.leg = leg
+        self.tight_deadband_policy_sha256 = tight_deadband_policy_sha256
         self.part = f"stage5_{mode}_{leg.leg.lower()}"
         self.timing = Stage7Timing(
             selected_interval_s=SELECTED_INTERVAL_S,
@@ -298,7 +306,10 @@ class Stage5Supervisor(Stage7Supervisor):
         if not rows:
             return None
         if len(rows) != int(self.state["latest_replayed_tdb_rows"]):
-            result = replay_tight_deadband(path)
+            result = replay_tight_deadband(
+                path,
+                policy_sha256=self.tight_deadband_policy_sha256,
+            )
             if not result.exact:
                 raise ValueError(
                     "live TDB replay mismatch: " + "; ".join(result.errors[:4])

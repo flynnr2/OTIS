@@ -631,6 +631,7 @@ def create_run_manifest(
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
         "stage": REHEARSAL_STAGE,
+        "h_phase": "H1",
         "board": "arduino_nano_rp2040_connect",
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
         "control_mode": "cx319_exact_profile_no_write_rehearsal",

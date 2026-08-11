@@ -126,6 +126,7 @@ class Cx319G1Supervisor(Stage5Supervisor):
             leg=leg,
             allow_manual_start=False,
             allow_arm=False,
+            tight_deadband_policy_sha256=_sha256(POLICY_PATH),
             **kwargs,
         )
         self.state["programme_id"] = PROGRAMME_ID

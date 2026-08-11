@@ -605,6 +605,7 @@ def create_manifest(
         "created_utc": now,
         "started_at_utc": now,
         "stage": REHEARSAL_STAGE if no_write else LIVE_STAGE,
+        "h_phase": "H1",
         "board": "arduino_nano_rp2040_connect",
         "actionable": not no_write,
         "actuation_authorized": not no_write,
