@@ -86,6 +86,13 @@ def _transcript() -> dict[str, object]:
             "authorization_consumed": False,
             "frequency_controller_input": False,
         },
+        "host_attach_telemetry": {
+            "ordinary_telemetry_is_diagnostic_and_lossy": True,
+            "frozen_baseline": 3,
+            "stable_observations": 2,
+            "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
+            "post_attach_increment_rejected": True,
+        },
         "transport_fault": {
             "normal_path_saturated": True,
             "priority_abort_observed": True,

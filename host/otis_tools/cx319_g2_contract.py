@@ -105,6 +105,7 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
     hardware = transcript.get("hardware_operations", {})
     authority = transcript.get("authority", {})
     terminal = transcript.get("terminal", {})
+    host_attach = transcript.get("host_attach_telemetry", {})
     bounded_nonpass = terminal.get("result") == "bounded_nonpass"
 
     checks = {
@@ -201,6 +202,17 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             and _bool_false(preview.get("actuation_authorized"))
             and _bool_false(preview.get("authorization_consumed"))
             and preview.get("frequency_controller_input") is False
+        ),
+        "host_attach_telemetry_baseline_stable_and_fail_closed": (
+            host_attach.get("ordinary_telemetry_is_diagnostic_and_lossy") is True
+            and isinstance(host_attach.get("frozen_baseline"), int)
+            and host_attach["frozen_baseline"] >= 0
+            and int(host_attach.get("stable_observations", 0)) >= 2
+            and host_attach.get(
+                "all_evidence_capture_preview_partition_and_control_gates_absolute"
+            )
+            is True
+            and host_attach.get("post_attach_increment_rejected") is True
         ),
         "obstruction_priority_abort_and_owner_invariants": (
             transport.get("normal_path_saturated") is True

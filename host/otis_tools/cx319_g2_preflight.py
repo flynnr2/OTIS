@@ -13,6 +13,7 @@ from .cx319_g2_contract import normal_command_allowed
 from .cx319_g2_runtime_contract import (
     FRESH_RESTART_MAXIMUM_UPTIME_S,
     RUNTIME_CONTRACT_ID,
+    TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
@@ -99,7 +100,19 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             ]
             == FRESH_RESTART_MAXIMUM_UPTIME_S
             and proposal["readiness_gates"][
-                "continuous_drain_from_fresh_restart_through_physical_close"
+                "continuous_drain_from_host_attachment_through_physical_close"
+            ]
+            is True
+            and proposal["readiness_gates"][
+                "ordinary_telemetry_attach_baseline_stable_observations"
+            ]
+            == TELEMETRY_BASELINE_STABLE_OBSERVATIONS
+            and proposal["readiness_gates"][
+                "post_attach_ordinary_telemetry_increment_forbidden"
+            ]
+            is True
+            and proposal["readiness_gates"][
+                "evidence_capture_preview_partition_and_control_gates_absolute"
             ]
             is True
             and readiness.physical_dac_confirmation

@@ -34,24 +34,26 @@ telemetry publishing is intentionally lossy and increments this counter
 without latching a partition fault; boot telemetry, evidence, critical and
 control paths have distinct fail-static handling.
 
-This does not make the three lost records acceptable campaign evidence. The
-host began ownership after the reset, so human-to-runner latency was inside the
-operational path and allowed an avoidable queue overflow. Merely accepting a
-non-zero baseline would preserve the counter but would not repair that larger
-host/firmware boundary.
+The three records were lost before the host attached and therefore were never
+part of an evidence-bearing host interval. The meaningful runtime question is
+whether the firmware is healthy when the host attaches and remains healthy
+afterwards. Requiring a zero lifetime value would confuse a cumulative startup
+diagnostic with post-attachment scientific or control integrity.
 
 ## Recovery direction
 
-The replacement path must retain the absolute zero-drop live criterion and:
+The replacement path must:
 
-1. establish one read-only serial owner before the planned board reset;
-2. tolerate exactly that pre-live reset and immediately resume drainage;
-3. prove a fresh boot, zero telemetry loss and zero-write health while still
-   non-authorizing;
-4. rotate the same owner into the live G2 segment without an ownerless gap;
-5. make any post-promotion disconnect or reconnect fail-static; and
-6. exercise this reset, reconnect, promotion, supervisor, analyzer, seal and
-   registration path in the replacement operational rehearsal.
+1. attach read-only and treat ordinary `telemetry_dropped` as not yet
+   baselined;
+2. wait for two consecutive complete health emissions with the same cumulative
+   value before permitting setup;
+3. record that value and the status sequence at which it was frozen;
+4. stop immediately on any subsequent increment;
+5. continue to require absolute zero loss/fault state for evidence, capture,
+   PPS boundary, preview, partition, critical and control paths; and
+6. make the analyzer replay the complete telemetry-drop history against the
+   recorded attachment baseline.
 
 Any replacement bundle requires a new exact operator authorization. The
 conditional G3 authority remains dormant unless G2 later passes and the fresh

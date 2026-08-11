@@ -339,7 +339,7 @@ class Stage5Supervisor(Stage7Supervisor):
         self, health: dict[tuple[str, str], str]
     ) -> None:
         super()._check_fail_static_health(health)
-        integrity = evaluate_health_integrity(health)
+        integrity = self._runtime_health_integrity(health)
         if integrity.mismatches or (
             self.state["prewrite_contract_ready_utc"] is not None
             and integrity.missing
@@ -349,6 +349,13 @@ class Stage5Supervisor(Stage7Supervisor):
                 + integrity.diagnostic()
             )
         self._check_zero_authority_preview()
+
+    def _runtime_health_integrity(
+        self, health: dict[tuple[str, str], str]
+    ):  # type: ignore[no-untyped-def]
+        """Campaign hook retaining the original absolute Stage 5 contract."""
+
+        return evaluate_health_integrity(health)
 
     def _process_transactions(self) -> None:
         super()._process_transactions()

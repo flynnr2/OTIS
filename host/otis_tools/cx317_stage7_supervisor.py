@@ -745,13 +745,20 @@ class Stage7Supervisor(ActiveCampaignSupervisor):
         for key in ("dual_core_fail_static", "active_fail_static"):
             if faults[key] == "true":
                 raise ValueError(f"live {key} asserted")
-        for key in (
-            "capture_dropped",
-            "boundary_dropped",
-            "telemetry_dropped",
-        ):
+        for key in ("capture_dropped", "boundary_dropped"):
             if faults[key] not in {None, "0"}:
                 raise ValueError(f"live {key} is {faults[key]}")
+        if not self._telemetry_drop_runtime_healthy(
+            faults["telemetry_dropped"]
+        ):
+            raise ValueError(
+                f"live telemetry_dropped is {faults['telemetry_dropped']}"
+            )
+
+    def _telemetry_drop_runtime_healthy(self, observed: str | None) -> bool:
+        """Campaign hook; Stage 7 retains its absolute zero requirement."""
+
+        return observed in {None, "0"}
 
         if self.state["manual_start_sent"]:
             manual_rows = [

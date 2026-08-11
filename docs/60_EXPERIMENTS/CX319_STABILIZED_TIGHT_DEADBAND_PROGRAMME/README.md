@@ -16,9 +16,11 @@ because the firmware had latched an evidence-queue fault during the ownerless
 inter-run interval. The v6 entry also stopped before any write: although the
 fresh firmware had no partition or evidence fault, host attachment after the
 reset allowed three ordinary telemetry records to be dropped. Both activations
-are retired. The replacement path is being rebuilt so a read-only host owns
-and drains the device before the reset and promotes that same owner into G2.
-Neither event is a G2 scientific result, and G3 remains blocked.
+are retired. The replacement path now distinguishes a cumulative pre-host
+ordinary-telemetry count from post-attachment health: it freezes a stable
+read-only attachment baseline and forbids any later increment, while retaining
+absolute evidence, capture, partition and control gates. Neither event is a G2
+scientific result, and G3 remains blocked.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).

@@ -66,6 +66,9 @@ def test_frozen_activation_can_be_revalidated_from_retained_proposal(
             "effective": True,
             "firmware_flash": False,
             "fresh_restart_maximum_prewrite_uptime_s": 120,
+            "ordinary_telemetry_attach_baseline_stable_observations": 2,
+            "post_attach_ordinary_telemetry_increment_allowed": False,
+            "evidence_capture_preview_partition_and_control_gates_absolute": True,
             "setup_code": 0xA808,
             "setup_write_limit": 1,
             "automatic_correction_limit": 4,
@@ -375,6 +378,8 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
                 "reason": "required_direction_and_two_estimate_tight_entry",
             },
             "arm_pending": False,
+            "telemetry_drop_baseline": 3,
+            "telemetry_drop_baseline_status_seq": 2,
         },
         "reports/cx317_active_supervisor_events.jsonl": {},
         "evidence_manifest.json": {"run_state": "complete"},
@@ -539,7 +544,14 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
     monkeypatch.setattr(
         cx319_g2_live_analyze,
         "evaluate_health_integrity",
-        lambda value: SimpleNamespace(clean=True, missing=[], mismatches=[]),
+        lambda value, **kwargs: SimpleNamespace(
+            clean=True, missing=[], mismatches=[]
+        ),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "evaluate_telemetry_drop_history",
+        lambda *args, **kwargs: {"exact": True},
     )
     monkeypatch.setattr(
         cx319_g2_live_analyze,

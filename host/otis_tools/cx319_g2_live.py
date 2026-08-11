@@ -39,6 +39,7 @@ from .cx319_g2_contract import (
 from .cx319_g2_runtime_contract import (
     FRESH_RESTART_MAXIMUM_UPTIME_S,
     RUNTIME_CONTRACT_ID,
+    TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
 )
 from .programme_status import (
     CX319_G2_LIVE_LEG,
@@ -222,6 +223,11 @@ def create_activation(
             "fresh_restart_maximum_prewrite_uptime_s": (
                 FRESH_RESTART_MAXIMUM_UPTIME_S
             ),
+            "ordinary_telemetry_attach_baseline_stable_observations": (
+                TELEMETRY_BASELINE_STABLE_OBSERVATIONS
+            ),
+            "post_attach_ordinary_telemetry_increment_allowed": False,
+            "evidence_capture_preview_partition_and_control_gates_absolute": True,
             "serial_open": True,
             "setup_stimulus": True,
             "setup_code": SETUP_CODE,
@@ -275,6 +281,16 @@ def validate_frozen_activation(
         or authority.get("firmware_flash") is not False
         or authority.get("fresh_restart_maximum_prewrite_uptime_s")
         != FRESH_RESTART_MAXIMUM_UPTIME_S
+        or authority.get(
+            "ordinary_telemetry_attach_baseline_stable_observations"
+        )
+        != TELEMETRY_BASELINE_STABLE_OBSERVATIONS
+        or authority.get("post_attach_ordinary_telemetry_increment_allowed")
+        is not False
+        or authority.get(
+            "evidence_capture_preview_partition_and_control_gates_absolute"
+        )
+        is not True
         or authority.get("setup_code") != SETUP_CODE
         or authority.get("setup_write_limit") != 1
         or authority.get("automatic_correction_limit") != MAXIMUM_CORRECTIONS

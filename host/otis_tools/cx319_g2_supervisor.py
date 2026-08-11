@@ -12,11 +12,22 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from .cx317_active_campaign import ACTIVE_CSV, CampaignSpec, _read_csv
+from .cx317_active_campaign import (
+    ACTIVE_CSV,
+    HEALTH_CSV,
+    CampaignSpec,
+    _read_csv,
+)
 from .cx318_stage5_supervisor import DAC_CSV, Stage5Leg, Stage5Supervisor
 from .cx319_g1_bundle import POLICY_PATH, PROGRAMME_ID
 from .cx319_g1_supervisor import load_cx319_spec
-from .cx319_g2_runtime_contract import evaluate_prewrite_readiness
+from .cx319_g2_runtime_contract import (
+    TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
+    Stage5Readiness,
+    evaluate_health_integrity,
+    evaluate_prewrite_readiness,
+    telemetry_drop_observations,
+)
 from .cx319_g2_contract import normal_command_allowed
 from .programme_status import (
     CX319_G2_LIVE_LEG,
@@ -54,6 +65,11 @@ class Cx319G2Supervisor(Stage5Supervisor):
         self.state["cx319_gate"] = "G2"
         self.state["cx319_mode"] = "live_frequency_only"
         self.state["cx319_leg"] = "A"
+        self.state.setdefault("telemetry_drop_candidate", None)
+        self.state.setdefault("telemetry_drop_candidate_observations", 0)
+        self.state.setdefault("telemetry_drop_last_status_seq", 0)
+        self.state.setdefault("telemetry_drop_baseline", None)
+        self.state.setdefault("telemetry_drop_baseline_status_seq", None)
         self._save()
 
     def _event(self, event: str, **fields: object) -> None:
@@ -78,13 +94,107 @@ class Cx319G2Supervisor(Stage5Supervisor):
             "profile_identity": self.spec.profile,
             **self.identities,
         }
-        return evaluate_prewrite_readiness(
+        baseline = self.state.get("telemetry_drop_baseline")
+        candidate = self.state.get("telemetry_drop_candidate")
+        effective_baseline = baseline if baseline is not None else candidate
+        readiness = evaluate_prewrite_readiness(
             health,
             expected_identity=identity,
             planned_live_stimulus_code=self.spec.start_code,
             active_row_count=len(_read_csv(self.run_dir / ACTIVE_CSV)),
             dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
+            telemetry_drop_baseline=int(effective_baseline or 0),
         )
+        if baseline is not None:
+            return readiness
+        mismatches = list(readiness.mismatches)
+        mismatches.append(
+            "host-attach telemetry baseline has "
+            f"{self.state['telemetry_drop_candidate_observations']}/"
+            f"{TELEMETRY_BASELINE_STABLE_OBSERVATIONS} stable observations"
+        )
+        return Stage5Readiness(
+            contract_id=readiness.contract_id,
+            ready=False,
+            missing=readiness.missing,
+            mismatches=tuple(dict.fromkeys(mismatches)),
+            inherited_preview_baseline_code=(
+                readiness.inherited_preview_baseline_code
+            ),
+            inherited_preview_baseline_provenance=(
+                readiness.inherited_preview_baseline_provenance
+            ),
+            planned_live_stimulus_code=readiness.planned_live_stimulus_code,
+            physical_dac_confirmation=readiness.physical_dac_confirmation,
+        )
+
+    def _observe_telemetry_drop_baseline(self) -> None:
+        if self.state.get("telemetry_drop_baseline") is not None:
+            return
+        observations = telemetry_drop_observations(
+            _read_csv(self.run_dir / HEALTH_CSV)
+        )
+        last_status_seq = int(self.state["telemetry_drop_last_status_seq"])
+        changed = False
+        for status_seq, value in observations:
+            if status_seq <= last_status_seq:
+                continue
+            if self.state.get("telemetry_drop_candidate") == value:
+                self.state["telemetry_drop_candidate_observations"] = (
+                    int(self.state["telemetry_drop_candidate_observations"])
+                    + 1
+                )
+            else:
+                self.state["telemetry_drop_candidate"] = value
+                self.state["telemetry_drop_candidate_observations"] = 1
+                self._event(
+                    "cx319_g2_telemetry_attach_candidate_observed",
+                    status_seq=status_seq,
+                    telemetry_dropped=value,
+                )
+            if (
+                self.state.get("telemetry_drop_baseline") is None
+                and int(self.state["telemetry_drop_candidate_observations"])
+                >= TELEMETRY_BASELINE_STABLE_OBSERVATIONS
+            ):
+                self.state["telemetry_drop_baseline"] = value
+                self.state["telemetry_drop_baseline_status_seq"] = status_seq
+                self._event(
+                    "cx319_g2_telemetry_attach_baseline_frozen",
+                    status_seq=status_seq,
+                    telemetry_dropped=value,
+                    stable_observations=(
+                        self.state["telemetry_drop_candidate_observations"]
+                    ),
+                )
+            last_status_seq = status_seq
+            self.state["telemetry_drop_last_status_seq"] = status_seq
+            changed = True
+        if changed:
+            self._save()
+
+    def _runtime_health_integrity(self, health):  # type: ignore[no-untyped-def]
+        baseline = self.state.get("telemetry_drop_baseline")
+        candidate = self.state.get("telemetry_drop_candidate")
+        effective_baseline = baseline if baseline is not None else candidate
+        return evaluate_health_integrity(
+            health, telemetry_drop_baseline=int(effective_baseline or 0)
+        )
+
+    def _telemetry_drop_runtime_healthy(self, observed: str | None) -> bool:
+        baseline = self.state.get("telemetry_drop_baseline")
+        candidate = self.state.get("telemetry_drop_candidate")
+        effective_baseline = baseline if baseline is not None else candidate
+        if observed is None or effective_baseline is None:
+            return observed is None
+        try:
+            return int(observed) == int(effective_baseline)
+        except ValueError:
+            return False
+
+    def _check_fail_static_health(self, health):  # type: ignore[no-untyped-def]
+        self._observe_telemetry_drop_baseline()
+        super()._check_fail_static_health(health)
 
 
 def create_supervisor(

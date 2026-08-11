@@ -40,7 +40,6 @@ from .cx318_stage5_rehearsal_analyze import (
     _contract_path,
     _host_markers,
 )
-from .cx318_stage5_runtime_contract import evaluate_health_integrity
 from .cx318_stage5_supervisor import (
     CONTROL_CSV,
     DAC_CSV,
@@ -62,6 +61,10 @@ from .cx319_g2_contract import (
     canonical_sha256,
 )
 from .cx319_g2_live import LIVE_SEAL_PATH, LIVE_STAGE, validate_frozen_run_manifest
+from .cx319_g2_runtime_contract import (
+    evaluate_health_integrity,
+    evaluate_telemetry_drop_history,
+)
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
 
@@ -267,7 +270,20 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         _authority_false(run_dir / relative) for relative in preview_paths
     )
     health = latest_complete_health(run_dir / HEALTH_CSV)
-    health_integrity = evaluate_health_integrity(health)
+    telemetry_drop_baseline = int(
+        supervisor_state["telemetry_drop_baseline"]
+    )
+    telemetry_drop_baseline_status_seq = int(
+        supervisor_state["telemetry_drop_baseline_status_seq"]
+    )
+    health_integrity = evaluate_health_integrity(
+        health, telemetry_drop_baseline=telemetry_drop_baseline
+    )
+    telemetry_drop_history = evaluate_telemetry_drop_history(
+        _read_csv(run_dir / HEALTH_CSV),
+        frozen_baseline=telemetry_drop_baseline,
+        frozen_status_seq=telemetry_drop_baseline_status_seq,
+    )
     sources = {
         row.get("source", "").lower()
         for row in _read_csv(run_dir / ENVIRONMENT_CSV)
@@ -341,7 +357,9 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             previews_present and preview_continuity and zero_authority
         ),
         "both_environment_streams_present": {"sht4x", "bmp280"} <= sources,
-        "live_health_has_no_drop_or_fault": health_integrity.clean,
+        "live_health_has_no_post_attach_telemetry_increment_or_fault": (
+            health_integrity.clean and telemetry_drop_history["exact"] is True
+        ),
         "sealed_evidence_snapshot_valid": (
             evidence.get("run_state") == "complete"
             and not evidence_failures
@@ -430,6 +448,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "clean": health_integrity.clean,
             "missing": health_integrity.missing,
             "mismatches": health_integrity.mismatches,
+            "telemetry_drop_history": telemetry_drop_history,
         },
         "checks": checks,
         "contract_validation": validations,

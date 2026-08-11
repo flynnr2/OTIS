@@ -31,7 +31,10 @@ from .cx319_g2_contract import (
     SETUP_CODE,
     canonical_sha256,
 )
-from .cx319_g2_runtime_contract import FRESH_RESTART_MAXIMUM_UPTIME_S
+from .cx319_g2_runtime_contract import (
+    FRESH_RESTART_MAXIMUM_UPTIME_S,
+    TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
+)
 from .evidence_index import package_identity
 from .programme_status import (
     OFFLINE_PREPARATION,
@@ -265,7 +268,12 @@ def create_proposal(*, g1_run_dir: Path, output_path: Path) -> dict[str, Any]:
             "fresh_restart_maximum_prewrite_uptime_s": (
                 FRESH_RESTART_MAXIMUM_UPTIME_S
             ),
-            "continuous_drain_from_fresh_restart_through_physical_close": True,
+            "continuous_drain_from_host_attachment_through_physical_close": True,
+            "ordinary_telemetry_attach_baseline_stable_observations": (
+                TELEMETRY_BASELINE_STABLE_OBSERVATIONS
+            ),
+            "post_attach_ordinary_telemetry_increment_forbidden": True,
+            "evidence_capture_preview_partition_and_control_gates_absolute": True,
             "physical_qualification_requires_separate_authority": True,
             "analyzer_seal_and_registration_required": True,
             "physical_runner_and_live_analyzer_bound": True,

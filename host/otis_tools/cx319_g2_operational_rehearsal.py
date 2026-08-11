@@ -385,6 +385,28 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             expected_identity=expected_identity,
             planned_live_stimulus_code=supervisor.spec.start_code,
         )
+        health[("dual_core", "telemetry_dropped")] = "3"
+        telemetry_rows = [
+            {
+                "record_type": "STS",
+                "schema_version": "1",
+                "status_seq": str(sequence),
+                "timestamp_ticks": str(sequence * 160_000_000),
+                "status_domain": "rp2040_timer0",
+                "component": "dual_core",
+                "status_key": "telemetry_dropped",
+                "status_value": "3",
+                "severity": "WARN",
+                "flags": "32",
+            }
+            for sequence in (1, 2)
+        ]
+        _write_csv(
+            run_dir / "csv/health.csv",
+            CONTRACT_FIELDS["health_v1"],
+            telemetry_rows,
+        )
+        supervisor._check_fail_static_health(health)
         supervisor._maybe_start_or_arm(health)
         _write_arm_fixture(run_dir)
         health.update(
@@ -424,6 +446,28 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         )
         supervisor._maybe_finish(final_health, 1_800_020_000.0, 7200.0)
         terminal = supervisor.state["terminal"]
+        telemetry_rows.append(
+            {
+                **telemetry_rows[-1],
+                "status_seq": "3",
+                "timestamp_ticks": "480000000",
+                "status_value": "4",
+            }
+        )
+        _write_csv(
+            run_dir / "csv/health.csv",
+            CONTRACT_FIELDS["health_v1"],
+            telemetry_rows,
+        )
+        post_attach_increment_rejected = False
+        incremented_health = dict(final_health)
+        incremented_health[("dual_core", "telemetry_dropped")] = "4"
+        try:
+            supervisor._check_fail_static_health(incremented_health)
+        except ValueError as exc:
+            post_attach_increment_rejected = (
+                "live telemetry_dropped is 4" in str(exc)
+            )
 
     commands.append(
         {"path": "emergency", "command": "ACTIVE ABORT", "acknowledged": True}
@@ -482,6 +526,13 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             "actuation_authorized": False,
             "authorization_consumed": False,
             "frequency_controller_input": False,
+        },
+        "host_attach_telemetry": {
+            "ordinary_telemetry_is_diagnostic_and_lossy": True,
+            "frozen_baseline": 3,
+            "stable_observations": 2,
+            "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
+            "post_attach_increment_rejected": post_attach_increment_rejected,
         },
         "transport_fault": {
             "normal_path_saturated": True,
