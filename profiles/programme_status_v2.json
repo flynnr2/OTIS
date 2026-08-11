@@ -17,12 +17,13 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g2_v7_offline_ready_awaiting_exact_authority",
+      "state": "g2_v7_live_authorized_awaiting_fresh_restart",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "g2_live_leg"
       ],
       "effective_date": "2026-08-11",
-      "authority": "g2_v7_proposed_not_authorized",
+      "authority": "explicit_operator_authorization_exact_g2_v7",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -39,7 +40,17 @@
         "effective": false,
         "activation_retired_after_prewrite_entry": true
       },
-      "next_gate": "exact_g2_v7_operator_authority_and_fresh_board_restart",
+      "g2_v7_operator_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/11_G2_V7_LIVE_AUTHORITY.md",
+        "physical_presence_confirmed": true,
+        "one_board_restart": true,
+        "firmware_flash": false,
+        "fresh_restart_maximum_prewrite_uptime_s": 120,
+        "ordinary_telemetry_attach_baseline_stable_observations": 2,
+        "post_attach_ordinary_telemetry_increment_forbidden": true,
+        "effective": true
+      },
+      "next_gate": "passing_g2_v7_live_analysis_and_seal",
       "completed_g1_evidence": {
         "run_id": "no_write_leg_a_20260811T133632Z",
         "bundle_sha256": "777e88c9978edb525f887c496b5badf2b5e2cdae09bdfaea0a4071932377db77",
@@ -107,10 +118,10 @@
         "firmware_flash",
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
-        "dac_write",
-        "control_arm",
-        "setup_stimulus",
-        "automatic_correction",
+        "dac_write_outside_exact_g2_v7_activation",
+        "control_arm_outside_exact_g2_v7_activation",
+        "setup_stimulus_outside_exact_g2_v7_activation",
+        "automatic_correction_outside_exact_g2_v7_activation",
         "rehearsal_to_live_promotion",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",

@@ -69,3 +69,6 @@ boundary are recorded in
 The exact non-authorizing v7 replacement, attachment-baseline contract and
 passing offline evidence are recorded in
 [`10_G2_V7_ATTACHMENT_BASELINE_OFFLINE_READINESS.md`](10_G2_V7_ATTACHMENT_BASELINE_OFFLINE_READINESS.md).
+
+The operator's exact v7 live authority and physical boundary are recorded in
+[`11_G2_V7_LIVE_AUTHORITY.md`](11_G2_V7_LIVE_AUTHORITY.md).
