@@ -23,7 +23,7 @@ from typing import Any
 
 from .capture_serial import RECORD_CONTRACTS
 from .contracts import CONTRACT_FIELDS
-from .cx318_capture_handoff import REPORT_PATH as HANDOFF_REPORT_PATH
+from .capture_owner_handoff import REPORT_PATH as HANDOFF_REPORT_PATH
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .service_plane_probe import HOST_MARKER_PREFIX
 

@@ -247,7 +247,7 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "gnss_receiver";
     case OtisBootCapability::Phase4Preview:
       return "phase4_preview";
-    case OtisBootCapability::Cx318Preview:
+    case OtisBootCapability::PhasePreview:
       return "cx318_preview";
     case OtisBootCapability::Transport:
       return "transport";

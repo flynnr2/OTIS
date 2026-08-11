@@ -5,7 +5,7 @@ namespace {
 constexpr uint8_t kFirstOwner =
     static_cast<uint8_t>(OtisSerialFrameOwner::DualCoreEvidence);
 constexpr uint8_t kLastOwner =
-    static_cast<uint8_t>(OtisSerialFrameOwner::Cx318Preview);
+    static_cast<uint8_t>(OtisSerialFrameOwner::PhasePreview);
 
 bool ready(OtisSerialFrameOwner owner,
            const OtisSerialFrameReadiness &readiness) {
@@ -16,8 +16,8 @@ bool ready(OtisSerialFrameOwner owner,
       return readiness.phase4_preview;
     case OtisSerialFrameOwner::Cx317Preview:
       return readiness.cx317_preview;
-    case OtisSerialFrameOwner::Cx318Preview:
-      return readiness.cx318_preview;
+    case OtisSerialFrameOwner::PhasePreview:
+      return readiness.phase_preview;
     case OtisSerialFrameOwner::None:
       return false;
   }

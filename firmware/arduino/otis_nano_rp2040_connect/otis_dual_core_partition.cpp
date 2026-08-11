@@ -16,8 +16,8 @@ OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>
     evidence_to_service;
 OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>
     telemetry_to_service;
-OtisSpscQueue<OtisCx318PreviewRecordMessage, OTIS_CX318_PREVIEW_QUEUE_DEPTH>
-    cx318_preview_to_service;
+OtisSpscQueue<OtisPhasePreviewRecordMessage, OTIS_PHASE_PREVIEW_QUEUE_DEPTH>
+    phase_preview_to_service;
 
 uint32_t telemetry_dropped = 0u;
 uint8_t partition_fault = static_cast<uint8_t>(OtisPartitionFault::None);
@@ -254,7 +254,7 @@ void otis_dual_core_partition_reset(void) {
   critical_to_service.reset();
   evidence_to_service.reset();
   telemetry_to_service.reset();
-  cx318_preview_to_service.reset();
+  phase_preview_to_service.reset();
   __atomic_store_n(&telemetry_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&partition_fault,
                    static_cast<uint8_t>(OtisPartitionFault::None),
@@ -385,17 +385,17 @@ bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message) {
   return telemetry_to_service.try_pop(message);
 }
 
-bool otis_dual_core_publish_cx318_preview(
-    const OtisCx318PreviewRecordMessage *message) {
-  if (message != nullptr && cx318_preview_to_service.try_push(*message))
+bool otis_dual_core_publish_phase_preview(
+    const OtisPhasePreviewRecordMessage *message) {
+  if (message != nullptr && phase_preview_to_service.try_push(*message))
     return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewExhausted);
+  otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewQueueExhausted);
   return false;
 }
 
-bool otis_dual_core_take_cx318_preview(
-    OtisCx318PreviewRecordMessage *message) {
-  return cx318_preview_to_service.try_pop(message);
+bool otis_dual_core_take_phase_preview(
+    OtisPhasePreviewRecordMessage *message) {
+  return phase_preview_to_service.try_pop(message);
 }
 
 void otis_dual_core_note_timing_progress(OtisTimingProgressPhase phase,
@@ -458,8 +458,8 @@ void otis_dual_core_get_stats(OtisDualCoreQueueStats *stats) {
   stats->telemetry_high_water = telemetry_to_service.high_water();
   stats->telemetry_dropped =
       __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE);
-  stats->cx318_preview_depth = cx318_preview_to_service.depth();
-  stats->cx318_preview_high_water = cx318_preview_to_service.high_water();
+  stats->phase_preview_depth = phase_preview_to_service.depth();
+  stats->phase_preview_high_water = phase_preview_to_service.high_water();
   stats->timing_progress = {
       __atomic_load_n(&timing_loop_sequence, __ATOMIC_ACQUIRE),
       static_cast<OtisTimingProgressPhase>(
@@ -530,9 +530,9 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
       return "critical_queue_exhausted";
     case OtisPartitionFault::EvidenceExhausted:
       return "evidence_queue_exhausted";
-    case OtisPartitionFault::Cx318PreviewExhausted:
+    case OtisPartitionFault::PhasePreviewQueueExhausted:
       return "cx318_preview_queue_exhausted";
-    case OtisPartitionFault::Cx318PreviewFault:
+    case OtisPartitionFault::PhasePreviewFault:
       return "cx318_preview_processing_fault";
     case OtisPartitionFault::ActuatorTimeout:
       return "actuator_acknowledgement_timeout";
@@ -572,7 +572,7 @@ const char *otis_timing_progress_phase_name(OtisTimingProgressPhase phase) {
       return "cx317_active_format";
     case OtisTimingProgressPhase::Cx317ActivePublish:
       return "cx317_active_publish";
-    case OtisTimingProgressPhase::Cx318Preview:
+    case OtisTimingProgressPhase::PhasePreview:
       return "cx318_preview";
     case OtisTimingProgressPhase::TimingHealth:
       return "timing_health";

@@ -410,6 +410,8 @@ def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
                 "cx317_dual_core_active_endurance_part_b",
                 "cx318_stage5_tight_lower",
                 "cx318_stage5_tight_upper",
+                "cx319_tight_lower",
+                "cx319_tight_upper",
         }:
             assert enabled == "1"
         else:

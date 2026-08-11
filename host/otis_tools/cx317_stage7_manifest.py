@@ -9,7 +9,7 @@ import argparse
 import json
 from typing import Any
 
-from .cx317_stage7_shadow import (
+from .cx317_counterfactual_deadband import (
     CONTRACT_SHA256,
     DEFAULT_CONTRACT,
     frozen_content_binding_matches,
@@ -21,17 +21,17 @@ from .cx317_stage7_part_b_matrix import (
 )
 from .cx317_stage7_part_b_rehearsal import SUPERVISOR_PATH, TOOL_PATH
 from .cx317_stage7_gate_validation import part_a2_progression_gate_valid
-from .cx317_stage7_supervisor import (
+from .cx317_bounded_active_supervisor import (
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
     POLICY_PATH,
     REHEARSAL_POLICY_PATH,
-    STAGE7_QUALIFICATION_TIMEOUT_S,
-    load_stage7_spec,
+    BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S,
+    load_cx317_bounded_active_spec,
     part_b_timeline_preflight,
     rehearsal_timeline_preflight,
-    stage7_timing,
+    bounded_active_timing,
 )
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import (
@@ -178,7 +178,7 @@ def _passed_part_b_hil_rehearsal_binding(gate_path: Path) -> dict[str, Any]:
         and host.get("normal_command_envelope")
         == "OTISQ1_MONOTONIC_NS"
         and host.get("supervisor_tool")
-        == "host.otis_tools.cx317_stage7_supervisor"
+        == "host.otis_tools.cx317_bounded_active_supervisor"
         and isinstance(firmware, dict)
         and firmware.get("source_state") == "clean"
     )
@@ -263,8 +263,8 @@ def create_stage7_manifest(
         raise FileExistsError(f"run manifest already exists in {run_dir}")
     build = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     provenance = build["provenance"]
-    spec, identities = load_stage7_spec(part, start_code)
-    timing = stage7_timing(part)
+    spec, identities = load_cx317_bounded_active_spec(part, start_code)
+    timing = bounded_active_timing(part)
     is_rehearsal = part == "rehearsal"
     if rehearsal_kind not in {"active", "transport_fault"}:
         raise ValueError("rehearsal_kind must be active or transport_fault")
@@ -502,7 +502,7 @@ def create_stage7_manifest(
         },
         "host": {
             "capture_tool": "host.otis_tools.capture_device",
-            "supervisor_tool": "host.otis_tools.cx317_stage7_supervisor",
+            "supervisor_tool": "host.otis_tools.cx317_bounded_active_supervisor",
             "shadow_tool": (
                 None
                 if is_rehearsal

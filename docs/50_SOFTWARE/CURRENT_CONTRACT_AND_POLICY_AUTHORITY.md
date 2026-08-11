@@ -2,8 +2,9 @@
 
 ## Status
 
-Normative during platform stabilization. OTIS has no external contract
-consumer and does not accept compatibility aliases as current inputs.
+Normative for the stabilized platform and CX319 offline preparation. OTIS has
+no external contract consumer and does not accept compatibility aliases as
+current inputs.
 
 ## Wire contracts
 
@@ -39,3 +40,17 @@ Stage-specific rehearsal or suspended-programme policies have no authority to
 replace this root. A future policy change requires a new identified root,
 updated firmware constants, host bindings, manifests, and parity tests in one
 change.
+
+`profiles/discipline/cx319_stabilized_tight_deadband_v1.json` is that new
+identified successor candidate. It binds `CX317_BOUNDED_ACTIVE_I_ONLY_V2` as
+its inherited frequency-control root and adds the selected integer-count tight
+band plus the non-actionable relative-phase and hybrid-preview identities. Its
+current status is offline-only: binding and compilation do not authorize a
+flash, rehearsal, command, arm or DAC write. A later authority transition must
+update the programme status and the complete operational bundle together.
+
+Programme authority is operation-scoped in
+`profiles/programme_status_v2.json`. The active programme may authorize
+offline preparation while the historical broad operational-execution guard
+continues to fail closed. New operational tools must request their exact
+operation rather than infer authority from an active programme name.

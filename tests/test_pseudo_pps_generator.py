@@ -76,19 +76,19 @@ def test_generator_is_disabled_except_explicit_loopback_profile() -> None:
     )
     assert profile["defines"]["OTIS_ENABLE_PPS_DUAL_OBSERVER"] == "0"
     assert profile["defines"]["OTIS_ENABLE_DAC_AD5693R"] == "0"
-    assert profile["defines"]["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+    assert profile["defines"]["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
     assert profile["defines"]["OTIS_PPS_GATE_MIN_INTERVAL_US"] == "999500"
     assert profile["defines"]["OTIS_PPS_GATE_MAX_INTERVAL_US"] == "1000500"
 
 
 def test_test_only_gate_band_does_not_relax_phase4_hash_guard() -> None:
-    source = (FIRMWARE / "otis_phase4_observe_preview.cpp").read_text(
+    source = (FIRMWARE / "otis_observe_only_discipline_live.cpp").read_text(
         encoding="utf-8"
     )
     assertion = source.index(
         '"reference-quality thresholds changed; regenerate its configuration hash"'
     )
-    guard = source.rfind("#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW", 0, assertion)
+    guard = source.rfind("#if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW", 0, assertion)
     end = source.index("#endif", assertion)
 
     assert guard != -1

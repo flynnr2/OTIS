@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .cx318_stage5_manifest import (
+from .tight_deadband_manifest import (
     _canonical_digest,
     _read_object,
     _validate_live_leg_seal,

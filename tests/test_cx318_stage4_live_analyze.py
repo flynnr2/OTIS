@@ -7,9 +7,9 @@ import json
 import pytest
 
 import host.otis_tools.cx318_stage4_live_analyze as live_analyze
-from host.otis_tools.cx318_hybrid_preview import load_profile as load_hybrid_profile
-from host.otis_tools.cx318_relative_phase import load_profile as load_phase_profile
-from host.otis_tools.cx318_stage4_firmware_parity import _boundaries, _host_outputs
+from host.otis_tools.phase_frequency_hybrid_preview import load_profile as load_hybrid_profile
+from host.otis_tools.reference_relative_phase_estimator import load_profile as load_phase_profile
+from host.otis_tools.selected_preview_firmware_parity import _boundaries, _host_outputs
 from host.otis_tools.cx318_stage4_live_analyze import (
     FREQUENCY_SELECTED,
     HYBRID_SELECTED,

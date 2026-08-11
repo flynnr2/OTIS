@@ -60,7 +60,7 @@ void test_partial_owner_is_exclusive_and_direct_output_waits() {
       {OtisSerialFrameOwner::DualCoreEvidence, {evidence}},
       {OtisSerialFrameOwner::Phase4Preview, {phase4}},
       {OtisSerialFrameOwner::Cx317Preview, {cx317}},
-      {OtisSerialFrameOwner::Cx318Preview, {cx318}},
+      {OtisSerialFrameOwner::PhasePreview, {cx318}},
   }};
   const std::array<size_t, 6> capacities = {64u, 0u, 31u, 192u, 7u, 4096u};
   OtisSerialFrameArbiter arbiter = {};
@@ -110,7 +110,7 @@ void test_round_robin_releases_between_complete_groups() {
       {OtisSerialFrameOwner::DualCoreEvidence, {"EST,first\r\n", "EST,second\r\n"}},
       {OtisSerialFrameOwner::Phase4Preview, {"CTL,one\r\n"}},
       {OtisSerialFrameOwner::Cx317Preview, {}},
-      {OtisSerialFrameOwner::Cx318Preview, {"RPH,PHE,HPR\r\n"}},
+      {OtisSerialFrameOwner::PhasePreview, {"RPH,PHE,HPR\r\n"}},
   }};
   OtisSerialFrameArbiter arbiter = {};
   otis_serial_frame_arbiter_reset(&arbiter);

@@ -87,6 +87,31 @@ OTIS should preserve enough information to permit:
 - independent verification;
 - future reinterpretation.
 
+That replayability should save bench time as well as support audit. If a
+sealed acquisition is complete and a later defect is demonstrably confined to
+a deterministic offline analyzer, the correct response is a provenance-linked
+reanalysis—not another physical run. Preserve both verdicts and their analyzer
+identities so the supersession is explicit.
+
+---
+
+# Preflight, Rehearsal, and Qualification Are Different
+
+OTIS uses three distinct verification gates:
+
+- a preflight checks configuration, identity, authority, and structural
+  invariants without I/O;
+- a short operational-path rehearsal executes the complete host workflow,
+  including commands, acknowledgements, fault handling, capture boundaries,
+  analysis, sealing, and registration, using acceleration or replay where long
+  timing boundaries are not themselves under test; and
+- a physical qualification supplies the real-duration firmware, plant, and
+  measurement evidence needed for a decision.
+
+A long bench run should not be where ordinary host integration failures are
+first discovered. Conversely, a short rehearsal must not be mistaken for
+scientific evidence about real duration or plant behavior.
+
 ---
 
 # DRY, But Not Abstract For Its Own Sake

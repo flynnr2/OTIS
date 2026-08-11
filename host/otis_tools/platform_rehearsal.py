@@ -34,7 +34,7 @@ from tools.firmware_matrix import (
 
 from .board_identity import EXPECTED_SERIAL, read_board_identity
 from .contracts import CONTRACT_FIELDS
-from .cx318_capture_segment import prepare_transition, request_rotation
+from .capture_segment_rotation import prepare_transition, request_rotation
 from .evidence import create_evidence_snapshot, validate_evidence_snapshot
 from .evidence_index import DEFAULT_INDEX, register_package
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
@@ -964,7 +964,7 @@ def _seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def run_rehearsal(
+def run_no_write_qualification(
     *,
     device: str,
     run_dir: Path,
@@ -1218,7 +1218,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--arduino-cli", default="arduino-cli")
     args = parser.parse_args(argv)
     try:
-        result = run_rehearsal(
+        result = run_no_write_qualification(
             device=args.device,
             run_dir=args.run_dir,
             matrix_path=args.matrix,

@@ -25,7 +25,7 @@ constexpr uint32_t kFullHistoryResetS = 1500u;
 constexpr uint32_t kRecoveryFreshSupportS = 600u;
 constexpr uint32_t kDecisionCadenceS = 1800u;
 #endif
-#if !OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if !OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
 constexpr double kErrorDeadbandHz = 0.006249995628992717;
 #endif
 constexpr double kIntegratorGainCodesPerHz = 2884.5027706464516;
@@ -67,7 +67,7 @@ void fill_common(const OtisCx317IOnlyEngine &engine,
   decision->actuation_authorized = false;
   decision->actionable = false;
   decision->active_update_codes = kActiveLiveUpdateCodes;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   decision->tight_deadband_decision_available =
       engine.tight_deadband_decision_available;
   if (engine.tight_deadband_decision_available)
@@ -97,8 +97,8 @@ void otis_cx317_i_only_engine_init(OtisCx317IOnlyEngine *engine,
   engine->startup_s = startup_s;
   engine->inhibit_until_s = startup_s + kStartupWarmupS;
   engine->reason = "startup_warmup";
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-  otis_cx318_stage5_tight_deadband_init(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+  otis_integer_count_tight_deadband_init(&engine->tight_deadband);
   engine->tight_deadband_decision_available = false;
 #endif
 }
@@ -111,7 +111,7 @@ void otis_cx317_i_only_engine_note_dac_epoch(OtisCx317IOnlyEngine *engine,
   engine->reason = "dac_epoch_full_history_reset";
   engine->inhibit_until_s = timestamp_s + kFullHistoryResetS;
   engine->integrator_codes = 0.0;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   // The setup stimulus and each automatic application start a new local DAC
   // epoch.  Preserve the 1800 s applied cadence independently of the shorter
   // 900+600 s measurement-history reset.  Do not pre-reset the tight-band
@@ -136,8 +136,8 @@ void otis_cx317_i_only_engine_evaluate(
     engine->state = OtisCx317PreviewState::Aborted;
     engine->reason = "operator_abort";
     engine->integrator_codes = 0.0;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
 #endif
     fill_common(*engine, previous, *input, decision);
@@ -153,8 +153,8 @@ void otis_cx317_i_only_engine_evaluate(
     engine->state = OtisCx317PreviewState::Fault;
     engine->reason = fault;
     engine->integrator_codes = 0.0;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
 #endif
     fill_common(*engine, previous, *input, decision);
@@ -169,8 +169,8 @@ void otis_cx317_i_only_engine_evaluate(
     engine->reason = "explicit_recovery_fresh_support";
     engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
     engine->integrator_codes = 0.0;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
 #endif
     fill_common(*engine, previous, *input, decision);
@@ -181,8 +181,8 @@ void otis_cx317_i_only_engine_evaluate(
     engine->reason = "plant_model_mismatch";
     engine->integrator_codes = 0.0;
     engine->have_last_decision = false;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
 #endif
     fill_common(*engine, previous, *input, decision);
@@ -194,8 +194,8 @@ void otis_cx317_i_only_engine_evaluate(
     engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
     engine->integrator_codes = 0.0;
     engine->have_last_decision = false;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
 #endif
     fill_common(*engine, previous, *input, decision);
@@ -236,25 +236,25 @@ void otis_cx317_i_only_engine_evaluate(
     fill_common(*engine, previous, *input, decision);
     return;
   }
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   if (!input->frequency_available || !isfinite(input->frequency_error_hz) ||
       !input->accumulated_edge_error_counts_available) {
     engine->state = OtisCx317PreviewState::Fault;
     engine->reason = "authoritative_integer_edge_error_unavailable";
     engine->integrator_codes = 0.0;
-    otis_cx318_stage5_tight_deadband_requalify(&engine->tight_deadband);
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
     engine->tight_deadband_decision_available = false;
     fill_common(*engine, previous, *input, decision);
     return;
   }
-  const OtisCx318Stage5TightDeadbandInput tight_input = {
+  const OtisIntegerCountDeadbandTightDeadbandInput tight_input = {
       input->accumulated_edge_error_counts,
       input->accumulated_edge_error_counts_available,
       true,
       input->capture_session,
       input->dac_epoch_identity,
   };
-  if (!otis_cx318_stage5_tight_deadband_observe(
+  if (!otis_integer_count_tight_deadband_observe(
           &engine->tight_deadband, &tight_input,
           &engine->tight_deadband_decision)) {
     engine->state = OtisCx317PreviewState::Fault;
@@ -267,7 +267,7 @@ void otis_cx317_i_only_engine_evaluate(
   engine->tight_deadband_decision_available = true;
   if (!engine->tight_deadband_decision.frequency_controller_eligible) {
     engine->state = OtisCx317PreviewState::Tracking;
-    engine->reason = otis_cx318_stage5_tight_deadband_reason_name(
+    engine->reason = otis_integer_count_tight_deadband_reason_name(
         engine->tight_deadband_decision.reason);
     engine->integrator_codes = 0.0;
     fill_common(*engine, previous, *input, decision);
@@ -294,7 +294,7 @@ void otis_cx317_i_only_engine_evaluate(
   engine->last_decision_s = input->timestamp_s;
   engine->have_last_decision = true;
   engine->state = OtisCx317PreviewState::Tracking;
-#if !OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if !OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   if (fabs(input->frequency_error_hz) <= kErrorDeadbandHz) {
     engine->integrator_codes = 0.0;
     engine->reason = "inside_evidence_deadband";

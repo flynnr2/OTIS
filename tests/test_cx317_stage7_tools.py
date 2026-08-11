@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import host.otis_tools.cx317_stage7_supervisor as stage7_supervisor_module
+import host.otis_tools.cx317_bounded_active_supervisor as stage7_supervisor_module
 
 from host.otis_tools.cx317_stage7_analyze import (
     _controller_parity,
@@ -42,26 +42,26 @@ from host.otis_tools.cx317_stage7_part_b_matrix import derive_part_b_matrix
 from host.otis_tools.cx317_stage7_part_b_rehearsal import (
     rehearse as rehearse_part_b,
 )
-from host.otis_tools.cx317_stage7_shadow import CONTRACT_SHA256
+from host.otis_tools.cx317_counterfactual_deadband import CONTRACT_SHA256
 from host.otis_tools.cx317_stage7_shadow_monitor import (
     AUTHORITATIVE,
     SHADOW,
     refresh,
 )
-from host.otis_tools.cx317_stage7_supervisor import (
+from host.otis_tools.cx317_bounded_active_supervisor import (
     REHEARSAL_DECISION_CADENCE_S,
     REHEARSAL_QUALIFICATION_TIMEOUT_S,
     REHEARSAL_SELECTED_INTERVAL_S,
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
-    STAGE7_QUALIFICATION_TIMEOUT_S,
-    Stage7Supervisor,
+    BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S,
+    Cx317BoundedActiveSupervisor,
     _next_selected_interval_is_cadence_eligible,
-    load_stage7_spec,
+    load_cx317_bounded_active_spec,
     part_b_timeline_preflight,
     rehearsal_timeline_preflight,
-    stage7_timing,
+    bounded_active_timing,
 )
 from host.otis_tools.evidence import create_evidence_snapshot
 from host.otis_tools.run_loader import CAPTURE_IN_PROGRESS_FLAG
@@ -165,7 +165,7 @@ def _sealed_hil_rehearsal_gate(tmp_path: Path) -> Path:
                     "normal_command_batch_limit": 1,
                     "normal_command_max_age_s": 2.0,
                     "normal_command_envelope": "OTISQ1_MONOTONIC_NS",
-                    "supervisor_tool": "host.otis_tools.cx317_stage7_supervisor",
+                    "supervisor_tool": "host.otis_tools.cx317_bounded_active_supervisor",
                 },
                 "active_campaign": {"part": "rehearsal"},
                 "firmware": {"source_state": "clean"},
@@ -199,7 +199,7 @@ def _sealed_transport_rehearsal_gate(tmp_path: Path) -> Path:
             (tool_dir / "capture_device.py").read_bytes()
         ).hexdigest(),
         "supervisor_sha256": sha256(
-            (tool_dir / "cx317_stage7_supervisor.py").read_bytes()
+            (tool_dir / "cx317_bounded_active_supervisor.py").read_bytes()
         ).hexdigest(),
         "serial_commands_sha256": sha256(
             (tool_dir / "serial_commands.py").read_bytes()
@@ -256,8 +256,8 @@ def _sealed_transport_rehearsal_gate(tmp_path: Path) -> Path:
 
 
 def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
-    part_a, identities_a = load_stage7_spec("part_a", 0xA800)
-    part_b, identities_b = load_stage7_spec("part_b", 0xA815)
+    part_a, identities_a = load_cx317_bounded_active_spec("part_a", 0xA800)
+    part_b, identities_b = load_cx317_bounded_active_spec("part_b", 0xA815)
 
     assert part_a.profile == "cx317_dual_core_active_part_a"
     assert part_a.run_identity == "cx317_stage7_part_a:3170003"
@@ -267,7 +267,7 @@ def test_stage7_specs_freeze_part_a_and_endurance_budgets() -> None:
     assert part_b.start_code == 0xA815
     assert (part_b.correction_limit, part_b.cumulative_limit) == (32, 672)
     assert identities_a == identities_b
-    assert STAGE7_QUALIFICATION_TIMEOUT_S == 5400
+    assert BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S == 5400
 
 
 def test_zero_correction_endurance_still_requires_manual_start_queue_traffic() -> None:
@@ -326,8 +326,8 @@ def test_composite_part_a_gate_preserves_failed_source_and_repair_scope() -> Non
 
 
 def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
-    spec, identities = load_stage7_spec("rehearsal", 0xA800)
-    timing = stage7_timing("rehearsal")
+    spec, identities = load_cx317_bounded_active_spec("rehearsal", 0xA800)
+    timing = bounded_active_timing("rehearsal")
 
     assert spec.profile == "cx317_dual_core_active_rehearsal"
     assert spec.run_identity == "cx317_stage7_rehearsal:3170005"
@@ -337,7 +337,7 @@ def test_stage7_rehearsal_is_distinct_finite_and_nonqualifying() -> None:
     assert timing.decision_cadence_s == REHEARSAL_DECISION_CADENCE_S == 240
     assert timing.qualification_timeout_s == REHEARSAL_QUALIFICATION_TIMEOUT_S == 420
     assert timing.qualified_timeout_s == 1200
-    assert identities["estimator_sha256"] != load_stage7_spec(
+    assert identities["estimator_sha256"] != load_cx317_bounded_active_spec(
         "part_a", 0xA800
     )[1]["estimator_sha256"]
     assert identities["active_policy_sha256"] == identities[
@@ -558,7 +558,7 @@ def test_shadow_monitor_preserves_context_and_exactly_replays(tmp_path: Path) ->
 
 def test_stage7_supervisor_declares_four_host_evidence_releases() -> None:
     source = Path(
-        "host/otis_tools/cx317_stage7_supervisor.py"
+        "host/otis_tools/cx317_bounded_active_supervisor.py"
     ).read_text(encoding="utf-8")
     assert '"request_created": 1' in source
     assert '"core0_accepted": 2' in source
@@ -566,7 +566,7 @@ def test_stage7_supervisor_declares_four_host_evidence_releases() -> None:
     assert '"response": 4' in source
     assert "PART_A_SERVICE_LOAD_QUERIES = 60" in source
     assert "PART_B_DURATION_S = 24 * 60 * 60" in source
-    assert "STAGE7_QUALIFICATION_TIMEOUT_S = 90 * 60" in source
+    assert "BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S = 90 * 60" in source
     assert "PART_A_QUALIFIED_TIMEOUT_S = 4 * 60 * 60" in source
     assert "PART_B_CLEARANCE_GRACE_S = 60 * 60" in source
     assert 'required_responses = 2 if self.part == "rehearsal" else 1' in source
@@ -988,7 +988,7 @@ def _exact_stage7_transaction_rows(
 ) -> tuple[
     list[dict[str, str]], object, dict[str, str], str
 ]:
-    spec, identities = load_stage7_spec(part, 0xA800)
+    spec, identities = load_cx317_bounded_active_spec(part, 0xA800)
     build_identity = "a" * 64 + ":" + "b" * 64
     base = {field: "" for field in ACTIVE_TRANSACTION_V1_FIELDS}
     base.update(
@@ -1520,11 +1520,11 @@ def test_stage7_analysis_preserves_valid_prefix_before_malformed_request() -> No
 
 def _supervisor(
     tmp_path: Path, *, part: str = "part_a", start_code: int = 0xA800
-) -> Stage7Supervisor:
+) -> Cx317BoundedActiveSupervisor:
     run = tmp_path / "run"
     (run / "csv").mkdir(parents=True)
-    spec, identities = load_stage7_spec(part, start_code)
-    return Stage7Supervisor(
+    spec, identities = load_cx317_bounded_active_spec(part, start_code)
+    return Cx317BoundedActiveSupervisor(
         part=part,
         run_dir=run,
         command_fifo=tmp_path / "command.fifo",
@@ -1809,7 +1809,7 @@ def test_stage7_qualification_and_part_a_have_finite_fail_static_deadlines(
             "qualification_started_utc": None,
         }
     )
-    supervisor._maybe_finish({}, float(STAGE7_QUALIFICATION_TIMEOUT_S))
+    supervisor._maybe_finish({}, float(BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S))
     assert aborts == ["stage7_qualification_timeout"]
 
     aborts.clear()
@@ -1854,7 +1854,7 @@ def test_part_b_rehearsal_traverses_all_four_service_bursts(
     wall = 3599.0
     monkeypatch.setattr(supervisor, "_command", commands.append)
     monkeypatch.setattr(
-        "host.otis_tools.cx317_stage7_supervisor.time.time",
+        "host.otis_tools.cx317_bounded_active_supervisor.time.time",
         lambda: wall,
     )
     monotonic = 1.0
@@ -1885,7 +1885,7 @@ def test_part_b_service_burst_and_one_shot_authorization_never_overlap(
     commands: list[str] = []
     monkeypatch.setattr(supervisor, "_command", commands.append)
     monkeypatch.setattr(
-        "host.otis_tools.cx317_stage7_supervisor.time.time",
+        "host.otis_tools.cx317_bounded_active_supervisor.time.time",
         lambda: 3600.0,
     )
 

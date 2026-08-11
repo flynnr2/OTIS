@@ -31,6 +31,13 @@ available through an explicit generated profile for interactive bench work.
 Because the IDE does not produce the builder's artifact manifest or perform its
 post-compile checks, use the matrix-built artifact for qualification evidence.
 
+The current matrix includes `cx319_tight_lower` and `cx319_tight_upper` as
+stabilized-platform candidate profiles. They are compiled in current Campaign,
+Release and Bench verification because their firmware/contract boundary is an
+active development surface. Programme authority remains offline-only: a
+successful build is not permission to flash, open serial, arm control or issue
+a DAC command.
+
 GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
 enforced by `otis_resource_registry.*`. The normative ownership ledger,
 diagnostic keys, compatibility notes, and risk assessment are in
@@ -459,7 +466,7 @@ Do not assign either pin to general live-capture inputs.
 The minimum live Phase 4 estimator and preview state machine is an opt-in build:
 
 ```cpp
-#define OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW 1
+#define OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW 1
 ```
 
 It emits normative `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` rows derived
@@ -497,7 +504,7 @@ temperature limits, source-evidence exclusions, estimator timing constraints,
 and DAC ranges. The preview compares those values with the compiled
 configuration and live gate/DAC observations. The configured gate must exactly
 match the artifact; the observed PIO aperture may differ by at most
-`OTIS_PHASE4_OBSERVED_GATE_TOLERANCE_US` (50 ms by default, five times the
+`OTIS_OBSERVE_ONLY_DISCIPLINE_OBSERVED_GATE_TOLERANCE_US` (50 ms by default, five times the
 known 10 ms blocking SHT4x conversion). Larger errors invalidate observation
 quality rather than changing the model identity.
 
@@ -506,7 +513,7 @@ timestamp. A measured window is settled only when its opening boundary is at
 least the generated settling exclusion after the last changed code. Successful
 near-VCXO SHT4x samples are timestamped and range-checked. Missing or failed
 reads invalidate the input immediately; samples older than
-`OTIS_PHASE4_TEMPERATURE_MAX_AGE_MS` (three sample periods by default) report
+`OTIS_OBSERVE_ONLY_DISCIPLINE_TEMPERATURE_MAX_AGE_MS` (three sample periods by default) report
 `temperature_not_observed` and block preview applicability. Run-local
 count-sequence exclusions are not applied to unrelated live sequence numbers.
 

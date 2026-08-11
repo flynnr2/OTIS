@@ -19,8 +19,8 @@
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_dual_core_state.h"
 #include "otis_cx317_preview_live.h"
-#include "otis_cx318_preview_live.h"
-#include "otis_cx318_preview_transport.h"
+#include "otis_phase_preview_live.h"
+#include "otis_phase_preview_transport.h"
 #include "otis_dac_ad5693r.h"
 #include "otis_dual_core_partition.h"
 #include "otis_dual_core_receiver_gate.h"
@@ -29,7 +29,7 @@
 #include "otis_gnss_receiver.h"
 #include "otis_memory_budget.h"
 #include "otis_modes.h"
-#include "otis_phase4_observe_preview.h"
+#include "otis_observe_only_discipline_live.h"
 #include "otis_pps_count_boundary_ring.h"
 #include "otis_pps_dual_observer.h"
 #include "otis_pps_snapshot_backend.h"
@@ -262,7 +262,7 @@ void configure_selected_capabilities(void) {
     OTIS_ENABLE_ENV_SENSORS && \
     (OTIS_ENABLE_ENV_SHT4X || OTIS_ENABLE_ENV_BMP280)
   otis_boot_capability_select(&boot_capabilities, OtisBootCapability::Sensors,
-#if OTIS_ENABLE_CX318_PREVIEW
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
                               OtisBootCapabilityRequirement::Required);
 #else
                               OtisBootCapabilityRequirement::Optional);
@@ -273,14 +273,14 @@ void configure_selected_capabilities(void) {
                               OtisBootCapability::GnssReceiver,
                               OtisBootCapabilityRequirement::Required);
 #endif
-#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   otis_boot_capability_select(&boot_capabilities,
                               OtisBootCapability::Phase4Preview,
                               OtisBootCapabilityRequirement::Required);
 #endif
-#if OTIS_ENABLE_CX318_PREVIEW
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   otis_boot_capability_select(&boot_capabilities,
-                              OtisBootCapability::Cx318Preview,
+                              OtisBootCapability::PhasePreview,
                               OtisBootCapabilityRequirement::Required);
 #endif
 }
@@ -963,9 +963,9 @@ void service_dual_core_evidence_transport(void) {
 bool service_dual_core_serial_frame_transport(void) {
   const OtisSerialFrameReadiness readiness = {
       dual_core_evidence_transport_pending(),
-      otis_phase4_observe_preview_transport_pending(),
+      otis_observe_only_discipline_live_transport_pending(),
       otis_cx317_preview_live_transport_pending(),
-      otis_cx318_preview_transport_busy(),
+      otis_phase_preview_transport_busy(),
   };
   const OtisSerialFrameOwner owner = otis_serial_frame_arbiter_claim(
       &dual_core_serial_frame_arbiter, readiness);
@@ -978,16 +978,16 @@ bool service_dual_core_serial_frame_transport(void) {
       frame_active = dual_core_evidence_transport_busy();
       break;
     case OtisSerialFrameOwner::Phase4Preview:
-      otis_phase4_observe_preview_service_transport();
-      frame_active = otis_phase4_observe_preview_transport_busy();
+      otis_observe_only_discipline_live_service_transport();
+      frame_active = otis_observe_only_discipline_live_transport_busy();
       break;
     case OtisSerialFrameOwner::Cx317Preview:
       otis_cx317_preview_live_service_transport();
       frame_active = otis_cx317_preview_live_transport_busy();
       break;
-    case OtisSerialFrameOwner::Cx318Preview:
-      otis_cx318_preview_transport_service();
-      frame_active = otis_cx318_preview_transport_frame_active();
+    case OtisSerialFrameOwner::PhasePreview:
+      otis_phase_preview_transport_service();
+      frame_active = otis_phase_preview_transport_frame_active();
       break;
     case OtisSerialFrameOwner::None:
       return false;
@@ -1087,7 +1087,7 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
     otis_pps_count_boundary_ring_push_from_isr(pending_reference);
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dual_core_static_code.available &&
             dual_core_static_code.requested_applied_match &&
             dual_core_static_code.i2c_ok,
@@ -1096,13 +1096,13 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
 #else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dac_status.applied_code_known && dac_status.last_write_ok &&
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
 #endif
-    otis_phase4_observe_preview_on_reference(
+    otis_observe_only_discipline_live_on_reference(
         runtime_state.sequences.event_seq, record.timestamp_ticks, record.flags,
         &runtime_state, &phase4_dac);
   }
@@ -1129,12 +1129,12 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
 
 OtisCx317StaticCodeState cx317_static_code_state(void) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   // The no-write rehearsal consumes the Stage 4-sealed A828 premise as a
   // build-bound observation context only.  Active health remains unconfirmed
   // until the exact Stage 5 setup write creates real Core 0 DAC evidence.
   if (!dual_core_static_code.available)
-    return {true, true, true, OTIS_CX318_STAGE5_INITIAL_CODE};
+    return {true, true, true, OTIS_TIGHT_DEADBAND_INITIAL_CODE};
 #endif
   return dual_core_static_code;
 #else
@@ -1227,15 +1227,15 @@ void service_cx317_active_health(void) {
           dual_core_static_code.applied_code)) {
     otis_cx317_active_live_note_manual_start(
         dual_core_static_code.applied_code, true, now_ms / 1000u);
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
     otis_cx317_preview_live_on_dac_applied_epoch(
         dual_core_static_code.applied_code, active_status.dac_epoch,
         now_ms / 1000u);
-    if (!otis_cx318_preview_live_update_applied_code(
+    if (!otis_phase_preview_live_update_applied_code(
             dual_core_static_code.applied_code, active_status.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewFault);
+      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #endif
   }
 #endif
@@ -1302,8 +1302,8 @@ void emit_pps_count_boundary(
       window_completed && runtime_state.tcxo.last_observation_valid &&
           preview_receiver_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
-#if OTIS_ENABLE_CX318_PREVIEW
-  otis_cx318_preview_live_on_boundary(
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
+  otis_phase_preview_live_on_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
       window_completed,
@@ -1326,7 +1326,7 @@ void emit_pps_count_boundary(
     otis_dual_core_note_timing_count(runtime_state.sequences.count_seq - 1u);
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dual_core_static_code.available &&
             dual_core_static_code.requested_applied_match &&
             dual_core_static_code.i2c_ok,
@@ -1335,13 +1335,13 @@ void emit_pps_count_boundary(
 #else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dac_status.applied_code_known && dac_status.last_write_ok &&
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
 #endif
-    otis_phase4_observe_preview_on_count(
+    otis_observe_only_discipline_live_on_count(
         runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
     otis_count_observation_note_control_consumer(observation.session,
                                                  observation.sequence);
@@ -1366,13 +1366,13 @@ void service_cx317_active_application_outcome(void) {
                              : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 #endif
   if (active_outcome.applied) {
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
     otis_cx317_preview_live_on_dac_applied_epoch(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u);
-    if (!otis_cx318_preview_live_update_applied_code(
+    if (!otis_phase_preview_live_update_applied_code(
             active_outcome.applied_code, active_outcome.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::Cx318PreviewFault);
+      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #else
     otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
                                            millis() / 1000u);
@@ -1433,7 +1433,7 @@ void drain_pps_count_boundary_ring(void) {
     const OtisCx317StaticCodeState cx317_code = cx317_static_code_state();
     otis_cx317_preview_live_on_capture_fault(
         association_reason, millis() / 1000u, &cx317_code);
-    otis_cx318_preview_live_note_reset();
+    otis_phase_preview_live_note_reset();
     otis_pps_snapshot_backend_rearm();
     otis_pps_count_boundary_ring_reset();
     have_pending_reference = false;
@@ -1619,7 +1619,7 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_dac_ad5693r", OTIS_ENABLE_DAC_AD5693R,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_phase4_observe_preview",
-                  OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW, OTIS_SEVERITY_INFO,
+                  OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_cx317_i_only_preview",
                   OTIS_ENABLE_CX317_I_ONLY_PREVIEW, OTIS_SEVERITY_INFO,
@@ -1628,7 +1628,8 @@ void emit_common_boot_status(void) {
                   OTIS_ENABLE_CX318_STAGE4_PREVIEW, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_cx318_stage5_preview",
-                  OTIS_ENABLE_CX318_STAGE5_PREVIEW, OTIS_SEVERITY_INFO,
+                  OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW,
+                  OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_cx318_stage4_premise_setup",
                   OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP,
@@ -1647,7 +1648,7 @@ void emit_common_boot_status(void) {
   emit_status("cx318_premise", "automatic_authority", "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
-#if OTIS_ENABLE_CX318_PREVIEW
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW
   emit_status_u16_hex("cx318_preview", "confirmed_static_code",
                       OTIS_CX318_STAGE4_STATIC_CODE, OTIS_SEVERITY_INFO,
@@ -1657,10 +1658,10 @@ void emit_common_boot_status(void) {
                   OTIS_FLAG_PROFILE_ASSUMPTION);
 #else
   emit_status_u16_hex("cx318_preview", "confirmed_initial_code",
-                      OTIS_CX318_STAGE5_INITIAL_CODE, OTIS_SEVERITY_INFO,
+                      OTIS_TIGHT_DEADBAND_INITIAL_CODE, OTIS_SEVERITY_INFO,
                       OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("cx318_preview", "initial_dac_epoch",
-                  OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH, OTIS_SEVERITY_INFO,
+                  OTIS_TIGHT_DEADBAND_INITIAL_DAC_EPOCH, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
   emit_status("cx318_preview", "actionable", "false", OTIS_SEVERITY_INFO,
@@ -2107,10 +2108,10 @@ void emit_protocol_banner_if_serial_ready(void) {
   emitRp2040BootDiag(Serial);
 #endif
   otis_emit_csv_headers();
-  otis_phase4_observe_preview_emit_headers();
+  otis_observe_only_discipline_live_emit_headers();
   otis_cx317_preview_live_emit_headers();
   otis_cx317_active_live_emit_headers();
-  otis_cx318_preview_transport_emit_headers();
+  otis_phase_preview_transport_emit_headers();
   runtime_state.boot.protocol_banner_emitted = true;
 }
 
@@ -2154,10 +2155,10 @@ void emit_periodic_status(void) {
                   queues.telemetry_high_water, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
   emit_status_u32("dual_core", "cx318_preview_depth",
-                  queues.cx318_preview_depth, OTIS_SEVERITY_INFO,
+                  queues.phase_preview_depth, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
   emit_status_u32("dual_core", "cx318_preview_high_water",
-                  queues.cx318_preview_high_water, OTIS_SEVERITY_INFO,
+                  queues.phase_preview_high_water, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
   emit_status_u32("dual_core", "telemetry_dropped",
                   queues.telemetry_dropped,
@@ -2318,9 +2319,9 @@ void emit_periodic_status(void) {
 #if OTIS_ENABLE_GNSS_RECEIVER
   emit_gnss_receiver_status(now_ms);
 #endif
-#if OTIS_ENABLE_CX318_PREVIEW
-  OtisCx318PreviewLiveStatus cx318 = {};
-  otis_cx318_preview_live_get_status(&cx318);
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
+  OtisPhasePreviewLiveStatus cx318 = {};
+  otis_phase_preview_live_get_status(&cx318);
   emit_status("cx318_preview", "initialized",
               cx318.initialized ? "true" : "false",
               cx318.initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
@@ -2377,7 +2378,7 @@ void emit_periodic_status(void) {
                       : OTIS_SEVERITY_INFO,
                   drop_flag);
   otis_count_observation_emit_status(&runtime_state, &status_emit_context);
-  otis_phase4_observe_preview_emit_status(&status_emit_context);
+  otis_observe_only_discipline_live_emit_status(&status_emit_context);
   otis_cx317_preview_live_emit_status(&status_emit_context);
 #if !OTIS_ENABLE_DUAL_CORE_PARTITION
   otis_cx317_active_live_emit_status(&status_emit_context, now_ms / 1000u);
@@ -2917,7 +2918,7 @@ bool h1_dac_sweep_apply_active_step(const char *event_name) {
 
   bool ok = otis_dac_ad5693r_set_raw(step.code);
   if (ok) {
-    otis_phase4_observe_preview_on_dac_applied(
+    otis_observe_only_discipline_live_on_dac_applied(
         clamped, otis_capture_ticks_now());
     otis_cx317_preview_live_on_dac_applied(clamped, millis() / 1000u);
   }
@@ -3108,7 +3109,7 @@ void emit_env_sample(const OtisEnvSample &sample,
     environment.environment.pressure_valid = sample.has_pressure;
     otis_dual_core_publish_service(&environment);
 #else
-    otis_phase4_observe_preview_on_temperature(
+    otis_observe_only_discipline_live_on_temperature(
         true, sample.temperature_c, timestamp_ticks);
     otis_cx317_preview_live_on_temperature(
         true, sample.temperature_c, millis() / 1000u);
@@ -3156,7 +3157,7 @@ void service_environment_sensors(void) {
     environment.environment.temperature_valid = false;
     otis_dual_core_publish_service(&environment);
 #else
-    otis_phase4_observe_preview_on_temperature(
+    otis_observe_only_discipline_live_on_temperature(
         false, 0.0f, otis_capture_ticks_now());
     otis_cx317_preview_live_on_temperature(false, 0.0f, millis() / 1000u);
 #endif
@@ -3355,26 +3356,26 @@ void boot_phase_peripherals_init(void) {
 
 void boot_phase_preview_init(void) {
   begin_boot_phase(BootPhase::PreviewInit);
-#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW
+#if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW
   const bool preview_ready =
-      otis_phase4_observe_preview_begin(otis_capture_ticks_now());
+      otis_observe_only_discipline_live_begin(otis_capture_ticks_now());
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
 #elif OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   const bool preview_ready =
       otis_cx317_preview_live_begin(millis() / 1000u) &&
       otis_cx317_active_live_begin();
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
-  const bool cx318_preview_ready = otis_cx318_preview_live_begin(
-      OTIS_CX318_STAGE5_INITIAL_CODE,
-      OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH);
-  record_capability_result(OtisBootCapability::Cx318Preview,
-                           cx318_preview_ready);
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+  const bool phase_preview_ready = otis_phase_preview_live_begin(
+      OTIS_TIGHT_DEADBAND_INITIAL_CODE,
+      OTIS_TIGHT_DEADBAND_INITIAL_DAC_EPOCH);
+  record_capability_result(OtisBootCapability::PhasePreview,
+                           phase_preview_ready);
 #endif
 #elif OTIS_ENABLE_CX318_STAGE4_PREVIEW
-  const bool preview_ready = otis_cx318_preview_live_begin(
+  const bool preview_ready = otis_phase_preview_live_begin(
       OTIS_CX318_STAGE4_STATIC_CODE, OTIS_CX318_STAGE4_DAC_EPOCH);
-  record_capability_result(OtisBootCapability::Cx318Preview, preview_ready);
+  record_capability_result(OtisBootCapability::PhasePreview, preview_ready);
 #endif
   complete_boot_phase(BootPhase::PreviewInit);
 }
@@ -3433,7 +3434,7 @@ void service_tcxo_gate(void) {
   if (otis_count_observation_service(&runtime_state, &status_emit_context,
                                      &count_config)) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dual_core_static_code.available &&
             dual_core_static_code.requested_applied_match &&
             dual_core_static_code.i2c_ok,
@@ -3442,13 +3443,13 @@ void service_tcxo_gate(void) {
 #else
     OtisDacAd5693rStatus dac_status;
     otis_dac_ad5693r_get_status(&dac_status);
-    OtisPhase4LiveDacState phase4_dac = {
+    OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
         dac_status.applied_code_known && dac_status.last_write_ok &&
             dac_status.last_requested_code == dac_status.last_applied_code,
         dac_status.last_applied_code,
     };
 #endif
-    otis_phase4_observe_preview_on_count(
+    otis_observe_only_discipline_live_on_count(
         runtime_state.sequences.count_seq - 1u, &runtime_state, &phase4_dac);
 #if OTIS_ENABLE_H1_DAC_SWEEP && \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
@@ -3529,7 +3530,7 @@ void handle_dac_set(uint16_t requested_code) {
 #endif
 #endif
   if (ok) {
-    otis_phase4_observe_preview_on_dac_applied(
+    otis_observe_only_discipline_live_on_dac_applied(
         requested_code, otis_capture_ticks_now());
 #if !OTIS_ENABLE_DUAL_CORE_PARTITION
     otis_cx317_preview_live_on_dac_applied(requested_code, millis() / 1000u);
@@ -4094,7 +4095,7 @@ void setup() {
      OTIS_ENABLE_GNSS_RECEIVER)
   boot_phase_peripherals_init();
 #endif
-#if OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+#if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW || OTIS_ENABLE_CX317_I_ONLY_PREVIEW
 #if !OTIS_ENABLE_DUAL_CORE_PARTITION
   boot_phase_preview_init();
 #endif
@@ -4225,8 +4226,11 @@ void loop() {
   // The USB byte stream has one chunked-frame owner.  A producer that starts
   // a record keeps ownership through its complete CRLF (or the complete
   // RPH/PHE/HPR record group) while Core 1 timing capture continues into the
-  // cross-core queues.  No status, command, sensor, or competing frame writer
-  // runs in this pass.
+  // cross-core queues. GNSS RX drainage is a bounded input-only service and
+  // must run before this early-return path; otherwise a long initial serial
+  // burst can manufacture a receiver reconnect epoch. No status, command,
+  // sensor, or competing frame writer runs in this pass.
+  otis_gnss_receiver_service(millis());
   if (service_dual_core_serial_frame_transport()) {
     otis_status_led_poll(millis());
     return;
@@ -4235,7 +4239,6 @@ void loop() {
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
   emit_resource_ownership_status();
-  otis_gnss_receiver_service(millis());
   service_serial_commands();
   service_environment_sensors();
   publish_dual_core_service_metadata(millis());
@@ -4256,9 +4259,9 @@ void loop() {
     otis_status_led_poll(millis());
     return;
   }
-  if (otis_phase4_observe_preview_transport_busy() ||
+  if (otis_observe_only_discipline_live_transport_busy() ||
       otis_cx317_preview_live_transport_busy()) {
-    otis_phase4_observe_preview_service_transport();
+    otis_observe_only_discipline_live_service_transport();
     otis_cx317_preview_live_service_transport();
     otis_gnss_receiver_service(millis());
     otis_cx317_active_live_service(millis() / 1000u);
@@ -4284,18 +4287,18 @@ void loop() {
 #endif
   OtisDacAd5693rStatus phase4_dac_status;
   otis_dac_ad5693r_get_status(&phase4_dac_status);
-  OtisPhase4LiveDacState phase4_dac = {
+  OtisObserveOnlyDisciplineLiveDacState phase4_dac = {
       phase4_dac_status.applied_code_known &&
           phase4_dac_status.last_write_ok &&
           phase4_dac_status.last_requested_code ==
               phase4_dac_status.last_applied_code,
       phase4_dac_status.last_applied_code,
   };
-  otis_phase4_observe_preview_poll(otis_capture_ticks_now(), &runtime_state,
+  otis_observe_only_discipline_live_poll(otis_capture_ticks_now(), &runtime_state,
                                    &phase4_dac);
   service_environment_sensors();
   emit_periodic_status();
-  otis_phase4_observe_preview_service_transport();
+  otis_observe_only_discipline_live_service_transport();
   if (otis_cx317_active_live_transport_busy())
     otis_cx317_active_live_service_transport();
   else

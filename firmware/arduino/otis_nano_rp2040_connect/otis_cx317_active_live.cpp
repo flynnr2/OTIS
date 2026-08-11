@@ -28,6 +28,11 @@ constexpr char kNumericalPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
+#elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
+constexpr char kNumericalPolicyHash[] =
+    "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
+constexpr char kActivePolicyHash[] =
+    "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
@@ -72,6 +77,14 @@ constexpr char kExpectedProfile[] = "cx318_stage5_tight_lower";
     OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER
 constexpr char kRunIdentity[] = "cx318_stage5_tight_upper:3185002";
 constexpr char kExpectedProfile[] = "cx318_stage5_tight_upper";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER
+constexpr char kRunIdentity[] = "cx319_tight_lower:3195001";
+constexpr char kExpectedProfile[] = "cx319_tight_lower";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
+constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";
+constexpr char kExpectedProfile[] = "cx319_tight_upper";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -158,12 +171,16 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_LOWER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
       true,
 #else
       false,
 #endif
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
       false,
 #else
       true,
@@ -750,7 +767,7 @@ bool otis_cx317_active_live_manual_start_allowed(uint16_t code) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   return initialized && code == OTIS_CX317_ACTIVE_START_CODE &&
          !manual_start_confirmed &&
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
          transaction_bound &&
 #endif
          (!transaction_bound ||
@@ -774,7 +791,7 @@ void otis_cx317_active_live_note_manual_start(uint16_t code, bool i2c_ok,
   manual_start_confirmed = true;
   if (transaction_bound) {
     transaction.applied_code = code;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
     transaction.dac_epoch = 1u;
     transaction.last_application_s = now_s;
     transaction.have_last_application = true;
@@ -844,7 +861,7 @@ void otis_cx317_active_live_on_decision(
       decision->frequency_error_hz,
   };
   OtisCx317ActionableRequest request;
-#if OTIS_ENABLE_CX318_STAGE5_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
   // A short-lived arm is issued before the next 600 s observation is known.
   // If that observation enters or retains the tight band, the Stage 5 engine
   // emits an exact zero-delta hold.  Consume the one-shot arm by passing that

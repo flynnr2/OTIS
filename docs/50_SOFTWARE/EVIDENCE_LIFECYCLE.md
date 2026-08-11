@@ -91,3 +91,27 @@ and the tracked summary and content identity normally remain permanently.
 The external index is mutable stewardship metadata; each raw package remains
 immutable scientific evidence. If a package changes, it has a new content
 identity and must be registered as a new package.
+
+## Host-only reanalysis and supersession
+
+A failed analysis does not invalidate a complete raw acquisition when the
+defect is demonstrably downstream of capture. Reanalysis may supersede the
+earlier verdict without repeating hardware only when all of these conditions
+hold:
+
+1. the raw package is sealed or otherwise content-addressed and unchanged;
+2. capture completeness, command history, acknowledgements, serial ownership,
+   timing, segmentation, and terminal physical state are sufficient for the
+   claim;
+3. the repair is confined to a deterministic offline consumer and could not
+   have changed acquisition, safety, firmware behavior, or the scientific
+   result; and
+4. the new result binds the raw content identity, old and new analyzer
+   identities, original verdict, superseding verdict, reason, and review
+   authority.
+
+Preserve the original report. Store a new provenance-linked result rather than
+rewriting the acquisition package. If any condition is not met, repeat the
+shortest affected operational gate: a short operational-path rehearsal for
+live host orchestration changes, or physical qualification when firmware,
+real-time I/O, plant behavior, or acquired evidence could change.

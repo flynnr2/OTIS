@@ -27,8 +27,8 @@ def format_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "-Wall",
             "-Wextra",
             "-Werror",
-            str(ROOT / "tests/cpp/cx318_preview_format_harness.cpp"),
-            str(FIRMWARE / "otis_cx318_preview_format.cpp"),
+            str(ROOT / "tests/cpp/phase_preview_format_harness.cpp"),
+            str(FIRMWARE / "otis_phase_preview_format.cpp"),
             str(FIRMWARE / "otis_decimal_format.cpp"),
             "-I",
             str(FIRMWARE),
@@ -104,10 +104,10 @@ def test_phe_retains_only_the_authoritative_nonoverlap_frequency_with_age(
 
 
 def test_core1_stage4_producer_has_no_formatter_or_authority_surface() -> None:
-    source = (FIRMWARE / "otis_cx318_preview_live.cpp").read_text(
+    source = (FIRMWARE / "otis_phase_preview_live.cpp").read_text(
         encoding="utf-8"
     )
-    header = (FIRMWARE / "otis_cx318_preview_live.h").read_text(
+    header = (FIRMWARE / "otis_phase_preview_live.h").read_text(
         encoding="utf-8"
     )
     assert "snprintf" not in source
@@ -189,12 +189,12 @@ def test_stage4_transport_finishes_a_record_group_before_other_core0_output() ->
         sketch.index("bool service_dual_core_serial_frame_transport(void)") :
         sketch.index("#endif", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
     ]
-    assert "otis_cx318_preview_transport_service();" in dispatch
-    assert "otis_cx318_preview_transport_frame_active();" in dispatch
+    assert "otis_phase_preview_transport_service();" in dispatch
+    assert "otis_phase_preview_transport_frame_active();" in dispatch
 
 
 def test_stage4_cross_core_status_is_published_atomically() -> None:
-    source = (FIRMWARE / "otis_cx318_preview_live.cpp").read_text(
+    source = (FIRMWARE / "otis_phase_preview_live.cpp").read_text(
         encoding="utf-8"
     )
 
@@ -234,9 +234,9 @@ def test_core1_live_producer_publishes_pointer_free_numerical_records(
             "-Wextra",
             "-Werror",
             *(f"-D{value}" for value in definitions),
-            str(ROOT / "tests/cpp/cx318_preview_live_harness.cpp"),
-            str(FIRMWARE / "otis_cx318_preview_live.cpp"),
-            str(FIRMWARE / "otis_cx318_selected_preview_engine.cpp"),
+            str(ROOT / "tests/cpp/phase_preview_live_harness.cpp"),
+            str(FIRMWARE / "otis_phase_preview_live.cpp"),
+            str(FIRMWARE / "otis_selected_phase_frequency_preview_engine.cpp"),
             str(FIRMWARE / "otis_dual_core_partition.cpp"),
             "-I",
             str(FIRMWARE),

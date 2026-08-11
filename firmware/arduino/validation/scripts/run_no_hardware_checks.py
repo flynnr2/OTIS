@@ -25,6 +25,7 @@ FAST_TESTS = (
     "tests/test_dual_core_partition.py",
     "tests/test_serial_frame_arbiter.py",
     "tests/test_capture_device.py",
+    "tests/test_semantic_source_naming.py",
 )
 
 CAMPAIGN_TESTS = (
@@ -35,8 +36,8 @@ CAMPAIGN_TESTS = (
     "tests/test_memory_budget_ownership.py",
     "tests/test_serial_frame_arbiter.py",
     "tests/test_capture_device.py",
-    "tests/test_cx318_capture_segment.py",
-    "tests/test_cx318_capture_handoff.py",
+    "tests/test_capture_segment_rotation.py",
+    "tests/test_capture_owner_handoff.py",
     "tests/test_cx317_abort_path.py",
     "tests/test_cx317_stage7_transport_rehearsal.py",
     "tests/test_evidence.py",

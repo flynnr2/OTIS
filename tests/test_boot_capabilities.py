@@ -48,7 +48,7 @@ def test_named_phases_directly_bracket_selected_initializers() -> None:
         "boot_phase_timer_init": "otis_count_observation_begin(",
         "boot_phase_pps_input_init": "begin_edge_capture_backend(",
         "boot_phase_peripherals_init": "otis_dac_ad5693r_begin()",
-        "boot_phase_preview_init": "otis_phase4_observe_preview_begin(",
+        "boot_phase_preview_init": "otis_observe_only_discipline_live_begin(",
         "boot_phase_capability_audit": "otis_resource_registry_complete()",
     }
     for function, work in expected_work.items():

@@ -150,6 +150,32 @@ Do not automatically run the full repository suite or complete firmware matrix
 after every narrow repair. Reuse build results only when source, configuration,
 toolchain, and all other relevant inputs have identical identities.
 
+## Distinguish preflight, rehearsal, and qualification
+
+- **Preflight** is a no-I/O structural and identity check. It proves declared
+  configuration, authority, command boundaries, timelines, and source/build
+  bindings. It does not prove that the complete operational path works.
+- **Operational-path rehearsal** is a short end-to-end execution of the actual
+  process topology and command, acknowledgement, obstruction, abort, rotation,
+  analysis, sealing, and registration paths. Use accelerated time, replay, or
+  deterministic fixtures for long scientific boundaries while retaining the
+  genuine real-time I/O path where it matters.
+- **Physical qualification** is the finite evidence-bearing bench or live run
+  that exercises the real duration, firmware behavior, plant, and measurement
+  conditions required by the decision.
+
+Do not describe a structural preflight as a rehearsal. A physical qualification
+should confirm the scientific or real-time behavior, not be the first place an
+ordinary host integration defect can appear.
+
+When a failure is confined to a deterministic offline host consumer and the
+sealed raw acquisition evidence remains complete, immutable, and sufficient,
+reanalyse that evidence with explicit old/new analyzer identities and
+supersession provenance. Do not repeat successful firmware or physical
+acquisition merely to repair an offline verdict. Repeat the shortest affected
+gate when a change can alter commands, capture completeness, ownership, timing,
+segmentation, safety, firmware behavior, or the scientific result.
+
 ## Operating premises and safety
 
 - Treat operations inside a documented, previously characterized electrical

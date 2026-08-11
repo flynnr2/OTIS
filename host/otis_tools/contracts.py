@@ -784,6 +784,7 @@ class CsvValidationContext:
     known_domains: frozenset[str]
     template: bool = False
     allow_rp2040_timer0_wrap: bool = False
+    tight_deadband_policy_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2057,7 +2058,11 @@ def _check_hybrid_preview_decision_v1(
 
 
 def _check_tight_deadband_decision_v1(
-    row: dict[str, str], row_number: int, errors: list[str]
+    row: dict[str, str],
+    row_number: int,
+    errors: list[str],
+    *,
+    expected_policy_sha256: str,
 ) -> None:
     _check_required_text(
         row,
@@ -2155,9 +2160,10 @@ def _check_tight_deadband_decision_v1(
             f"row {row_number}: estimate_id must identify a selected600 CX317 estimate"
         )
     _check_sha256(row, "policy_sha256", row_number, errors)
-    if row.get("policy_sha256") != TIGHT_DEADBAND_POLICY_SHA256:
+    if row.get("policy_sha256") != expected_policy_sha256:
         errors.append(
-            f"row {row_number}: policy_sha256 must equal the frozen Stage 5 policy hash"
+            f"row {row_number}: policy_sha256 must equal the expected "
+            "tight-deadband policy hash"
         )
     for field_name in ("actionable", "actuation_authorized", "authorization_consumed"):
         if row.get(field_name) != "false":
@@ -2270,7 +2276,15 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             if context.contract == "hybrid_preview_decisions_v1":
                 _check_hybrid_preview_decision_v1(row, row_count, errors)
             if context.contract == "tight_deadband_decisions_v1":
-                _check_tight_deadband_decision_v1(row, row_count, errors)
+                _check_tight_deadband_decision_v1(
+                    row,
+                    row_count,
+                    errors,
+                    expected_policy_sha256=(
+                        context.tight_deadband_policy_sha256
+                        or TIGHT_DEADBAND_POLICY_SHA256
+                    ),
+                )
 
     if row_count == 0:
         warnings.append("CSV has headers but no data rows")

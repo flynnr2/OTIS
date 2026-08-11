@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from host.otis_tools import cx318_stage5_rehearsal_analyze as analyzer
+from host.otis_tools import tight_deadband_rehearsal_analyze as analyzer
 from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_KEYS,
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
@@ -250,7 +250,7 @@ def _fixture_run(
     monkeypatch.setattr(analyzer, "load_manifest", lambda _: manifest)
     monkeypatch.setattr(
         analyzer,
-        "load_stage5_spec",
+        "load_tight_deadband_spec",
         lambda leg: (spec, identities, object()),
     )
     def validate_csv(*args, **kwargs):
@@ -362,6 +362,71 @@ def test_capture_closure_accepts_only_proven_same_owner_logical_rotation(
     _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
     result = analyzer._capture_closure(run_dir, state, markers)
     assert result["ok"] is False
+
+
+def test_capture_closure_accepts_a_clean_physical_serial_close(
+    tmp_path: Path,
+) -> None:
+    run_dir = (tmp_path / "live").resolve()
+    run_dir.mkdir()
+    (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+    state = {
+        "pid": 42,
+        "capture_active": False,
+        "serial_open": False,
+        "logical_segment_closed": True,
+        "physical_serial_open": False,
+        "transport_generation": 1,
+        "reconnect_count": 0,
+        "parser_errors": 0,
+        "malformed_utf8": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    markers = [
+        {
+            "event": "capture_started",
+            "owner_pid": 42,
+            "transport_generation": 1,
+        },
+        {
+            "event": "capture_stopped",
+            "owner_pid": 42,
+            "transport_generation": 1,
+            "logical_rotation": False,
+            "next_run": None,
+        },
+    ]
+    closure = {
+        "schema_version": 1,
+        "protocol": analyzer.SEGMENT_PROTOCOL_ID,
+        "run": str(run_dir),
+        "run_manifest_sha256": sha256(
+            (run_dir / "run_manifest.json").read_bytes()
+        ).hexdigest(),
+        "owner_pid": 42,
+        "transport_generation": 1,
+        "closure_mode": "physical_serial_close",
+        "logical_segment_closed": True,
+        "physical_serial_open": False,
+        "serial_reopened": False,
+        "next_run": None,
+        "request_id": None,
+        "serial_owner_check": None,
+        "counters": {
+            "reconnect_count": 0,
+            "parser_errors": 0,
+            "malformed_utf8": 0,
+            "commands_rejected": 0,
+            "emergency_aborts_sent": 0,
+        },
+    }
+    _write_json(run_dir / analyzer.SEGMENT_CLOSURE, closure)
+
+    result = analyzer._capture_closure(run_dir, state, markers)
+
+    assert result["ok"] is True
+    assert result["mode"] == "physical_serial_close"
 
 
 @pytest.mark.parametrize(

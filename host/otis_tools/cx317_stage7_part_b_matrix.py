@@ -12,7 +12,7 @@ import tempfile
 
 from tools.firmware_matrix import DEFAULT_MATRIX, load_matrix
 from .cx317_stage7_gate_validation import part_a2_progression_gate_valid
-from .cx317_stage7_shadow import frozen_content_binding_matches
+from .cx317_counterfactual_deadband import frozen_content_binding_matches
 
 
 PART_B_PROFILE = "cx317_dual_core_active_endurance_part_b"

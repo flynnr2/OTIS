@@ -11,13 +11,13 @@ import tempfile
 from typing import Any
 
 from .cx317_stage6_dual_core_analyze import _estimator_parity, _rows_for
-from .cx317_stage6_live_analyze import _check_continuity
+from .cx317_frequency_preview_live_analyze import _check_continuity
 from .cx317_stage7_analyze import _controller_parity, _transactions
 from .cx317_stage7_gate_validation import (
     PART_A_COMPOSITE_TEST,
     part_a2_progression_gate_valid,
 )
-from .cx317_stage7_supervisor import load_stage7_spec
+from .cx317_bounded_active_supervisor import load_cx317_bounded_active_spec
 from .evidence import validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 
@@ -131,7 +131,7 @@ def build_composite_gate(
     continuity, count_by_sequence = _check_continuity(
         counts, snapshots, raw
     )
-    spec, identities = load_stage7_spec("part_a", 0xA800)
+    spec, identities = load_cx317_bounded_active_spec("part_a", 0xA800)
     estimator_check, _ = _estimator_parity(
         estimates,
         count_by_sequence,

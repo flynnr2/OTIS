@@ -218,7 +218,7 @@ struct OtisTelemetryMessage {
 // Core 1 publishes one immutable numerical result per observed PPS boundary;
 // Core 0 alone turns it into RPH/PHE/HPR CSV.  The record deliberately carries
 // no callback, pointer, authority, actuator request, or DAC-driver state.
-struct OtisCx318PreviewRecordMessage {
+struct OtisPhasePreviewRecordMessage {
   uint32_t preview_sequence;
   uint64_t decision_timestamp_ticks;
   uint32_t phase_epoch;

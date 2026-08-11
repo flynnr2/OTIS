@@ -43,11 +43,11 @@ void emit(const char *label, const OtisCx317PreviewDecision &decision) {
             << decision.limited_delta_codes << ',' << decision.proposed_code
             << ',' << (decision.tight_deadband_decision_available ? 1 : 0)
             << ','
-            << otis_cx318_stage5_tight_deadband_state_name(tight.state_before)
+            << otis_integer_count_tight_deadband_state_name(tight.state_before)
             << ','
-            << otis_cx318_stage5_tight_deadband_state_name(tight.state_after)
+            << otis_integer_count_tight_deadband_state_name(tight.state_after)
             << ','
-            << otis_cx318_stage5_tight_deadband_reason_name(tight.reason) << ','
+            << otis_integer_count_tight_deadband_reason_name(tight.reason) << ','
             << static_cast<unsigned>(tight.entry_pending_count) << ','
             << static_cast<unsigned>(tight.release_pending_count) << ','
             << (tight.frequency_controller_eligible ? 1 : 0) << ','

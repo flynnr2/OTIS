@@ -70,8 +70,8 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
         "ObservationExhausted",
         "CriticalExhausted",
         "EvidenceExhausted",
-        "Cx318PreviewExhausted",
-        "Cx318PreviewFault",
+        "PhasePreviewQueueExhausted",
+        "PhasePreviewFault",
         "ActuatorTimeout",
         "ActuatorAcknowledgementMismatch",
     ):
@@ -91,17 +91,17 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
 
     assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 29u" in header
     assert "OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u" in header
-    assert "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u" in header
+    assert "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u" in header
     assert (
-        "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
+        "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
     assert (
-        "OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +\n"
+        "OTIS_TIMING_HEALTH_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
-    assert "OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 134u" in header
-    assert "OTIS_STAGE4_BOOT_TELEMETRY_BURST = 165u" in header
+    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 134u" in header
+    assert "OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 165u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
 
@@ -244,9 +244,9 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
     assert "otis_serial_frame_arbiter_release" in dispatch
     for writer in (
         "service_dual_core_evidence_transport();",
-        "otis_phase4_observe_preview_service_transport();",
+        "otis_observe_only_discipline_live_service_transport();",
         "otis_cx317_preview_live_service_transport();",
-        "otis_cx318_preview_transport_service();",
+        "otis_phase_preview_transport_service();",
     ):
         assert dispatch.count(writer) == 1
 

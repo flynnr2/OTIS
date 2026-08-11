@@ -68,6 +68,8 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx318_stage4_nonactuating_preview",
         "cx318_stage5_tight_lower",
         "cx318_stage5_tight_upper",
+        "cx319_tight_lower",
+        "cx319_tight_upper",
         "cx317_bounded_active_campaign_a",
         "cx317_bounded_active_campaign_b",
         "cx317_dual_core_active_part_a",
@@ -88,6 +90,7 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "pseudo_pps_loopback",
         "invalid_pseudo_pps_nonisolated_resources",
         "invalid_gnss_uart_tx_enabled",
+        "invalid_cx319_lower_parameters",
         "invalid_active_campaign_a_parameters",
         "invalid_active_missing_gnss",
         "invalid_cx318_stage4_with_dac",
@@ -99,8 +102,8 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "invalid_cx318_stage4_with_cx317_preview",
         "invalid_cx318_stage4_unqualified_backend",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 26
-    assert sum(item["expect"] == "fail" for item in profiles.values()) == 15
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 28
+    assert sum(item["expect"] == "fail" for item in profiles.values()) == 16
     assert matrix["resource_budgets"] == {
         "dynamic_memory_total_bytes": 262144,
         "static_dynamic_memory_max_bytes": 157286,
@@ -143,6 +146,8 @@ def test_matrix_lifecycle_separates_current_release_from_history() -> None:
     assert profiles["invalid_active_campaign_a_parameters"]["lifecycle"] == (
         "archive_out_of_default_checks"
     )
+    assert profiles["cx319_tight_lower"]["lifecycle"] == "keep_active"
+    assert profiles["cx319_tight_upper"]["lifecycle"] == "keep_active"
 
     release = _selected_profiles(matrix, [], False)
     release_ids = {profile["id"] for profile in release}
@@ -151,12 +156,15 @@ def test_matrix_lifecycle_separates_current_release_from_history() -> None:
     assert "invalid_gnss_uart_tx_enabled" in release_ids
     assert "cx318_stage5_tight_lower" not in release_ids
     assert "cx317_bounded_active_campaign_a" not in release_ids
-    assert len(release) == 32
+    assert "cx319_tight_lower" in release_ids
+    assert "cx319_tight_upper" in release_ids
+    assert "invalid_cx319_lower_parameters" in release_ids
+    assert len(release) == 35
 
     historical = _selected_profiles(
         matrix, [], False, all_profiles=True
     )
-    assert len(historical) == 41
+    assert len(historical) == 44
 
     fast = _selected_profiles(
         matrix, [], False, verification_tier="fast"
@@ -167,7 +175,9 @@ def test_matrix_lifecycle_separates_current_release_from_history() -> None:
         matrix, [], False, verification_tier="standard_campaign"
     )
     assert [profile["id"] for profile in campaign] == [
-        "cx317_fixed_code_baseline"
+        "cx317_fixed_code_baseline",
+        "cx319_tight_lower",
+        "cx319_tight_upper",
     ]
 
 
@@ -188,6 +198,8 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
         "cx317_dual_core_active_endurance_part_b",
         "cx318_stage5_tight_lower",
         "cx318_stage5_tight_upper",
+        "cx319_tight_lower",
+        "cx319_tight_upper",
     }
     assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA950u"
     assert active["cx317_bounded_active_campaign_a"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "16u"
@@ -209,6 +221,8 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA82Au"
     assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "32u"
     assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "672u"
+    assert active["cx319_tight_lower"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA808u"
+    assert active["cx319_tight_upper"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA848u"
     for defines in active.values():
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
         assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
@@ -230,7 +244,7 @@ def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:
     assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
     assert defines["OTIS_ENABLE_DAC_AD5693R"] == "0"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
-    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+    assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
 
 
 def test_cx318_stage4_profile_is_static_nonactuating_and_core1_only() -> None:
@@ -255,7 +269,7 @@ def test_cx318_stage4_profile_is_static_nonactuating_and_core1_only() -> None:
     assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
     for disabled in (
-        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+        "OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW",
         "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
         "OTIS_ENABLE_DAC_AD5693R",
@@ -292,7 +306,7 @@ def test_cx318_stage4_premise_profile_is_exact_one_shot_and_noncontrolling() -> 
     assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
     assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     for disabled in (
-        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+        "OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW",
         "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
         "OTIS_ENABLE_CX318_STAGE4_PREVIEW",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
@@ -332,8 +346,8 @@ def test_cx318_stage5_profiles_are_exact_same_timing_bidirectional_legs() -> Non
         profile = _profile(matrix, profile_id)
         defines = profile["defines"]
         assert defines["OTIS_ENABLE_CX318_STAGE5_PREVIEW"] == "1"
-        assert defines["OTIS_CX318_STAGE5_INITIAL_CODE"] == "0xA828u"
-        assert defines["OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH"] == "0u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE"] == "0xA828u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH"] == "0u"
         assert defines["OTIS_ENABLE_CX318_STAGE4_PREVIEW"] == "0"
         assert defines["OTIS_ENABLE_CX317_I_ONLY_PREVIEW"] == "1"
         assert defines["OTIS_ENABLE_CX317_BOUNDED_ACTIVE"] == "1"
@@ -351,6 +365,39 @@ def test_cx318_stage5_profiles_are_exact_same_timing_bidirectional_legs() -> Non
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
 
 
+def test_cx319_profiles_are_new_current_identities_with_same_finite_envelope() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    expected = {
+        "cx319_tight_lower": (
+            "OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER",
+            "0xA808u",
+        ),
+        "cx319_tight_upper": (
+            "OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER",
+            "0xA848u",
+        ),
+    }
+    for profile_id, (campaign, start) in expected.items():
+        profile = _profile(matrix, profile_id)
+        defines = profile["defines"]
+        assert profile["lifecycle"] == "keep_active"
+        assert set(profile["verification_tiers"]) == {
+            "standard_campaign",
+            "release",
+            "bench",
+        }
+        assert defines["OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW"] == "1"
+        assert defines["OTIS_ENABLE_CX318_STAGE5_PREVIEW"] == "0"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE"] == "0xA828u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH"] == "0u"
+        assert defines["OTIS_CX317_ACTIVE_CAMPAIGN"] == campaign
+        assert defines["OTIS_CX317_ACTIVE_START_CODE"] == start
+        assert defines["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
+        assert defines["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
+        assert defines["OTIS_CX317_DECISION_CADENCE_S"] == "1800u"
+        assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
+
+
 def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:
     matrix = load_matrix(MATRIX_PATH)
     defines = _profile(matrix, "cx317_pps_gated_open_loop")["defines"]
@@ -365,7 +412,7 @@ def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:
     assert defines["OTIS_DAC_MIN_CODE"] == "0xA800u"
     assert defines["OTIS_DAC_MAX_CODE"] == "0xAB00u"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
-    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+    assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
 
     profile = _profile(matrix, "cx317_pps_gated_open_loop")
     provenance = build_provenance(
@@ -392,7 +439,7 @@ def test_cx317_stage2_gnss_profiles_are_rx_only_and_intentionally_actuating() ->
     for defines in (smoke, preflight):
         assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
-        assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+        assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
         assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
         assert defines["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
     assert smoke["OTIS_ENABLE_DAC_AD5693R"] == "0"

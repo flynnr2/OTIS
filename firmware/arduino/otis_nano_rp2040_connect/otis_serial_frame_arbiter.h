@@ -12,14 +12,14 @@ enum class OtisSerialFrameOwner : uint8_t {
   DualCoreEvidence = 1u,
   Phase4Preview = 2u,
   Cx317Preview = 3u,
-  Cx318Preview = 4u,
+  PhasePreview = 4u,
 };
 
 struct OtisSerialFrameReadiness {
   bool dual_core_evidence;
   bool phase4_preview;
   bool cx317_preview;
-  bool cx318_preview;
+  bool phase_preview;
 };
 
 struct OtisSerialFrameArbiter {

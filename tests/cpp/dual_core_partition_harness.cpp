@@ -80,8 +80,8 @@ OtisEvidenceFrameMessage evidence(uint32_t sequence) {
   return value;
 }
 
-OtisCx318PreviewRecordMessage cx318_preview(uint32_t sequence) {
-  OtisCx318PreviewRecordMessage value = {};
+OtisPhasePreviewRecordMessage phase_preview(uint32_t sequence) {
+  OtisPhasePreviewRecordMessage value = {};
   value.preview_sequence = sequence;
   value.phase_epoch = 1u;
   value.observation_sequence = sequence;
@@ -202,18 +202,18 @@ void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
                 "ACTIVE status must carry a complete-generation envelope");
   static_assert(OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST == 32u,
                 "ACTIVE status burst must include fields and envelope");
-  static_assert(OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 70u,
+  static_assert(OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 70u,
                 "fixture must bind the measured non-active health burst");
-  static_assert(OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST == 102u,
+  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 102u,
                 "health burst must include one complete ACTIVE status");
-  static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 134u,
+  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 134u,
                 "fixture must bind health plus one ACTIVE? response");
   static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
-                    OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
+                    OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,
                 "telemetry queue must contain the declared concurrent burst");
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u;
-       sequence <= OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST; ++sequence) {
+       sequence <= OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST; ++sequence) {
     const OtisTelemetryMessage summary = telemetry(sequence);
     assert(otis_dual_core_publish_telemetry(&summary));
   }
@@ -222,13 +222,13 @@ void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
   otis_dual_core_get_stats(&stats);
   assert(!stats.fail_static);
   assert(stats.telemetry_depth ==
-         OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST);
+         OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST);
   assert(stats.telemetry_high_water ==
-         OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST);
+         OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST);
   assert(stats.telemetry_dropped == 0u);
 
   for (uint32_t expected = 1u;
-       expected <= OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST; ++expected) {
+       expected <= OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST; ++expected) {
     OtisTelemetryMessage actual = {};
     assert(otis_dual_core_take_telemetry(&actual));
     assert(actual.sequence == expected);
@@ -280,19 +280,19 @@ void complete_evidence_frames_cross_by_value_in_order() {
 void cx318_numerical_records_cross_by_value_in_order() {
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u;
-       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
-    const OtisCx318PreviewRecordMessage record = cx318_preview(sequence);
-    assert(otis_dual_core_publish_cx318_preview(&record));
+       sequence <= OTIS_PHASE_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    const OtisPhasePreviewRecordMessage record = phase_preview(sequence);
+    assert(otis_dual_core_publish_phase_preview(&record));
   }
   OtisDualCoreQueueStats stats = {};
   otis_dual_core_get_stats(&stats);
-  assert(stats.cx318_preview_depth == OTIS_CX318_PREVIEW_QUEUE_DEPTH);
-  assert(stats.cx318_preview_high_water == OTIS_CX318_PREVIEW_QUEUE_DEPTH);
+  assert(stats.phase_preview_depth == OTIS_PHASE_PREVIEW_QUEUE_DEPTH);
+  assert(stats.phase_preview_high_water == OTIS_PHASE_PREVIEW_QUEUE_DEPTH);
   assert(!stats.fail_static);
   for (uint32_t sequence = 1u;
-       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
-    OtisCx318PreviewRecordMessage record = {};
-    assert(otis_dual_core_take_cx318_preview(&record));
+       sequence <= OTIS_PHASE_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    OtisPhasePreviewRecordMessage record = {};
+    assert(otis_dual_core_take_phase_preview(&record));
     assert(record.preview_sequence == sequence);
     assert(record.observation_sequence == sequence);
     assert(record.relative_phase_cycles == static_cast<int64_t>(sequence));
@@ -419,16 +419,16 @@ void every_non_droppable_queue_exhaustion_is_fail_static() {
 
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u;
-       sequence <= OTIS_CX318_PREVIEW_QUEUE_DEPTH; ++sequence) {
-    const OtisCx318PreviewRecordMessage record = cx318_preview(sequence);
-    assert(otis_dual_core_publish_cx318_preview(&record));
+       sequence <= OTIS_PHASE_PREVIEW_QUEUE_DEPTH; ++sequence) {
+    const OtisPhasePreviewRecordMessage record = phase_preview(sequence);
+    assert(otis_dual_core_publish_phase_preview(&record));
   }
-  const OtisCx318PreviewRecordMessage cx318_overflow =
-      cx318_preview(OTIS_CX318_PREVIEW_QUEUE_DEPTH + 1u);
-  assert(!otis_dual_core_publish_cx318_preview(&cx318_overflow));
+  const OtisPhasePreviewRecordMessage cx318_overflow =
+      phase_preview(OTIS_PHASE_PREVIEW_QUEUE_DEPTH + 1u);
+  assert(!otis_dual_core_publish_phase_preview(&cx318_overflow));
   otis_dual_core_get_stats(&stats);
   assert(stats.fail_static);
-  assert(stats.fault == OtisPartitionFault::Cx318PreviewExhausted);
+  assert(stats.fault == OtisPartitionFault::PhasePreviewQueueExhausted);
 }
 
 void service_exhaustion_freezes_core1_progress_capsule_once() {

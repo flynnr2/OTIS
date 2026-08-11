@@ -15,15 +15,15 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .cx318_stage5_manifest import REHEARSAL_STAGE, validate_manifest
+from .tight_deadband_manifest import REHEARSAL_STAGE, validate_manifest
 from .active_status_contract import ACTIVE_STATUS_WIRE_KEYS
-from .cx318_stage5_runtime_contract import (
+from .prewrite_readiness_contract import (
     ACTIVE_STATUS_KEYS,
     RUNTIME_CONTRACT_ID,
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
-from .cx318_stage5_supervisor import load_stage5_spec
+from .tight_deadband_supervisor import load_tight_deadband_spec
 from tools.firmware_matrix import source_input_hash
 
 
@@ -101,7 +101,7 @@ def preflight(manifest_path: Path) -> dict[str, Any]:
         raise ValueError("Stage 5 preflight requires an exact rehearsal manifest")
     stage5 = manifest["stage5"]
     leg_name = stage5["leg"]
-    spec, identities, _ = load_stage5_spec(leg_name)
+    spec, identities, _ = load_tight_deadband_spec(leg_name)
     expected_build = (
         manifest["firmware"]["source_sha256"]
         + ":"

@@ -45,9 +45,9 @@ def test_dual_core_loop_dispatches_exactly_one_chunked_writer() -> None:
     ]
     assert "switch (owner)" in dispatch
     assert dispatch.count("service_dual_core_evidence_transport();") == 1
-    assert dispatch.count("otis_phase4_observe_preview_service_transport();") == 1
+    assert dispatch.count("otis_observe_only_discipline_live_service_transport();") == 1
     assert dispatch.count("otis_cx317_preview_live_service_transport();") == 1
-    assert dispatch.count("otis_cx318_preview_transport_service();") == 1
+    assert dispatch.count("otis_phase_preview_transport_service();") == 1
 
     loop = sketch[sketch.index("void loop()") :]
     dual_core = loop[
@@ -57,10 +57,13 @@ def test_dual_core_loop_dispatches_exactly_one_chunked_writer() -> None:
     guard_end = dual_core.index("service_dual_core_outputs();")
     guard = dual_core[:guard_end]
     assert "if (service_dual_core_serial_frame_transport())" in guard
+    assert guard.index("otis_gnss_receiver_service(millis());") < guard.index(
+        "if (service_dual_core_serial_frame_transport())"
+    )
     for writer in (
         "service_dual_core_evidence_transport();",
-        "otis_phase4_observe_preview_service_transport();",
+        "otis_observe_only_discipline_live_service_transport();",
         "otis_cx317_preview_live_service_transport();",
-        "otis_cx318_preview_transport_service();",
+        "otis_phase_preview_transport_service();",
     ):
         assert writer not in dual_core

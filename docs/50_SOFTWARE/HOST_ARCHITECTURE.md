@@ -83,6 +83,16 @@ The host consumes timing telemetry.
 
 The host does not establish timing truth.
 
+## Durable source naming
+
+Reusable source modules and primary APIs are named for their physical quantity,
+responsibility, or operational capability. Programme, gate, and stage identities
+belong in profiles, manifests, authority records, and historical evidence rather
+than the shared implementation namespace. Hardware names such as `cx317` remain
+only where code is coupled to that oscillator, its plant, or immutable campaign
+provenance. The classification and compatibility boundary are recorded in
+`docs/50_SOFTWARE/SEMANTIC_SOURCE_NAMING_MIGRATION.md`.
+
 ---
 
 # Instrument Service Separation
@@ -218,9 +228,9 @@ rehearsal sink → no-authority transition sink → validated live sink
                  same PID and serial handle
 ```
 
-`cx318_capture_segment` writes a capability-bound local request containing the
-expected PID, transport generation, source run, target manifest hash and exact
-target command FIFOs. The capture owner verifies the real `lsof` owner set,
+`capture_segment_rotation` writes a capability-bound local request containing
+the expected PID, transport generation, source run, target manifest hash and
+exact target command FIFOs. The capture owner verifies the real `lsof` owner set,
 waits for a complete device-record boundary, closes the source with an
 immutable `capture_segment_closure_v1.json`, and opens command ingress only for
 a fully validated live manifest. The transition manifest forbids command

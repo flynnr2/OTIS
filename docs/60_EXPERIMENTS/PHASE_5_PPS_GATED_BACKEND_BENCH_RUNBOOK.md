@@ -105,7 +105,7 @@ git status --short --branch
 git log -8 --oneline --decorate
 git log -1 --oneline -- data_contracts/estimates_v2.csv.md
 git log -1 --oneline -- \
-  docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md
+  docs/50_SOFTWARE/OBSERVE_ONLY_DISCIPLINE_LIVE_ENGINEERING_NOTE.md
 python3 -m pytest -q
 python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
 ```

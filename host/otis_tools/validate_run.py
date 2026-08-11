@@ -361,6 +361,11 @@ def validate_run(run_dir: Path) -> int:
             known_domains=manifest.known_domains,
             template=manifest.is_template,
             allow_rp2040_timer0_wrap="rp2040_timer0" in manifest.known_domains,
+            tight_deadband_policy_sha256=(
+                manifest.data.get("policy", {}).get("sha256")
+                if isinstance(manifest.data.get("policy"), dict)
+                else None
+            ),
         )
         result = validate_csv(path, context)
         files_by_contract[contract] = path

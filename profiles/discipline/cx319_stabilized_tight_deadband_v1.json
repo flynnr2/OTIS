@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",
+  "status": "offline_candidate_frozen_no_hardware_authority",
+  "oscillator_identity": "CX317",
+  "programme_label": "CX319",
+  "bindings": {
+    "programme": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/00_MASTER_PROGRAMME.md",
+      "sha256": "770f04a207c247fe80f6f4f7724615928cd38a04410c792ec7f4166dbe5b0444"
+    },
+    "inherited_active_policy_root": {
+      "path": "profiles/discipline/cx317_bounded_active_v2.json",
+      "sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42"
+    },
+    "current_contract_authority": {
+      "path": "docs/50_SOFTWARE/CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md",
+      "sha256": "86205a69d4d0e57576cfaec18a7a75678f700a65389740d871741b675818ac68"
+    },
+    "current_active_status_contract": {
+      "path": "data_contracts/cx317_active_status_snapshot_v1.md",
+      "sha256": "edd840ced5f94e1369f2f066a0eb60abd533c3eccf6732093608a12de9a33a98"
+    },
+    "selected_frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+    },
+    "response_policy": {
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec"
+    },
+    "selected_relative_phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "selected_hybrid_preview": {
+      "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
+      "sha256": "08f1897bfaefc5f248d5a3ed4bb160acb447cc010ec744917ab36a573ca45c33"
+    }
+  },
+  "authority": {
+    "allowed_operation": "offline_preparation",
+    "hardware_interaction": false,
+    "firmware_flash": false,
+    "serial_open": false,
+    "command_fifo_creation": false,
+    "dac_write": false,
+    "control_arm": false,
+    "bench_rehearsal": false,
+    "live_leg": false,
+    "phase_or_hybrid_actionable": false,
+    "separate_operator_transition_required_for_g1": true
+  },
+  "inheritance": {
+    "base_frequency_policy_id": "CX317_BOUNDED_ACTIVE_I_ONLY_V2",
+    "base_frequency_parameters_unchanged": true,
+    "tight_deadband_method_id": "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
+    "relative_phase_estimator_reused_without_semantic_change": true,
+    "hybrid_preview_reused_without_semantic_change": true,
+    "old_cx318_operational_artifacts_authoritative": false,
+    "old_cx318_promotion_ledger_resumable": false
+  },
+  "authoritative_input": {
+    "record": "EST v2 cx317_selected_600s_nonoverlap_v1",
+    "span_s": 600,
+    "quantity": "signed_integer_accumulated_edge_error_counts",
+    "integer_counts_are_authoritative": true,
+    "frequency_hz_is_reporting_and_controller_magnitude_input_only": true,
+    "fresh_requires_contiguous_qualified_current_session_current_dac_epoch_support": true
+  },
+  "tight_hysteretic_band": {
+    "initial_and_rearm_state": "REQUALIFY_OUTSIDE",
+    "outside_state": "OUTSIDE",
+    "inside_state": "TIGHT_INSIDE",
+    "entry_absolute_counts_lte": 2,
+    "entry_consecutive_fresh_estimates": 2,
+    "release_absolute_counts_gte": 4,
+    "release_consecutive_fresh_estimates": 2,
+    "three_count_rule": "retain_previous_band_state",
+    "pending_counter_reset_on": [
+      "opposite_evidence",
+      "invalidity",
+      "dac_epoch_transition",
+      "capture_session_transition"
+    ]
+  },
+  "frequency_controller": {
+    "type": "incremental_I_only_frequency_control",
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "rounding_rule": "round_half_away_from_zero_after_step_limit",
+    "maximum_automatic_step_codes": 21,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "minimum_applied_correction_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 600,
+    "full_history_reset_s": 1500,
+    "startup_warmup_s": 1800,
+    "maximum_outstanding_requests": 1,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "reboot_recovery": false
+  },
+  "legs": {
+    "A": {
+      "description": "below_operating_point_positive_correction",
+      "firmware_profile": "cx319_tight_lower",
+      "run_binding_tag": 3195001,
+      "exact_setup_code": 43016,
+      "exact_setup_code_hex": "0xA808",
+      "required_automatic_direction": "positive",
+      "maximum_automatic_corrections": 4,
+      "maximum_cumulative_automatic_movement_codes": 84
+    },
+    "B": {
+      "description": "above_operating_point_negative_correction",
+      "firmware_profile": "cx319_tight_upper",
+      "run_binding_tag": 3195002,
+      "exact_setup_code": 43080,
+      "exact_setup_code_hex": "0xA848",
+      "required_automatic_direction": "negative",
+      "maximum_automatic_corrections": 4,
+      "maximum_cumulative_automatic_movement_codes": 84
+    }
+  },
+  "finite_runtime": {
+    "qualification_deadline_s": 5400,
+    "maximum_qualified_duration_s": 14400,
+    "no_extension_after_finite_endpoint": true,
+    "leg_b_forbidden_after_leg_a_nonpass": true
+  },
+  "same_profile_rehearsal": {
+    "required_before_each_long_leg": true,
+    "reuse_exact_leg_profile_uf2_config_and_limits": true,
+    "minimum_capture_duration_s": 2700,
+    "minimum_selected_600s_estimates": 1,
+    "historical_pre_setup_code": 43048,
+    "historical_pre_setup_code_hex": "0xA828",
+    "physical_dac_confirmation_before_live_stimulus": "unknown",
+    "setup_or_automatic_dac_write_during_rehearsal": false,
+    "current_platform_obstruction_abort_rotation_analysis_seal_required": true
+  },
+  "phase_and_hybrid_authority": {
+    "continuous_preview_required": true,
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_influence_frequency_controller_delta": false,
+    "may_influence_frequency_controller_eligibility": false,
+    "may_mutate_frequency_controller_response_or_budget_state": false,
+    "may_issue_command_or_write_dac": false
+  },
+  "stop_rules": {
+    "wrong_sign_response": "terminal_fail_static",
+    "repeated_alternation_or_low_efficiency": "terminal_fail_static",
+    "clamp_or_budget_fault": "terminal_fail_static",
+    "transaction_or_acknowledgement_fault": "terminal_fail_static",
+    "measurement_identity_continuity_or_queue_fault": "terminal_fail_static",
+    "phase_or_hybrid_authority_contamination": "terminal_fail_static",
+    "operator_abort": "terminal_fail_static_at_last_confirmed_code",
+    "automatic_restoration_after_stop": false
+  },
+  "g0_exit_gate": {
+    "current_bindings_exact": true,
+    "new_profiles_pass_current_verification": true,
+    "host_firmware_policy_identity_exact": true,
+    "tight_deadband_replay_exact": true,
+    "phase_hybrid_one_way_structure_proved": true,
+    "old_cx318_execution_remains_blocked": true,
+    "hardware_operations_remain_unauthorized": true
+  }
+}
