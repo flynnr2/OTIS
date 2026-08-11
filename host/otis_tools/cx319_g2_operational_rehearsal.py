@@ -28,7 +28,11 @@ from .cx319_g2_contract import (
     canonical_sha256,
     normal_command_allowed,
 )
-from .cx319_g2_runtime_contract import canonical_prewrite_fixture
+from .cx319_g2_runtime_contract import (
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    canonical_prewrite_fixture,
+)
 from .cx319_g2_supervisor import create_supervisor
 from .evidence_index import package_identity, register_package, validate_index
 
@@ -390,20 +394,37 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             planned_live_stimulus_code=supervisor.spec.start_code,
         )
         health[("dual_core", "telemetry_dropped")] = "3"
+        health[("cx317_active", "uptime_s")] = "30"
+        health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
+        health[("gnss_receiver", "control_eligible")] = "false"
         telemetry_rows = [
             {
                 "record_type": "STS",
                 "schema_version": "1",
-                "status_seq": str(sequence),
-                "timestamp_ticks": str(sequence * 160_000_000),
+                "status_seq": "1",
+                "timestamp_ticks": "480000000",
                 "status_domain": "rp2040_timer0",
-                "component": "dual_core",
-                "status_key": "telemetry_dropped",
-                "status_value": "3",
-                "severity": "WARN",
-                "flags": "32",
-            }
-            for sequence in (1, 2)
+                "component": "cx317_active",
+                "status_key": "uptime_s",
+                "status_value": "30",
+                "severity": "INFO",
+                "flags": "0",
+            },
+            *[
+                {
+                    "record_type": "STS",
+                    "schema_version": "1",
+                    "status_seq": str(sequence),
+                    "timestamp_ticks": str(sequence * 160_000_000),
+                    "status_domain": "rp2040_timer0",
+                    "component": "dual_core",
+                    "status_key": "telemetry_dropped",
+                    "status_value": "3",
+                    "severity": "WARN",
+                    "flags": "32",
+                }
+                for sequence in (2, 3)
+            ],
         ]
         _write_csv(
             run_dir / "csv/health.csv",
@@ -411,6 +432,12 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             telemetry_rows,
         )
         supervisor._check_fail_static_health(health)
+        command_count_before_pps = len(commands)
+        supervisor._check_prewrite_contract(health, 30.0)
+        supervisor._maybe_start_or_arm(health)
+        raw_pps_false_before_deadline_no_setup = (
+            len(commands) == command_count_before_pps
+        )
         epoch_2_health = dict(health)
         epoch_2_health.update(
             {
@@ -427,6 +454,24 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             len(commands) == command_count_before_epoch_2
             and not supervisor._prewrite_readiness(epoch_2_health).ready
         )
+        health[("cx317_active", "uptime_s")] = "612"
+        health[("gnss_receiver", "raw_pps_control_eligible")] = "true"
+        health[("gnss_receiver", "control_eligible")] = "true"
+        telemetry_rows.append(
+            {
+                **telemetry_rows[0],
+                "status_seq": "4",
+                "timestamp_ticks": str(612 * 16_000_000),
+                "status_value": "612",
+            }
+        )
+        _write_csv(
+            run_dir / "csv/health.csv",
+            CONTRACT_FIELDS["health_v1"],
+            telemetry_rows,
+        )
+        supervisor._check_fail_static_health(health)
+        supervisor._check_prewrite_contract(health, 612.0)
         supervisor._maybe_start_or_arm(health)
         _write_arm_fixture(run_dir)
         health.update(
@@ -468,9 +513,9 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         terminal = supervisor.state["terminal"]
         telemetry_rows.append(
             {
-                **telemetry_rows[-1],
-                "status_seq": "3",
-                "timestamp_ticks": "480000000",
+                **telemetry_rows[1],
+                "status_seq": "5",
+                "timestamp_ticks": str(613 * 16_000_000),
                 "status_value": "4",
             }
         )
@@ -488,6 +533,62 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             post_attach_increment_rejected = (
                 "live telemetry_dropped is 4" in str(exc)
             )
+
+        deadline_dir = Path(raw_temp) / "deadline"
+        (deadline_dir / "csv").mkdir(parents=True)
+        deadline_supervisor = create_supervisor(
+            run_dir=deadline_dir,
+            command_fifo=deadline_dir / "normal.fifo",
+            emergency_command_fifo=deadline_dir / "emergency.fifo",
+            abort_fifo=deadline_dir / "abort.fifo",
+            expected_build_identity=build_identity,
+        )
+        deadline_supervisor.state.update(
+            telemetry_drop_baseline=3,
+            telemetry_drop_baseline_status_seq=3,
+            host_attach_uptime_s=30,
+            host_attach_uptime_status_seq=1,
+        )
+        missing_raw_pps_at_deadline_rejected = False
+        try:
+            deadline_supervisor._check_prewrite_contract(
+                epoch_2_health | {
+                    ("gnss_receiver", "identity_epoch"): "1",
+                    ("gnss_receiver", "identity_stable"): "true",
+                    ("gnss_receiver", "metadata_control_eligible"): "true",
+                },
+                RAW_PPS_QUALIFICATION_DEADLINE_S,
+            )
+        except ValueError as exc:
+            missing_raw_pps_at_deadline_rejected = (
+                "raw_pps_control_eligible" in str(exc)
+            )
+
+        late_dir = Path(raw_temp) / "late-attach"
+        (late_dir / "csv").mkdir(parents=True)
+        late_supervisor = create_supervisor(
+            run_dir=late_dir,
+            command_fifo=late_dir / "normal.fifo",
+            emergency_command_fifo=late_dir / "emergency.fifo",
+            abort_fifo=late_dir / "abort.fifo",
+            expected_build_identity=build_identity,
+        )
+        late_rows = [
+            {
+                **telemetry_rows[0],
+                "status_value": str(FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S + 1),
+            }
+        ]
+        _write_csv(
+            late_dir / "csv/health.csv",
+            CONTRACT_FIELDS["health_v1"],
+            late_rows,
+        )
+        late_attach_rejected = False
+        try:
+            late_supervisor._check_fail_static_health(health)
+        except ValueError as exc:
+            late_attach_rejected = "fresh host attachment" in str(exc)
 
     commands.append(
         {"path": "emergency", "command": "ACTIVE ABORT", "acknowledged": True}
@@ -553,6 +654,15 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": post_attach_increment_rejected,
+            "first_firmware_uptime_observation_frozen": (
+                supervisor.state["host_attach_uptime_s"] == 30
+                and supervisor.state["host_attach_uptime_status_seq"] == 1
+            ),
+            "firmware_uptime_s": supervisor.state["host_attach_uptime_s"],
+            "maximum_fresh_attach_uptime_s": (
+                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            ),
+            "late_attach_rejected": late_attach_rejected,
         },
         "gnss_prewrite": {
             "identity_epoch": 1,
@@ -561,6 +671,14 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             "raw_pps_control_eligible": True,
             "control_eligible": True,
             "epoch_2_rejected_before_setup": epoch_2_rejected_before_setup,
+            "raw_pps_false_before_deadline_no_setup": (
+                raw_pps_false_before_deadline_no_setup
+            ),
+            "raw_pps_ready_uptime_s": 612,
+            "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            "missing_raw_pps_at_deadline_rejected": (
+                missing_raw_pps_at_deadline_rejected
+            ),
         },
         "transport_fault": {
             "normal_path_saturated": True,

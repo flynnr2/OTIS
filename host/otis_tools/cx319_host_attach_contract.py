@@ -19,6 +19,8 @@ from .cx318_stage5_runtime_contract import (
 
 TELEMETRY_DROP_KEY = ("dual_core", "telemetry_dropped")
 TELEMETRY_BASELINE_STABLE_OBSERVATIONS = 2
+HOST_ATTACH_UPTIME_KEY = ("cx317_active", "uptime_s")
+FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S = 120
 
 
 def evaluate_health_integrity(
@@ -96,6 +98,86 @@ def telemetry_drop_observations(
     return observations
 
 
+def host_attach_uptime_observations(
+    rows: Iterable[Mapping[str, str]],
+) -> list[tuple[int, int]]:
+    """Return ordered firmware uptimes observed after the host attached."""
+
+    observations: list[tuple[int, int]] = []
+    for row in rows:
+        if (
+            row.get("record_type") != "STS"
+            or row.get("component") != HOST_ATTACH_UPTIME_KEY[0]
+            or row.get("status_key") != HOST_ATTACH_UPTIME_KEY[1]
+        ):
+            continue
+        try:
+            status_seq = int(row.get("status_seq", ""))
+            uptime_s = int(row.get("status_value", ""))
+        except ValueError as exc:
+            raise ValueError(
+                "malformed cx317_active.uptime_s observation"
+            ) from exc
+        if status_seq <= 0 or uptime_s < 0:
+            raise ValueError(
+                "cx317_active.uptime_s observation must have positive "
+                "status_seq and unsigned uptime"
+            )
+        observations.append((status_seq, uptime_s))
+    return observations
+
+
+def evaluate_host_attach_history(
+    rows: Iterable[Mapping[str, str]],
+    *,
+    frozen_uptime_s: int,
+    frozen_status_seq: int,
+) -> dict[str, object]:
+    """Prove that the retained attach record is the first firmware uptime."""
+
+    observations = host_attach_uptime_observations(rows)
+    status_sequences = [status_seq for status_seq, _ in observations]
+    uptimes = [uptime_s for _, uptime_s in observations]
+    first = observations[0] if observations else None
+    status_sequences_strictly_increasing = all(
+        later > earlier
+        for earlier, later in zip(status_sequences, status_sequences[1:])
+    )
+    uptimes_nondecreasing = all(
+        later >= earlier for earlier, later in zip(uptimes, uptimes[1:])
+    )
+    exact = (
+        frozen_uptime_s >= 0
+        and frozen_uptime_s <= FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+        and frozen_status_seq > 0
+        and first == (frozen_status_seq, frozen_uptime_s)
+        and status_sequences_strictly_increasing
+        and uptimes_nondecreasing
+    )
+    return {
+        "exact": exact,
+        "frozen_uptime_s": frozen_uptime_s,
+        "frozen_status_seq": frozen_status_seq,
+        "maximum_uptime_s": FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+        "observation_count": len(observations),
+        "first_observation": (
+            None
+            if first is None
+            else {"status_seq": first[0], "uptime_s": first[1]}
+        ),
+        "status_sequences_strictly_increasing": (
+            status_sequences_strictly_increasing
+        ),
+        "uptimes_nondecreasing": uptimes_nondecreasing,
+        "first_observation_matches_frozen_record": (
+            first == (frozen_status_seq, frozen_uptime_s)
+        ),
+        "within_fresh_host_attach_limit": (
+            0 <= frozen_uptime_s <= FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+        ),
+    }
+
+
 def evaluate_telemetry_drop_history(
     rows: Iterable[Mapping[str, str]],
     *,
@@ -170,9 +252,13 @@ def evaluate_telemetry_drop_history(
 
 
 __all__ = [
+    "FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S",
+    "HOST_ATTACH_UPTIME_KEY",
     "TELEMETRY_BASELINE_STABLE_OBSERVATIONS",
     "TELEMETRY_DROP_KEY",
+    "evaluate_host_attach_history",
     "evaluate_health_integrity",
     "evaluate_telemetry_drop_history",
+    "host_attach_uptime_observations",
     "telemetry_drop_observations",
 ]

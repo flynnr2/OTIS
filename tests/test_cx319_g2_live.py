@@ -66,7 +66,8 @@ def test_frozen_activation_can_be_revalidated_from_retained_proposal(
         "authority": {
             "effective": True,
             "firmware_flash": False,
-            "fresh_restart_maximum_prewrite_uptime_s": 120,
+            "fresh_host_attach_maximum_uptime_s": 120,
+            "gnss_pps_qualification_deadline_s": 660,
             "ordinary_telemetry_attach_baseline_stable_observations": 2,
             "post_attach_ordinary_telemetry_increment_allowed": False,
             "evidence_capture_preview_partition_and_control_gates_absolute": True,
@@ -379,8 +380,10 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
                 "reason": "required_direction_and_two_estimate_tight_entry",
             },
                 "arm_pending": False,
-                "telemetry_drop_baseline": 3,
-                "telemetry_drop_baseline_status_seq": 2,
+                    "telemetry_drop_baseline": 3,
+                    "telemetry_drop_baseline_status_seq": 2,
+                    "host_attach_uptime_s": 30,
+                    "host_attach_uptime_status_seq": 1,
                 "prewrite_contract_ready_utc": "2026-08-11T17:00:00Z",
                 "setup_confirmed_utc": "2026-08-11T17:00:01Z",
                 "latest_prewrite_readiness": {
@@ -560,6 +563,11 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
     monkeypatch.setattr(
         cx319_g2_live_analyze,
         "evaluate_telemetry_drop_history",
+        lambda *args, **kwargs: {"exact": True},
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "evaluate_host_attach_history",
         lambda *args, **kwargs: {"exact": True},
     )
     monkeypatch.setattr(

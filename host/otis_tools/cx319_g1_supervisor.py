@@ -34,7 +34,12 @@ from .cx319_g1_bundle import (
     normal_command_allowed,
     validate_run_manifest,
 )
+from .cx319_host_attach_contract import (
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+    host_attach_uptime_observations,
+)
 from .cx319_runtime_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
     Stage5Readiness,
     evaluate_health_integrity,
@@ -132,6 +137,9 @@ class Cx319G1Supervisor(Stage5Supervisor):
             leg=leg,
             allow_manual_start=False,
             allow_arm=False,
+            prewrite_contract_startup_grace_s=(
+                RAW_PPS_QUALIFICATION_DEADLINE_S
+            ),
             tight_deadband_policy_sha256=_sha256(POLICY_PATH),
             **kwargs,
         )
@@ -144,6 +152,8 @@ class Cx319G1Supervisor(Stage5Supervisor):
         self.state.setdefault("telemetry_drop_last_status_seq", 0)
         self.state.setdefault("telemetry_drop_baseline", None)
         self.state.setdefault("telemetry_drop_baseline_status_seq", None)
+        self.state.setdefault("host_attach_uptime_s", None)
+        self.state.setdefault("host_attach_uptime_status_seq", None)
         self._save()
 
     def _event(self, event: str, **fields: object) -> None:
@@ -181,14 +191,24 @@ class Cx319G1Supervisor(Stage5Supervisor):
             dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
             telemetry_drop_baseline=int(effective_baseline or 0),
         )
-        if baseline is not None:
-            return readiness
         mismatches = list(readiness.mismatches)
-        mismatches.append(
-            "host-attach telemetry baseline has "
-            f"{self.state['telemetry_drop_candidate_observations']}/"
-            f"{TELEMETRY_BASELINE_STABLE_OBSERVATIONS} stable observations"
-        )
+        if baseline is None:
+            mismatches.append(
+                "host-attach telemetry baseline has "
+                f"{self.state['telemetry_drop_candidate_observations']}/"
+                f"{TELEMETRY_BASELINE_STABLE_OBSERVATIONS} stable observations"
+            )
+        host_attach_uptime_s = self.state.get("host_attach_uptime_s")
+        if host_attach_uptime_s is None:
+            mismatches.append("fresh host-attach firmware uptime is not recorded")
+        elif int(host_attach_uptime_s) > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
+            mismatches.append(
+                "fresh host-attach firmware uptime "
+                f"{host_attach_uptime_s}s exceeds "
+                f"{FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
+            )
+        if not mismatches and not readiness.missing:
+            return readiness
         return Stage5Readiness(
             contract_id=readiness.contract_id,
             ready=False,
@@ -203,6 +223,30 @@ class Cx319G1Supervisor(Stage5Supervisor):
             planned_live_stimulus_code=readiness.planned_live_stimulus_code,
             physical_dac_confirmation=readiness.physical_dac_confirmation,
         )
+
+    def _observe_host_attach_uptime(self) -> None:
+        if self.state.get("host_attach_uptime_s") is not None:
+            return
+        observations = host_attach_uptime_observations(
+            _read_csv(self.run_dir / HEALTH_CSV)
+        )
+        if not observations:
+            return
+        status_seq, uptime_s = observations[0]
+        self.state["host_attach_uptime_s"] = uptime_s
+        self.state["host_attach_uptime_status_seq"] = status_seq
+        self._save()
+        self._event(
+            "cx319_g1_fresh_host_attach_uptime_frozen",
+            status_seq=status_seq,
+            uptime_s=uptime_s,
+            maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+        )
+        if uptime_s > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
+            raise ValueError(
+                f"fresh host attachment occurred at firmware uptime {uptime_s}s, "
+                f"later than {FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
+            )
 
     def _observe_telemetry_drop_baseline(self) -> None:
         if self.state.get("telemetry_drop_baseline") is not None:
@@ -269,6 +313,7 @@ class Cx319G1Supervisor(Stage5Supervisor):
             return False
 
     def _check_fail_static_health(self, health):  # type: ignore[no-untyped-def]
+        self._observe_host_attach_uptime()
         self._observe_telemetry_drop_baseline()
         super()._check_fail_static_health(health)
 

@@ -37,7 +37,8 @@ from .cx319_g2_contract import (
     canonical_sha256,
 )
 from .cx319_g2_runtime_contract import (
-    FRESH_RESTART_MAXIMUM_UPTIME_S,
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     RUNTIME_CONTRACT_ID,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
 )
@@ -220,8 +221,11 @@ def create_activation(
             "effective": True,
             "physical_execution": True,
             "firmware_flash": False,
-            "fresh_restart_maximum_prewrite_uptime_s": (
-                FRESH_RESTART_MAXIMUM_UPTIME_S
+            "fresh_host_attach_maximum_uptime_s": (
+                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            ),
+            "gnss_pps_qualification_deadline_s": (
+                RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
             "ordinary_telemetry_attach_baseline_stable_observations": (
                 TELEMETRY_BASELINE_STABLE_OBSERVATIONS
@@ -279,8 +283,10 @@ def validate_frozen_activation(
         or not isinstance(authority, dict)
         or authority.get("effective") is not True
         or authority.get("firmware_flash") is not False
-        or authority.get("fresh_restart_maximum_prewrite_uptime_s")
-        != FRESH_RESTART_MAXIMUM_UPTIME_S
+        or authority.get("fresh_host_attach_maximum_uptime_s")
+        != FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+        or authority.get("gnss_pps_qualification_deadline_s")
+        != RAW_PPS_QUALIFICATION_DEADLINE_S
         or authority.get(
             "ordinary_telemetry_attach_baseline_stable_observations"
         )

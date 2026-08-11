@@ -191,3 +191,48 @@ def test_build_must_bind_current_clean_commit(
         bundle_tool.validate_build(
             leg="A", build_manifest_path=manifest, uf2_path=uf2
         )
+
+
+def test_no_flash_entry_binds_one_prior_exact_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_path, source_bundle = _create_bundle(tmp_path, monkeypatch)
+    source_run = tmp_path / "source-run"
+    reports = source_run / "reports"
+    reports.mkdir(parents=True)
+    retained_bundle = source_run / bundle_tool.RUN_BUNDLE_PATH
+    retained_bundle.write_bytes(source_path.read_bytes())
+    firmware = source_bundle["firmware"]
+    board = {
+        "address": "/dev/cu.test-otis",
+        "serial_number": "503533748A919118",
+    }
+    flash_record = reports / "cx319_g1_flash_v1.json"
+    flash_record.write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "operation": "exact_cx319_g1_firmware_flash",
+                "attempt_count": 1,
+                "board_before": board,
+                "board_after": board,
+                "profile_id": firmware["profile_id"],
+                "build_manifest_sha256": firmware["build_manifest"]["sha256"],
+                "uf2_sha256": firmware["uf2"]["sha256"],
+                "bundle_sha256": source_bundle["bundle_sha256"],
+                "dac_value_write_attempts": 0,
+                "setup_stimulus_attempts": 0,
+                "control_arm_attempts": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry = bundle_tool.validate_confirmed_installed_firmware(
+        firmware=firmware,
+        flash_record_path=flash_record,
+    )
+
+    assert entry["mode"] == "reuse_confirmed_installed_firmware"
+    assert entry["firmware_flashes_allowed"] == 0
+    assert entry["installed_uf2_sha256"] == firmware["uf2"]["sha256"]

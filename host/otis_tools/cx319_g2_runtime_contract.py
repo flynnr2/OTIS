@@ -20,6 +20,7 @@ from .cx318_stage5_runtime_contract import (
     evaluate_prewrite_readiness as _evaluate_prewrite_readiness,
 )
 from .cx319_host_attach_contract import (
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
     TELEMETRY_DROP_KEY,
     evaluate_health_integrity,
@@ -29,11 +30,11 @@ from .cx319_host_attach_contract import (
 from .cx319_runtime_contract import (
     GNSS_PREWRITE_EXACT,
     INHERITED_PREVIEW_BASELINE_PROVENANCE,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
 )
 
 
-RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v4"
-FRESH_RESTART_MAXIMUM_UPTIME_S = 120
+RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v5"
 def evaluate_prewrite_readiness(
     health: Health,
     *,
@@ -74,20 +75,6 @@ def evaluate_prewrite_readiness(
             mismatches.append(
                 f"{name}={observed!r}, expected {required!r} before setup"
             )
-    raw_uptime = health.get(("cx317_active", "uptime_s"))
-    if raw_uptime is not None:
-        try:
-            uptime_s = int(raw_uptime)
-        except ValueError:
-            # The inherited predicate already reports the malformed value.
-            pass
-        else:
-            if uptime_s > FRESH_RESTART_MAXIMUM_UPTIME_S:
-                mismatches.append(
-                    "cx317_active.uptime_s="
-                    f"{raw_uptime!r}, expected at most "
-                    f"{FRESH_RESTART_MAXIMUM_UPTIME_S} after a fresh restart"
-                )
     return Stage5Readiness(
         contract_id=base.contract_id,
         ready=not missing and not mismatches,
@@ -120,10 +107,11 @@ def canonical_prewrite_fixture(
 __all__ = [
     "ACTIVE_STATUS_KEYS",
     "HEALTH_INTEGRITY_EXACT",
-    "FRESH_RESTART_MAXIMUM_UPTIME_S",
+    "FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S",
     "GNSS_PREWRITE_EXACT",
     "INHERITED_PREVIEW_BASELINE_PROVENANCE",
     "RUNTIME_CONTRACT_ID",
+    "RAW_PPS_QUALIFICATION_DEADLINE_S",
     "TELEMETRY_BASELINE_STABLE_OBSERVATIONS",
     "TELEMETRY_DROP_KEY",
     "Stage5HealthIntegrity",

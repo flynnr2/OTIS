@@ -11,7 +11,8 @@ from .cx319_g1_supervisor import load_cx319_spec
 from .cx319_g2_bundle import validate_proposal
 from .cx319_g2_contract import normal_command_allowed
 from .cx319_g2_runtime_contract import (
-    FRESH_RESTART_MAXIMUM_UPTIME_S,
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     RUNTIME_CONTRACT_ID,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
     canonical_prewrite_fixture,
@@ -96,9 +97,13 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             readiness.ready
             and readiness.contract_id == RUNTIME_CONTRACT_ID
             and proposal["readiness_gates"][
-                "fresh_restart_maximum_prewrite_uptime_s"
+                "fresh_host_attach_maximum_uptime_s"
             ]
-            == FRESH_RESTART_MAXIMUM_UPTIME_S
+            == FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            and proposal["readiness_gates"][
+                "gnss_pps_qualification_deadline_s"
+            ]
+            == RAW_PPS_QUALIFICATION_DEADLINE_S
             and proposal["readiness_gates"][
                 "continuous_drain_from_host_attachment_through_physical_close"
             ]

@@ -52,6 +52,7 @@ from .cx318_stage5_supervisor import (
 )
 from .cx318_stage5_tight_replay import replay_tight_deadband
 from .cx319_g1_supervisor import load_cx319_spec
+from .cx319_host_attach_contract import evaluate_host_attach_history
 from .cx319_g2_contract import (
     MAXIMUM_CORRECTIONS,
     MAXIMUM_CUMULATIVE_CODES,
@@ -285,6 +286,13 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         frozen_baseline=telemetry_drop_baseline,
         frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
+    host_attach_history = evaluate_host_attach_history(
+        _read_csv(run_dir / HEALTH_CSV),
+        frozen_uptime_s=int(supervisor_state["host_attach_uptime_s"]),
+        frozen_status_seq=int(
+            supervisor_state["host_attach_uptime_status_seq"]
+        ),
+    )
     sources = {
         row.get("source", "").lower()
         for row in _read_csv(run_dir / ENVIRONMENT_CSV)
@@ -379,7 +387,9 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         ),
         "both_environment_streams_present": {"sht4x", "bmp280"} <= sources,
         "live_health_has_no_post_attach_telemetry_increment_or_fault": (
-            health_integrity.clean and telemetry_drop_history["exact"] is True
+            health_integrity.clean
+            and telemetry_drop_history["exact"] is True
+            and host_attach_history["exact"] is True
         ),
         "sealed_evidence_snapshot_valid": (
             evidence.get("run_state") == "complete"
@@ -470,6 +480,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "missing": health_integrity.missing,
             "mismatches": health_integrity.mismatches,
             "telemetry_drop_history": telemetry_drop_history,
+            "host_attach_history": host_attach_history,
         },
         "checks": checks,
         "contract_validation": validations,

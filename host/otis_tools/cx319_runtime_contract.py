@@ -30,7 +30,8 @@ from .cx319_host_attach_contract import (
 )
 
 
-RUNTIME_CONTRACT_ID = "cx319_g1_prewrite_runtime_contract_v2"
+RUNTIME_CONTRACT_ID = "cx319_g1_prewrite_runtime_contract_v3"
+RAW_PPS_QUALIFICATION_DEADLINE_S = 660
 INHERITED_PREVIEW_BASELINE_PROVENANCE = (
     "cx318_last_confirmed_a828_historical_context_not_current_physical_confirmation"
 )
@@ -120,6 +121,7 @@ __all__ = [
     "GNSS_PREWRITE_EXACT",
     "HEALTH_INTEGRITY_EXACT",
     "INHERITED_PREVIEW_BASELINE_PROVENANCE",
+    "RAW_PPS_QUALIFICATION_DEADLINE_S",
     "RUNTIME_CONTRACT_ID",
     "TELEMETRY_BASELINE_STABLE_OBSERVATIONS",
     "TELEMETRY_DROP_KEY",

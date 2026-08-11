@@ -8,7 +8,8 @@ import pytest
 from host.otis_tools import cx319_g2_supervisor
 from host.otis_tools.cx319_g1_supervisor import load_cx319_spec
 from host.otis_tools.cx319_g2_runtime_contract import (
-    FRESH_RESTART_MAXIMUM_UPTIME_S,
+    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     RUNTIME_CONTRACT_ID,
     canonical_prewrite_fixture,
 )
@@ -70,6 +71,8 @@ def _write_telemetry_observations(
 def _freeze_baseline(supervisor, values: list[int] | None = None) -> None:  # type: ignore[no-untyped-def]
     _write_telemetry_observations(supervisor, values or [0, 0])
     supervisor._observe_telemetry_drop_baseline()
+    supervisor.state["host_attach_uptime_s"] = 30
+    supervisor.state["host_attach_uptime_status_seq"] = 1
 
 
 def test_g2_spec_is_exact_lower_positive_leg() -> None:
@@ -129,7 +132,7 @@ def test_g2_supervisor_requests_exact_setup_once(tmp_path: Path) -> None:
     assert supervisor.state["manual_start_sent"] is True
 
 
-def test_g2_prewrite_rejects_a_clean_but_stale_ownerless_session(
+def test_g2_prewrite_allows_pps_qualification_after_fresh_attach_window(
     tmp_path: Path,
 ) -> None:
     supervisor = _supervisor(tmp_path)
@@ -144,14 +147,42 @@ def test_g2_prewrite_rejects_a_clean_but_stale_ownerless_session(
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     _freeze_baseline(supervisor)
-    health[("cx317_active", "uptime_s")] = str(
-        FRESH_RESTART_MAXIMUM_UPTIME_S + 1
+    health[("cx317_active", "uptime_s")] = "612"
+
+    readiness = supervisor._prewrite_readiness(health)
+
+    assert readiness.ready is True
+
+
+def test_g2_prewrite_rejects_a_stale_host_attachment(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path)
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": BUILD_IDENTITY,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    _freeze_baseline(supervisor)
+    supervisor.state["host_attach_uptime_s"] = (
+        FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S + 1
     )
 
     readiness = supervisor._prewrite_readiness(health)
 
     assert readiness.ready is False
-    assert any("fresh restart" in item for item in readiness.mismatches)
+    assert any("fresh host-attach" in item for item in readiness.mismatches)
+
+
+def test_g2_uses_the_separate_pps_qualification_deadline(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path)
+
+    assert supervisor.prewrite_contract_startup_grace_s == (
+        RAW_PPS_QUALIFICATION_DEADLINE_S
+    )
 
 
 def test_g2_freezes_a_stable_nonzero_host_attach_baseline(

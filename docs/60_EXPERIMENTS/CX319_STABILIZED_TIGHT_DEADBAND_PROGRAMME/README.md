@@ -33,8 +33,15 @@ recovery now services GNSS input ahead of the busy serial-output early return
 and requires exact epoch-1 GNSS/PPS authority in the host pre-write gate. A
 fresh G1 runtime gate now requires that same GNSS/PPS state throughout the
 no-write qualification and shares the frozen host-attach telemetry-baseline
-semantics already used by G2. A fresh clean firmware build and physical
-no-write G1 requalification must precede any G2 retry proposal.
+semantics already used by G2. The authorized recovery flash succeeded, but the
+physical G1 rehearsal exposed a host timing contradiction: an inherited
+30-second pre-write deadline could never admit the profile's deliberate
+600-second PPS startup inhibit and clean-window qualification. The run stopped
+safely with no DAC value write, setup, arm or correction. The single-flash
+authority is consumed. Offline recovery now separates the 120-second fresh-host
+attachment gate from a bounded 660-second GNSS/PPS qualification deadline and
+must pass a complete operational-path rehearsal before proposing a fresh
+no-flash G1 requalification. G2 and G3 remain blocked.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -96,3 +103,7 @@ cross-surface GNSS pre-write escape are recorded in
 The fresh bounded authority for one exact lower-profile flash and physical G1
 requalification is recorded in
 [`14_G1_RECOVERY_NO_WRITE_AUTHORITY.md`](14_G1_RECOVERY_NO_WRITE_AUTHORITY.md).
+
+The successful exact flash, retained zero-write timing stop and corrected
+recovery boundary are recorded in
+[`15_G1_RECOVERY_HOST_TIMING_STOP.md`](15_G1_RECOVERY_HOST_TIMING_STOP.md).

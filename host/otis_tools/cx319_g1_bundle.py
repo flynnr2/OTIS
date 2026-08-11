@@ -19,9 +19,11 @@ from typing import Any
 
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
+from .cx319_host_attach_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 from .cx319_runtime_contract import (
     ACTIVE_STATUS_KEYS,
     INHERITED_PREVIEW_BASELINE_PROVENANCE,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     RUNTIME_CONTRACT_ID,
 )
 from .programme_status import (
@@ -402,6 +404,55 @@ def validate_build(
     }
 
 
+def validate_confirmed_installed_firmware(
+    *,
+    firmware: dict[str, Any],
+    flash_record_path: Path,
+) -> dict[str, Any]:
+    """Bind a prior successful exact flash to byte-identical firmware."""
+
+    flash_record_path = flash_record_path.resolve()
+    flash = _read_object(flash_record_path, "confirmed G1 flash record")
+    source_bundle_path = flash_record_path.parent.parent / RUN_BUNDLE_PATH
+    source_bundle = validate_frozen_bundle(source_bundle_path)
+    source_firmware = source_bundle["firmware"]
+    if (
+        flash.get("status") != "pass"
+        or flash.get("operation") != "exact_cx319_g1_firmware_flash"
+        or flash.get("attempt_count") != 1
+        or flash.get("board_before") != flash.get("board_after")
+        or flash.get("board_after", {}).get("serial_number")
+        != "503533748A919118"
+        or flash.get("profile_id") != source_firmware.get("profile_id")
+        or flash.get("build_manifest_sha256")
+        != source_firmware.get("build_manifest", {}).get("sha256")
+        or flash.get("uf2_sha256")
+        != source_firmware.get("uf2", {}).get("sha256")
+        or flash.get("bundle_sha256") != source_bundle.get("bundle_sha256")
+        or flash.get("dac_value_write_attempts") != 0
+        or flash.get("setup_stimulus_attempts") != 0
+        or flash.get("control_arm_attempts") != 0
+    ):
+        raise ValueError("source flash is not one confirmed exact G1 upload")
+    for key in ("profile_id", "source_sha256", "configuration_sha256"):
+        if firmware.get(key) != source_firmware.get(key):
+            raise ValueError(
+                f"current firmware {key} differs from confirmed installed firmware"
+            )
+    if firmware.get("uf2", {}).get("sha256") != flash.get("uf2_sha256"):
+        raise ValueError("current UF2 bytes differ from confirmed installed firmware")
+    return {
+        "mode": "reuse_confirmed_installed_firmware",
+        "firmware_flashes_allowed": 0,
+        "source_flash_record": _binding(flash_record_path),
+        "source_bundle": _binding(source_bundle_path),
+        "source_bundle_sha256": source_bundle["bundle_sha256"],
+        "source_build_manifest_sha256": flash["build_manifest_sha256"],
+        "installed_uf2_sha256": flash["uf2_sha256"],
+        "installed_board": flash["board_after"],
+    }
+
+
 def _host_bindings() -> dict[str, dict[str, Any]]:
     return {name: _binding(path) for name, path in HOST_TOOL_PATHS.items()}
 
@@ -413,6 +464,7 @@ def create_bundle(
     uf2_path: Path,
     serial_device: str,
     output_path: Path,
+    confirmed_flash_record_path: Path | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
     if not serial_device.startswith("/dev/"):
@@ -422,6 +474,17 @@ def create_bundle(
         leg=leg,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
+    )
+    firmware_entry = (
+        {
+            "mode": "single_exact_flash",
+            "firmware_flashes_allowed": 1,
+        }
+        if confirmed_flash_record_path is None
+        else validate_confirmed_installed_firmware(
+            firmware=firmware,
+            flash_record_path=confirmed_flash_record_path,
+        )
     )
     policy = _load_policy()
     authority_overlay = _load_authority()
@@ -434,6 +497,7 @@ def create_bundle(
         "gate": "G1",
         "leg": spec,
         "firmware": firmware,
+        "firmware_entry": firmware_entry,
         "policy": {
             "path": str(POLICY_PATH),
             "sha256": _sha256_file(POLICY_PATH),
@@ -500,10 +564,22 @@ def create_bundle(
             ),
             "physical_applied_code_before_live_stimulus": "unknown",
             "missing_status_is_failure": True,
+            "fresh_host_attach_maximum_uptime_s": (
+                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            ),
+            "gnss_pps_qualification_deadline_s": (
+                RAW_PPS_QUALIFICATION_DEADLINE_S
+            ),
         },
         "authority": {
             "programme_operation_required": G1_BENCH_OPERATION,
-            "flash_exact_firmware": True,
+            "flash_exact_firmware": (
+                firmware_entry["mode"] == "single_exact_flash"
+            ),
+            "reuse_confirmed_installed_firmware": (
+                firmware_entry["mode"]
+                == "reuse_confirmed_installed_firmware"
+            ),
             "serial_capture": True,
             "read_only_queries_and_leases": True,
             "priority_abort": True,
@@ -574,6 +650,17 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or not _binding_well_formed(firmware.get("uf2"))
     ):
         raise ValueError("CX319 G1 firmware binding is unavailable")
+    firmware_entry = bundle.get("firmware_entry")
+    if firmware_entry is None:
+        firmware_entry = {
+            "mode": "single_exact_flash",
+            "firmware_flashes_allowed": 1,
+        }
+    if not isinstance(firmware_entry, dict) or firmware_entry.get("mode") not in {
+        "single_exact_flash",
+        "reuse_confirmed_installed_firmware",
+    }:
+        raise ValueError("CX319 G1 firmware entry mode is invalid")
     policy = bundle.get("policy", {})
     operator_authority = bundle.get("operator_authority", {})
     if (
@@ -591,6 +678,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     runtime_contract_id = bundle.get("runtime_contract", {}).get("id")
     expected_tool_names = {
         "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
+        "cx319_g1_prewrite_runtime_contract_v2": CURRENT_HOST_TOOL_NAMES,
         RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
     }.get(runtime_contract_id)
     if (
@@ -603,6 +691,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     authority = bundle.get("authority", {})
     rehearsal = bundle.get("rehearsal", {})
     commands = bundle.get("commands", {})
+    runtime_contract = bundle.get("runtime_contract", {})
     if (
         authority.get("programme_operation_required") != G1_BENCH_OPERATION
         or any(
@@ -617,6 +706,12 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
             )
         )
         or rehearsal.get("minimum_capture_duration_s") != REHEARSAL_DURATION_S
+        or authority.get("flash_exact_firmware")
+        != (firmware_entry["mode"] == "single_exact_flash")
+        or authority.get("reuse_confirmed_installed_firmware", False)
+        != (firmware_entry["mode"] == "reuse_confirmed_installed_firmware")
+        or firmware_entry.get("firmware_flashes_allowed")
+        != (1 if firmware_entry["mode"] == "single_exact_flash" else 0)
         or any(
             rehearsal.get(key) != 0
             for key in (
@@ -630,6 +725,15 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or commands.get("emergency_allowlist") != [EMERGENCY_COMMAND]
         or tuple(commands.get("forbidden_prefixes", []))
         != FORBIDDEN_COMMAND_PREFIXES
+        or (
+            runtime_contract_id == RUNTIME_CONTRACT_ID
+            and (
+                runtime_contract.get("fresh_host_attach_maximum_uptime_s")
+                != FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+                or runtime_contract.get("gnss_pps_qualification_deadline_s")
+                != RAW_PPS_QUALIFICATION_DEADLINE_S
+            )
+        )
     ):
         raise ValueError("CX319 G1 bundle exposes write/live authority")
     return bundle
@@ -650,6 +754,20 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     )
     if firmware != current:
         raise ValueError("CX319 G1 firmware binding differs from current exact inputs")
+    firmware_entry = bundle.get(
+        "firmware_entry",
+        {"mode": "single_exact_flash", "firmware_flashes_allowed": 1},
+    )
+    if firmware_entry.get("mode") == "reuse_confirmed_installed_firmware":
+        source_flash = firmware_entry.get("source_flash_record", {})
+        if not isinstance(source_flash, dict):
+            raise ValueError("confirmed installed firmware source is unavailable")
+        current_entry = validate_confirmed_installed_firmware(
+            firmware=firmware,
+            flash_record_path=Path(str(source_flash.get("path", ""))),
+        )
+        if firmware_entry != current_entry:
+            raise ValueError("confirmed installed firmware binding is stale")
     if bundle.get("policy", {}).get("sha256") != _sha256_file(POLICY_PATH):
         raise ValueError("CX319 G1 bundle policy binding is stale")
     authority_overlay = _load_authority()
@@ -855,6 +973,7 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--build-manifest", type=Path, required=True)
     create.add_argument("--uf2", type=Path, required=True)
     create.add_argument("--serial-device", required=True)
+    create.add_argument("--confirmed-flash-record", type=Path)
     create.add_argument("--output", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("bundle", type=Path)
@@ -867,6 +986,7 @@ def main(argv: list[str] | None = None) -> int:
                 uf2_path=args.uf2,
                 serial_device=args.serial_device,
                 output_path=args.output,
+                confirmed_flash_record_path=args.confirmed_flash_record,
             )
         else:
             result = validate_bundle(args.bundle)

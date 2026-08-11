@@ -215,12 +215,23 @@ class Stage5Supervisor(Stage7Supervisor):
                 TIGHT_DEADBAND_POLICY_SHA256,
             )
         )
+        prewrite_contract_startup_grace_s = float(
+            kwargs.pop(
+                "prewrite_contract_startup_grace_s",
+                PREWRITE_CONTRACT_STARTUP_GRACE_S,
+            )
+        )
+        if prewrite_contract_startup_grace_s <= 0:
+            raise ValueError("pre-write startup grace must be positive")
         # Part B selects the long-lived, dual-core transaction implementation;
         # every Stage 7 timing/service decision is overridden below.
         super().__init__(part="part_b", **kwargs)
         self.mode = mode
         self.leg = leg
         self.tight_deadband_policy_sha256 = tight_deadband_policy_sha256
+        self.prewrite_contract_startup_grace_s = (
+            prewrite_contract_startup_grace_s
+        )
         self.part = f"stage5_{mode}_{leg.leg.lower()}"
         self.timing = Stage7Timing(
             selected_interval_s=SELECTED_INTERVAL_S,
@@ -292,7 +303,8 @@ class Stage5Supervisor(Stage7Supervisor):
             return readiness
         if (
             self.state["prewrite_contract_ready_utc"] is not None
-            or elapsed_monotonic_s >= PREWRITE_CONTRACT_STARTUP_GRACE_S
+            or elapsed_monotonic_s
+            >= self.prewrite_contract_startup_grace_s
         ):
             raise ValueError(
                 "Stage 5 pre-write runtime contract failed: "

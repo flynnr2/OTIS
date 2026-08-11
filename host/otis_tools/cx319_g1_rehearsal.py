@@ -1,8 +1,9 @@
 """Execute the exact CX319 G1 physical no-write rehearsal.
 
 This is the only CX319 G1 hardware entry point. It requires the narrow
-machine-readable operator authority, validates the frozen bundle, performs one
-exact flash, maintains one serial owner, runs the no-write supervisor, injects
+machine-readable operator authority, validates the frozen bundle, either
+performs one exact flash or verifies a bundle-bound prior exact installation,
+maintains one serial owner, runs the no-write supervisor, injects
 bounded normal-path obstruction, proves priority abort, rotates evidence with
 the same owner, analyzes, seals and registers the retained package.
 """
@@ -42,6 +43,7 @@ from .cx319_g1_bundle import (
     TRANSITION_RUN_DIR,
     create_run_manifest,
     validate_bundle,
+    validate_confirmed_installed_firmware,
 )
 from .evidence import create_evidence_snapshot, validate_evidence_snapshot
 from .evidence_index import DEFAULT_INDEX, register_package
@@ -176,6 +178,69 @@ def flash_exact_bundle(
     return record
 
 
+def confirm_installed_bundle(
+    *, bundle: dict[str, Any], output_path: Path, arduino_cli: str
+) -> dict[str, Any]:
+    """Verify the exact prior flash and current board without uploading."""
+
+    entry = bundle.get("firmware_entry", {})
+    source_binding = entry.get("source_flash_record", {})
+    if entry.get("mode") != "reuse_confirmed_installed_firmware" or not isinstance(
+        source_binding, dict
+    ):
+        raise ValueError("bundle does not bind confirmed installed firmware")
+    expected_entry = validate_confirmed_installed_firmware(
+        firmware=bundle["firmware"],
+        flash_record_path=Path(str(source_binding.get("path", ""))),
+    )
+    if entry != expected_entry:
+        raise ValueError("confirmed installed firmware binding differs")
+    device = str(bundle["device"]["path"])
+    owners = _serial_owner_pids(device)
+    if owners:
+        raise ValueError(f"serial device already has owners: {sorted(owners)}")
+    current = read_board_identity(device, arduino_cli=arduino_cli)
+    installed = entry["installed_board"]
+    passed = current == installed
+    record = {
+        "schema_version": 1,
+        "tool": TOOL_ID,
+        "operation": "confirmed_installed_cx319_g1_firmware_reuse",
+        "status": "pass" if passed else "fail",
+        "started_utc": _utc_now(),
+        "completed_utc": _utc_now(),
+        "attempt_count": 0,
+        "firmware_flashes": 0,
+        "device": device,
+        "board_before": current,
+        "board_after": current,
+        "installed_board": installed,
+        "bundle_sha256": bundle["bundle_sha256"],
+        "profile_id": bundle["firmware"]["profile_id"],
+        "build_manifest_sha256": bundle["firmware"]["build_manifest"][
+            "sha256"
+        ],
+        "uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
+        "source_flash_record": entry["source_flash_record"],
+        "source_bundle": entry["source_bundle"],
+        "source_bundle_sha256": entry["source_bundle_sha256"],
+        "source_build_manifest_sha256": entry[
+            "source_build_manifest_sha256"
+        ],
+        "installed_uf2_sha256": entry["installed_uf2_sha256"],
+        "dac_boot_operation": "none_no_reset_no_upload",
+        "dac_value_write_attempts": 0,
+        "setup_stimulus_attempts": 0,
+        "control_arm_attempts": 0,
+    }
+    _atomic_new_json(output_path, record)
+    if not passed:
+        raise RuntimeError(
+            "current board identity differs from confirmed installed firmware"
+        )
+    return record
+
+
 def _write_complete(run_dir: Path) -> None:
     path = run_dir / "COMPLETE"
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
@@ -289,11 +354,23 @@ def run_rehearsal(
         run_dir=run_dir,
         output_path=manifest_path,
     )
-    flash = flash_exact_bundle(
-        bundle=bundle,
-        output_path=run_dir / FLASH_RECORD_PATH,
-        arduino_cli=arduino_cli,
+    entry_mode = bundle.get("firmware_entry", {}).get(
+        "mode", "single_exact_flash"
     )
+    if entry_mode == "single_exact_flash":
+        flash = flash_exact_bundle(
+            bundle=bundle,
+            output_path=run_dir / FLASH_RECORD_PATH,
+            arduino_cli=arduino_cli,
+        )
+    elif entry_mode == "reuse_confirmed_installed_firmware":
+        flash = confirm_installed_bundle(
+            bundle=bundle,
+            output_path=run_dir / FLASH_RECORD_PATH,
+            arduino_cli=arduino_cli,
+        )
+    else:
+        raise ValueError("unsupported G1 firmware entry mode")
     transition_dir = run_dir / TRANSITION_DIR
     prepare_transition(manifest_path, transition_dir)
 

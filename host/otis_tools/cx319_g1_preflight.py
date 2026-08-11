@@ -24,9 +24,11 @@ from .cx319_g1_bundle import (
 )
 from .cx319_g1_supervisor import load_cx319_spec
 from .cx319_runtime_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
+from .cx319_host_attach_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 
 
 TOOL_ID = "cx319_g1_offline_preflight_v1"
@@ -147,6 +149,18 @@ def evaluate(bundle_path: Path) -> dict[str, Any]:
     checks = {
         **boot_checks,
         "runtime_contract_fixture_ready_without_transactions": readiness.ready,
+        "fresh_attach_and_pps_qualification_clocks_are_separate": (
+            bundle["runtime_contract"][
+                "fresh_host_attach_maximum_uptime_s"
+            ]
+            == FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            and bundle["runtime_contract"][
+                "gnss_pps_qualification_deadline_s"
+            ]
+            == RAW_PPS_QUALIFICATION_DEADLINE_S
+            and FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            < RAW_PPS_QUALIFICATION_DEADLINE_S
+        ),
         "normal_allowlist_accepts_only_read_queries_and_leases": (
             all(normal_command_allowed(command) for command in allowed_examples)
             and not any(
@@ -161,7 +175,22 @@ def evaluate(bundle_path: Path) -> dict[str, Any]:
         "firmware_profile_actuation_exists_but_is_not_boot_reachable": (
             bundle["firmware"]["profile_id"]
             in {"cx319_tight_lower", "cx319_tight_upper"}
-            and bundle["authority"]["flash_exact_firmware"] is True
+            and (
+                bundle["authority"]["flash_exact_firmware"]
+                is (
+                    bundle["firmware_entry"]["mode"]
+                    == "single_exact_flash"
+                )
+            )
+            and (
+                bundle["authority"][
+                    "reuse_confirmed_installed_firmware"
+                ]
+                is (
+                    bundle["firmware_entry"]["mode"]
+                    == "reuse_confirmed_installed_firmware"
+                )
+            )
             and bundle["authority"]["dac_value_write"] is False
             and bundle["authority"]["control_arm"] is False
         ),

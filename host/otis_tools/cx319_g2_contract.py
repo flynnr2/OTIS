@@ -214,6 +214,11 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             )
             is True
             and host_attach.get("post_attach_increment_rejected") is True
+            and host_attach.get("first_firmware_uptime_observation_frozen")
+            is True
+            and host_attach.get("firmware_uptime_s") == 30
+            and host_attach.get("maximum_fresh_attach_uptime_s") == 120
+            and host_attach.get("late_attach_rejected") is True
         ),
         "gnss_identity_and_control_authority_exact_before_setup": (
             gnss_prewrite.get("identity_epoch") == 1
@@ -222,6 +227,14 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             and gnss_prewrite.get("raw_pps_control_eligible") is True
             and gnss_prewrite.get("control_eligible") is True
             and gnss_prewrite.get("epoch_2_rejected_before_setup") is True
+            and gnss_prewrite.get("raw_pps_false_before_deadline_no_setup")
+            is True
+            and gnss_prewrite.get("raw_pps_ready_uptime_s") == 612
+            and gnss_prewrite.get("qualification_deadline_s") == 660
+            and gnss_prewrite.get(
+                "missing_raw_pps_at_deadline_rejected"
+            )
+            is True
         ),
         "obstruction_priority_abort_and_owner_invariants": (
             transport.get("normal_path_saturated") is True

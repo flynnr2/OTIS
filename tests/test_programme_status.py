@@ -32,17 +32,14 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "g1_recovery_no_write_authorized_pending_exact_rebuild"
+        "g1_recovery_host_timing_repair_in_offline_preparation"
     )
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-    ]
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
         "explicit_operator_g1_recovery_no_write_authority"
     )
     assert successor["next_gate"] == (
-        "exact_clean_rebuild_then_physical_g1_requalification"
+        "host_timing_repair_complete_operational_rehearsal_then_fresh_no_flash_g1_authority"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -290,13 +287,13 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "host_recovery": (
             "prewrite_requires_exact_epoch_1_gnss_and_pps_control_authority"
         ),
-        "g1_runtime_contract_id": "cx319_g1_prewrite_runtime_contract_v2",
-        "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v4",
+        "g1_runtime_contract_id": "cx319_g1_prewrite_runtime_contract_v3",
+        "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v5",
         "outcome_contract_id": "cx319_g2_leg_a_outcome_contract_v2",
         "host_attach_contract": (
             "two_stable_observations_then_frozen_no_increment"
         ),
-        "full_host_test_count": 1074,
+        "full_host_test_count": 1083,
         "full_host_tests_passed": True,
         "fresh_g1_physical_requalification_required": True,
         "g2_retry_authorized": False,
@@ -308,8 +305,8 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "14_G1_RECOVERY_NO_WRITE_AUTHORITY.md"
         ),
-        "effective": True,
-        "consumed": False,
+        "effective": False,
+        "consumed": True,
         "device": "/dev/cu.usbmodem14601",
         "firmware_profile": "cx319_tight_lower",
         "exact_firmware_flash_limit": 1,
@@ -320,7 +317,16 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "automatic_corrections": 0,
         "manual_reset_expected_after_successful_upload": False,
         "operator_assistance_required_if_upload_or_reenumeration_fails": True,
+        "consumed_by_run_id": "no_write_recovery_leg_a_20260811T200913Z",
     }
+    assert successor["g1_recovery_timing_stop"]["flash_status"] == "pass"
+    assert successor["g1_recovery_timing_stop"]["flash_attempts"] == 1
+    assert successor["g1_recovery_timing_stop"]["gnss_identity_epoch"] == 1
+    assert successor["g1_recovery_timing_stop"]["host_prewrite_deadline_s"] == 30
+    assert successor["g1_recovery_timing_stop"][
+        "observed_historical_raw_pps_eligibility_s"
+    ] == 612
+    assert successor["g1_recovery_timing_stop"]["dac_value_writes"] == 0
     assert successor["forbidden_until_next_gate"] == [
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
@@ -341,10 +347,11 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG

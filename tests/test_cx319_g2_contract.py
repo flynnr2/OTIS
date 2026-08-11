@@ -96,6 +96,10 @@ def _transcript() -> dict[str, object]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": True,
+            "first_firmware_uptime_observation_frozen": True,
+            "firmware_uptime_s": 30,
+            "maximum_fresh_attach_uptime_s": 120,
+            "late_attach_rejected": True,
         },
         "gnss_prewrite": {
             "identity_epoch": 1,
@@ -104,6 +108,10 @@ def _transcript() -> dict[str, object]:
             "raw_pps_control_eligible": True,
             "control_eligible": True,
             "epoch_2_rejected_before_setup": True,
+            "raw_pps_false_before_deadline_no_setup": True,
+            "raw_pps_ready_uptime_s": 612,
+            "qualification_deadline_s": 660,
+            "missing_raw_pps_at_deadline_rejected": True,
         },
         "transport_fault": {
             "normal_path_saturated": True,

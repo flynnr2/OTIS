@@ -12,6 +12,37 @@ from host.otis_tools.cx319_g1_supervisor import (
     _sha256,
     load_cx319_spec,
 )
+from host.otis_tools.cx319_runtime_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    canonical_prewrite_fixture,
+)
+
+
+BUILD_IDENTITY = "a" * 64 + ":" + "b" * 64
+
+
+def _supervisor(tmp_path: Path) -> Cx319G1Supervisor:
+    run = tmp_path / "g1"
+    (run / "csv").mkdir(parents=True)
+    spec, identities, leg = load_cx319_spec("A")
+    supervisor = Cx319G1Supervisor(
+        leg=leg,
+        run_dir=run,
+        command_fifo=tmp_path / "normal.fifo",
+        emergency_command_fifo=tmp_path / "emergency.fifo",
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity=BUILD_IDENTITY,
+        duration_s=None,
+    )
+    supervisor.state.update(
+        telemetry_drop_baseline=0,
+        telemetry_drop_baseline_status_seq=2,
+        host_attach_uptime_s=30,
+        host_attach_uptime_status_seq=1,
+    )
+    return supervisor
 
 
 @pytest.mark.parametrize(
@@ -136,3 +167,52 @@ def test_g1_freezes_the_same_stable_host_attach_baseline_as_g2(
 
     assert supervisor.state["telemetry_drop_baseline"] == 3
     assert supervisor.state["telemetry_drop_baseline_status_seq"] == 3
+
+
+def test_g1_waits_for_deliberate_pps_startup_qualification(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": BUILD_IDENTITY,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
+    health[("gnss_receiver", "control_eligible")] = "false"
+
+    supervisor._check_prewrite_contract(health, 30)
+    supervisor._check_prewrite_contract(
+        health, RAW_PPS_QUALIFICATION_DEADLINE_S - 1
+    )
+    with pytest.raises(ValueError, match="raw_pps_control_eligible"):
+        supervisor._check_prewrite_contract(
+            health, RAW_PPS_QUALIFICATION_DEADLINE_S
+        )
+
+
+def test_g1_accepts_pps_qualification_at_the_observed_612_seconds(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": BUILD_IDENTITY,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    health[("cx317_active", "uptime_s")] = "612"
+
+    readiness = supervisor._check_prewrite_contract(health, 612)
+
+    assert readiness is not None and readiness.ready is True
+    assert supervisor.prewrite_contract_startup_grace_s == 660

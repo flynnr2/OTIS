@@ -44,6 +44,7 @@ from .cx319_g1_bundle import (
     validate_run_manifest,
 )
 from .cx319_g1_supervisor import load_cx319_spec
+from .cx319_host_attach_contract import evaluate_host_attach_history
 from .cx319_runtime_contract import (
     RUNTIME_CONTRACT_ID,
     environment_streams_ready,
@@ -237,6 +238,13 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         frozen_baseline=telemetry_drop_baseline,
         frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
+    host_attach_history = evaluate_host_attach_history(
+        [*health_rows, *transition_health_rows],
+        frozen_uptime_s=int(supervisor_state["host_attach_uptime_s"]),
+        frozen_status_seq=int(
+            supervisor_state["host_attach_uptime_status_seq"]
+        ),
+    )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
     capture_state = json.loads((run_dir / CAPTURE_STATE).read_text())
@@ -252,6 +260,45 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     ]
     transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
+    run_bundle = json.loads(
+        Path(manifest_value["bundle"]["path"]).read_text(encoding="utf-8")
+    )
+    firmware_entry = run_bundle.get(
+        "firmware_entry",
+        {"mode": "single_exact_flash", "firmware_flashes_allowed": 1},
+    )
+    single_flash_exact = (
+        firmware_entry.get("mode") == "single_exact_flash"
+        and flash.get("operation") == "exact_cx319_g1_firmware_flash"
+        and flash.get("status") == "pass"
+        and flash.get("attempt_count") == 1
+        and flash.get("board_before") == flash.get("board_after")
+        and flash.get("board_after", {}).get("serial_number")
+        == EXPECTED_SERIAL
+    )
+    confirmed_reuse_exact = (
+        firmware_entry.get("mode") == "reuse_confirmed_installed_firmware"
+        and firmware_entry.get("firmware_flashes_allowed") == 0
+        and flash.get("operation")
+        == "confirmed_installed_cx319_g1_firmware_reuse"
+        and flash.get("status") == "pass"
+        and flash.get("attempt_count") == 0
+        and flash.get("firmware_flashes") == 0
+        and flash.get("board_before") == flash.get("board_after")
+        and flash.get("board_after") == flash.get("installed_board")
+        and flash.get("board_after", {}).get("serial_number")
+        == EXPECTED_SERIAL
+        and flash.get("source_flash_record")
+        == firmware_entry.get("source_flash_record")
+        and flash.get("source_bundle") == firmware_entry.get("source_bundle")
+        and flash.get("source_bundle_sha256")
+        == firmware_entry.get("source_bundle_sha256")
+        and flash.get("source_build_manifest_sha256")
+        == firmware_entry.get("source_build_manifest_sha256")
+        and flash.get("installed_uf2_sha256")
+        == firmware_entry.get("installed_uf2_sha256")
+        and flash.get("uf2_sha256") == manifest_value["firmware"]["uf2"]["sha256"]
+    )
     transition_state = json.loads(
         (transition_dir / "reports/capture_device_state.json").read_text()
     )
@@ -312,13 +359,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     )
     checks = {
         "manifest_bundle_profile_build_and_policy_exact": True,
-        "single_exact_flash_same_board": (
-            flash.get("status") == "pass"
-            and flash.get("attempt_count") == 1
-            and flash.get("board_before") == flash.get("board_after")
-            and flash.get("board_after", {}).get("serial_number")
-            == EXPECTED_SERIAL
+        "exact_firmware_entry_same_board": (
+            (single_flash_exact or confirmed_reuse_exact)
             and flash.get("dac_value_write_attempts") == 0
+            and flash.get("setup_stimulus_attempts") == 0
+            and flash.get("control_arm_attempts") == 0
         ),
         "all_declared_contracts_validate": all(
             item["ok"] for item in validations.values()
@@ -380,6 +425,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and readiness.contract_id == RUNTIME_CONTRACT_ID
             and readiness.ready
             and telemetry_drop_history["exact"] is True
+            and host_attach_history["exact"] is True
             and _post_abort_health_exact(health, transition_health)
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
@@ -474,6 +520,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         },
         "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
         "telemetry_drop_history": telemetry_drop_history,
+        "host_attach_history": host_attach_history,
         "capture_closure": capture_closure,
         "contract_validation": validations,
         "tight_deadband_replay": tdb_replay.as_dict(),
@@ -486,6 +533,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "uf2_sha256": manifest_value["firmware"]["uf2"]["sha256"],
             "policy_sha256": manifest_value["policy"]["sha256"],
             "flash_record_sha256": _sha256_file(run_dir / FLASH_RECORD_PATH),
+            "firmware_entry_mode": firmware_entry["mode"],
             "transport_report_sha256": _sha256_file(
                 run_dir / TRANSPORT_REPORT_PATH
             ),
