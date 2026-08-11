@@ -13,8 +13,8 @@ STATUS_ID = "otis_programme_status_v2"
 SCHEMA_VERSION = 2
 OFFLINE_PREPARATION = "offline_preparation"
 OPERATIONAL_EXECUTION = "operational_execution"
-CX319_G1_NO_WRITE_BENCH_REHEARSAL = "g1_no_write_bench_rehearsal"
-CX319_G2_LIVE_LEG = "g2_live_leg"
+NO_WRITE_BENCH_REHEARSAL = "g1_no_write_bench_rehearsal"
+BOUNDED_TIGHT_DEADBAND_LIVE_LEG = "g2_live_leg"
 
 
 class ProgrammeExecutionBlocked(RuntimeError):

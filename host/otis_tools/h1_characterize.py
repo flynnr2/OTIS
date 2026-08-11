@@ -11,7 +11,7 @@ from typing import Iterable
 import zlib
 
 from .run_loader import RunManifest, load_manifest
-from .phase4_boundary_estimator import (
+from .pps_boundary_frequency_estimator import (
     ESTIMATOR_METHOD_ID,
     REFERENCE_INVALID_FLAGS,
 )

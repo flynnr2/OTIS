@@ -28,7 +28,7 @@ constexpr char kNumericalPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
-#elif OTIS_ENABLE_CX319_TIGHT_PREVIEW
+#elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
@@ -78,11 +78,11 @@ constexpr char kExpectedProfile[] = "cx318_stage5_tight_lower";
 constexpr char kRunIdentity[] = "cx318_stage5_tight_upper:3185002";
 constexpr char kExpectedProfile[] = "cx318_stage5_tight_upper";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
-    OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_LOWER
+    OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER
 constexpr char kRunIdentity[] = "cx319_tight_lower:3195001";
 constexpr char kExpectedProfile[] = "cx319_tight_lower";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
-    OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_UPPER
+    OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
 constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";
 constexpr char kExpectedProfile[] = "cx319_tight_upper";
 #else
@@ -173,9 +173,9 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX318_STAGE5_UPPER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_LOWER || \
+        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_UPPER
+        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
       true,
 #else
       false,

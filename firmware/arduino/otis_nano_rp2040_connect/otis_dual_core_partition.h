@@ -9,7 +9,7 @@ constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
-constexpr uint32_t OTIS_CX318_PREVIEW_QUEUE_DEPTH = 32u;
+constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
 // The non-active portion of Stage 7 timing health reaches 71 telemetry
 // messages. ACTIVE status has one fixed 29-field vocabulary plus three
 // complete-generation envelope records in both the direct and cross-core
@@ -20,24 +20,24 @@ constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
     OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
     OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT;
-constexpr uint32_t OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u;
-constexpr uint32_t OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST =
-    OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
+constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u;
+constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
+    OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-constexpr uint32_t OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST =
-    OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +
+constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
+    OTIS_TIMING_HEALTH_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 134u,
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 134u,
               "Stage 7 health plus one ACTIVE? response must remain exact");
 // The Stage 4 split boot produced 163 one-time records before the redundant
 // count-path validity alias was removed. The three complete-generation
 // envelope records are now part of the declared startup budget.
-constexpr uint32_t OTIS_STAGE4_BOOT_TELEMETRY_BURST = 165u;
+constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 165u;
 constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 192u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
-                  OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
+                  OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,
               "telemetry queue must absorb concurrent health and ACTIVE? bursts");
-static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >= OTIS_STAGE4_BOOT_TELEMETRY_BURST,
+static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >= OTIS_MAXIMUM_BOOT_TELEMETRY_BURST,
               "telemetry queue must absorb the Stage 4 split-boot burst");
 
 enum class OtisPartitionFault : uint8_t {
@@ -48,8 +48,8 @@ enum class OtisPartitionFault : uint8_t {
   ObservationExhausted,
   CriticalExhausted,
   EvidenceExhausted,
-  Cx318PreviewExhausted,
-  Cx318PreviewFault,
+  PhasePreviewQueueExhausted,
+  PhasePreviewFault,
   ActuatorTimeout,
   ActuatorAcknowledgementMismatch,
 };
@@ -73,7 +73,7 @@ enum class OtisTimingProgressPhase : uint8_t {
   Cx317ActivePrepare,
   Cx317ActiveFormat,
   Cx317ActivePublish,
-  Cx318Preview,
+  PhasePreview,
   TimingHealth,
   LoopIdle,
 };
@@ -135,8 +135,8 @@ struct OtisDualCoreQueueStats {
   uint32_t telemetry_depth;
   uint32_t telemetry_high_water;
   uint32_t telemetry_dropped;
-  uint32_t cx318_preview_depth;
-  uint32_t cx318_preview_high_water;
+  uint32_t phase_preview_depth;
+  uint32_t phase_preview_high_water;
   OtisTimingProgressStats timing_progress;
   OtisServiceQueueStats service_activity;
   OtisServiceFaultCapsule service_fault;
@@ -179,10 +179,10 @@ bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message);
 
 // Core 1 producer / Core 0 consumer. Numerical Stage 4 evidence is
 // non-droppable and is formatted only after it crosses this value queue.
-bool otis_dual_core_publish_cx318_preview(
-    const OtisCx318PreviewRecordMessage *message);
-bool otis_dual_core_take_cx318_preview(
-    OtisCx318PreviewRecordMessage *message);
+bool otis_dual_core_publish_phase_preview(
+    const OtisPhasePreviewRecordMessage *message);
+bool otis_dual_core_take_phase_preview(
+    OtisPhasePreviewRecordMessage *message);
 
 void otis_dual_core_note_timing_progress(OtisTimingProgressPhase phase,
                                          uint64_t now_ticks);

@@ -166,7 +166,7 @@ def inject(
         supervisor_args = [
             sys.executable,
             "-m",
-            "host.otis_tools.cx317_stage7_supervisor",
+            "host.otis_tools.cx317_bounded_active_supervisor",
             "--part",
             "rehearsal",
             "--start-code",

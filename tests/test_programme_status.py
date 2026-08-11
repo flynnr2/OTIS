@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.programme_status import (
-    CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-    CX319_G2_LIVE_LEG,
+    NO_WRITE_BENCH_REHEARSAL,
+    BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
     OFFLINE_PREPARATION,
     ProgrammeExecutionBlocked,
     load_programme_status,
@@ -161,7 +161,7 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
             "a27f819698b9af194a485ee83ebf2d05c"
         ),
         "terminal_reason": (
-            "cx319_g2_supervisor_fault:live telemetry_dropped is 3"
+                "cx319_g2_supervisor_fault:live telemetry_dropped is 3"
         ),
         "fresh_restart_uptime_s": 14,
         "telemetry_queue_high_water": 192,
@@ -350,11 +350,11 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband",
-            CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+            NO_WRITE_BENCH_REHEARSAL,
         )
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
+            "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG
         )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
@@ -394,10 +394,10 @@ def test_status_contract_rejects_an_inactive_active_programme(
 def test_stage5_manifest_create_cli_stops_on_programme_status(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from host.otis_tools import cx318_stage5_manifest
+    from host.otis_tools import tight_deadband_manifest
 
     with pytest.raises(SystemExit) as exc:
-        cx318_stage5_manifest.main(
+        tight_deadband_manifest.main(
             [
                 "create",
                 "--mode",

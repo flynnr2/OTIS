@@ -17,7 +17,7 @@ from host.otis_tools.plant_model import (
     validate_plant_model_semantics,
     validate_plant_model_structure,
 )
-from host.otis_tools.phase4_boundary_estimator import estimator_method_contract
+from host.otis_tools.pps_boundary_frequency_estimator import estimator_method_contract
 
 
 DEFAULT_MODEL = (

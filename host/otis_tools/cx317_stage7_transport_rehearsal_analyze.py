@@ -16,7 +16,7 @@ from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 OUTPUT = Path("reports/stage7_rehearsal_gate.json")
 HOST_MARKER_PREFIX = "# OTIS_HOST "
 CAPTURE_TOOL = Path(__file__).with_name("capture_device.py")
-SUPERVISOR_TOOL = Path(__file__).with_name("cx317_stage7_supervisor.py")
+SUPERVISOR_TOOL = Path(__file__).with_name("cx317_bounded_active_supervisor.py")
 SERIAL_COMMANDS_TOOL = Path(__file__).with_name("serial_commands.py")
 INJECTION_TOOL = Path(__file__).with_name(
     "cx317_stage7_transport_fault_inject.py"

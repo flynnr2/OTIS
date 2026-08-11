@@ -75,15 +75,17 @@ disabled candidate envelope `0xA800..0xAB00`. Both `control_ready` and
 `actuation_enabled` remain false. See
 `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`.
 
-The Phase 4 host observe-only vertical slice is complete. Versioned `EST` and
+The observe-only discipline replay, developed during historical Phase 4, is
+complete. Versioned `EST` and
 preview-only `CTL` records can be reproduced deterministically from canonical
 run evidence, the model, diagnostics, policy, and configuration with:
 
 ```bash
-python3 -m host.otis_tools.phase4_replay /path/to/local/run
+python3 -m host.otis_tools.observe_only_discipline_replay /path/to/local/run
 ```
 
-It writes only beneath the run's `derived/phase4_replay_v3/` directory, verifies
+It writes only beneath the run's legacy, provenance-bearing
+`derived/phase4_replay_v3/` directory, verifies
 that source-evidence hashes remain unchanged, and contains no DAC write path.
 The opt-in live firmware engine now passes deterministic fixture parity and
 emits the same normative `EST`/`CTL` contracts without a callable actuation
@@ -93,7 +95,7 @@ independently between its surrounding accepted PPS observations, with no
 extrapolation. Target USB-load/reconnect testing and a long live observe-only run are
 still required, so the firmware-parity exit gate and all active actuation
 remain incomplete. See
-`docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`.
+`docs/50_SOFTWARE/OBSERVE_ONLY_DISCIPLINE_LIVE_ENGINEERING_NOTE.md`.
 
 The current, locally retained SW1.5a evidence run is
 `runs/h0_sw1_5a_pio/tcxo_observe/run_001`, recorded from manifest commit

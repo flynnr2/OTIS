@@ -19,7 +19,7 @@ from .cx317_i_only_preview_replay import (
     POST_CAMPAIGN_POLICY,
     load_post_campaign_policy,
 )
-from .cx317_stage6_live_analyze import (
+from .cx317_frequency_preview_live_analyze import (
     EXPECTED_BACKEND,
     SERIALIZED_12_DECIMAL_HALF_UNIT,
     TICKS_PER_SECOND,

@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "otis_cx318_stage5_tight_deadband.h"
+#include "otis_integer_count_tight_deadband.h"
 
 enum class OtisCx317PreviewState : uint8_t {
   WarmupInhibit,
@@ -60,7 +60,7 @@ struct OtisCx317PreviewDecision {
   bool actionable;
   int32_t active_update_codes;
   bool tight_deadband_decision_available;
-  OtisCx318Stage5TightDeadbandDecision tight_deadband;
+  OtisIntegerCountDeadbandTightDeadbandDecision tight_deadband;
 };
 
 struct OtisCx317IOnlyEngine {
@@ -71,8 +71,8 @@ struct OtisCx317IOnlyEngine {
   uint32_t last_decision_s;
   bool have_last_decision;
   const char *reason;
-  OtisCx318Stage5TightDeadband tight_deadband;
-  OtisCx318Stage5TightDeadbandDecision tight_deadband_decision;
+  OtisIntegerCountDeadbandTightDeadband tight_deadband;
+  OtisIntegerCountDeadbandTightDeadbandDecision tight_deadband_decision;
   bool tight_deadband_decision_available;
 };
 

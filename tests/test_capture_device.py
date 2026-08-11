@@ -19,7 +19,7 @@ from host.otis_tools.capture_device import (
     RawEvidenceWriter,
     SEGMENT_PROTOCOL_ID,
 )
-from host.otis_tools.cx318_capture_segment import prepare_transition
+from host.otis_tools.capture_segment_rotation import prepare_transition
 from host.otis_tools.run_paths import RunPaths, default_csv_files, ensure_run_layout
 from host.otis_tools.serial_commands import (
     CommandFifo,

@@ -1,6 +1,6 @@
 """Accelerated, non-qualifying rehearsal of the Stage 7 Part B host clocks.
 
-This invokes the production Stage7Supervisor transition methods with a
+This invokes the production Cx317BoundedActiveSupervisor transition methods with a
 deterministic clock.  It has no serial, FIFO or actuation authority and cannot
 substitute for the 24-hour hardware evidence.
 """
@@ -17,21 +17,21 @@ import json
 
 from .cx317_active_campaign import _atomic_json
 from .cx317_stage7_part_b_matrix import STAGE7_PROMPT, STAGE7_PROMPT_SHA256
-from .cx317_stage7_supervisor import (
+from .cx317_bounded_active_supervisor import (
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
     PART_B_SERVICE_LOAD_QUERIES,
     PART_B_SERVICE_LOAD_STARTS_S,
-    STAGE7_QUALIFICATION_TIMEOUT_S,
-    Stage7Supervisor,
+    BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S,
+    Cx317BoundedActiveSupervisor,
     _next_selected_interval_is_cadence_eligible,
-    load_stage7_spec,
+    load_cx317_bounded_active_spec,
     part_b_timeline_preflight,
 )
 
 
 TOOL_PATH = Path(__file__).resolve()
-SUPERVISOR_PATH = TOOL_PATH.with_name("cx317_stage7_supervisor.py")
+SUPERVISOR_PATH = TOOL_PATH.with_name("cx317_bounded_active_supervisor.py")
 REPO_ROOT = TOOL_PATH.parents[2]
 
 
@@ -44,11 +44,11 @@ def _utc_now() -> str:
     )
 
 
-def _supervisor(root: Path) -> Stage7Supervisor:
+def _supervisor(root: Path) -> Cx317BoundedActiveSupervisor:
     run = root / "run"
     (run / "csv").mkdir(parents=True, exist_ok=True)
-    spec, identities = load_stage7_spec("part_b", 0xA82A)
-    return Stage7Supervisor(
+    spec, identities = load_cx317_bounded_active_spec("part_b", 0xA82A)
+    return Cx317BoundedActiveSupervisor(
         part="part_b",
         run_dir=run,
         command_fifo=root / "command.fifo",
@@ -124,7 +124,7 @@ def rehearse() -> dict[str, object]:
                 "qualification_started_utc": None,
             },
             health={},
-            now_epoch=float(STAGE7_QUALIFICATION_TIMEOUT_S),
+            now_epoch=float(BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S),
             expected_reason="stage7_qualification_timeout",
         )
 
@@ -135,7 +135,7 @@ def rehearse() -> dict[str, object]:
         monotonic = 1.0
         wall = float(PART_B_SERVICE_LOAD_STARTS_S[0] - 1)
         with patch(
-            "host.otis_tools.cx317_stage7_supervisor.time.time",
+            "host.otis_tools.cx317_bounded_active_supervisor.time.time",
             side_effect=lambda: wall,
         ):
             service._service_load(monotonic)
@@ -169,7 +169,7 @@ def rehearse() -> dict[str, object]:
         interlock.state["arm_pending"] = True
         wall = float(PART_B_SERVICE_LOAD_STARTS_S[0])
         with patch(
-            "host.otis_tools.cx317_stage7_supervisor.time.time",
+            "host.otis_tools.cx317_bounded_active_supervisor.time.time",
             side_effect=lambda: wall,
         ):
             interlock._service_load(1.0)
@@ -344,11 +344,11 @@ def rehearse() -> dict[str, object]:
         "hardware_actuation": False,
         "serial_or_fifo_authority": False,
         "production_logic_exercised": [
-            "Stage7Supervisor._maybe_qualify",
-            "Stage7Supervisor._service_load",
-            "Stage7Supervisor._maybe_finish",
-            "Stage7Supervisor._maybe_start_or_arm",
-            "Stage7Supervisor state persistence",
+            "Cx317BoundedActiveSupervisor._maybe_qualify",
+            "Cx317BoundedActiveSupervisor._service_load",
+            "Cx317BoundedActiveSupervisor._maybe_finish",
+            "Cx317BoundedActiveSupervisor._maybe_start_or_arm",
+            "Cx317BoundedActiveSupervisor state persistence",
         ],
         "bindings": {
             "supervisor_path": str(SUPERVISOR_PATH.relative_to(REPO_ROOT)),

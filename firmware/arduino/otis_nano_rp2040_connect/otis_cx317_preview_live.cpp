@@ -27,7 +27,7 @@ constexpr char kSelectedEstimatorHash[] =
 constexpr char kPolicyId[] = "CX317_STAGE7_HIL_REHEARSAL_V1";
 constexpr char kPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
-#elif OTIS_ENABLE_CX319_TIGHT_PREVIEW
+#elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kSelectedEstimatorReference[] = "selected600";
@@ -119,7 +119,7 @@ bool emit_tight_deadband(const OtisCx317PreviewDecision &decision,
                          uint64_t dac_epoch,
                          int64_t accumulated_edge_error_counts) {
   if (!decision.tight_deadband_decision_available) return false;
-  const OtisCx318Stage5TightDeadbandDecision &tight =
+  const OtisIntegerCountDeadbandTightDeadbandDecision &tight =
       decision.tight_deadband;
   const bool state_transition = tight.state_before != tight.state_after;
   const bool historical_v2_inside =
@@ -146,20 +146,20 @@ bool emit_tight_deadband(const OtisCx317PreviewDecision &decision,
       static_cast<unsigned long long>(dac_epoch),
       static_cast<long long>(accumulated_edge_error_counts),
       static_cast<unsigned long long>(tight.absolute_edge_error_counts),
-      otis_cx318_stage5_tight_deadband_state_name(tight.state_before),
-      otis_cx318_stage5_tight_deadband_state_name(tight.state_after),
+      otis_integer_count_tight_deadband_state_name(tight.state_before),
+      otis_integer_count_tight_deadband_state_name(tight.state_after),
       tight.entry_pending_count, tight.release_pending_count,
       state_transition ? "true" : "false",
       tight.frequency_controller_eligible ? "true" : "false",
       tight.requalified ? "true" : "false",
       tight.requalification_reason_available
-          ? otis_cx318_stage5_tight_deadband_reason_name(
+          ? otis_integer_count_tight_deadband_reason_name(
                 tight.requalification_reason)
           : "",
       historical_v2_inside ? "true" : "false",
       symmetric_two_count_inside ? "true" : "false", tight.policy_id,
       kPolicyHash,
-      otis_cx318_stage5_tight_deadband_reason_name(tight.reason));
+      otis_integer_count_tight_deadband_reason_name(tight.reason));
   return used > 0 && static_cast<size_t>(used) < frame_capacity &&
          enqueue(frame, static_cast<size_t>(used));
 }

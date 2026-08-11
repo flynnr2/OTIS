@@ -942,7 +942,7 @@ class CaptureDeviceRunner:
             ):
                 raise ValueError("transition segment is not exact no-authority drainage")
         elif mode == "live":
-            from .cx318_stage5_manifest import LIVE_STAGE, validate_manifest
+            from .tight_deadband_manifest import LIVE_STAGE, validate_manifest
 
             validated = validate_manifest(manifest_path)
             if validated.get("stage") != LIVE_STAGE:

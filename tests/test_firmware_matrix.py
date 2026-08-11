@@ -244,7 +244,7 @@ def test_cx317_fixed_code_baseline_profile_is_non_actuating_pps_gated() -> None:
     assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
     assert defines["OTIS_ENABLE_DAC_AD5693R"] == "0"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
-    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+    assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
 
 
 def test_cx318_stage4_profile_is_static_nonactuating_and_core1_only() -> None:
@@ -269,7 +269,7 @@ def test_cx318_stage4_profile_is_static_nonactuating_and_core1_only() -> None:
     assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     assert defines["OTIS_ENABLE_ENV_SENSORS"] == "1"
     for disabled in (
-        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+        "OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW",
         "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
         "OTIS_ENABLE_DAC_AD5693R",
@@ -306,7 +306,7 @@ def test_cx318_stage4_premise_profile_is_exact_one_shot_and_noncontrolling() -> 
     assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
     assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
     for disabled in (
-        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW",
+        "OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW",
         "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
         "OTIS_ENABLE_CX318_STAGE4_PREVIEW",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
@@ -346,8 +346,8 @@ def test_cx318_stage5_profiles_are_exact_same_timing_bidirectional_legs() -> Non
         profile = _profile(matrix, profile_id)
         defines = profile["defines"]
         assert defines["OTIS_ENABLE_CX318_STAGE5_PREVIEW"] == "1"
-        assert defines["OTIS_CX318_STAGE5_INITIAL_CODE"] == "0xA828u"
-        assert defines["OTIS_CX318_STAGE5_INITIAL_DAC_EPOCH"] == "0u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE"] == "0xA828u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH"] == "0u"
         assert defines["OTIS_ENABLE_CX318_STAGE4_PREVIEW"] == "0"
         assert defines["OTIS_ENABLE_CX317_I_ONLY_PREVIEW"] == "1"
         assert defines["OTIS_ENABLE_CX317_BOUNDED_ACTIVE"] == "1"
@@ -369,11 +369,11 @@ def test_cx319_profiles_are_new_current_identities_with_same_finite_envelope() -
     matrix = load_matrix(MATRIX_PATH)
     expected = {
         "cx319_tight_lower": (
-            "OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_LOWER",
+            "OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER",
             "0xA808u",
         ),
         "cx319_tight_upper": (
-            "OTIS_CX317_ACTIVE_CAMPAIGN_CX319_TIGHT_UPPER",
+            "OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER",
             "0xA848u",
         ),
     }
@@ -386,10 +386,10 @@ def test_cx319_profiles_are_new_current_identities_with_same_finite_envelope() -
             "release",
             "bench",
         }
-        assert defines["OTIS_ENABLE_CX319_TIGHT_PREVIEW"] == "1"
+        assert defines["OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW"] == "1"
         assert defines["OTIS_ENABLE_CX318_STAGE5_PREVIEW"] == "0"
-        assert defines["OTIS_CX319_INITIAL_CODE"] == "0xA828u"
-        assert defines["OTIS_CX319_INITIAL_DAC_EPOCH"] == "0u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE"] == "0xA828u"
+        assert defines["OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH"] == "0u"
         assert defines["OTIS_CX317_ACTIVE_CAMPAIGN"] == campaign
         assert defines["OTIS_CX317_ACTIVE_START_CODE"] == start
         assert defines["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
@@ -412,7 +412,7 @@ def test_cx317_open_loop_profile_is_manual_only_and_narrowly_clamped() -> None:
     assert defines["OTIS_DAC_MIN_CODE"] == "0xA800u"
     assert defines["OTIS_DAC_MAX_CODE"] == "0xAB00u"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
-    assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+    assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
 
     profile = _profile(matrix, "cx317_pps_gated_open_loop")
     provenance = build_provenance(
@@ -439,7 +439,7 @@ def test_cx317_stage2_gnss_profiles_are_rx_only_and_intentionally_actuating() ->
     for defines in (smoke, preflight):
         assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
-        assert defines["OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW"] == "0"
+        assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
         assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"
         assert defines["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
     assert smoke["OTIS_ENABLE_DAC_AD5693R"] == "0"

@@ -21,10 +21,10 @@ from typing import Any, Iterable
 from jsonschema import Draft202012Validator
 
 from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
-from .cx317_stage6_live_analyze import _firmware_build_binding
-from .cx318_hybrid_preview import load_profile as load_hybrid_profile
-from .cx318_relative_phase import load_profile as load_phase_profile
-from .cx318_stage4_firmware_parity import (
+from .cx317_frequency_preview_live_analyze import _firmware_build_binding
+from .phase_frequency_hybrid_preview import load_profile as load_hybrid_profile
+from .reference_relative_phase_estimator import load_profile as load_phase_profile
+from .selected_preview_firmware_parity import (
     NUMERIC_ABSOLUTE_FLOOR,
     REPO_ROOT,
     _boundaries,

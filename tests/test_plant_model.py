@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.phase4_boundary_estimator import estimator_method_contract
+from host.otis_tools.pps_boundary_frequency_estimator import estimator_method_contract
 from host.otis_tools.plant_model import (
     ModelApplicabilityContext,
     assess_control_eligibility,

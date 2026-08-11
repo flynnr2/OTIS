@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from host.otis_tools import cx318_stage5_rehearsal_analyze as analyzer
+from host.otis_tools import tight_deadband_rehearsal_analyze as analyzer
 from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_KEYS,
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
@@ -250,7 +250,7 @@ def _fixture_run(
     monkeypatch.setattr(analyzer, "load_manifest", lambda _: manifest)
     monkeypatch.setattr(
         analyzer,
-        "load_stage5_spec",
+        "load_tight_deadband_spec",
         lambda leg: (spec, identities, object()),
     )
     def validate_csv(*args, **kwargs):

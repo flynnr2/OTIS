@@ -74,7 +74,7 @@ def test_phase5_ide_configuration_and_dormant_run_020_profile_are_exact() -> Non
         "OTIS_H1_LONG_GATE_PERIOD_US": "300000000u",
         "OTIS_FC0_STARTUP_INHIBIT_MS": "600000u",
         "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",
-        "OTIS_ENABLE_PHASE4_OBSERVE_PREVIEW": "0",
+        "OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW": "0",
         "OTIS_ENABLE_DAC_AD5693R": "0",
         "OTIS_DAC_AD5693R_I2C_ADDRESS": "0x4Cu",
         "OTIS_DAC_MIN_CODE": "0x6000u",

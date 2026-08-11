@@ -172,7 +172,7 @@ def test_pps_counter_boundary_is_owned_by_pio_and_inhibits_rejected_anchor() -> 
 
 
 def test_phase4_live_adapter_uses_modular_pps_boundaries_and_separate_validity() -> None:
-    source = (FIRMWARE / "otis_phase4_observe_preview.cpp").read_text(
+    source = (FIRMWARE / "otis_observe_only_discipline_live.cpp").read_text(
         encoding="utf-8"
     )
     assert '#include "otis_timebase_math.h"' in source

@@ -17,7 +17,7 @@ from .cx317_active_campaign import (
     _read_csv,
     validate_transaction_history,
 )
-from .cx317_stage7_supervisor import load_stage7_spec
+from .cx317_bounded_active_supervisor import load_cx317_bounded_active_spec
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import (
     CAPTURE_IN_PROGRESS_FLAG,
@@ -33,7 +33,7 @@ SUPERVISOR_EVENTS = Path("reports/cx317_active_supervisor_events.jsonl")
 OUTPUT = Path("reports/stage7_rehearsal_gate.json")
 HOST_MARKER_PREFIX = "# OTIS_HOST "
 CAPTURE_TOOL = Path(__file__).with_name("capture_device.py")
-SUPERVISOR_TOOL = Path(__file__).with_name("cx317_stage7_supervisor.py")
+SUPERVISOR_TOOL = Path(__file__).with_name("cx317_bounded_active_supervisor.py")
 SERIAL_COMMANDS_TOOL = Path(__file__).with_name("serial_commands.py")
 TRANSPORT_INJECTION_TOOL = Path(__file__).with_name(
     "cx317_stage7_transport_fault_inject.py"
@@ -151,7 +151,7 @@ def analyze(
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     state = json.loads((run_dir / SUPERVISOR_STATE).read_text(encoding="utf-8"))
     events = _events(run_dir / SUPERVISOR_EVENTS)
-    spec, identities = load_stage7_spec("rehearsal", 0xA800)
+    spec, identities = load_cx317_bounded_active_spec("rehearsal", 0xA800)
     build_identity = manifest["firmware"]["build_identity"]
     transport_binding = _transport_rehearsal_binding(
         transport_rehearsal_gate

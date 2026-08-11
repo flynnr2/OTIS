@@ -23,7 +23,7 @@ from .cx317_i_only_preview_replay import IOnlyPreviewEngine, Observation, load_p
 from .cx317_stage7_part_b_matrix import STAGE7_PROMPT, STAGE7_PROMPT_SHA256
 from .cx317_stage7_part_b_rehearsal import SUPERVISOR_PATH, TOOL_PATH
 from .cx317_stage6_dual_core_analyze import _estimator_parity, _rows_for
-from .cx317_stage6_live_analyze import (
+from .cx317_frequency_preview_live_analyze import (
     SERIALIZED_12_DECIMAL_HALF_UNIT,
     TICKS_PER_SECOND,
     _check_continuity,
@@ -31,7 +31,7 @@ from .cx317_stage6_live_analyze import (
     _one_marker,
     _serialized_difference,
 )
-from .cx317_stage7_shadow import (
+from .cx317_counterfactual_deadband import (
     ShadowContract,
     ShadowObservation,
     frozen_content_binding_matches,
@@ -46,14 +46,14 @@ from .cx317_stage7_shadow_monitor import (
     _selected_rows,
     refresh,
 )
-from .cx317_stage7_supervisor import (
+from .cx317_bounded_active_supervisor import (
     PART_A_QUALIFIED_TIMEOUT_S,
     PART_A_SERVICE_LOAD_QUERIES,
     PART_B_CLEARANCE_GRACE_S,
     PART_B_DURATION_S,
     PART_B_SERVICE_LOAD_STARTS_S,
-    STAGE7_QUALIFICATION_TIMEOUT_S,
-    load_stage7_spec,
+    BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S,
+    load_cx317_bounded_active_spec,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .timebase import unwrap_ticks
@@ -1301,7 +1301,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
         manifest.data["shadow_contract"]["path"]
     )
     shadow_contract = load_contract(shadow_contract_path)
-    spec, identities = load_stage7_spec(part, start_code)
+    spec, identities = load_cx317_bounded_active_spec(part, start_code)
     checks: list[Check] = []
 
     build = json.loads(build_manifest.read_text(encoding="utf-8"))
@@ -1332,13 +1332,13 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     expected_grace = 0 if part == "part_a" else PART_B_CLEARANCE_GRACE_S
     finite_runtime_ok = (
         int(campaign.get("qualification_timeout_s", -1))
-        == STAGE7_QUALIFICATION_TIMEOUT_S
+        == BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S
         and int(campaign.get("duration_after_qualification_s", -1))
         == expected_duration
         and int(campaign.get("post_duration_clearance_grace_s", -1))
         == expected_grace
         and int(campaign.get("maximum_wall_clock_s", -1))
-        == STAGE7_QUALIFICATION_TIMEOUT_S + expected_duration + expected_grace
+        == BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S + expected_duration + expected_grace
         and campaign.get("timeout_disposition")
         == "fail_static_abort_diagnostic_no_stage_exit"
         and (
@@ -1359,7 +1359,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
             "finite_runtime_contract_bound",
             finite_runtime_ok,
             "qualification/duration/clearance maxima "
-            f"{STAGE7_QUALIFICATION_TIMEOUT_S}/{expected_duration}/{expected_grace} s",
+            f"{BOUNDED_ACTIVE_QUALIFICATION_TIMEOUT_S}/{expected_duration}/{expected_grace} s",
         )
     )
     host_contract = manifest.data.get("host", {})

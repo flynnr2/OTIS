@@ -18,21 +18,21 @@ import tempfile
 from typing import Any
 
 from .capture_device import CAPTURE_STATE, SEGMENT_CARRIER_STATE
-from .cx318_capture_segment import prepare_transition, request_rotation
+from .capture_segment_rotation import prepare_transition, request_rotation
 from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
 from .active_status_contract import latest_complete_health
-from .cx318_stage5_manifest import (
+from .tight_deadband_manifest import (
     REHEARSAL_STAGE,
     create_manifest,
     validate_manifest,
 )
-from .cx318_stage5_rehearsal_analyze import (
+from .tight_deadband_rehearsal_analyze import (
     OUTPUT as REHEARSAL_SEAL,
     SUPERVISOR_STATE,
     analyze,
 )
-from .cx318_stage5_runtime_contract import evaluate_prewrite_readiness
-from .cx318_stage5_supervisor import DAC_CSV, load_stage5_spec
+from .prewrite_readiness_contract import evaluate_prewrite_readiness
+from .tight_deadband_supervisor import DAC_CSV, load_tight_deadband_spec
 from .evidence import create_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER
 from .programme_status import require_programme_execution_allowed
@@ -167,7 +167,7 @@ def _require_healthy_rehearsal(run_dir: Path, manifest: dict[str, Any]) -> str:
 def _require_prewrite_runtime_contract(
     run_dir: Path, manifest: dict[str, Any], leg: str
 ) -> dict[str, object]:
-    spec, identities, _ = load_stage5_spec(leg)
+    spec, identities, _ = load_tight_deadband_spec(leg)
     expected_build = (
         manifest["firmware"]["source_sha256"]
         + ":"

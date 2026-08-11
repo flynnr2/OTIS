@@ -16,7 +16,7 @@ import tempfile
 import time
 
 from .cx317_active_campaign import _latest_health, _read_csv
-from .cx317_stage7_shadow import (
+from .cx317_counterfactual_deadband import (
     ShadowContract,
     ShadowObservation,
     load_contract,
