@@ -14,9 +14,38 @@ REPO_ROOT = SCRIPT_PATH.parents[4]
 PYTHON = sys.executable
 
 
-COMMANDS: tuple[tuple[str, ...], ...] = (
-    (PYTHON, "-m", "pytest"),
-    (PYTHON, "tools/firmware_matrix.py"),
+FAST_TESTS = (
+    "tests/test_firmware_matrix.py",
+    "tests/test_measurement_semantics.py",
+    "tests/test_pps_count_boundary.py",
+    "tests/test_pps_snapshot_reconstruction.py",
+    "tests/test_diagnostics_contract.py",
+    "tests/test_active_status_contract.py",
+    "tests/test_programme_status.py",
+    "tests/test_dual_core_partition.py",
+    "tests/test_serial_frame_arbiter.py",
+    "tests/test_capture_device.py",
+)
+
+CAMPAIGN_TESTS = (
+    "tests/test_programme_status.py",
+    "tests/test_active_status_contract.py",
+    "tests/test_diagnostics_contract.py",
+    "tests/test_count_observation_ownership.py",
+    "tests/test_memory_budget_ownership.py",
+    "tests/test_serial_frame_arbiter.py",
+    "tests/test_capture_device.py",
+    "tests/test_cx318_capture_segment.py",
+    "tests/test_cx318_capture_handoff.py",
+    "tests/test_cx317_abort_path.py",
+    "tests/test_cx317_stage7_transport_rehearsal.py",
+    "tests/test_evidence.py",
+    "tests/test_evidence_index.py",
+    "tests/test_platform_rehearsal.py",
+)
+
+
+COMMON_FIXTURE_COMMANDS: tuple[tuple[str, ...], ...] = (
     (
         PYTHON,
         "tools/otis_wire_validate.py",
@@ -53,6 +82,33 @@ COMMANDS: tuple[tuple[str, ...], ...] = (
 )
 
 
+def commands_for_tier(tier: str) -> tuple[tuple[str, ...], ...]:
+    if tier == "fast":
+        return (
+            (PYTHON, "-m", "pytest", "-q", *FAST_TESTS),
+            (PYTHON, "tools/firmware_matrix.py", "--tier", "fast"),
+            *COMMON_FIXTURE_COMMANDS,
+        )
+    if tier == "standard_campaign":
+        return (
+            (PYTHON, "-m", "pytest", "-q", *CAMPAIGN_TESTS),
+            (
+                PYTHON,
+                "tools/firmware_matrix.py",
+                "--tier",
+                "standard_campaign",
+            ),
+            *COMMON_FIXTURE_COMMANDS,
+        )
+    if tier == "release":
+        return (
+            (PYTHON, "-m", "pytest"),
+            (PYTHON, "tools/firmware_matrix.py", "--tier", "release"),
+            *COMMON_FIXTURE_COMMANDS,
+        )
+    raise ValueError(f"unsupported verification tier: {tier}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run OTIS validation checks that do not require bench hardware."
@@ -62,9 +118,15 @@ def main() -> int:
         action="store_true",
         help="Print commands without executing them.",
     )
+    parser.add_argument(
+        "--tier",
+        choices=("fast", "standard_campaign", "release"),
+        default="release",
+        help="Executable no-hardware verification tier (default: release).",
+    )
     args = parser.parse_args()
 
-    for command in COMMANDS:
+    for command in commands_for_tier(args.tier):
         resolved_command = (
             (sys.executable, *command[1:])
             if command and command[0] == "python3"

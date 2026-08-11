@@ -459,7 +459,7 @@ def _write_replay_fixture(
             "source_domain",
             "flags",
         ],
-        [["CNT", 1, 1, 2, gate[0], gate[1], "fixture_ticks", edges, "R", "h1_ocxo_open_loop", 16]],
+        [["CNT", 1, 1, 2, gate[0], gate[1], "fixture_ticks", edges, "R", "h1_cx317_ocxo_10mhz", 16]],
     )
     evaluation_tick = ticks[-1]
     _write_csv(

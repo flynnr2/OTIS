@@ -157,6 +157,16 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 - Registry claims are assembled in a fixed order from compile-time mode
   selection. Diagnostic claim numbering is therefore reproducible for the same
   build configuration.
+- Count-path runtime status formatting is owned by `otis_count_observation`,
+  alongside the count validity state it reports. The top-level sketch supplies
+  the selected configuration and dispatches the serial query; it no longer
+  duplicates or interprets count-path fields.
+- `otis_memory_budget` records an approximate minimum free stack independently
+  on each executing core and the minimum observed free heap on Core 0. A
+  `CONFIG?` snapshot reports the observation scope and checks 1,024-byte
+  per-core stack and 65,536-byte heap margins. This is live high-water evidence,
+  not exhaustive stack-canary coverage; the build manifest's static SRAM gate
+  remains an independent requirement.
 
 ## Compatibility assessment
 
@@ -181,9 +191,15 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 
 ## PPS qualification handoff
 
-PPS ownership work is complete: `edge_capture` remains the one D14 owner, the
-optional D10 input remains an independent witness, and the D14 IRQ owns the
-physical count boundary before foreground service. Phase 5 qualification must
-bound IRQ/restart quantisation, verify atomic boundary traceability and fault
-behavior, and retain these ownership assignments. It must not add a second D14
-owner, hide rejected evidence, or authorize steering.
+PPS ownership work is complete for the qualified snapshot backend:
+`count_observation` owns the physical oscillator-count aperture in one PIO
+state machine, which both counts oscillator edges and snapshots cumulative
+state on the D14 PPS input. DMA transports already captured snapshot words.
+`edge_capture` owns the D14 GPIO IRQ only as an independent reconstructed `REF`
+observer; neither the IRQ nor foreground service owns the count boundary. The
+optional D10 input remains an independent witness.
+
+Future work must preserve these assignments, verify atomic boundary
+traceability and fault behavior, and keep IRQ/restart quantisation out of the
+authoritative count aperture. It must not add a second aperture owner, hide
+rejected evidence, or infer steering authority from capture health.

@@ -148,6 +148,8 @@ BootFatal unpack_fatal(uint32_t packed) {
       return BootFatal::ResourceOwnershipConflict;
     case 12u:
       return BootFatal::RequiredCapabilityUnavailable;
+    case 13u:
+      return BootFatal::DualCoreHandshakeTimeout;
     default:
       return BootFatal::InvalidBootConfig;
   }
@@ -244,6 +246,8 @@ const char *otisBootFatalName(BootFatal fatal) {
       return "ResourceOwnershipConflict";
     case BootFatal::RequiredCapabilityUnavailable:
       return "RequiredCapabilityUnavailable";
+    case BootFatal::DualCoreHandshakeTimeout:
+      return "DualCoreHandshakeTimeout";
     default:
       return "Unknown";
   }

@@ -551,15 +551,15 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "fc0_valid_for_control",
-        "fc0_fault",
+        "count_path_control_eligible",
+        "count_path_fault_latched",
         "count_windows",
         "invalid_count_windows",
         "first_control_eligible_elapsed_s"
       ],
       "properties": {
-        "fc0_valid_for_control": { "type": "boolean" },
-        "fc0_fault": { "type": "boolean" },
+        "count_path_control_eligible": { "type": "boolean" },
+        "count_path_fault_latched": { "type": "boolean" },
         "count_windows": { "type": "integer", "minimum": 0 },
         "invalid_count_windows": { "type": "integer", "minimum": 0 },
         "first_control_eligible_elapsed_s": { "type": "number", "minimum": 0 }

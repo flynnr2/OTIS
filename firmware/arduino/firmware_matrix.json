@@ -18,10 +18,17 @@
     "compiler_version": "16.1.0",
     "installed_sha256": "2f5dd0d916934d55f12f5ca70848b62dcad447a819baab1563e0799c4aee3910"
   },
+  "resource_budgets": {
+    "dynamic_memory_total_bytes": 262144,
+    "static_dynamic_memory_max_bytes": 157286,
+    "runtime_memory_reserve_min_bytes": 104858
+  },
   "profiles": [
     {
       "id": "phase5_qualification",
       "purpose": "Phase 5 observe-only PPS-gated boundary qualification candidate.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -41,6 +48,8 @@
     {
       "id": "cx317_fixed_code_baseline",
       "purpose": "CX317 fixed-code PPS-gated baseline with environment telemetry and no actuator or preview.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["standard_campaign", "release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -60,6 +69,8 @@
     {
       "id": "cx317_pps_gated_open_loop",
       "purpose": "Stage 5 CX317 PPS-gated manual/predeclared open-loop DAC instrument; no firmware sweep or control preview.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -81,6 +92,8 @@
     {
       "id": "cx317_pps_gated_i_only_preview",
       "purpose": "Stage 6 CX317 selected cumulative estimator and I-only observe-only preview; DAC ownership remains manual-command-only.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -106,6 +119,8 @@
     {
       "id": "cx318_stage4_premise_setup",
       "purpose": "CX318 Stage 4 one-shot premise setup: exactly one explicit A828 manual write attempt, with every preview, controller, sweep, dual-core and GPS-transmit path disabled.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -135,6 +150,8 @@
     {
       "id": "cx318_stage4_nonactuating_preview",
       "purpose": "CX318 Stage 4 Core-1 relative-phase/hybrid preview with a fixture static-code binding for no-hardware matrix proof; rebind to the exact confirmed code before any flash.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -162,6 +179,8 @@
     {
       "id": "cx318_stage5_tight_lower",
       "purpose": "CX318 Stage 5 lower leg: exact A808 setup and at most four bounded positive-learning frequency-only corrections while relative-phase/hybrid remain non-actionable.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -205,6 +224,8 @@
     {
       "id": "cx318_stage5_tight_upper",
       "purpose": "CX318 Stage 5 upper leg: exact A848 setup and at most four bounded negative-learning frequency-only corrections while relative-phase/hybrid remain non-actionable.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -248,6 +269,8 @@
     {
       "id": "cx317_bounded_active_campaign_a",
       "purpose": "Stage 3 dedicated Campaign A bounded active I-only controller with RX-only GNSS and one-shot actuator transactions.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -277,6 +300,8 @@
     {
       "id": "cx317_bounded_active_campaign_b",
       "purpose": "Stage 3 dedicated Campaign B bounded active I-only controller with RX-only GNSS and one-shot actuator transactions.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -306,6 +331,8 @@
     {
       "id": "cx317_dual_core_active_part_a",
       "purpose": "Stage 7 Part A bounded A800 acquisition stimulus for live dual-core transaction confirmation with Core 1 authority and Core 0 single-attempt actuation.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -336,6 +363,8 @@
     {
       "id": "cx317_dual_core_active_rehearsal",
       "purpose": "Diagnostic-only accelerated hardware-in-loop rehearsal of two consecutive Stage 7 dual-core request, acceptance, application and response sequences followed by service load and clear state; never qualification evidence.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -375,6 +404,8 @@
     {
       "id": "cx317_dual_core_active_endurance_part_b",
       "purpose": "Stage 7 Part B 24-hour bounded dual-core active endurance profile with a one-hour fail-static post-duration clearance ceiling; exact start is regenerated from the sealed Part A final code before hardware entry.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -405,6 +436,8 @@
     {
       "id": "cx317_pps_gated_gnss_smoke",
       "purpose": "Stage 2 receive-only GNSS metadata and PPS/load smoke with every DAC path compiled out.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -426,6 +459,8 @@
     {
       "id": "cx317_pps_gated_gnss_actuator_preflight",
       "purpose": "Stage 2 receive-only GNSS qualification plus predetermined manual-only DAC topology checks inside the A800-AB00 clamp.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -449,6 +484,8 @@
     {
       "id": "phase4_observe_only",
       "purpose": "Live Phase 4 estimator/control-preview telemetry with actuation structurally disabled.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -468,6 +505,8 @@
     {
       "id": "h1_characterization",
       "purpose": "H1 raw-edge long-gate characterization without an actuator.",
+      "lifecycle": "keep_active",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -487,6 +526,8 @@
     {
       "id": "h1_lab_actuator",
       "purpose": "Explicit operator-started H1 AD5693R characterization and sweep instrument.",
+      "lifecycle": "keep_active",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -506,6 +547,8 @@
     {
       "id": "synthetic_usb",
       "purpose": "Deterministic USB framing and parser sanity profile.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["fast", "release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_SYNTHETIC_USB",
@@ -525,6 +568,8 @@
     {
       "id": "gpio_loopback_pio_capture",
       "purpose": "Sparse GPIO loopback using the PIO FIFO capture backend.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPIO_LOOPBACK",
@@ -544,6 +589,8 @@
     {
       "id": "gps_pps_irq_capture",
       "purpose": "GPS PPS reference capture using the conservative IRQ backend.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
@@ -563,6 +610,8 @@
     {
       "id": "tcxo_fc0_observe",
       "purpose": "TCXO observation using IRQ PPS capture and the FC0/GPIN0 counter.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_TCXO_OBSERVE",
@@ -582,6 +631,8 @@
     {
       "id": "gps_pps_pio_capture",
       "purpose": "GPS PPS reference capture using the sparse-edge PIO FIFO and FC0 counter.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_GPS_PPS",
@@ -601,6 +652,8 @@
     {
       "id": "h1_pio_capture_long_gate",
       "purpose": "H1 sparse PPS PIO FIFO capture with independent raw-edge PIO long-gate counting.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -620,6 +673,8 @@
     {
       "id": "tcxo_gpio_irq_divided",
       "purpose": "Deliberately divided TCXO observation using GPIO IRQ capture and counting.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_TCXO_OBSERVE",
@@ -639,6 +694,8 @@
     {
       "id": "pseudo_pps_loopback",
       "purpose": "Explicit command-armed D3-to-D14 deterministic pseudo-PPS fault-injection bench profile.",
+      "lifecycle": "keep_diagnostic_recovery",
+      "verification_tiers": ["release", "bench"],
       "expect": "pass",
       "defines": {
         "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
@@ -658,6 +715,8 @@
     {
       "id": "invalid_cx318_stage4_premise_wrong_code",
       "purpose": "Prove the Stage 4 premise profile cannot target any code except A828.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 premise setup requires the single exact A828 DAC surface.",
       "defines": {
@@ -688,6 +747,8 @@
     {
       "id": "invalid_cx318_stage4_premise_without_dac",
       "purpose": "Prove the premise profile cannot compile without its exact DAC surface.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 premise setup requires the single exact A828 DAC surface.",
       "defines": {
@@ -718,6 +779,8 @@
     {
       "id": "invalid_cx318_stage4_premise_with_sweep",
       "purpose": "Prove no sweep command path can coexist with the one-shot premise profile.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 premise setup requires the single exact A828 DAC surface.",
       "defines": {
@@ -748,6 +811,8 @@
     {
       "id": "invalid_cx318_stage4_premise_with_preview_and_dual_core",
       "purpose": "Prove the one-shot premise profile cannot share preview or dual-core state.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 premise setup excludes every preview, controller, and dual-core authority path.",
       "defines": {
@@ -778,6 +843,8 @@
     {
       "id": "invalid_cx318_stage4_with_dac",
       "purpose": "Prove the CX318 preview cannot compile any DAC path.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 preview structurally excludes every DAC and sweep path.",
       "defines": {
@@ -806,6 +873,8 @@
     {
       "id": "invalid_cx318_stage4_without_dual_core",
       "purpose": "Prove CX318 timing/preview cannot compile on the Core 0 service path.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 preview requires the dual-core partition.",
       "defines": {
@@ -834,6 +903,8 @@
     {
       "id": "invalid_cx318_stage4_with_cx317_preview",
       "purpose": "Prove CX318 cannot share state with the legacy CX317 preview/controller.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 preview is mutually exclusive with legacy and active control paths.",
       "defines": {
@@ -862,6 +933,8 @@
     {
       "id": "invalid_cx318_stage4_unqualified_backend",
       "purpose": "Prove CX318 cannot compile without the qualified PPS snapshot boundary.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "CX318 Stage 4 preview requires qualified dual-observer PPS capture, RX-only GNSS, and environment telemetry.",
       "defines": {
@@ -890,6 +963,8 @@
     {
       "id": "invalid_pps_ratio_with_pio_capture",
       "purpose": "Guard the independent GPIO REF observer required beside the PIO-owned boundary.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "PPS_GATED_RATIO requires the GPIO IRQ backend for the independent D14 REF observer.",
       "defines": {
@@ -910,6 +985,8 @@
     {
       "id": "invalid_pseudo_pps_nonisolated_resources",
       "purpose": "Guard the pseudo-PPS pin and timing resources from dual-observer or service-profile sharing.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "The pseudo-PPS generator requires the isolated PPS-gated loopback test profile.",
       "defines": {
@@ -930,6 +1007,8 @@
     {
       "id": "invalid_lab_actuator_outside_h1",
       "purpose": "Guard the explicit laboratory actuator profile boundary.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "AD5693R lab actuation is supported only in H1 OCXO observe mode",
       "defines": {
@@ -950,6 +1029,8 @@
     {
       "id": "invalid_sweep_without_actuator",
       "purpose": "Guard against compiling sweep commands without the DAC actuator.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "The H1 DAC sweep requires the explicit AD5693R lab actuator profile",
       "defines": {
@@ -970,6 +1051,8 @@
     {
       "id": "invalid_gnss_uart_tx_enabled",
       "purpose": "Prove the bounded programme cannot compile a GNSS UART transmit path.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "The bounded GNSS programme requires Nano TX to remain electrically silent.",
       "defines": {
@@ -992,6 +1075,8 @@
     {
       "id": "invalid_active_campaign_a_parameters",
       "purpose": "Prove Campaign A cannot compile if its immutable start code differs.",
+      "lifecycle": "archive_out_of_default_checks",
+      "verification_tiers": [],
       "expect": "fail",
       "expected_error": "Campaign A active parameters differ from the immutable programme envelope.",
       "defines": {
@@ -1022,6 +1107,8 @@
     {
       "id": "invalid_active_missing_gnss",
       "purpose": "Prove controller-to-DAC reachability cannot compile without the RX-only GNSS authority input.",
+      "lifecycle": "keep_compile_only",
+      "verification_tiers": ["release"],
       "expect": "fail",
       "expected_error": "Bounded active control requires the dedicated preview, RX-only GNSS, qualified count, environment, and nonsweep DAC topology.",
       "defines": {

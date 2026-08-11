@@ -1,5 +1,10 @@
 # SW2 GPSDO Control Loop Readiness
 
+**Lifecycle note (2026-08-11):** this document records the completed CX317
+readiness decision and its precursor evidence. The later CX318 Stage 5 work is
+suspended incomplete and unsealed. Current work is the platform-stabilization
+programme in `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`.
+
 ## Decision
 
 The bounded frequency-control programme reached

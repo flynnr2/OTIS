@@ -7,6 +7,9 @@
 #include "otis_dual_core_contract.h"
 #include "otis_status_emit.h"
 
+#define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT \
+  "cx317_active_status_snapshot_v1"
+
 struct OtisCx317ActiveLiveHealth {
   uint32_t session_id;
   bool gnss_metadata_valid;

@@ -28,18 +28,37 @@ directories outside `runs/`.
 
 ## Current Status
 
-This repository has completed **H0 / SW1** bring-up, the H1 observe-only plant
-model, and the SW2-3 PPS-gated measurement-backend qualification. The active
-next step is integrated live observe-only estimator/preview validation; active
-DAC control remains deferred:
+The
+[`OTIS_PLATFORM_STABILIZATION_PROGRAMME`](docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md)
+passed its completion gate on 2026-08-11. Its reviewed result is in
+[`OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT`](docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT.md).
+No next programme is currently authorized.
+
+CX318 Stage 5 remains suspended, incomplete, unsealed, and non-promotable.
+Platform completion does not resume it: any successor requires an explicit
+operator decision and a new programme identity based on the stabilized
+platform.
+
+The current scientific claim is limited to bounded experimental frequency and
+arbitrary-epoch relative-phase evidence. OTIS does not presently claim
+traceable absolute frequency, calibrated phase, UTC, lock, or holdover.
+
+Earlier H0/SW1, H1, Phase 4/5, CX317, and CX318 results remain useful
+development history. They are not all current supported-product profiles:
 
 - the architecture, terminology, and first data contracts are being made explicit;
 - the host-side tooling validates synthetic fixtures and captured run directories;
-- the active SW1 firmware supports explicit USB synthetic, GPIO loopback, GPS PPS, and TCXO observation modes;
+- diagnostic firmware supports explicit USB synthetic, GPIO loopback, GPS PPS, and TCXO/OCXO observation modes;
 - the non-PIO H0/SW1 validation path is healthy;
 - the SW1.5a PIO FIFO path is complete enough for sparse-edge observation;
 - the standalone Pico SDK firmware scaffold has been archived under `firmware/deprecated/`;
-- the first hardware target is **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
+- the first hardware target was **H0**: RP2040 + Adafruit Ultimate GPS breakout + ECS-TXO-5032-160-TR 16 MHz TCXO + SN74AHCT1G14 edge-conditioning experiments.
+
+### Historical development context
+
+The following sections preserve the evidence path that produced the current
+platform. Their stage-specific next steps and support language are historical;
+the platform-stabilization programme above is authoritative for current work.
 
 The current H1 CX317/AD5693R plant model is
 `profiles/plant_models/cx317_h1_bench_v3.json` (model version 4). Run 019 supplies broad
@@ -94,7 +113,7 @@ The `COMPLETE` marker is present.
 | Directory | Purpose |
 |---|---|
 | `data_contracts/` | normative schemas and semantic contracts |
-| `firmware/arduino/otis_nano_rp2040_connect/` | active Arduino Nano RP2040 Connect SW1 firmware |
+| `firmware/arduino/otis_nano_rp2040_connect/` | active Arduino Nano RP2040 Connect firmware platform |
 | `firmware/deprecated/rp2040_pico_sdk/` | archived Pico SDK scaffold for reference only |
 | `host/otis_tools/` | host-side validation/replay/report tooling scaffold |
 | `profiles/` | declarative experiment/profile mappings |
@@ -158,6 +177,10 @@ cumulative PPS snapshot. The remaining measured spread is retained as
 end-to-end ECS/GPS/capture characterization, not isolated firmware jitter.
 This conclusion is now a regression constraint documented in
 `docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`.
+The deliberately narrower claim that current results may carry, including the
+nominal 100 ns/cycle relative-phase conversion and unavailable uncertainty
+components, is recorded in
+`docs/50_SOFTWARE/CURRENT_METROLOGY_CLAIM.md`.
 
 ## Quick Host Scaffold Check
 

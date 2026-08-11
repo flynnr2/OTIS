@@ -12,6 +12,22 @@
 #endif
 #endif
 
+#ifndef OTIS_MINIMUM_FREE_STACK_BYTES
+#define OTIS_MINIMUM_FREE_STACK_BYTES 1024u
+#endif
+
+#ifndef OTIS_MINIMUM_FREE_HEAP_BYTES
+#define OTIS_MINIMUM_FREE_HEAP_BYTES 65536u
+#endif
+
+#if OTIS_MINIMUM_FREE_STACK_BYTES < 256u
+#error "OTIS_MINIMUM_FREE_STACK_BYTES must preserve a material live margin."
+#endif
+
+#if OTIS_MINIMUM_FREE_HEAP_BYTES < 16384u
+#error "OTIS_MINIMUM_FREE_HEAP_BYTES must preserve a material live margin."
+#endif
+
 // SW1 bring-up modes.
 #define OTIS_SW1_MODE_SYNTHETIC_USB 1
 #define OTIS_SW1_MODE_GPIO_LOOPBACK 2

@@ -82,7 +82,7 @@ def _write_synthetic_run(
         "channels": [{"channel_id": 2, "role": "ocxo_observation"}],
         "domains": [
             {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h1_ocxo_open_loop", "nominal_hz": 10_000_000},
+            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "files": [
             {"path": "csv/cnt.csv", "contract": "count_observations_v1"},
@@ -109,7 +109,7 @@ def _write_synthetic_run(
         open_ticks = second * 16_000_000
         close_ticks = (second + 1) * 16_000_000
         count_rows.append(
-            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,{count},R,h1_ocxo_open_loop,16"
+            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,{count},R,h1_cx317_ocxo_10mhz,16"
         )
         seq += 1
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
@@ -238,8 +238,8 @@ def test_h1_characterize_uses_pps_calibrated_gate_rate(tmp_path: Path) -> None:
     _write_synthetic_run(run_dir, include_second_step=False, include_ref=True)
     count_rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        "CNT,1,1,2,0,15999920,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,2,2,15999920,31999840,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,1,2,0,15999920,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,2,2,15999920,31999840,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
@@ -268,8 +268,8 @@ def test_h1_characterize_local_pps_removes_injected_timer_rate_error(tmp_path: P
     (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
     count_rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        "CNT,1,1,2,0,32000000,rp2040_timer0,20000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,2,2,32000000,48001000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,1,2,0,32000000,rp2040_timer0,20000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,2,2,32000000,48001000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
@@ -299,7 +299,7 @@ def test_h1_characterize_local_pps_does_not_interpolate_across_rejected_short_pp
     (run_dir / "csv" / "ref.csv").write_text("\n".join(ref_rows) + "\n", encoding="utf-8")
     count_rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        "CNT,1,1,2,16000000,48000000,rp2040_timer0,20000000,R,h1_ocxo_open_loop,16",
+        "CNT,1,1,2,16000000,48000000,rp2040_timer0,20000000,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
@@ -390,11 +390,11 @@ def test_h1_characterize_reports_center_bracketed_slope(tmp_path: Path) -> None:
     _write_synthetic_run(run_dir, include_second_step=False)
     count_rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,2,2,16000000,32000000,rp2040_timer0,10000002,R,h1_ocxo_open_loop,16",
-        "CNT,1,3,2,64000000,80000000,rp2040_timer0,10000200,R,h1_ocxo_open_loop,16",
-        "CNT,1,4,2,80000000,96000000,rp2040_timer0,10000202,R,h1_ocxo_open_loop,16",
-        "CNT,1,5,2,112000000,128000000,rp2040_timer0,10000010,R,h1_ocxo_open_loop,16",
+        "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,2,2,16000000,32000000,rp2040_timer0,10000002,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,3,2,64000000,80000000,rp2040_timer0,10000200,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,4,2,80000000,96000000,rp2040_timer0,10000202,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,5,2,112000000,128000000,rp2040_timer0,10000010,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
     dac_rows = [
@@ -427,11 +427,11 @@ def test_h1_characterize_uses_final_segment_and_skips_flagged_zero_counts(tmp_pa
     wrap = (1 << 32) * 16
     rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        "CNT,1,10,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,2,2,32000000,48000000,rp2040_timer0,0,R,h1_ocxo_open_loop,32784",
-        f"CNT,1,3,2,{wrap - 16_000_000},{wrap},rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,4,2,0,16000000,rp2040_timer0,10000010,R,h1_ocxo_open_loop,16",
+        "CNT,1,10,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,2,2,32000000,48000000,rp2040_timer0,0,R,h1_cx317_ocxo_10mhz,32784",
+        f"CNT,1,3,2,{wrap - 16_000_000},{wrap},rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,4,2,0,16000000,rp2040_timer0,10000010,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
@@ -450,8 +450,8 @@ def test_h1_characterize_handles_count_window_crossing_timer_wrap(tmp_path: Path
     wrap = (1 << 32) * 16
     rows = [
         "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-        f"CNT,1,1,2,{wrap - 8_000_000},8000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
-        "CNT,1,2,2,8000000,24000000,rp2040_timer0,10000020,R,h1_ocxo_open_loop,16",
+        f"CNT,1,1,2,{wrap - 8_000_000},8000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
+        "CNT,1,2,2,8000000,24000000,rp2040_timer0,10000020,R,h1_cx317_ocxo_10mhz,16",
     ]
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
 
@@ -471,7 +471,7 @@ def _write_startup_gate_run(run_dir: Path, rows: list[tuple[int, int, int]]) -> 
         open_ticks = (seq - 1) * 160_000_000
         close_ticks = seq * 160_000_000
         count_rows.append(
-            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,{counted_edges},R,h1_ocxo_open_loop,{flags}"
+            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,{counted_edges},R,h1_cx317_ocxo_10mhz,{flags}"
         )
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 
@@ -488,7 +488,7 @@ def test_h1_startup_gate_accepts_startup_local_bad_windows(tmp_path: Path) -> No
     assert analysis.startup_control.invalid_window_count == 20
     assert analysis.startup_control.first_control_eligible_elapsed_s == 625
     assert analysis.startup_control.valid_for_control
-    assert "fc0_valid_for_control: true" in report
+    assert "control_eligible: true" in report
     assert "startup_discarded_windows: 60" in report
     assert len(analysis.count_windows) == 45
 
@@ -513,27 +513,27 @@ def test_h1_fc0_bad_window_diagnostics_are_reported(tmp_path: Path) -> None:
     _write_startup_gate_run(run_dir, rows)
     sts_rows = [
         "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
-        "STS,1,10,160000000,rp2040_timer0,fc0,window_invalid_reason,counted_edges_zero,WARN,528",
-        "STS,1,11,160000010,rp2040_timer0,fc0,window_sample_count,1,WARN,528",
-        "STS,1,12,160000020,rp2040_timer0,fc0,window_zero_sample_count,1,WARN,528",
-        "STS,1,13,160000030,rp2040_timer0,fc0,window_valid_sample_count,0,WARN,528",
-        "STS,1,14,160000040,rp2040_timer0,fc0,window_first_sample_khz,0,WARN,528",
-        "STS,1,15,160000050,rp2040_timer0,fc0,window_last_sample_khz,0,WARN,528",
-        "STS,1,16,160000060,rp2040_timer0,fc0,window_min_sample_khz,0,WARN,528",
-        "STS,1,17,160000070,rp2040_timer0,fc0,window_max_sample_khz,0,WARN,528",
-        "STS,1,18,160000080,rp2040_timer0,fc0,window_elapsed_us,300000003,WARN,528",
-        "STS,1,19,160000090,rp2040_timer0,fc0,window_flags,528,WARN,528",
-        "STS,1,20,160000100,rp2040_timer0,fc0,post_startup_invalid_window,true,WARN,528",
-        "STS,1,21,160000110,rp2040_timer0,fc0,consecutive_bad_windows,1,WARN,528",
-        "STS,1,22,160000120,rp2040_timer0,fc0,total_bad_windows,1,WARN,528",
-        "STS,1,30,320000000,rp2040_timer0,fc0,window_invalid_reason,partial_zero_samples,WARN,48",
-        "STS,1,31,320000010,rp2040_timer0,fc0,window_sample_count,2,WARN,48",
-        "STS,1,32,320000020,rp2040_timer0,fc0,window_zero_sample_count,1,WARN,48",
-        "STS,1,33,320000030,rp2040_timer0,fc0,window_valid_sample_count,1,WARN,48",
-        "STS,1,34,320000040,rp2040_timer0,fc0,window_flags,48,WARN,48",
-        "STS,1,35,320000050,rp2040_timer0,fc0,post_startup_invalid_window,false,WARN,48",
-        "STS,1,36,320000060,rp2040_timer0,fc0,consecutive_bad_windows,2,WARN,48",
-        "STS,1,37,320000070,rp2040_timer0,fc0,total_bad_windows,2,WARN,48",
+        "STS,1,10,160000000,rp2040_timer0,count_path,window_invalid_reason,counted_edges_zero,WARN,528",
+        "STS,1,11,160000010,rp2040_timer0,count_path,window_sample_count,1,WARN,528",
+        "STS,1,12,160000020,rp2040_timer0,count_path,window_zero_sample_count,1,WARN,528",
+        "STS,1,13,160000030,rp2040_timer0,count_path,window_valid_sample_count,0,WARN,528",
+        "STS,1,14,160000040,rp2040_timer0,count_path,window_first_sample_khz,0,WARN,528",
+        "STS,1,15,160000050,rp2040_timer0,count_path,window_last_sample_khz,0,WARN,528",
+        "STS,1,16,160000060,rp2040_timer0,count_path,window_min_sample_khz,0,WARN,528",
+        "STS,1,17,160000070,rp2040_timer0,count_path,window_max_sample_khz,0,WARN,528",
+        "STS,1,18,160000080,rp2040_timer0,count_path,window_elapsed_us,300000003,WARN,528",
+        "STS,1,19,160000090,rp2040_timer0,count_path,window_flags,528,WARN,528",
+        "STS,1,20,160000100,rp2040_timer0,count_path,post_startup_invalid_window,true,WARN,528",
+        "STS,1,21,160000110,rp2040_timer0,count_path,consecutive_bad_windows,1,WARN,528",
+        "STS,1,22,160000120,rp2040_timer0,count_path,total_bad_windows,1,WARN,528",
+        "STS,1,30,320000000,rp2040_timer0,count_path,window_invalid_reason,partial_zero_samples,WARN,48",
+        "STS,1,31,320000010,rp2040_timer0,count_path,window_sample_count,2,WARN,48",
+        "STS,1,32,320000020,rp2040_timer0,count_path,window_zero_sample_count,1,WARN,48",
+        "STS,1,33,320000030,rp2040_timer0,count_path,window_valid_sample_count,1,WARN,48",
+        "STS,1,34,320000040,rp2040_timer0,count_path,window_flags,48,WARN,48",
+        "STS,1,35,320000050,rp2040_timer0,count_path,post_startup_invalid_window,false,WARN,48",
+        "STS,1,36,320000060,rp2040_timer0,count_path,consecutive_bad_windows,2,WARN,48",
+        "STS,1,37,320000070,rp2040_timer0,count_path,total_bad_windows,2,WARN,48",
     ]
     (run_dir / "csv" / "sts.csv").write_text("\n".join(sts_rows) + "\n", encoding="utf-8")
 
@@ -572,7 +572,7 @@ def test_h1_startup_gate_allows_zero_startup_discard_for_long_clean_windows(tmp_
         open_ticks = (seq - 1) * 19_200_000_000
         close_ticks = seq * 19_200_000_000
         count_rows.append(
-            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,12000000000,R,h1_ocxo_open_loop,16"
+            f"CNT,1,{seq},2,{open_ticks},{close_ticks},rp2040_timer0,12000000000,R,h1_cx317_ocxo_10mhz,16"
         )
     (run_dir / "csv" / "cnt.csv").write_text("\n".join(count_rows) + "\n", encoding="utf-8")
 

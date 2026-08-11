@@ -374,13 +374,11 @@ bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message) {
 
 bool otis_dual_core_publish_boot_telemetry(
     const OtisTelemetryMessage *message) {
-  if (message == nullptr) return false;
-  // setup() drains this queue while setup1() performs the bounded timing-side
-  // boot.  Backpressure here prevents a deterministic startup burst from
-  // being misreported as lost live telemetry.
-  while (!telemetry_to_service.try_push(*message)) {
-  }
-  return true;
+  if (message != nullptr && telemetry_to_service.try_push(*message))
+    return true;
+  increment_saturating(&telemetry_dropped);
+  otis_dual_core_latch_fault(OtisPartitionFault::BootTelemetryExhausted);
+  return false;
 }
 
 bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message) {
@@ -520,6 +518,10 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
   switch (fault) {
     case OtisPartitionFault::None:
       return "none";
+    case OtisPartitionFault::BootTelemetryExhausted:
+      return "boot_telemetry_queue_exhausted";
+    case OtisPartitionFault::BootHandshakeTimeout:
+      return "boot_handshake_timeout";
     case OtisPartitionFault::ServiceToTimingExhausted:
       return "service_to_timing_queue_exhausted";
     case OtisPartitionFault::ObservationExhausted:

@@ -65,6 +65,8 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
 
     for fault in (
         "ServiceToTimingExhausted",
+        "BootTelemetryExhausted",
+        "BootHandshakeTimeout",
         "ObservationExhausted",
         "CriticalExhausted",
         "EvidenceExhausted",
@@ -87,8 +89,9 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         encoding="utf-8"
     )
 
-    assert "OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST = 29u" in header
-    assert "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 71u" in header
+    assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 29u" in header
+    assert "OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u" in header
+    assert "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u" in header
     assert (
         "OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
@@ -97,7 +100,8 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         "OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
-    assert "OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u" in header
+    assert "OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 134u" in header
+    assert "OTIS_STAGE4_BOOT_TELEMETRY_BURST = 165u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
 
@@ -134,6 +138,28 @@ def test_service_queue_fault_diagnostics_are_complete_and_bounded() -> None:
         "fault_last_snapshot_session",
     ):
         assert key in sketch
+
+
+def test_dual_core_boot_waits_and_telemetry_publication_are_bounded() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    partition = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
+        encoding="utf-8"
+    )
+    setup0 = sketch[sketch.index("void setup()") : sketch.index("void setup1()")]
+    setup1 = sketch[sketch.index("void setup1()") : sketch.index("void loop1()")]
+    boot_publish = partition[
+        partition.index("bool otis_dual_core_publish_boot_telemetry(") :
+        partition.index("bool otis_dual_core_take_telemetry(")
+    ]
+
+    assert "kDualCoreBootHandshakeTimeoutMs = 10000u" in sketch
+    assert "timing_boot_wait_started_ms" in setup0
+    assert "service_boot_wait_started_ms" in setup1
+    assert "BootFatal::DualCoreHandshakeTimeout" in setup0
+    assert "while" not in boot_publish
+    assert "BootTelemetryExhausted" in boot_publish
 
 
 def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:

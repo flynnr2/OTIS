@@ -123,6 +123,7 @@ OtisCx317ActiveLiveOutcome deferred_application_outcome = {};
 bool deferred_application_outcome_valid = false;
 bool last_application_acknowledged = false;
 bool estimator_history_reset = false;
+uint32_t status_snapshot_generation = 0u;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 OtisActuatorTransactionGuard timing_actuator_guard = {};
 // Core 1 is the sole active-evidence producer. Reuse one module-owned copy
@@ -986,6 +987,16 @@ void otis_cx317_active_live_visit_status(
     void *context, OtisCx317ActiveStatusVisitor visitor, uint32_t now_s) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   if (visitor == nullptr) return;
+  status_snapshot_generation += 1u;
+  if (status_snapshot_generation == 0u) status_snapshot_generation = 1u;
+  char snapshot_generation[24];
+  snprintf(snapshot_generation, sizeof(snapshot_generation), "%lu",
+           static_cast<unsigned long>(status_snapshot_generation));
+  visitor(context, "snapshot_generation_begin", snapshot_generation,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "snapshot_contract",
+          OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
   OtisCx317ActiveLiveStatus active = {};
   otis_cx317_active_live_get_status(&active, now_s);
   visitor(context, "enabled", "true", OTIS_SEVERITY_INFO,
@@ -1075,6 +1086,8 @@ void otis_cx317_active_live_visit_status(
           OTIS_FLAG_PROFILE_ASSUMPTION);
   visitor(context, "automatic_restore", "false", OTIS_SEVERITY_INFO,
           OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "snapshot_generation_complete", snapshot_generation,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 #else
   (void)context;
   (void)visitor;

@@ -20,6 +20,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY = REPO_ROOT / "profiles/discipline/cx317_bounded_active_v2.json"
 TOOL_VERSION = "cx317_bounded_active_reference_v2"
+CURRENT_POLICY_ID = "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
 
 
 class ActiveError(RuntimeError):
@@ -98,10 +99,7 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActivePolicy:
     if value.get("schema_version") != 1:
         raise ValueError("active policy schema_version must be 1")
     policy_id = value.get("policy_id")
-    if policy_id not in {
-        "CX317_BOUNDED_ACTIVE_I_ONLY_V1",
-        "CX317_BOUNDED_ACTIVE_I_ONLY_V2",
-    }:
+    if policy_id != CURRENT_POLICY_ID:
         raise ValueError("unsupported active policy identity")
     bindings = value.get("bindings")
     parameters = value.get("parameters")
@@ -134,18 +132,15 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActivePolicy:
         "confirmed_applied_code_required": True,
         "capture_owner_lease_and_abort_health_required": True,
     }
-    if policy_id == "CX317_BOUNDED_ACTIVE_I_ONLY_V1":
-        required_authority["temperature_and_model_applicability_required"] = True
-    else:
-        required_authority.update(
-            {
-                "model_applicability_required_for_new_request": True,
-                "temperature_context_required_for_measurement": False,
-                "temperature_context_required_for_control": False,
-                "measurement_validity_and_control_eligibility_separate": True,
-                "out_of_model_is_fail_static_hold": True,
-            }
-        )
+    required_authority.update(
+        {
+            "model_applicability_required_for_new_request": True,
+            "temperature_context_required_for_measurement": False,
+            "temperature_context_required_for_control": False,
+            "measurement_validity_and_control_eligibility_separate": True,
+            "out_of_model_is_fail_static_hold": True,
+        }
+    )
     if {key: authority.get(key) for key in required_authority} != required_authority:
         raise ValueError("active authority invariants differ")
     if transaction.get("controller_type") != "incremental_I_only_frequency_control":

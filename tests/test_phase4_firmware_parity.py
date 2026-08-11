@@ -154,7 +154,7 @@ def _make_run(
         count_rows.append(
             [
                 "CNT", 1, seq, 2, previous * TICK_HZ, close * TICK_HZ,
-                "fixture_ticks", edges, "R", "h1_ocxo_open_loop",
+                "fixture_ticks", edges, "R", "h1_cx317_ocxo_10mhz",
                 flags[0] if flags else 16,
             ]
         )

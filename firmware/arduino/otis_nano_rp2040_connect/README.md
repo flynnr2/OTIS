@@ -339,7 +339,7 @@ either deliberately tiny and centered inside the configured DAC clamps or
 bounded long-dwell slope profiles that only visit the configured min/mid/max
 codes. Requests that would cross clamps are rejected and logged as `DAC` rows
 with `safety_reject`.
-If `SWEEP START` is sent before `fc0_valid_for_control=true`, the sweep enters
+If `SWEEP START` is sent before `control_eligible=true`, the sweep enters
 `pending_start` and begins automatically after the startup inhibit has expired
 and enough clean long-gate windows have been observed.
 During an active sweep, firmware emits `DAC` rows for `dwell_start`,
@@ -527,10 +527,14 @@ for parity results, the selector matrix, and the still-open live bench gate.
 python3 tools/firmware_matrix.py --check-environment
 python3 tools/firmware_matrix.py --list
 python3 tools/firmware_matrix.py
+python3 tools/firmware_matrix.py --all-profiles --list
 ```
 
-The full command compiles the eleven intentional supported tuples and verifies
-that three known-invalid tuples fail with their named guard. Build one
+The default command executes the current Release tier: 18 expected-pass
+profiles and 14 structural expected-fail guards. `--tier fast` builds only the
+selected fast profile. `--all-profiles` is an explicit historical matrix of 26
+expected-pass and 15 expected-fail tuples; it is not a current support claim.
+Lifecycle metadata is embedded in each matrix profile. Build one
 qualification binary with:
 
 ```bash

@@ -36,6 +36,10 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 void otis_count_observation_emit_status(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context);
+void otis_count_observation_emit_runtime_status(
+    const OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context,
+    const OtisCountObservationConfig *config);
 void otis_count_observation_emit_configuration_status(
     OtisStatusEmitContext *status_context);
 const char *otis_count_observation_measurement_mode(void);

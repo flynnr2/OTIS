@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Mode profiles allow host-side interpretation of generic canonical event streams.
-
-Firmware remains application-neutral.
+Mode profiles were introduced to allow host-side interpretation of generic
+canonical event streams. Canonical raw capture remains application-neutral,
+but the current firmware also contains explicit OTIS product, measurement,
+diagnostic, and bounded-control profiles. Do not describe the complete firmware
+as application-neutral.
 
 ## Philosophy
 
@@ -17,35 +19,18 @@ The RP2040 should not know:
 
 Profiles define those semantics host-side.
 
-## Example
+## Current lifecycle
 
-```yaml
-mode: pendulum_synchronome
-profile_schema_version: 1
-profile_version: 1
-inputs:
-  photogate_channel: 0
-reference_inputs:
-  gnss_pps_channel: 1
-assumptions:
-  nominal_period_s: 2.0
-  impulse_period_swings: 15
-interpretation:
-  pair_edges: true
-  infer_tick_tock: true
-```
-
-## Example Modes
-
-- generic_tic
-- pendulum_synchronome
-- oscillator_compare
-- tcxo_benchmark
-- ham_radio_timing
+`h0_reference.yaml` remains a diagnostic/reference profile. The unimplemented
+`generic_tic` and `pendulum_synchronome` examples were retired during platform
+stabilization because they had no executable consumer or near-term product
+owner. Git history preserves their exploratory intent; the active repository
+does not imply support for them.
 
 ## Long-Term Direction
 
-Profiles become the semantic bridge between:
+Where a concrete product requires host-side semantic interpretation, a
+versioned profile may provide the bridge between:
 
 ```text
 canonical raw events

@@ -21,13 +21,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MATRIX = REPO_ROOT / "firmware" / "arduino" / "firmware_matrix.json"
 SKETCH = REPO_ROOT / "firmware" / "arduino" / "otis_nano_rp2040_connect"
 CONFIG_HEADER = SKETCH / "otis_config.h"
-BUILDER_VERSION = 2
+BUILDER_VERSION = 3
 PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]*$")
 DEFINE_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 DEFINE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_()+.,:+*/<>=!-]+$")
 HEX40_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 HEX64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 SESSION_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+PROGRAM_USAGE_PATTERN = re.compile(
+    r"Sketch uses (\d+) bytes .* Maximum is (\d+) bytes\."
+)
+DYNAMIC_MEMORY_USAGE_PATTERN = re.compile(
+    r"Global variables use (\d+) bytes .* leaving (\d+) bytes for local "
+    r"variables\. Maximum is (\d+) bytes\."
+)
 FORBIDDEN_PROFILE_DEFINES = {
     "OTIS_FIRMWARE_CONFIG_ID",
     "OTIS_FIRMWARE_GIT_COMMIT",
@@ -80,6 +87,14 @@ GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
 INSTALLATION_NOISE_NAMES = {".DS_Store", "installed.json"}
+LIFECYCLE_CLASSES = {
+    "keep_active",
+    "keep_diagnostic_recovery",
+    "keep_compile_only",
+    "archive_out_of_default_checks",
+    "retire",
+}
+VERIFICATION_TIERS = {"fast", "standard_campaign", "release", "bench"}
 
 
 class MatrixError(RuntimeError):
@@ -141,9 +156,16 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
 
     target = matrix.get("target")
     toolchain = matrix.get("toolchain")
+    resource_budgets = matrix.get("resource_budgets")
     profiles = matrix.get("profiles")
-    if not isinstance(target, dict) or not isinstance(toolchain, dict):
-        raise MatrixError("firmware matrix target and toolchain must be objects")
+    if (
+        not isinstance(target, dict)
+        or not isinstance(toolchain, dict)
+        or not isinstance(resource_budgets, dict)
+    ):
+        raise MatrixError(
+            "firmware matrix target, toolchain, and resource_budgets must be objects"
+        )
     if not isinstance(profiles, list) or not profiles:
         raise MatrixError("firmware matrix profiles must be a non-empty array")
 
@@ -179,6 +201,30 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
     if not HEX64_PATTERN.fullmatch(str(toolchain["installed_sha256"])):
         raise MatrixError("toolchain installed_sha256 must be lowercase SHA-256")
 
+    required_budgets = {
+        "dynamic_memory_total_bytes",
+        "static_dynamic_memory_max_bytes",
+        "runtime_memory_reserve_min_bytes",
+    }
+    if required_budgets - set(resource_budgets):
+        raise MatrixError(
+            "firmware matrix resource_budgets is missing "
+            f"{sorted(required_budgets - set(resource_budgets))}"
+        )
+    if any(
+        not isinstance(resource_budgets[key], int) or resource_budgets[key] <= 0
+        for key in required_budgets
+    ):
+        raise MatrixError("firmware resource budgets must be positive integers")
+    if (
+        resource_budgets["static_dynamic_memory_max_bytes"]
+        + resource_budgets["runtime_memory_reserve_min_bytes"]
+        != resource_budgets["dynamic_memory_total_bytes"]
+    ):
+        raise MatrixError(
+            "static dynamic-memory budget plus runtime reserve must equal total RAM"
+        )
+
     seen: set[str] = set()
     pass_count = 0
     fail_count = 0
@@ -211,6 +257,41 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
         else:
             raise MatrixError(
                 f"profile {profile_id} expect must be 'pass' or 'fail'"
+            )
+        lifecycle = profile.get("lifecycle")
+        if lifecycle not in LIFECYCLE_CLASSES:
+            raise MatrixError(
+                f"profile {profile_id} has invalid lifecycle {lifecycle!r}"
+            )
+        verification_tiers = profile.get("verification_tiers")
+        if (
+            not isinstance(verification_tiers, list)
+            or any(not isinstance(item, str) for item in verification_tiers)
+            or len(set(verification_tiers)) != len(verification_tiers)
+            or set(verification_tiers) - VERIFICATION_TIERS
+        ):
+            raise MatrixError(
+                f"profile {profile_id} has invalid verification_tiers"
+            )
+        if lifecycle in {"archive_out_of_default_checks", "retire"} and (
+            verification_tiers
+        ):
+            raise MatrixError(
+                f"profile {profile_id} is outside default checks but names "
+                "verification tiers"
+            )
+        if lifecycle == "keep_active" and expectation != "pass":
+            raise MatrixError(
+                f"active profile {profile_id} must be expected to pass"
+            )
+        if lifecycle == "keep_compile_only" and expectation != "fail":
+            raise MatrixError(
+                f"compile-only profile {profile_id} must be an expected-fail "
+                "structural guard"
+            )
+        if expectation == "fail" and set(verification_tiers) - {"release"}:
+            raise MatrixError(
+                f"expected-fail profile {profile_id} may run only at Release"
             )
         defines = profile.get("defines")
         if not isinstance(defines, dict) or not defines:
@@ -885,17 +966,87 @@ def _artifact_hashes(artifacts_dir: Path) -> list[dict[str, Any]]:
     return sorted(artifacts, key=lambda item: item["name"])
 
 
+def _resource_usage_from_build_output(output: str) -> dict[str, int]:
+    program_match = PROGRAM_USAGE_PATTERN.search(output)
+    memory_match = DYNAMIC_MEMORY_USAGE_PATTERN.search(output)
+    if program_match is None or memory_match is None:
+        raise MatrixError(
+            "successful firmware build did not emit the required resource usage report"
+        )
+    usage = {
+        "program_storage_used_bytes": int(program_match.group(1)),
+        "program_storage_total_bytes": int(program_match.group(2)),
+        "static_dynamic_memory_used_bytes": int(memory_match.group(1)),
+        "runtime_memory_available_bytes": int(memory_match.group(2)),
+        "dynamic_memory_total_bytes": int(memory_match.group(3)),
+    }
+    if (
+        usage["static_dynamic_memory_used_bytes"]
+        + usage["runtime_memory_available_bytes"]
+        != usage["dynamic_memory_total_bytes"]
+    ):
+        raise MatrixError("firmware resource usage report is internally inconsistent")
+    return usage
+
+
+def _enforce_resource_budgets(
+    matrix: dict[str, Any], usage: dict[str, int]
+) -> dict[str, Any]:
+    budget = matrix["resource_budgets"]
+    if usage["dynamic_memory_total_bytes"] != budget[
+        "dynamic_memory_total_bytes"
+    ]:
+        raise MatrixError(
+            "firmware build reported an unexpected dynamic-memory total: "
+            f"{usage['dynamic_memory_total_bytes']}"
+        )
+    failures: list[str] = []
+    if usage["static_dynamic_memory_used_bytes"] > budget[
+        "static_dynamic_memory_max_bytes"
+    ]:
+        failures.append("static dynamic-memory maximum exceeded")
+    if usage["runtime_memory_available_bytes"] < budget[
+        "runtime_memory_reserve_min_bytes"
+    ]:
+        failures.append("runtime memory reserve is below minimum")
+    if failures:
+        raise MatrixError("; ".join(failures))
+    return {
+        "contract": "otis_firmware_resource_budget_v1",
+        "status": "within_budget",
+        "budget": dict(budget),
+        "observed": usage,
+    }
+
+
 def _selected_profiles(
     matrix: dict[str, Any],
     requested: list[str],
     supported_only: bool,
+    *,
+    verification_tier: str | None = None,
+    all_profiles: bool = False,
 ) -> list[dict[str, Any]]:
     profiles = matrix["profiles"]
     by_id = {profile["id"]: profile for profile in profiles}
     unknown = sorted(set(requested) - set(by_id))
     if unknown:
         raise MatrixError(f"unknown firmware profiles: {unknown}")
-    selected = [by_id[item] for item in requested] if requested else list(profiles)
+    if requested:
+        selected = [by_id[item] for item in requested]
+    elif all_profiles:
+        selected = list(profiles)
+    else:
+        selected_tier = verification_tier or "release"
+        if selected_tier not in VERIFICATION_TIERS:
+            raise MatrixError(
+                f"unknown verification tier: {selected_tier!r}"
+            )
+        selected = [
+            profile
+            for profile in profiles
+            if selected_tier in profile["verification_tiers"]
+        ]
     if supported_only:
         selected = [profile for profile in selected if profile["expect"] == "pass"]
     if not selected:
@@ -1086,6 +1237,8 @@ def _compile_profile(
         outcome_matches = outcome_matches and error_matched
     build_manifest_path = artifacts_dir / "firmware_build_manifest.json"
     if passed:
+        resource_usage = _resource_usage_from_build_output(combined)
+        resource_report = _enforce_resource_budgets(matrix, resource_usage)
         artifacts = _artifact_hashes(artifacts_dir)
         after_hashing = _capture_source_state(
             matrix,
@@ -1103,6 +1256,7 @@ def _compile_profile(
             {
                 "schema_version": 1,
                 "provenance": provenance,
+                "resource_budget": resource_report,
                 "artifacts": artifacts,
             },
         )
@@ -1256,6 +1410,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip expected-fail guard profiles.",
     )
     parser.add_argument(
+        "--tier",
+        choices=sorted(VERIFICATION_TIERS),
+        help=(
+            "Select profiles assigned to one executable verification tier; "
+            "defaults to release when no profile or --all-profiles is named."
+        ),
+    )
+    parser.add_argument(
+        "--all-profiles",
+        action="store_true",
+        help="Include archived profiles for an explicit historical matrix run.",
+    )
+    parser.add_argument(
         "--check-environment",
         action="store_true",
         help="Verify the pinned CLI/core/toolchain without compiling.",
@@ -1291,13 +1458,23 @@ def main(argv: list[str] | None = None) -> int:
             raise MatrixError(
                 "--prepare-ide requires exactly one explicit --profile"
             )
+        if args.all_profiles and (args.profile or args.tier):
+            raise MatrixError(
+                "--all-profiles cannot be combined with --profile or --tier"
+            )
         selected = _selected_profiles(
-            matrix, list(args.profile), args.supported_only
+            matrix,
+            list(args.profile),
+            args.supported_only,
+            verification_tier=args.tier,
+            all_profiles=args.all_profiles,
         )
         if args.list:
             for profile in selected:
                 print(
                     f"{profile['id']}\t{profile['expect']}\t"
+                    f"{profile['lifecycle']}\t"
+                    f"{','.join(profile['verification_tiers'])}\t"
                     f"{profile.get('purpose', '')}"
                 )
             return 0

@@ -58,7 +58,7 @@
   "measured_tuning_sensitivity_hz_per_v": null,
   "measured_tuning_sensitivity_ppm_per_v": null,
   "observation_domain": {
-    "name": "h1_ocxo_open_loop",
+    "name": "h1_cx317_ocxo_10mhz",
     "nominal_hz": 10000000,
     "division_ratio": null
   },
@@ -85,7 +85,7 @@
       "nominal_hz": 16000000
     },
     {
-      "name": "h1_ocxo_open_loop",
+      "name": "h1_cx317_ocxo_10mhz",
       "nominal_hz": 10000000
     }
   ],

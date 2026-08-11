@@ -53,7 +53,7 @@ def test_loads_historical_run_017_plant_model_unchanged() -> None:
     assert reference["d14_rejected_long_count"] == 16
     assert "rollover-safe modular timer arithmetic" in reference["d14_rejected_long_count_interpretation"]
     startup = model.data["plant_response"]["startup_control_eligibility"]
-    assert startup["fc0_valid_for_control"] is True
+    assert startup["count_path_control_eligible"] is True
     assert startup["invalid_count_windows"] == 0
     assert model.data["source_evidence"]["source_commits"]["model_updated_from_repo_commit"] == (
         "0ebdae3266635bc98b9518a59fcfaa68751c4024"

@@ -24,6 +24,10 @@ from .cx318_stage5_runtime_contract import (
     RUNTIME_CONTRACT_ID,
 )
 from tools.firmware_matrix import configuration_hash, load_matrix
+from .programme_status import (
+    ProgrammeExecutionBlocked,
+    require_programme_execution_allowed,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -616,7 +620,7 @@ def create_manifest(
             "tool_bindings": _host_tool_bindings(),
         },
         "stage5": stage5,
-        "domains": [{"name": "rp2040_timer0", "nominal_hz": 16_000_000}, {"name": "h0_tcxo_16mhz", "nominal_hz": 10_000_000}],
+        "domains": [{"name": "rp2040_timer0", "nominal_hz": 16_000_000}, {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000}],
         "channels": [{"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"}, {"channel_id": 2, "role": "pps_gated_oscillator_count", "record_family": "count_observations_v1"}],
         "contracts": {entry["contract"]: 2 if entry["contract"] == "estimates_v2" else 1 for entry in files},
         "files": files,
@@ -783,6 +787,10 @@ def main(argv: list[str] | None = None) -> int:
         validate_manifest(args.manifest)
         print(args.manifest.resolve())
     else:
+        try:
+            require_programme_execution_allowed("cx318_stage5")
+        except ProgrammeExecutionBlocked as exc:
+            parser.error(str(exc))
         print(create_manifest(
             mode=args.mode, leg=args.leg, run_dir=args.run_dir, build_manifest_path=args.build_manifest,
             uf2_path=args.uf2, stage4_seal_path=args.stage4_seal, rehearsal_seal_path=args.rehearsal_seal,

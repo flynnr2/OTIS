@@ -1,5 +1,24 @@
 # CX318 Relative-Phase, Hybrid-Preview and Tight-Deadband Codex Programme
 
+## Programme suspended — 2026-08-11
+
+The operator suspended this programme during Stage 5 because repeated platform
+defects made further campaign execution scientifically and operationally
+unjustified. The tracked record below is the complete execution record. No
+later rehearsal, promotion, live leg, or seal exists.
+
+The programme is **incomplete, unsealed, non-promotable, and not authorized to
+resume**. Existing Stage 5 profiles and artifacts are historical failed-attempt
+evidence, not current operational profiles. Do not repair the record
+retrospectively, create a completion seal, reuse its promotion ledger, or infer
+authority from the fact that an old profile still compiles.
+
+Platform stabilization now proceeds under
+[`../OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`](../OTIS_PLATFORM_STABILIZATION_PROGRAMME.md).
+Any future CX318 restart must follow that programme's completion gate and use a
+new programme identity, new profiles, a newly frozen bundle, and a fresh exact
+no-write rehearsal.
+
 This folder contains the programme selected after the sealed CX317 bounded
 frequency-control endurance result.
 

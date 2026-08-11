@@ -43,6 +43,7 @@ enum class BootFatal : uint8_t {
   RepeatedBootFailure,
   ResourceOwnershipConflict,
   RequiredCapabilityUnavailable,
+  DualCoreHandshakeTimeout,
 };
 
 #endif

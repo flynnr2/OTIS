@@ -112,7 +112,7 @@ def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
         "\n".join(
             [
                 "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                 "",
             ]
         ),
@@ -170,8 +170,8 @@ def test_validate_run_accepts_h1_rp2040_timer_wrap(tmp_path: Path) -> None:
         "\n".join(
             [
                 "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                f"CNT,1,1,2,{wrap - 2_000_000},{wrap - 1_000_000},rp2040_timer0,625000,R,h1_ocxo_open_loop,16",
-                "CNT,1,2,2,1000000,2000000,rp2040_timer0,625000,R,h1_ocxo_open_loop,16",
+                f"CNT,1,1,2,{wrap - 2_000_000},{wrap - 1_000_000},rp2040_timer0,625000,R,h1_cx317_ocxo_10mhz,16",
+                "CNT,1,2,2,1000000,2000000,rp2040_timer0,625000,R,h1_cx317_ocxo_10mhz,16",
                 "",
             ]
         ),
@@ -241,7 +241,7 @@ def test_report_run_uses_manifest_nominal_interval_for_pps_gated_counts(tmp_path
         "\n".join(
             [
                 "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,16000000,31999920,rp2040_timer0,9999993,R,h1_ocxo_open_loop,16",
+                "CNT,1,1,2,16000000,31999920,rp2040_timer0,9999993,R,h1_cx317_ocxo_10mhz,16",
                 "",
             ]
         ),
@@ -426,7 +426,7 @@ def test_capture_serial_splits_h1_evt_and_ref_files(tmp_path: Path, monkeypatch)
                 [
                     "EVT,1,1000,0,R,16000000,rp2040_timer0,0",
                     "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                    "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                    "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                     "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
                     "DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0",
                     "DAC,1,2,2000,0,32768,32768,0,,,5000,fc0_window,16",
@@ -491,8 +491,8 @@ def test_verify_h1_manual_log_command(tmp_path: Path) -> None:
                 "STS,1,14,14,rp2040_timer0,dac,rejected_code,0x0000,WARN,32768",
                 "STS,1,15,15,rp2040_timer0,dac,rejected_code,0xFFFF,WARN,32768",
                 "STS,1,16,16,rp2040_timer0,dac,set,rejected_outside_clamps,WARN,32768",
-                "STS,1,17,17,rp2040_timer0,fc0,valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                 "REF,1,1000,1,R,16000000,rp2040_timer0,16",
                 "REF,1,1001,1,R,32000000,rp2040_timer0,16",
                 "",
@@ -543,8 +543,8 @@ def test_verify_h1_manual_log_skips_initial_two_second_pps(tmp_path: Path) -> No
                 "STS,1,14,14,rp2040_timer0,dac,rejected_code,0x0000,WARN,32768",
                 "STS,1,15,15,rp2040_timer0,dac,rejected_code,0xFFFF,WARN,32768",
                 "STS,1,16,16,rp2040_timer0,dac,set,rejected_outside_clamps,WARN,32768",
-                "STS,1,17,17,rp2040_timer0,fc0,valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                 "REF,1,1000,1,R,16000000,rp2040_timer0,16",
                 "REF,1,1001,1,R,48000000,rp2040_timer0,16",
                 "REF,1,1002,1,R,64000000,rp2040_timer0,16",
@@ -595,8 +595,8 @@ def test_verify_h1_manual_log_allows_missing_dac(tmp_path: Path) -> None:
                 "STS,1,14,14,rp2040_timer0,dac,requested_code,0x0000,INFO,0",
                 "STS,1,15,15,rp2040_timer0,dac,requested_code,0xFFFF,INFO,0",
                 "STS,1,16,16,rp2040_timer0,dac,set,rejected_not_initialized,WARN,32",
-                "STS,1,17,17,rp2040_timer0,fc0,valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
+                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                 "",
             ]
         ),
@@ -840,7 +840,7 @@ def test_validate_run_accepts_exact_pps_cadence_gate(tmp_path: Path) -> None:
         "\n".join(
             [
                 "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_ocxo_open_loop,16",
+                "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
                 "",
             ]
         ),

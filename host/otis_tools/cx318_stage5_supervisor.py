@@ -25,10 +25,10 @@ from .cx317_active_campaign import (
     LEASE_PERIOD_S,
     QUERY_PERIOD_S,
     CampaignSpec,
-    _latest_health,
     _read_csv,
     _utc_now,
 )
+from .active_status_contract import latest_complete_health
 from .cx317_stage7_supervisor import (
     ESTIMATES_CSV,
     Stage7Supervisor,
@@ -42,6 +42,10 @@ from .cx318_stage5_manifest import (
     POLICY_PATH,
     REHEARSAL_STAGE,
     validate_manifest,
+)
+from .programme_status import (
+    ProgrammeExecutionBlocked,
+    require_programme_execution_allowed,
 )
 from .cx318_stage5_runtime_contract import (
     Stage5Readiness,
@@ -631,7 +635,7 @@ class Stage5Supervisor(Stage7Supervisor):
                     self._command("ACTIVE?")
                     last_query = now
                 self._process_transactions()
-                health = _latest_health(self.run_dir / HEALTH_CSV)
+                health = latest_complete_health(self.run_dir / HEALTH_CSV)
                 self._check_fail_static_health(health)
                 self._check_prewrite_contract(health, now - started)
                 self._maybe_qualify(health)
@@ -677,6 +681,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration-s", type=float)
     parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
+    try:
+        require_programme_execution_allowed("cx318_stage5")
+    except ProgrammeExecutionBlocked as exc:
+        parser.error(str(exc))
     fifo_paths = {
         args.command_fifo.absolute(),
         args.emergency_command_fifo.absolute(),

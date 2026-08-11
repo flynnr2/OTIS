@@ -116,7 +116,7 @@ def _common(
         },
         "domains": [
             {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h0_tcxo_16mhz", "nominal_hz": 10_000_000},
+            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
             {
@@ -142,7 +142,6 @@ def _common(
         "known_limitations": [
             "CX317 is the connected VCOCXO identity; CX318 is the programme label.",
             "No oscilloscope is available; analog waveform margin is not claimed.",
-            "The h0_tcxo_16mhz token is historical; the connected source is nominally 10 MHz.",
             "Relative phase is session-local and is not UTC, absolute time, phase lock, or calibrated delay.",
         ],
     }

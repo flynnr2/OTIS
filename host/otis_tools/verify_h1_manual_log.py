@@ -77,7 +77,7 @@ def _verify_h1_telemetry(
         raise ValueError("CNT rows are not on CH2")
     if any(int(row["counted_edges"]) == 0 and int(row["flags"]) == 0 for row in cnt):
         raise ValueError("zero counted_edges without diagnostic flag")
-    if not any(row["source_domain"] == "h1_ocxo_open_loop" for row in cnt):
+    if not any(row["source_domain"] == "h1_cx317_ocxo_10mhz" for row in cnt):
         raise ValueError("no H1 OCXO source_domain CNT rows found")
 
     skipped_pps_intervals: list[int] = []
@@ -117,7 +117,9 @@ def _verify_h1_commands(
         "HELP response": bool(_status_values(sts, "command", "h1_help")),
         "DAC limits min": _hex_code(expected_min_code) in _status_values(sts, "dac", "min_code"),
         "DAC limits max": _hex_code(expected_max_code) in _status_values(sts, "dac", "max_code"),
-        "FC0 query responded": bool(_status_values(sts, "fc0", "valid")),
+        "count-path query responded": bool(
+            _status_values(sts, "count_path", "observation_valid")
+        ),
     }
     if allow_dac_init_fail and "rejected_not_initialized" in set_status:
         checks.update(

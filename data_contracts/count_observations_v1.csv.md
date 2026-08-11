@@ -19,7 +19,7 @@ It exists because a 10 MHz or 16 MHz oscillator must not be represented as a raw
 | `gate_domain` | string | timing domain used for gate timestamps |
 | `counted_edges` | uint64 | number of observed source edges during the gate |
 | `source_edge` | enum | counted source edge: `R`, `F`, or `B` |
-| `source_domain` | string | named source being counted, e.g. `h0_tcxo_16mhz` |
+| `source_domain` | string | named source being counted, e.g. `h1_cx317_ocxo_10mhz` |
 | `flags` | uint32 | numeric bitmask from `capture_flags_v1` |
 
 ## Example

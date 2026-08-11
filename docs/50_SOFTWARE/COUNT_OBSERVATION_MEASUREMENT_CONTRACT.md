@@ -177,23 +177,24 @@ reference-frequency, independent-instrument, and quantization-distribution
 uncertainty are separate host qualification components. Unknown components are
 reported as unavailable and prevent computation of a combined uncertainty.
 
+`CURRENT_METROLOGY_CLAIM.md` defines the present supported claim, including the
+one-edge digital span bound, the nominal denominator, the relative-phase unit
+conversion, and the physical components that remain unavailable.
+
 For a clean multi-PPS estimate, consumers should difference the cumulative
 opening and closing snapshots directly rather than sum independently rounded
 one-second frequency values. The proved digital endpoint error is bounded by
 one edge over each tested contiguous span; this does not authorize inventing a
 component tolerance for the remaining end-to-end ECS/GPS/capture spread.
 
-## Compatibility Notes
+## Current count-path status
 
-Historical H0/H1 runs that report only `fc0` status remain valid. The `fc0_*`
-status keys are retained for host compatibility:
+Current H0/H1 builds report backend-neutral `count_path` status. The current
+control-readiness keys are:
 
-- `fc0_observed_valid`
-- `fc0_valid_for_control`
-- `fc0_fault`
+- `observation_valid`
+- `control_eligible`
+- `fault_latched`
 
-New PPS-gated runs additionally emit `pps_gate` status keys. Host tooling should
+PPS-gated runs additionally emit `pps_gate` status keys. Host tooling should
 parse them as ordinary `STS` rows and should not require a schema revision.
-
-Future cleanup may add backend-generic control-readiness names, but it must not
-rename or reinterpret historical `fc0_*` fields without an explicit migration.

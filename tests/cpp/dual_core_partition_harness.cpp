@@ -196,13 +196,17 @@ void bounded_core0_stall_preserves_raw_evidence() {
 }
 
 void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
-  static_assert(OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST == 29u,
-                "ACTIVE status vocabulary must remain complete");
-  static_assert(OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 71u,
+  static_assert(OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT == 29u,
+                "ACTIVE status field vocabulary must remain complete");
+  static_assert(OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT == 3u,
+                "ACTIVE status must carry a complete-generation envelope");
+  static_assert(OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST == 32u,
+                "ACTIVE status burst must include fields and envelope");
+  static_assert(OTIS_STAGE7_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 70u,
                 "fixture must bind the measured non-active health burst");
-  static_assert(OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST == 100u,
+  static_assert(OTIS_STAGE7_TIMING_HEALTH_TELEMETRY_BURST == 102u,
                 "health burst must include one complete ACTIVE status");
-  static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 129u,
+  static_assert(OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST == 134u,
                 "fixture must bind health plus one ACTIVE? response");
   static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                     OTIS_STAGE7_CONCURRENT_TELEMETRY_BURST,
@@ -229,6 +233,26 @@ void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
     assert(otis_dual_core_take_telemetry(&actual));
     assert(actual.sequence == expected);
   }
+}
+
+void boot_telemetry_exhaustion_is_bounded_and_fail_static() {
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u; sequence <= OTIS_TELEMETRY_QUEUE_DEPTH;
+       ++sequence) {
+    const OtisTelemetryMessage message = telemetry(sequence);
+    assert(otis_dual_core_publish_boot_telemetry(&message));
+  }
+  const OtisTelemetryMessage overflow =
+      telemetry(OTIS_TELEMETRY_QUEUE_DEPTH + 1u);
+  assert(!otis_dual_core_publish_boot_telemetry(&overflow));
+
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.telemetry_dropped == 1u);
+  assert(stats.fail_static);
+  assert(stats.fault == OtisPartitionFault::BootTelemetryExhausted);
+  assert(strcmp(otis_partition_fault_name(stats.fault),
+                "boot_telemetry_queue_exhausted") == 0);
 }
 
 void complete_evidence_frames_cross_by_value_in_order() {
@@ -554,6 +578,7 @@ int main() {
   receiver_qualification_age_is_timer_rollover_safe();
   bounded_core0_stall_preserves_raw_evidence();
   stage7_concurrent_health_and_active_query_burst_does_not_drop();
+  boot_telemetry_exhaustion_is_bounded_and_fail_static();
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();
   cx318_numerical_records_cross_by_value_in_order();

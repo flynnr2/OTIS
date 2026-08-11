@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import math
+from pathlib import Path
 
 import pytest
 
@@ -117,6 +118,11 @@ def test_policy_locks_master_envelope_and_two_campaigns() -> None:
     assert policy.campaigns["B"].start_code == 0xA800
     assert policy.campaigns["B"].maximum_corrections == 8
     assert policy.campaigns["B"].maximum_cumulative_movement_codes == 168
+
+
+def test_retired_active_policy_is_not_a_current_runtime_input() -> None:
+    with pytest.raises(ValueError, match="unsupported active policy identity"):
+        load_policy(Path("profiles/discipline/cx317_bounded_active_v1.json"))
 
 
 def test_happy_transaction_consumes_actionability_and_requires_response() -> None:
