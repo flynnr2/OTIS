@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_g2_offline_readiness_without_live_authority() -> None:
+def test_tracked_status_records_exact_g2_live_and_conditional_g3_authority() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,8 +31,18 @@ def test_tracked_status_records_g2_offline_readiness_without_live_authority() ->
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_offline_ready_awaiting_live_authority"
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["state"] == "g2_live_authorized_exact_v5"
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION, CX319_G2_LIVE_LEG]
+    assert successor["operator_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md"
+        ),
+        "g2_effective": True,
+        "g3_conditional_on_passing_g2_and_fresh_upper_rehearsal": True,
+        "g4_authorized": False,
+    }
     assert successor["completed_g1_evidence"] == {
         "run_id": "no_write_leg_a_20260811T133632Z",
         "bundle_sha256": (
@@ -72,12 +82,15 @@ def test_tracked_status_records_g2_offline_readiness_without_live_authority() ->
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",
-        "dac_write",
-        "control_arm",
-        "setup_stimulus",
-        "automatic_correction",
+        "firmware_flash",
+        "dac_write_outside_exact_g2_activation",
+        "control_arm_outside_exact_g2_activation",
+        "setup_stimulus_outside_exact_g2_activation",
+        "automatic_correction_outside_exact_g2_activation",
         "rehearsal_to_live_promotion",
-        "live_actuation",
+        "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
+        "phase_or_hybrid_actuation",
+        "g4_progression",
     ]
 
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
@@ -91,10 +104,9 @@ def test_tracked_status_records_g2_offline_readiness_without_live_authority() ->
             "cx319_stabilized_tight_deadband",
             CX319_G1_NO_WRITE_BENCH_REHEARSAL,
         )
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

@@ -91,8 +91,14 @@ def test_frozen_activation_can_be_revalidated_from_retained_proposal(
 
 
 def test_activation_is_blocked_before_any_input_or_hardware_lookup(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    def blocked(*args: object, **kwargs: object) -> None:
+        raise ProgrammeExecutionBlocked("operation 'g2_live_leg' is blocked")
+
+    monkeypatch.setattr(
+        cx319_g2_live, "require_programme_operation_allowed", blocked
+    )
     with pytest.raises(ProgrammeExecutionBlocked, match="g2_live_leg"):
         create_activation(
             proposal_path=tmp_path / "missing-proposal.json",
@@ -106,8 +112,16 @@ def test_activation_is_blocked_before_any_input_or_hardware_lookup(
 
 
 def test_activation_cli_reports_the_block_without_a_traceback(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def blocked(*args: object, **kwargs: object) -> None:
+        raise ProgrammeExecutionBlocked("operation 'g2_live_leg' is blocked")
+
+    monkeypatch.setattr(
+        cx319_g2_live, "require_programme_operation_allowed", blocked
+    )
     with pytest.raises(SystemExit) as exc:
         main(
             [

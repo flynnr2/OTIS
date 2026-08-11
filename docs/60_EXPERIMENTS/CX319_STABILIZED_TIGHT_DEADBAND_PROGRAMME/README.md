@@ -7,10 +7,9 @@ then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
-passed on 2026-08-11. Current authority remains offline preparation only. A G1
-repeat, DAC write, setup stimulus, control arm, automatic correction, live
-promotion, or G2 physical execution is not authorized. The next gate is an
-explicit operator decision on the exact G2 Leg A activation.
+passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
+live envelope and conditionally authorized G3 if G2 passes and a fresh upper
+bundle and rehearsal pass. No G4 or phase/hybrid actuation is authorized.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -36,3 +35,6 @@ rerun.
 The exact non-authorizing G2 proposal, accelerated operational-path result,
 physical runner/analyzer boundary, and live envelope are recorded in
 [`04_G2_OFFLINE_READINESS.md`](04_G2_OFFLINE_READINESS.md).
+
+The effective G2 and conditional G3 operator decision is recorded in
+[`05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md`](05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md).
