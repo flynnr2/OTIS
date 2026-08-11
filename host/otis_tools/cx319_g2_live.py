@@ -52,7 +52,9 @@ RUN_ACTIVATION_PATH = Path("cx319_g2_live_activation_v1.json")
 RUN_PROPOSAL_PATH = Path("cx319_g2_leg_a_proposal_bundle_v1.json")
 LIVE_SEAL_PATH = Path("reports/cx319_g2_live_leg_seal_v1.json")
 OPERATIONAL_REHEARSAL_TOOL = "cx319_g2_accelerated_operational_rehearsal_v1"
-OPERATIONAL_REHEARSAL_SEAL = "cx319_g2_operational_rehearsal_seal_v1"
+OPERATIONAL_REHEARSAL_SEAL = (
+    "cx319_g2_accelerated_operational_rehearsal_seal_v1"
+)
 
 
 def _utc_now() -> str:

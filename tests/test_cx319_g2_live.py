@@ -12,9 +12,11 @@ from host.otis_tools.cx319_g2_bundle import BUNDLE_ID, TOOL_ID as PROPOSAL_TOOL
 from host.otis_tools.cx319_g2_contract import canonical_sha256
 from host.otis_tools.cx319_g2_live import (
     ACTIVATION_ID,
+    OPERATIONAL_REHEARSAL_SEAL,
     TOOL_ID,
     create_activation,
     validate_frozen_activation,
+    validate_operational_rehearsal,
 )
 from host.otis_tools.programme_status import ProgrammeExecutionBlocked
 
@@ -97,6 +99,49 @@ def test_activation_is_blocked_before_any_input_or_hardware_lookup(
         )
 
     assert not (tmp_path / "must-not-exist.json").exists()
+
+
+def test_activation_consumer_accepts_the_exact_accelerated_rehearsal_seal(
+    tmp_path: Path,
+) -> None:
+    proposal = {"bundle_sha256": "a" * 64}
+    analysis_path = tmp_path / "analysis.json"
+    _write(analysis_path, {"status": "passed"})
+    unsigned_seal: dict[str, object] = {
+        "seal_type": OPERATIONAL_REHEARSAL_SEAL,
+        "status": "passed",
+        "proposal_bundle_sha256": proposal["bundle_sha256"],
+        "analysis_file_sha256": sha256(analysis_path.read_bytes()).hexdigest(),
+    }
+    seal = {
+        **unsigned_seal,
+        "seal_sha256": canonical_sha256(unsigned_seal),
+    }
+    seal_path = tmp_path / "seal.json"
+    _write(seal_path, seal)
+    result_path = tmp_path / "result.json"
+    _write(
+        result_path,
+        {
+            "schema_version": 1,
+            "tool": "cx319_g2_accelerated_operational_rehearsal_v1",
+            "status": "passed",
+            "proposal_bundle_sha256": proposal["bundle_sha256"],
+            "hardware_operations": {
+                "serial_opens": 0,
+                "firmware_flashes": 0,
+                "dac_writes": 0,
+                "control_arms": 0,
+            },
+            "seal": str(seal_path),
+            "analysis": str(analysis_path),
+            "artifact_content_sha256": "b" * 64,
+        },
+    )
+
+    observed = validate_operational_rehearsal(result_path, proposal)
+
+    assert observed["seal_sha256"] == seal["seal_sha256"]
 
 
 def test_authorized_activation_creates_an_exact_live_manifest(
