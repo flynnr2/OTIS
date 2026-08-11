@@ -3,8 +3,10 @@
 The actual G2 supervisor state machine emits the setup, arm, and four durable
 evidence acknowledgements against deterministic firmware records.  Long plant
 timers are compressed into explicit timestamps.  The resulting transcript is
-processed by the actual accelerated analyzer, sealed, and packaged for a dry
-registration check.  No serial device or hardware command path is opened.
+processed by the actual accelerated analyzer and sealed.  Both completed and
+interrupted campaign classifications are then registered and validated through
+an actual temporary external evidence index.  The temporary index is discarded
+after the check.  No serial device or hardware command path is opened.
 """
 
 from __future__ import annotations
