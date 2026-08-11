@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
+def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,16 +31,13 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_v7_live_in_progress"
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        CX319_G2_LIVE_LEG,
-    ]
+    assert successor["state"] == "g2_v7_qualification_deadline_nonpass"
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "explicit_operator_authorization_exact_g2_v7"
+        "retained_g2_v7_failed_analysis_and_registered_evidence"
     )
     assert successor["next_gate"] == (
-        "passing_g2_v7_live_analysis_and_seal"
+        "operator_decision_after_gnss_identity_prewrite_escape_review"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -217,7 +214,8 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
         "fresh_restart_maximum_prewrite_uptime_s": 120,
         "ordinary_telemetry_attach_baseline_stable_observations": 2,
         "post_attach_ordinary_telemetry_increment_forbidden": True,
-        "effective": True,
+        "effective": False,
+        "activation_retired_after_terminal": True,
     }
     assert successor["g3_conditional_upper_flash_authority"] == {
         "record": (
@@ -235,24 +233,57 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
         "manual_reset_expected_after_successful_upload": False,
         "operator_assistance_required_if_upload_or_reenumeration_fails": True,
     }
-    assert successor["active_g2_v7_execution"] == {
+    assert successor["g2_v7_qualification_deadline_nonpass"] == {
         "run_id": "live_leg_a_v7_20260811T170842Z",
         "activation_sha256": (
             "b7ce4ba75fd2ff2f5c67b1a90b6a25ff"
             "f1cd1bf16d18ff6e201f703415947787"
         ),
-        "board_restart_confirmed": True,
         "started_utc": "2026-08-11T17:08:42Z",
+        "terminal_utc": "2026-08-11T18:38:58Z",
+        "terminal_reason": "stage5_qualification_deadline_expired",
+        "run_state": "complete",
+        "analysis_status": "failed",
+        "evidence_content_sha256": (
+            "530def1cdbc3353de48bfdd7f0fd4380e"
+            "a55020bdca0fad0ea73252ccfe29980"
+        ),
+        "evidence_snapshot_digest": (
+            "8e5ec0aeb28fd8a6dafcaf50849dd46c"
+            "88409c2b901d1dbf6bd5e0542ff8f099"
+        ),
+        "seal_sha256": (
+            "7d4a10f0d70d866d53bb9f95270e536"
+            "9b235814fbefe3c5a4e9624943399670e"
+        ),
+        "seal_file_sha256": (
+            "a90216aadf1d8e18f294112755c708df"
+            "3d10697b9fb7431c48b49d979f3a394f"
+        ),
+        "external_registration_classification": "interrupted_campaign",
+        "qualification_started": False,
+        "gnss_receiver_identity_epoch": 2,
+        "gnss_receiver_control_eligible": False,
+        "runtime_health_integrity_clean": True,
+        "ordinary_telemetry_attach_baseline": 3,
+        "post_attach_ordinary_telemetry_increment": 0,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "setup_stimuli": 1,
+        "dac_writes": 1,
+        "control_arms": 0,
+        "automatic_corrections": 0,
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",
         "firmware_flash",
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
-        "dac_write_outside_exact_g2_v7_activation",
-        "control_arm_outside_exact_g2_v7_activation",
-        "setup_stimulus_outside_exact_g2_v7_activation",
-        "automatic_correction_outside_exact_g2_v7_activation",
+        "g2_v7_activation_reuse",
+        "dac_write",
+        "control_arm",
+        "setup_stimulus",
+        "automatic_correction",
         "rehearsal_to_live_promotion",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
@@ -270,9 +301,10 @@ def test_tracked_status_records_exact_g2_v7_live_authority() -> None:
             "cx319_stabilized_tight_deadband",
             CX319_G1_NO_WRITE_BENCH_REHEARSAL,
         )
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

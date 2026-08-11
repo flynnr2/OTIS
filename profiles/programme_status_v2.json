@@ -17,13 +17,12 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g2_v7_live_in_progress",
+      "state": "g2_v7_qualification_deadline_nonpass",
       "allowed_operations": [
-        "offline_preparation",
-        "g2_live_leg"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-11",
-      "authority": "explicit_operator_authorization_exact_g2_v7",
+      "authority": "retained_g2_v7_failed_analysis_and_registered_evidence",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -48,7 +47,8 @@
         "fresh_restart_maximum_prewrite_uptime_s": 120,
         "ordinary_telemetry_attach_baseline_stable_observations": 2,
         "post_attach_ordinary_telemetry_increment_forbidden": true,
-        "effective": true
+        "effective": false,
+        "activation_retired_after_terminal": true
       },
       "g3_conditional_upper_flash_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md",
@@ -62,13 +62,7 @@
         "manual_reset_expected_after_successful_upload": false,
         "operator_assistance_required_if_upload_or_reenumeration_fails": true
       },
-      "active_g2_v7_execution": {
-        "run_id": "live_leg_a_v7_20260811T170842Z",
-        "activation_sha256": "b7ce4ba75fd2ff2f5c67b1a90b6a25fff1cd1bf16d18ff6e201f703415947787",
-        "board_restart_confirmed": true,
-        "started_utc": "2026-08-11T17:08:42Z"
-      },
-      "next_gate": "passing_g2_v7_live_analysis_and_seal",
+      "next_gate": "operator_decision_after_gnss_identity_prewrite_escape_review",
       "completed_g1_evidence": {
         "run_id": "no_write_leg_a_20260811T133632Z",
         "bundle_sha256": "777e88c9978edb525f887c496b5badf2b5e2cdae09bdfaea0a4071932377db77",
@@ -131,15 +125,42 @@
         "post_attach_ordinary_telemetry_increment_forbidden": true,
         "absolute_non_telemetry_health_gates": true
       },
+      "g2_v7_qualification_deadline_nonpass": {
+        "run_id": "live_leg_a_v7_20260811T170842Z",
+        "activation_sha256": "b7ce4ba75fd2ff2f5c67b1a90b6a25fff1cd1bf16d18ff6e201f703415947787",
+        "started_utc": "2026-08-11T17:08:42Z",
+        "terminal_utc": "2026-08-11T18:38:58Z",
+        "terminal_reason": "stage5_qualification_deadline_expired",
+        "run_state": "complete",
+        "analysis_status": "failed",
+        "evidence_content_sha256": "530def1cdbc3353de48bfdd7f0fd4380ea55020bdca0fad0ea73252ccfe29980",
+        "evidence_snapshot_digest": "8e5ec0aeb28fd8a6dafcaf50849dd46c88409c2b901d1dbf6bd5e0542ff8f099",
+        "seal_sha256": "7d4a10f0d70d866d53bb9f95270e5369b235814fbefe3c5a4e9624943399670e",
+        "seal_file_sha256": "a90216aadf1d8e18f294112755c708df3d10697b9fb7431c48b49d979f3a394f",
+        "external_registration_classification": "interrupted_campaign",
+        "qualification_started": false,
+        "gnss_receiver_identity_epoch": 2,
+        "gnss_receiver_control_eligible": false,
+        "runtime_health_integrity_clean": true,
+        "ordinary_telemetry_attach_baseline": 3,
+        "post_attach_ordinary_telemetry_increment": 0,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "setup_stimuli": 1,
+        "dac_writes": 1,
+        "control_arms": 0,
+        "automatic_corrections": 0
+      },
       "forbidden_until_next_gate": [
         "g1_physical_repeat",
         "firmware_flash",
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
-        "dac_write_outside_exact_g2_v7_activation",
-        "control_arm_outside_exact_g2_v7_activation",
-        "setup_stimulus_outside_exact_g2_v7_activation",
-        "automatic_correction_outside_exact_g2_v7_activation",
+        "g2_v7_activation_reuse",
+        "dac_write",
+        "control_arm",
+        "setup_stimulus",
+        "automatic_correction",
         "rehearsal_to_live_promotion",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",

@@ -21,8 +21,14 @@ ordinary-telemetry count from post-attachment health: it freezes a stable
 read-only attachment baseline and forbids any later increment, while retaining
 absolute evidence, capture, partition and control gates. Neither event is a G2
 scientific result. The exact v7 replacement passed structural preflight and the
-accelerated operational-path rehearsal and is now running under its exact
-authority. G3 remains blocked until G2 passes.
+accelerated operational-path rehearsal, then reached its bounded 90-minute
+qualification deadline without starting qualification. The GNSS receiver was
+already in identity epoch 2 when the host attached, so firmware correctly kept
+reference control eligibility false; the host pre-write gate nevertheless
+allowed the one exact setup stimulus. No arm or automatic correction occurred.
+The failed analysis and registered evidence retire v7 and leave offline
+preparation as the only permitted operation. G3 and its conditional
+upper-profile flash are blocked because G2 did not pass.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -76,3 +82,7 @@ The operator's exact v7 live authority and physical boundary are recorded in
 The operator's conditional authority for one exact upper-profile flash and G3
 execution after a passing G2 seal is recorded in
 [`12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md`](12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md).
+
+The retained v7 qualification-deadline non-pass, exact evidence identities and
+cross-surface GNSS pre-write escape are recorded in
+[`13_G2_V7_GNSS_IDENTITY_QUALIFICATION_STOP.md`](13_G2_V7_GNSS_IDENTITY_QUALIFICATION_STOP.md).
