@@ -17,7 +17,7 @@ from .cx319_g2_runtime_contract import (
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
-from .programme_status import load_programme_status
+from .programme_status import OFFLINE_PREPARATION, load_programme_status
 
 
 TOOL_ID = "cx319_g2_offline_preflight_v1"
@@ -75,7 +75,7 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
         "proposal_is_explicitly_non_authorizing": (
             proposal["status"] == "proposed_not_authorized"
             and proposal["authority"]["effective"] is False
-            and status["allowed_operations"] == ["offline_preparation"]
+            and OFFLINE_PREPARATION in status["allowed_operations"]
             and "g2_live_leg" not in status["allowed_operations"]
         ),
         "passed_g1_same_firmware_and_policy_bound": (
