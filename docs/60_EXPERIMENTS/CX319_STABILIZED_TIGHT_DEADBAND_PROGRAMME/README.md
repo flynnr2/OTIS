@@ -1,16 +1,15 @@
 # CX319 Stabilized Tight-Deadband Programme
 
-CX319 is the authorized offline successor to the suspended CX318 programme.
+CX319 is the stabilized successor to the suspended CX318 programme.
 It preserves the original scientific sequence—bidirectional tight-deadband
 validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current authority includes construction and execution of the exact physical G1
-no-write rehearsal. The exact flash, serial capture, read-only/lease command
-path, obstruction, priority abort, logical rotation, analysis, sealing and
-registration are authorized. DAC writes, setup stimulus, arming, automatic
-correction, live promotion and G2 remain forbidden.
+G0 and the exact physical G1 no-write qualification passed on 2026-08-11.
+Current authority has returned to offline preparation only. A G1 repeat, DAC
+write, setup stimulus, control arm, automatic correction, live promotion, or G2
+physical execution is not authorized.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -25,3 +24,10 @@ Its immutable operational overlay is
 `profiles/qualification/cx319_g1_no_write_bench_authority_v1.json`. The
 frequency-control policy remains non-authorizing: current execution authority
 comes only from the exact programme-status operation and this overlay.
+
+The passing result and the two retained host-verification failures are recorded
+in [`03_G1_NO_WRITE_BENCH_REPORT.md`](03_G1_NO_WRITE_BENCH_REPORT.md). The
+programme now distinguishes structural preflight, short complete
+operational-path rehearsal, and physical qualification; it permits host-only
+reanalysis of immutable sufficient evidence without an unnecessary firmware
+rerun.

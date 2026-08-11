@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_exact_cx319_g1_no_write_scope() -> None:
+def test_tracked_status_records_g1_pass_and_returns_to_offline_scope() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -30,12 +30,25 @@ def test_tracked_status_authorizes_exact_cx319_g1_no_write_scope() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g1_no_write_bench_rehearsal_authorized"
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-    ]
+    assert successor["state"] == "g1_passed_g2_offline_preparation"
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["completed_g1_evidence"] == {
+        "run_id": "no_write_leg_a_20260811T133632Z",
+        "bundle_sha256": (
+            "777e88c9978edb525f887c496b5badf2"
+            "b5e2cdae09bdfaea0a4071932377db77"
+        ),
+        "seal_sha256": (
+            "a690bdfd16754ea90f8f40bc1fcdf8e6"
+            "b6b5143b29ef8ad6e96c110f2eaac87b"
+        ),
+        "evidence_content_sha256": (
+            "cd17f90587a321ed0ddd6c40db76c0be"
+            "ffc8981c68ef7afdd8e46bbc1549432d"
+        ),
+    }
     assert successor["forbidden_until_next_gate"] == [
+        "g1_physical_repeat",
         "dac_write",
         "control_arm",
         "setup_stimulus",
@@ -50,10 +63,11 @@ def test_tracked_status_authorizes_exact_cx319_g1_no_write_scope() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
