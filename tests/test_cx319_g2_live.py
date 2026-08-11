@@ -3,11 +3,13 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from host.otis_tools import cx319_g2_bundle
 from host.otis_tools import cx319_g2_live
+from host.otis_tools import cx319_g2_live_analyze
 from host.otis_tools import cx319_g2_run
 from host.otis_tools.cx319_g2_bundle import BUNDLE_ID, TOOL_ID as PROPOSAL_TOOL
 from host.otis_tools.cx319_g2_contract import canonical_sha256
@@ -311,3 +313,211 @@ def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
     assert not (run_dir / cx319_g2_run.ORCHESTRATION_FAILURE).exists()
     assert registered["attempt_classification"] == "failed_live_leg"
     assert "finalization failed" in str(registered["result_or_failure_reason"])
+
+
+def test_live_analyzer_wires_a_complete_physical_evidence_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "raw").mkdir(parents=True)
+    (run_dir / "reports").mkdir()
+    (run_dir / "csv").mkdir()
+    for relative, value in {
+        "run_manifest.json": {},
+        "reports/capture_device_state.json": {},
+        "reports/capture_segment_closure_v1.json": {},
+        "reports/cx317_active_supervisor_state.json": {
+            "terminal": {
+                "result": "healthy_stop",
+                "reason": "required_direction_and_two_estimate_tight_entry",
+            },
+            "arm_pending": False,
+        },
+        "reports/cx317_active_supervisor_events.jsonl": {},
+        "evidence_manifest.json": {"run_state": "complete"},
+    }.items():
+        _write(run_dir / relative, value)
+    (run_dir / "raw/serial.log").write_text("# retained\n", encoding="utf-8")
+    (run_dir / "csv/association_loss_decisions_v1.csv").write_text(
+        "decision_sequence\n0\n", encoding="utf-8"
+    )
+    (run_dir / "COMPLETE").write_text("complete\n", encoding="utf-8")
+
+    manifest_value = {
+        "stage": cx319_g2_live.LIVE_STAGE,
+        "contracts": {"association_loss_decisions_v1": 1},
+        "policy": {
+            "sha256": "a" * 64,
+            "policy_id": "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",
+        },
+        "firmware": {
+            "source_sha256": "b" * 64,
+            "configuration_sha256": "c" * 64,
+            "build_manifest": {"sha256": "d" * 64},
+            "uf2": {"sha256": "e" * 64},
+        },
+        "proposal": {"bundle_sha256": "f" * 64},
+        "activation": {"activation_sha256": "1" * 64},
+        "g1_pass": {"evidence_content_sha256": "2" * 64},
+    }
+    loaded = SimpleNamespace(
+        known_channels=set(),
+        known_domains=set(),
+        files=[
+            {
+                "path": "csv/association_loss_decisions_v1.csv",
+                "contract": "association_loss_decisions_v1",
+            }
+        ],
+        root=run_dir,
+    )
+    manual = {"event": "manual_start", "dac_epoch": "1"}
+    application = {
+        "event": "application",
+        "request_sequence": "1",
+        "requested_delta_codes": "21",
+        "requested_code": str(0xA81D),
+        "applied_code": str(0xA81D),
+        "application_timestamp_s": "4202",
+        "dac_epoch": "2",
+    }
+    response = {
+        "event": "response",
+        "request_sequence": "1",
+        "response_class": "healthy_detected",
+        "dac_epoch": "2",
+    }
+    active = [manual, application, response]
+    rows = {
+        "active_transactions_v1.csv": active,
+        "dac_steps.csv": [
+            {
+                "event": "manual_apply",
+                "dac_code_requested": str(0xA808),
+                "dac_code_applied": str(0xA808),
+                "dac_code_clamped": "0",
+                "flags": "0",
+            },
+            {
+                "event": "active_apply",
+                "dac_code_requested": str(0xA81D),
+                "dac_code_applied": str(0xA81D),
+                "dac_code_clamped": "0",
+                "flags": "0",
+            },
+        ],
+        "control_previews_v1.csv": [{"control_seq": "0"}],
+        "relative_phase_observations_v1.csv": [
+            {"observation_sequence": "0", "dac_epoch": "2"}
+        ],
+        "phase_estimator_outputs_v1.csv": [{"observation_sequence": "0"}],
+        "hybrid_preview_decisions_v1.csv": [
+            {"preview_sequence": "0", "dac_epoch": "2"}
+        ],
+        "tight_deadband_decisions_v1.csv": [
+            {
+                "decision_sequence": "0",
+                "dac_epoch": "2",
+                "state_after": "OUTSIDE",
+                "transition": "false",
+            },
+            {
+                "decision_sequence": "1",
+                "dac_epoch": "2",
+                "state_after": "TIGHT_INSIDE",
+                "frequency_controller_eligible": "false",
+                "transition": "true",
+            },
+        ],
+        "environment.csv": [{"source": "sht4x"}, {"source": "bmp280"}],
+    }
+    health = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "fail_static"): "false",
+    }
+
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "validate_frozen_run_manifest",
+        lambda path: manifest_value,
+    )
+    monkeypatch.setattr(cx319_g2_live_analyze, "load_manifest", lambda path: loaded)
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "validate_csv",
+        lambda *args, **kwargs: SimpleNamespace(ok=True, row_count=0, errors=[]),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_read_csv",
+        lambda path: rows.get(Path(path).name, []),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze, "validate_transaction_history", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_response_replay",
+        lambda *args: (True, [{"exact": True}]),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_measurement_replay",
+        lambda *args: (True, {"exact": True}, {}),
+    )
+    monkeypatch.setattr(cx319_g2_live_analyze, "_host_markers", lambda path: [])
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_capsules_exact",
+        lambda *args: (True, {}),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "replay_tight_deadband",
+        lambda *args, **kwargs: SimpleNamespace(
+            exact=True, as_dict=lambda: {"exact": True}
+        ),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "healthy_required_direction_applications",
+        lambda *args: [application],
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_controller_replay",
+        lambda *args, **kwargs: (True, {"exact": True}),
+    )
+    monkeypatch.setattr(cx319_g2_live_analyze, "_authority_false", lambda path: True)
+    monkeypatch.setattr(
+        cx319_g2_live_analyze, "latest_complete_health", lambda path: health
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "evaluate_health_integrity",
+        lambda value: SimpleNamespace(clean=True, missing=[], mismatches=[]),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "validate_evidence_snapshot",
+        lambda *args: ([], []),
+    )
+    monkeypatch.setattr(
+        cx319_g2_live_analyze,
+        "_capture_closure",
+        lambda *args, **kwargs: {"ok": True, "mode": "physical_serial_close"},
+    )
+    monkeypatch.setattr(cx319_g2_live_analyze, "_commands_exact", lambda *args, **kwargs: True)
+
+    output, result = cx319_g2_live_analyze.analyze(run_dir)
+
+    assert output.is_file()
+    assert result["status"] == "passed"
+    assert all(result["checks"].values())
+    assert result["hardware_operations"] == {
+        "serial_opens": 1,
+        "firmware_flashes": 0,
+        "dac_writes": 2,
+        "control_arms": 0,
+    }
