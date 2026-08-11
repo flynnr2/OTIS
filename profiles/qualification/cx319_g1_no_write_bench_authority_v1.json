@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "authority_id": "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1",
+  "programme_id": "cx319_stabilized_tight_deadband",
+  "gate": "G1",
+  "operation": "g1_no_write_bench_rehearsal",
+  "effective_date": "2026-08-11",
+  "operator_authority": "explicit_operator_instruction",
+  "bindings": {
+    "frequency_control_policy": {
+      "path": "profiles/discipline/cx319_stabilized_tight_deadband_v1.json",
+      "sha256": "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70"
+    },
+    "operator_decision_record": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/02_G1_NO_WRITE_BENCH_AUTHORITY.md",
+      "sha256": "fa189150e1a389cc3f99779f989f18d99ddc6993baebfe72303bd2ee67648cf8"
+    }
+  },
+  "authority_model": {
+    "control_policy_grants_operational_authority": false,
+    "programme_status_contract_id": "otis_programme_status_v2",
+    "programme_status_operation_required_at_execution": "g1_no_write_bench_rehearsal",
+    "passing_rehearsal_grants_live_authority": false
+  },
+  "allowed_operations": [
+    "flash_exact_bound_cx319_leg_firmware_once",
+    "open_expected_serial_device_with_one_capture_owner",
+    "create_bounded_normal_emergency_and_host_abort_fifos",
+    "send_read_only_queries_and_active_capture_leases",
+    "inject_bounded_normal_transport_obstruction",
+    "send_priority_active_abort",
+    "perform_same_owner_logical_evidence_rotation",
+    "analyze_seal_and_register_evidence"
+  ],
+  "forbidden_operations": [
+    "dac_write",
+    "control_arm",
+    "setup_stimulus",
+    "automatic_correction",
+    "rehearsal_to_live_promotion",
+    "live_actuation",
+    "phase_or_hybrid_actuation"
+  ],
+  "physical_write_counters": {
+    "dac_value_writes": 0,
+    "setup_stimuli": 0,
+    "automatic_corrections": 0,
+    "control_arms": 0
+  }
+}

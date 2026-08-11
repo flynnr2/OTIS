@@ -113,14 +113,16 @@ claim or release requirement.
 
 ## Current firmware lifecycle summary
 
-- Active: H1 characterization and explicit operator-controlled H1 laboratory
-  actuation.
+- Active: H1 characterization, explicit operator-controlled H1 laboratory
+  actuation, and the two CX319 tight-deadband candidate profiles. Profile
+  lifecycle makes CX319 part of current compilation and structural checks; it
+  does not grant hardware or live authority.
 - Diagnostic/recovery: fixed baseline, open loop, I-only preview, Stage 4
   recovery/preview, accelerated dual-core rehearsal, GNSS smoke/preflight,
   synthetic USB, loopback, IRQ/PPS, FC0, sparse PIO, long gate, divided input,
   and pseudo-PPS.
-- Compile-only: current structural authority, resource, GNSS, and topology
-  guards.
+- Compile-only: current structural authority, resource, GNSS, topology, and
+  exact CX319 parameter guards.
 - Archived: Phase 4/5 candidates, completed CX317 campaigns, suspended CX318
   Stage 5 profiles, completed endurance profiles, and the exact historical
   Campaign A parameter guard.

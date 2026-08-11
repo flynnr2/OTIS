@@ -5,7 +5,7 @@ CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,30,uncertainty,measurement_uncertainty_s
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,36,confidence,confidence_semantics,"state/transition, confidence in the diagnosis, first/last seen, evidence"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,39,uncertainty,measurement_uncertainty_semantics,"uncertainty, model applicability, control eligibility, and diagnostic"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,40,confidence,confidence_semantics,confidence. Do not collapse them into one Boolean or score.
-README.md,181,uncertainty,measurement_uncertainty_semantics,nominal 100 ns/cycle relative-phase conversion and unavailable uncertainty
+README.md,186,uncertainty,measurement_uncertainty_semantics,nominal 100 ns/cycle relative-phase conversion and unavailable uncertainty
 data_contracts/diagnostics_v1.csv.md,40,confidence,confidence_semantics,"| `diagnostic_confidence` | Confidence in the diagnosis, `0..1`, or `unknown`. |"
 data_contracts/estimates_v1.csv.md,4,uncertainty;dispersion,legacy_v1_dispersion_label,> population dispersion as `frequency_uncertainty_hz`. New producers use
 data_contracts/estimates_v1.csv.md,5,dispersion,sample_dispersion_or_repeatability,"> `estimates_v2`, which separates dispersion from evidence-backed measurement"
@@ -271,6 +271,7 @@ docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PRO
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/06_COMBINED_STRESS_AND_FAULT_CAMPAIGN_PROMPT.md,65,uncertainty,measurement_uncertainty_semantics,"grow or mark uncertainty honestly, and never create a DAC request. Do not label"
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/07_FINAL_REVIEW_AND_NEXT_GOAL_PROMPT.md,30,uncertainty,measurement_uncertainty_semantics,"uncertainty, phase lock or holdover."
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/PROGRAMME_STATE_TEMPLATE.md,49,uncertainty,measurement_uncertainty_semantics,phase_uncertainty_status:
+docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/00_MASTER_PROGRAMME.md,228,uncertainty,measurement_uncertainty_semantics,"physical delay, timing-grade receiver performance or combined uncertainty."
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,340,confidence,confidence_semantics,measurement-confidence baseline preceding `run_019`. It reports 242 count
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,412,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
 docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT.md,122,uncertainty,measurement_uncertainty_semantics,expanded measurement uncertainty. Those limitations remain governed by
@@ -313,43 +314,43 @@ docs/60_EXPERIMENTS/ReviewPrompt.20260810.md,219,confidence,confidence_semantics
 docs/60_EXPERIMENTS/ReviewPrompt.20260810.md,278,uncertainty,measurement_uncertainty_semantics,- uncertainty and error budgets;
 docs/60_EXPERIMENTS/ReviewPrompt.20260810.md,365,confidence,confidence_semantics,"| Mode, profile, or profile family | Apparent purpose | Evidence | Recommended classification | Confidence | Retained guard or value | Risk of decision | Required follow-up |"
 docs/90_ROADMAP/GPSDO_LONG_TERM_MONITORING_AND_REFINEMENT.md,78,uncertainty,measurement_uncertainty_semantics,"or a traceable laboratory reference. Keep the comparison method, uncertainty"
-docs/90_ROADMAP/HARDWARE_FIRMWARE_STAGE_MATRIX.md,102,uncertainty,measurement_uncertainty_semantics,"active actuation remains blocked by the explicit uncertainty, settling,"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,36,uncertainty,measurement_uncertainty_semantics,uncertainty with provenance.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,250,uncertainty,measurement_uncertainty_semantics,"- phase, frequency, drift and uncertainty estimation;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,386,confidence,confidence_semantics,`run_016` was the first measurement-confidence update after adding the local PPS
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,396,standard_deviation,sample_dispersion_or_repeatability,"standard deviation 3.13 Hz, and span 14.48 Hz."
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,406,confidence,confidence_semantics,the following measurement-confidence update:
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,438,standard_deviation,sample_dispersion_or_repeatability,- final 8.17 h `0x8000` hold with 0.043665 Hz standard deviation.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,497,uncertainty,measurement_uncertainty_semantics,phase state | frequency state | drift state | uncertainty | provenance
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,556,uncertainty,measurement_uncertainty_semantics,- uncertainty and observation age.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,578,confidence,confidence_semantics,- reduce gains as confidence increases;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,663,uncertainty,measurement_uncertainty_semantics,"- per-dwell voltage measurements where practical, or a separately calibrated DAC-voltage model with stated uncertainty;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,683,uncertainty,measurement_uncertainty_semantics,- uncertainty and valid neighbourhood;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,694,uncertainty,measurement_uncertainty_semantics,- slope uncertainty is small enough to choose a conservative update;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,701,dispersion,sample_dispersion_or_repeatability,"estimate and band, repeated-centre dispersion, and a settling bound. The"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,714,confidence,confidence_semantics,"codes, evidence references, persistence, diagnostic confidence, and explicit"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,741,uncertainty,measurement_uncertainty_semantics,- phase estimate and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,742,uncertainty,measurement_uncertainty_semantics,- frequency estimate and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,743,uncertainty,measurement_uncertainty_semantics,"- drift estimate and uncertainty, if available;"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,800,dispersion;confidence,sample_dispersion_or_repeatability,"- confidence derived from sample count, dispersion, continuity and age."
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,959,uncertainty,measurement_uncertainty_semantics,- maximum code delta derived from slope uncertainty and noise floor;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,991,confidence,confidence_semantics,- confidence thresholds;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1017,uncertainty,measurement_uncertainty_semantics,- phase uncertainty and outlier handling;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1043,uncertainty,measurement_uncertainty_semantics,- increase phase/frequency uncertainty with time;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1050,uncertainty,measurement_uncertainty_semantics,- choose re-entry through acquisition or settling based on error and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1061,confidence,confidence_semantics,- confidence-weighted model selection.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1080,uncertainty,measurement_uncertainty_semantics,- uncertainty/quality;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1088,uncertainty,measurement_uncertainty_semantics,- conceal network latency or uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1108,uncertainty,measurement_uncertainty_semantics,- uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1142,uncertainty;confidence,measurement_uncertainty_semantics,- confidence/uncertainty.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1233,uncertainty,measurement_uncertainty_semantics,- uncertainties;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1291,confidence,confidence_semantics,"Completed: frequency estimation and distinct validity, diagnostic, confidence,"
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1385,confidence,confidence_semantics,- source quality and confidence;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1402,uncertainty,measurement_uncertainty_semantics,- model peer/network information as another observation source with latency and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1444,uncertainty,measurement_uncertainty_semantics,- slope sign/magnitude and uncertainty;
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1479,uncertainty,measurement_uncertainty_semantics,their available uncertainty rather than invented as a digital-backend gate.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1503,uncertainty,measurement_uncertainty_semantics,- uncertainty tracked.
-docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1521,uncertainty,measurement_uncertainty_semantics,4. estimate frequency and phase with uncertainty and provenance;
+docs/90_ROADMAP/HARDWARE_FIRMWARE_STAGE_MATRIX.md,103,uncertainty,measurement_uncertainty_semantics,"active actuation remains blocked by the explicit uncertainty, settling,"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,39,uncertainty,measurement_uncertainty_semantics,uncertainty with provenance.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,253,uncertainty,measurement_uncertainty_semantics,"- phase, frequency, drift and uncertainty estimation;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,389,confidence,confidence_semantics,`run_016` was the first measurement-confidence update after adding the local PPS
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,399,standard_deviation,sample_dispersion_or_repeatability,"standard deviation 3.13 Hz, and span 14.48 Hz."
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,409,confidence,confidence_semantics,the following measurement-confidence update:
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,441,standard_deviation,sample_dispersion_or_repeatability,- final 8.17 h `0x8000` hold with 0.043665 Hz standard deviation.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,500,uncertainty,measurement_uncertainty_semantics,phase state | frequency state | drift state | uncertainty | provenance
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,559,uncertainty,measurement_uncertainty_semantics,- uncertainty and observation age.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,581,confidence,confidence_semantics,- reduce gains as confidence increases;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,666,uncertainty,measurement_uncertainty_semantics,"- per-dwell voltage measurements where practical, or a separately calibrated DAC-voltage model with stated uncertainty;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,686,uncertainty,measurement_uncertainty_semantics,- uncertainty and valid neighbourhood;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,697,uncertainty,measurement_uncertainty_semantics,- slope uncertainty is small enough to choose a conservative update;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,704,dispersion,sample_dispersion_or_repeatability,"estimate and band, repeated-centre dispersion, and a settling bound. The"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,717,confidence,confidence_semantics,"codes, evidence references, persistence, diagnostic confidence, and explicit"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,744,uncertainty,measurement_uncertainty_semantics,- phase estimate and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,745,uncertainty,measurement_uncertainty_semantics,- frequency estimate and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,746,uncertainty,measurement_uncertainty_semantics,"- drift estimate and uncertainty, if available;"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,803,dispersion;confidence,sample_dispersion_or_repeatability,"- confidence derived from sample count, dispersion, continuity and age."
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,962,uncertainty,measurement_uncertainty_semantics,- maximum code delta derived from slope uncertainty and noise floor;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,994,confidence,confidence_semantics,- confidence thresholds;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1020,uncertainty,measurement_uncertainty_semantics,- phase uncertainty and outlier handling;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1046,uncertainty,measurement_uncertainty_semantics,- increase phase/frequency uncertainty with time;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1053,uncertainty,measurement_uncertainty_semantics,- choose re-entry through acquisition or settling based on error and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1064,confidence,confidence_semantics,- confidence-weighted model selection.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1083,uncertainty,measurement_uncertainty_semantics,- uncertainty/quality;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1091,uncertainty,measurement_uncertainty_semantics,- conceal network latency or uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1111,uncertainty,measurement_uncertainty_semantics,- uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1145,uncertainty;confidence,measurement_uncertainty_semantics,- confidence/uncertainty.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1236,uncertainty,measurement_uncertainty_semantics,- uncertainties;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1294,confidence,confidence_semantics,"Completed: frequency estimation and distinct validity, diagnostic, confidence,"
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1388,confidence,confidence_semantics,- source quality and confidence;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1405,uncertainty,measurement_uncertainty_semantics,- model peer/network information as another observation source with latency and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1447,uncertainty,measurement_uncertainty_semantics,- slope sign/magnitude and uncertainty;
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1482,uncertainty,measurement_uncertainty_semantics,their available uncertainty rather than invented as a digital-backend gate.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1506,uncertainty,measurement_uncertainty_semantics,- uncertainty tracked.
+docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,1524,uncertainty,measurement_uncertainty_semantics,4. estimate frequency and phase with uncertainty and provenance;
 docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,56,dispersion,sample_dispersion_or_repeatability,"age, continuity, dispersion, and startup/recovery clean windows;"
 docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,116,uncertainty,measurement_uncertainty_semantics,- explicit unavailable aperture/reference uncertainty hooks;
 docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,138,uncertainty,measurement_uncertainty_semantics,metrology and a complete uncertainty budget also remain outside this
@@ -361,9 +362,9 @@ docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,437,uncertainty,measurement_
 docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md,690,uncertainty,measurement_uncertainty_semantics,explicit conservative uncertainty treatment;
 firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1082,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_ns"", ""unavailable"","
 firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp,1085,uncertainty,measurement_uncertainty_semantics,"""reference_frequency_uncertainty_ppb"", ""unavailable"","
-firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,284,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"""
-firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,285,uncertainty,measurement_uncertainty_semantics,""",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n"","
-firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,417,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n"");"
+firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,294,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"""
+firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,295,uncertainty,measurement_uncertainty_semantics,""",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n"","
+firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp,427,uncertainty,measurement_uncertainty_semantics,"""record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n"");"
 firmware/arduino/otis_nano_rp2040_connect/otis_cx318_preview_format.cpp,41,uncertainty,measurement_uncertainty_semantics,"return ""record_type,schema_version,phase_epoch,observation_sequence,capture_session,opening_snapshot_sequence,closing_snapshot_sequence,opening_reference_sequence,closing_reference_sequence,dac_epoch,source_backend,source_file_sha256,method_id,configuration_sha256,interval_edges,edge_error_cycles,relative_phase_cycles,relative_phase_time_ns,qualification_state,observation_age_s,discontinuity_reason,calibrated_uncertainty_status\r\n"";"
 firmware/arduino/otis_nano_rp2040_connect/otis_cx318_preview_format.cpp,45,uncertainty,measurement_uncertainty_semantics,"return ""record_type,schema_version,phase_epoch,observation_sequence,source_relative_phase_observation,raw_relative_phase_cycles,raw_relative_phase_time_ns,filtered_relative_phase_cycles,estimated_frequency_error_hz,estimator_id,configuration_sha256,estimate_age_s,qualification_state,uncertainty_status,reason_codes\r\n"";"
 firmware/arduino/otis_nano_rp2040_connect/otis_cx318_preview_format.cpp,49,uncertainty,measurement_uncertainty_semantics,"return ""record_type,schema_version,preview_sequence,candidate_id,candidate_configuration_sha256,phase_estimator_id,phase_estimator_configuration_sha256,frequency_estimator_id,frequency_estimator_configuration_sha256,configuration_sha256,phase_epoch,observation_sequence,dac_epoch,decision_timestamp_ticks,time_domain,source_phase_estimate,source_frequency_estimate,raw_relative_phase_cycles,modeled_relative_phase_cycles,observed_frequency_error_hz,modeled_frequency_error_hz,frequency_term_hz,phase_bias_hz,combined_frequency_error_hz,actual_applied_code,shadow_code_before,shadow_code_after,band_state_before,band_state_after,preview_state,decision_reason,frequency_observation_event,counterfactual_decision,counterfactual_correction,raw_counterfactual_delta_codes,counterfactual_delta_codes,counterfactual_code,step_limited,range_clamped,correction_count,cumulative_movement_codes,alternating_correction_count,modeled_not_observed_after_divergence,uncertainty_status,actionable,actuation_authorized,authorization_consumed\r\n"";"

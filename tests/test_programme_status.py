@@ -6,33 +6,60 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.programme_status import (
+    CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    OFFLINE_PREPARATION,
     ProgrammeExecutionBlocked,
     load_programme_status,
     require_programme_execution_allowed,
+    require_programme_operation_allowed,
 )
 
 
-def test_tracked_status_records_completion_with_no_next_programme_authorized() -> None:
+def test_tracked_status_authorizes_exact_cx319_g1_no_write_scope() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] is None
+    assert status["active_programme"] == "cx319_stabilized_tight_deadband"
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
-        "execution_allowed": False,
+        "allowed_operations": [],
         "effective_date": "2026-08-11",
         "authority": "passed_completion_gate",
     }
     assert status["programmes"]["cx318_stage5"]["state"] == (
         "suspended_incomplete_unsealed"
     )
-    assert status["programmes"]["cx318_stage5"]["execution_allowed"] is False
+    assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
+    successor = status["programmes"]["cx319_stabilized_tight_deadband"]
+    assert successor["state"] == "g1_no_write_bench_rehearsal_authorized"
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    ]
+    assert successor["forbidden_until_next_gate"] == [
+        "dac_write",
+        "control_arm",
+        "setup_stimulus",
+        "automatic_correction",
+        "rehearsal_to_live_promotion",
+        "live_actuation",
+    ]
 
-    with pytest.raises(ProgrammeExecutionBlocked, match="execution is blocked"):
+    with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("platform_stabilization")
+
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
+    ) == successor
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
+        require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
 
 def test_suspended_stage5_is_blocked_before_operational_side_effects() -> None:
-    with pytest.raises(ProgrammeExecutionBlocked, match="execution is blocked"):
+    with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx318_stage5")
 
 
@@ -43,13 +70,13 @@ def test_status_contract_rejects_an_inactive_active_programme(
     path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
-                "status_id": "otis_programme_status_v1",
+                "schema_version": 2,
+                "status_id": "otis_programme_status_v2",
                 "active_programme": "blocked",
                 "programmes": {
                     "blocked": {
                         "state": "suspended",
-                        "execution_allowed": False,
+                        "allowed_operations": [],
                         "effective_date": "2026-08-11",
                     }
                 },

@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "status_id": "otis_programme_status_v2",
+  "active_programme": "cx319_stabilized_tight_deadband",
+  "programmes": {
+    "platform_stabilization": {
+      "state": "completed",
+      "allowed_operations": [],
+      "effective_date": "2026-08-11",
+      "authority": "passed_completion_gate"
+    },
+    "cx318_stage5": {
+      "state": "suspended_incomplete_unsealed",
+      "allowed_operations": [],
+      "effective_date": "2026-08-11",
+      "authority": "operator_decision",
+      "resume_prerequisite": "superseded_by_new_programme_identity"
+    },
+    "cx319_stabilized_tight_deadband": {
+      "state": "g1_no_write_bench_rehearsal_authorized",
+      "allowed_operations": [
+        "offline_preparation",
+        "g1_no_write_bench_rehearsal"
+      ],
+      "effective_date": "2026-08-11",
+      "authority": "operator_instruction",
+      "next_gate": "passing_g1_seal_then_explicit_operator_authorization_for_g2_live_leg",
+      "authorized_g1_physical_operations": [
+        "flash_exact_bound_cx319_leg_firmware_once",
+        "open_expected_serial_device_with_one_capture_owner",
+        "create_bounded_normal_emergency_and_host_abort_fifos",
+        "send_read_only_queries_and_active_capture_leases",
+        "inject_bounded_normal_transport_obstruction",
+        "send_priority_active_abort",
+        "perform_same_owner_logical_evidence_rotation",
+        "analyze_seal_and_register_evidence"
+      ],
+      "forbidden_until_next_gate": [
+        "dac_write",
+        "control_arm",
+        "setup_stimulus",
+        "automatic_correction",
+        "rehearsal_to_live_promotion",
+        "live_actuation"
+      ]
+    }
+  }
+}

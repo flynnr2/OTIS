@@ -4,8 +4,11 @@
 sealed CX317 result. The subsequent CX318 Stage 5 programme remains suspended,
 incomplete, and unsealed. The platform-stabilization programme in
 `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md` passed its
-completion gate; no successor programme is currently authorized. “Next”
-actions below are not current execution authority.
+completion gate. Historical “next” actions below are not current execution
+authority. The new `CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME` is authorized
+for offline preparation only and preserves the remaining scientific sequence
+under new stabilized-platform identities. It does not reactivate CX318 or
+authorize hardware interaction.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision

@@ -145,7 +145,7 @@ def test_stage5_setup_opens_epoch_and_rehearsal_seed_cannot_arm() -> None:
     assert "transaction.dac_epoch = 1u" in manual
     assert "transaction.last_application_s = now_s" in manual
     assert "transaction.have_last_application = true" in manual
-    assert "OTIS_CX318_STAGE5_INITIAL_CODE" in static_context
+    assert "OTIS_TIGHT_DEADBAND_INITIAL_CODE" in static_context
     # The seed is returned only to the preview input.  Active health still reads
     # dual_core_static_code directly and therefore remains unconfirmed/unarmable.
     health = sketch[
@@ -156,7 +156,7 @@ def test_stage5_setup_opens_epoch_and_rehearsal_seed_cannot_arm() -> None:
         )
     ]
     assert "dual_core_static_code.available" in health
-    assert "OTIS_CX318_STAGE5_INITIAL_CODE" not in health
+    assert "OTIS_TIGHT_DEADBAND_INITIAL_CODE" not in health
 
 
 def test_stage5_tdb_wire_contract_explicitly_serializes_zero_authority() -> None:

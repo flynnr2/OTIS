@@ -32,12 +32,17 @@ The
 [`OTIS_PLATFORM_STABILIZATION_PROGRAMME`](docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md)
 passed its completion gate on 2026-08-11. Its reviewed result is in
 [`OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT`](docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT.md).
-No next programme is currently authorized.
+
+The
+[`CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME`](docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/00_MASTER_PROGRAMME.md)
+is now active for **offline preparation only**. Repository work, deterministic
+replay, tests and firmware builds are authorized; flashing, serial access,
+command FIFOs, DAC writes, control arming, bench rehearsal and live execution
+remain unauthorized pending a separate operator gate.
 
 CX318 Stage 5 remains suspended, incomplete, unsealed, and non-promotable.
-Platform completion does not resume it: any successor requires an explicit
-operator decision and a new programme identity based on the stabilized
-platform.
+CX319 does not resume the old campaign, reuse its promotion ledger or give its
+profiles current authority.
 
 The current scientific claim is limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not presently claim

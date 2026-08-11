@@ -1,0 +1,509 @@
+"""Analyze and seal an exact CX319 G1 no-write rehearsal."""
+
+from __future__ import annotations
+
+import argparse
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+import tempfile
+from typing import Any
+
+from .active_status_contract import latest_complete_health
+from .board_identity import EXPECTED_SERIAL
+from .contracts import CsvValidationContext, validate_csv
+from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
+from .cx318_stage5_rehearsal_analyze import (
+    CAPTURE_STATE,
+    SUPERVISOR_EVENTS,
+    SUPERVISOR_STATE,
+    _authority_false,
+    _capture_closure,
+    _capture_duration,
+    _contract_path,
+    _host_markers,
+)
+from .cx318_stage5_supervisor import (
+    CONTROL_CSV,
+    DAC_CSV,
+    ENVIRONMENT_CSV,
+    ESTIMATES_CSV,
+    HPR_CSV,
+    PHE_CSV,
+    RPH_CSV,
+    TDB_CSV,
+)
+from .cx318_stage5_tight_replay import replay_tight_deadband
+from .cx319_g1_bundle import (
+    EMERGENCY_COMMAND,
+    FORBIDDEN_COMMAND_PREFIXES,
+    REHEARSAL_DURATION_S,
+    TRANSITION_RUN_DIR,
+    normal_command_allowed,
+    validate_run_manifest,
+)
+from .cx319_g1_supervisor import load_cx319_spec
+from .cx319_runtime_contract import (
+    environment_streams_ready,
+    evaluate_prewrite_readiness,
+)
+from .evidence import EVIDENCE_MANIFEST
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
+
+
+TOOL_ID = "cx319_g1_analyze_v1"
+ANALYSIS_TYPE = "cx319_g1_exact_no_write_rehearsal_analysis_v1"
+SEAL_TYPE = "cx319_g1_no_write_rehearsal_seal_v1"
+ANALYSIS_PATH = Path("reports/cx319_g1_analysis_v1.json")
+REPORT_PATH = Path("reports/CX319_G1_REHEARSAL.md")
+SEAL_PATH = Path("reports/cx319_g1_rehearsal_seal_v1.json")
+FLASH_RECORD_PATH = Path("reports/cx319_g1_flash_v1.json")
+TRANSPORT_REPORT_PATH = Path("reports/cx319_g1_transport_rehearsal_v1.json")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    return sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"refusing to overwrite immutable result: {path}")
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    try:
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _command_allowed(command: str) -> bool:
+    return command == EMERGENCY_COMMAND or normal_command_allowed(command)
+
+
+def _priority_abort_ordered(markers: list[dict[str, Any]]) -> bool:
+    events = [str(item.get("event")) for item in markers]
+    try:
+        latch = events.index("emergency_abort_latched")
+        revoke = events.index("normal_command_ingress_revoked", latch + 1)
+        accepted = next(
+            index
+            for index, item in enumerate(markers[revoke + 1 :], revoke + 1)
+            if item.get("event") == "host_command_accepted"
+            and item.get("command") == EMERGENCY_COMMAND
+        )
+        sent = next(
+            index
+            for index, item in enumerate(markers[accepted + 1 :], accepted + 1)
+            if item.get("event") == "host_command_sent"
+            and item.get("command") == EMERGENCY_COMMAND
+        )
+        completed = events.index("emergency_abort_sent", sent + 1)
+    except (StopIteration, ValueError):
+        return False
+    ordered = [latch, revoke, accepted, sent, completed]
+    return ordered == sorted(ordered)
+
+
+def analyze(run_dir: Path) -> dict[str, Any]:
+    run_dir = run_dir.resolve()
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("CX319 G1 capture is still active")
+    manifest_value = validate_run_manifest(run_dir / "run_manifest.json")
+    manifest = load_manifest(run_dir)
+    leg_name = manifest_value["cx319"]["leg"]
+    spec, identities, _ = load_cx319_spec(leg_name)
+
+    validations: dict[str, dict[str, Any]] = {}
+    for contract in manifest_value["contracts"]:
+        path = _contract_path(manifest, contract)
+        result = validate_csv(
+            path,
+            CsvValidationContext(
+                contract=contract,
+                known_channels=manifest.known_channels,
+                known_domains=manifest.known_domains,
+                allow_rp2040_timer0_wrap=True,
+            ),
+        )
+        validations[contract] = {
+            "ok": result.ok,
+            "rows": result.row_count,
+            "errors": result.errors,
+        }
+
+    active_rows = _read_csv(run_dir / ACTIVE_CSV)
+    dac_rows = _read_csv(run_dir / DAC_CSV)
+    estimates = [
+        row
+        for row in _read_csv(run_dir / ESTIMATES_CSV)
+        if row.get("estimator_version")
+        == "cx317_selected_600s_nonoverlap_v1"
+    ]
+    tdb_replay = replay_tight_deadband(run_dir / TDB_CSV)
+    health_rows = _read_csv(run_dir / HEALTH_CSV)
+    health = latest_complete_health(run_dir / HEALTH_CSV)
+    expected_build = (
+        manifest_value["firmware"]["source_sha256"]
+        + ":"
+        + manifest_value["firmware"]["configuration_sha256"]
+    )
+    identity = {
+        "run_identity": spec.run_identity,
+        "build_identity": expected_build,
+        "profile_identity": spec.profile,
+        **identities,
+    }
+    readiness = evaluate_prewrite_readiness(
+        health,
+        expected_identity=identity,
+        planned_live_stimulus_code=spec.start_code,
+        active_row_count=len(active_rows),
+        dac_row_count=len(dac_rows),
+    )
+    markers = _host_markers(run_dir / "raw/serial.log")
+    duration_s = _capture_duration(markers)
+    capture_state = json.loads((run_dir / CAPTURE_STATE).read_text())
+    capture_closure = _capture_closure(
+        run_dir, capture_state, markers, allowed_emergency_aborts=1
+    )
+    supervisor_state = json.loads((run_dir / SUPERVISOR_STATE).read_text())
+    supervisor_events = [
+        json.loads(line)
+        for line in (run_dir / SUPERVISOR_EVENTS)
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
+    flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
+    transition_state = json.loads(
+        (
+            run_dir
+            / TRANSITION_RUN_DIR
+            / "reports/capture_device_state.json"
+        ).read_text()
+    )
+    transition_closure = json.loads(
+        (
+            run_dir
+            / TRANSITION_RUN_DIR
+            / "reports/capture_segment_closure_v1.json"
+        ).read_text()
+    )
+    transition_markers = _host_markers(
+        run_dir / TRANSITION_RUN_DIR / "raw/serial.log"
+    )
+    commands_sent = [
+        str(item.get("command"))
+        for item in markers
+        if item.get("event") == "host_command_sent"
+    ]
+    sources = {
+        row.get("source", "").lower()
+        for row in _read_csv(run_dir / ENVIRONMENT_CSV)
+    }
+    fatal_rows = [row for row in health_rows if row.get("severity") == "FATAL"]
+    snapshot_capacity = int(
+        health.get(("pps_gate", "snapshot_ring_capacity"), "0")
+    )
+    snapshot_high_water = int(
+        health.get(("pps_gate", "snapshot_backlog_high_water"), "999999")
+    )
+    terminal = supervisor_state.get("terminal")
+    events = [str(item.get("event")) for item in supervisor_events]
+    command_allowlist_exact = (
+        commands_sent
+        and all(_command_allowed(command) for command in commands_sent)
+        and not any(
+            command.startswith(prefix)
+            for command in commands_sent
+            for prefix in FORBIDDEN_COMMAND_PREFIXES
+        )
+        and commands_sent.count(EMERGENCY_COMMAND) == 1
+        and _priority_abort_ordered(markers)
+        and all(
+            any(
+                command == required
+                or (
+                    required == "ACTIVE LEASE"
+                    and command.startswith("ACTIVE LEASE ")
+                )
+                for command in commands_sent
+            )
+            for required in (
+                "CONFIG?",
+                "DAC?",
+                "FC0?",
+                "ACTIVE?",
+                "ACTIVE LEASE",
+            )
+        )
+    )
+    checks = {
+        "manifest_bundle_profile_build_and_policy_exact": True,
+        "single_exact_flash_same_board": (
+            flash.get("status") == "pass"
+            and flash.get("attempt_count") == 1
+            and flash.get("board_before") == flash.get("board_after")
+            and flash.get("board_after", {}).get("serial_number")
+            == EXPECTED_SERIAL
+            and flash.get("dac_value_write_attempts") == 0
+        ),
+        "all_declared_contracts_validate": all(
+            item["ok"] for item in validations.values()
+        ),
+        "finite_capture_at_least_2700s": duration_s >= REHEARSAL_DURATION_S,
+        "capture_closed_by_same_owner_rotation": (
+            capture_closure.get("ok") is True
+            and capture_closure.get("mode") == "same_owner_logical_rotation"
+        ),
+        "one_owner_obstruction_and_priority_abort": (
+            transport.get("status") == "pass"
+            and transport.get("sole_serial_owner_verified") is True
+            and transport.get("sole_serial_owner_verified_after_resume") is True
+            and transport.get("owner_pid_unchanged_across_obstruction") is True
+            and transport.get("normal_fifo_saturated") is True
+            and transport.get("priority_abort_observed_in_capture") is True
+            and transport.get("owner_handoff", {}).get("status") == "completed"
+            and transport.get("owner_handoff", {}).get("serial_reopened") is False
+            and transport.get("owner_handoff", {}).get("pid")
+            == transport.get("capture_pid")
+            and transition_state.get("capture_active") is False
+            and transition_state.get("serial_open") is False
+            and transition_state.get("physical_serial_open") is False
+            and transition_state.get("reconnect_count") == 0
+            and transition_state.get("pid") == transport.get("capture_pid")
+            and transition_closure.get("closure_mode")
+            == "physical_serial_close"
+            and transition_closure.get("owner_pid")
+            == transport.get("capture_pid")
+            and transition_closure.get("serial_reopened") is False
+            and not any(
+                item.get("event") == "host_command_sent"
+                for item in transition_markers
+            )
+        ),
+        "normal_commands_exact_no_write_allowlist": command_allowlist_exact,
+        "supervisor_exact_no_write_terminal": (
+            supervisor_state.get("programme_id")
+            == "cx319_stabilized_tight_deadband"
+            and supervisor_state.get("cx319_gate") == "G1"
+            and supervisor_state.get("cx319_mode") == "no_write_rehearsal"
+            and supervisor_state.get("cx319_leg") == leg_name
+            and supervisor_state.get("manual_start_sent") is False
+            and int(supervisor_state.get("authorization_sequence", -1)) == 0
+            and isinstance(terminal, dict)
+            and terminal.get("result") == "healthy_stop"
+            and "cx319_g1_supervisor_fault" not in events
+            and "cx319_exact_setup_requested" not in events
+            and "cx319_one_decision_armed" not in events
+        ),
+        "prewrite_runtime_contract_exact_before_abort": (
+            supervisor_state.get("prewrite_contract_ready_utc") is not None
+            and supervisor_state.get("latest_prewrite_readiness", {}).get("ready")
+            is True
+            and supervisor_state.get("latest_prewrite_readiness", {}).get(
+                "contract_id"
+            )
+            == "cx319_g1_prewrite_runtime_contract_v1"
+            and readiness.contract_id == "cx319_g1_prewrite_runtime_contract_v1"
+            and health.get(("cx317_active", "state")) == "ABORTED"
+            and health.get(("cx317_active", "reason"))
+            == "device_abort_command_via_core0"
+            and health.get(("cx317_active", "fail_static")) == "true"
+        ),
+        "selected_600s_estimate_present": len(estimates) >= 1,
+        "tight_deadband_replay_exact": (
+            tdb_replay.exact and tdb_replay.row_count >= 1
+        ),
+        "phase_hybrid_and_tight_zero_authority": all(
+            _authority_false(run_dir / relative)
+            for relative in (CONTROL_CSV, RPH_CSV, PHE_CSV, HPR_CSV, TDB_CSV)
+        ),
+        "both_environment_streams_present": environment_streams_ready(sources),
+        "zero_dac_and_active_transactions": not dac_rows and not active_rows,
+        "capture_transport_and_diagnostics_clean": (
+            all(
+                capture_state.get(key) == 0
+                for key in (
+                    "malformed_utf8",
+                    "parser_errors",
+                    "reconnect_count",
+                    "commands_rejected",
+                )
+            )
+            and capture_state.get("emergency_aborts_sent") == 1
+            and not fatal_rows
+            and health.get(("resource_registry", "valid")) == "true"
+            and health.get(("resource_registry", "complete")) == "true"
+            and health.get(("resource_registry", "conflict_count")) == "0"
+            and health.get(("resource_registry", "binding_failure_count")) == "0"
+            and health.get(("memory_budget", "valid")) == "true"
+            and snapshot_capacity > 0
+            and 0 < snapshot_high_water < snapshot_capacity
+        ),
+    }
+    result: dict[str, Any] = {
+        "schema_version": 1,
+        "tool": TOOL_ID,
+        "analysis_type": ANALYSIS_TYPE,
+        "status": "pass" if all(checks.values()) else "fail",
+        "run_dir": str(run_dir),
+        "leg": leg_name,
+        "profile_id": spec.profile,
+        "checks": checks,
+        "observed": {
+            "capture_duration_s": duration_s,
+            "selected_600s_estimates": len(estimates),
+            "tight_deadband_rows": tdb_replay.row_count,
+            "dac_rows": len(dac_rows),
+            "active_rows": len(active_rows),
+            "commands_sent": commands_sent,
+            "snapshot_backlog_high_water": snapshot_high_water,
+            "snapshot_ring_capacity": snapshot_capacity,
+            "fatal_rows": len(fatal_rows),
+        },
+        "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
+        "capture_closure": capture_closure,
+        "contract_validation": validations,
+        "tight_deadband_replay": tdb_replay.as_dict(),
+        "bindings": {
+            "manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
+            "bundle_sha256": manifest_value["bundle"]["bundle_sha256"],
+            "build_manifest_sha256": manifest_value["firmware"][
+                "build_manifest"
+            ]["sha256"],
+            "uf2_sha256": manifest_value["firmware"]["uf2"]["sha256"],
+            "policy_sha256": manifest_value["policy"]["sha256"],
+            "flash_record_sha256": _sha256_file(run_dir / FLASH_RECORD_PATH),
+            "transport_report_sha256": _sha256_file(
+                run_dir / TRANSPORT_REPORT_PATH
+            ),
+            "analyzer_sha256": _sha256_file(Path(__file__)),
+        },
+        "claims_boundary": (
+            "G1 no-write operational evidence only; not frequency-control, "
+            "calibration, absolute phase, UTC, lock or holdover evidence"
+        ),
+    }
+    result["analysis_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def report_markdown(result: dict[str, Any]) -> str:
+    lines = [
+        "# CX319 G1 Exact No-Write Rehearsal",
+        "",
+        f"Status: **{result['status'].upper()}**",
+        "",
+        "This is exact-profile no-write operational evidence. It does not",
+        "authorize or demonstrate a setup stimulus or automatic correction.",
+        "",
+        "## Gates",
+        "",
+        *[
+            f"- {'PASS' if passed else 'FAIL'} — `{name}`"
+            for name, passed in result["checks"].items()
+        ],
+        "",
+        "## Claims boundary",
+        "",
+        result["claims_boundary"] + ".",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
+    run_dir = run_dir.resolve()
+    if analysis.get("status") != "pass":
+        raise ValueError("cannot create a passing G1 seal from failed analysis")
+    if not (run_dir / COMPLETE_MARKER).is_file():
+        raise ValueError("G1 run is not marked complete")
+    evidence_path = run_dir / EVIDENCE_MANIFEST
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "seal_type": SEAL_TYPE,
+        "tool": TOOL_ID,
+        "status": "pass",
+        "run_id": run_dir.name,
+        "run_dir": str(run_dir),
+        "leg": analysis["leg"],
+        "profile_id": analysis["profile_id"],
+        "analysis": {
+            "path": ANALYSIS_PATH.as_posix(),
+            "sha256": _sha256_file(run_dir / ANALYSIS_PATH),
+            "analysis_sha256": analysis["analysis_sha256"],
+        },
+        "evidence_snapshot": {
+            "path": str(EVIDENCE_MANIFEST),
+            "sha256": _sha256_file(evidence_path),
+            "snapshot_digest": evidence["snapshot_digest"],
+            "run_state": evidence["run_state"],
+        },
+        "bundle_sha256": analysis["bindings"]["bundle_sha256"],
+        "uf2_sha256": analysis["bindings"]["uf2_sha256"],
+        "setup_writes": 0,
+        "dac_value_writes": 0,
+        "automatic_writes": 0,
+        "control_arms": 0,
+        "actuation_authorized": False,
+        "qualification_evidence": False,
+    }
+    payload["seal_sha256"] = _canonical_sha256(payload)
+    _atomic_new_json(run_dir / SEAL_PATH, payload)
+    return payload
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run_dir", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        result = analyze(args.run_dir)
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        parser.error(str(exc))
+    _atomic_new_json(args.run_dir / ANALYSIS_PATH, result)
+    (args.run_dir / REPORT_PATH).write_text(
+        report_markdown(result), encoding="utf-8"
+    )
+    print(json.dumps({"status": result["status"]}, sort_keys=True))
+    return 0 if result["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

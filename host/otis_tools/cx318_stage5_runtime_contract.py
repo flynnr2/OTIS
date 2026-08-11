@@ -135,6 +135,10 @@ def evaluate_prewrite_readiness(
     planned_live_stimulus_code: int,
     active_row_count: int,
     dac_row_count: int,
+    contract_id: str = RUNTIME_CONTRACT_ID,
+    inherited_preview_baseline_provenance: str = (
+        INHERITED_PREVIEW_BASELINE_PROVENANCE
+    ),
 ) -> Stage5Readiness:
     """Evaluate the exact no-write state preceding a Stage 5 live stimulus.
 
@@ -203,13 +207,13 @@ def evaluate_prewrite_readiness(
     missing_exact = tuple(dict.fromkeys(missing))
     mismatches_exact = tuple(dict.fromkeys(mismatches))
     return Stage5Readiness(
-        contract_id=RUNTIME_CONTRACT_ID,
+        contract_id=contract_id,
         ready=not missing_exact and not mismatches_exact,
         missing=missing_exact,
         mismatches=mismatches_exact,
         inherited_preview_baseline_code="0xA828",
         inherited_preview_baseline_provenance=(
-            INHERITED_PREVIEW_BASELINE_PROVENANCE
+            inherited_preview_baseline_provenance
         ),
         planned_live_stimulus_code=f"0x{planned_live_stimulus_code:04X}",
         physical_dac_confirmation="unknown_before_live_stimulus",
