@@ -34,7 +34,11 @@ from .cx319_g2_live import (
     validate_run_manifest,
 )
 from .cx319_g2_live_analyze import analyze
-from .evidence import create_evidence_snapshot, validate_evidence_snapshot
+from .evidence import (
+    EVIDENCE_MANIFEST,
+    create_evidence_snapshot,
+    validate_evidence_snapshot,
+)
 from .evidence_index import DEFAULT_INDEX, register_package
 from .platform_rehearsal import _capture_state_ready, _serial_owner_pids
 from .programme_status import (
@@ -188,6 +192,40 @@ def _retain_failure(
         profile_identity="cx319_tight_lower",
         attempt_classification="failed_live_leg",
         result_or_failure_reason=f"CX319 G2 orchestration failed: {error}",
+        analyzer_identity=_sha256_file(Path(__file__)),
+    )
+
+
+def _retain_finalization_failure(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    proposal: dict[str, Any],
+    evidence_index_path: Path,
+    error: Exception,
+) -> dict[str, Any]:
+    """Register a closed run even when snapshot/analyzer finalization fails.
+
+    If no evidence snapshot exists yet, the ordinary retained-failure report is
+    safe to add.  Once a snapshot exists, do not mutate the captured package;
+    preserve the reason in the external evidence index instead.
+    """
+
+    if not (run_dir / EVIDENCE_MANIFEST).is_file():
+        return _retain_failure(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=error,
+        )
+    return register_package(
+        index_path=evidence_index_path,
+        package_path=run_dir,
+        source_revision=proposal["source_revision"],
+        build_identity=proposal["firmware"]["build_manifest"]["sha256"],
+        profile_identity=proposal["leg_spec"]["profile_id"],
+        attempt_classification="failed_live_leg",
+        result_or_failure_reason=f"CX319 G2 finalization failed: {error}",
         analyzer_identity=_sha256_file(Path(__file__)),
     )
 
@@ -373,18 +411,31 @@ def run_live_leg(
             f"{indexed['content_sha256']}: {orchestration_error}"
         ) from orchestration_error
 
-    terminal = _terminal(run_dir)
-    assert terminal is not None
-    _write_complete(run_dir, terminal)
-    snapshot_path = create_evidence_snapshot(run_dir)
-    loaded = load_manifest(run_dir)
-    failures, warnings = validate_evidence_snapshot(run_dir, loaded)
-    if failures or warnings:
-        raise RuntimeError(
-            "CX319 G2 evidence snapshot validation failed: "
-            + json.dumps({"failures": failures, "warnings": warnings})
+    try:
+        terminal = _terminal(run_dir)
+        assert terminal is not None
+        _write_complete(run_dir, terminal)
+        snapshot_path = create_evidence_snapshot(run_dir)
+        loaded = load_manifest(run_dir)
+        failures, warnings = validate_evidence_snapshot(run_dir, loaded)
+        if failures or warnings:
+            raise RuntimeError(
+                "CX319 G2 evidence snapshot validation failed: "
+                + json.dumps({"failures": failures, "warnings": warnings})
+            )
+        seal_path, seal = analyze(run_dir)
+    except Exception as exc:
+        indexed = _retain_finalization_failure(
+            run_dir=run_dir,
+            activation=activation,
+            proposal=proposal,
+            evidence_index_path=evidence_index_path,
+            error=exc,
         )
-    seal_path, seal = analyze(run_dir)
+        raise RuntimeError(
+            "CX319 G2 finalization failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
     classification = (
         "successful_live_leg"
         if seal["status"] == "passed"

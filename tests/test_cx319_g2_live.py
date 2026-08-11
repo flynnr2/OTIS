@@ -8,6 +8,7 @@ import pytest
 
 from host.otis_tools import cx319_g2_bundle
 from host.otis_tools import cx319_g2_live
+from host.otis_tools import cx319_g2_run
 from host.otis_tools.cx319_g2_bundle import BUNDLE_ID, TOOL_ID as PROPOSAL_TOOL
 from host.otis_tools.cx319_g2_contract import canonical_sha256
 from host.otis_tools.cx319_g2_live import (
@@ -277,3 +278,36 @@ def test_physical_runner_explicitly_forbids_a_firmware_flash() -> None:
 
     assert "arduino_cli, \"upload\"" not in source
     assert '"firmware_flashes": 0' in source
+
+
+def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    snapshot = run_dir / cx319_g2_run.EVIDENCE_MANIFEST
+    snapshot.write_text("sealed-before-analyzer\n", encoding="utf-8")
+    registered: dict[str, object] = {}
+
+    def register(**kwargs: object) -> dict[str, str]:
+        registered.update(kwargs)
+        return {"content_sha256": "f" * 64}
+
+    monkeypatch.setattr(cx319_g2_run, "register_package", register)
+    result = cx319_g2_run._retain_finalization_failure(
+        run_dir=run_dir,
+        activation={"activation_sha256": "a" * 64},
+        proposal={
+            "source_revision": "b" * 40,
+            "firmware": {"build_manifest": {"sha256": "c" * 64}},
+            "leg_spec": {"profile_id": "cx319_tight_lower"},
+        },
+        evidence_index_path=tmp_path / "index.jsonl",
+        error=RuntimeError("analyzer mismatch"),
+    )
+
+    assert result["content_sha256"] == "f" * 64
+    assert snapshot.read_text(encoding="utf-8") == "sealed-before-analyzer\n"
+    assert not (run_dir / cx319_g2_run.ORCHESTRATION_FAILURE).exists()
+    assert registered["attempt_classification"] == "failed_live_leg"
+    assert "finalization failed" in str(registered["result_or_failure_reason"])
