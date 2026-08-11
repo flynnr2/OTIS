@@ -11,6 +11,12 @@ passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
 live envelope and conditionally authorized G3 if G2 passes and a fresh upper
 bundle and rehearsal pass. No G4 or phase/hybrid actuation is authorized.
 
+The v5 G2 physical entry stopped fail-static before any setup or control action
+because the firmware had latched an evidence-queue fault during the ownerless
+inter-run interval. The v5 activation is retired while a fresh recovery bundle
+and authority are prepared. This event is not a G2 scientific result, and G3
+remains blocked.
+
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
 
@@ -38,3 +44,6 @@ physical runner/analyzer boundary, and live envelope are recorded in
 
 The effective G2 and conditional G3 operator decision is recorded in
 [`05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md`](05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md).
+
+The retained pre-write stop, causal evidence and recovery gate are recorded in
+[`06_G2_PREWRITE_PLATFORM_STOP.md`](06_G2_PREWRITE_PLATFORM_STOP.md).

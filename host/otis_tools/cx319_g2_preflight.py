@@ -11,6 +11,7 @@ from .cx319_g1_supervisor import load_cx319_spec
 from .cx319_g2_bundle import validate_proposal
 from .cx319_g2_contract import normal_command_allowed
 from .cx319_g2_runtime_contract import (
+    FRESH_RESTART_MAXIMUM_UPTIME_S,
     RUNTIME_CONTRACT_ID,
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
@@ -93,6 +94,14 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
         "prewrite_runtime_contract_exact": (
             readiness.ready
             and readiness.contract_id == RUNTIME_CONTRACT_ID
+            and proposal["readiness_gates"][
+                "fresh_restart_maximum_prewrite_uptime_s"
+            ]
+            == FRESH_RESTART_MAXIMUM_UPTIME_S
+            and proposal["readiness_gates"][
+                "continuous_drain_from_fresh_restart_through_physical_close"
+            ]
+            is True
             and readiness.physical_dac_confirmation
             == "unknown_before_live_stimulus"
         ),

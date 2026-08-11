@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_exact_g2_live_and_conditional_g3_authority() -> None:
+def test_tracked_status_records_g2_prewrite_stop_and_blocks_reuse() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,15 +31,16 @@ def test_tracked_status_records_exact_g2_live_and_conditional_g3_authority() -> 
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_live_authorized_exact_v5"
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION, CX319_G2_LIVE_LEG]
+    assert successor["state"] == "g2_prewrite_platform_stop_recovery_required"
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["operator_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md"
         ),
-        "g2_effective": True,
+        "g2_v5_effective": False,
+        "g2_v5_activation_retired_after_prewrite_entry": True,
         "g3_conditional_on_passing_g2_and_fresh_upper_rehearsal": True,
         "g4_authorized": False,
     }
@@ -80,13 +81,33 @@ def test_tracked_status_records_exact_g2_live_and_conditional_g3_authority() -> 
             "0683260d444e2f1cf2b1163eb5effef71"
         ),
     }
+    assert successor["g2_prewrite_stop"] == {
+        "run_id": "live_leg_a_20260811T154208Z",
+        "activation_sha256": (
+            "510543e64f0cd4c3b71a60ddeeea52e0"
+            "e3c32b6338baf28ceba254d39131c67d"
+        ),
+        "evidence_content_sha256": (
+            "a22a32c7716db791ab7d348abeabe3445"
+            "a4789667095d78aece2c653c6c6442d"
+        ),
+        "terminal_reason": (
+            "cx319_g2_supervisor_fault:dual-core partition fault: "
+            "evidence_queue_exhausted"
+        ),
+        "setup_stimuli": 0,
+        "dac_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+    }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",
         "firmware_flash",
-        "dac_write_outside_exact_g2_activation",
-        "control_arm_outside_exact_g2_activation",
-        "setup_stimulus_outside_exact_g2_activation",
-        "automatic_correction_outside_exact_g2_activation",
+        "g2_v5_activation_reuse",
+        "dac_write",
+        "control_arm",
+        "setup_stimulus",
+        "automatic_correction",
         "rehearsal_to_live_promotion",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
@@ -104,9 +125,10 @@ def test_tracked_status_records_exact_g2_live_and_conditional_g3_authority() -> 
             "cx319_stabilized_tight_deadband",
             CX319_G1_NO_WRITE_BENCH_REHEARSAL,
         )
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

@@ -65,6 +65,7 @@ def test_frozen_activation_can_be_revalidated_from_retained_proposal(
         "authority": {
             "effective": True,
             "firmware_flash": False,
+            "fresh_restart_maximum_prewrite_uptime_s": 120,
             "setup_code": 0xA808,
             "setup_write_limit": 1,
             "automatic_correction_limit": 4,
@@ -312,7 +313,10 @@ def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
     monkeypatch.setattr(cx319_g2_run, "register_package", register)
     result = cx319_g2_run._retain_finalization_failure(
         run_dir=run_dir,
-        activation={"activation_sha256": "a" * 64},
+        activation={
+            "activation_sha256": "a" * 64,
+            "proposal": {"bundle_sha256": "b" * 64},
+        },
         proposal={
             "source_revision": "b" * 40,
             "firmware": {"build_manifest": {"sha256": "c" * 64}},
@@ -325,8 +329,33 @@ def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
     assert result["content_sha256"] == "f" * 64
     assert snapshot.read_text(encoding="utf-8") == "sealed-before-analyzer\n"
     assert not (run_dir / cx319_g2_run.ORCHESTRATION_FAILURE).exists()
-    assert registered["attempt_classification"] == "failed_live_leg"
+    assert registered["attempt_classification"] == "interrupted_campaign"
     assert "finalization failed" in str(registered["result_or_failure_reason"])
+
+
+def test_prewrite_failure_uses_the_existing_interrupted_campaign_index_class(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "reports").mkdir(parents=True)
+
+    record = cx319_g2_run._retain_failure(
+        run_dir=run_dir,
+        activation={
+            "activation_sha256": "a" * 64,
+            "proposal": {"bundle_sha256": "b" * 64},
+        },
+        evidence_index_path=tmp_path / "external" / "index.json",
+        error=RuntimeError("prewrite partition fault"),
+    )
+
+    assert record["attempt_classification"] == "interrupted_campaign"
+    failure = json.loads(
+        (run_dir / cx319_g2_run.ORCHESTRATION_FAILURE).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert failure["attempt_classification"] == "interrupted_campaign"
 
 
 def test_live_analyzer_wires_a_complete_physical_evidence_surface(

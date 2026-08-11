@@ -36,7 +36,10 @@ from .cx319_g2_contract import (
     SETUP_CODE,
     canonical_sha256,
 )
-from .cx319_g2_runtime_contract import RUNTIME_CONTRACT_ID
+from .cx319_g2_runtime_contract import (
+    FRESH_RESTART_MAXIMUM_UPTIME_S,
+    RUNTIME_CONTRACT_ID,
+)
 from .programme_status import (
     CX319_G2_LIVE_LEG,
     ProgrammeExecutionBlocked,
@@ -216,6 +219,9 @@ def create_activation(
             "effective": True,
             "physical_execution": True,
             "firmware_flash": False,
+            "fresh_restart_maximum_prewrite_uptime_s": (
+                FRESH_RESTART_MAXIMUM_UPTIME_S
+            ),
             "serial_open": True,
             "setup_stimulus": True,
             "setup_code": SETUP_CODE,
@@ -267,6 +273,8 @@ def validate_frozen_activation(
         or not isinstance(authority, dict)
         or authority.get("effective") is not True
         or authority.get("firmware_flash") is not False
+        or authority.get("fresh_restart_maximum_prewrite_uptime_s")
+        != FRESH_RESTART_MAXIMUM_UPTIME_S
         or authority.get("setup_code") != SETUP_CODE
         or authority.get("setup_write_limit") != 1
         or authority.get("automatic_correction_limit") != MAXIMUM_CORRECTIONS

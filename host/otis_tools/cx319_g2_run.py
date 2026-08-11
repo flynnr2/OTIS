@@ -55,6 +55,8 @@ CAPTURE_LOG = Path("reports/cx319_g2_capture_launcher.log")
 SUPERVISOR_LOG = Path("reports/cx319_g2_supervisor.log")
 ORCHESTRATION_FAILURE = Path("reports/cx319_g2_orchestration_failure_v1.json")
 MAXIMUM_WALL_S = QUALIFICATION_DEADLINE_S + MAXIMUM_QUALIFIED_DURATION_S
+COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
+INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
 
 
 def _utc_now() -> str:
@@ -171,7 +173,7 @@ def _retain_failure(
         "programme_id": PROGRAMME_ID,
         "gate": "G2",
         "leg": "A",
-        "attempt_classification": "failed_live_leg",
+        "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
         "failure_class": "platform_or_live_stop_rule_failure",
         "recorded_utc": _utc_now(),
         "error_type": type(error).__name__,
@@ -190,7 +192,7 @@ def _retain_failure(
         source_revision="g2-activation:" + activation["activation_sha256"],
         build_identity=activation["proposal"]["bundle_sha256"],
         profile_identity="cx319_tight_lower",
-        attempt_classification="failed_live_leg",
+        attempt_classification=INTERRUPTED_INDEX_CLASSIFICATION,
         result_or_failure_reason=f"CX319 G2 orchestration failed: {error}",
         analyzer_identity=_sha256_file(Path(__file__)),
     )
@@ -224,7 +226,7 @@ def _retain_finalization_failure(
         source_revision=proposal["source_revision"],
         build_identity=proposal["firmware"]["build_manifest"]["sha256"],
         profile_identity=proposal["leg_spec"]["profile_id"],
-        attempt_classification="failed_live_leg",
+        attempt_classification=INTERRUPTED_INDEX_CLASSIFICATION,
         result_or_failure_reason=f"CX319 G2 finalization failed: {error}",
         analyzer_identity=_sha256_file(Path(__file__)),
     )
@@ -400,12 +402,19 @@ def run_live_leg(
             capture.wait(timeout=5.0)
 
     if orchestration_error is not None:
-        indexed = _retain_failure(
-            run_dir=run_dir,
-            activation=activation,
-            evidence_index_path=evidence_index_path,
-            error=orchestration_error,
-        )
+        try:
+            indexed = _retain_failure(
+                run_dir=run_dir,
+                activation=activation,
+                evidence_index_path=evidence_index_path,
+                error=orchestration_error,
+            )
+        except Exception as registration_error:
+            raise RuntimeError(
+                "CX319 G2 orchestration failed; retained unregistered evidence "
+                f"at {run_dir}: {orchestration_error}; evidence registration "
+                f"also failed: {registration_error}"
+            ) from orchestration_error
         raise RuntimeError(
             "CX319 G2 orchestration failed; retained evidence "
             f"{indexed['content_sha256']}: {orchestration_error}"
@@ -425,23 +434,28 @@ def run_live_leg(
             )
         seal_path, seal = analyze(run_dir)
     except Exception as exc:
-        indexed = _retain_finalization_failure(
-            run_dir=run_dir,
-            activation=activation,
-            proposal=proposal,
-            evidence_index_path=evidence_index_path,
-            error=exc,
-        )
+        try:
+            indexed = _retain_finalization_failure(
+                run_dir=run_dir,
+                activation=activation,
+                proposal=proposal,
+                evidence_index_path=evidence_index_path,
+                error=exc,
+            )
+        except Exception as registration_error:
+            raise RuntimeError(
+                "CX319 G2 finalization failed; retained unregistered evidence "
+                f"at {run_dir}: {exc}; evidence registration also failed: "
+                f"{registration_error}"
+            ) from exc
         raise RuntimeError(
             "CX319 G2 finalization failed; retained evidence "
             f"{indexed['content_sha256']}: {exc}"
         ) from exc
     classification = (
-        "successful_live_leg"
-        if seal["status"] == "passed"
-        else "bounded_nonpass_live_leg"
-        if seal["status"] == "bounded_nonpass"
-        else "failed_live_leg"
+        COMPLETED_INDEX_CLASSIFICATION
+        if seal["status"] in {"passed", "bounded_nonpass"}
+        else INTERRUPTED_INDEX_CLASSIFICATION
     )
     indexed = register_package(
         index_path=evidence_index_path,

@@ -6,6 +6,7 @@ import pytest
 
 from host.otis_tools.cx319_g1_supervisor import load_cx319_spec
 from host.otis_tools.cx319_g2_runtime_contract import (
+    FRESH_RESTART_MAXIMUM_UPTIME_S,
     RUNTIME_CONTRACT_ID,
     canonical_prewrite_fixture,
 )
@@ -80,6 +81,30 @@ def test_g2_supervisor_requests_exact_setup_once(tmp_path: Path) -> None:
 
     assert commands == ["DAC SET 0xA808"]
     assert supervisor.state["manual_start_sent"] is True
+
+
+def test_g2_prewrite_rejects_a_clean_but_stale_ownerless_session(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": BUILD_IDENTITY,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    health[("cx317_active", "uptime_s")] = str(
+        FRESH_RESTART_MAXIMUM_UPTIME_S + 1
+    )
+
+    readiness = supervisor._prewrite_readiness(health)
+
+    assert readiness.ready is False
+    assert any("fresh restart" in item for item in readiness.mismatches)
 
 
 def test_g2_cli_is_blocked_before_reading_a_run_spec(

@@ -65,10 +65,13 @@ def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(
 ) -> None:
     proposal = {
         "bundle_sha256": "e" * 64,
+        "source_revision": "f" * 40,
         "firmware": {
             "source_sha256": "a" * 64,
             "configuration_sha256": "b" * 64,
+            "build_manifest": {"sha256": "c" * 64},
         },
+        "leg_spec": {"profile_id": "cx319_tight_lower"},
         "intended_live_envelope": {
             "setup_writes": 1,
             "automatic_corrections": 4,
@@ -109,3 +112,12 @@ def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(
     analysis = json.loads(Path(result["analysis"]).read_text(encoding="utf-8"))
     assert analysis["status"] == "passed"
     assert all(analysis["verdict"]["checks"].values())
+    registration = json.loads(
+        Path(result["registration"]).read_text(encoding="utf-8")
+    )
+    assert registration["mode"] == "actual_temporary_external_index_registration"
+    assert registration["temporary_index_validation"]["valid"] is True
+    assert {
+        item["attempt_classification"]
+        for item in registration["attempt_classifications_exercised"]
+    } == {"completed_campaign", "interrupted_campaign"}

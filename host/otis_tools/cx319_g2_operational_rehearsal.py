@@ -24,7 +24,7 @@ from .cx319_g2_bundle import _sha256_file, validate_proposal
 from .cx319_g2_contract import canonical_sha256, normal_command_allowed
 from .cx319_g2_runtime_contract import canonical_prewrite_fixture
 from .cx319_g2_supervisor import create_supervisor
-from .evidence_index import package_identity
+from .evidence_index import package_identity, register_package, validate_index
 
 
 TOOL_ID = "cx319_g2_accelerated_operational_rehearsal_v1"
@@ -532,14 +532,52 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     seal_path = artifacts / "cx319_g2_operational_rehearsal_seal_v1.json"
     _atomic_new(seal_path, seal)
     package = package_identity(artifacts)
+    with tempfile.TemporaryDirectory(
+        prefix="cx319-g2-registration-rehearsal-"
+    ) as registration_temp:
+        registration_root = Path(registration_temp)
+        temporary_index = registration_root / "evidence_index_v1.json"
+        exercised: list[dict[str, str]] = []
+        for classification in ("completed_campaign", "interrupted_campaign"):
+            fixture = registration_root / classification
+            fixture.mkdir()
+            (fixture / "classification.txt").write_text(
+                classification + "\n", encoding="utf-8"
+            )
+            record = register_package(
+                index_path=temporary_index,
+                package_path=fixture,
+                source_revision=proposal["source_revision"],
+                build_identity=proposal["firmware"]["build_manifest"]["sha256"],
+                profile_identity=proposal["leg_spec"]["profile_id"],
+                attempt_classification=classification,
+                result_or_failure_reason=(
+                    "CX319 G2 accelerated registration-path rehearsal"
+                ),
+                analyzer_identity=_sha256_file(Path(__file__)),
+            )
+            exercised.append(
+                {
+                    "attempt_classification": classification,
+                    "content_sha256": record["content_sha256"],
+                }
+            )
+        registration_validation = validate_index(temporary_index)
     registration = {
         "schema_version": 1,
-        "mode": "dry_registration_no_index_mutation",
-        "status": "passed" if analysis["status"] == "passed" else "failed",
+        "mode": "actual_temporary_external_index_registration",
+        "status": (
+            "passed"
+            if analysis["status"] == "passed"
+            and registration_validation["valid"] is True
+            and registration_validation["package_count"] == 2
+            else "failed"
+        ),
         "package_content_sha256": package["content_sha256"],
         "file_count": package["file_count"],
-        "would_register_as": "diagnostic",
-        "external_index_mutated": False,
+        "attempt_classifications_exercised": exercised,
+        "temporary_index_validation": registration_validation,
+        "persistent_external_index_mutated": False,
     }
     _atomic_new(output_dir / "cx319_g2_registration_rehearsal_v1.json", registration)
     result = {
