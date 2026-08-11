@@ -50,24 +50,24 @@ def test_tracked_status_records_g2_offline_readiness_without_live_authority() ->
     }
     assert successor["completed_g2_offline_evidence"] == {
         "proposal_bundle_sha256": (
-            "30d083772c963139d4444c6614d48efc"
-            "bcc7f178f11fa8cd222c298d4b789f25"
+            "4650eef8485c412212c29885fd5407f6"
+            "adf7de6f71d07babf96f72f8b9a65f34"
         ),
         "preflight_file_sha256": (
-            "402b4499fdba34acc0b664678ee945a7"
-            "3fba9766855abb77ccb8b685973edd10"
+            "b6440186e58ab30434cd721a0100cf2b"
+            "d9d5ccda89a98cb7107803d53affacab"
         ),
         "operational_rehearsal_file_sha256": (
-            "d618ee69920fcb27eae24db35325874e"
-            "f3222ab2258e24800477b2b03c0e6332"
+            "b61fc3e9098abcec574d1fad1548eadd"
+            "915e7dd86aaea637718907fe3fd52cac"
         ),
         "operational_rehearsal_content_sha256": (
-            "1079c61558981037ac470b6354c6bbd2"
-            "2440f3e3d7b463062f244f2527905ccf"
+            "7fa6bd6987e29e16548df372ec915054"
+            "0bffc0e2b55b3d32f3a5d34f71c4ee9a"
         ),
         "operational_rehearsal_seal_sha256": (
-            "ec4bf002d18ef27b9e8b9fe9a50ae84"
-            "53fba9e98160499cdcfb83d487224cb8a"
+            "5b5e79a3a81a700961b2d7084f929ae"
+            "0683260d444e2f1cf2b1163eb5effef71"
         ),
     }
     assert successor["forbidden_until_next_gate"] == [

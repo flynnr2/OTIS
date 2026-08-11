@@ -21,15 +21,15 @@ identities must satisfy the shared fail-closed pre-write predicate.
 
 | Artifact | Identity |
 |---|---|
-| G2 proposal bundle | `30d083772c963139d4444c6614d48efcbcc7f178f11fa8cd222c298d4b789f25` |
-| Source revision | `05dbfe125a19469a3397a3410da1ef92785abc6f` |
+| G2 proposal bundle | `4650eef8485c412212c29885fd5407f6adf7de6f71d07babf96f72f8b9a65f34` |
+| Source revision | `b190ac19e9ece7bbe6eac50a8e2a0a895ed428a9` |
 | G1 evidence content | `cd17f90587a321ed0ddd6c40db76c0beffc8981c68ef7afdd8e46bbc1549432d` |
 | Reused UF2 | `e1b12c86476085e2e125ece141bddc66ba6891be98535d4e542ee228f03ff42e` |
 | CX319 policy | `e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70` |
-| Structural preflight file | `402b4499fdba34acc0b664678ee945a73fba9766855abb77ccb8b685973edd10` |
-| Operational rehearsal result file | `d618ee69920fcb27eae24db35325874ef3222ab2258e24800477b2b03c0e6332` |
-| Operational rehearsal content | `1079c61558981037ac470b6354c6bbd22440f3e3d7b463062f244f2527905ccf` |
-| Operational rehearsal seal | `ec4bf002d18ef27b9e8b9fe9a50ae8453fba9e98160499cdcfb83d487224cb8a` |
+| Structural preflight file | `b6440186e58ab30434cd721a0100cf2bd9d5ccda89a98cb7107803d53affacab` |
+| Operational rehearsal result file | `b61fc3e9098abcec574d1fad1548eadd915e7dd86aaea637718907fe3fd52cac` |
+| Operational rehearsal content | `7fa6bd6987e29e16548df372ec9150540bffc0e2b55b3d32f3a5d34f71c4ee9a` |
+| Operational rehearsal seal | `5b5e79a3a81a700961b2d7084f929ae0683260d444e2f1cf2b1163eb5effef71` |
 
 The proposal is explicitly `proposed_not_authorized`. Its physical execution,
 firmware flash, serial open, setup stimulus, control arm, automatic correction,
@@ -70,9 +70,14 @@ physical serial close; no closure-verifier repair was required. The substantive
 G2 host defect caught during rehearsal was the inherited supervisor rejecting
 normal `decision_cadence_hold` rows before it could arm the next eligible
 boundary. That shared host path was repaired and its regression is included.
+The physical runner also retains a sealed capture and records a failed live leg
+if final analysis or registration fails, rather than losing the evidence. A
+representative complete physical evidence surface was passed through the live
+analyzer and sealing wiring without device I/O; this complements, but does not
+replace, the accelerated supervisor operational-path rehearsal.
 
 The repository verification after the physical-path implementation and
-readiness-state update completed with 1054 tests passing.
+readiness-state update completed with 1056 tests passing.
 
 ## Exact proposed physical envelope
 
