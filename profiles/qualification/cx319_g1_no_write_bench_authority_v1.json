@@ -14,6 +14,10 @@
     "operator_decision_record": {
       "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/02_G1_NO_WRITE_BENCH_AUTHORITY.md",
       "sha256": "fa189150e1a389cc3f99779f989f18d99ddc6993baebfe72303bd2ee67648cf8"
+    },
+    "recovery_operator_decision_record": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/14_G1_RECOVERY_NO_WRITE_AUTHORITY.md",
+      "sha256": "178a1370d205cfccd69dbbd91e653890602338da04f05346b3503dbea55a374d"
     }
   },
   "authority_model": {

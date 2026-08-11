@@ -32,14 +32,17 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "g2_cross_surface_recovery_g1_gate_hardened_clean_build_pending"
+        "g1_recovery_no_write_authorized_pending_exact_rebuild"
     )
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    ]
     assert successor["authority"] == (
-        "offline_recovery_only_after_g2_v7_failed_analysis"
+        "explicit_operator_g1_recovery_no_write_authority"
     )
     assert successor["next_gate"] == (
-        "fresh_clean_firmware_build_and_g1_requalification_readiness"
+        "exact_clean_rebuild_then_physical_g1_requalification"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -299,9 +302,26 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "g2_retry_authorized": False,
         "g3_currently_authorized": False,
     }
+    assert successor["g1_recovery_no_write_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "14_G1_RECOVERY_NO_WRITE_AUTHORITY.md"
+        ),
+        "effective": True,
+        "consumed": False,
+        "device": "/dev/cu.usbmodem14601",
+        "firmware_profile": "cx319_tight_lower",
+        "exact_firmware_flash_limit": 1,
+        "physical_no_write_runs": 1,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "manual_reset_expected_after_successful_upload": False,
+        "operator_assistance_required_if_upload_or_reenumeration_fails": True,
+    }
     assert successor["forbidden_until_next_gate"] == [
-        "g1_physical_repeat",
-        "firmware_flash",
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
@@ -321,11 +341,10 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            CX319_G1_NO_WRITE_BENCH_REHEARSAL,
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG

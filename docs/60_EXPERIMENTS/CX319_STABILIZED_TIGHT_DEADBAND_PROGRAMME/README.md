@@ -92,3 +92,7 @@ execution after a passing G2 seal is recorded in
 The retained v7 qualification-deadline non-pass, exact evidence identities and
 cross-surface GNSS pre-write escape are recorded in
 [`13_G2_V7_GNSS_IDENTITY_QUALIFICATION_STOP.md`](13_G2_V7_GNSS_IDENTITY_QUALIFICATION_STOP.md).
+
+The fresh bounded authority for one exact lower-profile flash and physical G1
+requalification is recorded in
+[`14_G1_RECOVERY_NO_WRITE_AUTHORITY.md`](14_G1_RECOVERY_NO_WRITE_AUTHORITY.md).
