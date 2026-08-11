@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_g2_prewrite_stop_and_blocks_reuse() -> None:
+def test_tracked_status_records_g2_recovery_readiness_and_blocks_reuse() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,7 +31,9 @@ def test_tracked_status_records_g2_prewrite_stop_and_blocks_reuse() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_prewrite_platform_stop_recovery_required"
+    assert successor["state"] == (
+        "g2_recovery_offline_ready_awaiting_exact_v6_authority_and_restart"
+    )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["operator_authority"] == {
         "record": (
@@ -99,6 +101,35 @@ def test_tracked_status_records_g2_prewrite_stop_and_blocks_reuse() -> None:
         "dac_writes": 0,
         "control_arms": 0,
         "automatic_corrections": 0,
+    }
+    assert successor["completed_g2_recovery_offline_evidence"] == {
+        "source_revision": "ec95f268fc756bf69efa20bc4211883f9bcdb09a",
+        "proposal_bundle_sha256": (
+            "8726590f586a3c1ff97adbaa02aa3d21"
+            "6e89cad61d155489e1988d07860e7df5"
+        ),
+        "proposal_file_sha256": (
+            "0731671cabbc3ffc9ccc1800852ff823"
+            "3caf242f53b171ac7b422b3c2f2d1c7a"
+        ),
+        "preflight_file_sha256": (
+            "38f8b3d125ae256d2df359b020318f22"
+            "4e4cd9172c755f672f48064699ef7f03"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "12fc3178a4a743868524ed3a6caf3013"
+            "1faaba0b10b7063c34fb1436845c45bf"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "558314ac16ee9d12a97c7d557e71e5c4"
+            "a8401cabafeb30206710f111adfa6c54"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "e11e77d788407c873844ac236260921a"
+            "335da11f4498839074f7f62b4efad25b"
+        ),
+        "registration_path_exercised": True,
+        "fresh_restart_maximum_prewrite_uptime_s": 120,
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",

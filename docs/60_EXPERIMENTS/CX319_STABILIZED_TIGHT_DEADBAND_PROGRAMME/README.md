@@ -13,9 +13,10 @@ bundle and rehearsal pass. No G4 or phase/hybrid actuation is authorized.
 
 The v5 G2 physical entry stopped fail-static before any setup or control action
 because the firmware had latched an evidence-queue fault during the ownerless
-inter-run interval. The v5 activation is retired while a fresh recovery bundle
-and authority are prepared. This event is not a G2 scientific result, and G3
-remains blocked.
+inter-run interval. The v5 activation is retired. A fresh v6 recovery proposal,
+preflight and operational-path rehearsal now pass offline; v6 remains blocked
+pending exact authority and an immediate pre-run board restart. This event is
+not a G2 scientific result, and G3 remains blocked.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -47,3 +48,7 @@ The effective G2 and conditional G3 operator decision is recorded in
 
 The retained pre-write stop, causal evidence and recovery gate are recorded in
 [`06_G2_PREWRITE_PLATFORM_STOP.md`](06_G2_PREWRITE_PLATFORM_STOP.md).
+
+The fresh non-authorizing v6 package and physical recovery boundary are
+recorded in
+[`07_G2_RECOVERY_OFFLINE_READINESS.md`](07_G2_RECOVERY_OFFLINE_READINESS.md).

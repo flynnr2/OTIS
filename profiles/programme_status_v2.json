@@ -17,12 +17,12 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g2_prewrite_platform_stop_recovery_required",
+      "state": "g2_recovery_offline_ready_awaiting_exact_v6_authority_and_restart",
       "allowed_operations": [
         "offline_preparation"
       ],
       "effective_date": "2026-08-11",
-      "authority": "retained_g2_prewrite_platform_stop_no_live_stimulus",
+      "authority": "passing_g2_v6_recovery_preflight_and_operational_rehearsal",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -30,7 +30,7 @@
         "g3_conditional_on_passing_g2_and_fresh_upper_rehearsal": true,
         "g4_authorized": false
       },
-      "next_gate": "fresh_recovery_bundle_rehearsal_and_explicit_g2_authority",
+      "next_gate": "explicit_operator_authorization_for_exact_g2_v6_and_fresh_board_restart",
       "completed_g1_evidence": {
         "run_id": "no_write_leg_a_20260811T133632Z",
         "bundle_sha256": "777e88c9978edb525f887c496b5badf2b5e2cdae09bdfaea0a4071932377db77",
@@ -53,6 +53,17 @@
         "dac_writes": 0,
         "control_arms": 0,
         "automatic_corrections": 0
+      },
+      "completed_g2_recovery_offline_evidence": {
+        "source_revision": "ec95f268fc756bf69efa20bc4211883f9bcdb09a",
+        "proposal_bundle_sha256": "8726590f586a3c1ff97adbaa02aa3d216e89cad61d155489e1988d07860e7df5",
+        "proposal_file_sha256": "0731671cabbc3ffc9ccc1800852ff8233caf242f53b171ac7b422b3c2f2d1c7a",
+        "preflight_file_sha256": "38f8b3d125ae256d2df359b020318f224e4cd9172c755f672f48064699ef7f03",
+        "operational_rehearsal_file_sha256": "12fc3178a4a743868524ed3a6caf30131faaba0b10b7063c34fb1436845c45bf",
+        "operational_rehearsal_content_sha256": "558314ac16ee9d12a97c7d557e71e5c4a8401cabafeb30206710f111adfa6c54",
+        "operational_rehearsal_seal_sha256": "e11e77d788407c873844ac236260921a335da11f4498839074f7f62b4efad25b",
+        "registration_path_exercised": true,
+        "fresh_restart_maximum_prewrite_uptime_s": 120
       },
       "forbidden_until_next_gate": [
         "g1_physical_repeat",
