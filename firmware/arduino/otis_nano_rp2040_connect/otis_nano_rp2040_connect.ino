@@ -4226,8 +4226,11 @@ void loop() {
   // The USB byte stream has one chunked-frame owner.  A producer that starts
   // a record keeps ownership through its complete CRLF (or the complete
   // RPH/PHE/HPR record group) while Core 1 timing capture continues into the
-  // cross-core queues.  No status, command, sensor, or competing frame writer
-  // runs in this pass.
+  // cross-core queues. GNSS RX drainage is a bounded input-only service and
+  // must run before this early-return path; otherwise a long initial serial
+  // burst can manufacture a receiver reconnect epoch. No status, command,
+  // sensor, or competing frame writer runs in this pass.
+  otis_gnss_receiver_service(millis());
   if (service_dual_core_serial_frame_transport()) {
     otis_status_led_poll(millis());
     return;
@@ -4236,7 +4239,6 @@ void loop() {
   emit_protocol_banner_if_serial_ready();
   emit_run_mode_status_if_ready();
   emit_resource_ownership_status();
-  otis_gnss_receiver_service(millis());
   service_serial_commands();
   service_environment_sensors();
   publish_dual_core_service_metadata(millis());

@@ -22,6 +22,7 @@ from host.otis_tools.cx319_g2_live import (
     validate_frozen_activation,
     validate_operational_rehearsal,
 )
+from host.otis_tools.cx319_g2_runtime_contract import RUNTIME_CONTRACT_ID
 from host.otis_tools.programme_status import ProgrammeExecutionBlocked
 
 
@@ -372,15 +373,23 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
         "run_manifest.json": {},
         "reports/capture_device_state.json": {},
         "reports/capture_segment_closure_v1.json": {},
-        "reports/cx317_active_supervisor_state.json": {
+            "reports/cx317_active_supervisor_state.json": {
             "terminal": {
                 "result": "healthy_stop",
                 "reason": "required_direction_and_two_estimate_tight_entry",
             },
-            "arm_pending": False,
-            "telemetry_drop_baseline": 3,
-            "telemetry_drop_baseline_status_seq": 2,
-        },
+                "arm_pending": False,
+                "telemetry_drop_baseline": 3,
+                "telemetry_drop_baseline_status_seq": 2,
+                "prewrite_contract_ready_utc": "2026-08-11T17:00:00Z",
+                "setup_confirmed_utc": "2026-08-11T17:00:01Z",
+                "latest_prewrite_readiness": {
+                    "contract_id": RUNTIME_CONTRACT_ID,
+                    "ready": True,
+                    "missing": [],
+                    "mismatches": [],
+                },
+            },
         "reports/cx317_active_supervisor_events.jsonl": {},
         "evidence_manifest.json": {"run_state": "complete"},
     }.items():

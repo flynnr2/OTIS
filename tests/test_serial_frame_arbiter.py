@@ -57,6 +57,9 @@ def test_dual_core_loop_dispatches_exactly_one_chunked_writer() -> None:
     guard_end = dual_core.index("service_dual_core_outputs();")
     guard = dual_core[:guard_end]
     assert "if (service_dual_core_serial_frame_transport())" in guard
+    assert guard.index("otis_gnss_receiver_service(millis());") < guard.index(
+        "if (service_dual_core_serial_frame_transport())"
+    )
     for writer in (
         "service_dual_core_evidence_transport();",
         "otis_phase4_observe_preview_service_transport();",

@@ -62,6 +62,7 @@ from .cx319_g2_contract import (
 )
 from .cx319_g2_live import LIVE_SEAL_PATH, LIVE_STAGE, validate_frozen_run_manifest
 from .cx319_g2_runtime_contract import (
+    RUNTIME_CONTRACT_ID,
     evaluate_health_integrity,
     evaluate_telemetry_drop_history,
 )
@@ -320,6 +321,26 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         "passing_accelerated_operational_rehearsal_bound": bool(
             manifest_value["activation"]["activation_sha256"]
             and manifest_value["proposal"]["bundle_sha256"]
+        ),
+        "prewrite_runtime_contract_exact_before_setup": (
+            supervisor_state.get("prewrite_contract_ready_utc") is not None
+            and supervisor_state.get("setup_confirmed_utc") is not None
+            and supervisor_state.get("prewrite_contract_ready_utc")
+            <= supervisor_state.get("setup_confirmed_utc")
+            and supervisor_state.get("latest_prewrite_readiness", {}).get(
+                "contract_id"
+            )
+            == RUNTIME_CONTRACT_ID
+            and supervisor_state.get("latest_prewrite_readiness", {}).get(
+                "ready"
+            )
+            is True
+            and not supervisor_state.get("latest_prewrite_readiness", {}).get(
+                "missing"
+            )
+            and not supervisor_state.get("latest_prewrite_readiness", {}).get(
+                "mismatches"
+            )
         ),
         "all_declared_contracts_validate": all(
             item["ok"] for item in validations.values()

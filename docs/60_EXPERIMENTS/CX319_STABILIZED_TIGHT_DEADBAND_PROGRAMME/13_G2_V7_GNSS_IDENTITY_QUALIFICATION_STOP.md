@@ -35,13 +35,25 @@ was finalized and externally registered.
 
 ## Cross-surface cause
 
-The first retained GNSS health emission reported receiver identity epoch 2,
+The first retained GNSS health emission at approximately 13.5 seconds of
+firmware uptime reported receiver identity epoch 2,
 `identity_stable=false` and `control_eligible=false`. Those values remained
 unchanged through the run. The single checksum failure was later
 requalifiable, but identity epoch 2 was not: this firmware deliberately makes
 only epoch 1 authoritative within a run after a receiver outage longer than
 the reconnect gap. Consequently the firmware never produced a qualified
 reference observation or control-eligible estimate.
+
+The outage was manufactured by firmware scheduling rather than established as
+a physical receiver disconnection. In the dual-core main loop, an active
+chunked serial-output frame caused an early return before the GNSS UART was
+serviced. The initial retained output burst occupied that path for longer than
+the 10-second receiver reconnect threshold. The GNSS parser had already seen
+an RMC record, then was not drained until the next recognized RMC caused the
+identity epoch transition. After startup, RMC, GGA and GSA counts advanced
+continuously with no further identity transition. The timing-capture core
+continued independently; the defect was on the service-plane scheduling
+surface.
 
 The host pre-write contract reported ready and permitted the setup stimulus
 without requiring the GNSS receiver to be identity-stable or control-eligible.
@@ -51,21 +63,25 @@ failed scientifically. Firmware contained the actuation risk by remaining
 disarmed, but the host allowed a long run whose qualification prerequisite was
 already permanently unsatisfied.
 
-## Recovery gate
+## Recovery implementation and gate
 
-Offline work may now define and rehearse a cross-surface recovery. It must, at
-minimum:
+The bounded recovery retains the conservative receiver identity semantics and
+repairs both sides of the escape:
 
-1. make the host pre-write gate reject an already non-authoritative GNSS
-   identity before any setup write;
-2. exercise the real GNSS startup/reconnect path in the operational rehearsal,
-   including the epoch-2 condition and its bounded stop;
-3. decide explicitly whether the observed startup gap should begin a fresh
-   firmware identity epoch or whether it represents an invalid run requiring a
-   fresh restart; and
-4. bind any resulting firmware and host changes into a new exact bundle,
-   preflight and complete operational-path rehearsal.
+1. the bounded GNSS RX service now runs before the busy serial-frame early
+   return, so output backlog cannot starve receiver input;
+2. G2 pre-write runtime contract v4 requires exact epoch-1 identity, fresh and
+   checksum-requalified metadata, fresh 3D evidence, and both metadata and raw
+   PPS control eligibility before setup;
+3. G2 outcome contract v2 and the operational rehearsal explicitly prove that
+   an epoch-2 fixture cannot emit the setup command; and
+4. the physical analyzer binds the exact passing pre-write contract state to a
+   setup timestamp.
 
-That offline result may support an operator decision, but it does not grant a
-retry. G3 remains forbidden unless a future G2 run has a passing analysis and
-seal.
+The full host suite passes 1,068 tests with this recovery. Because firmware
+changed, the old G1 physical evidence cannot qualify the new binary. A clean
+exact lower-profile build, a fresh no-write G1 bundle and physical G1
+requalification are required before any new G2 proposal or retry authority.
+
+The recovery does not grant a flash, G1 physical run or G2 retry. G3 remains
+forbidden unless a future G2 run has a passing analysis and seal.

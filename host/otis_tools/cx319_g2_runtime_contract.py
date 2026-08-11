@@ -15,7 +15,7 @@ from .cx318_stage5_runtime_contract import (
     Health,
     Stage5HealthIntegrity,
     Stage5Readiness,
-    canonical_prewrite_fixture,
+    canonical_prewrite_fixture as _canonical_prewrite_fixture,
     environment_streams_ready,
     evaluate_health_integrity as _evaluate_health_integrity,
     evaluate_prewrite_readiness as _evaluate_prewrite_readiness,
@@ -23,10 +23,23 @@ from .cx318_stage5_runtime_contract import (
 from .cx319_runtime_contract import INHERITED_PREVIEW_BASELINE_PROVENANCE
 
 
-RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v3"
+RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v4"
 FRESH_RESTART_MAXIMUM_UPTIME_S = 120
 TELEMETRY_DROP_KEY = ("dual_core", "telemetry_dropped")
 TELEMETRY_BASELINE_STABLE_OBSERVATIONS = 2
+GNSS_PREWRITE_EXACT = {
+    ("gnss_receiver", "initialized"): "true",
+    ("gnss_receiver", "rx_only"): "true",
+    ("gnss_receiver", "metadata_fresh"): "true",
+    ("gnss_receiver", "checksum_requalified"): "true",
+    ("gnss_receiver", "gsa_3d_fresh"): "true",
+    ("gnss_receiver", "gsa_checksum_requalified"): "true",
+    ("gnss_receiver", "identity_epoch"): "1",
+    ("gnss_receiver", "identity_stable"): "true",
+    ("gnss_receiver", "metadata_control_eligible"): "true",
+    ("gnss_receiver", "raw_pps_control_eligible"): "true",
+    ("gnss_receiver", "control_eligible"): "true",
+}
 
 
 def evaluate_health_integrity(
@@ -213,6 +226,15 @@ def evaluate_prewrite_readiness(
     )
     missing.extend(telemetry_integrity.missing)
     mismatches.extend(telemetry_integrity.mismatches)
+    for key, required in GNSS_PREWRITE_EXACT.items():
+        observed = health.get(key)
+        name = f"{key[0]}.{key[1]}"
+        if observed is None:
+            missing.append(f"missing {name}")
+        elif observed != required:
+            mismatches.append(
+                f"{name}={observed!r}, expected {required!r} before setup"
+            )
     raw_uptime = health.get(("cx317_active", "uptime_s"))
     if raw_uptime is not None:
         try:
@@ -241,10 +263,26 @@ def evaluate_prewrite_readiness(
     )
 
 
+def canonical_prewrite_fixture(
+    *,
+    expected_identity: Mapping[str, str],
+    planned_live_stimulus_code: int,
+) -> dict[tuple[str, str], str]:
+    """Return the exact healthy G2 fixture, including GNSS authority."""
+
+    health = _canonical_prewrite_fixture(
+        expected_identity=expected_identity,
+        planned_live_stimulus_code=planned_live_stimulus_code,
+    )
+    health.update(GNSS_PREWRITE_EXACT)
+    return health
+
+
 __all__ = [
     "ACTIVE_STATUS_KEYS",
     "HEALTH_INTEGRITY_EXACT",
     "FRESH_RESTART_MAXIMUM_UPTIME_S",
+    "GNSS_PREWRITE_EXACT",
     "INHERITED_PREVIEW_BASELINE_PROVENANCE",
     "RUNTIME_CONTRACT_ID",
     "TELEMETRY_BASELINE_STABLE_OBSERVATIONS",

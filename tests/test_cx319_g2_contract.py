@@ -4,14 +4,18 @@ from copy import deepcopy
 
 import pytest
 
-from host.otis_tools.cx319_g2_contract import evaluate, normal_command_allowed
+from host.otis_tools.cx319_g2_contract import (
+    CONTRACT_ID,
+    evaluate,
+    normal_command_allowed,
+)
 from host.otis_tools.cx319_g2_supervisor import create_supervisor
 
 
 def _transcript() -> dict[str, object]:
     return {
         "schema_version": 1,
-        "contract_id": "cx319_g2_leg_a_outcome_contract_v1",
+        "contract_id": CONTRACT_ID,
         "programme_id": "cx319_stabilized_tight_deadband",
         "gate": "G2",
         "leg": "A",
@@ -92,6 +96,14 @@ def _transcript() -> dict[str, object]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": True,
+        },
+        "gnss_prewrite": {
+            "identity_epoch": 1,
+            "identity_stable": True,
+            "metadata_control_eligible": True,
+            "raw_pps_control_eligible": True,
+            "control_eligible": True,
+            "epoch_2_rejected_before_setup": True,
         },
         "transport_fault": {
             "normal_path_saturated": True,
@@ -184,6 +196,22 @@ def test_g2_outcome_contract_rejects_phase_authority() -> None:
 
     assert result["status"] == "failed"
     assert result["checks"]["phase_and_hybrid_zero_authority"] is False
+
+
+def test_g2_outcome_contract_rejects_unstable_gnss_prewrite_identity() -> None:
+    transcript = deepcopy(_transcript())
+    transcript["gnss_prewrite"]["identity_epoch"] = 2  # type: ignore[index]
+    transcript["gnss_prewrite"]["identity_stable"] = False  # type: ignore[index]
+
+    result = evaluate(transcript)
+
+    assert result["status"] == "failed"
+    assert (
+        result["checks"][
+            "gnss_identity_and_control_authority_exact_before_setup"
+        ]
+        is False
+    )
 
 
 def test_g2_supervisor_rejects_commands_outside_live_envelope(

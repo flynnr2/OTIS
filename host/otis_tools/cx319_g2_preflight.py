@@ -115,6 +115,18 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
                 "evidence_capture_preview_partition_and_control_gates_absolute"
             ]
             is True
+            and proposal["readiness_gates"][
+                "gnss_service_precedes_serial_transport_early_return"
+            ]
+            is True
+            and proposal["readiness_gates"][
+                "gnss_prewrite_identity_epoch"
+            ]
+            == 1
+            and proposal["readiness_gates"][
+                "gnss_identity_and_control_eligibility_required_before_setup"
+            ]
+            is True
             and readiness.physical_dac_confirmation
             == "unknown_before_live_stimulus"
         ),

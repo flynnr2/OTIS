@@ -77,6 +77,40 @@ def test_post_attach_increment_fails_health_integrity() -> None:
     assert any("frozen host-attach baseline 3" in item for item in integrity.mismatches)
 
 
+def test_prewrite_rejects_receiver_identity_epoch_two_before_setup() -> None:
+    health = canonical_prewrite_fixture(
+        expected_identity=IDENTITY,
+        planned_live_stimulus_code=0xA808,
+    )
+    health.update(
+        {
+            ("gnss_receiver", "identity_epoch"): "2",
+            ("gnss_receiver", "identity_stable"): "false",
+            ("gnss_receiver", "metadata_control_eligible"): "false",
+            ("gnss_receiver", "raw_pps_control_eligible"): "false",
+            ("gnss_receiver", "control_eligible"): "false",
+        }
+    )
+
+    readiness = evaluate_prewrite_readiness(
+        health,
+        expected_identity=IDENTITY,
+        planned_live_stimulus_code=0xA808,
+        active_row_count=0,
+        dac_row_count=0,
+    )
+
+    assert readiness.ready is False
+    assert any(
+        "gnss_receiver.identity_epoch='2'" in item
+        for item in readiness.mismatches
+    )
+    assert any(
+        "gnss_receiver.control_eligible='false'" in item
+        for item in readiness.mismatches
+    )
+
+
 def test_history_allows_convergence_then_requires_a_frozen_value() -> None:
     result = evaluate_telemetry_drop_history(
         _rows([0, 3, 3, 3]),

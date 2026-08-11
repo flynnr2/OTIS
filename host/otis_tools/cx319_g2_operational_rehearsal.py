@@ -23,7 +23,11 @@ from .contracts import CONTRACT_FIELDS
 from .cx319_g1_bundle import POLICY_PATH
 from .cx319_g2_analyze import analyze
 from .cx319_g2_bundle import _sha256_file, validate_proposal
-from .cx319_g2_contract import canonical_sha256, normal_command_allowed
+from .cx319_g2_contract import (
+    CONTRACT_ID,
+    canonical_sha256,
+    normal_command_allowed,
+)
 from .cx319_g2_runtime_contract import canonical_prewrite_fixture
 from .cx319_g2_supervisor import create_supervisor
 from .evidence_index import package_identity, register_package, validate_index
@@ -407,6 +411,22 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             telemetry_rows,
         )
         supervisor._check_fail_static_health(health)
+        epoch_2_health = dict(health)
+        epoch_2_health.update(
+            {
+                ("gnss_receiver", "identity_epoch"): "2",
+                ("gnss_receiver", "identity_stable"): "false",
+                ("gnss_receiver", "metadata_control_eligible"): "false",
+                ("gnss_receiver", "raw_pps_control_eligible"): "false",
+                ("gnss_receiver", "control_eligible"): "false",
+            }
+        )
+        command_count_before_epoch_2 = len(commands)
+        supervisor._maybe_start_or_arm(epoch_2_health)
+        epoch_2_rejected_before_setup = (
+            len(commands) == command_count_before_epoch_2
+            and not supervisor._prewrite_readiness(epoch_2_health).ready
+        )
         supervisor._maybe_start_or_arm(health)
         _write_arm_fixture(run_dir)
         health.update(
@@ -474,7 +494,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     )
     transcript = {
         "schema_version": 1,
-        "contract_id": "cx319_g2_leg_a_outcome_contract_v1",
+        "contract_id": CONTRACT_ID,
         "programme_id": "cx319_stabilized_tight_deadband",
         "gate": "G2",
         "leg": "A",
@@ -533,6 +553,14 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": post_attach_increment_rejected,
+        },
+        "gnss_prewrite": {
+            "identity_epoch": 1,
+            "identity_stable": True,
+            "metadata_control_eligible": True,
+            "raw_pps_control_eligible": True,
+            "control_eligible": True,
+            "epoch_2_rejected_before_setup": epoch_2_rejected_before_setup,
         },
         "transport_fault": {
             "normal_path_saturated": True,

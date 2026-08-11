@@ -31,13 +31,15 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_v7_qualification_deadline_nonpass"
+    assert successor["state"] == (
+        "g2_cross_surface_recovery_implemented_clean_build_pending"
+    )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "retained_g2_v7_failed_analysis_and_registered_evidence"
+        "offline_recovery_only_after_g2_v7_failed_analysis"
     )
     assert successor["next_gate"] == (
-        "operator_decision_after_gnss_identity_prewrite_escape_review"
+        "fresh_clean_firmware_build_and_g1_requalification_readiness"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -273,6 +275,25 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "dac_writes": 1,
         "control_arms": 0,
         "automatic_corrections": 0,
+    }
+    assert successor["g2_cross_surface_recovery"] == {
+        "cause": (
+            "dual_core_busy_serial_transport_early_return_starved_gnss_rx_"
+            "and_manufactured_identity_epoch_2"
+        ),
+        "firmware_recovery": (
+            "bounded_gnss_rx_service_precedes_serial_transport_early_return"
+        ),
+        "host_recovery": (
+            "prewrite_requires_exact_epoch_1_gnss_and_pps_control_authority"
+        ),
+        "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v4",
+        "outcome_contract_id": "cx319_g2_leg_a_outcome_contract_v2",
+        "full_host_test_count": 1068,
+        "full_host_tests_passed": True,
+        "fresh_g1_physical_requalification_required": True,
+        "g2_retry_authorized": False,
+        "g3_currently_authorized": False,
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",

@@ -9,7 +9,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
-CONTRACT_ID = "cx319_g2_leg_a_outcome_contract_v1"
+CONTRACT_ID = "cx319_g2_leg_a_outcome_contract_v2"
 SETUP_CODE = 0xA808
 MINIMUM_CODE = 0xA800
 MAXIMUM_CODE = 0xAB00
@@ -106,6 +106,7 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
     authority = transcript.get("authority", {})
     terminal = transcript.get("terminal", {})
     host_attach = transcript.get("host_attach_telemetry", {})
+    gnss_prewrite = transcript.get("gnss_prewrite", {})
     bounded_nonpass = terminal.get("result") == "bounded_nonpass"
 
     checks = {
@@ -213,6 +214,14 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             )
             is True
             and host_attach.get("post_attach_increment_rejected") is True
+        ),
+        "gnss_identity_and_control_authority_exact_before_setup": (
+            gnss_prewrite.get("identity_epoch") == 1
+            and gnss_prewrite.get("identity_stable") is True
+            and gnss_prewrite.get("metadata_control_eligible") is True
+            and gnss_prewrite.get("raw_pps_control_eligible") is True
+            and gnss_prewrite.get("control_eligible") is True
+            and gnss_prewrite.get("epoch_2_rejected_before_setup") is True
         ),
         "obstruction_priority_abort_and_owner_invariants": (
             transport.get("normal_path_saturated") is True

@@ -28,7 +28,11 @@ reference control eligibility false; the host pre-write gate nevertheless
 allowed the one exact setup stimulus. No arm or automatic correction occurred.
 The failed analysis and registered evidence retire v7 and leave offline
 preparation as the only permitted operation. G3 and its conditional
-upper-profile flash are blocked because G2 did not pass.
+upper-profile flash are blocked because G2 did not pass. The cross-surface
+recovery now services GNSS input ahead of the busy serial-output early return
+and requires exact epoch-1 GNSS/PPS authority in the host pre-write gate. A
+fresh clean firmware build and physical no-write G1 requalification must
+precede any G2 retry proposal.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
