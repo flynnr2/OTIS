@@ -78,6 +78,9 @@ HOST_TOOL_PATHS = {
     "supervisor": Path(__file__).with_name("cx319_g1_supervisor.py"),
     "analyzer": Path(__file__).with_name("cx319_g1_analyze.py"),
     "runtime_contract": Path(__file__).with_name("cx319_runtime_contract.py"),
+    "host_attach_contract": Path(__file__).with_name(
+        "cx319_host_attach_contract.py"
+    ),
     "capture": Path(__file__).with_name("capture_device.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("cx317_abort_path.py"),
@@ -104,6 +107,7 @@ FROZEN_V1_HOST_TOOL_NAMES = frozenset(
         "supervisor",
     }
 )
+CURRENT_HOST_TOOL_NAMES = frozenset(HOST_TOOL_PATHS)
 
 
 def _utc_now() -> str:
@@ -584,9 +588,15 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     ):
         raise ValueError("CX319 G1 frozen policy or authority identity is invalid")
     tools = bundle.get("host_tools")
+    runtime_contract_id = bundle.get("runtime_contract", {}).get("id")
+    expected_tool_names = {
+        "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
+        RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
+    }.get(runtime_contract_id)
     if (
         not isinstance(tools, dict)
-        or set(tools) != FROZEN_V1_HOST_TOOL_NAMES
+        or expected_tool_names is None
+        or set(tools) != expected_tool_names
         or not all(_binding_well_formed(item) for item in tools.values())
     ):
         raise ValueError("CX319 G1 frozen host tool binding is incomplete")

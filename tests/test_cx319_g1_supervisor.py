@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pytest
@@ -92,3 +93,46 @@ def test_supervisor_replay_identity_is_current_policy() -> None:
     assert supervisor.tight_deadband_policy_sha256 == (
         "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70"
     )
+
+
+def test_g1_freezes_the_same_stable_host_attach_baseline_as_g2(
+    tmp_path: Path,
+) -> None:
+    supervisor = Cx319G1Supervisor.__new__(Cx319G1Supervisor)
+    supervisor.run_dir = tmp_path
+    supervisor.state = {
+        "telemetry_drop_candidate": None,
+        "telemetry_drop_candidate_observations": 0,
+        "telemetry_drop_last_status_seq": 0,
+        "telemetry_drop_baseline": None,
+        "telemetry_drop_baseline_status_seq": None,
+    }
+    supervisor._event = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    supervisor._save = lambda: None  # type: ignore[method-assign]
+    path = tmp_path / "csv/health.csv"
+    path.parent.mkdir()
+    fields = (
+        "record_type",
+        "status_seq",
+        "component",
+        "status_key",
+        "status_value",
+    )
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for sequence, value in enumerate((0, 3, 3), start=1):
+            writer.writerow(
+                {
+                    "record_type": "STS",
+                    "status_seq": str(sequence),
+                    "component": "dual_core",
+                    "status_key": "telemetry_dropped",
+                    "status_value": str(value),
+                }
+            )
+
+    supervisor._observe_telemetry_drop_baseline()
+
+    assert supervisor.state["telemetry_drop_baseline"] == 3
+    assert supervisor.state["telemetry_drop_baseline_status_seq"] == 3

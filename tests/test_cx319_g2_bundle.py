@@ -60,6 +60,26 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     assert proposal["authority"]["effective"] is False
 
 
+def test_g2_rejects_historical_g1_contract_before_reading_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        cx319_g2_bundle,
+        "validate_run_manifest",
+        lambda path: {
+            "cx319": {
+                "leg": "A",
+                "runtime_contract": {
+                    "id": "cx319_g1_prewrite_runtime_contract_v1"
+                },
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match="current GNSS-bearing G1 contract"):
+        cx319_g2_bundle.validate_g1_pass(tmp_path)
+
+
 def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -78,9 +78,16 @@ repairs both sides of the escape:
 4. the physical analyzer binds the exact passing pre-write contract state to a
    setup timestamp.
 
-The full host suite passes 1,068 tests with this recovery. Because firmware
-changed, the old G1 physical evidence cannot qualify the new binary. A clean
-exact lower-profile build, a fresh no-write G1 bundle and physical G1
+The fresh G1 contract is also strengthened. G1 pre-write runtime contract v2
+requires the same exact epoch-1 GNSS/PPS eligibility throughout the no-write
+qualification and applies the established two-observation frozen host-attach
+telemetry baseline. Its analyzer proves that baseline did not increase. This
+means the firmware requalification will directly discriminate the v7 failure
+mode instead of merely showing that the replacement binary ran.
+
+The full host suite passes 1,074 tests with this recovery and G1 gate. Because
+firmware changed, the old G1 physical evidence cannot qualify the new binary.
+A clean exact lower-profile build, a fresh no-write G1 bundle and physical G1
 requalification are required before any new G2 proposal or retry authority.
 
 The recovery does not grant a flash, G1 physical run or G2 retry. G3 remains

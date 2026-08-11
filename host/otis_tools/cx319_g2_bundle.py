@@ -35,6 +35,9 @@ from .cx319_g2_runtime_contract import (
     FRESH_RESTART_MAXIMUM_UPTIME_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
 )
+from .cx319_runtime_contract import (
+    RUNTIME_CONTRACT_ID as G1_RUNTIME_CONTRACT_ID,
+)
 from .evidence_index import package_identity
 from .programme_status import (
     OFFLINE_PREPARATION,
@@ -57,6 +60,9 @@ HOST_TOOL_PATHS = {
     "supervisor": Path(__file__).with_name("cx319_g2_supervisor.py"),
     "runtime_contract": Path(__file__).with_name(
         "cx319_g2_runtime_contract.py"
+    ),
+    "host_attach_contract": Path(__file__).with_name(
+        "cx319_host_attach_contract.py"
     ),
     "outcome_contract": Path(__file__).with_name("cx319_g2_contract.py"),
     "preflight": Path(__file__).with_name("cx319_g2_preflight.py"),
@@ -138,6 +144,11 @@ def validate_g1_pass(run_dir: Path) -> dict[str, Any]:
     manifest = validate_run_manifest(run_dir / "run_manifest.json")
     if manifest.get("cx319", {}).get("leg") != "A":
         raise ValueError("G2 requires a passed G1 Leg A source")
+    if (
+        manifest.get("cx319", {}).get("runtime_contract", {}).get("id")
+        != G1_RUNTIME_CONTRACT_ID
+    ):
+        raise ValueError("G2 requires the current GNSS-bearing G1 contract")
     analysis_path = run_dir / G1_ANALYSIS
     seal_path = run_dir / G1_SEAL
     analysis = _read(analysis_path, "G1 analysis")

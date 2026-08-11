@@ -110,7 +110,9 @@ def test_bundle_rejects_write_authority_even_with_recomputed_digest(
     path, _ = _create_bundle(tmp_path, monkeypatch)
     value = json.loads(path.read_text(encoding="utf-8"))
     value["authority"]["dac_value_write"] = True
-    unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
+    unsigned = {
+        key: item for key, item in value.items() if key != "bundle_sha256"
+    }
     value["bundle_sha256"] = bundle_tool._canonical_sha256(unsigned)
     path.write_text(json.dumps(value), encoding="utf-8")
 
@@ -137,6 +139,24 @@ def test_closed_run_manifest_uses_its_frozen_bundle_not_current_worktree(
         run_dir / "run_manifest.json"
     ) == manifest
     with pytest.raises(ValueError, match="clean repository"):
+        bundle_tool.validate_bundle(path)
+
+
+def test_historical_v1_frozen_bundle_remains_structurally_valid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, _ = _create_bundle(tmp_path, monkeypatch)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["runtime_contract"]["id"] = (
+        "cx319_g1_prewrite_runtime_contract_v1"
+    )
+    value["host_tools"].pop("host_attach_contract")
+    unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
+    value["bundle_sha256"] = bundle_tool._canonical_sha256(unsigned)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    assert bundle_tool.validate_frozen_bundle(path) == value
+    with pytest.raises(ValueError, match="host tool binding"):
         bundle_tool.validate_bundle(path)
 
 

@@ -31,8 +31,10 @@ preparation as the only permitted operation. G3 and its conditional
 upper-profile flash are blocked because G2 did not pass. The cross-surface
 recovery now services GNSS input ahead of the busy serial-output early return
 and requires exact epoch-1 GNSS/PPS authority in the host pre-write gate. A
-fresh clean firmware build and physical no-write G1 requalification must
-precede any G2 retry proposal.
+fresh G1 runtime gate now requires that same GNSS/PPS state throughout the
+no-write qualification and shares the frozen host-attach telemetry-baseline
+semantics already used by G2. A fresh clean firmware build and physical
+no-write G1 requalification must precede any G2 retry proposal.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).

@@ -32,7 +32,7 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "g2_cross_surface_recovery_implemented_clean_build_pending"
+        "g2_cross_surface_recovery_g1_gate_hardened_clean_build_pending"
     )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
@@ -287,9 +287,13 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "host_recovery": (
             "prewrite_requires_exact_epoch_1_gnss_and_pps_control_authority"
         ),
+        "g1_runtime_contract_id": "cx319_g1_prewrite_runtime_contract_v2",
         "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v4",
         "outcome_contract_id": "cx319_g2_leg_a_outcome_contract_v2",
-        "full_host_test_count": 1068,
+        "host_attach_contract": (
+            "two_stable_observations_then_frozen_no_increment"
+        ),
+        "full_host_test_count": 1074,
         "full_host_tests_passed": True,
         "fresh_g1_physical_requalification_required": True,
         "g2_retry_authorized": False,

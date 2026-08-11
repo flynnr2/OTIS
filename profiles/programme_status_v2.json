@@ -17,7 +17,7 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g2_cross_surface_recovery_implemented_clean_build_pending",
+      "state": "g2_cross_surface_recovery_g1_gate_hardened_clean_build_pending",
       "allowed_operations": [
         "offline_preparation"
       ],
@@ -155,9 +155,11 @@
         "cause": "dual_core_busy_serial_transport_early_return_starved_gnss_rx_and_manufactured_identity_epoch_2",
         "firmware_recovery": "bounded_gnss_rx_service_precedes_serial_transport_early_return",
         "host_recovery": "prewrite_requires_exact_epoch_1_gnss_and_pps_control_authority",
+        "g1_runtime_contract_id": "cx319_g1_prewrite_runtime_contract_v2",
         "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v4",
         "outcome_contract_id": "cx319_g2_leg_a_outcome_contract_v2",
-        "full_host_test_count": 1068,
+        "host_attach_contract": "two_stable_observations_then_frozen_no_increment",
+        "full_host_test_count": 1074,
         "full_host_tests_passed": true,
         "fresh_g1_physical_requalification_required": true,
         "g2_retry_authorized": false,

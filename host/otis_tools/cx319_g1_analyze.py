@@ -45,8 +45,10 @@ from .cx319_g1_bundle import (
 )
 from .cx319_g1_supervisor import load_cx319_spec
 from .cx319_runtime_contract import (
+    RUNTIME_CONTRACT_ID,
     environment_streams_ready,
     evaluate_prewrite_readiness,
+    evaluate_telemetry_drop_history,
 )
 from .evidence import EVIDENCE_MANIFEST
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
@@ -215,12 +217,25 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "profile_identity": spec.profile,
         **identities,
     }
+    supervisor_state = json.loads((run_dir / SUPERVISOR_STATE).read_text())
+    telemetry_drop_baseline = int(
+        supervisor_state["telemetry_drop_baseline"]
+    )
+    telemetry_drop_baseline_status_seq = int(
+        supervisor_state["telemetry_drop_baseline_status_seq"]
+    )
     readiness = evaluate_prewrite_readiness(
         health,
         expected_identity=identity,
         planned_live_stimulus_code=spec.start_code,
         active_row_count=len(active_rows),
         dac_row_count=len(dac_rows),
+        telemetry_drop_baseline=telemetry_drop_baseline,
+    )
+    telemetry_drop_history = evaluate_telemetry_drop_history(
+        [*health_rows, *transition_health_rows],
+        frozen_baseline=telemetry_drop_baseline,
+        frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
@@ -228,7 +243,6 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     capture_closure = _capture_closure(
         run_dir, capture_state, markers, allowed_emergency_aborts=1
     )
-    supervisor_state = json.loads((run_dir / SUPERVISOR_STATE).read_text())
     supervisor_events = [
         json.loads(line)
         for line in (run_dir / SUPERVISOR_EVENTS)
@@ -362,8 +376,10 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and supervisor_state.get("latest_prewrite_readiness", {}).get(
                 "contract_id"
             )
-            == "cx319_g1_prewrite_runtime_contract_v1"
-            and readiness.contract_id == "cx319_g1_prewrite_runtime_contract_v1"
+            == RUNTIME_CONTRACT_ID
+            and readiness.contract_id == RUNTIME_CONTRACT_ID
+            and readiness.ready
+            and telemetry_drop_history["exact"] is True
             and _post_abort_health_exact(health, transition_health)
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
@@ -457,6 +473,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             ),
         },
         "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
+        "telemetry_drop_history": telemetry_drop_history,
         "capture_closure": capture_closure,
         "contract_validation": validations,
         "tight_deadband_replay": tdb_replay.as_dict(),
