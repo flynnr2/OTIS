@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_retires_g2_v6_after_prewrite_telemetry_stop() -> None:
+def test_tracked_status_has_non_authorizing_g2_v7_offline_readiness() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,8 +31,12 @@ def test_tracked_status_retires_g2_v6_after_prewrite_telemetry_stop() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g2_v6_prewrite_telemetry_stop_recovery_required"
+    assert successor["state"] == "g2_v7_offline_ready_awaiting_exact_authority"
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["authority"] == "g2_v7_proposed_not_authorized"
+    assert successor["next_gate"] == (
+        "exact_g2_v7_operator_authority_and_fresh_board_restart"
+    )
     assert successor["operator_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -164,6 +168,37 @@ def test_tracked_status_retires_g2_v6_after_prewrite_telemetry_stop() -> None:
         "dac_writes": 0,
         "control_arms": 0,
         "automatic_corrections": 0,
+    }
+    assert successor["completed_g2_v7_offline_evidence"] == {
+        "source_revision": "5582ea1aee3084d01f2a69184982e574b0f7f783",
+        "proposal_bundle_sha256": (
+            "f92f41854306bba103afd8ef0fe1aa56"
+            "0360aa0da81c94547624165028b68dd4"
+        ),
+        "proposal_file_sha256": (
+            "5a58381efbdb4636df7f0ac59ae40a728"
+            "0490b67bab65c90f363c487ffe9b416"
+        ),
+        "preflight_file_sha256": (
+            "7a82247d504f3c30bda3fa77b21e2fa8"
+            "426b9746881e4ca186e06394521bffb4"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "825c7677e88ada1f86644ab95503341ae"
+            "7ab90d57d50f114087380014e00a612"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "549d93a5227482515a5824a044ff6b2e"
+            "7a7530473074c42a0e33f6c52c179b43"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "be8973fb35b33c2015887d8af81e2329"
+            "bd8e3400c5266afbf3a148c92836ec0c"
+        ),
+        "registration_path_exercised": True,
+        "ordinary_telemetry_attach_baseline_stable_observations": 2,
+        "post_attach_ordinary_telemetry_increment_forbidden": True,
+        "absolute_non_telemetry_health_gates": True,
     }
     assert successor["forbidden_until_next_gate"] == [
         "g1_physical_repeat",

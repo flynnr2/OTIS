@@ -20,7 +20,9 @@ are retired. The replacement path now distinguishes a cumulative pre-host
 ordinary-telemetry count from post-attachment health: it freezes a stable
 read-only attachment baseline and forbids any later increment, while retaining
 absolute evidence, capture, partition and control gates. Neither event is a G2
-scientific result, and G3 remains blocked.
+scientific result. The exact v7 replacement has passed structural preflight and
+the accelerated operational-path rehearsal but is not authorized; G3 remains
+blocked.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -63,3 +65,7 @@ in [`08_G2_V6_LIVE_AUTHORITY.md`](08_G2_V6_LIVE_AUTHORITY.md).
 The retained v6 zero-action stop, firmware/host diagnosis and stronger recovery
 boundary are recorded in
 [`09_G2_V6_PREWRITE_TELEMETRY_STOP.md`](09_G2_V6_PREWRITE_TELEMETRY_STOP.md).
+
+The exact non-authorizing v7 replacement, attachment-baseline contract and
+passing offline evidence are recorded in
+[`10_G2_V7_ATTACHMENT_BASELINE_OFFLINE_READINESS.md`](10_G2_V7_ATTACHMENT_BASELINE_OFFLINE_READINESS.md).
