@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_g1_pass_and_returns_to_offline_scope() -> None:
+def test_tracked_status_records_g2_offline_readiness_without_live_authority() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,7 +31,7 @@ def test_tracked_status_records_g1_pass_and_returns_to_offline_scope() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g1_passed_g2_offline_preparation"
+    assert successor["state"] == "g2_offline_ready_awaiting_live_authority"
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["completed_g1_evidence"] == {
         "run_id": "no_write_leg_a_20260811T133632Z",
@@ -46,6 +46,28 @@ def test_tracked_status_records_g1_pass_and_returns_to_offline_scope() -> None:
         "evidence_content_sha256": (
             "cd17f90587a321ed0ddd6c40db76c0be"
             "ffc8981c68ef7afdd8e46bbc1549432d"
+        ),
+    }
+    assert successor["completed_g2_offline_evidence"] == {
+        "proposal_bundle_sha256": (
+            "1ca5887a693476bc965d4409d1b2e0b7"
+            "927231697024516006e7870dc4f8358f"
+        ),
+        "preflight_file_sha256": (
+            "14113a6cfa0b6f69b5ab03d6ecfffa6"
+            "a8768da91ca695067417168b81289bc57"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "6f8ddbae6c09b2a228bd9a28c177e816"
+            "3e72a52eee1571c850a9eed9916912a5"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "07eb9aee10c266bcbe3808cbb737378b6"
+            "694bca336c86a0ae4b39893fd4f7111"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "97cd10caacb71aa217695ea5c18f1579d"
+            "982355ad380a27edc8f70b9eea250a2"
         ),
     }
     assert successor["forbidden_until_next_gate"] == [
