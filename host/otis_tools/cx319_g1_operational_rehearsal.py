@@ -394,7 +394,6 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
     )
     snapshot = create_evidence_snapshot(replay_run)
     seal_value = seal(replay_run, analysis)
-    _atomic_new_json(replay_run / SEAL_PATH, seal_value)
     with tempfile.TemporaryDirectory(
         prefix="cx319-g1-registration-rehearsal-"
     ) as raw_temp:
