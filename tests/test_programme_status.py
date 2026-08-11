@@ -7,6 +7,7 @@ import pytest
 
 from host.otis_tools.programme_status import (
     CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+    CX319_G2_LIVE_LEG,
     OFFLINE_PREPARATION,
     ProgrammeExecutionBlocked,
     load_programme_status,
@@ -67,6 +68,10 @@ def test_tracked_status_records_g1_pass_and_returns_to_offline_scope() -> None:
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband",
             CX319_G1_NO_WRITE_BENCH_REHEARSAL,
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband", CX319_G2_LIVE_LEG
         )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")

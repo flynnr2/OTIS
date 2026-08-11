@@ -470,7 +470,13 @@ class Stage5Supervisor(Stage7Supervisor):
             limited_delta = int(preview.get("limited_delta_codes") or "0")
         except ValueError:
             return
-        if preview.get("preview_available") != "true" or limited_delta == 0:
+        preview_available = preview.get("preview_available") == "true"
+        if preview_available and limited_delta == 0:
+            return
+        if (
+            not preview_available
+            and preview.get("decision_reason_code") != "decision_cadence_hold"
+        ):
             return
         if tdb is None or tdb.get("frequency_controller_eligible") != "true":
             return

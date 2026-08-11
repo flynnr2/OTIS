@@ -155,6 +155,60 @@ def _write_tight_entry(supervisor: Stage5Supervisor) -> None:
         writer.writerows(rows)
 
 
+def _write_outside_cadence_hold(supervisor: Stage5Supervisor) -> None:
+    tdb_path = supervisor.run_dir / "csv/tight_deadband_decisions_v1.csv"
+    with tdb_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=CONTRACT_FIELDS["tight_deadband_decisions_v1"]
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "record_type": "TDB",
+                "schema_version": "1",
+                "decision_sequence": "0",
+                "estimate_id": "est:cx317:selected600:000003",
+                "decision_timestamp_ticks": "57627748416",
+                "time_domain": "rp2040_timer0",
+                "capture_session": "1",
+                "dac_epoch": "1",
+                "integer_edge_error_counts": "-4",
+                "absolute_edge_error_counts": "4",
+                "state_before": "REQUALIFY_OUTSIDE",
+                "state_after": "OUTSIDE",
+                "entry_counter": "0",
+                "release_counter": "0",
+                "transition": "true",
+                "frequency_controller_eligible": "true",
+                "requalified": "false",
+                "requalification_reason": "",
+                "historical_v2_inside": "false",
+                "symmetric_two_count_inside": "false",
+                "policy_id": "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
+                "policy_sha256": TIGHT_DEADBAND_POLICY_SHA256,
+                "actionable": "false",
+                "actuation_authorized": "false",
+                "authorization_consumed": "false",
+                "reason_codes": "outside_loose_evidence",
+            }
+        )
+    controls = supervisor.run_dir / "csv/control_previews_v1.csv"
+    controls.write_text(
+        "decision_timestamp_ticks,preview_available,decision_reason_code,"
+        "est_input_ref,decision_id,limited_delta_codes,control_state\n"
+        "38427843600,true,preview_available_observe_only,"
+        "est:cx317:selected600:000001,ctl:1,21,"
+        "LOCKED_PREVIEW\n"
+        "48027796864,false,decision_cadence_hold,"
+        "est:cx317:selected600:000002,ctl:2,,"
+        "LOCKED_PREVIEW\n"
+        "57627748416,false,decision_cadence_hold,"
+        "est:cx317:selected600:000003,ctl:3,,"
+        "LOCKED_PREVIEW\n",
+        encoding="utf-8",
+    )
+
+
 def _utc(epoch: float) -> str:
     return (
         datetime.fromtimestamp(epoch, timezone.utc)
@@ -288,6 +342,37 @@ def test_live_pass_requires_expected_direction_response_and_tight_entry(
 
     assert supervisor.state["tight_entry_seen"] is True
     assert supervisor.state["terminal"]["result"] == "healthy_stop"
+
+
+def test_live_arms_before_next_cadence_after_two_hold_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    _write_outside_cadence_hold(supervisor)
+    supervisor.state.update(
+        manual_start_sent=True,
+        setup_confirmed_utc=_utc(1_800_000_000.0),
+        qualification_started_utc=_utc(1_800_000_100.0),
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = _health(
+        supervisor,
+        manual_start_confirmed="true",
+        arm_eligible="true",
+        selected_interval_count="0",
+        uptime_s="3600",
+    )
+
+    supervisor._maybe_start_or_arm(health)
+    health[("cx317_active", "selected_interval_count")] = "520"
+    health[("cx317_active", "uptime_s")] = "4120"
+    supervisor._maybe_start_or_arm(health)
+
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE ARM 1 ")
+    assert supervisor.state["arm_pending"] is True
 
 
 def test_opposite_only_leg_stops_nonpass_at_frozen_endpoint(tmp_path: Path) -> None:
