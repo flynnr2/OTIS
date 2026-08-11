@@ -39,6 +39,7 @@ from .cx319_g2_contract import (
 from .cx319_g2_runtime_contract import RUNTIME_CONTRACT_ID
 from .programme_status import (
     CX319_G2_LIVE_LEG,
+    ProgrammeExecutionBlocked,
     require_programme_operation_allowed,
 )
 from .run_paths import default_csv_files
@@ -569,16 +570,29 @@ def main(argv: list[str] | None = None) -> int:
     validate = commands.add_parser("validate")
     validate.add_argument("activation", type=Path)
     args = parser.parse_args(argv)
-    if args.command == "activate":
-        value = create_activation(
-            proposal_path=args.proposal,
-            operational_rehearsal_path=args.operational_rehearsal,
-            serial_device=args.serial_device,
-            operator_instruction_ref=args.operator_instruction_ref,
-            output_path=args.output,
-        )
-    else:
-        value, _ = validate_activation(args.activation)
+    try:
+        if args.command == "activate":
+            value = create_activation(
+                proposal_path=args.proposal,
+                operational_rehearsal_path=args.operational_rehearsal,
+                serial_device=args.serial_device,
+                operator_instruction_ref=args.operator_instruction_ref,
+                output_path=args.output,
+            )
+        else:
+            value, _ = validate_activation(args.activation)
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        KeyError,
+        OSError,
+        ProgrammeExecutionBlocked,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.SubprocessError,
+    ) as exc:
+        parser.error(str(exc))
     print(json.dumps(value, indent=2, sort_keys=True))
     return 0
 

@@ -15,6 +15,7 @@ from host.otis_tools.cx319_g2_live import (
     OPERATIONAL_REHEARSAL_SEAL,
     TOOL_ID,
     create_activation,
+    main,
     validate_frozen_activation,
     validate_operational_rehearsal,
 )
@@ -99,6 +100,32 @@ def test_activation_is_blocked_before_any_input_or_hardware_lookup(
         )
 
     assert not (tmp_path / "must-not-exist.json").exists()
+
+
+def test_activation_cli_reports_the_block_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "activate",
+                "--proposal",
+                str(tmp_path / "missing-proposal.json"),
+                "--operational-rehearsal",
+                str(tmp_path / "missing-rehearsal.json"),
+                "--serial-device",
+                "/dev/not-opened",
+                "--operator-instruction-ref",
+                "not-authorized",
+                "--output",
+                str(tmp_path / "must-not-exist.json"),
+            ]
+        )
+
+    assert exc.value.code == 2
+    error = capsys.readouterr().err
+    assert "g2_live_leg" in error
+    assert "Traceback" not in error
 
 
 def test_activation_consumer_accepts_the_exact_accelerated_rehearsal_seal(
