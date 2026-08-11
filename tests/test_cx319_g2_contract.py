@@ -130,6 +130,35 @@ def test_g2_outcome_contract_accepts_the_complete_accelerated_path() -> None:
     assert all(result["checks"].values())
 
 
+def test_g2_outcome_contract_accepts_the_complete_physical_path() -> None:
+    transcript = deepcopy(_transcript())
+    transcript["mode"] = "physical_frequency_only_live"
+    transcript["authority"] = {"effective": True}
+    transcript["hardware_operations"] = {
+        "serial_opens": 1,
+        "firmware_flashes": 0,
+        "dac_writes": 2,
+        "control_arms": 1,
+    }
+    transcript["commands"] = [
+        item
+        for item in transcript["commands"]
+        if item["path"] != "emergency"
+    ]
+    transcript["closure"] = {
+        "analyzer_ran": True,
+        "seal_created": True,
+        "registration_completed": True,
+        "clean_physical_close": True,
+    }
+    transcript["terminal"] = {"result": "passed"}
+
+    result = evaluate(transcript)
+
+    assert result["status"] == "passed"
+    assert all(result["checks"].values())
+
+
 def test_g2_outcome_contract_rejects_wrong_direction() -> None:
     transcript = deepcopy(_transcript())
     transcript["automatic_transactions"][0]["delta_codes"] = -21  # type: ignore[index]

@@ -114,19 +114,72 @@ def create_supervisor(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-spec", type=Path, required=True)
+    parser.add_argument("--run-spec", type=Path)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--run-dir", type=Path)
+    parser.add_argument("--command-fifo", type=Path)
+    parser.add_argument("--emergency-command-fifo", type=Path)
+    parser.add_argument("--abort-fifo", type=Path)
+    parser.add_argument("--expected-build-identity")
+    parser.add_argument("--duration-s", type=float)
+    parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
     try:
         require_programme_operation_allowed(PROGRAMME_ID, G2_LIVE_OPERATION)
     except ProgrammeExecutionBlocked as exc:
         parser.error(str(exc))
-    value = json.loads(args.run_spec.read_text(encoding="utf-8"))
-    if value.get("authority", {}).get("effective") is not True:
-        parser.error("CX319 G2 run spec is not an effective operator authority")
-    parser.error(
-        "CX319 G2 physical runner is intentionally unavailable until the "
-        "authorized exact-bundle activation step is implemented"
+    if args.run_spec is not None:
+        value = json.loads(args.run_spec.read_text(encoding="utf-8"))
+        if value.get("authority", {}).get("effective") is not True:
+            parser.error("CX319 G2 run spec is not an effective operator authority")
+        parser.error("use the exact activated run manifest through cx319_g2_run")
+    required = {
+        "manifest": args.manifest,
+        "run_dir": args.run_dir,
+        "command_fifo": args.command_fifo,
+        "emergency_command_fifo": args.emergency_command_fifo,
+        "abort_fifo": args.abort_fifo,
+        "expected_build_identity": args.expected_build_identity,
+    }
+    missing = sorted(name for name, value in required.items() if value is None)
+    if missing:
+        parser.error("missing exact G2 supervisor arguments: " + ", ".join(missing))
+    from .cx319_g2_live import LIVE_STAGE, validate_run_manifest
+
+    manifest = validate_run_manifest(args.manifest)
+    fifo_paths = {
+        args.command_fifo.absolute(),
+        args.emergency_command_fifo.absolute(),
+        args.abort_fifo.absolute(),
+    }
+    build_identity = (
+        manifest["firmware"]["source_sha256"]
+        + ":"
+        + manifest["firmware"]["configuration_sha256"]
     )
+    if (
+        len(fifo_paths) != 3
+        or args.manifest.resolve() != (args.run_dir / "run_manifest.json").resolve()
+        or manifest.get("stage") != LIVE_STAGE
+        or manifest.get("cx319", {}).get("leg") != "A"
+        or args.expected_build_identity != build_identity
+    ):
+        parser.error("manifest, FIFOs, leg, or build identity differs")
+    supervisor = create_supervisor(
+        run_dir=args.run_dir,
+        command_fifo=args.command_fifo,
+        emergency_command_fifo=args.emergency_command_fifo,
+        abort_fifo=args.abort_fifo,
+        expected_build_identity=args.expected_build_identity,
+        duration_s=args.duration_s,
+        console_events=args.console_events,
+    )
+    try:
+        return supervisor.run()
+    except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
+        supervisor._event("cx319_g2_supervisor_fault", error=str(exc))
+        supervisor._abort(f"cx319_g2_supervisor_fault:{exc}")
+        return 2
 
 
 if __name__ == "__main__":

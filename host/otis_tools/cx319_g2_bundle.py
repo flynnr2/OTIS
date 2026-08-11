@@ -60,6 +60,9 @@ HOST_TOOL_PATHS = {
         "cx319_g2_operational_rehearsal.py"
     ),
     "analyzer": Path(__file__).with_name("cx319_g2_analyze.py"),
+    "live_activation": Path(__file__).with_name("cx319_g2_live.py"),
+    "live_runner": Path(__file__).with_name("cx319_g2_run.py"),
+    "live_analyzer": Path(__file__).with_name("cx319_g2_live_analyze.py"),
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "evidence_index": Path(__file__).with_name("evidence_index.py"),
 }
@@ -260,6 +263,7 @@ def create_proposal(*, g1_run_dir: Path, output_path: Path) -> dict[str, Any]:
             "accelerated_operational_path_rehearsal_required": True,
             "physical_qualification_requires_separate_authority": True,
             "analyzer_seal_and_registration_required": True,
+            "physical_runner_and_live_analyzer_bound": True,
         },
     }
     value = {**unsigned, "bundle_sha256": canonical_sha256(unsigned)}
@@ -267,7 +271,7 @@ def create_proposal(*, g1_run_dir: Path, output_path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_proposal(path: Path) -> dict[str, Any]:
+def validate_frozen_proposal(path: Path) -> dict[str, Any]:
     path = path.resolve()
     value = _read(path, "G2 proposal bundle")
     claimed = value.get("bundle_sha256")
@@ -281,9 +285,14 @@ def validate_proposal(path: Path) -> dict[str, Any]:
         or claimed != canonical_sha256(unsigned)
     ):
         raise ValueError("G2 proposal identity, authority, or digest differs")
-    commit, state = _git_identity()
-    if state != "clean" or value.get("source_revision") != commit:
-        raise ValueError("G2 proposal differs from the current clean source")
+    return value
+
+
+def validate_proposal(path: Path) -> dict[str, Any]:
+    value = validate_frozen_proposal(path)
+    _, state = _git_identity()
+    if state != "clean":
+        raise ValueError("G2 proposal validation requires a clean source state")
     if value.get("host_tools") != {
         name: _binding(tool_path) for name, tool_path in HOST_TOOL_PATHS.items()
     }:

@@ -48,6 +48,9 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     proposal = cx319_g2_bundle.create_proposal(
         g1_run_dir=tmp_path / "g1", output_path=proposal_path
     )
+    # A documentation-only descendant commit does not invalidate an otherwise
+    # identical operational bundle; current tool and policy bytes remain bound.
+    monkeypatch.setattr(cx319_g2_bundle, "_git_identity", lambda: ("e" * 40, "clean"))
     assert cx319_g2_bundle.validate_proposal(proposal_path) == proposal
 
     result = cx319_g2_preflight.evaluate(proposal_path)

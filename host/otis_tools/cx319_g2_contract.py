@@ -51,6 +51,9 @@ def _bool_false(value: Any) -> bool:
 
 
 def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
+    mode = transcript.get("mode")
+    offline = mode == "accelerated_offline_no_io"
+    physical = mode == "physical_frequency_only_live"
     commands = transcript.get("commands", [])
     setup = transcript.get("setup", {})
     transactions = transcript.get("automatic_transactions", [])
@@ -99,6 +102,10 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
     positive_healthy = [
         item for item in applications if int(item.get("delta_codes", 0)) > 0
     ]
+    hardware = transcript.get("hardware_operations", {})
+    authority = transcript.get("authority", {})
+    terminal = transcript.get("terminal", {})
+    bounded_nonpass = terminal.get("result") == "bounded_nonpass"
 
     checks = {
         "identity_and_mode_exact": (
@@ -108,18 +115,31 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             == "cx319_stabilized_tight_deadband"
             and transcript.get("gate") == "G2"
             and transcript.get("leg") == "A"
-            and transcript.get("mode") == "accelerated_offline_no_io"
+            and (offline or physical)
         ),
-        "no_effective_physical_authority": (
-            transcript.get("authority", {}).get("effective") is False
-            and all(
-                transcript.get("hardware_operations", {}).get(key) == 0
-                for key in (
-                    "serial_opens",
-                    "firmware_flashes",
-                    "dac_writes",
-                    "control_arms",
+        "authority_and_hardware_operations_match_mode": (
+            (
+                offline
+                and authority.get("effective") is False
+                and all(
+                    hardware.get(key) == 0
+                    for key in (
+                        "serial_opens",
+                        "firmware_flashes",
+                        "dac_writes",
+                        "control_arms",
+                    )
                 )
+            )
+            or (
+                physical
+                and authority.get("effective") is True
+                and hardware.get("serial_opens") == 1
+                and hardware.get("firmware_flashes") == 0
+                and hardware.get("dac_writes") == len(transactions) + 1
+                and isinstance(hardware.get("control_arms"), int)
+                and hardware["control_arms"] >= len(transactions)
+                and hardware["control_arms"] <= MAXIMUM_CORRECTIONS
             )
         ),
         "normal_command_envelope_exact_and_acknowledged": (
@@ -191,13 +211,34 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
         "analysis_seal_registration_path_complete": (
             closure.get("analyzer_ran") is True
             and closure.get("seal_created") is True
-            and closure.get("registration_rehearsed") is True
-            and closure.get("same_owner_rotation") is True
+            and (
+                (offline and closure.get("registration_rehearsed") is True)
+                or (physical and closure.get("registration_completed") is True)
+            )
+            and (
+                (offline and closure.get("same_owner_rotation") is True)
+                or (physical and closure.get("clean_physical_close") is True)
+            )
         ),
         "emergency_path_is_abort_only": (
-            len(emergency) == 1
-            and emergency[0].get("command") == "ACTIVE ABORT"
-            and emergency[0].get("acknowledged") is True
+            (
+                offline
+                and len(emergency) == 1
+                and emergency[0].get("command") == "ACTIVE ABORT"
+                and emergency[0].get("acknowledged") is True
+            )
+            or (
+                physical
+                and not bounded_nonpass
+                and not emergency
+            )
+            or (
+                physical
+                and bounded_nonpass
+                and len(emergency) == 1
+                and emergency[0].get("command") == "ACTIVE ABORT"
+                and emergency[0].get("acknowledged") is True
+            )
         ),
     }
     return {

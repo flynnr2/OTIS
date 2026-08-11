@@ -281,6 +281,20 @@ def test_stage5_controller_replay_binds_integer_gate_and_application_delta() -> 
         {"decision_sequence": 1, "pass": True}
     ]
 
+    for row in controls:
+        row["policy_version"] = (
+            "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1"
+        )
+    assert _controller_replay(
+        controls,
+        estimates,
+        tdb,
+        dac,
+        applications,
+        stage5_policy_sha256=stage5_hash,
+        policy_id="CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",
+    )[0] is True
+
     applications[0]["requested_delta_codes"] = "20"
     assert _controller_replay(
         controls,

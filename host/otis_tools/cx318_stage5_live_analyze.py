@@ -275,6 +275,7 @@ def _controller_replay(
     applications: list[dict[str, str]],
     *,
     stage5_policy_sha256: str,
+    policy_id: str = "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1",
 ) -> tuple[bool, dict[str, Any]]:
     """Replay Stage 5 frequency decisions and bind each requested delta."""
 
@@ -355,8 +356,7 @@ def _controller_replay(
             source is not None
             and row["time_domain"] == "rp2040_timer0"
             and row["plant_model_hash"] == policy.plant_model_hash
-            and row["policy_version"]
-            == "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1"
+            and row["policy_version"] == policy_id
             and row["config_hash"] == stage5_policy_sha256
             and row["control_state"] == _mapped_state(str(host["state"]))
             and row["previous_control_state"] == _mapped_state(previous)
