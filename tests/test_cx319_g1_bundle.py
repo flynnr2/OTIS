@@ -118,6 +118,28 @@ def test_bundle_rejects_write_authority_even_with_recomputed_digest(
         bundle_tool.validate_bundle(path)
 
 
+def test_closed_run_manifest_uses_its_frozen_bundle_not_current_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, _ = _create_bundle(tmp_path, monkeypatch)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    manifest = bundle_tool.create_run_manifest(
+        bundle_path=path,
+        run_dir=run_dir,
+        output_path=run_dir / "run_manifest.json",
+    )
+    monkeypatch.setattr(
+        bundle_tool, "_git_identity", lambda: ("9" * 40, "dirty")
+    )
+
+    assert bundle_tool.validate_run_manifest(
+        run_dir / "run_manifest.json"
+    ) == manifest
+    with pytest.raises(ValueError, match="clean repository"):
+        bundle_tool.validate_bundle(path)
+
+
 @pytest.mark.parametrize(
     ("command", "allowed"),
     [

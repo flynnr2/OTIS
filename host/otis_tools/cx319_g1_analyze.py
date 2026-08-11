@@ -34,7 +34,7 @@ from .cx318_stage5_supervisor import (
     RPH_CSV,
     TDB_CSV,
 )
-from .cx318_stage5_tight_replay import replay_tight_deadband
+from .cx318_stage5_tight_replay import replay_tight_deadband_chain
 from .cx319_g1_bundle import (
     EMERGENCY_COMMAND,
     FORBIDDEN_COMMAND_PREFIXES,
@@ -105,6 +105,25 @@ def _command_allowed(command: str) -> bool:
     return command == EMERGENCY_COMMAND or normal_command_allowed(command)
 
 
+def _authority_false_or_absent(path: Path) -> bool:
+    rows = _read_csv(path)
+    return not rows or _authority_false(path)
+
+
+def _post_abort_health_exact(
+    primary: dict[tuple[str, str], str],
+    transition: dict[tuple[str, str], str],
+) -> bool:
+    return (
+        primary.get(("cx317_active", "state")) == "DISARMED"
+        and primary.get(("cx317_active", "fail_static")) == "false"
+        and transition.get(("cx317_active", "state")) == "ABORTED"
+        and transition.get(("cx317_active", "reason"))
+        == "device_abort_command_via_core0"
+        and transition.get(("cx317_active", "fail_static")) == "true"
+    )
+
+
 def _priority_abort_ordered(markers: list[dict[str, Any]]) -> bool:
     events = [str(item.get("event")) for item in markers]
     try:
@@ -135,44 +154,56 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         raise ValueError("CX319 G1 capture is still active")
     manifest_value = validate_run_manifest(run_dir / "run_manifest.json")
     manifest = load_manifest(run_dir)
+    transition_dir = run_dir / TRANSITION_RUN_DIR
+    transition_manifest = load_manifest(transition_dir)
     leg_name = manifest_value["cx319"]["leg"]
     spec, identities, _ = load_cx319_spec(leg_name)
 
     validations: dict[str, dict[str, Any]] = {}
-    for contract in manifest_value["contracts"]:
-        path = _contract_path(manifest, contract)
-        result = validate_csv(
-            path,
-            CsvValidationContext(
-                contract=contract,
-                known_channels=manifest.known_channels,
-                known_domains=manifest.known_domains,
-                allow_rp2040_timer0_wrap=True,
-                tight_deadband_policy_sha256=manifest_value["policy"][
-                    "sha256"
-                ],
-            ),
-        )
-        validations[contract] = {
-            "ok": result.ok,
-            "rows": result.row_count,
-            "errors": result.errors,
-        }
+    for segment, segment_manifest in (
+        ("primary", manifest),
+        ("transition", transition_manifest),
+    ):
+        for contract in manifest_value["contracts"]:
+            path = _contract_path(segment_manifest, contract)
+            result = validate_csv(
+                path,
+                CsvValidationContext(
+                    contract=contract,
+                    known_channels=segment_manifest.known_channels,
+                    known_domains=segment_manifest.known_domains,
+                    allow_rp2040_timer0_wrap=True,
+                    tight_deadband_policy_sha256=manifest_value["policy"][
+                        "sha256"
+                    ],
+                ),
+            )
+            validations[f"{segment}:{contract}"] = {
+                "ok": result.ok,
+                "rows": result.row_count,
+                "errors": result.errors,
+            }
 
     active_rows = _read_csv(run_dir / ACTIVE_CSV)
     dac_rows = _read_csv(run_dir / DAC_CSV)
+    transition_active_rows = _read_csv(transition_dir / ACTIVE_CSV)
+    transition_dac_rows = _read_csv(transition_dir / DAC_CSV)
     estimates = [
         row
         for row in _read_csv(run_dir / ESTIMATES_CSV)
         if row.get("estimator_version")
         == "cx317_selected_600s_nonoverlap_v1"
     ]
-    tdb_replay = replay_tight_deadband(
-        run_dir / TDB_CSV,
+    tdb_replay = replay_tight_deadband_chain(
+        [run_dir / TDB_CSV, transition_dir / TDB_CSV],
         policy_sha256=manifest_value["policy"]["sha256"],
     )
     health_rows = _read_csv(run_dir / HEALTH_CSV)
     health = latest_complete_health(run_dir / HEALTH_CSV)
+    transition_health_rows = _read_csv(transition_dir / HEALTH_CSV)
+    transition_health = latest_complete_health(
+        transition_dir / HEALTH_CSV
+    )
     expected_build = (
         manifest_value["firmware"]["source_sha256"]
         + ":"
@@ -208,22 +239,12 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
     transition_state = json.loads(
-        (
-            run_dir
-            / TRANSITION_RUN_DIR
-            / "reports/capture_device_state.json"
-        ).read_text()
+        (transition_dir / "reports/capture_device_state.json").read_text()
     )
     transition_closure = json.loads(
-        (
-            run_dir
-            / TRANSITION_RUN_DIR
-            / "reports/capture_segment_closure_v1.json"
-        ).read_text()
+        (transition_dir / "reports/capture_segment_closure_v1.json").read_text()
     )
-    transition_markers = _host_markers(
-        run_dir / TRANSITION_RUN_DIR / "raw/serial.log"
-    )
+    transition_markers = _host_markers(transition_dir / "raw/serial.log")
     commands_sent = [
         str(item.get("command"))
         for item in markers
@@ -231,9 +252,14 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     ]
     sources = {
         row.get("source", "").lower()
-        for row in _read_csv(run_dir / ENVIRONMENT_CSV)
+        for segment_dir in (run_dir, transition_dir)
+        for row in _read_csv(segment_dir / ENVIRONMENT_CSV)
     }
-    fatal_rows = [row for row in health_rows if row.get("severity") == "FATAL"]
+    fatal_rows = [
+        row
+        for row in [*health_rows, *transition_health_rows]
+        if row.get("severity") == "FATAL"
+    ]
     snapshot_capacity = int(
         health.get(("pps_gate", "snapshot_ring_capacity"), "0")
     )
@@ -338,10 +364,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             )
             == "cx319_g1_prewrite_runtime_contract_v1"
             and readiness.contract_id == "cx319_g1_prewrite_runtime_contract_v1"
-            and health.get(("cx317_active", "state")) == "ABORTED"
-            and health.get(("cx317_active", "reason"))
-            == "device_abort_command_via_core0"
-            and health.get(("cx317_active", "fail_static")) == "true"
+            and _post_abort_health_exact(health, transition_health)
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
         "tight_deadband_replay_exact": (
@@ -350,9 +373,18 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "phase_hybrid_and_tight_zero_authority": all(
             _authority_false(run_dir / relative)
             for relative in (CONTROL_CSV, RPH_CSV, PHE_CSV, HPR_CSV, TDB_CSV)
+        )
+        and all(
+            _authority_false_or_absent(transition_dir / relative)
+            for relative in (CONTROL_CSV, RPH_CSV, PHE_CSV, HPR_CSV, TDB_CSV)
         ),
         "both_environment_streams_present": environment_streams_ready(sources),
-        "zero_dac_and_active_transactions": not dac_rows and not active_rows,
+        "zero_dac_and_active_transactions": (
+            not dac_rows
+            and not active_rows
+            and not transition_dac_rows
+            and not transition_active_rows
+        ),
         "capture_transport_and_diagnostics_clean": (
             all(
                 capture_state.get(key) == 0
@@ -364,6 +396,17 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 )
             )
             and capture_state.get("emergency_aborts_sent") == 1
+            and all(
+                transition_state.get(key) == 0
+                for key in (
+                    "malformed_utf8",
+                    "parser_errors",
+                    "reconnect_count",
+                    "commands_rejected",
+                    "commands_sent",
+                    "emergency_aborts_sent",
+                )
+            )
             and not fatal_rows
             and health.get(("resource_registry", "valid")) == "true"
             and health.get(("resource_registry", "complete")) == "true"
@@ -387,12 +430,31 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "capture_duration_s": duration_s,
             "selected_600s_estimates": len(estimates),
             "tight_deadband_rows": tdb_replay.row_count,
-            "dac_rows": len(dac_rows),
-            "active_rows": len(active_rows),
+            "dac_rows": len(dac_rows) + len(transition_dac_rows),
+            "active_rows": len(active_rows) + len(transition_active_rows),
+            "segment_rows": {
+                "primary": {
+                    "dac": len(dac_rows),
+                    "active": len(active_rows),
+                },
+                "transition": {
+                    "dac": len(transition_dac_rows),
+                    "active": len(transition_active_rows),
+                },
+            },
             "commands_sent": commands_sent,
             "snapshot_backlog_high_water": snapshot_high_water,
             "snapshot_ring_capacity": snapshot_capacity,
             "fatal_rows": len(fatal_rows),
+            "post_abort_state": transition_health.get(
+                ("cx317_active", "state")
+            ),
+            "post_abort_reason": transition_health.get(
+                ("cx317_active", "reason")
+            ),
+            "post_abort_fail_static": transition_health.get(
+                ("cx317_active", "fail_static")
+            ),
         },
         "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
         "capture_closure": capture_closure,

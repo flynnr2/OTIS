@@ -67,6 +67,10 @@ FORBIDDEN_COMMAND_PREFIXES = (
     "PPSGEN ",
 )
 EMERGENCY_COMMAND = "ACTIVE ABORT"
+LEG_IDENTITIES = {
+    "A": ("cx319_tight_lower", 3195001, 0xA808, "positive"),
+    "B": ("cx319_tight_upper", 3195002, 0xA848, "negative"),
+}
 
 HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
@@ -83,6 +87,23 @@ HOST_TOOL_PATHS = {
     "run_validation": Path(__file__).with_name("validate_run.py"),
     "offline_preflight": Path(__file__).with_name("cx319_g1_preflight.py"),
 }
+FROZEN_V1_HOST_TOOL_NAMES = frozenset(
+    {
+        "abort_path",
+        "analyzer",
+        "bundle",
+        "capture",
+        "evidence_index",
+        "evidence_snapshot",
+        "offline_preflight",
+        "rehearsal",
+        "run_validation",
+        "runtime_contract",
+        "segment_rotation",
+        "serial_commands",
+        "supervisor",
+    }
+)
 
 
 def _utc_now() -> str:
@@ -264,23 +285,10 @@ def _load_authority() -> dict[str, Any]:
     return authority
 
 
-def leg_spec(leg: str) -> dict[str, Any]:
-    policy = _load_policy()
-    if leg not in {"A", "B"}:
+def _frozen_leg_spec(leg: str) -> dict[str, Any]:
+    if leg not in LEG_IDENTITIES:
         raise ValueError("CX319 leg must be A or B")
-    value = policy["legs"][leg]
-    expected = {
-        "A": ("cx319_tight_lower", 3195001, 0xA808, "positive"),
-        "B": ("cx319_tight_upper", 3195002, 0xA848, "negative"),
-    }[leg]
-    observed = (
-        value.get("firmware_profile"),
-        value.get("run_binding_tag"),
-        value.get("exact_setup_code"),
-        value.get("required_automatic_direction"),
-    )
-    if observed != expected:
-        raise ValueError(f"CX319 leg {leg} identity differs from policy")
+    expected = LEG_IDENTITIES[leg]
     return {
         "leg": leg,
         "profile_id": expected[0],
@@ -290,6 +298,22 @@ def leg_spec(leg: str) -> dict[str, Any]:
         "planned_live_setup_code_hex": f"0x{expected[2]:04X}",
         "required_automatic_direction": expected[3],
     }
+
+
+def leg_spec(leg: str) -> dict[str, Any]:
+    policy = _load_policy()
+    frozen = _frozen_leg_spec(leg)
+    value = policy["legs"][leg]
+    observed = (
+        value.get("firmware_profile"),
+        value.get("run_binding_tag"),
+        value.get("exact_setup_code"),
+        value.get("required_automatic_direction"),
+    )
+    expected = LEG_IDENTITIES[leg]
+    if observed != expected:
+        raise ValueError(f"CX319 leg {leg} identity differs from policy")
+    return frozen
 
 
 def validate_build(
@@ -503,7 +527,24 @@ def create_bundle(
     return payload
 
 
-def validate_bundle(path: Path) -> dict[str, Any]:
+def _binding_well_formed(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    digest = value.get("sha256")
+    return (
+        isinstance(value.get("path"), str)
+        and bool(value["path"])
+        and isinstance(digest, str)
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
+        and isinstance(value.get("size_bytes"), int)
+        and value["size_bytes"] >= 0
+    )
+
+
+def validate_frozen_bundle(path: Path) -> dict[str, Any]:
+    """Validate an immutable run bundle without consulting current inputs."""
+
     path = path.resolve()
     bundle = _read_object(path, "CX319 G1 bundle")
     claimed = bundle.get("bundle_sha256")
@@ -518,35 +559,37 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     ):
         raise ValueError("CX319 G1 bundle identity or digest is invalid")
     leg = bundle.get("leg", {}).get("leg")
-    if bundle.get("leg") != leg_spec(str(leg)):
-        raise ValueError("CX319 G1 bundle leg identity is stale")
+    if bundle.get("leg") != _frozen_leg_spec(str(leg)):
+        raise ValueError("CX319 G1 bundle leg identity is invalid")
     firmware = bundle.get("firmware")
-    if not isinstance(firmware, dict):
+    if (
+        not isinstance(firmware, dict)
+        or firmware.get("profile_id") != bundle["leg"]["profile_id"]
+        or firmware.get("source_state") != "clean"
+        or not _binding_well_formed(firmware.get("build_manifest"))
+        or not _binding_well_formed(firmware.get("uf2"))
+    ):
         raise ValueError("CX319 G1 firmware binding is unavailable")
-    current = validate_build(
-        leg=str(leg),
-        build_manifest_path=Path(firmware["build_manifest"]["path"]),
-        uf2_path=Path(firmware["uf2"]["path"]),
-    )
-    if firmware != current:
-        raise ValueError("CX319 G1 firmware binding differs from current exact inputs")
-    if bundle.get("policy", {}).get("sha256") != _sha256_file(POLICY_PATH):
-        raise ValueError("CX319 G1 bundle policy binding is stale")
-    authority_overlay = _load_authority()
-    if bundle.get("operator_authority") != {
-        "path": str(AUTHORITY_PATH),
-        "sha256": _sha256_file(AUTHORITY_PATH),
-        "authority_id": authority_overlay["authority_id"],
-        "bindings": authority_overlay["bindings"],
-    }:
-        raise ValueError("CX319 G1 bundle authority binding is stale")
+    policy = bundle.get("policy", {})
+    operator_authority = bundle.get("operator_authority", {})
+    if (
+        not isinstance(policy, dict)
+        or policy.get("policy_id")
+        != "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1"
+        or not isinstance(policy.get("sha256"), str)
+        or len(policy["sha256"]) != 64
+        or not isinstance(operator_authority, dict)
+        or operator_authority.get("authority_id")
+        != "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+    ):
+        raise ValueError("CX319 G1 frozen policy or authority identity is invalid")
     tools = bundle.get("host_tools")
     if (
         not isinstance(tools, dict)
-        or set(tools) != set(HOST_TOOL_PATHS)
-        or not all(_binding_current(item) for item in tools.values())
+        or set(tools) != FROZEN_V1_HOST_TOOL_NAMES
+        or not all(_binding_well_formed(item) for item in tools.values())
     ):
-        raise ValueError("CX319 G1 host tool binding is stale or incomplete")
+        raise ValueError("CX319 G1 frozen host tool binding is incomplete")
     authority = bundle.get("authority", {})
     rehearsal = bundle.get("rehearsal", {})
     commands = bundle.get("commands", {})
@@ -579,6 +622,41 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         != FORBIDDEN_COMMAND_PREFIXES
     ):
         raise ValueError("CX319 G1 bundle exposes write/live authority")
+    return bundle
+
+
+def validate_bundle(path: Path) -> dict[str, Any]:
+    """Validate a bundle for current G1 entry against the clean worktree."""
+
+    bundle = validate_frozen_bundle(path)
+    leg = str(bundle["leg"]["leg"])
+    firmware = bundle["firmware"]
+    if bundle["leg"] != leg_spec(leg):
+        raise ValueError("CX319 G1 bundle leg identity is stale")
+    current = validate_build(
+        leg=leg,
+        build_manifest_path=Path(firmware["build_manifest"]["path"]),
+        uf2_path=Path(firmware["uf2"]["path"]),
+    )
+    if firmware != current:
+        raise ValueError("CX319 G1 firmware binding differs from current exact inputs")
+    if bundle.get("policy", {}).get("sha256") != _sha256_file(POLICY_PATH):
+        raise ValueError("CX319 G1 bundle policy binding is stale")
+    authority_overlay = _load_authority()
+    if bundle.get("operator_authority") != {
+        "path": str(AUTHORITY_PATH),
+        "sha256": _sha256_file(AUTHORITY_PATH),
+        "authority_id": authority_overlay["authority_id"],
+        "bindings": authority_overlay["bindings"],
+    }:
+        raise ValueError("CX319 G1 bundle authority binding is stale")
+    if (
+        set(bundle["host_tools"]) != set(HOST_TOOL_PATHS)
+        or not all(
+            _binding_current(item) for item in bundle["host_tools"].values()
+        )
+    ):
+        raise ValueError("CX319 G1 host tool binding is stale or incomplete")
     return bundle
 
 
@@ -744,7 +822,7 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(bundle_binding, dict):
         raise ValueError("CX319 G1 run manifest lacks a bundle binding")
     bundle_path = Path(str(bundle_binding.get("path", "")))
-    bundle = validate_bundle(bundle_path)
+    bundle = validate_frozen_bundle(bundle_path)
     if (
         bundle_binding.get("sha256") != _sha256_file(bundle_path)
         or bundle_binding.get("bundle_sha256") != bundle["bundle_sha256"]
