@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 from typing import Any
 
@@ -52,6 +53,18 @@ RESULT_PATH = Path("cx319_g1_no_flash_operational_rehearsal_v1.json")
 
 def _sha256_file(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
+
+
+def _ignore_nonregular_entries(directory: str, names: list[str]) -> list[str]:
+    ignored: list[str] = []
+    root = Path(directory)
+    for name in names:
+        mode = (root / name).lstat().st_mode
+        if not (
+            stat.S_ISREG(mode) or stat.S_ISDIR(mode) or stat.S_ISLNK(mode)
+        ):
+            ignored.append(name)
+    return ignored
 
 
 def _replace_json(path: Path, value: dict[str, Any]) -> None:
@@ -218,7 +231,11 @@ def _prepare_replay(
         "reuse_confirmed_installed_firmware"
     ):
         raise ValueError("operational rehearsal requires the exact no-flash bundle")
-    shutil.copytree(source_run, replay_run)
+    shutil.copytree(
+        source_run,
+        replay_run,
+        ignore=_ignore_nonregular_entries,
+    )
     for relative in (
         EVIDENCE_MANIFEST,
         ANALYSIS_PATH,
