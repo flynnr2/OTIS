@@ -52,3 +52,6 @@ The retained pre-write stop, causal evidence and recovery gate are recorded in
 The fresh non-authorizing v6 package and physical recovery boundary are
 recorded in
 [`07_G2_RECOVERY_OFFLINE_READINESS.md`](07_G2_RECOVERY_OFFLINE_READINESS.md).
+
+The operator's exact v6 live authority and fresh-restart boundary are recorded
+in [`08_G2_V6_LIVE_AUTHORITY.md`](08_G2_V6_LIVE_AUTHORITY.md).

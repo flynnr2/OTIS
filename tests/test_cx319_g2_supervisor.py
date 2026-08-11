@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from host.otis_tools import cx319_g2_supervisor
 from host.otis_tools.cx319_g1_supervisor import load_cx319_spec
 from host.otis_tools.cx319_g2_runtime_contract import (
     FRESH_RESTART_MAXIMUM_UPTIME_S,
@@ -11,6 +12,7 @@ from host.otis_tools.cx319_g2_runtime_contract import (
     canonical_prewrite_fixture,
 )
 from host.otis_tools.cx319_g2_supervisor import create_supervisor, main
+from host.otis_tools.programme_status import ProgrammeExecutionBlocked
 
 
 BUILD_IDENTITY = "a" * 64 + ":" + "b" * 64
@@ -108,8 +110,14 @@ def test_g2_prewrite_rejects_a_clean_but_stale_ownerless_session(
 
 
 def test_g2_cli_is_blocked_before_reading_a_run_spec(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    def blocked(*args: object, **kwargs: object) -> None:
+        raise ProgrammeExecutionBlocked("operation 'g2_live_leg' is blocked")
+
+    monkeypatch.setattr(
+        cx319_g2_supervisor, "require_programme_operation_allowed", blocked
+    )
     with pytest.raises(SystemExit) as exc:
         main(["--run-spec", "/not-used/g2.json"])
 
