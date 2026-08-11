@@ -603,7 +603,7 @@ def create_stage7_manifest(
         ),
         "domains": [
             {"name": "rp2040_timer0", "nominal_hz": 16000000},
-            {"name": "h0_tcxo_16mhz", "nominal_hz": 10000000},
+            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10000000},
         ],
         "channels": [
             {
@@ -664,7 +664,6 @@ def create_stage7_manifest(
         },
         "known_limitations": [
             "No oscilloscope is available; analog waveform margin is not claimed.",
-            "The h0_tcxo_16mhz token is historical; the connected CX317 source is nominally 10 MHz.",
             "Stage 7 demonstrates bounded frequency-control endurance, not calibrated UTC, phase lock, or holdover.",
             "Shadow candidates are counterfactual and have no Stage 7 actuation authority.",
             *(

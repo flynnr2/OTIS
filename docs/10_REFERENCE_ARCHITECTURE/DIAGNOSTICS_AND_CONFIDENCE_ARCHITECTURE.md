@@ -140,12 +140,13 @@ canonical inputs. `EST` records contain numerical estimator results. `CTL`
 records contain control decisions. Diagnostic records explain quality,
 eligibility, and faults without replacing any of them.
 
-The first repository contract for this is
-`data_contracts/diagnostics_draft_v0.csv.md`. It is deliberately draft and
-additive: `health_v1` / `STS` remains the compatibility status surface, while
-`DIAG` records carry stable reason codes, persistence, evidence references,
-algorithm/config versions, diagnostic confidence, and control consequence for
-host replay and future firmware parity tests.
+The current repository contract is
+`data_contracts/diagnostics_v1.csv.md`. `DIAG` records carry stable reason
+codes, persistence, evidence references, algorithm/configuration identity,
+diagnostic confidence, and independent observation, reference, model, and
+control effects. They are the normative diagnostic transition surface;
+`health_v1` / `STS` remains low-level status evidence rather than a substitute
+for diagnostic conclusions.
 
 Phase 4 host replay implements the corresponding normative `EST` and
 observe-only `CTL` contracts. Missing `STS` diagnostic context remains

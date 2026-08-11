@@ -58,7 +58,7 @@ def _write_csv(
 def _metadata(
     *,
     candidate: bool,
-    source_domain: str = "h1_ocxo_open_loop",
+    source_domain: str = "h1_cx317_ocxo_10mhz",
     uncertainty_complete: bool = True,
 ) -> dict:
     uncertainty = {
@@ -118,7 +118,7 @@ def _manifest(
     run_id: str,
     *,
     candidate: bool,
-    source_domain: str = "h1_ocxo_open_loop",
+    source_domain: str = "h1_cx317_ocxo_10mhz",
     uncertainty_complete: bool = True,
 ) -> None:
     manifest = {
@@ -300,7 +300,7 @@ def _health_rows() -> list[list[object]]:
 def _make_candidate(
     root: Path,
     *,
-    source_domain: str = "h1_ocxo_open_loop",
+    source_domain: str = "h1_cx317_ocxo_10mhz",
     uncertainty_complete: bool = True,
     rollover: bool = False,
 ) -> Path:
@@ -488,7 +488,7 @@ def _make_independent(root: Path) -> Path:
                 "rp2040_timer0",
                 60_000_006,
                 "R",
-                "h1_ocxo_open_loop",
+                "h1_cx317_ocxo_10mhz",
                 16,
             ]
         ],

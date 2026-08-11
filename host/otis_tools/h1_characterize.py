@@ -500,7 +500,7 @@ def _nominal_hz(manifest: RunManifest, override: float | None) -> float | None:
         if nominal:
             return nominal
     for domain in manifest.data.get("domains", []):
-        if isinstance(domain, dict) and domain.get("name") == "h1_ocxo_open_loop":
+        if isinstance(domain, dict) and domain.get("name") == "h1_cx317_ocxo_10mhz":
             nominal = _parse_float(domain.get("nominal_hz"))
             if nominal:
                 return nominal
@@ -1125,7 +1125,7 @@ def _fc0_bad_window_diagnostics(
                 )
             previous_raw_by_domain[status_domain] = timestamp_raw
             timestamp_unwrapped = timestamp_raw + tick_offset_by_domain.get(status_domain, 0)
-        if row.get("component") != "fc0":
+        if row.get("component") != "count_path":
             continue
         key = row.get("status_key", "")
         if key not in FC0_BAD_WINDOW_KEYS:
@@ -2495,9 +2495,9 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- startup_discarded_windows: {startup.startup_discarded_window_count}",
             f"- first_control_eligible_elapsed_s: {_format(startup.first_control_eligible_elapsed_s)}",
             f"- first_post_inhibit_bad_elapsed_s: {_format(startup.first_post_inhibit_bad_elapsed_s)}",
-            f"- fc0_observed_valid: {str(startup.raw_window_count > 0).lower()}",
-            f"- fc0_valid_for_control: {str(startup.valid_for_control).lower()}",
-            f"- fc0_fault: {str(startup.first_post_inhibit_bad_elapsed_s is not None).lower()}",
+            f"- observation_valid: {str(startup.raw_window_count > 0).lower()}",
+            f"- control_eligible: {str(startup.valid_for_control).lower()}",
+            f"- fault_latched: {str(startup.first_post_inhibit_bad_elapsed_s is not None).lower()}",
             f"- clean_window_count_at_end: {startup.clean_window_count_at_end}",
             f"- note: {startup.note}",
         ]
@@ -2588,7 +2588,7 @@ def render_report(analysis: H1Analysis, written_plots: list[Path] | None = None)
             f"- safe_voltage_window_known: {str(safe_voltage_window_known).lower()}",
             f"- settling_time_characterized: {str(settling_known).lower()}",
             f"- warmup_characterized: {str(warmup_known).lower()}",
-            f"- fc0_valid_for_control: {str(analysis.startup_control.valid_for_control).lower()}",
+            f"- control_eligible: {str(analysis.startup_control.valid_for_control).lower()}",
             f"- reference_valid_for_control: {str(reference_valid_for_control).lower()}",
             f"- pps_cadence_anomaly_status: {'explicitly_gated' if pps_cadence_gated else 'unresolved' if pps_anomalies_present else 'none'}",
             f"- recommended_next_action: {action}",

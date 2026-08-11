@@ -172,8 +172,8 @@
       "d14_rejected_long_count_interpretation": "historical run_017 raw diagnostic count matches timestamp_wrap_count; host-unwrapped PPS analysis found no real PPS cadence anomaly; future firmware diagnostics classify intervals with rollover-safe modular timer arithmetic"
     },
     "startup_control_eligibility": {
-      "fc0_valid_for_control": true,
-      "fc0_fault": false,
+      "count_path_control_eligible": true,
+      "count_path_fault_latched": false,
       "count_windows": 242,
       "invalid_count_windows": 0,
       "first_control_eligible_elapsed_s": 1350.008

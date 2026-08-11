@@ -19,7 +19,8 @@ from typing import Any
 
 from .capture_device import CAPTURE_STATE, SEGMENT_CARRIER_STATE
 from .cx318_capture_segment import prepare_transition, request_rotation
-from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _latest_health, _read_csv
+from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
+from .active_status_contract import latest_complete_health
 from .cx318_stage5_manifest import (
     REHEARSAL_STAGE,
     create_manifest,
@@ -34,6 +35,7 @@ from .cx318_stage5_runtime_contract import evaluate_prewrite_readiness
 from .cx318_stage5_supervisor import DAC_CSV, load_stage5_spec
 from .evidence import create_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER
+from .programme_status import require_programme_execution_allowed
 
 
 TOOL_ID = "cx318_stage5_promote_v1"
@@ -172,7 +174,7 @@ def _require_prewrite_runtime_contract(
         + manifest["firmware"]["configuration_sha256"]
     )
     readiness = evaluate_prewrite_readiness(
-        _latest_health(run_dir / HEALTH_CSV),
+        latest_complete_health(run_dir / HEALTH_CSV),
         expected_identity={
             "run_identity": spec.run_identity,
             "build_identity": expected_build,
@@ -413,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--leg-a-seal", type=Path)
     args = parser.parse_args(argv)
     try:
+        require_programme_execution_allowed("cx318_stage5")
         result = promote(
             rehearsal_run=args.rehearsal_run,
             transition_run=args.transition_run,
@@ -430,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
         TypeError,
         ValueError,
         json.JSONDecodeError,
+        RuntimeError,
     ) as exc:
         raise SystemExit(str(exc)) from exc
     print(json.dumps(result, sort_keys=True))

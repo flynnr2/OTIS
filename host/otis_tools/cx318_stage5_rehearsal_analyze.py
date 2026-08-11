@@ -13,7 +13,8 @@ import tempfile
 from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
-from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _latest_health, _read_csv
+from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
+from .active_status_contract import latest_complete_health
 from .cx318_stage5_manifest import (
     REHEARSAL_SEAL_TYPE,
     REHEARSAL_STAGE,
@@ -276,7 +277,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         == "cx317_selected_600s_nonoverlap_v1"
     ]
     tdb_replay = replay_tight_deadband(run_dir / TDB_CSV)
-    health = _latest_health(run_dir / HEALTH_CSV)
+    health = latest_complete_health(run_dir / HEALTH_CSV)
     expected_build = (
         manifest_value["firmware"]["source_sha256"]
         + ":"

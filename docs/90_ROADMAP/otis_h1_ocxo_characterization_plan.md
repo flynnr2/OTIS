@@ -103,7 +103,7 @@ Current H1 DAC sweep status:
   CX317-through-G17 checks counted correctly.
 - The clean `run_014` capture completed with 284 300 s count windows, zero
   zero-count rows, all `CNT` rows flagged `16`, no host capture drops, 18 sweep
-  passes, `fc0_valid_for_control: true`, and usable slope, settling, warmup and
+  passes, `count_path/control_eligible: true`, and usable slope, settling, warmup and
   thermal analysis.
 - `run_019` is the current broad-response run. Its 155 valid count windows and
   46,394 valid PPS intervals give `0.000169064 Hz/code` (`R²=0.999920`),

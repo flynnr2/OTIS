@@ -540,7 +540,7 @@ def _status_diagnostics(snapshot: dict[tuple[str, str], StatusRecord]) -> tuple[
             "capture",
             "pps",
             "pps_gate",
-            "fc0",
+            "count_path",
             "count",
             "reference",
             "resource_registry",
@@ -561,7 +561,7 @@ def _status_diagnostics(snapshot: dict[tuple[str, str], StatusRecord]) -> tuple[
                 }
                 else "status_timing_path_fault"
             )
-        if normalized in {"fc0.fc0_fault", "count.count_fault"} and _true(record.value):
+        if normalized in {"fc0.fault_latched", "count.count_fault"} and _true(record.value):
             fault = True
             reasons.append("status_count_fault")
         if normalized in {

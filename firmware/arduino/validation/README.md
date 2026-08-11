@@ -10,11 +10,15 @@ see `END_TO_END_VALIDATION_PLAN.md`.
 Before bench time, run the no-hardware validation script:
 
 ```bash
+python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
 python3 firmware/arduino/validation/scripts/run_no_hardware_checks.py
 ```
 
-It runs pytest, committed wire-format fixtures, and the example host
-validation/report path documented in the end-to-end plan.
+The Fast tier runs focused current-path tests, the selected fast firmware
+profile, committed wire fixtures, and the example host validation/report path.
+The default Release tier runs the complete Python suite and current Release
+firmware matrix before the same fixtures. Archived programme profiles are not
+part of either default tier.
 
 Use this as the R0 baseline process before changing firmware internals. The
 goal is to preserve raw serial output and generated parser artifacts so later

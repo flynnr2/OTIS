@@ -185,7 +185,7 @@ def _count_csv_rows(counts: list[tuple[int, ...]]) -> list[list[object]]:
                 "fixture_ticks",
                 counted_edges,
                 "R",
-                "h1_ocxo_open_loop",
+                "h1_cx317_ocxo_10mhz",
                 row_flags[0] if row_flags else 16,
             ]
         )
@@ -613,10 +613,10 @@ def test_replay_unwraps_rp2040_reference_and_count_gate_rollover(tmp_path: Path)
             "flags",
         ],
         [
-            ["CNT", 1, 1, 2, wrap - 32_000_000, wrap - 16_000_000, "rp2040_timer0", 10_000_000, "R", "h1_ocxo_open_loop", 16],
-            ["CNT", 1, 2, 2, wrap - 16_000_000, 0, "rp2040_timer0", 10_000_000, "R", "h1_ocxo_open_loop", 16],
-            ["CNT", 1, 3, 2, 0, 16_000_000, "rp2040_timer0", 10_000_000, "R", "h1_ocxo_open_loop", 16],
-            ["CNT", 1, 4, 2, 16_000_000, 32_000_000, "rp2040_timer0", 10_000_000, "R", "h1_ocxo_open_loop", 16],
+            ["CNT", 1, 1, 2, wrap - 32_000_000, wrap - 16_000_000, "rp2040_timer0", 10_000_000, "R", "h1_cx317_ocxo_10mhz", 16],
+            ["CNT", 1, 2, 2, wrap - 16_000_000, 0, "rp2040_timer0", 10_000_000, "R", "h1_cx317_ocxo_10mhz", 16],
+            ["CNT", 1, 3, 2, 0, 16_000_000, "rp2040_timer0", 10_000_000, "R", "h1_cx317_ocxo_10mhz", 16],
+            ["CNT", 1, 4, 2, 16_000_000, 32_000_000, "rp2040_timer0", 10_000_000, "R", "h1_cx317_ocxo_10mhz", 16],
         ],
     )
     _write_csv(

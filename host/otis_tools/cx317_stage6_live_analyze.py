@@ -871,7 +871,7 @@ def render_report(result: dict[str, Any]) -> str:
     lines.extend([
         "", "## Limitations", "",
         "- The SHT41 is a nearby-air proxy, not the CX317 case or internal oven temperature; the observed range is context, not a demonstrated causal coefficient.",
-        "- The historical `h0_tcxo_16mhz` source-domain token is retained wire vocabulary; this run's connected oscillator is the CX317 nominal 10 MHz source.",
+        "- The oscillator source domain is `h1_cx317_ocxo_10mhz`; its phase origin is arbitrary and no UTC traceability is claimed.",
         "- D10 is a general auxiliary edge input. Its D14 agreement is required only because this run declares the same PPS connected to both.",
         "- Physical phase/duty margin, calibrated absolute accuracy, isolated firmware jitter, connected Vc calibration, t95 and combined uncertainty remain unavailable or untested.",
         "- A passing result is observe-only evidence. It grants no DAC actuation authority.",

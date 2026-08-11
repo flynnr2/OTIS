@@ -14,16 +14,25 @@ from tools.firmware_matrix import (
     _compile_profile,
     _git_identity,
     _require_installed_hash,
+    _enforce_resource_budgets,
+    _resource_usage_from_build_output,
     build_provenance,
     configuration_hash,
     load_matrix,
     provenance_header,
+    _selected_profiles,
 )
 
 
 MATRIX_PATH = Path("firmware/arduino/firmware_matrix.json")
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
 TEST_BUILD_SESSION = "0123456789abcdef"
+SUCCESSFUL_BUILD_OUTPUT = (
+    "Sketch uses 141520 bytes (0%) of program storage space. "
+    "Maximum is 16773120 bytes.\n"
+    "Global variables use 128456 bytes (49%) of dynamic memory, "
+    "leaving 133688 bytes for local variables. Maximum is 262144 bytes.\n"
+)
 
 
 def _profile(matrix: dict, profile_id: str) -> dict:
@@ -92,6 +101,74 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
     } <= set(profiles)
     assert sum(item["expect"] == "pass" for item in profiles.values()) == 26
     assert sum(item["expect"] == "fail" for item in profiles.values()) == 15
+    assert matrix["resource_budgets"] == {
+        "dynamic_memory_total_bytes": 262144,
+        "static_dynamic_memory_max_bytes": 157286,
+        "runtime_memory_reserve_min_bytes": 104858,
+    }
+
+
+def test_resource_usage_is_parsed_and_budget_enforced() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    usage = _resource_usage_from_build_output(SUCCESSFUL_BUILD_OUTPUT)
+
+    report = _enforce_resource_budgets(matrix, usage)
+
+    assert report["status"] == "within_budget"
+    assert report["observed"]["static_dynamic_memory_used_bytes"] == 128456
+    assert report["observed"]["runtime_memory_available_bytes"] == 133688
+
+    over_budget = dict(usage)
+    over_budget["static_dynamic_memory_used_bytes"] = 157287
+    over_budget["runtime_memory_available_bytes"] = 104857
+    with pytest.raises(MatrixError, match="maximum exceeded"):
+        _enforce_resource_budgets(matrix, over_budget)
+
+
+def test_matrix_lifecycle_separates_current_release_from_history() -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    profiles = {profile["id"]: profile for profile in matrix["profiles"]}
+
+    assert profiles["h1_characterization"]["lifecycle"] == "keep_active"
+    assert profiles["h1_lab_actuator"]["lifecycle"] == "keep_active"
+    assert profiles["cx317_dual_core_active_rehearsal"]["lifecycle"] == (
+        "keep_diagnostic_recovery"
+    )
+    assert profiles["cx318_stage5_tight_lower"]["lifecycle"] == (
+        "archive_out_of_default_checks"
+    )
+    assert profiles["cx318_stage5_tight_upper"]["lifecycle"] == (
+        "archive_out_of_default_checks"
+    )
+    assert profiles["invalid_active_campaign_a_parameters"]["lifecycle"] == (
+        "archive_out_of_default_checks"
+    )
+
+    release = _selected_profiles(matrix, [], False)
+    release_ids = {profile["id"] for profile in release}
+    assert "h1_characterization" in release_ids
+    assert "synthetic_usb" in release_ids
+    assert "invalid_gnss_uart_tx_enabled" in release_ids
+    assert "cx318_stage5_tight_lower" not in release_ids
+    assert "cx317_bounded_active_campaign_a" not in release_ids
+    assert len(release) == 32
+
+    historical = _selected_profiles(
+        matrix, [], False, all_profiles=True
+    )
+    assert len(historical) == 41
+
+    fast = _selected_profiles(
+        matrix, [], False, verification_tier="fast"
+    )
+    assert [profile["id"] for profile in fast] == ["synthetic_usb"]
+
+    campaign = _selected_profiles(
+        matrix, [], False, verification_tier="standard_campaign"
+    )
+    assert [profile["id"] for profile in campaign] == [
+        "cx317_fixed_code_baseline"
+    ]
 
 
 def test_only_exact_programme_profiles_have_active_controller_reachability() -> None:
@@ -828,7 +905,9 @@ def test_compile_uses_disposable_sketch_supports_spaces_and_hashes_artifacts(
             (artifacts / f"firmware{suffix}").write_bytes(
                 f"artifact {suffix}".encode()
             )
-        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+        return subprocess.CompletedProcess(
+            arguments, 0, SUCCESSFUL_BUILD_OUTPUT, ""
+        )
 
     monkeypatch.setattr(firmware_matrix, "_run", fake_run)
     monkeypatch.setattr(
@@ -901,7 +980,9 @@ def test_post_build_source_mutation_is_rejected(
     ) -> subprocess.CompletedProcess[str]:
         artifacts = Path(arguments[arguments.index("--output-dir") + 1])
         (artifacts / "untrusted.bin").write_bytes(b"must be removed")
-        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+        return subprocess.CompletedProcess(
+            arguments, 0, SUCCESSFUL_BUILD_OUTPUT, ""
+        )
 
     monkeypatch.setattr(firmware_matrix, "_run", fake_run)
     monkeypatch.setattr(
@@ -1037,7 +1118,9 @@ def test_installed_bytes_are_rechecked_after_artifact_hashing(
         artifacts = Path(arguments[arguments.index("--output-dir") + 1])
         for suffix in firmware_matrix.EXPECTED_ARTIFACT_SUFFIXES:
             (artifacts / f"untrusted{suffix}").write_bytes(b"untrusted")
-        return subprocess.CompletedProcess(arguments, 0, "compiled\n", "")
+        return subprocess.CompletedProcess(
+            arguments, 0, SUCCESSFUL_BUILD_OUTPUT, ""
+        )
 
     verification_count = 0
 

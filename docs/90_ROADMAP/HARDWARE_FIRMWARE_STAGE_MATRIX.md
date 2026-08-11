@@ -1,5 +1,12 @@
 # Hardware / Firmware / Host Stage Matrix
 
+**Current programme status:** CX318 Stage 5 is suspended incomplete and
+unsealed. Platform stabilization passed its completion gate under
+`../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`; no successor
+programme is currently authorized. The detailed stage evidence below is
+retained as historical development context; its stage-specific “next”
+statements do not create execution authority.
+
 ## Naming Rule
 
 OTIS uses separate stage prefixes:
@@ -22,7 +29,7 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 | `SW1.5a` | PIO sparse-edge validation | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough                     |
 | `A0`     | Basic replay/report        | validate runs and derive simple intervals/frequency estimates                                     | active/usable                       |
 | `H1`     | Steerable oscillator prep  | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware                 | active/open-loop characterization   |
-| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and control                                              | live observe-only integration accepted; further observe-only evidence required; actuation blocked |
+| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and bounded control experiments                           | CX317 bounded experiments completed; platform stabilization completed; CX318 Stage 5 suspended incomplete |
 
 ## Validated H0/SW1 State
 

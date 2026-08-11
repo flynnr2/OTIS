@@ -9,7 +9,13 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import cx318_stage5_rehearsal_analyze as analyzer
-from host.otis_tools.cx318_stage5_runtime_contract import ACTIVE_STATUS_KEYS
+from host.otis_tools.active_status_contract import (
+    ACTIVE_STATUS_KEYS,
+    ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+)
 
 
 @dataclass(frozen=True)
@@ -218,6 +224,9 @@ def _fixture_run(
         ("dual_core", "fail_static"): "false",
         ("cx317_active", "fail_static"): "false",
         ("cx317_preview", "telemetry_dropped_frames"): "0",
+        ("cx317_active", SNAPSHOT_BEGIN_KEY): "1",
+        ("cx317_active", SNAPSHOT_CONTRACT_KEY): ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+        ("cx317_active", SNAPSHOT_COMPLETE_KEY): "1",
     }
     authority_row = {
         "actionable": "true" if authority else "false",
@@ -251,7 +260,7 @@ def _fixture_run(
 
     monkeypatch.setattr(analyzer, "validate_csv", validate_csv)
     monkeypatch.setattr(analyzer, "_read_csv", read_csv)
-    monkeypatch.setattr(analyzer, "_latest_health", lambda _: health)
+    monkeypatch.setattr(analyzer, "latest_complete_health", lambda _: health)
     monkeypatch.setattr(analyzer, "replay_tight_deadband", lambda _: _Replay())
     monkeypatch.setattr(
         analyzer,

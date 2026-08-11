@@ -41,7 +41,7 @@ Fail the run and preserve artifacts when any of these occur:
 - unflagged zero `counted_edges`;
 - non-positive count gate windows;
 - PPS cadence outside host sanity bounds after the startup interval;
-- post-startup `fc0_fault=true` without an intentional anomaly test;
+- post-startup `fault_latched=true` without an intentional anomaly test;
 - `capture,dropped_count` or PIO FIFO overflow is nonzero.
 
 ## No-Hardware Dry Checks
@@ -92,10 +92,14 @@ intentionally does not compile the theoretical cross-product.
 python3 tools/firmware_matrix.py --check-environment
 python3 tools/firmware_matrix.py --list
 python3 tools/firmware_matrix.py
+python3 tools/firmware_matrix.py --all-profiles --list
 ```
 
-The matrix passes only when every supported profile compiles and every invalid
-tuple fails with its named diagnostic. Each supported profile writes its
+The default matrix is the current Release tier. It passes only when every
+current Release profile compiles and every current structural guard fails with
+its named diagnostic. `--all-profiles` explicitly includes archived programme
+profiles for historical investigation; it is not part of default verification.
+Each expected-pass profile writes its
 binary, build log, and artifact-hashing `firmware_build_manifest.json` below the ignored
 `build/firmware_matrix/<profile>/` directory.
 
@@ -229,13 +233,13 @@ Expected telemetry:
 - `CNT` rows on `CH2`;
 - `source_domain=h0_tcxo_16mhz` for H0 TCXO runs;
 - `fc0,window_invalid_reason=none` on clean windows;
-- `fc0,fc0_observed_valid=true` once clean observations are present;
-- `fc0,fc0_valid_for_control=true` only after startup inhibit and clean-window
+- `fc0,observation_valid=true` once clean observations are present;
+- `fc0,control_eligible=true` only after startup inhibit and clean-window
   qualification;
-- `fc0,fc0_fault=false` after clean post-inhibit windows.
+- `fc0,fault_latched=false` after clean post-inhibit windows.
 
 Pass criteria: host validation/report pass, no unflagged zero counts, no
-post-startup `fc0_fault=true` in a nominal run.
+post-startup `fault_latched=true` in a nominal run.
 
 ## Bench Leg 5: PIO Long-Gate H1 Mode
 
@@ -265,10 +269,10 @@ Firmware: compile/upload `OTIS_SW1_MODE_H1_OCXO_OBSERVE` with
 Expected telemetry:
 
 - `capture,tcxo_counter_backend=pio_long_gate_gpio20`;
-- `CNT` rows on `CH2` with `source_domain=h1_ocxo_open_loop`;
+- `CNT` rows on `CH2` with `source_domain=h1_cx317_ocxo_10mhz`;
 - `REF` rows on `CH1` when PPS is wired;
 - `STS` rows for `fc0,last_window_invalid_reason`,
-  `fc0,consecutive_bad_windows`, `fc0,total_bad_windows`, and `fc0,fc0_fault`;
+  `fc0,consecutive_bad_windows`, `fc0,total_bad_windows`, and `fc0,fault_latched`;
 - DAC `STS`/`DAC` rows if DAC is enabled;
 - no post-startup invalid windows in a nominal run.
 
@@ -336,7 +340,7 @@ Expected telemetry:
   construction or are explicitly withheld/flagged as invalid;
 - no unflagged zero `counted_edges`;
 - no non-positive or implausible gate duration findings;
-- `fc0,fc0_fault=false` in nominal operation.
+- `fc0,fault_latched=false` in nominal operation.
 
 Pass criteria:
 
@@ -405,7 +409,7 @@ Expected telemetry:
   condition;
 - `fc0,consecutive_bad_windows` and `fc0,total_bad_windows` increase;
 - after startup inhibit, `fc0,post_startup_invalid_window=true` and
-  `fc0,fc0_fault=true` for invalid windows.
+  `fc0,fault_latched=true` for invalid windows.
 - for PPS-gated missing-PPS injection, `pps_gate,missing_pps_count` increases
   and `pps_gate,ratio_available=false`.
 

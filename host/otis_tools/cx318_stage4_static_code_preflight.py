@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import os
+import subprocess
 import tempfile
 from typing import Any
 
@@ -32,6 +33,7 @@ from .cx318_stage4_premise_command import (
 from .evidence import validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .service_plane_probe import HOST_MARKER_PREFIX
+from tools.firmware_matrix import DEFAULT_MATRIX
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -345,12 +347,24 @@ def _validate_premise_lineage(
             raise ValueError("premise UF2 size differs")
         resolved[name] = path
     record = json.loads(resolved["flash_record"].read_text(encoding="utf-8"))
+    current_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=DEFAULT_MATRIX.parents[2],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    recorded_commit = (
+        record.get("artifact_binding", {}).get("git_commit")
+        if isinstance(record.get("artifact_binding"), dict)
+        else None
+    )
     binding = validate_premise_flash_record(
         record,
         matrix_path=resolved["matrix"],
         build_manifest_path=resolved["build_manifest"],
         uf2_path=resolved["uf2"],
-        allow_historical_clean_build=True,
+        allow_historical_clean_build=recorded_commit != current_commit,
     )
     if lineage.get("artifact_binding") != binding:
         raise ValueError("setup premise artifact binding differs from flash lineage")

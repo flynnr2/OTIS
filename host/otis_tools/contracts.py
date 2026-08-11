@@ -142,27 +142,6 @@ PSEUDO_PPS_TRUTH_FIELDS = [
     "flags",
 ]
 
-DIAGNOSTICS_DRAFT_V0_FIELDS = [
-    "record_type",
-    "schema_version",
-    "diagnostic_seq",
-    "diagnostic_id",
-    "subsystem",
-    "severity",
-    "state",
-    "transition",
-    "diagnostic_confidence",
-    "reason_code",
-    "first_seen_ticks",
-    "last_seen_ticks",
-    "time_domain",
-    "evidence_refs",
-    "algorithm_version",
-    "config_version",
-    "control_effect",
-    "control_eligibility",
-]
-
 DIAGNOSTICS_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -505,7 +484,6 @@ CONTRACT_FIELDS = {
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
     "pseudo_pps_truth_v1": PSEUDO_PPS_TRUTH_FIELDS,
-    "diagnostics_draft_v0": DIAGNOSTICS_DRAFT_V0_FIELDS,
     "diagnostics_v1": DIAGNOSTICS_V1_FIELDS,
     "reference_observations_v1": REFERENCE_OBSERVATION_V1_FIELDS,
     "estimates_v1": ESTIMATE_V1_FIELDS,
@@ -527,7 +505,6 @@ CONTRACT_RECORD_TYPES = {
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
     "pseudo_pps_truth_v1": {"PGT"},
-    "diagnostics_draft_v0": {"DIAG"},
     "diagnostics_v1": {"DIAG"},
     "reference_observations_v1": {"RFO"},
     "estimates_v1": {"EST"},
@@ -549,7 +526,6 @@ CONTRACT_SCHEMA_VERSIONS = {
     "dac_steps_v1": 1,
     "environment_v1": 1,
     "pseudo_pps_truth_v1": 1,
-    "diagnostics_draft_v0": 0,
     "diagnostics_v1": 1,
     "reference_observations_v1": 1,
     "estimates_v1": 1,
@@ -571,7 +547,6 @@ SEQUENCE_FIELDS = {
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
     "pseudo_pps_truth_v1": "truth_seq",
-    "diagnostics_draft_v0": "diagnostic_seq",
     "diagnostics_v1": "diagnostic_seq",
     "reference_observations_v1": "reference_observation_seq",
     "estimates_v1": "estimate_seq",
@@ -593,7 +568,6 @@ TIMESTAMP_FIELDS = {
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
     "pseudo_pps_truth_v1": (),
-    "diagnostics_draft_v0": ("first_seen_ticks", "last_seen_ticks"),
     "diagnostics_v1": ("last_seen_ticks",),
     "reference_observations_v1": ("observation_timestamp_ticks",),
     "estimates_v1": ("estimator_timestamp_ticks",),
@@ -620,7 +594,6 @@ DOMAIN_FIELDS = {
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
     "pseudo_pps_truth_v1": (),
-    "diagnostics_draft_v0": ("time_domain",),
     "diagnostics_v1": ("time_domain",),
     "reference_observations_v1": ("time_domain",),
     "estimates_v1": ("time_domain",),
@@ -650,16 +623,6 @@ VALID_DIAGNOSTIC_SUBSYSTEMS = {
 }
 VALID_DIAGNOSTIC_STATES = {"active", "cleared", "latched", "suppressed", "unknown"}
 VALID_DIAGNOSTIC_TRANSITIONS = {"raised", "updated", "cleared", "latched", "suppressed", "snapshot", "unknown"}
-VALID_CONTROL_EFFECTS = {
-    "none",
-    "reduce_trust",
-    "inhibit_acquisition",
-    "inhibit_actuation",
-    "enter_holdover",
-    "fail_static",
-    "unknown",
-}
-VALID_CONTROL_ELIGIBILITY = {"eligible", "not_eligible", "not_applicable", "unknown"}
 VALID_DIAGNOSTIC_EFFECTS = {
     "none",
     "invalidate",
@@ -1172,41 +1135,6 @@ def _check_pseudo_pps_truth(row: dict[str, str], row_number: int, errors: list[s
         ):
             if row.get(field_name) != "0":
                 errors.append(f"row {row_number}: marker {field_name} must be zero")
-
-
-def _check_diagnostics_draft_v0(row: dict[str, str], row_number: int, errors: list[str]) -> None:
-    if row.get("subsystem") not in VALID_DIAGNOSTIC_SUBSYSTEMS:
-        errors.append(f"row {row_number}: subsystem must be one of {sorted(VALID_DIAGNOSTIC_SUBSYSTEMS)}")
-    if row.get("severity") not in VALID_DIAGNOSTIC_SEVERITIES:
-        errors.append(f"row {row_number}: severity must be one of {sorted(VALID_DIAGNOSTIC_SEVERITIES)}")
-    if row.get("state") not in VALID_DIAGNOSTIC_STATES:
-        errors.append(f"row {row_number}: state must be one of {sorted(VALID_DIAGNOSTIC_STATES)}")
-    if row.get("transition") not in VALID_DIAGNOSTIC_TRANSITIONS:
-        errors.append(f"row {row_number}: transition must be one of {sorted(VALID_DIAGNOSTIC_TRANSITIONS)}")
-    if row.get("control_effect") not in VALID_CONTROL_EFFECTS:
-        errors.append(f"row {row_number}: control_effect must be one of {sorted(VALID_CONTROL_EFFECTS)}")
-    if row.get("control_eligibility") not in VALID_CONTROL_ELIGIBILITY:
-        errors.append(f"row {row_number}: control_eligibility must be one of {sorted(VALID_CONTROL_ELIGIBILITY)}")
-
-    confidence = row.get("diagnostic_confidence", "")
-    if confidence != "unknown":
-        parsed_confidence = _parse_optional_float(confidence, "diagnostic_confidence", row_number, errors)
-        if parsed_confidence is None or not 0.0 <= parsed_confidence <= 1.0:
-            errors.append(f"row {row_number}: diagnostic_confidence must be between 0.0 and 1.0 or 'unknown'")
-
-    first_seen = _parse_non_negative_int(row.get("first_seen_ticks", ""), "first_seen_ticks", row_number, errors)
-    last_seen = _parse_non_negative_int(row.get("last_seen_ticks", ""), "last_seen_ticks", row_number, errors)
-    if first_seen is not None and last_seen is not None and last_seen < first_seen:
-        errors.append(f"row {row_number}: last_seen_ticks must be greater than or equal to first_seen_ticks")
-
-    for field_name in ("diagnostic_id", "reason_code", "evidence_refs", "algorithm_version", "config_version"):
-        if not row.get(field_name):
-            errors.append(f"row {row_number}: {field_name} must not be empty")
-
-    if row.get("subsystem") == "service_plane" and row.get("control_effect") in {"enter_holdover", "fail_static"}:
-        errors.append(
-            f"row {row_number}: service-plane telemetry diagnostics must not directly enter holdover or fail static"
-        )
 
 
 def _check_diagnostics_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -2323,8 +2251,6 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_environment(row, row_count, errors)
             if context.contract == "pseudo_pps_truth_v1":
                 _check_pseudo_pps_truth(row, row_count, errors)
-            if context.contract == "diagnostics_draft_v0":
-                _check_diagnostics_draft_v0(row, row_count, errors)
             if context.contract == "diagnostics_v1":
                 _check_diagnostics_v1(row, row_count, errors)
             if context.contract == "reference_observations_v1":

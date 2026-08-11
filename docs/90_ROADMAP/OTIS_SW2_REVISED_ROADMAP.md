@@ -1,5 +1,12 @@
 # OTIS SW2 — Repository-Context Roadmap
 
+**Lifecycle note (2026-08-11):** this is a historical roadmap through the
+sealed CX317 result. The subsequent CX318 Stage 5 programme remains suspended,
+incomplete, and unsealed. The platform-stabilization programme in
+`../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md` passed its
+completion gate; no successor programme is currently authorized. “Next”
+actions below are not current execution authority.
+
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
 `dual_core_frequency_control_endurance_passed`
@@ -706,7 +713,7 @@ this gate does not authorise DAC actuation.
 1. Add or promote a draft first-class diagnostic contract with stable reason
    codes, evidence references, persistence, diagnostic confidence, and explicit
    control consequence. The current additive draft is
-   `data_contracts/diagnostics_draft_v0.csv.md`.
+   `data_contracts/diagnostics_v1.csv.md`.
 2. Add a document defining:
    - discipline observation eligibility;
    - estimator outputs;
@@ -719,7 +726,8 @@ this gate does not authorise DAC actuation.
    - `count_valid_for_control`;
    - `count_fault`;
    - `reference_valid_for_control`.
-4. Retain `fc0_*` fields during migration so existing host tools and runs remain interpretable.
+4. Superseded by the platform-stabilization contract reset: current builds use
+   backend-neutral `count_path` status and do not retain compatibility aliases.
 5. Define unavailable values explicitly; unknown gain must never be encoded as zero.
 
 ### Deliverable

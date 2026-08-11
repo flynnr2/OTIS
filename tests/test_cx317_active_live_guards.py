@@ -280,6 +280,8 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         )
     ]
     expected = (
+        "snapshot_generation_begin",
+        "snapshot_contract",
         "enabled",
         "run_identity",
         "build_identity",
@@ -309,6 +311,7 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "selected_interval_count",
         "automatic_retry",
         "automatic_restore",
+        "snapshot_generation_complete",
     )
     visitor_keys = re.findall(r'visitor\(context, "([^"]+)"', visitor)
 
@@ -333,6 +336,7 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
     )
     assert "transaction_bound && manual_start_confirmed" in status_getter
     assert '"0x%04X"' in visitor
+    assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT" in visitor
     assert '"unavailable"' in visitor
 
 

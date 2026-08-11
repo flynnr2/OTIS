@@ -11,46 +11,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Mapping, Sequence
 
+from .active_status_contract import ACTIVE_STATUS_KEYS
+
 
 RUNTIME_CONTRACT_ID = "cx318_stage5_prewrite_runtime_contract_v1"
 INHERITED_PREVIEW_BASELINE_CODE = 0xA828
 INHERITED_PREVIEW_BASELINE_PROVENANCE = (
     "stage4_sealed_build_bound_preview_not_physical_dac_confirmation"
-)
-
-# This is the canonical firmware vocabulary.  Direct and dual-core publishers
-# must emit exactly the same set; operational consumers require every key so a
-# future publisher split cannot silently shed a field again.
-ACTIVE_STATUS_KEYS = (
-    "enabled",
-    "run_identity",
-    "build_identity",
-    "profile_identity",
-    "estimator_sha256",
-    "model_sha256",
-    "active_policy_sha256",
-    "response_policy_sha256",
-    "numerical_policy_sha256",
-    "state",
-    "reason",
-    "evidence_pending",
-    "evidence_phase",
-    "capture_lease_live",
-    "manual_start_confirmed",
-    "arm_eligible",
-    "fail_static",
-    "session_id",
-    "uptime_s",
-    "evidence_request_sequence",
-    "expected_setup_code",
-    "confirmed_applied_code_known",
-    "confirmed_applied_code",
-    "correction_count",
-    "cumulative_movement_codes",
-    "dac_epoch",
-    "selected_interval_count",
-    "automatic_retry",
-    "automatic_restore",
 )
 
 Health = Mapping[tuple[str, str], str]

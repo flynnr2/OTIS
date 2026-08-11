@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from .cx318_stage5_manifest import REHEARSAL_STAGE, validate_manifest
+from .active_status_contract import ACTIVE_STATUS_WIRE_KEYS
 from .cx318_stage5_runtime_contract import (
     ACTIVE_STATUS_KEYS,
     RUNTIME_CONTRACT_ID,
@@ -56,7 +57,7 @@ def _firmware_status_vocabulary() -> dict[str, object]:
         dual_source.index("void publish_dual_core_timing_health")
     ]
     visitor_keys = tuple(re.findall(r'visitor\(context, "([^"]+)"', visitor))
-    expected = tuple(ACTIVE_STATUS_KEYS)
+    expected = tuple(ACTIVE_STATUS_WIRE_KEYS)
     direct_delegates = "otis_cx317_active_live_visit_status(context," in direct_source
     dual_delegates = "otis_cx317_active_live_visit_status(" in dual
     health_producers = {

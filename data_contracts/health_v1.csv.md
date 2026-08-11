@@ -44,17 +44,18 @@ Count backends emit health/status rows for backend selection, anomaly reasons,
 bad-window counters, startup inhibit, and control eligibility. These rows are
 ordinary `STS` records; they do not extend the CSV schema.
 
-Historical count-readiness keys use component `fc0` even when the active backend
-is not physically FC0. They are compatibility status surfaces:
+Backend-neutral count readiness uses component `count_path`. Hardware-specific
+sample details may still name the physical backend in their values, but the
+component and control-readiness keys do not imply FC0 ownership:
 
 | Component | Key | Meaning |
 |---|---|---|
-| `fc0` | `fc0_observed_valid` | latest count observation was bounded and internally coherent |
-| `fc0` | `fc0_valid_for_control` | startup inhibit has expired and enough clean windows have followed it |
-| `fc0` | `fc0_fault` | a post-inhibit count window was invalid |
-| `fc0` | `last_window_invalid_reason` | latest count-window anomaly reason |
-| `fc0` | `consecutive_bad_windows` | consecutive invalid count windows |
-| `fc0` | `total_bad_windows` | invalid count windows observed in this boot |
+| `count_path` | `observation_valid` | latest count observation was bounded and internally coherent |
+| `count_path` | `control_eligible` | startup inhibit has expired and enough clean windows have followed it |
+| `count_path` | `fault_latched` | a post-inhibit count window was invalid |
+| `count_path` | `last_window_invalid_reason` | latest count-window anomaly reason |
+| `count_path` | `consecutive_bad_windows` | consecutive invalid count windows |
+| `count_path` | `total_bad_windows` | invalid count windows observed in this boot |
 
 PPS-gated ratio runs add component `pps_gate`:
 
@@ -117,6 +118,10 @@ Detailed rows are emitted on a transition, anomaly, timeout, or explicit
 query. `command/config_snapshot=begin` and `end` delimit each bounded
 `CONFIG?` response.
 
+Command-bearing `cx317_active` fields are a special coherent burst governed by
+[`cx317_active_status_snapshot_v1.md`](cx317_active_status_snapshot_v1.md).
+They must not be read as independent latest values.
+
 ## Hardware Resource Ownership Status
 
 Firmware resource ownership is reported with component `resource_registry`.
@@ -153,9 +158,10 @@ Registry `valid` and `complete` remain separate status keys. An invalid
 registry is a `FatalConflict`; a valid but incomplete registry is
 `RequiredUnavailable`, because an expected dynamic resource did not bind.
 
-## Diagnostics Migration
+## Diagnostics relationship
 
-`health_v1` remains the compatibility status contract. First-class diagnostic
-findings are additive and are documented in `diagnostics_draft_v0.csv.md`. Host
-replay may derive `DIAG` rows from `STS`, `REF`, `CNT`, `DAC`, manifests, and
-reports, but must not remove or rewrite the original `STS` rows.
+`health_v1` is low-level status evidence. First-class diagnostic findings are
+additive and use the sole current diagnostic contract,
+[`diagnostics_v1.csv.md`](diagnostics_v1.csv.md). Host replay may derive `DIAG`
+rows from `STS`, `REF`, `CNT`, `DAC`, manifests, and reports, but must not
+remove or rewrite the original `STS` rows.

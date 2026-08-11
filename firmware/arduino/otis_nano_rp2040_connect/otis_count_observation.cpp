@@ -287,6 +287,15 @@ void emit_status_u32(OtisStatusEmitContext *context, const char *component,
   otis_status_emit_u32(context, component, key, value, severity, flags);
 }
 
+void emit_status_u64(OtisStatusEmitContext *context, const char *component,
+                     const char *key, uint64_t value, const char *severity,
+                     uint32_t flags) {
+  char formatted[24];
+  snprintf(formatted, sizeof(formatted), "%llu",
+           static_cast<unsigned long long>(value));
+  emit_status(context, component, key, formatted, severity, flags);
+}
+
 const char *bool_text(bool value) { return value ? "true" : "false"; }
 
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
@@ -723,45 +732,45 @@ void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
                                  OtisStatusEmitContext *status_context,
                                  const WindowAnomaly &anomaly) {
   uint32_t flags = runtime_state->tcxo.last_window_flags;
-  emit_status(status_context, "fc0", "window_invalid_reason",
+  emit_status(status_context, "count_path", "window_invalid_reason",
               runtime_state->tcxo.last_window_invalid_reason, OTIS_SEVERITY_WARN,
               flags);
-  emit_status_u32(status_context, "fc0", "window_sample_count",
+  emit_status_u32(status_context, "count_path", "window_sample_count",
                   runtime_state->tcxo.last_sample_count, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_zero_sample_count",
+  emit_status_u32(status_context, "count_path", "window_zero_sample_count",
                   runtime_state->tcxo.last_zero_sample_count, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_valid_sample_count",
+  emit_status_u32(status_context, "count_path", "window_valid_sample_count",
                   runtime_state->tcxo.last_valid_sample_count,
                   OTIS_SEVERITY_WARN, flags);
-  emit_status_u32(status_context, "fc0", "window_first_sample_khz",
+  emit_status_u32(status_context, "count_path", "window_first_sample_khz",
                   runtime_state->tcxo.last_first_sample_khz,
                   OTIS_SEVERITY_WARN, flags);
-  emit_status_u32(status_context, "fc0", "window_last_sample_khz",
+  emit_status_u32(status_context, "count_path", "window_last_sample_khz",
                   runtime_state->tcxo.last_last_sample_khz, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_min_sample_khz",
+  emit_status_u32(status_context, "count_path", "window_min_sample_khz",
                   runtime_state->tcxo.last_min_sample_khz, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_max_sample_khz",
+  emit_status_u32(status_context, "count_path", "window_max_sample_khz",
                   runtime_state->tcxo.last_max_sample_khz, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_elapsed_us",
+  emit_status_u32(status_context, "count_path", "window_elapsed_us",
                   runtime_state->tcxo.last_elapsed_us, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status_u32(status_context, "fc0", "window_flags",
+  emit_status_u32(status_context, "count_path", "window_flags",
                   runtime_state->tcxo.last_window_flags, OTIS_SEVERITY_WARN,
                   flags);
-  emit_status(status_context, "fc0", "post_startup_invalid_window",
+  emit_status(status_context, "count_path", "post_startup_invalid_window",
               anomaly.post_startup_invalid ? "true" : "false",
               anomaly.post_startup_invalid ? OTIS_SEVERITY_WARN
                                            : OTIS_SEVERITY_INFO,
               flags);
-  emit_status_u32(status_context, "fc0", "consecutive_bad_windows",
+  emit_status_u32(status_context, "count_path", "consecutive_bad_windows",
                   runtime_state->tcxo.consecutive_bad_windows,
                   OTIS_SEVERITY_WARN, flags);
-  emit_status_u32(status_context, "fc0", "total_bad_windows",
+  emit_status_u32(status_context, "count_path", "total_bad_windows",
                   runtime_state->tcxo.total_bad_windows, OTIS_SEVERITY_WARN,
                   flags);
 }
@@ -1807,9 +1816,125 @@ void otis_count_observation_emit_status(
 #endif
 }
 
+void otis_count_observation_emit_runtime_status(
+    const OtisRuntimeState *runtime_state,
+    OtisStatusEmitContext *status_context,
+    const OtisCountObservationConfig *config) {
+  if (runtime_state == nullptr || status_context == nullptr ||
+      config == nullptr) {
+    return;
+  }
+  const OtisTcxoRuntimeState &count = runtime_state->tcxo;
+  emit_status(status_context, "count_path", "observation_valid",
+              bool_text(count.last_observation_valid),
+              count.last_observation_valid ? OTIS_SEVERITY_INFO
+                                           : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_NONE);
+  emit_status(status_context, "count_path", "measurement_mode",
+              otis_count_observation_measurement_mode(), OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "count_path", "measure_period_ms",
+                  config->measure_period_ms, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "count_path", "gate_period_us",
+                  config->gate_period_us, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "count_path", "last_measured_khz",
+                  count.last_measured_khz, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "count_path", "last_elapsed_us",
+                  count.last_elapsed_us, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32(status_context, "count_path", "last_sampled_elapsed_us",
+                  count.last_sampled_elapsed_us, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32(status_context, "count_path", "last_sample_count",
+                  count.last_sample_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "count_path", "last_zero_sample_count",
+                  count.last_zero_sample_count,
+                  count.last_zero_sample_count == 0u ? OTIS_SEVERITY_INFO
+                                                      : OTIS_SEVERITY_WARN,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_valid_sample_count",
+                  count.last_valid_sample_count, OTIS_SEVERITY_INFO,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_first_sample_khz",
+                  count.last_first_sample_khz, OTIS_SEVERITY_INFO,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_last_sample_khz",
+                  count.last_last_sample_khz, OTIS_SEVERITY_INFO,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_min_sample_khz",
+                  count.last_min_sample_khz,
+                  count.last_zero_sample_count == 0u ? OTIS_SEVERITY_INFO
+                                                      : OTIS_SEVERITY_WARN,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_max_sample_khz",
+                  count.last_max_sample_khz, OTIS_SEVERITY_INFO,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "last_window_flags",
+                  count.last_window_flags,
+                  count.last_observation_valid ? OTIS_SEVERITY_INFO
+                                               : OTIS_SEVERITY_WARN,
+                  count.last_window_flags);
+  emit_status(status_context, "count_path", "last_window_invalid_reason",
+              otis_count_observation_window_invalid_reason(runtime_state),
+              count.last_observation_valid ? OTIS_SEVERITY_INFO
+                                           : OTIS_SEVERITY_WARN,
+              count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "consecutive_bad_windows",
+                  count.consecutive_bad_windows,
+                  count.consecutive_bad_windows == 0u ? OTIS_SEVERITY_INFO
+                                                       : OTIS_SEVERITY_WARN,
+                  count.last_window_flags);
+  emit_status_u32(status_context, "count_path", "total_bad_windows",
+                  count.total_bad_windows,
+                  count.total_bad_windows == 0u ? OTIS_SEVERITY_INFO
+                                                : OTIS_SEVERITY_WARN,
+                  count.last_window_flags);
+  emit_status(status_context, "count_path", "startup_inhibit_active",
+              bool_text(count.startup_inhibit_active),
+              count.startup_inhibit_active ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "count_path", "startup_inhibit_elapsed_s",
+                  count.startup_inhibit_elapsed_s,
+                  count.startup_inhibit_active ? OTIS_SEVERITY_WARN
+                                               : OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "count_path", "control_eligible",
+              bool_text(count.valid_for_control),
+              count.valid_for_control ? OTIS_SEVERITY_INFO
+                                      : OTIS_SEVERITY_WARN,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "count_path",
+                  "control_ready_clean_window_count",
+                  count.control_clean_window_count,
+                  count.valid_for_control ? OTIS_SEVERITY_INFO
+                                          : OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(status_context, "count_path", "fault_latched",
+              bool_text(count.fault_after_startup),
+              count.fault_after_startup ? OTIS_SEVERITY_WARN
+                                        : OTIS_SEVERITY_INFO,
+              count.last_window_flags);
+  emit_status_u64(status_context, "count_path", "last_counted_edges",
+                  count.last_counted_edges, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u64(status_context, "count_path", "last_gate_open_ticks",
+                  count.last_gate_open_ticks, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u64(status_context, "count_path", "last_gate_close_ticks",
+                  count.last_gate_close_ticks, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+}
+
 void otis_count_observation_emit_configuration_status(
     OtisStatusEmitContext *status_context) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
+  OtisPpsSnapshotBackendStats snapshot_stats;
+  otis_pps_snapshot_backend_get_stats(&snapshot_stats);
   emit_status(status_context, "capture", "tcxo_counter_backend",
               "pps_gated_ratio", OTIS_SEVERITY_INFO,
               OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -1834,6 +1959,9 @@ void otis_count_observation_emit_configuration_status(
                   OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "count_resolution_edges", 1u,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(status_context, "pps_gate", "snapshot_ring_capacity",
+                  snapshot_stats.ring_capacity, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
 #else
   (void)status_context;
 #endif

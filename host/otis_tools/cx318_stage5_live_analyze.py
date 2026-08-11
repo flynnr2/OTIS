@@ -23,10 +23,10 @@ from .contracts import CsvValidationContext, validate_csv
 from .cx317_active_campaign import (
     ACTIVE_CSV,
     HEALTH_CSV,
-    _latest_health,
     _read_csv,
     validate_transaction_history,
 )
+from .active_status_contract import latest_complete_health
 from .cx317_bounded_active import ResponseClassifier
 from .cx318_stage5_manifest import (
     LIVE_STAGE,
@@ -959,7 +959,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     preview_paths = (CONTROL_CSV, RPH_CSV, PHE_CSV, HPR_CSV, TDB_CSV)
     previews_present = all(_read_csv(run_dir / relative) for relative in preview_paths)
     zero_authority = all(_authority_false(run_dir / relative) for relative in preview_paths)
-    health = _latest_health(run_dir / HEALTH_CSV)
+    health = latest_complete_health(run_dir / HEALTH_CSV)
     health_integrity = evaluate_health_integrity(health)
     sources = {
         row.get("source", "").lower()

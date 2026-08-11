@@ -23,7 +23,7 @@ KNOWN_BRINGUP_MODES = {
 
 KNOWN_H0_CHANNELS = {0, 1, 2}
 KNOWN_H0_COUNT_SOURCE_DOMAINS = {"h0_tcxo_16mhz"}
-KNOWN_H1_COUNT_SOURCE_DOMAINS = {"h1_ocxo_open_loop"}
+KNOWN_H1_COUNT_SOURCE_DOMAINS = {"h1_cx317_ocxo_10mhz"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

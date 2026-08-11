@@ -118,7 +118,7 @@ versions must not emit them, and control eligibility never depends on them.
 | historical, derived, deprecated | no | `plant_response.reference_integrity` |
 | historical, derived, deprecated | with historical object | `plant_response.reference_integrity.{ref_rows,ref_raw_duration_s,timestamp_wrap_count,raw_timestamp_monotonic,unwrapped_timestamp_monotonic,host_pps_anomalies,d14_rejected_long_count,d14_rejected_long_count_interpretation}` |
 | historical, derived, deprecated | no | `plant_response.startup_control_eligibility` |
-| historical, derived, deprecated | with historical object | `plant_response.startup_control_eligibility.{fc0_valid_for_control,fc0_fault,count_windows,invalid_count_windows,first_control_eligible_elapsed_s}` |
+| historical, derived, deprecated | with historical object | `plant_response.startup_control_eligibility.{control_eligible,fault_latched,count_windows,invalid_count_windows,first_control_eligible_elapsed_s}` |
 
 ### Provenance, invalidation, and unresolved references
 
