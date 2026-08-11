@@ -13,10 +13,12 @@ bundle and rehearsal pass. No G4 or phase/hybrid actuation is authorized.
 
 The v5 G2 physical entry stopped fail-static before any setup or control action
 because the firmware had latched an evidence-queue fault during the ownerless
-inter-run interval. The v5 activation is retired. A fresh v6 recovery proposal,
-preflight and operational-path rehearsal now pass offline; v6 remains blocked
-pending exact authority and an immediate pre-run board restart. This event is
-not a G2 scientific result, and G3 remains blocked.
+inter-run interval. The v6 entry also stopped before any write: although the
+fresh firmware had no partition or evidence fault, host attachment after the
+reset allowed three ordinary telemetry records to be dropped. Both activations
+are retired. The replacement path is being rebuilt so a read-only host owns
+and drains the device before the reset and promotes that same owner into G2.
+Neither event is a G2 scientific result, and G3 remains blocked.
 
 The normative programme definition is
 [`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
@@ -55,3 +57,7 @@ recorded in
 
 The operator's exact v6 live authority and fresh-restart boundary are recorded
 in [`08_G2_V6_LIVE_AUTHORITY.md`](08_G2_V6_LIVE_AUTHORITY.md).
+
+The retained v6 zero-action stop, firmware/host diagnosis and stronger recovery
+boundary are recorded in
+[`09_G2_V6_PREWRITE_TELEMETRY_STOP.md`](09_G2_V6_PREWRITE_TELEMETRY_STOP.md).
