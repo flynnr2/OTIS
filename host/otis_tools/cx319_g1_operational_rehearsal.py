@@ -247,6 +247,7 @@ def _prepare_replay(
         path.unlink(missing_ok=True)
 
     copied_bundle = replay_run / RUN_BUNDLE_PATH
+    copied_bundle.unlink()
     shutil.copy2(bundle_path, copied_bundle)
     manifest_path = replay_run / "run_manifest.json"
     manifest_path.unlink(missing_ok=True)
