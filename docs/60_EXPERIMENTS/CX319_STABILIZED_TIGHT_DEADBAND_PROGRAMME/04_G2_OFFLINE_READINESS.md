@@ -21,15 +21,15 @@ identities must satisfy the shared fail-closed pre-write predicate.
 
 | Artifact | Identity |
 |---|---|
-| G2 proposal bundle | `29ee02a7d1a577668617ff0655f432bf3526f293839399526900067f91617328` |
-| Source revision | `d42c5f67780c21f3e2496143852438c406c31f57` |
+| G2 proposal bundle | `30d083772c963139d4444c6614d48efcbcc7f178f11fa8cd222c298d4b789f25` |
+| Source revision | `05dbfe125a19469a3397a3410da1ef92785abc6f` |
 | G1 evidence content | `cd17f90587a321ed0ddd6c40db76c0beffc8981c68ef7afdd8e46bbc1549432d` |
 | Reused UF2 | `e1b12c86476085e2e125ece141bddc66ba6891be98535d4e542ee228f03ff42e` |
 | CX319 policy | `e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70` |
-| Structural preflight file | `6f9cef83043c2308016bd44ebf2a24d67a621ba10a88c75314c4ab8e644e4be9` |
-| Operational rehearsal result file | `52133d3a8536e6f0a3ebc74ab2145bb1ae2e3654e02eb87eb9c66949b1b84e11` |
-| Operational rehearsal content | `4ac768fce52ce119441545c8b39109ce1072e7dd14e7dbcf3a994c8591f2706e` |
-| Operational rehearsal seal | `6ad255a95a8916db6f4ba4290a2d7cdf8de014ba8d0ef9e8a71fbfddf3aeb01f` |
+| Structural preflight file | `402b4499fdba34acc0b664678ee945a73fba9766855abb77ccb8b685973edd10` |
+| Operational rehearsal result file | `d618ee69920fcb27eae24db35325874ef3222ab2258e24800477b2b03c0e6332` |
+| Operational rehearsal content | `1079c61558981037ac470b6354c6bbd22440f3e3d7b463062f244f2527905ccf` |
+| Operational rehearsal seal | `ec4bf002d18ef27b9e8b9fe9a50ae8453fba9e98160499cdcfb83d487224cb8a` |
 
 The proposal is explicitly `proposed_not_authorized`. Its physical execution,
 firmware flash, serial open, setup stimulus, control arm, automatic correction,
@@ -72,7 +72,7 @@ normal `decision_cadence_hold` rows before it could arm the next eligible
 boundary. That shared host path was repaired and its regression is included.
 
 The repository verification after the physical-path implementation and
-readiness-state update completed with 1053 tests passing.
+readiness-state update completed with 1054 tests passing.
 
 ## Exact proposed physical envelope
 
