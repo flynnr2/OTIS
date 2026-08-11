@@ -6,6 +6,7 @@ from pathlib import Path
 from host.otis_tools.cx319_g1_operational_rehearsal import (
     _exercise_timing_contract,
     _ignore_nonregular_entries,
+    _replace_capture_stop_target,
 )
 
 
@@ -37,3 +38,18 @@ def test_replay_copy_excludes_stale_runtime_fifos(tmp_path: Path) -> None:
     )
 
     assert ignored == ["normal.fifo"]
+
+
+def test_replay_rebinds_the_logical_rotation_target(tmp_path: Path) -> None:
+    log = tmp_path / "serial.log"
+    log.write_text(
+        '# OTIS_HOST {"event":"capture_started"}\n'
+        '# OTIS_HOST {"event":"capture_stopped","logical_rotation":true,'
+        '"next_run":"/old"}\n',
+        encoding="utf-8",
+    )
+
+    _replace_capture_stop_target(log, tmp_path / "transition")
+
+    assert str(tmp_path / "transition") in log.read_text(encoding="utf-8")
+    assert '"next_run": "/old"' not in log.read_text(encoding="utf-8")

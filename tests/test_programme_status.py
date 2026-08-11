@@ -293,7 +293,7 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "host_attach_contract": (
             "two_stable_observations_then_frozen_no_increment"
         ),
-        "full_host_test_count": 1087,
+        "full_host_test_count": 1088,
         "full_host_tests_passed": True,
         "fresh_g1_physical_requalification_required": True,
         "g2_retry_authorized": False,

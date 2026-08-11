@@ -175,7 +175,7 @@
         "runtime_contract_id": "cx319_g2_prewrite_runtime_contract_v5",
         "outcome_contract_id": "cx319_g2_leg_a_outcome_contract_v2",
         "host_attach_contract": "two_stable_observations_then_frozen_no_increment",
-        "full_host_test_count": 1087,
+        "full_host_test_count": 1088,
         "full_host_tests_passed": true,
         "fresh_g1_physical_requalification_required": true,
         "g2_retry_authorized": false,

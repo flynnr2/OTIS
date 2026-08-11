@@ -120,6 +120,28 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
     os.replace(temporary, path)
 
 
+def _replace_capture_stop_target(path: Path, next_run: Path) -> None:
+    prefix = "# OTIS_HOST "
+    lines = path.read_text(encoding="utf-8").splitlines()
+    replacements = 0
+    output: list[str] = []
+    for line in lines:
+        if not line.startswith(prefix):
+            output.append(line)
+            continue
+        marker = json.loads(line[len(prefix) :])
+        if marker.get("event") == "capture_stopped" and marker.get(
+            "logical_rotation"
+        ) is True:
+            marker["next_run"] = str(next_run)
+            line = prefix + json.dumps(marker, sort_keys=True)
+            replacements += 1
+        output.append(line)
+    if replacements != 1:
+        raise ValueError("expected exactly one logical capture-stop marker")
+    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
 def _first_observation(
     path: Path, component: str, status_key: str
 ) -> tuple[int, int]:
@@ -260,6 +282,34 @@ def _prepare_replay(
     with tempfile.TemporaryDirectory(prefix="cx319-g1-transition-") as raw_temp:
         generated = prepare_transition(manifest_path, Path(raw_temp) / "transition")
         shutil.copy2(generated, transition / "run_manifest.json")
+
+    _replace_capture_stop_target(replay_run / "raw/serial.log", transition)
+    primary_closure_path = (
+        replay_run / "reports/capture_segment_closure_v1.json"
+    )
+    primary_closure = json.loads(
+        primary_closure_path.read_text(encoding="utf-8")
+    )
+    primary_closure["run"] = str(replay_run)
+    primary_closure["next_run"] = str(transition)
+    primary_closure["run_manifest_sha256"] = _sha256_file(manifest_path)
+    _replace_json(primary_closure_path, primary_closure)
+    transition_closure_path = (
+        transition / "reports/capture_segment_closure_v1.json"
+    )
+    transition_closure = json.loads(
+        transition_closure_path.read_text(encoding="utf-8")
+    )
+    transition_closure["run"] = str(transition)
+    transition_closure["run_manifest_sha256"] = _sha256_file(
+        transition / "run_manifest.json"
+    )
+    _replace_json(transition_closure_path, transition_closure)
+    transport_path = replay_run / "reports/cx319_g1_transport_rehearsal_v1.json"
+    transport = json.loads(transport_path.read_text(encoding="utf-8"))
+    transport["owner_handoff"]["from_run"] = str(replay_run)
+    transport["owner_handoff"]["to_run"] = str(transition)
+    _replace_json(transport_path, transport)
 
     expected_build = (
         bundle["firmware"]["source_sha256"]
