@@ -165,6 +165,7 @@ def test_q3_bundle_binds_passing_q1_q2_and_requires_fresh_exact_flash(
     manifest, uf2 = _fake_build(tmp_path)
     build = json.loads(manifest.read_text(encoding="utf-8"))
     build["provenance"]["source"]["sha256"] = "e" * 64
+    build["provenance"]["configuration"]["sha256"] = "f" * 64
     manifest.write_text(json.dumps(build), encoding="utf-8")
     monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
     monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)

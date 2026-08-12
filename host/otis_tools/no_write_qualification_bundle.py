@@ -400,11 +400,24 @@ def validate_build(
         )
     ):
         raise ValueError("CX319 build does not bind the current clean source")
+    configuration_digest = configuration.get("sha256")
+    configuration_digest_allowed = (
+        configuration_digest == configuration_hash(matrix, profile)
+        or (
+            allow_qualified_ancestor_image
+            and isinstance(configuration_digest, str)
+            and len(configuration_digest) == 64
+            and all(
+                character in "0123456789abcdef"
+                for character in configuration_digest
+            )
+        )
+    )
     if (
         configuration.get("profile_id") != spec["profile_id"]
         or configuration.get("defines") != profile["defines"]
         or configuration.get("fqbn") != matrix["target"]["fqbn"]
-        or configuration.get("sha256") != configuration_hash(matrix, profile)
+        or not configuration_digest_allowed
     ):
         raise ValueError("CX319 build configuration differs from the exact profile")
     artifacts = build.get("artifacts")
