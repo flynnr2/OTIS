@@ -387,6 +387,46 @@ def test_current_health_waits_for_newest_wire_generation_without_fallback(
     assert sleeps == [ACTIVE_SNAPSHOT_COMPLETION_POLL_S]
 
 
+def test_current_health_allows_completion_after_declared_q1_detach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="rehearsal")
+    completed_health = _health(supervisor)
+    pending_observed_ns = 100_000_000_000
+    selections = iter(
+        (
+            LiveHealthState(
+                "in_progress", {}, 8, pending_observed_ns, "started"
+            ),
+            LiveHealthState(
+                "complete",
+                completed_health,
+                8,
+                pending_observed_ns + 1_600_000_000,
+                "complete",
+            ),
+        )
+    )
+    monotonic_values = iter(
+        (pending_observed_ns + 1_250_000_000, pending_observed_ns + 1_600_000_000)
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor."
+        "read_live_health_state",
+        lambda *_args, **_kwargs: next(selections),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.monotonic_ns",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.sleep",
+        lambda _seconds: None,
+    )
+
+    assert supervisor._current_health() == completed_health
+
+
 def test_current_health_returns_negative_evidence_after_bounded_wire_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

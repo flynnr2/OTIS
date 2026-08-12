@@ -13,7 +13,7 @@
     },
     "operator_decision_record": {
       "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
-      "sha256": "543d2ccb0ea79d22297b7a2ceefaf339619c52de107f35b932fdd547e095f972"
+      "sha256": "c9b4c02172ec356ac8bdc75dd87650ba288eb6a85cd30afd46fee4fcb84373a4"
     },
     "qualification_plan": {
       "path": "docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md",

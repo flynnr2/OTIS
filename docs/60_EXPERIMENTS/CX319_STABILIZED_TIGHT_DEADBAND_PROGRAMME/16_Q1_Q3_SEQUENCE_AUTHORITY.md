@@ -95,6 +95,19 @@ The recovery must obtain a fresh reset/identity transcript and must stop on any
 identity mismatch. It permits no additional firmware flash and does not change
 any actuation or later-gate boundary.
 
+The first atomic-handoff entry retained package `f94446dee83c8d830df7c7f202fadc466868925e06ef47f3387fef402af09035`
+after the new host code used a 1,000 ms active-snapshot completion deadline
+while the exact Q1 bundle deliberately permits a 1,250 ms detach within the
+documented 2,000 ms pending-frame transport horizon. Generation 8 completed
+normally after the detach, with zero parser errors, but the inconsistent host
+deadline had already caused a fail-static abort. This is a direct platform-
+contract implementation error, not new scientific or firmware evidence. The
+operator authorized the exact flash and complete Q1 outcome; the shortest
+affected-gate recovery may bind that successful flash and byte-identical UF2,
+use zero further uploads, align the live-snapshot deadline with the existing
+2,000 ms horizon, and repeat Q1 in full after an ordinary reset and exact
+identity transcript.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names
