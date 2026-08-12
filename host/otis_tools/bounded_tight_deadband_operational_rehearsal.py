@@ -380,7 +380,12 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             )
 
         supervisor._command = record  # type: ignore[method-assign]
-        for command in ("CONFIG?", "DAC?", "ACTIVE LEASE 1", "ACTIVE?"):
+        for command in (
+            "CONFIG?",
+            "DAC?",
+            "ACTIVE LEASE 1",
+            supervisor._status_query_command(),
+        ):
             supervisor._command(command)
 
         expected_identity = {
@@ -395,6 +400,12 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         )
         health[("dual_core", "telemetry_dropped")] = "3"
         health[("cx317_active", "uptime_s")] = "30"
+        health[("cx317_active", "query_nonce")] = str(
+            supervisor.state["host_attach_query_nonce"]
+        )
+        health[("cx317_active", "snapshot_generation_begin")] = "7"
+        health[("cx317_active", "snapshot_generation_complete")] = "7"
+        health[("cx317_active", "session_id")] = "4"
         health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
         health[("gnss_receiver", "control_eligible")] = "false"
         telemetry_rows = [
@@ -573,22 +584,11 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             abort_fifo=late_dir / "abort.fifo",
             expected_build_identity=build_identity,
         )
-        late_rows = [
-            {
-                **telemetry_rows[0],
-                "status_value": str(FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S + 1),
-            }
-        ]
-        _write_csv(
-            late_dir / "csv/health.csv",
-            CONTRACT_FIELDS["health_v1"],
-            late_rows,
-        )
-        late_attach_rejected = False
-        try:
-            late_supervisor._check_fail_static_health(health)
-        except ValueError as exc:
-            late_attach_rejected = "fresh host attachment" in str(exc)
+        stale_backlog_health = dict(health)
+        stale_backlog_health[("cx317_active", "query_nonce")] = "123"
+        pre_attachment_backlog_rejected = not late_supervisor._prewrite_readiness(
+            stale_backlog_health
+        ).ready
 
     commands.append(
         {"path": "emergency", "command": "ACTIVE ABORT", "acknowledged": True}
@@ -654,15 +654,15 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": post_attach_increment_rejected,
-            "first_firmware_uptime_observation_frozen": (
-                supervisor.state["host_attach_uptime_s"] == 30
-                and supervisor.state["host_attach_uptime_status_seq"] == 1
+            "post_attachment_query_nonce": supervisor.state[
+                "host_attach_query_nonce"
+            ],
+            "frozen_snapshot_generation": supervisor.state[
+                "host_attach_snapshot_generation"
+            ],
+            "pre_attachment_backlog_rejected": (
+                pre_attachment_backlog_rejected
             ),
-            "firmware_uptime_s": supervisor.state["host_attach_uptime_s"],
-            "maximum_fresh_attach_uptime_s": (
-                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
-            ),
-            "late_attach_rejected": late_attach_rejected,
         },
         "gnss_prewrite": {
             "identity_epoch": 1,

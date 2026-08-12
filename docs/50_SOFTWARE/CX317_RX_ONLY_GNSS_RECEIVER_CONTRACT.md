@@ -48,6 +48,12 @@ identifies itself as updated 2025-07-23.
   `CONFIG?` output bursts from starving UART0 without weakening capture-first
   main-loop ordering or creating an unbounded drain. A startup guard makes the
   interleave a no-op until the RX-only UART is initialized.
+- GNSS status takes its monotonic-millisecond freshness anchor immediately
+  before copying the receiver snapshot, after all preceding interleaved UART
+  service in that burst. A status-burst entry timestamp must not be reused for
+  this calculation: a sentence parsed later in the same burst would otherwise
+  appear slightly in the future and its unsigned age would wrap near
+  `UINT32_MAX`.
 - RMC requires a checksum-valid sentence, status `A`, syntactically valid UTC,
   and a six-digit date.
 - GGA requires a checksum-valid sentence, non-zero fix quality, non-zero
@@ -113,4 +119,6 @@ timestamps.
 - source-level proof that GPIO0 is never UART-mapped and no UART write API is
   present; and
 - capture-first, statically bounded service ordering, including bounded
-  receiver interleaving between synchronous STS records.
+  receiver interleaving between synchronous STS records; and
+- source-level proof that each GNSS status snapshot takes a local post-service
+  freshness clock anchor rather than reusing the status-burst entry time.

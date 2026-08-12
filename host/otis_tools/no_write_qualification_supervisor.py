@@ -15,7 +15,6 @@ import json
 from pathlib import Path
 import time
 
-from .active_status_contract import latest_complete_health
 from .cx317_abort_path import AbortFifo
 from .cx317_active_campaign import (
     ACTIVE_CSV,
@@ -25,6 +24,11 @@ from .cx317_active_campaign import (
     CampaignSpec,
     _read_csv,
 )
+from .cx317_bounded_active_supervisor import (
+    CAPTURE_TRANSPORT_STATE,
+    CAPTURE_TRANSPORT_STATE_MAX_AGE_S,
+    _parse_utc_epoch,
+)
 from .tight_deadband_supervisor import DAC_CSV, TightDeadbandLeg, TightDeadbandSupervisor
 from .no_write_qualification_bundle import (
     NO_WRITE_BENCH_OPERATION,
@@ -33,10 +37,6 @@ from .no_write_qualification_bundle import (
     REHEARSAL_STAGE,
     normal_command_allowed,
     validate_run_manifest,
-)
-from .host_attach_health_contract import (
-    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
-    host_attach_uptime_observations,
 )
 from .no_write_prewrite_readiness_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
@@ -131,7 +131,22 @@ def load_no_write_qualification_spec(
 class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
     """Current-identity wrapper with an exact no-write command boundary."""
 
-    def __init__(self, *, leg: TightDeadbandLeg, **kwargs: object) -> None:
+    def __init__(
+        self,
+        *,
+        leg: TightDeadbandLeg,
+        allowed_initial_reconnect_count: int = 0,
+        initial_lease_sequence: int = 0,
+        q1_real_io: bool = False,
+        qualification_sequence_gate: str = "Q1",
+        **kwargs: object,
+    ) -> None:
+        if allowed_initial_reconnect_count < 0:
+            raise ValueError("allowed initial reconnect count cannot be negative")
+        if initial_lease_sequence < 0 or initial_lease_sequence > 0xFFFFFFFF:
+            raise ValueError("initial lease sequence must be a uint32")
+        if qualification_sequence_gate not in {"Q1", "Q3"}:
+            raise ValueError("qualification sequence gate must be Q1 or Q3")
         super().__init__(
             mode=EXPECTED_MODE,
             leg=leg,
@@ -147,6 +162,13 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
         self.state["cx319_gate"] = "G1"
         self.state["cx319_mode"] = "no_write_rehearsal"
         self.state["cx319_leg"] = leg.leg
+        self.state["allowed_initial_reconnect_count"] = (
+            allowed_initial_reconnect_count
+        )
+        self.state["lease_sequence"] = initial_lease_sequence
+        self.state["q1_real_io"] = q1_real_io
+        self.state["qualification_sequence_gate"] = qualification_sequence_gate
+        self.state.setdefault("q1_boundary_burst_sent", False)
         self.state.setdefault("telemetry_drop_candidate", None)
         self.state.setdefault("telemetry_drop_candidate_observations", 0)
         self.state.setdefault("telemetry_drop_last_status_seq", 0)
@@ -198,15 +220,13 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
                 f"{self.state['telemetry_drop_candidate_observations']}/"
                 f"{TELEMETRY_BASELINE_STABLE_OBSERVATIONS} stable observations"
             )
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
+            mismatches.append("solicited post-attachment snapshot is absent")
         host_attach_uptime_s = self.state.get("host_attach_uptime_s")
         if host_attach_uptime_s is None:
-            mismatches.append("fresh host-attach firmware uptime is not recorded")
-        elif int(host_attach_uptime_s) > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            mismatches.append(
-                "fresh host-attach firmware uptime "
-                f"{host_attach_uptime_s}s exceeds "
-                f"{FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
+            mismatches.append("nonce-bound device-snapshot uptime is not recorded")
         if not mismatches and not readiness.missing:
             return readiness
         return PrewriteReadiness(
@@ -224,29 +244,33 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
             physical_dac_confirmation=readiness.physical_dac_confirmation,
         )
 
-    def _observe_host_attach_uptime(self) -> None:
+    def _observe_host_attach_uptime(
+        self, health: dict[tuple[str, str], str]
+    ) -> None:
         if self.state.get("host_attach_uptime_s") is not None:
             return
-        observations = host_attach_uptime_observations(
-            _read_csv(self.run_dir / HEALTH_CSV)
-        )
-        if not observations:
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
             return
-        status_seq, uptime_s = observations[0]
+        try:
+            uptime_s = int(health[("cx317_active", "uptime_s")])
+            status_seq = int(
+                health[("cx317_active", "snapshot_generation_complete")]
+            )
+        except (KeyError, ValueError):
+            return
         self.state["host_attach_uptime_s"] = uptime_s
         self.state["host_attach_uptime_status_seq"] = status_seq
+        self.state["host_attach_snapshot_generation"] = status_seq
         self._save()
         self._event(
-            "cx319_g1_fresh_host_attach_uptime_frozen",
+            "cx319_g1_nonce_bound_device_snapshot_frozen",
+            query_nonce=self.state["host_attach_query_nonce"],
+            snapshot_generation=status_seq,
             status_seq=status_seq,
             uptime_s=uptime_s,
-            maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
         )
-        if uptime_s > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            raise ValueError(
-                f"fresh host attachment occurred at firmware uptime {uptime_s}s, "
-                f"later than {FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
 
     def _observe_telemetry_drop_baseline(self) -> None:
         if self.state.get("telemetry_drop_baseline") is not None:
@@ -313,9 +337,58 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
             return False
 
     def _check_fail_static_health(self, health):  # type: ignore[no-untyped-def]
-        self._observe_host_attach_uptime()
+        self._observe_host_attach_uptime(health)
         self._observe_telemetry_drop_baseline()
         super()._check_fail_static_health(health)
+
+    def _check_capture_transport_state(self) -> dict[str, object]:
+        allowed = int(self.state["allowed_initial_reconnect_count"])
+        if allowed == 0:
+            return super()._check_capture_transport_state()
+        path = self.run_dir / CAPTURE_TRANSPORT_STATE
+        if not path.is_file():
+            raise ValueError("capture transport state is missing")
+        state = json.loads(path.read_text(encoding="utf-8"))
+        age_s = time.time() - _parse_utc_epoch(str(state["updated_utc"]))
+        if age_s < -1 or age_s > CAPTURE_TRANSPORT_STATE_MAX_AGE_S:
+            raise ValueError(f"capture transport state is stale: age_s={age_s:.3f}")
+        exact = {
+            "capture_active": True,
+            "serial_open": True,
+            "command_fifo_configured": True,
+            "emergency_command_fifo_configured": True,
+            "state_heartbeat_interval_s": 5.0,
+            "normal_command_batch_limit": 1,
+            "normal_command_max_age_s": 2.0,
+            "write_timeout_s": 1.0,
+            "serial_exclusive_requested": True,
+            "reconnect_count": allowed,
+            "intentional_detach_count": allowed,
+        }
+        for key, expected in exact.items():
+            if state.get(key) != expected:
+                raise ValueError(
+                    "capture transport state mismatch: "
+                    f"{key}={state.get(key)!r}, expected {expected!r}"
+                )
+        gaps = state.get("intentional_detach_gaps_ms")
+        if (
+            not isinstance(gaps, list)
+            or len(gaps) != allowed
+            or any(not isinstance(gap, (int, float)) or gap >= 2000 for gap in gaps)
+        ):
+            raise ValueError("Q1 intentional detach gaps are incomplete or out of bounds")
+        for key in (
+            "malformed_utf8",
+            "parser_errors",
+            "commands_rejected",
+            "emergency_aborts_sent",
+        ):
+            if int(state.get(key, -1)) != 0:
+                raise ValueError(
+                    f"capture transport counter {key} is {state.get(key)!r}"
+                )
+        return state
 
     def run(self) -> int:
         """Run to a clean G1 terminal before the transport-abort exercise.
@@ -357,10 +430,24 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
                     self._renew_lease()
                     last_lease = now
                 if now - last_query >= QUERY_PERIOD_S:
-                    self._command("ACTIVE?")
+                    self._command(self._status_query_command())
                     last_query = now
+                if (
+                    self.state["q1_real_io"]
+                    and not self.state["q1_boundary_burst_sent"]
+                    and now - started >= RAW_PPS_QUALIFICATION_DEADLINE_S - 10
+                ):
+                    self._command("CONFIG?")
+                    self._command("FC0?")
+                    self._command(self._status_query_command())
+                    self.state["q1_boundary_burst_sent"] = True
+                    self._save()
+                    self._event(
+                        "cx319_q1_qualification_boundary_burst_sent",
+                        boundary_s=RAW_PPS_QUALIFICATION_DEADLINE_S,
+                    )
                 self._process_transactions()
-                health = latest_complete_health(self.run_dir / HEALTH_CSV)
+                health = self._current_health()
                 self._check_fail_static_health(health)
                 self._check_prewrite_contract(health, now - started)
                 self._maybe_qualify(health)
@@ -387,6 +474,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--duration-s", type=float)
     parser.add_argument("--console-events", action="store_true")
+    parser.add_argument("--allowed-initial-reconnect-count", type=int, default=0)
+    parser.add_argument("--initial-lease-sequence", type=int, default=0)
+    parser.add_argument("--q1-real-io", action="store_true")
+    parser.add_argument(
+        "--qualification-sequence-gate", choices=("Q1", "Q3"), default="Q1"
+    )
     args = parser.parse_args(argv)
     try:
         require_programme_operation_allowed(
@@ -411,6 +504,10 @@ def main(argv: list[str] | None = None) -> int:
         args.manifest.resolve() != (args.run_dir / "run_manifest.json").resolve()
         or manifest.get("stage") != REHEARSAL_STAGE
         or manifest.get("cx319", {}).get("leg") != args.leg
+        or manifest.get("cx319", {}).get(
+            "qualification_sequence_gate", "Q1"
+        )
+        != args.qualification_sequence_gate
         or args.expected_build_identity != expected_build
     ):
         parser.error("manifest run/leg/build does not match G1 supervisor request")
@@ -426,6 +523,10 @@ def main(argv: list[str] | None = None) -> int:
         duration_s=args.duration_s,
         emergency_command_fifo=args.emergency_command_fifo,
         console_events=args.console_events,
+        allowed_initial_reconnect_count=args.allowed_initial_reconnect_count,
+        initial_lease_sequence=args.initial_lease_sequence,
+        q1_real_io=args.q1_real_io,
+        qualification_sequence_gate=args.qualification_sequence_gate,
     )
     try:
         return supervisor.run()

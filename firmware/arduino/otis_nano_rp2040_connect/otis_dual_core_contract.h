@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "otis_setup_authority.h"
+
 // Every cross-core contract is a bounded, pointer-free value.  Character
 // fields are fixed arrays rather than borrowed strings so the receiving core
 // cannot observe later mutation by the publishing core.
@@ -13,6 +15,7 @@ enum class OtisServiceMessageKind : uint8_t {
   AppliedDacState,
   RunControl,
   ActuatorAcknowledgement,
+  SetupApplicationAcknowledgement,
 };
 
 enum class OtisRunControlKind : uint8_t {
@@ -25,6 +28,9 @@ enum class OtisRunControlKind : uint8_t {
   CaptureLease,
   EvidenceRelease,
   StatusQuery,
+  DiagnosticConfigQuery,
+  DiagnosticRuntimeQuery,
+  SetupAuthorize,
 };
 
 struct OtisReceiverQualificationMessage {
@@ -74,6 +80,7 @@ struct OtisRunControlMessage {
   uint32_t expires_s;
   OtisRunControlKind kind;
   bool asserted;
+  OtisSetupAuthorityRequest setup_request;
 };
 
 enum class OtisActuatorAckKind : uint8_t {
@@ -104,6 +111,7 @@ struct OtisServiceMessage {
   OtisAppliedDacStateMessage dac;
   OtisRunControlMessage run_control;
   OtisCrossCoreActuatorAck actuator_acknowledgement;
+  OtisSetupApplicationAck setup_acknowledgement;
 };
 
 enum class OtisObservationMessageKind : uint8_t {
@@ -155,6 +163,8 @@ enum class OtisCriticalMessageKind : uint8_t {
   ActuatorExecute,
   Fault,
   StateTransition,
+  SetupAuthorization,
+  SetupExecute,
 };
 
 struct OtisCrossCoreActuatorRequest {
@@ -163,7 +173,11 @@ struct OtisCrossCoreActuatorRequest {
   uint32_t source_first_sequence;
   uint32_t source_last_sequence;
   uint64_t decision_reference_ticks;
-  uint64_t deadline_ticks;
+  // Transaction liveness uses the RP2040/Arduino monotonic millisecond
+  // counter projected to wrapping uint32 seconds on both cores.  Capture
+  // ticks remain evidence coordinates and are never compared with this
+  // deadline.
+  uint32_t monotonic_deadline_s;
   uint32_t authorization_sequence;
   uint32_t nonce;
   uint32_t session_id;
@@ -174,6 +188,22 @@ struct OtisCrossCoreActuatorRequest {
   bool actionable;
 };
 
+using OtisActuatorMonotonicSeconds = uint32_t;
+constexpr uint32_t OTIS_ACTUATOR_MONOTONIC_MAXIMUM_INTERVAL_S =
+    0x7fffffffu;
+
+inline bool otis_actuator_monotonic_deadline_is_future(
+    OtisActuatorMonotonicSeconds now_s,
+    OtisActuatorMonotonicSeconds deadline_s) {
+  return static_cast<int32_t>(deadline_s - now_s) > 0;
+}
+
+inline bool otis_actuator_monotonic_deadline_is_expired(
+    OtisActuatorMonotonicSeconds now_s,
+    OtisActuatorMonotonicSeconds deadline_s) {
+  return static_cast<int32_t>(now_s - deadline_s) > 0;
+}
+
 struct OtisCriticalRecordMessage {
   OtisCriticalMessageKind kind;
   uint32_t sequence;
@@ -183,6 +213,7 @@ struct OtisCriticalRecordMessage {
   char reason[64];
   OtisCrossCoreActuatorRequest request;
   OtisCrossCoreActuatorAck acknowledgement;
+  OtisSetupAuthorization setup_authorization;
 };
 
 constexpr uint16_t OTIS_EVIDENCE_FRAME_CAPACITY = 1536u;
@@ -288,11 +319,11 @@ struct OtisActuatorTransactionGuard {
 void otis_actuator_guard_init(OtisActuatorTransactionGuard *guard);
 bool otis_actuator_guard_start(OtisActuatorTransactionGuard *guard,
                                const OtisCrossCoreActuatorRequest *request,
-                               uint64_t now_ticks);
+                               OtisActuatorMonotonicSeconds now_s);
 bool otis_actuator_guard_acknowledge(
     OtisActuatorTransactionGuard *guard,
     const OtisCrossCoreActuatorAck *acknowledgement);
 bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,
-                                        uint64_t now_ticks);
+                                        OtisActuatorMonotonicSeconds now_s);
 
 #endif

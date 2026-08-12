@@ -1799,7 +1799,7 @@ def analyze(run_dir: Path, *, build_manifest: Path, uf2: Path) -> tuple[Path, di
     acknowledged_commands = [
         item.get("command")
         for item in supervisor_events
-        if item.get("event") == "command_acknowledged"
+        if item.get("event") == "host_written"
     ]
     command_acknowledgements_ok = (
         bool(submitted_commands)

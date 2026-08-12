@@ -21,7 +21,20 @@ No reader substitutes the retired H1 domain or `fc0` status aliases.
 
 Command-bearing active status additionally obeys
 `cx317_active_status_snapshot_v1`: only one complete generation may contribute
-to a decision.
+to a decision. A newer incomplete generation invalidates the older complete
+generation. Setup authority additionally requires a solicited post-attachment
+`query_nonce`; buffered records preceding that nonce cannot establish current
+readiness.
+
+`CONFIG?` and `FC0?` in dual-core profiles are Core 0 request messages, not
+permission for Core 0 to inspect a timing backend. Core 1 emits
+`core1_timing_diagnostic_snapshot_v1` with matching generation, query sequence,
+nonce, query kind, and completion marker.
+
+The current bounded-active setup command is `ACTIVE SETUP`. Its firmware
+authority is the two-phase `otis_setup_authority` contract and its retained
+host replay input is `cx319_setup_authority_input_v1`. The generic `DAC SET`
+surface is non-actuating in the dual-core bounded-active profile.
 
 ## Active policy
 

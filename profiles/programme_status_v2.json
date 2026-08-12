@@ -17,12 +17,12 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g1_recovery_host_timing_repair_in_offline_preparation",
+      "state": "q1_q3_sequence_complete_no_q4_authority",
       "allowed_operations": [
         "offline_preparation"
       ],
-      "effective_date": "2026-08-11",
-      "authority": "explicit_operator_g1_recovery_no_write_authority",
+      "effective_date": "2026-08-12",
+      "authority": "explicit_operator_q1_q3_sequence_authority",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -78,7 +78,51 @@
         "operator_assistance_required_if_upload_or_reenumeration_fails": true,
         "consumed_by_run_id": "no_write_recovery_leg_a_20260811T200913Z"
       },
-      "next_gate": "host_timing_repair_complete_operational_rehearsal_then_fresh_no_flash_g1_authority",
+      "q1_q3_sequence_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
+        "effective": false,
+        "consumed": true,
+        "current_gate": "complete",
+        "q1_exact_lower_flash_limit": 1,
+        "q1_dac_value_writes": 0,
+        "q2_requires_bound_stub_or_confirmed_electrical_inhibition": true,
+        "q3_no_write": true,
+        "q4_authorized": false
+      },
+      "next_gate": "new_explicit_post_q3_operator_decision_q4_remains_forbidden",
+      "q1_sequence_result": {
+        "run_id": "q1_running_attach_final_20260812T121948Z",
+        "seal_sha256": "0d8c4863a48930f40057b6bc665f8fa880a83548a4ff7a4b30525c3bff7639df",
+        "evidence_content_sha256": "9e3506c855ea949cc65d2a2c090334386a94e732e6d7c5a0dfdb0c6df8ba1e67",
+        "uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083"
+      },
+      "q2_sequence_result": {
+        "run_id": "q2_inhibited_transaction_continued_20260812T142939Z",
+        "seal_sha256": "86eafb3c3c55cde62c555eec4658fe90fb77faa9a5d44a5db65b2f080567fb66",
+        "evidence_content_sha256": "1990abe0719f215b2346ef35cd7dc1af35ea6849b51fbcc356d726df995a4233",
+        "physical_setup_writes": 1,
+        "physical_automatic_writes": 0,
+        "physical_oscillator_movement_possible": false
+      },
+      "q3_sequence_result": {
+        "run_id": "q3_physical_no_write_20260812T150928Z",
+        "host_source_revision": "1a58f44584137d770a0c661de4f1e653f12cdfcf",
+        "firmware_source_revision": "1c1d7382b85534e06d5b2a8d086d9e5621fa3b2f",
+        "bundle_sha256": "28a4d0f01e54aa9ea4068a6b7cdd360763e42781932b19a9ef9b39222552a7ab",
+        "uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+        "seal_sha256": "4d0747017fa77810bf3967a4f3bbe64e8f0d7ce962cb3143a1d56540f3fa8c35",
+        "evidence_content_sha256": "989170aaad2cabfd7454a9e8c047ab3514f1e6da90ff423d34461e783dd641e7",
+        "capture_duration_s": 2706.0,
+        "selected_600s_estimates": 1,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "priority_abort_passed": true,
+        "same_owner_logical_rotation": true
+      },
       "completed_g1_evidence": {
         "run_id": "no_write_leg_a_20260811T133632Z",
         "bundle_sha256": "777e88c9978edb525f887c496b5badf2b5e2cdae09bdfaea0a4071932377db77",

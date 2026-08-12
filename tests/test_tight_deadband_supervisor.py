@@ -11,11 +11,18 @@ from host.otis_tools.contracts import (
     TIGHT_DEADBAND_POLICY_SHA256,
 )
 from host.otis_tools.tight_deadband_supervisor import (
+    ACTIVE_SNAPSHOT_COMPLETION_POLL_S,
+    ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
     MAXIMUM_QUALIFIED_DURATION_S,
     PREWRITE_CONTRACT_STARTUP_GRACE_S,
     REHEARSAL_DURATION_S,
+    SETUP_RESULT_GRACE_S,
     TightDeadbandSupervisor,
     load_tight_deadband_spec,
+)
+from host.otis_tools.active_status_live_state import LiveHealthState
+from host.otis_tools.setup_authority_contract import (
+    SETUP_AUTHORITY_LIFETIME_S,
 )
 from host.otis_tools.prewrite_readiness_contract import ACTIVE_STATUS_KEYS
 
@@ -53,6 +60,11 @@ def _health(supervisor: TightDeadbandSupervisor, **values: str) -> dict[tuple[st
         ("cx317_active", "build_identity"): BUILD_IDENTITY,
         ("cx317_active", "profile_identity"): supervisor.spec.profile,
         ("cx317_active", "session_id"): "1",
+        ("cx317_active", "query_nonce"): str(
+            supervisor.state["host_attach_query_nonce"]
+        ),
+        ("cx317_active", "snapshot_generation_begin"): "7",
+        ("cx317_active", "snapshot_generation_complete"): "7",
         ("cx317_active", "state"): "DISARMED",
         ("cx317_active", "reason"): "initialized_disarmed",
         ("cx317_active", "enabled"): "true",
@@ -261,7 +273,9 @@ def test_live_submits_the_exact_setup_once(tmp_path: Path) -> None:
     supervisor._maybe_start_or_arm(health)
     supervisor._maybe_start_or_arm(health)
 
-    assert commands == ["DAC SET 0xA808"]
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE SETUP 1 7 ")
+    assert " 1 0xA808 1 " in commands[0]
     assert supervisor.state["manual_start_sent"] is True
 
 
@@ -276,6 +290,33 @@ def test_live_setup_waits_for_exact_a828_epoch_zero_identity(tmp_path: Path) -> 
 
     assert commands == []
     assert supervisor.state["manual_start_sent"] is False
+
+
+def test_lost_setup_transaction_aborts_after_authority_expiry(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+    supervisor.emergency_command_fifo = None
+    now = 1_800_000_000.0
+    supervisor.state.update(
+        manual_start_sent=True,
+        setup_requested_utc=_utc(
+            now - SETUP_AUTHORITY_LIFETIME_S - SETUP_RESULT_GRACE_S
+        ),
+    )
+    health = _health(supervisor, manual_start_confirmed="false")
+
+    supervisor._check_setup_transaction_timeout(health, now - 1.0)
+    assert commands == []
+    supervisor._check_setup_transaction_timeout(health, now)
+
+    assert commands == ["ACTIVE ABORT"]
+    assert supervisor.state["terminal"]["result"] == "aborted"
+    assert supervisor.state["terminal"]["reason"] == (
+        "setup_transaction_expired_without_observed_result"
+    )
 
 
 def test_missing_required_status_fails_after_cheap_startup_grace(
@@ -304,6 +345,112 @@ def test_health_field_loss_after_readiness_fails_immediately(
 
     with pytest.raises(ValueError, match="continuous runtime health contract"):
         supervisor._check_fail_static_health(health)
+
+
+def test_current_health_waits_for_newest_wire_generation_without_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="rehearsal")
+    completed_health = _health(supervisor)
+    selections = iter(
+        (
+            LiveHealthState(
+                "in_progress", {}, 8, 100_000_000_000, "started"
+            ),
+            LiveHealthState(
+                "complete",
+                completed_health,
+                8,
+                100_000_000_000,
+                "complete",
+            ),
+        )
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor."
+        "read_live_health_state",
+        lambda *_args, **_kwargs: next(selections),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.monotonic_ns",
+        lambda: 100_000_000_000,
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.sleep",
+        sleeps.append,
+    )
+
+    health = supervisor._current_health()
+
+    assert health == completed_health
+    assert sleeps == [ACTIVE_SNAPSHOT_COMPLETION_POLL_S]
+
+
+def test_current_health_allows_completion_after_declared_q1_detach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="rehearsal")
+    completed_health = _health(supervisor)
+    pending_observed_ns = 100_000_000_000
+    selections = iter(
+        (
+            LiveHealthState(
+                "in_progress", {}, 8, pending_observed_ns, "started"
+            ),
+            LiveHealthState(
+                "complete",
+                completed_health,
+                8,
+                pending_observed_ns + 1_600_000_000,
+                "complete",
+            ),
+        )
+    )
+    monotonic_values = iter(
+        (pending_observed_ns + 1_250_000_000, pending_observed_ns + 1_600_000_000)
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor."
+        "read_live_health_state",
+        lambda *_args, **_kwargs: next(selections),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.monotonic_ns",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.sleep",
+        lambda _seconds: None,
+    )
+
+    assert supervisor._current_health() == completed_health
+
+
+def test_current_health_returns_negative_evidence_after_bounded_wire_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="rehearsal")
+    selection = LiveHealthState(
+        "in_progress", {}, 8, 100_000_000_000, "started"
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor."
+        "read_live_health_state",
+        lambda *_args, **_kwargs: selection,
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.monotonic_ns",
+        lambda: 100_000_000_000
+        + int(ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S * 1_000_000_000),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.tight_deadband_supervisor.time.sleep",
+        lambda _seconds: None,
+    )
+
+    with pytest.raises(ValueError, match="did not complete"):
+        supervisor._current_health()
 
 
 def test_rehearsal_has_a_finite_no_write_terminal(tmp_path: Path) -> None:

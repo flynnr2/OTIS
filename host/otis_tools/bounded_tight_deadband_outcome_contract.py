@@ -23,6 +23,12 @@ MAXIMUM_QUALIFIED_DURATION_S = 14400
 _ARM = re.compile(r"ACTIVE ARM ([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*)\Z")
 _LEASE = re.compile(r"ACTIVE LEASE ([1-9][0-9]*)\Z")
 _EVIDENCE = re.compile(r"ACTIVE EVIDENCE ([1-9][0-9]*) ([1-4])\Z")
+_SNAPSHOT = re.compile(r"ACTIVE SNAPSHOT ([1-9][0-9]*)\Z")
+_SETUP = re.compile(
+    r"ACTIVE SETUP ([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*) "
+    r"([1-9][0-9]*) ([1-9][0-9]*) 0xA808 1 ([0-9a-f]{64})\Z",
+    re.IGNORECASE,
+)
 
 
 def canonical_sha256(value: object) -> str:
@@ -39,11 +45,15 @@ def canonical_sha256(value: object) -> str:
 def normal_command_allowed(command: str) -> bool:
     if command in {"CONFIG?", "DAC?", "FC0?", "ACTIVE?"}:
         return True
+    if _SNAPSHOT.fullmatch(command):
+        return True
+    if _SETUP.fullmatch(command):
+        return True
     if _LEASE.fullmatch(command) or _ARM.fullmatch(command) or _EVIDENCE.fullmatch(
         command
     ):
         return True
-    return command == "DAC SET 0xA808"
+    return False
 
 
 def _bool_false(value: Any) -> bool:
@@ -76,7 +86,11 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
         for item in commands
         if isinstance(item, dict) and item.get("path") == "emergency"
     ]
-    setups = [command for command in command_values if command == "DAC SET 0xA808"]
+    setups = [
+        command
+        for command in command_values
+        if isinstance(command, str) and _SETUP.fullmatch(command)
+    ]
     arms = [command for command in command_values if isinstance(command, str) and _ARM.fullmatch(command)]
     evidence = [command for command in command_values if isinstance(command, str) and _EVIDENCE.fullmatch(command)]
 
@@ -214,11 +228,11 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             )
             is True
             and host_attach.get("post_attach_increment_rejected") is True
-            and host_attach.get("first_firmware_uptime_observation_frozen")
-            is True
-            and host_attach.get("firmware_uptime_s") == 30
-            and host_attach.get("maximum_fresh_attach_uptime_s") == 120
-            and host_attach.get("late_attach_rejected") is True
+            and isinstance(host_attach.get("post_attachment_query_nonce"), int)
+            and host_attach["post_attachment_query_nonce"] > 0
+            and isinstance(host_attach.get("frozen_snapshot_generation"), int)
+            and host_attach["frozen_snapshot_generation"] > 0
+            and host_attach.get("pre_attachment_backlog_rejected") is True
         ),
         "gnss_identity_and_control_authority_exact_before_setup": (
             gnss_prewrite.get("identity_epoch") == 1

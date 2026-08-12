@@ -52,13 +52,14 @@ def test_dual_core_loop_dispatches_exactly_one_chunked_writer() -> None:
     loop = sketch[sketch.index("void loop()") :]
     dual_core = loop[
         loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
-        loop.index("#endif", loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+        loop.index("// Capture service always runs first.")
     ]
     guard_end = dual_core.index("service_dual_core_outputs();")
     guard = dual_core[:guard_end]
-    assert "if (service_dual_core_serial_frame_transport())" in guard
-    assert guard.index("otis_gnss_receiver_service(millis());") < guard.index(
-        "if (service_dual_core_serial_frame_transport())"
+    assert "frame_active = service_dual_core_serial_frame_transport();" in guard
+    assert "if (frame_active)" in guard
+    assert guard.index("otis_gnss_receiver_service(now_ms);") < guard.index(
+        "frame_active = service_dual_core_serial_frame_transport();"
     )
     for writer in (
         "service_dual_core_evidence_transport();",

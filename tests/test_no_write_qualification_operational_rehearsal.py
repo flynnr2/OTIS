@@ -7,6 +7,8 @@ from host.otis_tools.no_write_qualification_operational_rehearsal import (
     _exercise_timing_contract,
     _ignore_nonregular_entries,
     _replace_capture_stop_target,
+    _replace_build_identity,
+    _source_exercised_q1_detach,
 )
 
 
@@ -53,3 +55,30 @@ def test_replay_rebinds_the_logical_rotation_target(tmp_path: Path) -> None:
 
     assert str(tmp_path / "transition") in log.read_text(encoding="utf-8")
     assert '"next_run": "/old"' not in log.read_text(encoding="utf-8")
+
+
+def test_replay_preserves_declared_q1_detach_evidence(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    state = reports / "capture_device_state.json"
+    state.write_text(
+        '{"reconnect_count":3,"intentional_detach_count":3}',
+        encoding="utf-8",
+    )
+
+    assert _source_exercised_q1_detach(tmp_path) is True
+
+
+def test_transition_replay_allows_no_complete_build_snapshot(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.csv"
+    health.write_text(
+        "record_type,component,status_key,status_value\n"
+        "STS,cx317_active,critical_record,abort_accepted_on_core1\n",
+        encoding="utf-8",
+    )
+
+    assert _replace_build_identity(
+        health, "a" * 64 + ":" + "b" * 64, required=False
+    ) is False

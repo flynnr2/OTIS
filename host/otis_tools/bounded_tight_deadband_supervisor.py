@@ -11,19 +11,19 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import secrets
 
 from .cx317_active_campaign import (
     ACTIVE_CSV,
     HEALTH_CSV,
     CampaignSpec,
     _read_csv,
+    _utc_now,
 )
 from .tight_deadband_supervisor import DAC_CSV, TightDeadbandLeg, TightDeadbandSupervisor
 from .no_write_qualification_bundle import POLICY_PATH, PROGRAMME_ID
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .host_attach_health_contract import host_attach_uptime_observations
 from .bounded_tight_deadband_prewrite_contract import (
-    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
     PrewriteReadiness,
@@ -32,6 +32,13 @@ from .bounded_tight_deadband_prewrite_contract import (
     telemetry_drop_observations,
 )
 from .bounded_tight_deadband_outcome_contract import normal_command_allowed
+from .setup_authority_contract import (
+    SETUP_AUTHORITY_CONTRACT,
+    SETUP_AUTHORITY_LIFETIME_S,
+    SETUP_AUTHORITY_PATH,
+    canonical_health,
+    write_setup_authority_input,
+)
 from .programme_status import (
     BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
     ProgrammeExecutionBlocked,
@@ -78,6 +85,12 @@ class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
         self.state.setdefault("telemetry_drop_baseline_status_seq", None)
         self.state.setdefault("host_attach_uptime_s", None)
         self.state.setdefault("host_attach_uptime_status_seq", None)
+        self.state.setdefault("host_attach_snapshot_generation", None)
+        self.state.setdefault(
+            "host_attach_query_nonce", secrets.randbits(32) or 1
+        )
+        self.state.setdefault("setup_authorization_sequence", 0)
+        self.state.setdefault("setup_authority_path", None)
         self._save()
 
     def _event(self, event: str, **fields: object) -> None:
@@ -120,15 +133,10 @@ class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
                 f"{self.state['telemetry_drop_candidate_observations']}/"
                 f"{TELEMETRY_BASELINE_STABLE_OBSERVATIONS} stable observations"
             )
-        host_attach_uptime_s = self.state.get("host_attach_uptime_s")
-        if host_attach_uptime_s is None:
-            mismatches.append("fresh host-attach firmware uptime is not recorded")
-        elif int(host_attach_uptime_s) > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            mismatches.append(
-                "fresh host-attach firmware uptime "
-                f"{host_attach_uptime_s}s exceeds "
-                f"{FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
+            mismatches.append("solicited post-attachment snapshot is absent")
         if not mismatches and not readiness.missing:
             return readiness
         return PrewriteReadiness(
@@ -146,29 +154,35 @@ class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
             physical_dac_confirmation=readiness.physical_dac_confirmation,
         )
 
-    def _observe_host_attach_uptime(self) -> None:
+    def _status_query_command(self) -> str:
+        return f"ACTIVE SNAPSHOT {self.state['host_attach_query_nonce']}"
+
+    def _observe_host_attach_uptime(
+        self, health: dict[tuple[str, str], str]
+    ) -> None:
         if self.state.get("host_attach_uptime_s") is not None:
             return
-        observations = host_attach_uptime_observations(
-            _read_csv(self.run_dir / HEALTH_CSV)
-        )
-        if not observations:
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
             return
-        status_seq, uptime_s = observations[0]
+        try:
+            uptime_s = int(health[("cx317_active", "uptime_s")])
+            generation = int(
+                health[("cx317_active", "snapshot_generation_complete")]
+            )
+        except (KeyError, ValueError):
+            return
         self.state["host_attach_uptime_s"] = uptime_s
-        self.state["host_attach_uptime_status_seq"] = status_seq
+        self.state["host_attach_uptime_status_seq"] = generation
+        self.state["host_attach_snapshot_generation"] = generation
         self._save()
         self._event(
-            "cx319_g2_fresh_host_attach_uptime_frozen",
-            status_seq=status_seq,
+            "cx319_g2_nonce_bound_host_attach_snapshot_frozen",
+            query_nonce=self.state["host_attach_query_nonce"],
+            snapshot_generation=generation,
             uptime_s=uptime_s,
-            maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
         )
-        if uptime_s > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            raise ValueError(
-                f"fresh host attachment occurred at firmware uptime {uptime_s}s, "
-                f"later than {FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
 
     def _observe_telemetry_drop_baseline(self) -> None:
         if self.state.get("telemetry_drop_baseline") is not None:
@@ -235,9 +249,71 @@ class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
             return False
 
     def _check_fail_static_health(self, health):  # type: ignore[no-untyped-def]
-        self._observe_host_attach_uptime()
+        self._observe_host_attach_uptime(health)
         self._observe_telemetry_drop_baseline()
         super()._check_fail_static_health(health)
+
+    def _setup_command(
+        self, health: dict[tuple[str, str], str]
+    ) -> tuple[str, dict[str, object]]:
+        configuration_identity = self.expected_build_identity.split(":", 1)[1]
+        if len(configuration_identity) != 64:
+            raise ValueError("setup configuration identity is not SHA-256")
+        self.state["setup_authorization_sequence"] = (
+            int(self.state["setup_authorization_sequence"]) + 1
+        )
+        active = "cx317_active"
+        request: dict[str, object] = {
+            "authorization_sequence": self.state[
+                "setup_authorization_sequence"
+            ],
+            "status_generation": int(
+                health[(active, "snapshot_generation_complete")]
+            ),
+            "query_nonce": int(health[(active, "query_nonce")]),
+            "expires_s": int(health[(active, "uptime_s")])
+            + SETUP_AUTHORITY_LIFETIME_S,
+            "session_id": int(health[(active, "session_id")]),
+            "requested_code": self.spec.start_code,
+            "one_shot_ordinal": 1,
+            "configuration_identity": configuration_identity,
+        }
+        command = (
+            "ACTIVE SETUP "
+            f"{request['authorization_sequence']} "
+            f"{request['status_generation']} {request['query_nonce']} "
+            f"{request['expires_s']} {request['session_id']} "
+            f"0x{self.spec.start_code:04X} 1 {configuration_identity}"
+        )
+        return command, request
+
+    def _retain_setup_authority(
+        self,
+        health: dict[tuple[str, str], str],
+        request: dict[str, object],
+    ) -> Path:
+        path = self.run_dir / SETUP_AUTHORITY_PATH
+        if path.exists():
+            raise ValueError(
+                "an earlier setup authority record exists; refusing an "
+                "ambiguous retry"
+            )
+        baseline = self.state.get("telemetry_drop_baseline")
+        write_setup_authority_input(
+            path,
+            {
+                "contract": SETUP_AUTHORITY_CONTRACT,
+                "created_utc": _utc_now(),
+                "request": request,
+                "health": canonical_health(health),
+                "active_row_count": len(_read_csv(self.run_dir / ACTIVE_CSV)),
+                "dac_row_count": len(_read_csv(self.run_dir / DAC_CSV)),
+                "telemetry_drop_baseline": int(baseline or 0),
+            },
+        )
+        self.state["setup_authority_path"] = str(SETUP_AUTHORITY_PATH)
+        self._save()
+        return path
 
 
 def create_supervisor(

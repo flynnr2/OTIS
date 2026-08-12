@@ -128,6 +128,36 @@ void acknowledgement_failure_never_retries_or_restores() {
   assert(transaction.correction_count == 0u);
 }
 
+void pre_setup_session_acquisition_is_not_a_false_fault() {
+  auto expected = binding();
+  OtisCx317ActiveTransaction transaction;
+  otis_cx317_active_transaction_init(&transaction, &expected);
+
+  otis_cx317_active_note_session(&transaction, 0u, false);
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+  assert(transaction.expected_binding.session_id == expected.session_id);
+
+  otis_cx317_active_note_session(&transaction, 2u, false);
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+  assert(transaction.expected_binding.session_id == 2u);
+  assert(strcmp(transaction.reason, "pre_setup_session_rebound") == 0);
+  assert(transaction.correction_count == 0u);
+  assert(transaction.cumulative_movement_codes == 0u);
+  assert(transaction.dac_epoch == 0u);
+
+  otis_cx317_active_note_session(&transaction, 3u, true);
+  assert(transaction.state == OtisCx317ActiveState::Fault);
+  assert(strcmp(transaction.reason, "session_change_clears_arming") == 0);
+
+  otis_cx317_active_transaction_init(&transaction, &expected);
+  auto eligibility = healthy();
+  auto authorization = arm(expected);
+  assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                               2400u));
+  otis_cx317_active_note_session(&transaction, 2u, false);
+  assert(transaction.state == OtisCx317ActiveState::Fault);
+}
+
 void bounds_abort_and_response_stops() {
   const auto expected = binding();
   auto eligibility = healthy();
@@ -363,6 +393,7 @@ int main() {
   happy_transaction();
   binding_and_health_fail_closed();
   acknowledgement_failure_never_retries_or_restores();
+  pre_setup_session_acquisition_is_not_a_false_fault();
   bounds_abort_and_response_stops();
   temperature_covariate_and_out_of_model_hold();
   stage5_response_ignores_legacy_v2_shadow_deadband();

@@ -3,12 +3,24 @@
 
 #include <stdint.h>
 
+typedef void (*OtisStatusEmitSink)(void *sink_context,
+                                   const char *component,
+                                   const char *key,
+                                   const char *value,
+                                   const char *severity,
+                                   uint32_t flags);
+
 struct OtisStatusEmitContext {
   uint32_t *status_seq;
+  void *sink_context;
+  OtisStatusEmitSink sink;
 };
 
 void otis_status_emit_init(OtisStatusEmitContext *context,
                            uint32_t *status_seq);
+void otis_status_emit_init_with_sink(OtisStatusEmitContext *context,
+                                     void *sink_context,
+                                     OtisStatusEmitSink sink);
 void otis_status_emit(OtisStatusEmitContext *context,
                       const char *component,
                       const char *key,

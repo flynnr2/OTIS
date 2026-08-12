@@ -484,6 +484,7 @@ def create_run_manifest(
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
@@ -492,6 +493,7 @@ def create_run_manifest(
         ],
         "evidence_artifacts": [
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",

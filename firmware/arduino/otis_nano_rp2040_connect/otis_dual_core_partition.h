@@ -15,7 +15,7 @@ constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
 // complete-generation envelope records in both the direct and cross-core
 // publishers. A periodic health burst and one ACTIVE? response can align
 // while Core 0 is occupied with serial transport.
-constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 29u;
+constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 33u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
     OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
@@ -27,12 +27,12 @@ constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 134u,
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 142u,
               "Stage 7 health plus one ACTIVE? response must remain exact");
 // The Stage 4 split boot produced 163 one-time records before the redundant
 // count-path validity alias was removed. The three complete-generation
 // envelope records are now part of the declared startup budget.
-constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 165u;
+constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u;
 constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 192u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                   OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,
@@ -50,6 +50,7 @@ enum class OtisPartitionFault : uint8_t {
   EvidenceExhausted,
   PhasePreviewQueueExhausted,
   PhasePreviewFault,
+  TransportObstructed,
   ActuatorTimeout,
   ActuatorAcknowledgementMismatch,
 };

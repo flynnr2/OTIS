@@ -27,6 +27,7 @@ from .bounded_tight_deadband_outcome_contract import (
     QUALIFICATION_DEADLINE_S,
 )
 from .bounded_tight_deadband_activation import (
+    LIVE_SEAL_PATH,
     RUN_ACTIVATION_PATH,
     RUN_PROPOSAL_PATH,
     create_run_manifest,
@@ -39,7 +40,14 @@ from .evidence import (
     create_evidence_snapshot,
     validate_evidence_snapshot,
 )
-from .evidence_index import DEFAULT_INDEX, register_package
+from .evidence_index import DEFAULT_INDEX, package_identity, register_package
+from .evidence_finalization import (
+    advance_phase,
+    begin_finalization,
+    record_failure,
+    recover_registration,
+    set_registration_intent,
+)
 from .platform_rehearsal import _capture_state_ready, _serial_owner_pids
 from .programme_status import (
     BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
@@ -270,6 +278,19 @@ def run_bounded_tight_deadband_qualification(
         output_path=manifest_path,
     )
     validate_run_manifest(manifest_path)
+    finalization_journal = begin_finalization(
+        run_dir=run_dir,
+        index_path=evidence_index_path,
+        required_seal=LIVE_SEAL_PATH,
+        registration={
+            "source_revision": proposal["source_revision"],
+            "build_identity": proposal["firmware"]["build_manifest"]["sha256"],
+            "profile_identity": proposal["leg_spec"]["profile_id"],
+            "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
+            "result_or_failure_reason": "pending CX319 G2 finalization",
+            "analyzer_identity": _sha256_file(Path(__file__)),
+        },
+    )
 
     normal_fifo = run_dir / "control/normal_commands.fifo"
     emergency_fifo = run_dir / "control/emergency_abort.fifo"
@@ -378,6 +399,11 @@ def run_bounded_tight_deadband_qualification(
         capture_exit = _graceful_capture_stop(capture)
         if capture_exit != 0:
             raise RuntimeError(f"G2 capture exited with status {capture_exit}")
+        advance_phase(
+            finalization_journal,
+            "capture_closed",
+            {"capture_exit": capture_exit},
+        )
     except Exception as exc:
         orchestration_error = exc
         if emergency_fifo.exists() and capture.poll() is None:
@@ -402,6 +428,11 @@ def run_bounded_tight_deadband_qualification(
             capture.wait(timeout=5.0)
 
     if orchestration_error is not None:
+        record_failure(
+            finalization_journal,
+            phase="capture_closed",
+            error=orchestration_error,
+        )
         try:
             indexed = _retain_failure(
                 run_dir=run_dir,
@@ -424,6 +455,7 @@ def run_bounded_tight_deadband_qualification(
         terminal = _terminal(run_dir)
         assert terminal is not None
         _write_complete(run_dir, terminal)
+        advance_phase(finalization_journal, "completion", {"terminal": terminal})
         snapshot_path = create_evidence_snapshot(run_dir)
         loaded = load_manifest(run_dir)
         failures, warnings = validate_evidence_snapshot(run_dir, loaded)
@@ -432,8 +464,38 @@ def run_bounded_tight_deadband_qualification(
                 "CX319 G2 evidence snapshot validation failed: "
                 + json.dumps({"failures": failures, "warnings": warnings})
             )
+        advance_phase(
+            finalization_journal,
+            "snapshot",
+            {"path": str(snapshot_path)},
+        )
         seal_path, seal = analyze(run_dir)
+        advance_phase(
+            finalization_journal,
+            "analysis",
+            {"status": seal["status"], "tool_sha256": seal["tool_sha256"]},
+        )
+        advance_phase(
+            finalization_journal,
+            "seal",
+            {"path": str(seal_path), "seal_sha256": seal["seal_sha256"]},
+        )
     except Exception as exc:
+        phase = next(
+            (
+                name
+                for name in (
+                    "completion",
+                    "snapshot",
+                    "analysis",
+                    "seal",
+                )
+                if json.loads(finalization_journal.read_text())["phases"][name]
+                is None
+            ),
+            "seal",
+        )
+        record_failure(finalization_journal, phase=phase, error=exc)
         try:
             indexed = _retain_finalization_failure(
                 run_dir=run_dir,
@@ -457,16 +519,27 @@ def run_bounded_tight_deadband_qualification(
         if seal["status"] in {"passed", "bounded_nonpass"}
         else INTERRUPTED_INDEX_CLASSIFICATION
     )
-    indexed = register_package(
-        index_path=evidence_index_path,
-        package_path=run_dir,
-        source_revision=proposal["source_revision"],
-        build_identity=proposal["firmware"]["build_manifest"]["sha256"],
-        profile_identity=proposal["leg_spec"]["profile_id"],
-        attempt_classification=classification,
-        result_or_failure_reason=f"CX319 G2 {seal['status']}",
-        analyzer_identity=seal["tool_sha256"],
+    registration = {
+        "source_revision": proposal["source_revision"],
+        "build_identity": proposal["firmware"]["build_manifest"]["sha256"],
+        "profile_identity": proposal["leg_spec"]["profile_id"],
+        "attempt_classification": classification,
+        "result_or_failure_reason": f"CX319 G2 {seal['status']}",
+        "analyzer_identity": seal["tool_sha256"],
+    }
+    set_registration_intent(
+        finalization_journal,
+        registration=registration,
+        expected_content_sha256=package_identity(run_dir)["content_sha256"],
     )
+    try:
+        indexed = recover_registration(finalization_journal)
+    except Exception as exc:
+        record_failure(finalization_journal, phase="registration", error=exc)
+        raise RuntimeError(
+            "CX319 G2 sealed package is valid but registration failed; "
+            f"recover with evidence_finalization {finalization_journal}: {exc}"
+        ) from exc
     if seal["status"] == "failed":
         raise RuntimeError(
             "CX319 G2 integrity analysis failed; retained evidence "

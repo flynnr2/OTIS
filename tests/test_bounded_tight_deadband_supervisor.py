@@ -8,7 +8,6 @@ import pytest
 from host.otis_tools import bounded_tight_deadband_supervisor
 from host.otis_tools.no_write_qualification_supervisor import load_no_write_qualification_spec
 from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
-    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     RUNTIME_CONTRACT_ID,
     canonical_prewrite_fixture,
@@ -75,6 +74,15 @@ def _freeze_baseline(supervisor, values: list[int] | None = None) -> None:  # ty
     supervisor.state["host_attach_uptime_status_seq"] = 1
 
 
+def _bind_snapshot(supervisor, health) -> None:  # type: ignore[no-untyped-def]
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    health[("cx317_active", "snapshot_generation_begin")] = "7"
+    health[("cx317_active", "snapshot_generation_complete")] = "7"
+    health[("cx317_active", "session_id")] = "4"
+
+
 def test_g2_spec_is_exact_lower_positive_leg() -> None:
     spec, identities, leg = load_no_write_qualification_spec("A")
 
@@ -101,6 +109,7 @@ def test_g2_prewrite_contract_has_live_leg_identity(tmp_path: Path) -> None:
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     _freeze_baseline(supervisor)
+    _bind_snapshot(supervisor, health)
 
     readiness = supervisor._prewrite_readiness(health)
 
@@ -122,13 +131,17 @@ def test_g2_supervisor_requests_exact_setup_once(tmp_path: Path) -> None:
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     _freeze_baseline(supervisor)
+    _bind_snapshot(supervisor, health)
     commands: list[str] = []
     supervisor._command = commands.append  # type: ignore[method-assign]
 
     supervisor._maybe_start_or_arm(health)
     supervisor._maybe_start_or_arm(health)
 
-    assert commands == ["DAC SET 0xA808"]
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE SETUP 1 7 ")
+    assert " 4 0xA808 1 " in commands[0]
+    assert (supervisor.run_dir / "reports/setup_authority_input_v1.json").is_file()
     assert supervisor.state["manual_start_sent"] is True
 
 
@@ -147,6 +160,7 @@ def test_g2_prewrite_allows_pps_qualification_after_fresh_attach_window(
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     _freeze_baseline(supervisor)
+    _bind_snapshot(supervisor, health)
     health[("cx317_active", "uptime_s")] = "612"
 
     readiness = supervisor._prewrite_readiness(health)
@@ -154,7 +168,9 @@ def test_g2_prewrite_allows_pps_qualification_after_fresh_attach_window(
     assert readiness.ready is True
 
 
-def test_g2_prewrite_rejects_a_stale_host_attachment(tmp_path: Path) -> None:
+def test_g2_rejects_pre_attachment_backlog_without_solicited_nonce(
+    tmp_path: Path,
+) -> None:
     supervisor = _supervisor(tmp_path)
     expected = {
         "run_identity": supervisor.spec.run_identity,
@@ -167,14 +183,13 @@ def test_g2_prewrite_rejects_a_stale_host_attachment(tmp_path: Path) -> None:
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     _freeze_baseline(supervisor)
-    supervisor.state["host_attach_uptime_s"] = (
-        FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S + 1
-    )
+    health[("cx317_active", "query_nonce")] = "123"
+    health[("cx317_active", "snapshot_generation_complete")] = "6"
 
     readiness = supervisor._prewrite_readiness(health)
 
     assert readiness.ready is False
-    assert any("fresh host-attach" in item for item in readiness.mismatches)
+    assert any("post-attachment snapshot" in item for item in readiness.mismatches)
 
 
 def test_g2_uses_the_separate_pps_qualification_deadline(tmp_path: Path) -> None:

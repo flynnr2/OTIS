@@ -82,13 +82,21 @@ def test_supervisor_command_override_rejects_every_write_path(
     )
     supervisor = NoWriteQualificationSupervisor.__new__(NoWriteQualificationSupervisor)
 
-    for command in ("CONFIG?", "DAC?", "FC0?", "ACTIVE?", "ACTIVE LEASE 7"):
+    for command in (
+        "CONFIG?",
+        "DAC?",
+        "FC0?",
+        "ACTIVE?",
+        "ACTIVE SNAPSHOT 99",
+        "ACTIVE LEASE 7",
+    ):
         supervisor._command(command)
     assert submitted == [
         "CONFIG?",
         "DAC?",
         "FC0?",
         "ACTIVE?",
+        "ACTIVE SNAPSHOT 99",
         "ACTIVE LEASE 7",
     ]
 
@@ -122,7 +130,7 @@ def test_supervisor_replay_identity_is_current_policy() -> None:
     supervisor.tight_deadband_policy_sha256 = _sha256(POLICY_PATH)
 
     assert supervisor.tight_deadband_policy_sha256 == (
-        "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70"
+        "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698"
     )
 
 
@@ -211,6 +219,10 @@ def test_g1_accepts_pps_qualification_at_the_observed_612_seconds(
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     health[("cx317_active", "uptime_s")] = "612"
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    health[("cx317_active", "snapshot_generation_complete")] = "7"
 
     readiness = supervisor._check_prewrite_contract(health, 612)
 

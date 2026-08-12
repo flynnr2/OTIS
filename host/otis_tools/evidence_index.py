@@ -8,11 +8,14 @@ operator-authorized procedure after OTIS reaches a declared mature milestone.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import fcntl
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import tempfile
 from typing import Any, Iterable
 
 
@@ -25,6 +28,8 @@ SCHEMA_VERSION = 1
 ATTEMPT_CLASSIFICATIONS = {
     "successful_rehearsal",
     "failed_rehearsal",
+    "successful_qualification",
+    "failed_qualification",
     "completed_campaign",
     "interrupted_campaign",
     "diagnostic",
@@ -103,6 +108,12 @@ def _assert_index_outside_repo(index_path: Path) -> Path:
     raise ValueError("evidence index must be stored outside the Git repository")
 
 
+def validate_index_location(index_path: Path) -> Path:
+    """Validate and resolve an index location without creating any files."""
+
+    return _assert_index_outside_repo(index_path)
+
+
 def _empty_index(now: str | None = None) -> dict[str, Any]:
     timestamp = now or _utc_now()
     return {
@@ -114,8 +125,27 @@ def _empty_index(now: str | None = None) -> dict[str, Any]:
     }
 
 
-def load_index(index_path: Path) -> dict[str, Any]:
+def _lock_path(index_path: Path) -> Path:
+    return index_path.with_name(f".{index_path.name}.lock")
+
+
+@contextmanager
+def _index_lock(index_path: Path, *, exclusive: bool):  # type: ignore[no-untyped-def]
     path = _assert_index_outside_repo(index_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(_lock_path(path), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(
+            descriptor,
+            fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH,
+        )
+        yield path
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _load_index_unlocked(path: Path) -> dict[str, Any]:
     if not path.exists():
         return _empty_index()
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -128,15 +158,40 @@ def load_index(index_path: Path) -> dict[str, Any]:
     return data
 
 
-def save_index(index_path: Path, index: dict[str, Any]) -> None:
-    path = _assert_index_outside_repo(index_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _save_index_unlocked(path: Path, index: dict[str, Any]) -> None:
     index["updated_utc"] = _utc_now()
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    os.replace(temporary, path)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(index, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    try:
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_index(index_path: Path) -> dict[str, Any]:
+    with _index_lock(index_path, exclusive=False) as path:
+        return _load_index_unlocked(path)
+
+
+def save_index(index_path: Path, index: dict[str, Any]) -> None:
+    with _index_lock(index_path, exclusive=True) as path:
+        _save_index_unlocked(path, index)
 
 
 def register_package(
@@ -169,8 +224,6 @@ def register_package(
     location = package_path.expanduser().resolve()
     identity = package_identity(location)
     content_sha256 = identity["content_sha256"]
-    index = load_index(index_path)
-    existing = index["packages"].get(content_sha256)
     immutable_metadata = {
         "source_revision": source_revision,
         "build_identity": build_identity,
@@ -179,33 +232,37 @@ def register_package(
         "result_or_failure_reason": result_or_failure_reason,
         "analyzer_identity": analyzer_identity,
     }
-    if existing is not None:
-        for key, value in immutable_metadata.items():
-            if existing.get(key) != value:
-                raise ValueError(
-                    f"content identity already registered with different {key}"
-                )
-        locations = existing["storage_locations"]
-        if str(location) not in locations:
-            locations.append(str(location))
-        save_index(index_path, index)
-        return existing
+    with _index_lock(index_path, exclusive=True) as locked_path:
+        index = _load_index_unlocked(locked_path)
+        existing = index["packages"].get(content_sha256)
+        if existing is not None:
+            for key, value in immutable_metadata.items():
+                if existing.get(key) != value:
+                    raise ValueError(
+                        "content identity already registered with different "
+                        f"{key}"
+                    )
+            locations = existing["storage_locations"]
+            if str(location) not in locations:
+                locations.append(str(location))
+                _save_index_unlocked(locked_path, index)
+            return existing
 
-    now = _utc_now()
-    record = {
-        "content_sha256": content_sha256,
-        "file_count": identity["file_count"],
-        "total_bytes": identity["total_bytes"],
-        "file_manifest": identity["files"],
-        "storage_locations": [str(location)],
-        **immutable_metadata,
-        "lifecycle_status": "active",
-        "registered_utc": now,
-        "mothball": None,
-    }
-    index["packages"][content_sha256] = record
-    save_index(index_path, index)
-    return record
+        now = _utc_now()
+        record = {
+            "content_sha256": content_sha256,
+            "file_count": identity["file_count"],
+            "total_bytes": identity["total_bytes"],
+            "file_manifest": identity["files"],
+            "storage_locations": [str(location)],
+            **immutable_metadata,
+            "lifecycle_status": "active",
+            "registered_utc": now,
+            "mothball": None,
+        }
+        index["packages"][content_sha256] = record
+        _save_index_unlocked(locked_path, index)
+        return record
 
 
 def validate_index(index_path: Path) -> dict[str, Any]:
@@ -264,21 +321,22 @@ def mothball_package(
     summary = reviewed_summary_path.expanduser().resolve()
     if not summary.is_file():
         raise ValueError(f"reviewed summary does not exist: {summary}")
-    index = load_index(index_path)
-    try:
-        record = index["packages"][content_sha256]
-    except KeyError as exc:
-        raise ValueError("unknown evidence content identity") from exc
-    record["lifecycle_status"] = "mothballed"
-    record["mothball"] = {
-        "mothballed_utc": _utc_now(),
-        "reason": reason,
-        "no_active_dependency_confirmed": True,
-        "reviewed_summary_path": str(summary),
-        "reviewed_summary_sha256": _sha256_file(summary),
-    }
-    save_index(index_path, index)
-    return record
+    with _index_lock(index_path, exclusive=True) as locked_path:
+        index = _load_index_unlocked(locked_path)
+        try:
+            record = index["packages"][content_sha256]
+        except KeyError as exc:
+            raise ValueError("unknown evidence content identity") from exc
+        record["lifecycle_status"] = "mothballed"
+        record["mothball"] = {
+            "mothballed_utc": _utc_now(),
+            "reason": reason,
+            "no_active_dependency_confirmed": True,
+            "reviewed_summary_path": str(summary),
+            "reviewed_summary_sha256": _sha256_file(summary),
+        }
+        _save_index_unlocked(locked_path, index)
+        return record
 
 
 def _parser() -> argparse.ArgumentParser:

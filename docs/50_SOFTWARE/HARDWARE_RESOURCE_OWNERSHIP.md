@@ -14,6 +14,14 @@ the PPS-gated ratio backend claim and report exactly the dynamically allocated
 DMA channel used by its snapshot ring. Profiles using another count backend
 claim no DMA channel and emit that zero claim explicitly at boot.
 
+Queue and interrupt-ring ownership is part of the same architectural boundary.
+Its executable companion ledger is
+`firmware/arduino/otis_nano_rp2040_connect/otis_resource_inventory.json`.
+Tests compare all six SPSC queue declarations, both interrupt rings, capacity
+symbols and values, producer/consumer identities, loss policies, maximum
+consumer absence, and recovery semantics against source. The JSON ledger is
+normative where an older prose queue table differs.
+
 ## Enforced invariants
 
 `otis_resource_registry` derives the claim set from the selected bring-up mode
@@ -187,6 +195,7 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 | Dynamic PIO allocation | SDK allocation prevents hardware double-claiming; actual SM/offset can change when another library uses PIO. Registry telemetry preserves the assigned identity. | On the combined PIO build, confirm distinct SMs and non-overlapping program offsets, then verify both `REF` and `CNT`. |
 | PIO allocation exhaustion | A backend can remain uninitialized with a pending claim. Existing backend failure telemetry and registry completeness expose the condition, but current mode setup does not turn every allocation failure into a boot fatal. | Exhaust or reserve PIO resources in a bench test and verify `complete=false`, backend `init=failed`, and no clean measurement is inferred. |
 | I2C concurrency | Core 0 is the sole physical I2C execution plane for the DAC and environment sensors. Core 1 never accesses `Wire` or mutable device state; actuator work crosses through bounded immutable request/acknowledgement records. No cross-core I2C lock is required because ownership does not migrate. | Native queue/guard tests and the dual-core live proof must show exact request/acknowledgement accounting, one physical DAC call site, and continued timing capture under service-plane I2C and telemetry load. |
+| Serial exclusivity | The capture carrier is the procedural sole owner and verifies the observed owner set during managed runs. OS-enforced exclusivity has not been established for every supported serial implementation. | Q1 must exercise competing opens and real detach/reattach on each supported host platform before stronger exclusivity is claimed. |
 | Hardware mux not exercised in host tests | Host tests cover collision semantics and ownership call paths; compile tests cover supported configurations. | Bench-check pin functions, IRQ activity, PIO allocations, and status evidence on the Nano RP2040 Connect. |
 
 ## PPS qualification handoff

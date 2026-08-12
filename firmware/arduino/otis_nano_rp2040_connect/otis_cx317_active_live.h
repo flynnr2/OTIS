@@ -69,6 +69,7 @@ struct OtisCx317ActiveLiveStatus {
   const char *evidence_state;
   uint32_t session_id;
   uint32_t evidence_request_sequence;
+  uint32_t query_nonce;
   uint32_t uptime_s;
   uint16_t expected_setup_code;
   uint16_t applied_code;
@@ -83,6 +84,9 @@ struct OtisCx317ActiveLiveStatus {
   bool manual_start_confirmed;
   bool arm_eligible;
   bool fail_static;
+  bool setup_gnss_eligible;
+  bool setup_reference_eligible;
+  bool setup_partition_healthy;
 };
 
 typedef void (*OtisCx317ActiveStatusVisitor)(
@@ -124,6 +128,8 @@ void otis_cx317_active_live_emit_status(OtisStatusEmitContext *context,
                                         uint32_t now_s);
 void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
                                        uint32_t now_s);
+void otis_cx317_active_live_set_status_query_nonce(uint32_t query_nonce);
+uint32_t otis_cx317_active_live_status_snapshot_generation(void);
 const char *otis_cx317_active_live_run_identity(void);
 uint16_t otis_cx317_active_live_start_code(void);
 

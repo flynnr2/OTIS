@@ -128,6 +128,14 @@
 #define OTIS_ENABLE_CX317_BOUNDED_ACTIVE 0
 #endif
 
+// Expose the finite Q2 transaction-case command surface only in its exact
+// electrically inhibited diagnostic profile. The case engine cannot call the
+// physical DAC driver; the separately authorized production setup path remains
+// the sole physical write attempted by Q2.
+#ifndef OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL
+#define OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL 0
+#endif
+
 #define OTIS_CX317_ACTIVE_CAMPAIGN_NONE 0
 #define OTIS_CX317_ACTIVE_CAMPAIGN_A 1
 #define OTIS_CX317_ACTIVE_CAMPAIGN_B 2
@@ -1021,6 +1029,18 @@
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE != 0 && \
     OTIS_ENABLE_CX317_BOUNDED_ACTIVE != 1
 #error "OTIS_ENABLE_CX317_BOUNDED_ACTIVE must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL != 0 && \
+    OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL != 1
+#error "OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL && \
+    (!OTIS_ENABLE_DUAL_CORE_PARTITION || !OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     OTIS_CX317_ACTIVE_CAMPAIGN != \
+         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER)
+#error "Q2 transaction rehearsal requires the exact dual-core CX319 lower profile."
 #endif
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \

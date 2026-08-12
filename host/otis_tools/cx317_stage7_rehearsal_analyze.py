@@ -225,7 +225,7 @@ def analyze(
     acknowledged_commands = [
         item.get("command")
         for item in events
-        if item.get("event") == "command_acknowledged"
+        if item.get("event") == "host_written"
     ]
     host_markers = _host_markers(run_dir / "raw/serial.log")
     capture_stopped = [

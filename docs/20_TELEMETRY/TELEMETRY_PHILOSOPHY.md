@@ -53,3 +53,13 @@ Timing observations, actuator acknowledgements, critical diagnostic transitions,
 and control actions must not be silently lost. Droppable routine snapshots must
 have explicit counters. Transport or host failure must not alter timing truth and
 must be visible in later replay.
+
+For the supported carrier-dependent generation, absence beyond the declared
+2,000 ms TX-progress horizon invalidates evidence continuity even though it
+does not redefine already captured timestamps. The partial frame and drained
+post-fault queues are not durable evidence. Reset/new session is required.
+
+Command phases use distinct names: host byte completion is `host_written`;
+device records distinguish receive, each authority decision, physical
+application or failure, and the subsequent observed result. These meanings
+must never be collapsed into “command acknowledged.”

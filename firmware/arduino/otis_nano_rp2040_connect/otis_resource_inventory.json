@@ -1,0 +1,97 @@
+{
+  "contract": "otis_runtime_resource_inventory_v1",
+  "transport": {
+    "maximum_supported_tx_obstruction_ms": 2000,
+    "recovery": "reset_new_evidence_session"
+  },
+  "resources": [
+    {
+      "id": "service_to_timing",
+      "implementation": "OtisSpscQueue<OtisServiceMessage, OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH",
+      "capacity": 16,
+      "producer": "core0_service",
+      "consumer": "core1_timing",
+      "loss_policy": "non_droppable_latch_fail_static",
+      "maximum_consumer_absence": "less_than_queue_fill_time; core1_drains_up_to_capacity_each_loop",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "observation",
+      "implementation": "OtisSpscQueue<OtisObservationMessage, OTIS_OBSERVATION_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_OBSERVATION_QUEUE_DEPTH",
+      "capacity": 96,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "non_droppable_latch_fail_static",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); core0_drains_24_per_loop",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "critical",
+      "implementation": "OtisSpscQueue<OtisCriticalRecordMessage, OTIS_CRITICAL_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_CRITICAL_QUEUE_DEPTH",
+      "capacity": 16,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "non_droppable_latch_fail_static",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); core0_drains_8_per_loop",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "evidence",
+      "implementation": "OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_EVIDENCE_QUEUE_DEPTH",
+      "capacity": 8,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "non_droppable_latch_fail_static",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); one_complete_frame_retains_wire_owner",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "telemetry",
+      "implementation": "OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_TELEMETRY_QUEUE_DEPTH",
+      "capacity": 192,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "drop_new_increment_counter_no_control_authority",
+      "maximum_consumer_absence": "declared_bursts_only; max_boot_169,max_concurrent_142; core0_drains_12_per_loop",
+      "recovery": "continue_if_absolute_gates_clean; reset_if_transport_fault"
+    },
+    {
+      "id": "phase_preview",
+      "implementation": "OtisSpscQueue<OtisPhasePreviewRecordMessage, OTIS_PHASE_PREVIEW_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_PHASE_PREVIEW_QUEUE_DEPTH",
+      "capacity": 32,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "non_droppable_latch_fail_static",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time)",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "capture_ring",
+      "implementation": "volatile OtisCapturedEdge capture_ring[kCaptureRingSize]",
+      "capacity_symbol": "OTIS_CAPTURE_RING_SIZE-1",
+      "capacity": 31,
+      "producer": "capture_irq_or_pio_service",
+      "consumer": "timing_foreground_owner",
+      "loss_policy": "drop_new_increment_capture_dropped_and_invalidate_evidence",
+      "maximum_consumer_absence": "less_than_31_arrivals; drain_budget_31_per_loop",
+      "recovery": "reset_new_evidence_session"
+    },
+    {
+      "id": "pps_count_boundary_ring",
+      "implementation": "volatile OtisPpsCountBoundaryObservation boundary_ring[kBoundaryRingSize]",
+      "capacity_symbol": "OTIS_PPS_COUNT_BOUNDARY_RING_SIZE-1",
+      "capacity": 127,
+      "producer": "reference_capture_isr",
+      "consumer": "core1_timing_foreground",
+      "loss_policy": "drop_new_increment_boundary_dropped_and_invalidate_evidence",
+      "maximum_consumer_absence": "less_than_127_reference_arrivals; core1_drains_each_loop",
+      "recovery": "rearm_backend_and_reset_ring; new_qualified_session_required"
+    }
+  ]
+}

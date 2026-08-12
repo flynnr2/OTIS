@@ -19,7 +19,6 @@ from typing import Any
 
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
-from .host_attach_health_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 from .no_write_prewrite_readiness_contract import (
     ACTIVE_STATUS_KEYS,
     INHERITED_PREVIEW_BASELINE_PROVENANCE,
@@ -49,13 +48,20 @@ RUN_MANIFEST_SCHEMA_VERSION = 1
 REHEARSAL_STAGE = "CX319_G1_EXACT_NO_WRITE_REHEARSAL"
 REHEARSAL_DURATION_S = 2700
 SELECTED_ESTIMATE_SPAN_S = 600
+Q1_INTENTIONAL_DETACH_SCHEDULE = (
+    (20.0, 0.250),
+    (24.0, 0.750),
+    (28.0, 1.250),
+)
 RUN_BUNDLE_PATH = Path("cx319_g1_exact_bundle_v1.json")
 TRANSITION_RUN_DIR = Path("g1_owner_handoff_transition")
+SEQUENCE_GATES = frozenset({"Q1", "Q3"})
 NORMAL_COMMAND_ALLOWLIST = (
     "CONFIG?",
     "DAC?",
     "FC0?",
     "ACTIVE?",
+    "ACTIVE SNAPSHOT <nonzero_uint32>",
     "ACTIVE LEASE <nonzero_uint32>",
 )
 FORBIDDEN_COMMAND_PREFIXES = (
@@ -84,6 +90,9 @@ HOST_TOOL_PATHS = {
         "host_attach_health_contract.py"
     ),
     "capture": Path(__file__).with_name("capture_device.py"),
+    "active_status_live_state": Path(__file__).with_name(
+        "active_status_live_state.py"
+    ),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("cx317_abort_path.py"),
     "segment_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
@@ -107,6 +116,12 @@ FROZEN_V1_HOST_TOOL_NAMES = frozenset(
         "segment_rotation",
         "serial_commands",
         "supervisor",
+    }
+)
+FROZEN_V2_HOST_TOOL_NAMES = frozenset(
+    {
+        *FROZEN_V1_HOST_TOOL_NAMES,
+        "host_attach_contract",
     }
 )
 CURRENT_HOST_TOOL_NAMES = frozenset(HOST_TOOL_PATHS)
@@ -140,11 +155,11 @@ def _canonical_sha256(value: object) -> str:
 def normal_command_allowed(command: str) -> bool:
     if command in {"CONFIG?", "DAC?", "FC0?", "ACTIVE?"}:
         return True
-    prefix = "ACTIVE LEASE "
-    if not command.startswith(prefix):
-        return False
-    sequence = command[len(prefix) :]
-    return sequence.isdigit() and 0 < int(sequence) <= 0xFFFFFFFF
+    for prefix in ("ACTIVE SNAPSHOT ", "ACTIVE LEASE "):
+        if command.startswith(prefix):
+            sequence = command[len(prefix) :]
+            return sequence.isdigit() and 0 < int(sequence) <= 0xFFFFFFFF
+    return False
 
 
 def _read_object(path: Path, label: str) -> dict[str, Any]:
@@ -259,7 +274,7 @@ def _load_authority() -> dict[str, Any]:
     if (
         authority.get("schema_version") != 1
         or authority.get("authority_id")
-        != "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        != "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
         or authority.get("programme_id") != PROGRAMME_ID
         or authority.get("operation") != NO_WRITE_BENCH_OPERATION
         or authority.get("gate") != "G1"
@@ -339,6 +354,7 @@ def validate_build(
     build_manifest_path: Path,
     uf2_path: Path,
     allow_clean_ancestor_source: bool = False,
+    allow_qualified_ancestor_image: bool = False,
 ) -> dict[str, Any]:
     spec = leg_spec(leg)
     matrix = load_matrix(MATRIX_PATH)
@@ -378,14 +394,30 @@ def validate_build(
     if (
         source.get("state") != "clean"
         or not source_revision_allowed
-        or source.get("sha256") != source_input_hash(matrix_path=MATRIX_PATH)
+        or (
+            source.get("sha256") != source_input_hash(matrix_path=MATRIX_PATH)
+            and not allow_qualified_ancestor_image
+        )
     ):
         raise ValueError("CX319 build does not bind the current clean source")
+    configuration_digest = configuration.get("sha256")
+    configuration_digest_allowed = (
+        configuration_digest == configuration_hash(matrix, profile)
+        or (
+            allow_qualified_ancestor_image
+            and isinstance(configuration_digest, str)
+            and len(configuration_digest) == 64
+            and all(
+                character in "0123456789abcdef"
+                for character in configuration_digest
+            )
+        )
+    )
     if (
         configuration.get("profile_id") != spec["profile_id"]
         or configuration.get("defines") != profile["defines"]
         or configuration.get("fqbn") != matrix["target"]["fqbn"]
-        or configuration.get("sha256") != configuration_hash(matrix, profile)
+        or not configuration_digest_allowed
     ):
         raise ValueError("CX319 build configuration differs from the exact profile")
     artifacts = build.get("artifacts")
@@ -479,6 +511,92 @@ def _host_bindings() -> dict[str, dict[str, Any]]:
     return {name: _binding(path) for name, path in HOST_TOOL_PATHS.items()}
 
 
+def _q3_prerequisites(
+    *,
+    q1_run_dir: Path,
+    q2_run_dir: Path,
+    firmware: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind Q3 to the passing Q1 image and inhibited Q2 transaction."""
+
+    q1_run_dir = q1_run_dir.resolve()
+    q2_run_dir = q2_run_dir.resolve()
+    q1_bundle_path = q1_run_dir / RUN_BUNDLE_PATH
+    q1_seal_path = q1_run_dir / "reports/cx319_g1_rehearsal_seal_v1.json"
+    q2_bundle_path = q2_run_dir / "cx319_q2_exact_bundle_v1.json"
+    q2_seal_path = q2_run_dir / "reports/cx319_q2_transaction_seal_v1.json"
+    q1_bundle = _read_object(q1_bundle_path, "passing Q1 exact bundle")
+    q1_seal = _read_object(q1_seal_path, "passing Q1 seal")
+    q2_bundle = _read_object(q2_bundle_path, "passing Q2 exact bundle")
+    q2_seal = _read_object(q2_seal_path, "passing Q2 seal")
+    q1_complete = q1_run_dir / "COMPLETE"
+    q2_complete = q2_run_dir / "COMPLETE"
+    if not q1_complete.is_file() or not q2_complete.is_file():
+        raise ValueError("Q3 prerequisites must be complete retained runs")
+    q1_firmware = q1_bundle.get("firmware", {})
+    if (
+        q1_seal.get("status") != "pass"
+        or q1_seal.get("seal_type")
+        != "cx319_g1_no_write_rehearsal_seal_v1"
+        or q1_seal.get("bundle_sha256") != q1_bundle.get("bundle_sha256")
+        or q1_seal.get("uf2_sha256")
+        != q1_firmware.get("uf2", {}).get("sha256")
+        or any(
+            q1_seal.get(name) != 0
+            for name in (
+                "setup_writes",
+                "dac_value_writes",
+                "automatic_writes",
+                "control_arms",
+            )
+        )
+        or q1_seal.get("actuation_authorized") is not False
+        or q1_firmware != firmware
+    ):
+        raise ValueError("Q3 firmware does not exactly match passing Q1 evidence")
+    if (
+        q2_seal.get("status") != "pass"
+        or q2_seal.get("seal_type")
+        != "cx319_q2_inhibited_transaction_seal_v1"
+        or q2_seal.get("bundle_sha256") != q2_bundle.get("bundle_sha256")
+        or q2_seal.get("physical_setup_writes") != 1
+        or q2_seal.get("physical_automatic_writes") != 0
+        or q2_seal.get("physical_oscillator_movement_possible") is not False
+        or q2_seal.get("live_authority_granted") is not False
+    ):
+        raise ValueError("Q3 requires one passing electrically inhibited Q2 transaction")
+    return {
+        "q1": {
+            "run_id": q1_run_dir.name,
+            "complete": _binding(q1_complete),
+            "bundle": _binding(q1_bundle_path),
+            "bundle_sha256": q1_bundle["bundle_sha256"],
+            "seal": _binding(q1_seal_path),
+            "seal_sha256": q1_seal["seal_sha256"],
+            "uf2_sha256": q1_seal["uf2_sha256"],
+        },
+        "q2": {
+            "run_id": q2_run_dir.name,
+            "complete": _binding(q2_complete),
+            "bundle": _binding(q2_bundle_path),
+            "bundle_sha256": q2_bundle["bundle_sha256"],
+            "seal": _binding(q2_seal_path),
+            "seal_sha256": q2_seal["seal_sha256"],
+            "physical_setup_writes": 1,
+            "physical_automatic_writes": 0,
+            "physical_oscillator_movement_possible": False,
+        },
+        "physical_topology_confirmation_required_at_execution": (
+            "dac_analogue_output_reconnected_to_oscillator_efc_vctrl"
+        ),
+        "offline_operational_rehearsal_tool": _binding(
+            Path(__file__).with_name(
+                "no_write_qualification_operational_rehearsal.py"
+            )
+        ),
+    }
+
+
 def create_bundle(
     *,
     leg: str,
@@ -487,8 +605,25 @@ def create_bundle(
     serial_device: str,
     output_path: Path,
     confirmed_flash_record_path: Path | None = None,
+    sequence_gate: str = "Q1",
+    q1_run_dir: Path | None = None,
+    q2_run_dir: Path | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
+    if sequence_gate not in SEQUENCE_GATES:
+        raise ValueError("no-write sequence gate must be Q1 or Q3")
+    if sequence_gate == "Q3" and (
+        confirmed_flash_record_path is not None
+        or q1_run_dir is None
+        or q2_run_dir is None
+    ):
+        raise ValueError(
+            "Q3 requires passing Q1/Q2 runs and one fresh exact flash"
+        )
+    if sequence_gate == "Q1" and (
+        q1_run_dir is not None or q2_run_dir is not None
+    ):
+        raise ValueError("Q1 cannot bind Q3 prerequisite runs")
     if not serial_device.startswith("/dev/"):
         raise ValueError("G1 bundle requires an explicit /dev serial path")
     spec = leg_spec(leg)
@@ -496,7 +631,10 @@ def create_bundle(
         leg=leg,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
-        allow_clean_ancestor_source=(confirmed_flash_record_path is not None),
+        allow_clean_ancestor_source=(
+            confirmed_flash_record_path is not None or sequence_gate == "Q3"
+        ),
+        allow_qualified_ancestor_image=sequence_gate == "Q3",
     )
     host_source_revision, host_source_state = _git_identity()
     if host_source_state != "clean":
@@ -514,6 +652,15 @@ def create_bundle(
     )
     policy = _load_policy()
     authority_overlay = _load_authority()
+    q3_prerequisites = (
+        _q3_prerequisites(
+            q1_run_dir=q1_run_dir,
+            q2_run_dir=q2_run_dir,
+            firmware=firmware,
+        )
+        if sequence_gate == "Q3"
+        else None
+    )
     payload: dict[str, Any] = {
         "schema_version": BUNDLE_SCHEMA_VERSION,
         "tool": TOOL_ID,
@@ -522,6 +669,7 @@ def create_bundle(
         "programme_id": PROGRAMME_ID,
         "host_source_revision": host_source_revision,
         "gate": "G1",
+        "qualification_sequence_gate": sequence_gate,
         "leg": spec,
         "firmware": firmware,
         "firmware_entry": firmware_entry,
@@ -569,6 +717,15 @@ def create_bundle(
             "capture_resume_required": True,
             "same_owner_after_resume_required": True,
         },
+        "q1_real_io": {
+            "intentional_detach_schedule": [
+                {"after_first_open_s": after_s, "detached_s": detached_s}
+                for after_s, detached_s in Q1_INTENTIONAL_DETACH_SCHEDULE
+            ],
+            "lease_expiry_observation_s": 31,
+            "qualification_boundary_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            "dac_value_writes": 0,
+        },
         "rotation": {
             "protocol": "otis_same_owner_logical_segment_rotation_v1",
             "serial_reopen_allowed": False,
@@ -591,8 +748,11 @@ def create_bundle(
             ),
             "physical_applied_code_before_live_stimulus": "unknown",
             "missing_status_is_failure": True,
-            "fresh_host_attach_maximum_uptime_s": (
-                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            "attachment_mode": "arbitrary_running_instrument",
+            "firmware_uptime_limit_s": None,
+            "device_snapshot": "nonce_bound_complete_generation",
+            "evidence_session_boundary": (
+                "separate_nonce_bound_immutable_cumulative_baseline"
             ),
             "gnss_pps_qualification_deadline_s": (
                 RAW_PPS_QUALIFICATION_DEADLINE_S
@@ -629,6 +789,8 @@ def create_bundle(
             "2700 second endpoint lacks one fresh authoritative 600 second estimate",
         ],
     }
+    if q3_prerequisites is not None:
+        payload["q3_prerequisites"] = q3_prerequisites
     payload["bundle_sha256"] = _canonical_sha256(payload)
     _atomic_new_json(output_path, payload)
     return payload
@@ -662,6 +824,8 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or bundle.get("bundle_id") != BUNDLE_ID
         or bundle.get("programme_id") != PROGRAMME_ID
         or bundle.get("gate") != "G1"
+        or bundle.get("qualification_sequence_gate", "Q1")
+        not in SEQUENCE_GATES
         or claimed != _canonical_sha256(unsigned)
     ):
         raise ValueError("CX319 G1 bundle identity or digest is invalid")
@@ -698,14 +862,15 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or len(policy["sha256"]) != 64
         or not isinstance(operator_authority, dict)
         or operator_authority.get("authority_id")
-        != "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        != "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
     ):
         raise ValueError("CX319 G1 frozen policy or authority identity is invalid")
     tools = bundle.get("host_tools")
     runtime_contract_id = bundle.get("runtime_contract", {}).get("id")
     expected_tool_names = {
         "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
-        "cx319_g1_prewrite_runtime_contract_v2": CURRENT_HOST_TOOL_NAMES,
+        "cx319_g1_prewrite_runtime_contract_v2": FROZEN_V2_HOST_TOOL_NAMES,
+        "cx319_g1_prewrite_runtime_contract_v3": CURRENT_HOST_TOOL_NAMES,
         RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
     }.get(runtime_contract_id)
     if (
@@ -719,6 +884,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     rehearsal = bundle.get("rehearsal", {})
     commands = bundle.get("commands", {})
     runtime_contract = bundle.get("runtime_contract", {})
+    q1_real_io = bundle.get("q1_real_io", {})
     if (
         authority.get("programme_operation_required") != NO_WRITE_BENCH_OPERATION
         or any(
@@ -752,11 +918,26 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or commands.get("emergency_allowlist") != [EMERGENCY_COMMAND]
         or tuple(commands.get("forbidden_prefixes", []))
         != FORBIDDEN_COMMAND_PREFIXES
+        or q1_real_io
+        != {
+            "intentional_detach_schedule": [
+                {"after_first_open_s": after_s, "detached_s": detached_s}
+                for after_s, detached_s in Q1_INTENTIONAL_DETACH_SCHEDULE
+            ],
+            "lease_expiry_observation_s": 31,
+            "qualification_boundary_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            "dac_value_writes": 0,
+        }
         or (
             runtime_contract_id == RUNTIME_CONTRACT_ID
             and (
-                runtime_contract.get("fresh_host_attach_maximum_uptime_s")
-                != FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+                runtime_contract.get("attachment_mode")
+                != "arbitrary_running_instrument"
+                or runtime_contract.get("firmware_uptime_limit_s") is not None
+                or runtime_contract.get("device_snapshot")
+                != "nonce_bound_complete_generation"
+                or runtime_contract.get("evidence_session_boundary")
+                != "separate_nonce_bound_immutable_cumulative_baseline"
                 or runtime_contract.get("gnss_pps_qualification_deadline_s")
                 != RAW_PPS_QUALIFICATION_DEADLINE_S
             )
@@ -785,6 +966,10 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         allow_clean_ancestor_source=(
             firmware_entry.get("mode")
             == "reuse_confirmed_installed_firmware"
+            or bundle.get("qualification_sequence_gate", "Q1") == "Q3"
+        ),
+        allow_qualified_ancestor_image=(
+            bundle.get("qualification_sequence_gate", "Q1") == "Q3"
         ),
     )
     if firmware != current:
@@ -805,6 +990,19 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         )
         if firmware_entry != current_entry:
             raise ValueError("confirmed installed firmware binding is stale")
+    if bundle.get("qualification_sequence_gate", "Q1") == "Q3":
+        q3 = bundle.get("q3_prerequisites")
+        if not isinstance(q3, dict):
+            raise ValueError("Q3 prerequisite binding is unavailable")
+        current_q3 = _q3_prerequisites(
+            q1_run_dir=Path(str(q3.get("q1", {}).get("complete", {}).get("path", ""))).parent,
+            q2_run_dir=Path(str(q3.get("q2", {}).get("complete", {}).get("path", ""))).parent,
+            firmware=firmware,
+        )
+        if q3 != current_q3:
+            raise ValueError("Q3 prerequisite binding is stale")
+    elif "q3_prerequisites" in bundle:
+        raise ValueError("Q1 bundle cannot carry Q3 prerequisite authority")
     if bundle.get("policy", {}).get("sha256") != _sha256_file(POLICY_PATH):
         raise ValueError("CX319 G1 bundle policy binding is stale")
     authority_overlay = _load_authority()
@@ -846,9 +1044,14 @@ def _required_files() -> list[dict[str, Any]]:
 
 
 def create_run_manifest(
-    *, bundle_path: Path, run_dir: Path, output_path: Path
+    *,
+    bundle_path: Path,
+    run_dir: Path,
+    output_path: Path,
+    q1_real_io: bool = False,
 ) -> dict[str, Any]:
     bundle = validate_bundle(bundle_path)
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     run_dir = run_dir.resolve()
     files = _required_files()
     spec = bundle["leg"]
@@ -881,7 +1084,7 @@ def create_run_manifest(
         "closed_loop_control": False,
         "actionable": False,
         "actuation_authorized": False,
-        "qualification_evidence": False,
+        "qualification_evidence": sequence_gate == "Q3",
         "firmware": bundle["firmware"],
         "policy": bundle["policy"],
         "operator_authority": bundle["operator_authority"],
@@ -902,6 +1105,7 @@ def create_run_manifest(
         },
         "cx319": {
             "gate": "G1",
+            "qualification_sequence_gate": sequence_gate,
             "mode": "no_write_rehearsal",
             **spec,
             "runtime_contract": bundle["runtime_contract"],
@@ -936,6 +1140,7 @@ def create_run_manifest(
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
@@ -946,28 +1151,59 @@ def create_run_manifest(
             "reports/cx319_g1_capture_launcher.log",
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
+            *(
+                [
+                    "reports/cx319_q1_real_io_prelude_v1.json",
+                    "reports/cx319_q1_evidence_session_baseline_v1.json",
+                ]
+                if q1_real_io
+                else []
+            ),
+            *(
+                ["reports/cx319_q3_topology_confirmation_v1.json"]
+                if sequence_gate == "Q3"
+                else []
+            ),
             *transition_evidence,
         ],
         "evidence_artifacts": [
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
             "reports/cx319_g1_transport_rehearsal_v1.json",
             "reports/cx319_g1_flash_v1.json",
-            "reports/cx319_g1_analysis_v1.json",
-            "reports/CX319_G1_REHEARSAL.md",
             "reports/cx319_g1_capture_launcher.log",
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
+            *(
+                [
+                    "reports/cx319_q1_real_io_prelude_v1.json",
+                    "reports/cx319_q1_evidence_session_baseline_v1.json",
+                ]
+                if q1_real_io
+                else []
+            ),
+            *(
+                ["reports/cx319_q3_topology_confirmation_v1.json"]
+                if sequence_gate == "Q3"
+                else []
+            ),
             *transition_evidence,
         ],
         "known_limitations": [
-            "G1 is a no-write operational rehearsal, not frequency-control evidence.",
+            (
+                "Q3 is physical no-write qualification evidence and grants no live-control authority."
+                if sequence_gate == "Q3"
+                else "G1 is a no-write operational rehearsal, not frequency-control evidence."
+            ),
             "The historical A828 context is not current physical DAC confirmation.",
             "Relative phase remains arbitrary-epoch and phase/hybrid outputs have zero authority.",
         ],
     }
+    if q1_real_io:
+        manifest["q1_real_io"] = bundle["q1_real_io"]
     _atomic_new_json(output_path, manifest)
     return manifest
 
@@ -980,7 +1216,13 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
         or manifest.get("closed_loop_control") is not False
         or manifest.get("actionable") is not False
         or manifest.get("actuation_authorized") is not False
-        or manifest.get("qualification_evidence") is not False
+        or manifest.get("qualification_evidence")
+        is not (
+            manifest.get("cx319", {}).get(
+                "qualification_sequence_gate", "Q1"
+            )
+            == "Q3"
+        )
     ):
         raise ValueError("CX319 G1 run manifest identity or authority is invalid")
     bundle_binding = manifest.get("bundle")
@@ -997,6 +1239,10 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
         or manifest.get("cx319", {}).get("leg") != bundle["leg"]["leg"]
         or manifest.get("cx319", {}).get("authority") != bundle["authority"]
         or manifest.get("cx319", {}).get("commands") != bundle["commands"]
+        or (
+            "q1_real_io" in manifest
+            and manifest.get("q1_real_io") != bundle.get("q1_real_io")
+        )
     ):
         raise ValueError("CX319 G1 run manifest differs from its exact bundle")
     return manifest
@@ -1011,6 +1257,11 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--uf2", type=Path, required=True)
     create.add_argument("--serial-device", required=True)
     create.add_argument("--confirmed-flash-record", type=Path)
+    create.add_argument(
+        "--sequence-gate", choices=sorted(SEQUENCE_GATES), default="Q1"
+    )
+    create.add_argument("--q1-run-dir", type=Path)
+    create.add_argument("--q2-run-dir", type=Path)
     create.add_argument("--output", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("bundle", type=Path)
@@ -1024,6 +1275,9 @@ def main(argv: list[str] | None = None) -> int:
                 serial_device=args.serial_device,
                 output_path=args.output,
                 confirmed_flash_record_path=args.confirmed_flash_record,
+                sequence_gate=args.sequence_gate,
+                q1_run_dir=args.q1_run_dir,
+                q2_run_dir=args.q2_run_dir,
             )
         else:
             result = validate_bundle(args.bundle)

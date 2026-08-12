@@ -40,3 +40,16 @@ derived analysis products. They must identify:
 Invalid count windows should remain in the raw artifact when a bounded gate
 exists. Derived analyses may exclude them, but the exclusion rule must be
 documented.
+
+## Command and finalization provenance
+
+For an actuation-bearing result, retain the exact coherent status generation,
+post-attachment nonce, session, build/configuration identity, expiry, requested
+code, ordinal, and every firmware transaction phase. `host_written` is a host
+transport observation, not a firmware acknowledgement or applied result. An
+analyzer must reconstruct authority from retained inputs and raw phase evidence.
+
+Finalization failures do not rewrite the primary acquisition or analysis
+verdict. Preserve the first failure, retain later cleanup failures separately,
+and use the external finalization journal to register an unchanged valid sealed
+package after interruption.

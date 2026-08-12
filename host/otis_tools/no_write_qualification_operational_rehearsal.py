@@ -1,8 +1,8 @@
 """Rehearse the no-flash, no-write host path without hardware I/O.
 
 The timing state machine is exercised with accelerated firmware uptimes. The
-actual G1 analyzer and seal then process a temporary copy of retained passing
-G1 capture/transport evidence rebound to the current exact no-flash bundle.
+actual analyzer and seal then process a temporary copy of retained passing
+Q1 capture/transport evidence rebound to the current exact bundle.
 No serial device is opened and no firmware or DAC command is sent.
 """
 
@@ -18,8 +18,13 @@ from pathlib import Path
 import shutil
 import stat
 import tempfile
+import time
 from typing import Any
 
+from .active_status_live_state import (
+    LIVE_STATE_PATH,
+    reduce_health_rows,
+)
 from .capture_segment_rotation import prepare_transition
 from .no_write_qualification_analyze import (
     ANALYSIS_PATH,
@@ -49,6 +54,10 @@ from .evidence_index import register_package, validate_index
 
 TOOL_ID = "cx319_g1_no_flash_operational_rehearsal_v1"
 RESULT_PATH = Path("cx319_g1_no_flash_operational_rehearsal_v1.json")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _sha256_file(path: Path) -> str:
@@ -84,7 +93,9 @@ def _replace_json(path: Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _replace_build_identity(path: Path, expected_build: str) -> None:
+def _replace_build_identity(
+    path: Path, expected_build: str, *, required: bool = True
+) -> bool:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fields = reader.fieldnames
@@ -101,7 +112,9 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
             row["status_value"] = expected_build
             replacements += 1
     if replacements == 0:
-        raise ValueError(f"health CSV has no build identity: {path}")
+        if required:
+            raise ValueError(f"health CSV has no build identity: {path}")
+        return False
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -118,6 +131,28 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
         os.fsync(handle.fileno())
         temporary = Path(handle.name)
     os.replace(temporary, path)
+    return True
+
+
+def _publish_replayed_live_state(health_path: Path, state_path: Path) -> None:
+    with health_path.open(newline="", encoding="utf-8") as handle:
+        state = reduce_health_rows(csv.DictReader(handle))
+    if state is None or state.get("state") != "complete":
+        raise ValueError(
+            f"replayed health has no complete live state: {health_path}"
+        )
+    _replace_json(
+        state_path,
+        {
+            **state,
+            "observed_utc": _utc_now(),
+            "observed_monotonic_ns": time.monotonic_ns(),
+            "capture_pid": os.getpid(),
+            "transport_generation": 1,
+            "replay_derived": True,
+            "source_health_path": str(health_path),
+        },
+    )
 
 
 def _replace_capture_stop_target(path: Path, next_run: Path) -> None:
@@ -156,6 +191,19 @@ def _first_observation(
     raise ValueError(f"missing {component}.{status_key} in {path}")
 
 
+def _source_exercised_q1_detach(run_dir: Path) -> bool:
+    state = json.loads(
+        (run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    reconnects = int(state.get("reconnect_count", 0))
+    detaches = int(state.get("intentional_detach_count", 0))
+    if reconnects != detaches:
+        raise ValueError("replay source reconnect/detach evidence is inconsistent")
+    return detaches > 0
+
+
 def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, Any]:
     run_dir = root / "accelerated-supervisor"
     (run_dir / "csv").mkdir(parents=True)
@@ -165,6 +213,7 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         + ":"
         + bundle["firmware"]["configuration_sha256"]
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     supervisor = NoWriteQualificationSupervisor(
         leg=leg,
         run_dir=run_dir,
@@ -175,6 +224,7 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         identities=identities,
         expected_build_identity=build_identity,
         duration_s=None,
+        qualification_sequence_gate=sequence_gate,
     )
     supervisor.state.update(
         telemetry_drop_baseline=0,
@@ -192,6 +242,10 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         expected_identity=expected_identity,
         planned_live_stimulus_code=spec.start_code,
     )
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    health[("cx317_active", "snapshot_generation_complete")] = "7"
     health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
     health[("gnss_receiver", "control_eligible")] = "false"
     health[("cx317_active", "uptime_s")] = "30"
@@ -213,12 +267,16 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         identities=identities,
         expected_build_identity=build_identity,
         duration_s=None,
+        qualification_sequence_gate=sequence_gate,
     )
     deadline.state.update(
         telemetry_drop_baseline=0,
         telemetry_drop_baseline_status_seq=2,
         host_attach_uptime_s=30,
         host_attach_uptime_status_seq=1,
+    )
+    health[("cx317_active", "query_nonce")] = str(
+        deadline.state["host_attach_query_nonce"]
     )
     health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
     health[("gnss_receiver", "control_eligible")] = "false"
@@ -231,9 +289,15 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         deadline_rejected = "raw_pps_control_eligible" in str(exc)
 
     stale = dict(health)
+    stale[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
     stale[("gnss_receiver", "identity_epoch")] = "2"
     epoch_two_rejected = not supervisor._prewrite_readiness(stale).ready
     supervisor.state["host_attach_uptime_s"] = 121
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
     late_attach_rejected = not supervisor._prewrite_readiness(health).ready
     return {
         "contract_id": RUNTIME_CONTRACT_ID,
@@ -249,10 +313,12 @@ def _prepare_replay(
     *, bundle_path: Path, source_run: Path, replay_run: Path
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     bundle = validate_bundle(bundle_path)
-    if bundle.get("firmware_entry", {}).get("mode") != (
-        "reuse_confirmed_installed_firmware"
-    ):
-        raise ValueError("operational rehearsal requires the exact no-flash bundle")
+    entry_mode = bundle.get("firmware_entry", {}).get("mode")
+    if entry_mode not in {
+        "single_exact_flash",
+        "reuse_confirmed_installed_firmware",
+    }:
+        raise ValueError("operational rehearsal firmware entry is invalid")
     shutil.copytree(
         source_run,
         replay_run,
@@ -273,11 +339,32 @@ def _prepare_replay(
     shutil.copy2(bundle_path, copied_bundle)
     manifest_path = replay_run / "run_manifest.json"
     manifest_path.unlink(missing_ok=True)
+    source_q1_detach = _source_exercised_q1_detach(replay_run)
     manifest = create_run_manifest(
         bundle_path=copied_bundle,
         run_dir=replay_run,
         output_path=manifest_path,
+        q1_real_io=source_q1_detach,
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
+    if sequence_gate == "Q3":
+        _atomic_new_json(
+            replay_run / "reports/cx319_q3_topology_confirmation_v1.json",
+            {
+                "schema_version": 1,
+                "report_type": "cx319_q3_topology_confirmation_v1",
+                "status": "operator_confirmed",
+                "recorded_utc": _utc_now(),
+                "qualification_sequence_gate": "Q3",
+                "dac_analogue_output": (
+                    "reconnected_to_oscillator_efc_vctrl"
+                ),
+                "oscillator_powered": True,
+                "q2_inhibited_interval_ended": True,
+                "physical_write_authority": False,
+                "offline_rehearsal_only": True,
+            },
+        )
     transition = replay_run / TRANSITION_RUN_DIR
     with tempfile.TemporaryDirectory(prefix="cx319-g1-transition-") as raw_temp:
         generated = prepare_transition(manifest_path, Path(raw_temp) / "transition")
@@ -316,19 +403,37 @@ def _prepare_replay(
         + ":"
         + bundle["firmware"]["configuration_sha256"]
     )
-    for health_path in (
-        replay_run / "csv/health.csv",
-        transition / "csv/health.csv",
+    primary_health = replay_run / "csv/health.csv"
+    _replace_build_identity(primary_health, expected_build)
+    _publish_replayed_live_state(
+        primary_health,
+        primary_health.parents[1] / LIVE_STATE_PATH,
+    )
+    transition_health = transition / "csv/health.csv"
+    if _replace_build_identity(
+        transition_health, expected_build, required=False
     ):
-        _replace_build_identity(health_path, expected_build)
+        _publish_replayed_live_state(
+            transition_health,
+            transition_health.parents[1] / LIVE_STATE_PATH,
+        )
+    else:
+        (transition / LIVE_STATE_PATH).unlink(missing_ok=True)
 
     state_path = replay_run / "reports/cx317_active_supervisor_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    attach_seq, attach_uptime = _first_observation(
-        replay_run / "csv/health.csv", "cx317_active", "uptime_s"
-    )
-    state["host_attach_uptime_s"] = attach_uptime
-    state["host_attach_uptime_status_seq"] = attach_seq
+    if any(
+        state.get(key) is None
+        for key in (
+            "host_attach_uptime_s",
+            "host_attach_uptime_status_seq",
+            "host_attach_snapshot_generation",
+        )
+    ):
+        raise ValueError(
+            "replay source lacks its nonce-bound host-attachment cut point"
+        )
+    state["qualification_sequence_gate"] = sequence_gate
     state["latest_prewrite_readiness"]["contract_id"] = RUNTIME_CONTRACT_ID
     started = datetime.fromisoformat(
         str(state["supervisor_started_utc"]).replace("Z", "+00:00")
@@ -341,31 +446,61 @@ def _prepare_replay(
     _replace_json(state_path, state)
 
     entry = bundle["firmware_entry"]
-    flash = {
+    source_flash = json.loads(
+        (replay_run / FLASH_RECORD_PATH).read_text(encoding="utf-8")
+    )
+    flash: dict[str, Any] = {
         "schema_version": 1,
         "tool": TOOL_ID,
-        "operation": "confirmed_installed_cx319_g1_firmware_reuse",
         "status": "pass",
-        "attempt_count": 0,
+        "qualification_sequence_gate": sequence_gate,
         "firmware_flashes": 0,
         "device": bundle["device"]["path"],
-        "board_before": entry["installed_board"],
-        "board_after": entry["installed_board"],
-        "installed_board": entry["installed_board"],
         "bundle_sha256": bundle["bundle_sha256"],
         "profile_id": bundle["firmware"]["profile_id"],
         "build_manifest_sha256": bundle["firmware"]["build_manifest"]["sha256"],
         "uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
-        "source_flash_record": entry["source_flash_record"],
-        "source_bundle": entry["source_bundle"],
-        "source_bundle_sha256": entry["source_bundle_sha256"],
-        "source_build_manifest_sha256": entry["source_build_manifest_sha256"],
-        "installed_uf2_sha256": entry["installed_uf2_sha256"],
         "dac_boot_operation": "offline_replay_no_hardware_io",
         "dac_value_write_attempts": 0,
         "setup_stimulus_attempts": 0,
         "control_arm_attempts": 0,
     }
+    if entry_mode == "single_exact_flash":
+        board = source_flash["board_after"]
+        flash.update(
+            operation="exact_cx319_g1_firmware_flash",
+            attempt_count=1,
+            board_before=board,
+            board_after=board,
+            command=["offline-operational-rehearsal", "exact-flash"],
+            exit_code=0,
+            offline_flash_execution=False,
+        )
+        if source_q1_detach:
+            flash.update(
+                upload_completed_monotonic_ns=1,
+                carrier_ready_monotonic_ns=2,
+                post_reset_identity_started_monotonic_ns=3,
+                post_reset_identity_order=(
+                    "carrier_then_board_enumeration"
+                ),
+            )
+    else:
+        board = entry["installed_board"]
+        flash.update(
+            operation="confirmed_installed_cx319_g1_firmware_reuse",
+            attempt_count=0,
+            board_before=board,
+            board_after=board,
+            installed_board=board,
+            source_flash_record=entry["source_flash_record"],
+            source_bundle=entry["source_bundle"],
+            source_bundle_sha256=entry["source_bundle_sha256"],
+            source_build_manifest_sha256=(
+                entry["source_build_manifest_sha256"]
+            ),
+            installed_uf2_sha256=entry["installed_uf2_sha256"],
+        )
     _replace_json(replay_run / FLASH_RECORD_PATH, flash)
     return bundle, manifest
 
@@ -384,13 +519,15 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
         source_run=source_run.resolve(),
         replay_run=replay_run,
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     analysis = analyze(replay_run)
     _atomic_new_json(replay_run / ANALYSIS_PATH, analysis)
     (replay_run / REPORT_PATH).write_text(
         report_markdown(analysis), encoding="utf-8"
     )
     (replay_run / "COMPLETE").write_text(
-        "CX319 G1 offline operational replay complete\n", encoding="utf-8"
+        f"CX319 {sequence_gate} offline operational replay complete\n",
+        encoding="utf-8",
     )
     snapshot = create_evidence_snapshot(replay_run)
     seal_value = seal(replay_run, analysis)
@@ -404,8 +541,14 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
             source_revision=bundle["host_source_revision"],
             build_identity=bundle["firmware"]["build_manifest"]["sha256"],
             profile_identity=bundle["firmware"]["profile_id"],
-            attempt_classification="successful_rehearsal",
-            result_or_failure_reason="CX319 G1 no-flash operational replay passed",
+            attempt_classification=(
+                "successful_qualification"
+                if sequence_gate == "Q3"
+                else "successful_rehearsal"
+            ),
+            result_or_failure_reason=(
+                f"CX319 {sequence_gate} offline operational replay passed"
+            ),
             analyzer_identity=analysis["bindings"]["analyzer_sha256"],
         )
         registration = validate_index(index)
@@ -425,9 +568,10 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
         "status": "passed" if all(checks.values()) else "failed",
         "bundle_sha256": bundle["bundle_sha256"],
         "host_source_revision": bundle["host_source_revision"],
-        "installed_uf2_sha256": bundle["firmware_entry"][
-            "installed_uf2_sha256"
-        ],
+        "qualification_sequence_gate": sequence_gate,
+        "installed_uf2_sha256": bundle["firmware_entry"].get(
+            "installed_uf2_sha256", bundle["firmware"]["uf2"]["sha256"]
+        ),
         "checks": checks,
         "analysis_sha256": analysis["analysis_sha256"],
         "analysis_file_sha256": _sha256_file(replay_run / ANALYSIS_PATH),

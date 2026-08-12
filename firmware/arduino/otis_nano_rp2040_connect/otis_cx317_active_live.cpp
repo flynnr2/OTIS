@@ -32,7 +32,7 @@ constexpr char kActivePolicyHash[] =
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
 constexpr char kActivePolicyHash[] =
-    "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70";
+    "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kNumericalPolicyHash[] =
     "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521";
@@ -79,8 +79,13 @@ constexpr char kRunIdentity[] = "cx318_stage5_tight_upper:3185002";
 constexpr char kExpectedProfile[] = "cx318_stage5_tight_upper";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER
+#if OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL
+constexpr char kRunIdentity[] = "cx319_q2_inhibited_transaction:3195200";
+constexpr char kExpectedProfile[] = "cx319_q2_inhibited_transaction";
+#else
 constexpr char kRunIdentity[] = "cx319_tight_lower:3195001";
 constexpr char kExpectedProfile[] = "cx319_tight_lower";
+#endif
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
 constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";
@@ -137,6 +142,7 @@ bool deferred_application_outcome_valid = false;
 bool last_application_acknowledged = false;
 bool estimator_history_reset = false;
 uint32_t status_snapshot_generation = 0u;
+uint32_t status_query_nonce = 0u;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 OtisActuatorTransactionGuard timing_actuator_guard = {};
 // Core 1 is the sole active-evidence producer. Reuse one module-owned copy
@@ -260,9 +266,8 @@ OtisCrossCoreActuatorRequest cross_core_request(
   cross.source_last_sequence = request.source_last_sequence;
   cross.decision_reference_ticks =
       static_cast<uint64_t>(request.timestamp_s) * kCaptureTicksPerSecond;
-  cross.deadline_ticks =
-      static_cast<uint64_t>(now_s + kEvidenceAcknowledgementMaximumAgeS) *
-      kCaptureTicksPerSecond;
+  cross.monotonic_deadline_s =
+      now_s + kEvidenceAcknowledgementMaximumAgeS;
   cross.authorization_sequence = request.authorization_sequence;
   cross.nonce = request.nonce;
   cross.session_id = request.session_id;
@@ -495,7 +500,8 @@ void otis_cx317_active_live_update_health(
     otis_cx317_active_transaction_init(&transaction, &binding);
     transaction_bound = true;
   } else if (transaction_bound) {
-    otis_cx317_active_note_session(&transaction, health->session_id);
+    otis_cx317_active_note_session(&transaction, health->session_id,
+                                   manual_start_confirmed);
   }
   if (transaction_bound && manual_start_confirmed &&
       !health->applied_code_confirmed)
@@ -521,8 +527,7 @@ void otis_cx317_active_live_service(uint32_t now_s) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (transaction_bound &&
       (!otis_actuator_guard_check_deadline(
-           &timing_actuator_guard,
-           static_cast<uint64_t>(now_s) * kCaptureTicksPerSecond) ||
+           &timing_actuator_guard, now_s) ||
        otis_dual_core_fail_static()))
     otis_cx317_active_fault(&transaction,
                             "cross_core_partition_or_actuator_guard_fault");
@@ -598,7 +603,7 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
     const OtisCrossCoreActuatorRequest request =
         cross_core_request(pending_actionable_request, now_s);
     if (!otis_actuator_guard_start(&timing_actuator_guard, &request,
-                                   request.decision_reference_ticks) ||
+                                   now_s) ||
         !publish_cross_core_actuator_message(
             OtisCriticalMessageKind::ActuatorRequest, now_s)) {
       otis_cx317_active_fault(&transaction,
@@ -1061,10 +1066,31 @@ void otis_cx317_active_live_visit_status(
           active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
           active.fail_static ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
                              : OTIS_FLAG_NONE);
+  visitor(context, "setup_gnss_eligible",
+          active.setup_gnss_eligible ? "true" : "false",
+          active.setup_gnss_eligible ? OTIS_SEVERITY_INFO
+                                     : OTIS_SEVERITY_WARN,
+          OTIS_FLAG_NONE);
+  visitor(context, "setup_reference_eligible",
+          active.setup_reference_eligible ? "true" : "false",
+          active.setup_reference_eligible ? OTIS_SEVERITY_INFO
+                                          : OTIS_SEVERITY_WARN,
+          OTIS_FLAG_NONE);
+  visitor(context, "setup_partition_healthy",
+          active.setup_partition_healthy ? "true" : "false",
+          active.setup_partition_healthy ? OTIS_SEVERITY_INFO
+                                         : OTIS_SEVERITY_ERROR,
+          active.setup_partition_healthy
+              ? OTIS_FLAG_NONE
+              : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   char value[24];
   snprintf(value, sizeof(value), "%lu",
            static_cast<unsigned long>(active.session_id));
   visitor(context, "session_id", value, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(active.query_nonce));
+  visitor(context, "query_nonce", value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
   snprintf(value, sizeof(value), "%lu",
            static_cast<unsigned long>(active.uptime_s));
   visitor(context, "uptime_s", value, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -1149,6 +1175,7 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
                            ? transaction.expected_binding.session_id
                            : 0u;
   status->evidence_request_sequence = evidence_request_sequence;
+  status->query_nonce = status_query_nonce;
   status->uptime_s = now_s;
   status->expected_setup_code =
       static_cast<uint16_t>(OTIS_CX317_ACTIVE_START_CODE);
@@ -1179,12 +1206,30 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
                         (transaction.state == OtisCx317ActiveState::Fault ||
                          transaction.state == OtisCx317ActiveState::Aborted);
 #endif
+  status->setup_gnss_eligible =
+      have_health && latest_health.gnss_metadata_valid &&
+      latest_health.gnss_identity_stable && latest_health.gnss_3d_evidence;
+  status->setup_reference_eligible =
+      have_health && latest_health.raw_pps_valid && latest_health.count_valid;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  status->setup_partition_healthy = !otis_dual_core_fail_static();
+#else
+  status->setup_partition_healthy = true;
+#endif
 #else
   (void)now_s;
   status->state = "DISABLED";
   status->reason = "active_control_compiled_out";
   status->evidence_state = "evidence_clear";
 #endif
+}
+
+void otis_cx317_active_live_set_status_query_nonce(uint32_t query_nonce) {
+  status_query_nonce = query_nonce;
+}
+
+uint32_t otis_cx317_active_live_status_snapshot_generation(void) {
+  return status_snapshot_generation;
 }
 
 const char *otis_cx317_active_live_run_identity(void) { return kRunIdentity; }

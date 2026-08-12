@@ -92,6 +92,41 @@ The external index is mutable stewardship metadata; each raw package remains
 immutable scientific evidence. If a package changes, it has a new content
 identity and must be registered as a new package.
 
+## Crash-recoverable finalization
+
+Current G1/G2 runners create an external
+`otis_evidence_finalization_v1` journal before finalization. It records the
+ordered phases `capture_closed`, `completion`, `snapshot`, `analysis`, `seal`,
+and `registration`, plus an immutable registration intent and expected sealed
+package identity. Phase completion is idempotent. The first error remains the
+`primary_failure`; cleanup and registration errors are retained separately and
+cannot replace the acquisition or analyzer verdict.
+
+The immutable evidence snapshot covers acquisition inputs and outputs. Analyzer
+results are created only after that snapshot and are bound separately by the
+seal; the final package identity covers the snapshot, analyzer results, report,
+and seal together. This keeps the recorded phase order truthful while allowing
+an analyzer repair to supersede a verdict without rewriting acquisition
+evidence.
+
+The evidence index uses an adjacent advisory lock for the complete
+load-modify-fsync-replace transaction. The replacement file and parent
+directory are fsynced. Parallel registrations therefore cannot overwrite one
+another.
+
+If registration is interrupted after a valid seal, recover without changing
+the package:
+
+```bash
+.venv/bin/python -m host.otis_tools.evidence_finalization \
+  /absolute/run-parent/.otis-finalization/RUN_NAME.json
+```
+
+Recovery requires `COMPLETE`, `evidence_manifest.json`, the declared seal, and
+an exact match to the content identity recorded before the failed registration.
+It then performs the same idempotent locked registration. A mutation is
+rejected as a different package.
+
 ## Host-only reanalysis and supersession
 
 A failed analysis does not invalidate a complete raw acquisition when the

@@ -63,6 +63,15 @@ The default firmware-matrix command selects this tier:
 .venv/bin/python tools/firmware_matrix.py
 ```
 
+Release verification for the current distributed architecture also exercises
+Q0 schedules: both startup orders and exactly-once boot telemetry; diagnostic
+requests at timing boundaries; zero/intermittent/restored TX capacity and abort
+RX; capacity-minus-one/exact/plus-one queue cases; newer partial status
+invalidation; post-attachment nonce binding; setup authority regression and
+I2C failure; timer wrap; every finalization interruption point; and parallel
+external-index registration. These are offline schedule and contract results,
+not a real-I/O rehearsal or physical qualification.
+
 Every successful firmware build is also gated by
 `otis_firmware_resource_budget_v1`: the Nano RP2040 Connect must report no more
 than 157,286 bytes of static dynamic-memory use, preserving at least 104,858

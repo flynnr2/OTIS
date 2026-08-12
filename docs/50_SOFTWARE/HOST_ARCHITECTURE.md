@@ -49,7 +49,9 @@ The host should be optimized for:
 
 # Linux Hosts
 
-Linux hosts are optional but first-class.
+Linux hosts are first-class. For the current supported OTIS generation, a
+continuously running sole-owner capture carrier is a required instrument
+component during evidence-bearing operation.
 
 Likely initial host environments:
 
@@ -59,7 +61,17 @@ Likely initial host environments:
 | Raspberry Pi 4 / 5           | heavier analysis and dashboards       |
 | Linux laptop/workstation     | excellent development environment     |
 
-The OTIS timing appliance should still operate meaningfully without a Linux host.
+Hardware capture remains timing truth without the host, but firmware does not
+promise indefinite hostless evidence preservation or lifecycle continuity.
+USB TX obstruction is supported for at most 2,000 ms of total pending-frame
+time; intermittent byte progress does not extend the horizon. If the frame
+does not complete within that horizon, firmware latches a transport partition
+fault, inhibits actuation, requests device abort through the internal service
+path, keeps GNSS and command RX serviced, quarantines the partial wire stream,
+and drains queued records as explicitly non-durable loss. The last confirmed
+DAC code is held; the capture lease expires normally; recovery requires reset
+and a new evidence session. There is no on-device durable spool and detach/
+reattach is not a supported continuity transition.
 
 However, Linux hosts significantly enhance:
 
@@ -211,11 +223,24 @@ case. Prefer firmware-builtin sweep profiles for repeatable characterization.
 Every command decision must be auditable in `raw/serial.log` through
 `# OTIS_HOST` markers. At minimum, rejected commands should record the rejection
 reason, and accepted commands should record the normalized command before serial
-write and the write result afterward. The command bytes themselves should not be
+write and `host_written` afterward. `host_written` proves only that the sole
+carrier wrote the command bytes; firmware status separately proves receive,
+authorization, application, failure, and observed result. The command bytes themselves should not be
 inserted into the raw device byte stream because that would pollute replay and
 CSV parsing. Firmware `STS`/`DAC` records remain the command acknowledgement
 source; `capture_device` should not block capture waiting for synchronous
 responses.
+
+Bounded active setup uses `ACTIVE SNAPSHOT <nonce>` followed by one
+`ACTIVE SETUP <authorization-sequence> <status-generation> <nonce>
+<expiry-s> <session> <code> 1 <configuration-sha256>`. Before transmission,
+the supervisor creates the immutable
+`reports/setup_authority_input_v1.json`, containing the exact coherent health
+map and request. The analyzer recomputes readiness and correlation from this
+record; the supervisor's cached readiness Boolean is not evidence authority.
+If no applied or failed result is observed by the 30-second firmware authority
+expiry plus one 10-second status-query interval, the supervisor issues the
+independent abort and terminates without retrying the setup.
 
 ## Same-owner logical capture segments
 

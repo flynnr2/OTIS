@@ -72,6 +72,61 @@ def _create_bundle(
     return path, value
 
 
+def _q3_prerequisite_runs(
+    tmp_path: Path, firmware: dict[str, object]
+) -> tuple[Path, Path]:
+    q1 = tmp_path / "passing-q1"
+    q2 = tmp_path / "passing-q2"
+    (q1 / "reports").mkdir(parents=True)
+    (q2 / "reports").mkdir(parents=True)
+    (q1 / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    (q2 / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    q1_bundle = {
+        "bundle_sha256": "a" * 64,
+        "firmware": firmware,
+    }
+    (q1 / bundle_tool.RUN_BUNDLE_PATH).write_text(
+        json.dumps(q1_bundle), encoding="utf-8"
+    )
+    (q1 / "reports/cx319_g1_rehearsal_seal_v1.json").write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "seal_type": "cx319_g1_no_write_rehearsal_seal_v1",
+                "seal_sha256": "b" * 64,
+                "bundle_sha256": q1_bundle["bundle_sha256"],
+                "uf2_sha256": firmware["uf2"]["sha256"],
+                "setup_writes": 0,
+                "dac_value_writes": 0,
+                "automatic_writes": 0,
+                "control_arms": 0,
+                "actuation_authorized": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    q2_bundle = {"bundle_sha256": "c" * 64}
+    (q2 / "cx319_q2_exact_bundle_v1.json").write_text(
+        json.dumps(q2_bundle), encoding="utf-8"
+    )
+    (q2 / "reports/cx319_q2_transaction_seal_v1.json").write_text(
+        json.dumps(
+            {
+                "status": "pass",
+                "seal_type": "cx319_q2_inhibited_transaction_seal_v1",
+                "seal_sha256": "d" * 64,
+                "bundle_sha256": q2_bundle["bundle_sha256"],
+                "physical_setup_writes": 1,
+                "physical_automatic_writes": 0,
+                "physical_oscillator_movement_possible": False,
+                "live_authority_granted": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return q1, q2
+
+
 def test_exact_bundle_manifest_and_offline_preflight_cross_all_surfaces(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -79,7 +134,7 @@ def test_exact_bundle_manifest_and_offline_preflight_cross_all_surfaces(
 
     assert bundle_tool.validate_bundle(path) == value
     assert value["operator_authority"]["authority_id"] == (
-        "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
     )
     assert value["authority"]["dac_value_write"] is False
     assert value["authority"]["control_arm"] is False
@@ -104,6 +159,57 @@ def test_exact_bundle_manifest_and_offline_preflight_cross_all_surfaces(
     assert set(preflight["hardware_operations"].values()) == {0}
 
 
+def test_q3_bundle_binds_passing_q1_q2_and_requires_fresh_exact_flash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, uf2 = _fake_build(tmp_path)
+    build = json.loads(manifest.read_text(encoding="utf-8"))
+    build["provenance"]["source"]["sha256"] = "e" * 64
+    build["provenance"]["configuration"]["sha256"] = "f" * 64
+    manifest.write_text(json.dumps(build), encoding="utf-8")
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+    firmware = bundle_tool.validate_build(
+        leg="A",
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+        allow_clean_ancestor_source=True,
+        allow_qualified_ancestor_image=True,
+    )
+    q1, q2 = _q3_prerequisite_runs(tmp_path, firmware)
+    path = tmp_path / "q3-bundle.json"
+
+    value = bundle_tool.create_bundle(
+        leg="A",
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+        serial_device="/dev/cu.test-otis",
+        output_path=path,
+        sequence_gate="Q3",
+        q1_run_dir=q1,
+        q2_run_dir=q2,
+    )
+
+    assert bundle_tool.validate_bundle(path) == value
+    assert value["qualification_sequence_gate"] == "Q3"
+    assert value["firmware_entry"] == {
+        "mode": "single_exact_flash",
+        "firmware_flashes_allowed": 1,
+    }
+    assert value["q3_prerequisites"]["q1"]["uf2_sha256"] == (
+        value["firmware"]["uf2"]["sha256"]
+    )
+    run_dir = tmp_path / "q3-run"
+    run_dir.mkdir()
+    run_manifest = bundle_tool.create_run_manifest(
+        bundle_path=path,
+        run_dir=run_dir,
+        output_path=run_dir / "run_manifest.json",
+    )
+    assert run_manifest["qualification_evidence"] is True
+    assert run_manifest["cx319"]["qualification_sequence_gate"] == "Q3"
+
+
 def test_bundle_rejects_write_authority_even_with_recomputed_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -118,6 +224,33 @@ def test_bundle_rejects_write_authority_even_with_recomputed_digest(
 
     with pytest.raises(ValueError, match="write/live authority"):
         bundle_tool.validate_bundle(path)
+
+
+def test_q1_run_manifest_binds_the_exact_sub_horizon_detach_schedule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, value = _create_bundle(tmp_path, monkeypatch)
+    run_dir = tmp_path / "q1-run"
+    run_dir.mkdir()
+
+    manifest = bundle_tool.create_run_manifest(
+        bundle_path=path,
+        run_dir=run_dir,
+        output_path=run_dir / "run_manifest.json",
+        q1_real_io=True,
+    )
+
+    assert manifest["q1_real_io"] == value["q1_real_io"]
+    assert all(
+        item["detached_s"] < 2.0
+        for item in manifest["q1_real_io"]["intentional_detach_schedule"]
+    )
+    assert "reports/cx319_q1_real_io_prelude_v1.json" in manifest[
+        "expected_artifacts"
+    ]
+    assert "reports/cx319_q1_evidence_session_baseline_v1.json" in manifest[
+        "expected_artifacts"
+    ]
 
 
 def test_closed_run_manifest_uses_its_frozen_bundle_not_current_worktree(
@@ -151,6 +284,7 @@ def test_historical_v1_frozen_bundle_remains_structurally_valid(
         "cx319_g1_prewrite_runtime_contract_v1"
     )
     value["host_tools"].pop("host_attach_contract")
+    value["host_tools"].pop("active_status_live_state")
     unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
     value["bundle_sha256"] = bundle_tool._canonical_sha256(unsigned)
     path.write_text(json.dumps(value), encoding="utf-8")
@@ -167,6 +301,10 @@ def test_historical_v1_frozen_bundle_remains_structurally_valid(
         ("DAC?", True),
         ("FC0?", True),
         ("ACTIVE?", True),
+        ("ACTIVE SNAPSHOT 1", True),
+        ("ACTIVE SNAPSHOT 4294967295", True),
+        ("ACTIVE SNAPSHOT 0", False),
+        ("ACTIVE SNAPSHOT 4294967296", False),
         ("ACTIVE LEASE 1", True),
         ("ACTIVE LEASE 4294967295", True),
         ("ACTIVE LEASE 0", False),

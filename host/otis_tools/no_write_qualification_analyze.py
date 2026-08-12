@@ -10,7 +10,10 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .active_status_contract import latest_complete_health
+from .active_status_contract import (
+    evaluate_solicited_attach_snapshot_history,
+    latest_complete_health,
+)
 from .board_identity import EXPECTED_SERIAL
 from .contracts import CsvValidationContext, validate_csv
 from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
@@ -44,7 +47,6 @@ from .no_write_qualification_bundle import (
     validate_run_manifest,
 )
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .host_attach_health_contract import evaluate_host_attach_history
 from .no_write_prewrite_readiness_contract import (
     RUNTIME_CONTRACT_ID,
     environment_streams_ready,
@@ -116,15 +118,39 @@ def _authority_false_or_absent(path: Path) -> bool:
 def _post_abort_health_exact(
     primary: dict[tuple[str, str], str],
     transition: dict[tuple[str, str], str],
+    rows: list[dict[str, str]] | None = None,
 ) -> bool:
-    return (
+    pre_abort_exact = (
         primary.get(("cx317_active", "state")) == "DISARMED"
         and primary.get(("cx317_active", "fail_static")) == "false"
-        and transition.get(("cx317_active", "state")) == "ABORTED"
+    )
+    periodic_snapshot_exact = (
+        transition.get(("cx317_active", "state")) == "ABORTED"
         and transition.get(("cx317_active", "reason"))
         == "device_abort_command_via_core0"
         and transition.get(("cx317_active", "fail_static")) == "true"
     )
+    critical_ack_exact = False
+    if rows:
+        for queued, accepted in zip(rows, rows[1:]):
+            try:
+                consecutive = int(accepted["status_seq"]) == int(
+                    queued["status_seq"]
+                ) + 1
+            except (KeyError, TypeError, ValueError):
+                consecutive = False
+            if (
+                consecutive
+                and queued.get("component") == "cx317_active"
+                and queued.get("status_key") == "abort"
+                and queued.get("status_value") == "queued_to_core1"
+                and accepted.get("component") == "cx317_active"
+                and accepted.get("status_key") == "critical_record"
+                and accepted.get("status_value") == "abort_accepted_on_core1"
+            ):
+                critical_ack_exact = True
+                break
+    return pre_abort_exact and (periodic_snapshot_exact or critical_ack_exact)
 
 
 def _priority_abort_ordered(markers: list[dict[str, Any]]) -> bool:
@@ -156,6 +182,15 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
         raise ValueError("CX319 G1 capture is still active")
     manifest_value = validate_run_manifest(run_dir / "run_manifest.json")
+    sequence_gate = manifest_value["cx319"].get(
+        "qualification_sequence_gate", "Q1"
+    )
+    q1_real_io = manifest_value.get("q1_real_io")
+    expected_reconnects = (
+        len(q1_real_io.get("intentional_detach_schedule", []))
+        if isinstance(q1_real_io, dict)
+        else 0
+    )
     manifest = load_manifest(run_dir)
     transition_dir = run_dir / TRANSITION_RUN_DIR
     transition_manifest = load_manifest(transition_dir)
@@ -238,18 +273,24 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         frozen_baseline=telemetry_drop_baseline,
         frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
-    host_attach_history = evaluate_host_attach_history(
+    host_attach_history = evaluate_solicited_attach_snapshot_history(
         [*health_rows, *transition_health_rows],
+        query_nonce=int(supervisor_state["host_attach_query_nonce"]),
         frozen_uptime_s=int(supervisor_state["host_attach_uptime_s"]),
-        frozen_status_seq=int(
-            supervisor_state["host_attach_uptime_status_seq"]
+        frozen_generation=int(
+            supervisor_state["host_attach_snapshot_generation"]
         ),
+        maximum_uptime_s=None,
     )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
     capture_state = json.loads((run_dir / CAPTURE_STATE).read_text())
     capture_closure = _capture_closure(
-        run_dir, capture_state, markers, allowed_emergency_aborts=1
+        run_dir,
+        capture_state,
+        markers,
+        allowed_emergency_aborts=1,
+        allowed_reconnects=expected_reconnects,
     )
     supervisor_events = [
         json.loads(line)
@@ -259,6 +300,54 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if line.strip()
     ]
     transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
+    q3_topology = (
+        json.loads(
+            (
+                run_dir
+                / "reports/cx319_q3_topology_confirmation_v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        if sequence_gate == "Q3"
+        else None
+    )
+    q1_prelude = (
+        json.loads((run_dir / "reports/cx319_q1_real_io_prelude_v1.json").read_text())
+        if expected_reconnects
+        else None
+    )
+    q1_evidence_baseline = (
+        json.loads(
+            (run_dir / "reports/cx319_q1_evidence_session_baseline_v1.json")
+            .read_text()
+        )
+        if expected_reconnects
+        else None
+    )
+    evidence_boundary_history: dict[str, object] = {"exact": True}
+    evidence_session_counter_deltas: dict[str, int] = {}
+    evidence_session_transport_counter_deltas: dict[str, int] = {}
+    if isinstance(q1_evidence_baseline, dict):
+        evidence_boundary_history = evaluate_solicited_attach_snapshot_history(
+            [*health_rows, *transition_health_rows],
+            query_nonce=int(q1_evidence_baseline["query_nonce"]),
+            frozen_uptime_s=int(q1_evidence_baseline["firmware_uptime_s"]),
+            frozen_generation=int(q1_evidence_baseline["snapshot_generation"]),
+            maximum_uptime_s=None,
+        )
+        for key, baseline_value in q1_evidence_baseline.get(
+            "cumulative_counters", {}
+        ).items():
+            evidence_session_counter_deltas[str(key)] = (
+                int(health.get(("cx317_active", str(key)), "0"))
+                - int(baseline_value)
+            )
+        for key, baseline_value in q1_evidence_baseline.get(
+            "cumulative_transport_counters", {}
+        ).items():
+            evidence_session_transport_counter_deltas[str(key)] = (
+                int(health.get(("dual_core", str(key)), "0"))
+                - int(baseline_value)
+            )
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
     run_bundle = json.loads(
         Path(manifest_value["bundle"]["path"]).read_text(encoding="utf-8")
@@ -266,6 +355,23 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     firmware_entry = run_bundle.get(
         "firmware_entry",
         {"mode": "single_exact_flash", "firmware_flashes_allowed": 1},
+    )
+    firmware_entry_ready_ns = flash.get("restart_reappeared_monotonic_ns")
+    if firmware_entry_ready_ns is None:
+        firmware_entry_ready_ns = flash.get("upload_completed_monotonic_ns")
+    carrier_ready_ns = flash.get("carrier_ready_monotonic_ns")
+    identity_started_ns = flash.get("post_reset_identity_started_monotonic_ns")
+    deferred_identity_ordered = (
+        expected_reconnects == 0
+        or flash.get("attachment_mode") == "running_instrument"
+        or (
+            flash.get("post_reset_identity_order")
+            == "carrier_then_board_enumeration"
+            and isinstance(firmware_entry_ready_ns, int)
+            and isinstance(carrier_ready_ns, int)
+            and isinstance(identity_started_ns, int)
+            and firmware_entry_ready_ns < carrier_ready_ns <= identity_started_ns
+        )
     )
     single_flash_exact = (
         firmware_entry.get("mode") == "single_exact_flash"
@@ -275,12 +381,13 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         and flash.get("board_before") == flash.get("board_after")
         and flash.get("board_after", {}).get("serial_number")
         == EXPECTED_SERIAL
+        and deferred_identity_ordered
     )
     confirmed_reuse_exact = (
         firmware_entry.get("mode") == "reuse_confirmed_installed_firmware"
         and firmware_entry.get("firmware_flashes_allowed") == 0
         and flash.get("operation")
-        == "confirmed_installed_cx319_g1_firmware_reuse"
+        == "confirmed_installed_cx319_g1_running_attach"
         and flash.get("status") == "pass"
         and flash.get("attempt_count") == 0
         and flash.get("firmware_flashes") == 0
@@ -298,6 +405,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         and flash.get("installed_uf2_sha256")
         == firmware_entry.get("installed_uf2_sha256")
         and flash.get("uf2_sha256") == manifest_value["firmware"]["uf2"]["sha256"]
+        and deferred_identity_ordered
     )
     transition_state = json.loads(
         (transition_dir / "reports/capture_device_state.json").read_text()
@@ -346,13 +454,17 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                     required == "ACTIVE LEASE"
                     and command.startswith("ACTIVE LEASE ")
                 )
+                or (
+                    required == "ACTIVE SNAPSHOT"
+                    and command.startswith("ACTIVE SNAPSHOT ")
+                )
                 for command in commands_sent
             )
             for required in (
                 "CONFIG?",
                 "DAC?",
                 "FC0?",
-                "ACTIVE?",
+                "ACTIVE SNAPSHOT",
                 "ACTIVE LEASE",
             )
         )
@@ -361,9 +473,28 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "manifest_bundle_profile_build_and_policy_exact": True,
         "exact_firmware_entry_same_board": (
             (single_flash_exact or confirmed_reuse_exact)
+            and (
+                expected_reconnects == 0
+                or single_flash_exact
+                or flash.get("attachment_mode") == "running_instrument"
+            )
             and flash.get("dac_value_write_attempts") == 0
             and flash.get("setup_stimulus_attempts") == 0
             and flash.get("control_arm_attempts") == 0
+        ),
+        "qualification_sequence_and_physical_topology_exact": (
+            sequence_gate == "Q1"
+            or (
+                isinstance(q3_topology, dict)
+                and q3_topology.get("status") == "operator_confirmed"
+                and q3_topology.get("qualification_sequence_gate") == "Q3"
+                and q3_topology.get("dac_analogue_output")
+                == "reconnected_to_oscillator_efc_vctrl"
+                and q3_topology.get("oscillator_powered") is True
+                and q3_topology.get("q2_inhibited_interval_ended") is True
+                and q3_topology.get("physical_write_authority") is False
+                and flash.get("qualification_sequence_gate") == "Q3"
+            )
         ),
         "all_declared_contracts_validate": all(
             item["ok"] for item in validations.values()
@@ -387,7 +518,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and transition_state.get("capture_active") is False
             and transition_state.get("serial_open") is False
             and transition_state.get("physical_serial_open") is False
-            and transition_state.get("reconnect_count") == 0
+            and transition_state.get("reconnect_count") == expected_reconnects
             and transition_state.get("pid") == transport.get("capture_pid")
             and transition_closure.get("closure_mode")
             == "physical_serial_close"
@@ -400,10 +531,72 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             )
         ),
         "normal_commands_exact_no_write_allowlist": command_allowlist_exact,
+        "q1_real_io_prelude_exact": (
+            expected_reconnects == 0
+            or (
+                isinstance(q1_prelude, dict)
+                and q1_prelude.get("status") == "pass"
+                and q1_prelude.get("attachment_mode")
+                == "running_instrument"
+                and q1_prelude.get("boot_record_required") is False
+                and q1_prelude.get("firmware_uptime_limit_s") is None
+                and q1_prelude.get("device_snapshot", {}).get(
+                    "setup_partition_healthy"
+                )
+                == "true"
+                and isinstance(q1_evidence_baseline, dict)
+                and q1_evidence_baseline.get("status") == "acknowledged"
+                and evidence_boundary_history.get("exact") is True
+                and all(
+                    evidence_session_counter_deltas.get(key) == 0
+                    for key in (
+                        "evidence_request_sequence",
+                        "correction_count",
+                        "cumulative_movement_codes",
+                        "dac_epoch",
+                    )
+                )
+                and evidence_session_counter_deltas.get(
+                    "selected_interval_count", -1
+                ) >= 0
+                and evidence_session_transport_counter_deltas.get(
+                    "pre_carrier_records_discarded"
+                ) == 0
+                and evidence_session_transport_counter_deltas.get(
+                    "periodic_service_deferred"
+                ) == 0
+                and q1_prelude.get("intentional_detach_count")
+                == expected_reconnects
+                and q1_prelude.get(
+                    "all_detach_gaps_below_transport_horizon"
+                )
+                is True
+                and q1_prelude.get("serial_exclusive_requested") is True
+                and q1_prelude.get("competing_open_rejected") is True
+                and q1_prelude.get("sole_owner_after_probe") is True
+                and q1_prelude.get("lease_live_snapshot", {}).get(
+                    "capture_lease_live"
+                )
+                == "true"
+                and q1_prelude.get("lease_expired_snapshot", {}).get(
+                    "capture_lease_live"
+                )
+                == "false"
+                and q1_prelude.get("lease_expired_snapshot", {}).get(
+                    "setup_partition_healthy"
+                )
+                == "true"
+                and supervisor_state.get("q1_boundary_burst_sent") is True
+            )
+        ),
         "supervisor_exact_no_write_terminal": (
             supervisor_state.get("programme_id")
             == "cx319_stabilized_tight_deadband"
             and supervisor_state.get("cx319_gate") == "G1"
+            and supervisor_state.get(
+                "qualification_sequence_gate", "Q1"
+            )
+            == sequence_gate
             and supervisor_state.get("cx319_mode") == "no_write_rehearsal"
             and supervisor_state.get("cx319_leg") == leg_name
             and supervisor_state.get("manual_start_sent") is False
@@ -426,7 +619,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and readiness.ready
             and telemetry_drop_history["exact"] is True
             and host_attach_history["exact"] is True
-            and _post_abort_health_exact(health, transition_health)
+            and _post_abort_health_exact(
+                health,
+                transition_health,
+                [*health_rows, *transition_health_rows],
+            )
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
         "tight_deadband_replay_exact": (
@@ -453,22 +650,24 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 for key in (
                     "malformed_utf8",
                     "parser_errors",
-                    "reconnect_count",
                     "commands_rejected",
                 )
             )
+            and capture_state.get("reconnect_count") == expected_reconnects
+            and capture_state.get("intentional_detach_count")
+            == expected_reconnects
             and capture_state.get("emergency_aborts_sent") == 1
             and all(
                 transition_state.get(key) == 0
                 for key in (
                     "malformed_utf8",
                     "parser_errors",
-                    "reconnect_count",
                     "commands_rejected",
                     "commands_sent",
                     "emergency_aborts_sent",
                 )
             )
+            and transition_state.get("reconnect_count") == expected_reconnects
             and not fatal_rows
             and health.get(("resource_registry", "valid")) == "true"
             and health.get(("resource_registry", "complete")) == "true"
@@ -487,6 +686,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "run_dir": str(run_dir),
         "leg": leg_name,
         "profile_id": spec.profile,
+        "qualification_sequence_gate": sequence_gate,
         "checks": checks,
         "observed": {
             "capture_duration_s": duration_s,
@@ -508,6 +708,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "snapshot_backlog_high_water": snapshot_high_water,
             "snapshot_ring_capacity": snapshot_capacity,
             "fatal_rows": len(fatal_rows),
+            "expected_intentional_reconnects": expected_reconnects,
             "post_abort_state": transition_health.get(
                 ("cx317_active", "state")
             ),
@@ -521,6 +722,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
         "telemetry_drop_history": telemetry_drop_history,
         "host_attach_history": host_attach_history,
+        "evidence_boundary_history": evidence_boundary_history,
+        "evidence_session_counter_deltas": evidence_session_counter_deltas,
+        "evidence_session_transport_counter_deltas": (
+            evidence_session_transport_counter_deltas
+        ),
         "capture_closure": capture_closure,
         "contract_validation": validations,
         "tight_deadband_replay": tdb_replay.as_dict(),
@@ -540,8 +746,14 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "analyzer_sha256": _sha256_file(Path(__file__)),
         },
         "claims_boundary": (
-            "G1 no-write operational evidence only; not frequency-control, "
-            "calibration, absolute phase, UTC, lock or holdover evidence"
+            "Q3 physical no-write qualification evidence; it retires the "
+            "current no-physical-pass gap but grants no live actuation, "
+            "frequency-control, calibration, absolute phase, UTC, lock or "
+            "holdover claim"
+            if sequence_gate == "Q3"
+            else "G1 no-write operational evidence only; not "
+            "frequency-control, calibration, absolute phase, UTC, lock or "
+            "holdover evidence"
         ),
     }
     result["analysis_sha256"] = _canonical_sha256(result)
@@ -549,8 +761,13 @@ def analyze(run_dir: Path) -> dict[str, Any]:
 
 
 def report_markdown(result: dict[str, Any]) -> str:
+    sequence_gate = result.get("qualification_sequence_gate", "Q1")
     lines = [
-        "# CX319 G1 Exact No-Write Rehearsal",
+        (
+            "# CX319 Q3 Physical No-Write Qualification"
+            if sequence_gate == "Q3"
+            else "# CX319 G1 Exact No-Write Rehearsal"
+        ),
         "",
         f"Status: **{result['status'].upper()}**",
         "",
@@ -580,15 +797,21 @@ def seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("G1 run is not marked complete")
     evidence_path = run_dir / EVIDENCE_MANIFEST
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    sequence_gate = analysis.get("qualification_sequence_gate", "Q1")
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "seal_type": SEAL_TYPE,
+        "seal_type": (
+            "cx319_q3_physical_no_write_qualification_seal_v1"
+            if sequence_gate == "Q3"
+            else SEAL_TYPE
+        ),
         "tool": TOOL_ID,
         "status": "pass",
         "run_id": run_dir.name,
         "run_dir": str(run_dir),
         "leg": analysis["leg"],
         "profile_id": analysis["profile_id"],
+        "qualification_sequence_gate": sequence_gate,
         "analysis": {
             "path": ANALYSIS_PATH.as_posix(),
             "sha256": _sha256_file(run_dir / ANALYSIS_PATH),
@@ -607,7 +830,7 @@ def seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
         "automatic_writes": 0,
         "control_arms": 0,
         "actuation_authorized": False,
-        "qualification_evidence": False,
+        "qualification_evidence": sequence_gate == "Q3",
     }
     payload["seal_sha256"] = _canonical_sha256(payload)
     _atomic_new_json(run_dir / SEAL_PATH, payload)

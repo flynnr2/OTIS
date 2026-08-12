@@ -299,7 +299,11 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "manual_start_confirmed",
         "arm_eligible",
         "fail_static",
+        "setup_gnss_eligible",
+        "setup_reference_eligible",
+        "setup_partition_healthy",
         "session_id",
+        "query_nonce",
         "uptime_s",
         "evidence_request_sequence",
         "expected_setup_code",
@@ -412,6 +416,7 @@ def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
                 "cx318_stage5_tight_upper",
                 "cx319_tight_lower",
                 "cx319_tight_upper",
+                "cx319_q2_inhibited_transaction",
         }:
             assert enabled == "1"
         else:

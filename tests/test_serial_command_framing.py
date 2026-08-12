@@ -51,27 +51,30 @@ def test_firmware_services_collection_validation_parsing_then_execution() -> Non
     source = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
-    service = source[source.index("void service_serial_commands(void)") :]
-    assert service.index("otis_serial_frame_collect(") < service.index(
+    service = source[
+        source.index("void service_serial_commands(bool output_allowed = true)") :
+    ]
+    collection = service[service.index("uint8_t byte_budget = 32u;") :]
+    assert collection.index("otis_serial_frame_collect(") < collection.index(
         "otis_serial_frame_validate("
     )
-    assert service.index("otis_serial_frame_validate(") < service.index(
+    assert collection.index("otis_serial_frame_validate(") < collection.index(
         "otis_serial_command_parse("
     )
-    assert service.index("otis_serial_command_parse(") < service.index(
+    assert collection.index("otis_serial_command_parse(") < collection.index(
         "execute_serial_command("
     )
     assert '"unknown", "rejected_unknown"' in source
 
 
 def test_exact_limit_line_is_accepted(framing_harness: Path) -> None:
-    payload = (b" " * 59) + b"HELP\n"
-    assert len(payload) - 1 == 63
+    payload = (b" " * 187) + b"HELP\n"
+    assert len(payload) - 1 == 191
     assert _events(framing_harness, payload) == ["EXEC_HELP"]
 
 
 def test_one_byte_overflow_discards_prefix_and_suffix(framing_harness: Path) -> None:
-    payload = (b" " * 60) + b"HELP DAC SET 0x8000\n"
+    payload = (b" " * 188) + b"HELP DAC SET 0x8000\n"
     assert _events(framing_harness, payload) == ["DIAG_REJECTED_TOO_LONG"]
 
 
@@ -101,6 +104,15 @@ def test_dual_core_fixture_commands_have_closed_firmware_vocabulary(
     ) == ["EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER"]
 
 
+def test_q2_diagnostic_command_has_closed_firmware_vocabulary(
+    framing_harness: Path,
+) -> None:
+    assert _events(
+        framing_harness,
+        b"Q2 CASE 1362166001 38\nQ2 ARBITRARY\n",
+    ) == ["EXEC_OTHER", "EXEC_OTHER"]
+
+
 def test_commas_and_quotes_are_not_echoed_in_diagnostic(
     framing_harness: Path,
 ) -> None:
@@ -111,7 +123,7 @@ def test_commas_and_quotes_are_not_echoed_in_diagnostic(
 def test_repeated_overflow_emits_one_diagnostic_per_physical_line(
     framing_harness: Path,
 ) -> None:
-    payload = (b"A" * 80) + b"\n" + (b"B" * 80) + b"\r\n"
+    payload = (b"A" * 200) + b"\n" + (b"B" * 200) + b"\r\n"
     assert _events(framing_harness, payload) == [
         "DIAG_REJECTED_TOO_LONG",
         "DIAG_REJECTED_TOO_LONG",
@@ -119,7 +131,7 @@ def test_repeated_overflow_emits_one_diagnostic_per_physical_line(
 
 
 def test_valid_command_recovers_after_rejected_line(framing_harness: Path) -> None:
-    payload = (b"A" * 80) + b"\r\nHELP\n"
+    payload = (b"A" * 200) + b"\r\nHELP\n"
     assert _events(framing_harness, payload) == [
         "DIAG_REJECTED_TOO_LONG",
         "EXEC_HELP",
@@ -129,7 +141,7 @@ def test_valid_command_recovers_after_rejected_line(framing_harness: Path) -> No
 def test_no_command_executes_from_any_part_of_rejected_line(
     framing_harness: Path,
 ) -> None:
-    payload = b"DAC SET 0x8000 " + (b"P" * 80) + b" SWEEP START\n"
+    payload = b"DAC SET 0x8000 " + (b"P" * 200) + b" SWEEP START\n"
     assert _events(framing_harness, payload) == ["DIAG_REJECTED_TOO_LONG"]
 
 

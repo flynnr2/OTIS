@@ -217,6 +217,7 @@ def _validate_pps_cadence(
     nominal_hz_by_domain: dict[str, float],
     template: bool,
     gates: list[dict] | None = None,
+    declared_sequence_gap_budget: int = 0,
 ) -> list[str]:
     if template:
         return []
@@ -240,11 +241,34 @@ def _validate_pps_cadence(
         expected = nominal_hz
         ticks = [ticks for _seq, ticks in refs]
         cadence_ticks, _wrap_count = unwrap_ticks(ticks) if domain == "rp2040_timer0" else (ticks, 0)
+        declared_gap_indexes: set[int] = set()
+        gap_candidates: list[tuple[int, int]] = []
+        for index, ((previous_seq, _), (current_seq, _), start, end) in enumerate(
+            zip(refs, refs[1:], cadence_ticks, cadence_ticks[1:]),
+            start=1,
+        ):
+            if previous_seq is None or current_seq is None:
+                continue
+            sequence_delta = current_seq - previous_seq
+            if sequence_delta <= 1:
+                continue
+            interval = end - start
+            expected_gap_interval = expected * sequence_delta
+            if 0.8 * expected_gap_interval <= interval <= 1.2 * expected_gap_interval:
+                gap_candidates.append((index, sequence_delta - 1))
+        if (
+            declared_sequence_gap_budget > 0
+            and sum(missing for _index, missing in gap_candidates)
+            <= declared_sequence_gap_budget
+        ):
+            declared_gap_indexes = {index for index, _missing in gap_candidates}
         anomaly_rows: list[dict[str, object]] = []
         for index, ((previous_seq, _), (current_seq, _), start, end) in enumerate(
             zip(refs, refs[1:], cadence_ticks, cadence_ticks[1:]),
             start=1,
         ):
+            if index in declared_gap_indexes:
+                continue
             interval = end - start
             if not (0.8 * expected <= interval <= 1.2 * expected):
                 classification = classify_pps_interval(int(interval), expected)
@@ -393,7 +417,21 @@ def validate_run(run_dir: Path) -> int:
     }
     raw_rows = _read_csv(files_by_contract.get("raw_events_v1", Path("__missing__")))
     count_rows = _read_csv(files_by_contract.get("count_observations_v1", Path("__missing__")))
-    failures.extend(_validate_pps_cadence(raw_rows, nominal_hz_by_domain, manifest.is_template, _pps_cadence_gates(manifest)))
+    q1_real_io = manifest.data.get("q1_real_io")
+    declared_sequence_gap_budget = (
+        len(q1_real_io.get("intentional_detach_schedule", []))
+        if isinstance(q1_real_io, dict)
+        else 0
+    )
+    failures.extend(
+        _validate_pps_cadence(
+            raw_rows,
+            nominal_hz_by_domain,
+            manifest.is_template,
+            _pps_cadence_gates(manifest),
+            declared_sequence_gap_budget,
+        )
+    )
     failures.extend(_validate_count_sanity(count_rows, manifest, manifest.is_template))
 
     for warning in warnings:

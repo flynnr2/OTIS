@@ -384,6 +384,8 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
                     "telemetry_drop_baseline_status_seq": 2,
                     "host_attach_uptime_s": 30,
                     "host_attach_uptime_status_seq": 1,
+                    "host_attach_query_nonce": 99,
+                    "host_attach_snapshot_generation": 7,
                 "prewrite_contract_ready_utc": "2026-08-11T17:00:00Z",
                 "setup_confirmed_utc": "2026-08-11T17:00:01Z",
                 "latest_prewrite_readiness": {
@@ -394,6 +396,7 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
                 },
             },
         "reports/cx317_active_supervisor_events.jsonl": {},
+        "reports/setup_authority_input_v1.json": {},
         "evidence_manifest.json": {"run_state": "complete"},
     }.items():
         _write(run_dir / relative, value)
@@ -551,7 +554,9 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
     )
     monkeypatch.setattr(bounded_tight_deadband_live_analyze, "_authority_false", lambda path: True)
     monkeypatch.setattr(
-        bounded_tight_deadband_live_analyze, "latest_complete_health", lambda path: health
+        bounded_tight_deadband_live_analyze,
+        "latest_complete_health",
+        lambda path, **kwargs: health,
     )
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
@@ -567,7 +572,26 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
     )
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
-        "evaluate_host_attach_history",
+        "_nonce_bound_attach_history",
+        lambda *args, **kwargs: {"exact": True},
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_live_analyze,
+        "replay_setup_authority_input",
+        lambda *args, **kwargs: SimpleNamespace(
+            exact=True,
+            errors=(),
+            readiness=SimpleNamespace(contract_id=RUNTIME_CONTRACT_ID),
+            request={
+                "authorization_sequence": 1,
+                "status_generation": 7,
+                "query_nonce": 99,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_live_analyze,
+        "_setup_phase_history",
         lambda *args, **kwargs: {"exact": True},
     )
     monkeypatch.setattr(

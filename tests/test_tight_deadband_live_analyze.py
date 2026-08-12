@@ -120,24 +120,25 @@ def test_live_capsules_require_every_nonmanual_row_and_phase_ack(tmp_path: Path)
 
 
 def test_live_command_stream_must_match_supervisor_submission_order() -> None:
+    setup = "ACTIVE SETUP 1 7 99 650 4 0xA808 1 " + "b" * 64
     events = [
         {"event": "command_submitted", "command": "CONFIG?"},
-        {"event": "command_acknowledged", "command": "CONFIG?"},
+        {"event": "host_written", "command": "CONFIG?"},
         {"event": "command_submitted", "command": "DAC?"},
-        {"event": "command_acknowledged", "command": "DAC?"},
-        {"event": "command_submitted", "command": "DAC SET 0xA808"},
-        {"event": "command_acknowledged", "command": "DAC SET 0xA808"},
+        {"event": "host_written", "command": "DAC?"},
+        {"event": "command_submitted", "command": setup},
+        {"event": "host_written", "command": setup},
         {"event": "command_submitted", "command": "ACTIVE LEASE 1"},
-        {"event": "command_acknowledged", "command": "ACTIVE LEASE 1"},
-        {"event": "command_submitted", "command": "ACTIVE?"},
-        {"event": "command_acknowledged", "command": "ACTIVE?"},
+        {"event": "host_written", "command": "ACTIVE LEASE 1"},
+        {"event": "command_submitted", "command": "ACTIVE SNAPSHOT 99"},
+        {"event": "host_written", "command": "ACTIVE SNAPSHOT 99"},
     ]
     markers = [
         {"event": "host_command_sent", "command": "CONFIG?"},
         {"event": "host_command_sent", "command": "DAC?"},
-        {"event": "host_command_sent", "command": "DAC SET 0xA808"},
+        {"event": "host_command_sent", "command": setup},
         {"event": "host_command_sent", "command": "ACTIVE LEASE 1"},
-        {"event": "host_command_sent", "command": "ACTIVE?"},
+        {"event": "host_command_sent", "command": "ACTIVE SNAPSHOT 99"},
     ]
     assert (
         _commands_exact(
@@ -163,19 +164,20 @@ def test_live_command_stream_must_match_supervisor_submission_order() -> None:
 
 
 def test_live_command_stream_accepts_only_the_declared_emergency_abort() -> None:
+    setup = "ACTIVE SETUP 1 7 99 650 4 0xA808 1 " + "b" * 64
     events = [
         {"event": "command_submitted", "command": "CONFIG?"},
-        {"event": "command_acknowledged", "command": "CONFIG?"},
+        {"event": "host_written", "command": "CONFIG?"},
         {"event": "command_submitted", "command": "DAC?"},
-        {"event": "command_acknowledged", "command": "DAC?"},
-        {"event": "command_submitted", "command": "DAC SET 0xA808"},
-        {"event": "command_acknowledged", "command": "DAC SET 0xA808"},
+        {"event": "host_written", "command": "DAC?"},
+        {"event": "command_submitted", "command": setup},
+        {"event": "host_written", "command": setup},
         {"event": "emergency_device_abort_submitted"},
     ]
     markers = [
         {"event": "host_command_sent", "command": "CONFIG?"},
         {"event": "host_command_sent", "command": "DAC?"},
-        {"event": "host_command_sent", "command": "DAC SET 0xA808"},
+        {"event": "host_command_sent", "command": setup},
         {"event": "host_command_sent", "command": "ACTIVE ABORT"},
     ]
     assert _commands_exact(

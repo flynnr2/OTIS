@@ -4,7 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-constexpr size_t OTIS_SERIAL_COMMAND_BUFFER_SIZE = 64u;
+// ACTIVE SETUP carries a complete SHA-256 configuration identity plus the
+// correlated authorization fields. The collector is static Core 0 storage.
+constexpr size_t OTIS_SERIAL_COMMAND_BUFFER_SIZE = 192u;
 constexpr size_t OTIS_SERIAL_COMMAND_MAX_LENGTH =
     OTIS_SERIAL_COMMAND_BUFFER_SIZE - 1u;
 
@@ -39,7 +41,11 @@ enum class OtisSerialCommandKind : uint8_t {
   DacZero,
   DacSet,
   Fc0Query,
+  Q2Case,
+  Q2Other,
   ActiveQuery,
+  ActiveSnapshot,
+  ActiveSetup,
   ActiveLease,
   ActiveArm,
   ActiveAbort,

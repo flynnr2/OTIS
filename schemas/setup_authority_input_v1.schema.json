@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:otis:schema:setup-authority-input:v1",
+  "title": "OTIS retained setup authority input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "created_utc", "request", "health", "active_row_count", "dac_row_count", "telemetry_drop_baseline", "record_sha256"],
+  "properties": {
+    "contract": {"const": "cx319_setup_authority_input_v1"},
+    "created_utc": {"type": "string", "minLength": 1},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorization_sequence", "status_generation", "query_nonce", "expires_s", "session_id", "requested_code", "one_shot_ordinal", "configuration_identity"],
+      "properties": {
+        "authorization_sequence": {"type": "integer", "minimum": 1},
+        "status_generation": {"type": "integer", "minimum": 1},
+        "query_nonce": {"type": "integer", "minimum": 1},
+        "expires_s": {"type": "integer", "minimum": 1},
+        "session_id": {"type": "integer", "minimum": 1},
+        "requested_code": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "one_shot_ordinal": {"const": 1},
+        "configuration_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "key", "value"],
+        "properties": {
+          "component": {"type": "string", "minLength": 1},
+          "key": {"type": "string", "minLength": 1},
+          "value": {"type": "string"}
+        }
+      }
+    },
+    "active_row_count": {"type": "integer", "minimum": 0},
+    "dac_row_count": {"type": "integer", "minimum": 0},
+    "telemetry_drop_baseline": {"type": "integer", "minimum": 0},
+    "record_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
