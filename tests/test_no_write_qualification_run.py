@@ -149,3 +149,37 @@ def test_confirmed_firmware_reuse_performs_no_upload(
     assert record["status"] == "pass"
     assert record["attempt_count"] == 0
     assert record["firmware_flashes"] == 0
+
+
+def test_run_rejects_repo_local_evidence_index_before_run_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "must-not-be-created"
+    monkeypatch.setattr(
+        rehearsal, "require_programme_operation_allowed", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        rehearsal,
+        "validate_bundle",
+        lambda _path: {
+            "firmware": {
+                "git_commit": "1" * 40,
+                "build_manifest": {"sha256": "2" * 64},
+                "profile_id": "cx319_tight_lower",
+            }
+        },
+    )
+
+    with pytest.raises(
+        ValueError, match="evidence index must be stored outside"
+    ):
+        rehearsal.run_no_write_qualification(
+            bundle_path=tmp_path / "bundle.json",
+            run_dir=run_dir,
+            evidence_index_path=Path(__file__).resolve().parents[1]
+            / "build"
+            / "invalid-index.json",
+            arduino_cli="arduino-cli",
+        )
+
+    assert not run_dir.exists()

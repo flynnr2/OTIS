@@ -263,6 +263,57 @@ def test_q1_intentional_detach_requires_no_actuation_manifest_and_reattaches(
     assert "intentional_serial_reattached" in raw
 
 
+def test_q1_intentional_detach_waits_for_complete_device_record(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    detach_after_s = 0.000000001
+    config = CaptureDeviceConfig(
+        **{
+            **_config(tmp_path).__dict__,
+            "intentional_detach_schedule": ((detach_after_s, 0.001),),
+        }
+    )
+    ensure_run_layout(config.run_dir)
+    capture_device_module._create_manifest_if_missing(
+        config.run_dir, config.device, config.baud
+    )
+    manifest_path = config.run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["actuation_authorized"] = False
+    manifest["closed_loop_control"] = False
+    manifest["q1_real_io"] = {
+        "intentional_detach_schedule": [
+            {"after_first_open_s": detach_after_s, "detached_s": 0.001}
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    serials = [
+        FakeSerial(
+            [
+                b"STS,1,1,1,rp2040_timer0,system,mode,",
+                b"SW1_GPS_PPS,INFO,32768\n",
+            ]
+        ),
+        FakeSerial(
+            [b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"],
+            stop_event=stop_event,
+        ),
+    ]
+
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serials.pop(0),
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+    assert runner.intentional_detach_count == 1
+    assert runner.parser_errors == 0
+    health = RunPaths(config.run_dir).health_csv.read_text(encoding="utf-8")
+    assert "system,mode,SW1_GPS_PPS,INFO,32768" in health
+
+
 def test_capture_device_malformed_utf8_preserves_raw_bytes(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)

@@ -106,6 +106,12 @@ def _assert_index_outside_repo(index_path: Path) -> Path:
     raise ValueError("evidence index must be stored outside the Git repository")
 
 
+def validate_index_location(index_path: Path) -> Path:
+    """Validate and resolve an index location without creating any files."""
+
+    return _assert_index_outside_repo(index_path)
+
+
 def _empty_index(now: str | None = None) -> dict[str, Any]:
     timestamp = now or _utc_now()
     return {

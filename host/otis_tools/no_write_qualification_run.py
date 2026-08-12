@@ -48,7 +48,12 @@ from .no_write_qualification_bundle import (
 )
 from .active_status_contract import latest_complete_health
 from .evidence import create_evidence_snapshot, validate_evidence_snapshot
-from .evidence_index import DEFAULT_INDEX, package_identity, register_package
+from .evidence_index import (
+    DEFAULT_INDEX,
+    package_identity,
+    register_package,
+    validate_index_location,
+)
 from .evidence_finalization import (
     advance_phase,
     begin_finalization,
@@ -519,6 +524,7 @@ def run_no_write_qualification(
     bundle_path = bundle_path.resolve()
     bundle = validate_bundle(bundle_path)
     run_dir = run_dir.resolve()
+    evidence_index_path = validate_index_location(evidence_index_path)
     if run_dir.exists():
         raise FileExistsError(f"CX319 G1 run already exists: {run_dir}")
     run_dir.mkdir(parents=True)

@@ -1219,6 +1219,9 @@ class CaptureDeviceRunner:
                                 and self._first_serial_open_monotonic is not None
                                 and now - self._first_serial_open_monotonic
                                 >= schedule[intentional_detach_index][0]
+                                and not raw_writer.partial
+                                and not self.framer.buffer
+                                and not self.framer.discarding_oversize
                             ):
                                 _, detach_s = schedule[intentional_detach_index]
                                 intentional_detach_index += 1
