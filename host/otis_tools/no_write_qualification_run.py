@@ -269,7 +269,7 @@ def _exercise_q1_real_io_prelude(
             ).get(("cx317_active", "setup_partition_healthy"))
             == "true"
         ),
-        15.0,
+        30.0,
         "Q1 nonce-bound device compatibility snapshot",
     )
     device_snapshot = _active_snapshot(
@@ -357,7 +357,7 @@ def _exercise_q1_real_io_prelude(
             )
             == expected_detaches
         ),
-        20.0,
+        40.0,
         "Q1 bounded detach and reattach schedule",
     )
     serial_module = __import__("serial")

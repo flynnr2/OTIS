@@ -49,9 +49,9 @@ REHEARSAL_STAGE = "CX319_G1_EXACT_NO_WRITE_REHEARSAL"
 REHEARSAL_DURATION_S = 2700
 SELECTED_ESTIMATE_SPAN_S = 600
 Q1_INTENTIONAL_DETACH_SCHEDULE = (
-    (2.0, 0.250),
-    (5.0, 0.750),
-    (9.0, 1.250),
+    (20.0, 0.250),
+    (24.0, 0.750),
+    (28.0, 1.250),
 )
 RUN_BUNDLE_PATH = Path("cx319_g1_exact_bundle_v1.json")
 TRANSITION_RUN_DIR = Path("g1_owner_handoff_transition")
