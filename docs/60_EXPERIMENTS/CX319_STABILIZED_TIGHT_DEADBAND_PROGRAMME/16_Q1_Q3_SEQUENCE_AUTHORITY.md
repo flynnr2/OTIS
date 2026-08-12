@@ -73,6 +73,28 @@ repair, one new build-manifest-bound exact lower-profile flash, and one complete
 Q1 retry. Write, setup, arm, automatic-correction, Q2, Q3, and Q4 boundaries
 remain unchanged.
 
+That exact-flash retry proved the firmware repair: all 59 receiver snapshots
+observed before the stop retained fresh metadata and three-dimensional GSA
+state, with no unsigned age wrap. It then exposed an independent host platform
+escape. Active generation 118 completed and made the runtime contract ready;
+generation 119 began 3.25 ms later and completed normally 128.85 ms after that.
+The supervisor read the append-only health CSV between those two record
+boundaries, correctly refused to reuse generation 118, but incorrectly treated
+the normal in-progress generation as permanently missing and aborted. The
+failed package with registered content identity
+`919b1b31a07d1a25be6e3b799a79d0f032e9c3c31b93d0be651461fa8187fdb9`
+is retained as a platform escape, not a firmware or GNSS rejection.
+
+The operator directed that execution must not stop midway through this bounded
+hardening response. A host-only recovery may therefore replace the CSV-prefix
+control-plane read with an atomically published, generation/nonce/provenance-
+bound live-health state, rehearse that exact path offline, and repeat Q1 using
+the already proven installed UF2 identity
+`5d206ba17d12d83b5429f687d40f6b52ce66024262fddde9bfc1d289082b252b`.
+The recovery must obtain a fresh reset/identity transcript and must stop on any
+identity mismatch. It permits no additional firmware flash and does not change
+any actuation or later-gate boundary.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names

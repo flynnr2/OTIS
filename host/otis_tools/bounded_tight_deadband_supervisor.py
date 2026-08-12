@@ -23,7 +23,6 @@ from .cx317_active_campaign import (
 from .tight_deadband_supervisor import DAC_CSV, TightDeadbandLeg, TightDeadbandSupervisor
 from .no_write_qualification_bundle import POLICY_PATH, PROGRAMME_ID
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .active_status_contract import latest_complete_health
 from .bounded_tight_deadband_prewrite_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
@@ -157,12 +156,6 @@ class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
 
     def _status_query_command(self) -> str:
         return f"ACTIVE SNAPSHOT {self.state['host_attach_query_nonce']}"
-
-    def _current_health(self) -> dict[tuple[str, str], str]:
-        return latest_complete_health(
-            self.run_dir / HEALTH_CSV,
-            required_query_nonce=int(self.state["host_attach_query_nonce"]),
-        )
 
     def _observe_host_attach_uptime(
         self, health: dict[tuple[str, str], str]

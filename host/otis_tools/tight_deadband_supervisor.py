@@ -28,7 +28,7 @@ from .cx317_active_campaign import (
     _read_csv,
     _utc_now,
 )
-from .active_status_contract import latest_complete_health
+from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .contracts import TIGHT_DEADBAND_POLICY_SHA256
 from .cx317_bounded_active_supervisor import (
     ESTIMATES_CSV,
@@ -83,6 +83,9 @@ ARM_PROGRESS_THRESHOLD = 520
 ARM_LIFETIME_S = 110
 PREWRITE_CONTRACT_STARTUP_GRACE_S = 30
 SETUP_RESULT_GRACE_S = QUERY_PERIOD_S
+ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = 1.0
+ACTIVE_SNAPSHOT_COMPLETION_POLL_S = 0.02
+ACTIVE_STATUS_COMPLETE_MAX_AGE_S = QUERY_PERIOD_S + 2.0
 
 
 @dataclass(frozen=True)
@@ -404,10 +407,43 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
         return f"ACTIVE SNAPSHOT {self.state['host_attach_query_nonce']}"
 
     def _current_health(self) -> dict[tuple[str, str], str]:
-        return latest_complete_health(
-            self.run_dir / HEALTH_CSV,
-            required_query_nonce=int(self.state["host_attach_query_nonce"]),
-        )
+        while True:
+            selection = read_live_health_state(
+                self.run_dir / LIVE_STATE_PATH,
+                required_query_nonce=int(
+                    self.state["host_attach_query_nonce"]
+                ),
+            )
+            if selection.state in {"absent", "unmatched"}:
+                return {}
+            if selection.state == "invalid":
+                raise ValueError(
+                    "active live-health handoff is invalid: "
+                    + selection.diagnostic
+                )
+            if selection.observed_monotonic_ns is None:
+                raise ValueError("active live-health handoff has no host clock")
+            age_s = (
+                time.monotonic_ns() - selection.observed_monotonic_ns
+            ) / 1_000_000_000
+            if age_s < -0.001:
+                raise ValueError("active live-health handoff is from the future")
+            if selection.state == "complete":
+                if age_s > ACTIVE_STATUS_COMPLETE_MAX_AGE_S:
+                    raise ValueError(
+                        "active live-health handoff is stale: "
+                        f"age_s={age_s:.6f} limit_s="
+                        f"{ACTIVE_STATUS_COMPLETE_MAX_AGE_S:.6f}"
+                    )
+                return selection.health
+            remaining_s = ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S - age_s
+            if remaining_s <= 0:
+                raise ValueError(
+                    "active live-health snapshot did not complete within "
+                    f"{ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S:.3f} s: "
+                    f"generation={selection.generation}"
+                )
+            time.sleep(min(ACTIVE_SNAPSHOT_COMPLETION_POLL_S, remaining_s))
 
     def _setup_command(
         self, health: dict[tuple[str, str], str]

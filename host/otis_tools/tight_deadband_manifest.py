@@ -35,6 +35,9 @@ POLICY_PATH = REPO_ROOT / "profiles/discipline/cx318_stage5_tight_active_v1.json
 FIRMWARE_MATRIX_PATH = REPO_ROOT / "firmware/arduino/firmware_matrix.json"
 HOST_TOOL_PATHS = {
     "capture": Path(__file__).with_name("capture_device.py"),
+    "active_status_live_state": Path(__file__).with_name(
+        "active_status_live_state.py"
+    ),
     "supervisor": Path(__file__).with_name("tight_deadband_supervisor.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("cx317_abort_path.py"),

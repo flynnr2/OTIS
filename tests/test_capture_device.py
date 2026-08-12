@@ -154,6 +154,34 @@ def test_line_framer_rejects_oversize_complete_line() -> None:
     assert events == ["oversize_line_dropped bytes=6"]
 
 
+def test_flushed_health_record_updates_live_status_publisher(
+    tmp_path: Path,
+) -> None:
+    runner = CaptureDeviceRunner(_config(tmp_path))
+    published: list[tuple[str, int]] = []
+
+    class Splitter:
+        def process_line(self, _line: str) -> str:
+            return "health_v1"
+
+    class Publisher:
+        def process_line(
+            self, line: str, *, transport_generation: int
+        ) -> None:
+            published.append((line, transport_generation))
+
+    line = b"STS,1,1,1,rp2040_timer0,system,mode,test,INFO,0"
+    runner._process_line(  # type: ignore[arg-type]
+        line,
+        Splitter(),
+        object(),
+        Publisher(),
+    )
+
+    assert published == [(line.decode("utf-8"), 1)]
+    assert runner.lines_parsed == 1
+
+
 def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)

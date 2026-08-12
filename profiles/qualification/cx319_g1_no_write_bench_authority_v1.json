@@ -13,11 +13,11 @@
     },
     "operator_decision_record": {
       "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
-      "sha256": "331cdea31146d1bcc7013da04a394b116df9fea6e4a7ba2df06c93bcea25cd92"
+      "sha256": "543d2ccb0ea79d22297b7a2ceefaf339619c52de107f35b932fdd547e095f972"
     },
     "qualification_plan": {
       "path": "docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md",
-      "sha256": "9b6df380c8cb846c328d1caf3430e7fa87142a706214e97cabf840e8a18c2645"
+      "sha256": "07b3e7999d9ecd03c611b1b4688d82bb4388cab86d2547ebdf38d4fe8c96d78c"
     }
   },
   "authority_model": {
@@ -28,7 +28,7 @@
   },
   "allowed_operations": [
     "flash_exact_bound_cx319_leg_firmware_once",
-    "restart_confirmed_exact_firmware_once_after_platform_repair",
+    "restart_confirmed_exact_firmware_after_bounded_host_repair",
     "open_expected_serial_device_with_one_capture_owner",
     "create_bounded_normal_emergency_and_host_abort_fifos",
     "send_read_only_queries_and_active_capture_leases",

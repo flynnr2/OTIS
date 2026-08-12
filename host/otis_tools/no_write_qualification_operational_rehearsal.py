@@ -18,8 +18,13 @@ from pathlib import Path
 import shutil
 import stat
 import tempfile
+import time
 from typing import Any
 
+from .active_status_live_state import (
+    LIVE_STATE_PATH,
+    reduce_health_rows,
+)
 from .capture_segment_rotation import prepare_transition
 from .no_write_qualification_analyze import (
     ANALYSIS_PATH,
@@ -49,6 +54,10 @@ from .evidence_index import register_package, validate_index
 
 TOOL_ID = "cx319_g1_no_flash_operational_rehearsal_v1"
 RESULT_PATH = Path("cx319_g1_no_flash_operational_rehearsal_v1.json")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _sha256_file(path: Path) -> str:
@@ -118,6 +127,27 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
         os.fsync(handle.fileno())
         temporary = Path(handle.name)
     os.replace(temporary, path)
+
+
+def _publish_replayed_live_state(health_path: Path, state_path: Path) -> None:
+    with health_path.open(newline="", encoding="utf-8") as handle:
+        state = reduce_health_rows(csv.DictReader(handle))
+    if state is None or state.get("state") != "complete":
+        raise ValueError(
+            f"replayed health has no complete live state: {health_path}"
+        )
+    _replace_json(
+        state_path,
+        {
+            **state,
+            "observed_utc": _utc_now(),
+            "observed_monotonic_ns": time.monotonic_ns(),
+            "capture_pid": os.getpid(),
+            "transport_generation": 1,
+            "replay_derived": True,
+            "source_health_path": str(health_path),
+        },
+    )
 
 
 def _replace_capture_stop_target(path: Path, next_run: Path) -> None:
@@ -334,6 +364,10 @@ def _prepare_replay(
         transition / "csv/health.csv",
     ):
         _replace_build_identity(health_path, expected_build)
+        _publish_replayed_live_state(
+            health_path,
+            health_path.parents[1] / LIVE_STATE_PATH,
+        )
 
     state_path = replay_run / "reports/cx317_active_supervisor_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))

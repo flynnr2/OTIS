@@ -175,6 +175,7 @@ def test_historical_v1_frozen_bundle_remains_structurally_valid(
         "cx319_g1_prewrite_runtime_contract_v1"
     )
     value["host_tools"].pop("host_attach_contract")
+    value["host_tools"].pop("active_status_live_state")
     unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
     value["bundle_sha256"] = bundle_tool._canonical_sha256(unsigned)
     path.write_text(json.dumps(value), encoding="utf-8")

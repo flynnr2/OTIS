@@ -581,7 +581,7 @@ The repository uses every requested verification class, but unevenly:
 | Overflow fail-static       | Native exact capacity/+1 tests (`:362-432`)                                                                      | Whether overflow is acceptable for a supported detach; recovery after attachment                      | Model absence/reattach and require declared finite behavior, not merely fault visibility.                                                     |
 | Serial frame integrity     | Arbiter harness includes one zero-capacity iteration and round robin (`serial_frame_arbiter_harness.cpp:52-128`) | Indefinite zero capacity and its effect on every skipped Core 0 service                               | Sustained zero/random capacity with service deadlines and composite queues.                                                                   |
 | GNSS scheduling            | Source-text guard places GNSS before one current early return                                                    | Bytes arriving on every early-return/boot/sensor path; parser timing on real USB                      | Fault-injected real-I/O rehearsal with continuous NMEA and obstruction at every frame boundary.                                               |
-| Active snapshot coherence  | Unit test rejects partial mixing within `cx317_active`                                                           | Older complete generation while newer partial fault exists; cross-component coherence and age         | Already falsified offline; add global query-generation model and race tests.                                                                  |
+| Active snapshot coherence  | Exact snapshot tests plus atomic capture-owner live-state cut-point tests reject partial, duplicate, missing, interrupted, stale, and wrong-nonce generations without reusing older authority | Firmware-to-host publication still has a bounded completion deadline and must pass the exact real-I/O path | Replay the retained 118/119 boundary, then require a fresh exact-bundle Q1 pass with the atomic state retained and sealed.                     |
 | Prewrite parity            | Host contract fixtures for exact fields                                                                          | Firmware revalidation at consumption; TOCTOU; exact decision provenance                               | Stub-DAC firmware harness that regresses GNSS/lease/partition immediately before setup; expect zero I2C calls.                                |
 | Automatic actuation        | Native transaction/guard tests and retained exact transaction replays                                            | Every interruption phase on real transport; physical I2C ambiguous failure                            | Schedule interruption before request, acceptance, release, apply, ack; then bounded real-I/O fault rehearsal.                                 |
 | Independent abort          | Host FIFO obstruction rehearsal                                                                                  | Device TX capacity zero while abort bytes await firmware parsing                                      | Zero-TX active-frame + abort-RX real-I/O test with bounded Core 1 receipt.                                                                    |
@@ -1105,7 +1105,18 @@ numeric metadata ages wrapped near `UINT32_MAX`, GGA fix quality was `2` in
 in all 70. Package `b875720fdd245b22d094f1f7d654c8e2c863b5488371748a2a890f7e673c7e5a`
 is retained as failed Q1 evidence. The operator authorized the narrow firmware
 clock-anchor repair, one exact flash, and a complete Q1 retry; Q1 has not yet
-passed.
+passed. That retry proved the freshness repair continuously, then stopped on a
+separate host platform escape: the supervisor consumed the append-only health
+CSV after active generation 119 began but before it completed, collapsed the
+normal in-progress wire state into the same empty value used for invalid
+evidence, and aborted immediately after generation 118 had made the runtime
+contract ready. Generation 119 completed normally 128.85 ms after begin; the
+registered failed package is
+`919b1b31a07d1a25be6e3b799a79d0f032e9c3c31b93d0be651461fa8187fdb9`.
+The host repair moves live supervision to a capture-owner-published atomic
+state carrying the complete health frontier, generation, nonce, status
+sequence, clock provenance, and an explicit `in_progress`/`complete`/`invalid`
+state. The canonical CSV remains unchanged scientific evidence.
 
 - use the final frozen bundle and current binary;
 - boot without a host for the declared supported interval, attach through a

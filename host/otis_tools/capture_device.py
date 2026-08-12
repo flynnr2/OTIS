@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import argparse
 from contextlib import ExitStack
+import csv
 import glob
 from hashlib import sha256
 import json
@@ -18,6 +19,11 @@ import threading
 from typing import Callable
 
 from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
+from .active_status_live_state import (
+    ActiveStatusLiveReducer,
+    LIVE_STATE_PATH,
+)
+from .contracts import CONTRACT_FIELDS
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 from .run_paths import default_csv_files, ensure_run_layout
 from .serial_commands import (
@@ -112,6 +118,42 @@ def _atomic_new_json(path: Path, payload: dict[str, object]) -> None:
         os.link(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+class ActiveStatusLivePublisher:
+    """Publish explicit active-snapshot states from flushed health records."""
+
+    def __init__(self, run_dir: Path) -> None:
+        self.path = run_dir / LIVE_STATE_PATH
+        self.reducer = ActiveStatusLiveReducer()
+
+    def process_line(
+        self, line: str, *, transport_generation: int
+    ) -> None:
+        try:
+            values = next(csv.reader([line.strip()]))
+        except csv.Error as exc:
+            raise ValueError(
+                f"cannot publish parsed live-health record: {exc}"
+            ) from exc
+        fields = CONTRACT_FIELDS["health_v1"]
+        if len(values) != len(fields):
+            raise ValueError("parsed live-health record width changed")
+        update = self.reducer.observe(dict(zip(fields, values)))
+        if update is None:
+            return
+        _atomic_json(
+            self.path,
+            {
+                **update,
+                "observed_utc": datetime.now(timezone.utc).isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "observed_monotonic_ns": time.monotonic_ns(),
+                "capture_pid": os.getpid(),
+                "transport_generation": transport_generation,
+            },
+        )
 
 
 class RawEvidenceWriter:
@@ -403,6 +445,9 @@ class CaptureSegmentSink:
             self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
             self.in_progress.touch(exist_ok=True)
             self.raw_writer = RawEvidenceWriter(self.raw_handle)
+            self.active_status_live_publisher = ActiveStatusLivePublisher(
+                self.run_dir
+            )
             self.closed = False
         except BaseException:
             self._stack.close()
@@ -618,7 +663,13 @@ class CaptureDeviceRunner:
         serial_module = _load_serial_module()
         return (OSError, EOFError, serial_module.SerialException)
 
-    def _process_line(self, line: bytes, splitter: CsvRecordSplitter, raw_writer: RawEvidenceWriter) -> None:
+    def _process_line(
+        self,
+        line: bytes,
+        splitter: CsvRecordSplitter,
+        raw_writer: RawEvidenceWriter,
+        active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
+    ) -> None:
         self.lines_seen += 1
         try:
             text = line.decode("utf-8")
@@ -630,12 +681,26 @@ class CaptureDeviceRunner:
         contract = splitter.process_line(text)
         if contract is not None:
             self.lines_parsed += 1
+            if (
+                contract == "health_v1"
+                and active_status_live_publisher is not None
+            ):
+                active_status_live_publisher.process_line(
+                    text,
+                    transport_generation=self.transport_generation,
+                )
 
     def _parser_error(self, message: str) -> None:
         self.parser_errors += 1
         _log_event(logging.WARNING, "parser_error", message=message, parser_errors=self.parser_errors)
 
-    def _process_bytes(self, data: bytes, splitter: CsvRecordSplitter, raw_writer: RawEvidenceWriter) -> None:
+    def _process_bytes(
+        self,
+        data: bytes,
+        splitter: CsvRecordSplitter,
+        raw_writer: RawEvidenceWriter,
+        active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
+    ) -> None:
         raw_writer.write_device(data)
         self.bytes_written += len(data)
         lines, events = self.framer.feed(data)
@@ -643,7 +708,12 @@ class CaptureDeviceRunner:
             _log_event(logging.WARNING, event)
             _write_marker(raw_writer, event)
         for line in lines:
-            self._process_line(line, splitter, raw_writer)
+            self._process_line(
+                line,
+                splitter,
+                raw_writer,
+                active_status_live_publisher,
+            )
 
     def _send_command(
         self,
@@ -1180,7 +1250,12 @@ class CaptureDeviceRunner:
                             read_size = 1 if drain_to_boundary else self.config.read_size
                             data = serial_handle.read(read_size)
                             if data:
-                                self._process_bytes(data, splitter, raw_writer)
+                                self._process_bytes(
+                                    data,
+                                    splitter,
+                                    raw_writer,
+                                    sink.active_status_live_publisher,
+                                )
                             # A prepared rotation is applied at this complete
                             # device-record boundary before polling either old
                             # command ingress.  The serial handle remains the

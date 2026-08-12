@@ -90,6 +90,9 @@ HOST_TOOL_PATHS = {
         "host_attach_health_contract.py"
     ),
     "capture": Path(__file__).with_name("capture_device.py"),
+    "active_status_live_state": Path(__file__).with_name(
+        "active_status_live_state.py"
+    ),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("cx317_abort_path.py"),
     "segment_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
@@ -113,6 +116,12 @@ FROZEN_V1_HOST_TOOL_NAMES = frozenset(
         "segment_rotation",
         "serial_commands",
         "supervisor",
+    }
+)
+FROZEN_V2_HOST_TOOL_NAMES = frozenset(
+    {
+        *FROZEN_V1_HOST_TOOL_NAMES,
+        "host_attach_contract",
     }
 )
 CURRENT_HOST_TOOL_NAMES = frozenset(HOST_TOOL_PATHS)
@@ -720,7 +729,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     runtime_contract_id = bundle.get("runtime_contract", {}).get("id")
     expected_tool_names = {
         "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
-        "cx319_g1_prewrite_runtime_contract_v2": CURRENT_HOST_TOOL_NAMES,
+        "cx319_g1_prewrite_runtime_contract_v2": FROZEN_V2_HOST_TOOL_NAMES,
         RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
     }.get(runtime_contract_id)
     if (
@@ -966,6 +975,7 @@ def create_run_manifest(
             *[entry["path"] for entry in files if not entry.get("optional")],
             "raw/serial.log",
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
@@ -985,6 +995,7 @@ def create_run_manifest(
         ],
         "evidence_artifacts": [
             "reports/capture_device_state.json",
+            "reports/cx317_active_status_live_state_v1.json",
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
