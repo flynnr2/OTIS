@@ -17,10 +17,9 @@
       "resume_prerequisite": "superseded_by_new_programme_identity"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q1_q3_sequence_authorized_q3_entry",
+      "state": "q1_q3_sequence_complete_no_q4_authority",
       "allowed_operations": [
-        "offline_preparation",
-        "g1_no_write_bench_rehearsal"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-12",
       "authority": "explicit_operator_q1_q3_sequence_authority",
@@ -81,15 +80,16 @@
       },
       "q1_q3_sequence_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
-        "effective": true,
-        "current_gate": "Q3",
+        "effective": false,
+        "consumed": true,
+        "current_gate": "complete",
         "q1_exact_lower_flash_limit": 1,
         "q1_dac_value_writes": 0,
         "q2_requires_bound_stub_or_confirmed_electrical_inhibition": true,
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "operator_reconnect_then_exact_q1_uf2_q3_no_write",
+      "next_gate": "new_explicit_post_q3_operator_decision_q4_remains_forbidden",
       "q1_sequence_result": {
         "run_id": "q1_running_attach_final_20260812T121948Z",
         "seal_sha256": "0d8c4863a48930f40057b6bc665f8fa880a83548a4ff7a4b30525c3bff7639df",
@@ -103,6 +103,25 @@
         "physical_setup_writes": 1,
         "physical_automatic_writes": 0,
         "physical_oscillator_movement_possible": false
+      },
+      "q3_sequence_result": {
+        "run_id": "q3_physical_no_write_20260812T150928Z",
+        "host_source_revision": "1a58f44584137d770a0c661de4f1e653f12cdfcf",
+        "firmware_source_revision": "1c1d7382b85534e06d5b2a8d086d9e5621fa3b2f",
+        "bundle_sha256": "28a4d0f01e54aa9ea4068a6b7cdd360763e42781932b19a9ef9b39222552a7ab",
+        "uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+        "seal_sha256": "4d0747017fa77810bf3967a4f3bbe64e8f0d7ce962cb3143a1d56540f3fa8c35",
+        "evidence_content_sha256": "989170aaad2cabfd7454a9e8c047ab3514f1e6da90ff423d34461e783dd641e7",
+        "capture_duration_s": 2706.0,
+        "selected_600s_estimates": 1,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "priority_abort_passed": true,
+        "same_owner_logical_rotation": true
       },
       "completed_g1_evidence": {
         "run_id": "no_write_leg_a_20260811T133632Z",

@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_q1_q2_pass_and_admits_only_no_write_q3() -> None:
+def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -31,16 +31,13 @@ def test_tracked_status_records_q1_q2_pass_and_admits_only_no_write_q3() -> None
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q1_q3_sequence_authorized_q3_entry"
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        NO_WRITE_BENCH_REHEARSAL,
-    ]
+    assert successor["state"] == "q1_q3_sequence_complete_no_q4_authority"
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
         "explicit_operator_q1_q3_sequence_authority"
     )
     assert successor["next_gate"] == (
-        "operator_reconnect_then_exact_q1_uf2_q3_no_write"
+        "new_explicit_post_q3_operator_decision_q4_remains_forbidden"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -334,8 +331,9 @@ def test_tracked_status_records_q1_q2_pass_and_admits_only_no_write_q3() -> None
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "16_Q1_Q3_SEQUENCE_AUTHORITY.md"
         ),
-        "effective": True,
-        "current_gate": "Q3",
+        "effective": False,
+        "consumed": True,
+        "current_gate": "complete",
         "q1_exact_lower_flash_limit": 1,
         "q1_dac_value_writes": 0,
         "q2_requires_bound_stub_or_confirmed_electrical_inhibition": True,
@@ -353,6 +351,37 @@ def test_tracked_status_records_q1_q2_pass_and_admits_only_no_write_q3() -> None
     assert successor["q2_sequence_result"][
         "physical_oscillator_movement_possible"
     ] is False
+    assert successor["q3_sequence_result"] == {
+        "run_id": "q3_physical_no_write_20260812T150928Z",
+        "host_source_revision": "1a58f44584137d770a0c661de4f1e653f12cdfcf",
+        "firmware_source_revision": "1c1d7382b85534e06d5b2a8d086d9e5621fa3b2f",
+        "bundle_sha256": (
+            "28a4d0f01e54aa9ea4068a6b7cdd360"
+            "763e42781932b19a9ef9b39222552a7ab"
+        ),
+        "uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "seal_sha256": (
+            "4d0747017fa77810bf3967a4f3bbe64e"
+            "8f0d7ce962cb3143a1d56540f3fa8c35"
+        ),
+        "evidence_content_sha256": (
+            "989170aaad2cabfd7454a9e8c047ab35"
+            "14f1e6da90ff423d34461e783dd641e7"
+        ),
+        "capture_duration_s": 2706.0,
+        "selected_600s_estimates": 1,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "priority_abort_passed": True,
+        "same_owner_logical_rotation": True,
+    }
     assert successor["forbidden_until_next_gate"] == [
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
@@ -373,10 +402,11 @@ def test_tracked_status_records_q1_q2_pass_and_admits_only_no_write_q3() -> None
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        NO_WRITE_BENCH_REHEARSAL,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            NO_WRITE_BENCH_REHEARSAL,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG

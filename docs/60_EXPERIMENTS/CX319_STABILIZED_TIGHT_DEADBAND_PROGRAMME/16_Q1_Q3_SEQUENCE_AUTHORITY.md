@@ -285,6 +285,30 @@ seconds after a fresh boot, so a shorter run would not cross the stated Q3
 estimator boundary. The result is Q3 physical no-write qualification evidence,
 not Q4 or live-control authority.
 
+## Q3 result and sequence closure
+
+Q3 passed on 2026-08-12 using retained run
+`q3_physical_no_write_20260812T150928Z`. The run flashed the exact Q1
+operational UF2, confirmed board serial `503533748A919118`, and retained a
+2,706-second primary capture plus the same-owner logical-rotation segment.
+It produced one selected 600-second estimate, zero DAC-value writes, zero
+setup stimuli, zero control arms, zero automatic corrections, zero serial
+reconnects, and zero parser errors. The bounded normal-command obstruction,
+independent priority abort, and same-PID rotation all passed.
+
+The passing Q3 seal is
+`4d0747017fa77810bf3967a4f3bbe64e8f0d7ce962cb3143a1d56540f3fa8c35`;
+the registered package identity is
+`989170aaad2cabfd7454a9e8c047ab3514f1e6da90ff423d34461e783dd641e7`.
+It binds bundle
+`28a4d0f01e54aa9ea4068a6b7cdd360763e42781932b19a9ef9b39222552a7ab`
+and UF2
+`50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083`.
+
+Q1 through Q3 are therefore complete. This authority is consumed and permits
+no further physical execution. Q4 and all live-control activity remain
+forbidden pending a new explicit operator decision.
+
 ## Stop conditions
 
 Stop and retain the shortest affected evidence package on any identity or
