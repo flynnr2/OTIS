@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-TOOL_ID = "cx319_q2_transaction_analyzer_v1"
+TOOL_ID = "cx319_q2_transaction_analyzer_v2"
 BUNDLE_PATH = Path("cx319_q2_exact_bundle_v1.json")
 OPERATOR_CONFIRMATION_PATH = Path("reports/q2_operator_inhibition_confirmation_v1.json")
 SETUP_AUTHORITY_PATH = Path("reports/q2_setup_authority_input_v1.json")
@@ -222,9 +222,12 @@ def _case_checks(rows: list[dict[str, str]]) -> tuple[dict[str, bool], dict[str,
     return checks, details
 
 
-def _setup_phases(rows: list[dict[str, str]], authority: dict[str, Any]) -> list[str]:
+def _setup_evidence(
+    rows: list[dict[str, str]], authority: dict[str, Any]
+) -> tuple[list[str], list[str]]:
     request = authority["request"]
     phases: list[str] = []
+    critical_records: list[str] = []
     active = False
     matching: dict[str, str] = {}
     for row in rows:
@@ -242,6 +245,9 @@ def _setup_phases(rows: list[dict[str, str]], authority: dict[str, Any]) -> list
                 )
             ):
                 phases.append(matching["phase"])
+                critical = matching.get("critical_record")
+                if critical:
+                    critical_records.append(critical)
             matching = {"phase": value}
             active = True
         elif active:
@@ -251,7 +257,36 @@ def _setup_phases(rows: list[dict[str, str]], authority: dict[str, Any]) -> list
         for name in ("authorization_sequence", "status_generation", "query_nonce")
     ):
         phases.append(matching["phase"])
-    return phases
+        critical = matching.get("critical_record")
+        if critical:
+            critical_records.append(critical)
+    return phases, critical_records
+
+
+def _setup_acknowledgement_complete(
+    phases: list[str], critical_records: list[str]
+) -> bool:
+    required_phases = {
+        "firmware_received",
+        "core1_authorized",
+        "core0_accepted",
+        "core1_execution_released",
+        "applied",
+    }
+    required_critical_records = {
+        "core1_current_setup_authority_accepted",
+        "core1_execution_released_after_current_recheck",
+    }
+    # Cross-core producers can reach the USB serializer in a different order
+    # from their causal state transitions. Identity-bound phase/critical sets
+    # plus the separately checked single physical DAC row are the contract.
+    return (
+        bool(phases)
+        and phases[0] == "firmware_received"
+        and required_phases.issubset(phases)
+        and required_critical_records.issubset(critical_records)
+        and not ({"failed", "rejected"} & set(phases))
+    )
 
 
 def analyze(run_dir: Path) -> dict[str, Any]:
@@ -276,18 +311,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         for row in health
     }
     case_checks, case_details = _case_checks(health)
-    phases = _setup_phases(health, authority)
-    required_phase_order = [
-        "firmware_received",
-        "core1_authorized",
-        "core0_accepted",
-        "core1_execution_released",
-        "applied",
-    ]
-    cursor = 0
-    for phase in phases:
-        if cursor < len(required_phase_order) and phase == required_phase_order[cursor]:
-            cursor += 1
+    phases, critical_records = _setup_evidence(health, authority)
     setup_rows = [row for row in dac if row.get("event") == "manual_apply"]
     expected_setup_code = int(bundle["firmware"]["start_code"])
     checks = {
@@ -326,8 +350,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and capture.get("reconnect_count") == 0
         ),
         **case_checks,
-        "production_setup_exact_acknowledgement_path": cursor
-        == len(required_phase_order),
+        "production_setup_exact_acknowledgement_path": (
+            _setup_acknowledgement_complete(phases, critical_records)
+        ),
         "one_physical_inhibited_setup_write": (
             len(setup_rows) == 1
             and setup_rows[0].get("dac_code_requested") == str(expected_setup_code)
@@ -351,6 +376,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "checks": checks,
         "case_replay": case_details,
         "production_setup_phases": phases,
+        "production_setup_critical_records": critical_records,
         "physical_dac_rows": dac,
         "claims_boundary": (
             "Q2 proves the finite transaction and acknowledgement cases with "

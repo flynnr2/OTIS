@@ -1161,6 +1161,11 @@ sealing. Physical execution remains blocked on the retained operator
 confirmation that the DAC analogue output is disconnected from oscillator
 EFC/Vctrl while DAC I2C remains reachable.
 
+The physical run also demonstrated that cross-core acknowledgement records can
+be serialized onto USB out of causal order. Replay now verifies the complete
+identity-bound phase and critical-record set plus the sole physical DAC row,
+rather than inferring Core 0/Core 1 execution order from host arrival order.
+
 ### Q3 — Fresh physical no-write qualification
 
 Use the exact bundle that passed Q1/Q2. **Not executed.** Run only long enough to

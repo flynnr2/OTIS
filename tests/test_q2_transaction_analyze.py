@@ -148,6 +148,20 @@ def test_full_q2_analyzer_replays_fixture(tmp_path) -> None:
                 {"component": "cx317_setup", "status_key": "query_nonce", "status_value": "99"},
             ]
         )
+        critical = {
+            "core1_authorized": "core1_current_setup_authority_accepted",
+            "core1_execution_released": (
+                "core1_execution_released_after_current_recheck"
+            ),
+        }.get(phase)
+        if critical:
+            health_rows.append(
+                {
+                    "component": "cx317_setup",
+                    "status_key": "critical_record",
+                    "status_value": critical,
+                }
+            )
     with (run_dir / "csv/health.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["component", "status_key", "status_value"])
         writer.writeheader()
@@ -168,3 +182,42 @@ def test_full_q2_analyzer_replays_fixture(tmp_path) -> None:
     result = analyze(run_dir)
     assert result["status"] == "pass"
     assert all(result["checks"].values())
+
+
+def test_full_q2_analyzer_accepts_cross_core_wire_interleaving(tmp_path) -> None:
+    run_dir = tmp_path / "q2_interleaved"
+    # Build the normal complete fixture, then reorder only the setup-phase
+    # groups to the order observed on the physical cross-core USB serializer.
+    from host.otis_tools.q2_transaction_operational_rehearsal import (
+        create_replay_fixture,
+    )
+
+    create_replay_fixture(run_dir)
+    health_path = run_dir / "csv/health.csv"
+    with health_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+        fields = list(handle.seek(0) or csv.DictReader(handle).fieldnames or [])
+    setup = [row for row in rows if row.get("component") == "cx317_setup"]
+    other = [row for row in rows if row.get("component") != "cx317_setup"]
+    groups: dict[str, list[dict[str, str]]] = {}
+    current = ""
+    for row in setup:
+        if row.get("status_key") == "phase":
+            current = row["status_value"]
+            groups.setdefault(current, [])
+        groups[current].append(row)
+    interleaved = [
+        *groups["firmware_received"],
+        *groups["core0_accepted"],
+        *groups["applied"],
+        *groups["core1_authorized"],
+        *groups["core1_execution_released"],
+        *groups["applied"],
+    ]
+    with health_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows([*other, *interleaved])
+    result = analyze(run_dir)
+    assert result["status"] == "pass"
+    assert result["checks"]["production_setup_exact_acknowledgement_path"]

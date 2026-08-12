@@ -33,6 +33,7 @@ from .q2_transaction_analyze import (
     SEAL_PATH,
     SETUP_AUTHORITY_PATH,
     _q2_case_evidence,
+    _setup_acknowledgement_complete,
     analyze,
     report_markdown,
     seal,
@@ -210,8 +211,11 @@ def _case_complete(run_dir: Path, case_id: int, nonce: int) -> bool:
     )
 
 
-def _setup_phases_for(run_dir: Path, request: dict[str, Any]) -> list[str]:
+def _setup_evidence_for(
+    run_dir: Path, request: dict[str, Any]
+) -> tuple[list[str], list[str]]:
     phases: list[str] = []
+    critical_records: list[str] = []
     current: dict[str, str] | None = None
     for row in _read_health(run_dir):
         if row.get("component") != "cx317_setup":
@@ -224,6 +228,9 @@ def _setup_phases_for(run_dir: Path, request: dict[str, Any]) -> list[str]:
                 for name in ("authorization_sequence", "status_generation", "query_nonce")
             ):
                 phases.append(current["phase"])
+                critical = current.get("critical_record")
+                if critical:
+                    critical_records.append(critical)
             current = {"phase": value}
         elif current is not None:
             current[key] = value
@@ -232,20 +239,15 @@ def _setup_phases_for(run_dir: Path, request: dict[str, Any]) -> list[str]:
         for name in ("authorization_sequence", "status_generation", "query_nonce")
     ):
         phases.append(current["phase"])
-    return phases
+        critical = current.get("critical_record")
+        if critical:
+            critical_records.append(critical)
+    return phases, critical_records
 
 
 def _production_setup_complete(run_dir: Path, request: dict[str, Any]) -> bool:
-    phases = _setup_phases_for(run_dir, request)
-    expected = [
-        "firmware_received", "core1_authorized", "core0_accepted",
-        "core1_execution_released", "applied",
-    ]
-    cursor = 0
-    for phase in phases:
-        if cursor < len(expected) and phase == expected[cursor]:
-            cursor += 1
-    return cursor == len(expected)
+    phases, critical_records = _setup_evidence_for(run_dir, request)
+    return _setup_acknowledgement_complete(phases, critical_records)
 
 
 def _setup_ready(health: dict[tuple[str, str], str], bundle: dict[str, Any]) -> bool:

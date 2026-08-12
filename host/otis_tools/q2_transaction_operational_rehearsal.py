@@ -157,6 +157,17 @@ def create_replay_fixture(run_dir: Path) -> dict[str, Any]:
         ):
             health.append(_health_row("cx317_setup", key, value, sequence))
             sequence += 1
+        critical = {
+            "core1_authorized": "core1_current_setup_authority_accepted",
+            "core1_execution_released": (
+                "core1_execution_released_after_current_recheck"
+            ),
+        }.get(phase)
+        if critical:
+            health.append(
+                _health_row("cx317_setup", "critical_record", critical, sequence)
+            )
+            sequence += 1
     with (run_dir / "csv/health.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=CONTRACT_FIELDS["health_v1"])
         writer.writeheader()

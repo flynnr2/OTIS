@@ -242,6 +242,15 @@ bounded to 30 minutes; the expected execution is 10–20 minutes. Q3 then
 requires reconnection of the oscillator control input and an exact recorded
 flash of the Q1 operational UF2 before its no-write qualification begins.
 
+The physical Q2 setup showed that cross-core acknowledgements can reach the
+USB serializer out of causal order even though every record remains bound to
+the same authorization sequence, status generation, and nonce. The independent
+consumer therefore requires the complete phase set, both Core 1 critical
+authorization/release records, no failed/rejected phase, and the separately
+verified single DAC row; wire ordering is not treated as execution ordering.
+This is an offline consumer correction and does not invalidate the retained
+raw serial evidence or authorize another physical write.
+
 ## Stop conditions
 
 Stop and retain the shortest affected evidence package on any identity or
