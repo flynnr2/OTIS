@@ -112,3 +112,9 @@ The operator's current sequential authority for the adversarial-review Q1,
 electrically inhibited or stubbed Q2, and no-write Q3 gates is recorded in
 [`16_Q1_Q3_SEQUENCE_AUTHORITY.md`](16_Q1_Q3_SEQUENCE_AUTHORITY.md). Q4 and all
 live actuation remain blocked.
+
+The non-authorizing preparation prompt for the next adversarial-review Q4 gate,
+which maps to the CX319 G2 lower-side finite frequency-only leg, is
+[`17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md`](17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md).
+It stops after offline verification and an optional non-effective authority
+proposal; it grants no hardware or live-control authority.
