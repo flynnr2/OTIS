@@ -732,6 +732,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     expected_tool_names = {
         "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
         "cx319_g1_prewrite_runtime_contract_v2": FROZEN_V2_HOST_TOOL_NAMES,
+        "cx319_g1_prewrite_runtime_contract_v3": CURRENT_HOST_TOOL_NAMES,
         RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
     }.get(runtime_contract_id)
     if (

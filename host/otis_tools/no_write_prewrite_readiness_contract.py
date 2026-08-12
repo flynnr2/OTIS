@@ -30,7 +30,7 @@ from .host_attach_health_contract import (
 )
 
 
-RUNTIME_CONTRACT_ID = "cx319_g1_prewrite_runtime_contract_v3"
+RUNTIME_CONTRACT_ID = "cx319_g1_prewrite_runtime_contract_v4"
 RAW_PPS_QUALIFICATION_DEADLINE_S = 660
 INHERITED_PREVIEW_BASELINE_PROVENANCE = (
     "cx318_last_confirmed_a828_historical_context_not_current_physical_confirmation"
