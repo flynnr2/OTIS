@@ -122,6 +122,22 @@ Command-bearing `cx317_active` fields are a special coherent burst governed by
 [`cx317_active_status_snapshot_v1.md`](cx317_active_status_snapshot_v1.md).
 They must not be read as independent latest values.
 
+## Diagnostic and setup transaction snapshots
+
+Dual-core `CONFIG?` and `FC0?` produce component
+`timing_diagnostic_snapshot`. The envelope carries
+`snapshot_generation_begin`, contract
+`core1_timing_diagnostic_snapshot_v1`, `query_sequence`, `query_nonce`,
+`query_kind`, the Core 1-owned timing fields, and the matching
+`snapshot_generation_complete`. Core 0 transports this immutable burst and
+does not call timing getters or poll/pop functions.
+
+Component `cx317_setup` records correlated setup phases and the
+`command_sequence`, `authorization_sequence`, `status_generation`, and
+`query_nonce`. The successful order is `firmware_received`,
+`core1_authorized`, `core0_accepted`, `core1_execution_released`, and
+`applied`; any rejecting or failed phase is terminal and permits no retry.
+
 ## Hardware Resource Ownership Status
 
 Firmware resource ownership is reported with component `resource_registry`.

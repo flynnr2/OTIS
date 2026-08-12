@@ -109,6 +109,33 @@ Examples:
 
 Counters define local timing domains. They are not inherently synchronized to external time.
 
+### Actuator monotonic seconds
+
+The wrapping unsigned 32-bit projection of the Arduino/RP2040 monotonic
+millisecond counter used only for actuator transaction expiry on both cores.
+It is not a capture timestamp, UTC, or `rp2040_timer0` evidence coordinate.
+Intervals are compared with wrap-safe signed differences and must remain below
+half the representation range.
+
+### Host written
+
+A host-operation observation that the sole serial carrier completed writing a
+command's bytes. It does not mean firmware received, authorized, applied, or
+observed the requested action. Those are separate correlated device phases.
+
+### Current status generation
+
+The newest complete coherent snapshot generation, provided that no newer
+generation has begun incompletely or faulted. For attachment-sensitive
+authority it must also carry the exact solicited post-attachment nonce.
+
+### Transport obstruction horizon
+
+The declared maximum total interval for which a formatted output frame may
+remain pending. Intermittent byte progress does not extend it. Reaching the
+horizon is a transport fault and an evidence-continuity boundary; it is not a
+statement about timing capture truth before the fault.
+
 ### Quantization
 
 The finite resolution imposed by the tick rate of the timing source.

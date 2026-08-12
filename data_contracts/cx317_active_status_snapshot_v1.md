@@ -13,7 +13,7 @@ Every burst has exactly this order:
 
 1. `snapshot_generation_begin=<positive generation>`;
 2. `snapshot_contract=cx317_active_status_snapshot_v1`;
-3. each of the 29 canonical active-status fields exactly once and in the
+3. each of the 33 canonical active-status fields exactly once and in the
    firmware-declared order;
 4. `snapshot_generation_complete=<same generation>`.
 
@@ -22,6 +22,11 @@ Only the newest complete generation is eligible. A missing field, duplicate
 field, unknown contract, mismatched marker, incomplete newer generation, or
 non-increasing generation makes that attempted burst ineligible. Consumers
 must not fill a missing field from an older generation.
+
+The fields include `query_nonce`, `setup_gnss_eligible`,
+`setup_reference_eligible`, and `setup_partition_healthy`. A command-bearing
+consumer may require an exact solicited nonce. In that mode, an otherwise
+complete pre-attachment generation with another nonce is ineligible.
 
 The canonical field vocabulary is owned by
 `host/otis_tools/active_status_contract.py` and is source-guarded against the

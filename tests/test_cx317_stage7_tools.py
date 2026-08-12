@@ -1399,7 +1399,7 @@ def test_stage7_rehearsal_analyzer_requires_complete_clear_sequence(
             json.dumps(row)
             for row in (
                 {"event": "command_submitted", "command": "CONFIG?"},
-                {"event": "command_acknowledged", "command": "CONFIG?"},
+                {"event": "host_written", "command": "CONFIG?"},
             )
         )
         + '\n',
@@ -1623,7 +1623,7 @@ def test_stage7_live_command_waits_for_capture_acknowledgement(
     ]
     assert [event["event"] for event in events[-2:]] == [
         "command_submitted",
-        "command_acknowledged",
+        "host_written",
     ]
     assert events[-1]["commands_sent"] == 8
 

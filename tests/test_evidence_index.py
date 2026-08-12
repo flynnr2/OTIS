@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor
 
 import pytest
 
@@ -24,6 +25,11 @@ def _register(index_path: Path, package: Path) -> dict:
         result_or_failure_reason="all rehearsal gates passed",
         analyzer_identity="platform-rehearsal-analyzer-1",
     )
+
+
+def _parallel_register(arguments: tuple[str, str]) -> str:
+    index, package = arguments
+    return str(_register(Path(index), Path(package))["content_sha256"])
 
 
 def test_package_identity_is_recursive_deterministic_and_content_addressed(
@@ -122,3 +128,26 @@ def test_index_is_never_allowed_inside_git_repository(tmp_path: Path) -> None:
     package.mkdir()
     with pytest.raises(ValueError, match="outside the Git repository"):
         load_index(Path(__file__).resolve().parents[1] / "evidence-index.json")
+
+
+def test_parallel_registration_preserves_every_package(tmp_path: Path) -> None:
+    index_path = tmp_path / "external" / "index.json"
+    packages: list[Path] = []
+    for ordinal in range(12):
+        package = tmp_path / f"run-{ordinal}"
+        package.mkdir()
+        (package / "raw.csv").write_text(f"record-{ordinal}\n", encoding="utf-8")
+        packages.append(package)
+
+    with ProcessPoolExecutor(max_workers=6) as executor:
+        identities = list(
+            executor.map(
+                _parallel_register,
+                [(str(index_path), str(package)) for package in packages],
+            )
+        )
+
+    index = load_index(index_path)
+    assert len(set(identities)) == 12
+    assert set(index["packages"]) == set(identities)
+    assert validate_index(index_path)["valid"] is True

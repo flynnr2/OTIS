@@ -575,17 +575,23 @@ def _commands_exact(
     acknowledged = [
         str(item["command"])
         for item in events
-        if item.get("event") == "command_acknowledged"
+        if item.get("event") == "host_written"
     ]
     emergency_events = [
         item
         for item in events
         if item.get("event") == "emergency_device_abort_submitted"
     ]
-    setup = f"DAC SET 0x{setup_code:04X}"
-    allowed_fixed = {"CONFIG?", "DAC?", "ACTIVE?", setup}
+    setup_pattern = re.compile(
+        rf"ACTIVE SETUP [1-9][0-9]* [1-9][0-9]* [1-9][0-9]* "
+        rf"[1-9][0-9]* [1-9][0-9]* 0x{setup_code:04X} 1 [0-9a-f]{{64}}",
+        re.IGNORECASE,
+    )
+    allowed_fixed = {"CONFIG?", "DAC?", "ACTIVE?"}
     normal_grammar_exact = all(
         command in allowed_fixed
+        or re.fullmatch(r"ACTIVE SNAPSHOT [1-9][0-9]*", command) is not None
+        or setup_pattern.fullmatch(command) is not None
         or re.fullmatch(r"ACTIVE LEASE [1-9][0-9]*", command) is not None
         or re.fullmatch(
             r"ACTIVE ARM [1-9][0-9]* [1-9][0-9]* [1-9][0-9]*", command
@@ -609,13 +615,14 @@ def _commands_exact(
         *submitted,
         *(["ACTIVE ABORT"] * allowed_emergency_aborts),
     ]
+    setup_commands = [command for command in submitted if setup_pattern.fullmatch(command)]
     return (
         submitted == acknowledged
         and sent == expected_sent
         and normal_grammar_exact
         and submitted.count("CONFIG?") == 1
         and submitted.count("DAC?") == 1
-        and submitted.count(setup) == 1
+        and len(setup_commands) == 1
         and leases == list(range(1, len(leases) + 1))
         and arms == list(range(1, len(arms) + 1))
         and len(arms) <= 4

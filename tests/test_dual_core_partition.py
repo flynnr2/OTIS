@@ -79,7 +79,7 @@ def test_queue_classes_match_stage6_loss_contract() -> None:
     assert "telemetry_dropped" in header
     assert "increment_saturating(&telemetry_dropped)" in source
     assert "otis_dual_core_latch_fault" in source
-    assert "deadline_ticks" in (
+    assert "monotonic_deadline_s" in (
         FIRMWARE / "otis_dual_core_contract.h"
     ).read_text(encoding="utf-8")
 
@@ -89,7 +89,7 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         encoding="utf-8"
     )
 
-    assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 29u" in header
+    assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 33u" in header
     assert "OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u" in header
     assert "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u" in header
     assert (
@@ -100,8 +100,8 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         "OTIS_TIMING_HEALTH_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
-    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 134u" in header
-    assert "OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 165u" in header
+    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 142u" in header
+    assert "OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
 
@@ -192,11 +192,11 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
 
     dual_core0 = loop0[
         loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
-        loop0.index("#endif", loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+        loop0.index("// Capture service always runs first.")
     ]
     for call in (
         "service_dual_core_outputs();",
-        "otis_gnss_receiver_service(millis());",
+        "otis_gnss_receiver_service(now_ms);",
         "service_serial_commands();",
         "service_environment_sensors();",
         "publish_dual_core_service_metadata(millis());",
@@ -214,16 +214,23 @@ def test_dual_core_preview_transport_excludes_other_core0_writers_mid_frame() ->
     loop0 = sketch[sketch.index("void loop()") :]
     dual_core0 = loop0[
         loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
-        loop0.index("#endif", loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION"))
+        loop0.index("// Capture service always runs first.")
     ]
-    busy_guard_start = dual_core0.index(
-        "if (service_dual_core_serial_frame_transport())"
-    )
+    context = sketch[
+        sketch.index("OtisSetupAuthorityContext current_dual_core_setup_authority_context(") :
+        sketch.index("OtisSetupExecutionContext current_dual_core_setup_execution_context(")
+    ]
+    assert "active.setup_gnss_eligible" in context
+    assert "dual_core_receiver_qualified_for_control()" in context
+    assert "dual_core_receiver.identity_stable" in context
+    assert "dual_core_receiver.gsa_3d" in context
+    busy_guard_start = dual_core0.index("if (frame_active)")
     ordinary_writers_start = dual_core0.index("service_dual_core_outputs();")
     busy_guard = dual_core0[busy_guard_start:ordinary_writers_start]
 
     assert busy_guard_start < ordinary_writers_start
-    assert "otis_status_led_poll(millis());" in busy_guard
+    assert "otis_status_led_poll(now_ms);" in busy_guard
+    assert "service_serial_commands(false);" in busy_guard
     assert "return;" in busy_guard
     for interleaving_writer in (
         "service_dual_core_outputs();",

@@ -498,7 +498,7 @@ class Cx317BoundedActiveSupervisor(ActiveCampaignSupervisor):
             sent = int(current["commands_sent"])
             if sent == before_sent + 1:
                 self._event(
-                    "command_acknowledged",
+                    "host_written",
                     command=command,
                     commands_sent=sent,
                 )
@@ -614,6 +614,9 @@ class Cx317BoundedActiveSupervisor(ActiveCampaignSupervisor):
                     "manual_start_observed",
                     record_sequence=record_sequence,
                     applied_code=int(row["applied_code"]),
+                    setup_authorization_sequence=self.state.get(
+                        "setup_authorization_sequence"
+                    ),
                 )
                 self.state["observed_manual_record_sequences"].append(
                     record_sequence
@@ -754,12 +757,6 @@ class Cx317BoundedActiveSupervisor(ActiveCampaignSupervisor):
             raise ValueError(
                 f"live telemetry_dropped is {faults['telemetry_dropped']}"
             )
-
-    def _telemetry_drop_runtime_healthy(self, observed: str | None) -> bool:
-        """Campaign hook; Stage 7 retains its absolute zero requirement."""
-
-        return observed in {None, "0"}
-
         if self.state["manual_start_sent"]:
             manual_rows = [
                 row
@@ -768,6 +765,11 @@ class Cx317BoundedActiveSupervisor(ActiveCampaignSupervisor):
             ]
             if manual_rows and manual_rows[-1]["event"] != "manual_apply":
                 raise ValueError("one-shot manual start DAC write failed")
+
+    def _telemetry_drop_runtime_healthy(self, observed: str | None) -> bool:
+        """Campaign hook; Stage 7 retains its absolute zero requirement."""
+
+        return observed in {None, "0"}
 
     def _service_load(self, now: float) -> None:
         if now < self._next_service_command_monotonic:

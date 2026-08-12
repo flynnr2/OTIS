@@ -14,8 +14,12 @@ from host.otis_tools.tight_deadband_supervisor import (
     MAXIMUM_QUALIFIED_DURATION_S,
     PREWRITE_CONTRACT_STARTUP_GRACE_S,
     REHEARSAL_DURATION_S,
+    SETUP_RESULT_GRACE_S,
     TightDeadbandSupervisor,
     load_tight_deadband_spec,
+)
+from host.otis_tools.setup_authority_contract import (
+    SETUP_AUTHORITY_LIFETIME_S,
 )
 from host.otis_tools.prewrite_readiness_contract import ACTIVE_STATUS_KEYS
 
@@ -53,6 +57,11 @@ def _health(supervisor: TightDeadbandSupervisor, **values: str) -> dict[tuple[st
         ("cx317_active", "build_identity"): BUILD_IDENTITY,
         ("cx317_active", "profile_identity"): supervisor.spec.profile,
         ("cx317_active", "session_id"): "1",
+        ("cx317_active", "query_nonce"): str(
+            supervisor.state["host_attach_query_nonce"]
+        ),
+        ("cx317_active", "snapshot_generation_begin"): "7",
+        ("cx317_active", "snapshot_generation_complete"): "7",
         ("cx317_active", "state"): "DISARMED",
         ("cx317_active", "reason"): "initialized_disarmed",
         ("cx317_active", "enabled"): "true",
@@ -261,7 +270,9 @@ def test_live_submits_the_exact_setup_once(tmp_path: Path) -> None:
     supervisor._maybe_start_or_arm(health)
     supervisor._maybe_start_or_arm(health)
 
-    assert commands == ["DAC SET 0xA808"]
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE SETUP 1 7 ")
+    assert " 1 0xA808 1 " in commands[0]
     assert supervisor.state["manual_start_sent"] is True
 
 
@@ -276,6 +287,33 @@ def test_live_setup_waits_for_exact_a828_epoch_zero_identity(tmp_path: Path) -> 
 
     assert commands == []
     assert supervisor.state["manual_start_sent"] is False
+
+
+def test_lost_setup_transaction_aborts_after_authority_expiry(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+    supervisor.emergency_command_fifo = None
+    now = 1_800_000_000.0
+    supervisor.state.update(
+        manual_start_sent=True,
+        setup_requested_utc=_utc(
+            now - SETUP_AUTHORITY_LIFETIME_S - SETUP_RESULT_GRACE_S
+        ),
+    )
+    health = _health(supervisor, manual_start_confirmed="false")
+
+    supervisor._check_setup_transaction_timeout(health, now - 1.0)
+    assert commands == []
+    supervisor._check_setup_transaction_timeout(health, now)
+
+    assert commands == ["ACTIVE ABORT"]
+    assert supervisor.state["terminal"]["result"] == "aborted"
+    assert supervisor.state["terminal"]["reason"] == (
+        "setup_transaction_expired_without_observed_result"
+    )
 
 
 def test_missing_required_status_fails_after_cheap_startup_grace(

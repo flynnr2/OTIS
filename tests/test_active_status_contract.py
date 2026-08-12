@@ -48,9 +48,7 @@ def test_only_a_complete_generation_is_eligible() -> None:
 
     status = latest_complete_active_status(rows)
 
-    assert status[SNAPSHOT_BEGIN_KEY] == "1"
-    assert status[SNAPSHOT_COMPLETE_KEY] == "1"
-    assert status["dac_epoch"] == "1:dac_epoch"
+    assert status == {}
 
 
 def test_newer_incomplete_or_duplicate_burst_cannot_mix_with_older_state() -> None:
@@ -60,8 +58,7 @@ def test_newer_incomplete_or_duplicate_burst_cannot_mix_with_older_state() -> No
 
     status = latest_complete_active_status(rows)
 
-    assert status[SNAPSHOT_BEGIN_KEY] == "1"
-    assert status["state"] == "1:state"
+    assert status == {}
 
 
 def test_newest_complete_generation_replaces_the_previous_generation() -> None:
@@ -112,5 +109,39 @@ def test_complete_health_keeps_other_components_but_never_partial_active(
     health = latest_complete_health(path)
 
     assert health[("capture", "dropped_count")] == "4"
-    assert health[("cx317_active", "dac_epoch")] == "1:dac_epoch"
-    assert health[("cx317_active", SNAPSHOT_COMPLETE_KEY)] == "1"
+    assert not any(component == "cx317_active" for component, _ in health)
+
+
+def test_required_query_nonce_rejects_buffered_pre_boundary_status(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "health.csv"
+    fieldnames = (
+        "record_type", "schema_version", "status_seq", "timestamp_ticks",
+        "status_domain", "component", "status_key", "status_value",
+        "severity", "flags",
+    )
+    rows = [*_burst(1), *_burst(2)]
+    for row in rows:
+        if row.get("status_key") == "query_nonce":
+            generation = row["status_value"].split(":", 1)[0]
+            row["status_value"] = "111" if generation == "1" else "222"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for sequence, row in enumerate(rows, start=1):
+            writer.writerow({
+                **row, "schema_version": "1", "status_seq": str(sequence),
+                "timestamp_ticks": str(sequence),
+                "status_domain": "rp2040_timer0", "severity": "INFO",
+                "flags": "0",
+            })
+
+    assert not any(
+        component == "cx317_active"
+        for component, _ in latest_complete_health(
+            path, required_query_nonce=111
+        )
+    )
+    current = latest_complete_health(path, required_query_nonce=222)
+    assert current[("cx317_active", "query_nonce")] == "222"

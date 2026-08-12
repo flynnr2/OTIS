@@ -119,7 +119,9 @@ def test_commands_preserve_bounded_existing_framing() -> None:
         "PPSGEN?",
     ):
         assert command in parser
-    service = sketch[sketch.index("void service_serial_commands(void)") :]
+    service = sketch[
+        sketch.index("void service_serial_commands(bool output_allowed = true)") :
+    ]
     assert "uint8_t byte_budget = 32u" in service
     assert "return;" in service
 

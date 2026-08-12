@@ -36,7 +36,7 @@ constexpr char kSelectedEstimatorHash[] =
 constexpr char kPolicyId[] =
     "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "e278e5d324d9029574102c6fb3a263373888fbd701a6a44a7c913a7d1707de70";
+    "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";

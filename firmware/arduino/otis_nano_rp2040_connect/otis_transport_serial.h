@@ -12,5 +12,6 @@ size_t otis_transport_write_uint32(uint32_t v);
 size_t otis_transport_available_for_write(void);
 void otis_transport_flush_if_needed(void);
 bool otis_transport_ready(void);
+uint64_t otis_transport_written_bytes(void);
 
 #endif

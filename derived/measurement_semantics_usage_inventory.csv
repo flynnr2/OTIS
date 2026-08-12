@@ -91,8 +91,8 @@ docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md,133,confidence,confidence_semantic
 docs/00_FOUNDATIONS/OTIS_GPSDO_Design_Lessons.md,114,confidence,confidence_semantics,"* estimator confidence,"
 docs/00_FOUNDATIONS/OTIS_GPSDO_Design_Lessons.md,252,confidence,confidence_semantics,"* confidence-weighted steering,"
 docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,27,uncertainty,measurement_uncertainty_semantics,- what uncertainty or policy decision remains embedded in the value.
-docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,383,dispersion,sample_dispersion_or_repeatability,- low timestamp dispersion;
-docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,421,uncertainty,measurement_uncertainty_semantics,- edge uncertainty;
+docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,410,dispersion,sample_dispersion_or_repeatability,- low timestamp dispersion;
+docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,448,uncertainty,measurement_uncertainty_semantics,- edge uncertainty;
 docs/00_FOUNDATIONS/OTIS_VISION.md,17,uncertainty,measurement_uncertainty_semantics,- lock is presented as a Boolean without uncertainty or reasons;
 docs/00_FOUNDATIONS/OTIS_VISION.md,34,uncertainty,measurement_uncertainty_semantics,"- health, uncertainty, and control-eligibility reporting."
 docs/00_FOUNDATIONS/OTIS_VISION.md,42,uncertainty,measurement_uncertainty_semantics,"- What estimates were derived, with what uncertainty?"
@@ -114,6 +114,37 @@ docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md,72,c
 docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md,127,uncertainty,measurement_uncertainty_semantics,"quality, oscillator state, uncertainty, and observation age."
 docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md,139,uncertainty,measurement_uncertainty_semantics,"- What was believed about frequency, phase, drift, and uncertainty?"
 docs/10_REFERENCE_ARCHITECTURE/MEASUREMENT_METROLOGY_DIAGNOSTICS_CONTROL.md,165,confidence,confidence_semantics,"`EST` keeps raw-observation validity, diagnostic health, estimator confidence,"
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_AND_EVIDENCE_REVIEW_PROMPT.md,73,uncertainty,measurement_uncertainty_semantics,- State uncertainty and missing evidence explicitly.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_AND_EVIDENCE_REVIEW_PROMPT.md,373,confidence,confidence_semantics,"supporting evidence, counterevidence, scope, and confidence."
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_AND_EVIDENCE_REVIEW_PROMPT.md,382,confidence,confidence_semantics,"confidence, and the smallest discriminating check."
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_AND_EVIDENCE_REVIEW_PROMPT.md,390,uncertainty,measurement_uncertainty_semantics,and physical checks needed to retire each material uncertainty.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_AND_EVIDENCE_REVIEW_PROMPT.md,391,uncertainty,measurement_uncertainty_semantics,12. **Residual uncertainty and stop conditions** — including what cannot be
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,70,uncertainty,measurement_uncertainty_semantics,"| Metrology integrity          | `conditionally robust`                                              | Hardware-established digital PPS aperture and canonical raw semantics are strong within the exact PIO/DMA proof-bound configuration. Absolute traceability, calibrated phase, physical delay, PPS pad margin, and combined uncertainty remain explicitly unavailable (`docs/50_SOFTWARE/CURRENT_METROLOGY_CLAIM.md:5-21,71-103`).                                                                                                                                                                                                                                                                                                                            |"
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,224,confidence,confidence_semantics,"electrical envelope, so this is a high-confidence authority/provenance defect,"
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,269,confidence,confidence_semantics,| Claimed invariant and authority                                                                                                                                                          | Current mechanism and dependencies                                                                                                                                                                 | Direct support                                                                                                                                                          | Counterevidence / limit                                                                                                                                                                                                                                                                                                                  | Assessment; confidence                                                                       |
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,629,confidence,confidence_semantics,- **Confidence:** High for the source-level producer violation; medium that it
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,650,confidence,confidence_semantics,- **Confidence:** High for ownership/mutation; medium for operational failure
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,670,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,688,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,702,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,720,confidence,confidence_semantics,- **Confidence:** High from control flow; physical USB full-duplex behavior was
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,741,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,759,confidence,confidence_semantics,- **Confidence:** Medium.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,778,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,795,confidence,confidence_semantics,- **Confidence:** Medium-high. The mechanism and accepting predicate are
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,812,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,828,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,843,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,859,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,873,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,887,confidence,confidence_semantics,- **Confidence:** Medium-high; platform-specific serial exclusivity behavior was
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,907,confidence,confidence_semantics,"- **Confidence:** High for code gaps, medium for practical concurrent-loss rate."
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,922,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,934,confidence,confidence_semantics,- **Confidence:** High.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,990,confidence,confidence_semantics,current recheck. It remains a high-confidence architectural defect even before a
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,1058,uncertainty,measurement_uncertainty_semantics,"frequency, calibrated phase, or combined uncertainty."
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,1062,uncertainty,measurement_uncertainty_semantics,This is the smallest finite sequence that retires the material uncertainties.
+docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md,1141,uncertainty,measurement_uncertainty_semantics,## 12. Residual uncertainty and stop conditions
 docs/10_REFERENCE_ARCHITECTURE/TIMESTAMPING_MODEL.md,67,uncertainty,measurement_uncertainty_semantics,- uncertainty acknowledgment.
 docs/20_TELEMETRY/TELEMETRY_EVENT_TAXONOMY.md,72,confidence,confidence_semantics,"| `DIAGNOSTIC_EVENT` | diagnostic     | Health, quality, confidence, reason, and control effect    |"
 docs/20_TELEMETRY/TELEMETRY_EVENT_TAXONOMY.md,177,confidence,confidence_semantics,"confidence in the diagnosis, first/last seen times, supporting observation or"
@@ -897,19 +928,19 @@ tests/test_measurement_semantics.py,266,confidence,confidence_semantics,"""measu
 tests/test_measurement_semantics.py,270,uncertainty,measurement_uncertainty_semantics,"""ignored uncertainty\n"", encoding=""utf-8"""
 tests/test_measurement_semantics.py,274,confidence,confidence_semantics,"""ignored confidence\n"", encoding=""utf-8"""
 tests/test_observe_only_discipline_firmware_parity.py,456,confidence,confidence_semantics,"assert live[""confidence""] == estimate[""estimator_confidence""]"
-tests/test_observe_only_discipline_firmware_parity.py,854,uncertainty,measurement_uncertainty_semantics,def test_live_and_replay_est2_uncertainty_semantics_match(
-tests/test_observe_only_discipline_firmware_parity.py,873,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"","
-tests/test_observe_only_discipline_firmware_parity.py,874,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"","
-tests/test_observe_only_discipline_firmware_parity.py,875,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,876,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,877,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,878,uncertainty,measurement_uncertainty_semantics,"""calibration_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,879,uncertainty,measurement_uncertainty_semantics,"""model_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,880,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,882,uncertainty,measurement_uncertainty_semantics,"""expanded_uncertainty_hz"","
-tests/test_observe_only_discipline_firmware_parity.py,884,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"","
-tests/test_observe_only_discipline_firmware_parity.py,887,uncertainty,measurement_uncertainty_semantics,"host = next(row for row in host_rows if row[""uncertainty_status""] == status)"
-tests/test_observe_only_discipline_firmware_parity.py,888,uncertainty,measurement_uncertainty_semantics,"live = next(row for row in live_rows if row[""uncertainty_status""] == status)"
+tests/test_observe_only_discipline_firmware_parity.py,859,uncertainty,measurement_uncertainty_semantics,def test_live_and_replay_est2_uncertainty_semantics_match(
+tests/test_observe_only_discipline_firmware_parity.py,878,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"","
+tests/test_observe_only_discipline_firmware_parity.py,879,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"","
+tests/test_observe_only_discipline_firmware_parity.py,880,uncertainty,measurement_uncertainty_semantics,"""count_quantization_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,881,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,882,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,883,uncertainty,measurement_uncertainty_semantics,"""calibration_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,884,uncertainty,measurement_uncertainty_semantics,"""model_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,885,uncertainty,measurement_uncertainty_semantics,"""combined_standard_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,887,uncertainty,measurement_uncertainty_semantics,"""expanded_uncertainty_hz"","
+tests/test_observe_only_discipline_firmware_parity.py,889,uncertainty,measurement_uncertainty_semantics,"""uncertainty_model_ref"","
+tests/test_observe_only_discipline_firmware_parity.py,892,uncertainty,measurement_uncertainty_semantics,"host = next(row for row in host_rows if row[""uncertainty_status""] == status)"
+tests/test_observe_only_discipline_firmware_parity.py,893,uncertainty,measurement_uncertainty_semantics,"live = next(row for row in live_rows if row[""uncertainty_status""] == status)"
 tests/test_observe_only_discipline_replay.py,308,uncertainty,measurement_uncertainty_semantics,"assert ""frequency_uncertainty_hz"" not in estimates[-1]"
 tests/test_observe_only_discipline_replay.py,309,uncertainty,measurement_uncertainty_semantics,"assert estimates[-1][""uncertainty_status""] == ""incomplete"""
 tests/test_observe_only_discipline_replay.py,310,uncertainty,measurement_uncertainty_semantics,"assert estimates[-1][""combined_standard_uncertainty_hz""] == """""

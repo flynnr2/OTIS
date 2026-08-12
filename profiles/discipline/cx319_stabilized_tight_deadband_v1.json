@@ -15,11 +15,11 @@
     },
     "current_contract_authority": {
       "path": "docs/50_SOFTWARE/CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md",
-      "sha256": "86205a69d4d0e57576cfaec18a7a75678f700a65389740d871741b675818ac68"
+      "sha256": "04396c6f16ec11b695a2cc9f5fbf37dd820ac313cf8e3321d640bd0cccc5f464"
     },
     "current_active_status_contract": {
       "path": "data_contracts/cx317_active_status_snapshot_v1.md",
-      "sha256": "edd840ced5f94e1369f2f066a0eb60abd533c3eccf6732093608a12de9a33a98"
+      "sha256": "2b4eaa0455d877e486154e9d48c00fb08e152e29bf507c9e9b6b92529e6d9153"
     },
     "selected_frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",

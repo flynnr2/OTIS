@@ -99,6 +99,8 @@ uint32_t service_sequence(const OtisServiceMessage &message) {
       return message.run_control.sequence;
     case OtisServiceMessageKind::ActuatorAcknowledgement:
       return message.actuator_acknowledgement.request_sequence;
+    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
+      return message.setup_acknowledgement.command_sequence;
   }
   return 0u;
 }
@@ -115,6 +117,8 @@ uint64_t service_ticks(const OtisServiceMessage &message) {
       return message.run_control.published_ticks;
     case OtisServiceMessageKind::ActuatorAcknowledgement:
       return message.actuator_acknowledgement.acknowledgement_ticks;
+    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
+      return 0u;
   }
   return 0u;
 }
@@ -534,6 +538,8 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
       return "cx318_preview_queue_exhausted";
     case OtisPartitionFault::PhasePreviewFault:
       return "cx318_preview_processing_fault";
+    case OtisPartitionFault::TransportObstructed:
+      return "transport_obstructed";
     case OtisPartitionFault::ActuatorTimeout:
       return "actuator_acknowledgement_timeout";
     case OtisPartitionFault::ActuatorAcknowledgementMismatch:
@@ -594,6 +600,8 @@ const char *otis_service_message_kind_name(OtisServiceMessageKind kind) {
       return "run_control";
     case OtisServiceMessageKind::ActuatorAcknowledgement:
       return "actuator_acknowledgement";
+    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
+      return "setup_application_acknowledgement";
   }
   return "unknown";
 }
@@ -607,7 +615,7 @@ void otis_actuator_guard_init(OtisActuatorTransactionGuard *guard) {
 
 bool otis_actuator_guard_start(OtisActuatorTransactionGuard *guard,
                                const OtisCrossCoreActuatorRequest *request,
-                               uint64_t now_ticks) {
+                               OtisActuatorMonotonicSeconds now_s) {
   if (guard == nullptr || request == nullptr) return false;
   if (guard->state != OtisActuatorGuardState::Idle &&
       guard->state != OtisActuatorGuardState::Applied) {
@@ -618,7 +626,9 @@ bool otis_actuator_guard_start(OtisActuatorTransactionGuard *guard,
   if (!request->actionable || request->request_sequence == 0u ||
       request->request_sequence <= guard->last_request_sequence ||
       request->authorization_sequence <= guard->last_authorization_sequence ||
-      request->nonce == 0u || request->deadline_ticks <= now_ticks) {
+      request->nonce == 0u ||
+      !otis_actuator_monotonic_deadline_is_future(
+          now_s, request->monotonic_deadline_s)) {
     guard_fault(guard, "stale_duplicate_or_unauthorized_request",
                 OtisPartitionFault::ActuatorAcknowledgementMismatch);
     return false;
@@ -667,11 +677,12 @@ bool otis_actuator_guard_acknowledge(
 }
 
 bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,
-                                        uint64_t now_ticks) {
+                                        OtisActuatorMonotonicSeconds now_s) {
   if (guard == nullptr) return false;
   if ((guard->state == OtisActuatorGuardState::AwaitingAcceptance ||
-       guard->state == OtisActuatorGuardState::AwaitingApplication) &&
-      now_ticks > guard->pending.deadline_ticks) {
+      guard->state == OtisActuatorGuardState::AwaitingApplication) &&
+      otis_actuator_monotonic_deadline_is_expired(
+          now_s, guard->pending.monotonic_deadline_s)) {
     guard_fault(guard, "actuator_acknowledgement_deadline_expired",
                 OtisPartitionFault::ActuatorTimeout);
     return false;

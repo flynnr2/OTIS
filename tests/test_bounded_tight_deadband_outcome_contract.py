@@ -12,6 +12,11 @@ from host.otis_tools.bounded_tight_deadband_outcome_contract import (
 from host.otis_tools.bounded_tight_deadband_supervisor import create_supervisor
 
 
+SETUP_COMMAND = (
+    "ACTIVE SETUP 1 7 99 650 4 0xA808 1 " + "b" * 64
+)
+
+
 def _transcript() -> dict[str, object]:
     return {
         "schema_version": 1,
@@ -32,7 +37,7 @@ def _transcript() -> dict[str, object]:
             {"path": "normal", "command": "DAC?", "acknowledged": True},
             {
                 "path": "normal",
-                "command": "DAC SET 0xA808",
+                "command": SETUP_COMMAND,
                 "acknowledged": True,
             },
             {
@@ -96,10 +101,9 @@ def _transcript() -> dict[str, object]:
             "stable_observations": 2,
             "all_evidence_capture_preview_partition_and_control_gates_absolute": True,
             "post_attach_increment_rejected": True,
-            "first_firmware_uptime_observation_frozen": True,
-            "firmware_uptime_s": 30,
-            "maximum_fresh_attach_uptime_s": 120,
-            "late_attach_rejected": True,
+            "post_attachment_query_nonce": 99,
+            "frozen_snapshot_generation": 7,
+            "pre_attachment_backlog_rejected": True,
         },
         "gnss_prewrite": {
             "identity_epoch": 1,
@@ -136,7 +140,8 @@ def _transcript() -> dict[str, object]:
         ("FC0?", True),
         ("ACTIVE?", True),
         ("ACTIVE LEASE 1", True),
-        ("DAC SET 0xA808", True),
+        (SETUP_COMMAND, True),
+        ("DAC SET 0xA808", False),
         ("ACTIVE ARM 1 2 3", True),
         ("ACTIVE EVIDENCE 1 4", True),
         ("ACTIVE ABORT", False),

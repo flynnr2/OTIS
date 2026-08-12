@@ -74,7 +74,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert "drain_pps_count_boundary_ring()" in loop1
     assert "drain_capture_ring()" in loop1
     assert "otis_gnss_receiver_service(millis())" not in loop1
-    assert "otis_gnss_receiver_service(millis())" in dual_core0
+    assert "otis_gnss_receiver_service(now_ms)" in dual_core0
     assert "drain_pps_count_boundary_ring()" not in dual_core0
     assert "drain_capture_ring()" not in dual_core0
 

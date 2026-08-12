@@ -635,7 +635,12 @@ def test_live_preview_compares_generated_applicability_to_runtime_context() -> N
     assert "kPlantModelSettlingExclusionS" in source
     assert "count_sequence_is_excluded" in source
     assert "replaying_model_source_evidence" in source
-    assert sketch.count("otis_observe_only_discipline_live_on_dac_applied(") == 2
+    assert sketch.count("otis_observe_only_discipline_live_on_dac_applied(") == 3
+    assert (
+        "otis_observe_only_discipline_live_on_dac_applied(\n"
+        "        request.requested_code, otis_capture_ticks_now())"
+        in sketch
+    )
     assert (
         "otis_observe_only_discipline_live_on_temperature(\n"
         "        false, 0.0f, otis_capture_ticks_now())"

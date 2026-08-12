@@ -47,20 +47,36 @@ GNSS parsing, environment I2C, telemetry export, run control and physical DAC
 I2C execution.  GNSS qualification crosses to Core 1 as immutable metadata;
 PPS timestamps never cross from the GNSS service.
 
-The concrete cross-core queues are fixed-size, allocation-free SPSC queues:
+The concrete queues and interrupt rings are fixed-size and allocation-free.
+The mechanically checked normative inventory is
+`firmware/arduino/otis_nano_rp2040_connect/otis_resource_inventory.json`.
+It covers all six cross-core queues plus the capture and PPS/count-boundary
+rings, including producer, consumer, capacity, loss policy, permitted absence,
+and recovery. Every cross-core queue is SPSC: Core 0 is the sole producer of
+the service queue and Core 1 is the sole producer of the other five. Core 0
+drains Core 1 boot telemetry directly to the wire exactly once; it never
+republishes a consumed record.
 
-| Direction | Content | Depth | Loss rule |
-|---|---|---:|---|
-| Core 0 to Core 1 | receiver/environment/applied-DAC/run-control values | 16 | non-droppable; exhaustion latches fail-static |
-| Core 1 to Core 0 | raw edge, PPS snapshot and count observations | 96 | non-droppable; exhaustion latches fail-static |
-| Core 1 to Core 0 | actuator and critical state/fault records | 16 | non-droppable; exhaustion latches fail-static |
-| Core 1 to Core 0 | redundant formatted summaries | 96 | droppable with saturating drop counter |
+Automatic actuator transactions use a request sequence, decision reference,
+requested code, explicitly named wrapping monotonic-seconds deadline, one-time
+authorization sequence and nonce. Both core guards compare that same domain
+with wrap-safe signed differences. Acceptance and application are separate
+acknowledgements.
 
-Actuator transactions use a request sequence, decision reference, requested
-code, deadline, one-time authorization sequence and nonce.  Acceptance and
-application are separate acknowledgements.  A stale, duplicate, mismatched or
-late acknowledgement faults fail-static; there is no automatic retry or
-restoration write.
+The initial setup is a separate two-phase transaction. A host request binds an
+exact post-attachment status generation and nonce, session, configuration
+SHA-256, expiry, code, and one-shot ordinal. Core 1 authorizes current lease,
+GNSS/reference, partition and active state; Core 0 first accepts without I2C;
+Core 1 revalidates the same authority; Core 0 consumes it immediately before
+the sole I2C call. The correlated phases are `host_written`,
+`firmware_received`, `core1_authorized`/`core1_rejected`, `core0_accepted`,
+`core1_execution_released`, `applied`/`failed`, and the later observed result.
+A stale, duplicate, mismatched or late acknowledgement faults fail-static;
+there is no automatic retry or restoration write.
+
+Core 0 diagnostic commands enqueue requests to Core 1. Core 1 alone reads or
+polls timing state and publishes one immutable generation-bound diagnostic
+snapshot. Core 0 only transports those records.
 
 ---
 

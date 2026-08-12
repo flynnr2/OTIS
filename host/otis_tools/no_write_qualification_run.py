@@ -46,7 +46,14 @@ from .no_write_qualification_bundle import (
     validate_confirmed_installed_firmware,
 )
 from .evidence import create_evidence_snapshot, validate_evidence_snapshot
-from .evidence_index import DEFAULT_INDEX, register_package
+from .evidence_index import DEFAULT_INDEX, package_identity, register_package
+from .evidence_finalization import (
+    advance_phase,
+    begin_finalization,
+    record_failure,
+    recover_registration,
+    set_registration_intent,
+)
 from .platform_rehearsal import (
     _capture_state_ready,
     _health_has,
@@ -346,6 +353,19 @@ def run_no_write_qualification(
         raise FileExistsError(f"CX319 G1 run already exists: {run_dir}")
     run_dir.mkdir(parents=True)
     (run_dir / "reports").mkdir()
+    finalization_journal = begin_finalization(
+        run_dir=run_dir,
+        index_path=evidence_index_path,
+        required_seal=SEAL_PATH,
+        registration={
+            "source_revision": bundle["firmware"]["git_commit"],
+            "build_identity": bundle["firmware"]["build_manifest"]["sha256"],
+            "profile_identity": bundle["firmware"]["profile_id"],
+            "attempt_classification": "failed_rehearsal",
+            "result_or_failure_reason": "pending CX319 G1 finalization",
+            "analyzer_identity": _sha256_file(Path(__file__)),
+        },
+    )
     run_bundle_path = run_dir / RUN_BUNDLE_PATH
     _copy_exact_bundle(bundle_path, run_bundle_path)
     manifest_path = run_dir / "run_manifest.json"
@@ -539,6 +559,11 @@ def run_no_write_qualification(
             raise RuntimeError("G1 capture did not close within bounded duration") from exc
         if capture_exit != 0:
             raise RuntimeError(f"G1 capture exited with status {capture_exit}")
+        advance_phase(
+            finalization_journal,
+            "capture_closed",
+            {"capture_exit": capture_exit},
+        )
     except Exception as exc:
         orchestration_error = exc
     finally:
@@ -560,6 +585,11 @@ def run_no_write_qualification(
                 capture.wait(timeout=5.0)
 
     if orchestration_error is not None:
+        record_failure(
+            finalization_journal,
+            phase="capture_closed",
+            error=orchestration_error,
+        )
         indexed = _retain_orchestration_failure(
             run_dir=run_dir,
             bundle=bundle,
@@ -571,11 +601,26 @@ def run_no_write_qualification(
             f"{indexed['content_sha256']}: {orchestration_error}"
         ) from orchestration_error
 
-    analysis = analyze(run_dir)
-    _atomic_new_json(run_dir / ANALYSIS_PATH, analysis)
-    (run_dir / REPORT_PATH).write_text(
-        report_markdown(analysis), encoding="utf-8"
+    _write_complete(run_dir)
+    advance_phase(finalization_journal, "completion", {})
+    snapshot_path = create_evidence_snapshot(run_dir)
+    advance_phase(
+        finalization_journal, "snapshot", {"path": str(snapshot_path)}
     )
+    try:
+        analysis = analyze(run_dir)
+        _atomic_new_json(run_dir / ANALYSIS_PATH, analysis)
+        (run_dir / REPORT_PATH).write_text(
+            report_markdown(analysis), encoding="utf-8"
+        )
+        advance_phase(
+            finalization_journal,
+            "analysis",
+            {"path": str(run_dir / ANALYSIS_PATH), "status": analysis["status"]},
+        )
+    except Exception as exc:
+        record_failure(finalization_journal, phase="analysis", error=exc)
+        raise
     if analysis["status"] != "pass":
         failed = sorted(
             name for name, passed in analysis["checks"].items() if not passed
@@ -594,8 +639,6 @@ def run_no_write_qualification(
             "CX319 G1 analysis failed; retained evidence "
             f"{indexed['content_sha256']}: {', '.join(failed)}"
         )
-    _write_complete(run_dir)
-    snapshot_path = create_evidence_snapshot(run_dir)
     loaded = load_manifest(run_dir)
     failures, warnings = validate_evidence_snapshot(run_dir, loaded)
     if failures or warnings:
@@ -606,16 +649,32 @@ def run_no_write_qualification(
     if validate_run(run_dir) != 0:
         raise RuntimeError("CX319 G1 generic run validation failed")
     seal_value = seal(run_dir, analysis)
-    indexed = register_package(
-        index_path=evidence_index_path,
-        package_path=run_dir,
-        source_revision=bundle["firmware"]["git_commit"],
-        build_identity=bundle["firmware"]["build_manifest"]["sha256"],
-        profile_identity=bundle["firmware"]["profile_id"],
-        attempt_classification="successful_rehearsal",
-        result_or_failure_reason="all CX319 G1 exact no-write gates passed",
-        analyzer_identity=analysis["bindings"]["analyzer_sha256"],
+    advance_phase(
+        finalization_journal,
+        "seal",
+        {"path": str(run_dir / SEAL_PATH), "seal_sha256": seal_value["seal_sha256"]},
     )
+    registration = {
+        "source_revision": bundle["firmware"]["git_commit"],
+        "build_identity": bundle["firmware"]["build_manifest"]["sha256"],
+        "profile_identity": bundle["firmware"]["profile_id"],
+        "attempt_classification": "successful_rehearsal",
+        "result_or_failure_reason": "all CX319 G1 exact no-write gates passed",
+        "analyzer_identity": analysis["bindings"]["analyzer_sha256"],
+    }
+    set_registration_intent(
+        finalization_journal,
+        registration=registration,
+        expected_content_sha256=package_identity(run_dir)["content_sha256"],
+    )
+    try:
+        indexed = recover_registration(finalization_journal)
+    except Exception as exc:
+        record_failure(finalization_journal, phase="registration", error=exc)
+        raise RuntimeError(
+            "CX319 G1 sealed package is valid but registration failed; "
+            f"recover with evidence_finalization {finalization_journal}: {exc}"
+        ) from exc
     return {
         "status": "pass",
         "run_dir": str(run_dir),

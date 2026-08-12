@@ -955,8 +955,6 @@ def create_run_manifest(
             "reports/cx317_active_supervisor_events.jsonl",
             "reports/cx319_g1_transport_rehearsal_v1.json",
             "reports/cx319_g1_flash_v1.json",
-            "reports/cx319_g1_analysis_v1.json",
-            "reports/CX319_G1_REHEARSAL.md",
             "reports/cx319_g1_capture_launcher.log",
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),

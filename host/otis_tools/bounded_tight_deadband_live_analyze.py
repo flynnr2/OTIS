@@ -16,7 +16,10 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .active_status_contract import latest_complete_health
+from .active_status_contract import (
+    complete_active_status_snapshots,
+    latest_complete_health,
+)
 from .contracts import CsvValidationContext, validate_csv
 from .cx317_active_campaign import (
     ACTIVE_CSV,
@@ -52,7 +55,6 @@ from .tight_deadband_supervisor import (
 )
 from .tight_deadband_replay import replay_tight_deadband
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .host_attach_health_contract import evaluate_host_attach_history
 from .bounded_tight_deadband_outcome_contract import (
     MAXIMUM_CORRECTIONS,
     MAXIMUM_CUMULATIVE_CODES,
@@ -69,6 +71,10 @@ from .bounded_tight_deadband_prewrite_contract import (
 )
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
+from .setup_authority_contract import (
+    SETUP_AUTHORITY_PATH,
+    replay_setup_authority_input,
+)
 
 
 TOOL_ID = "cx319_g2_live_analyze_v1"
@@ -113,6 +119,76 @@ def _contiguous(rows: list[dict[str, str]], field: str) -> bool:
     return observed == list(range(observed[0], observed[-1] + 1))
 
 
+def _nonce_bound_attach_history(
+    rows: list[dict[str, str]], *, query_nonce: int, generation: int
+) -> dict[str, Any]:
+    snapshots, newest_started = complete_active_status_snapshots(rows)
+    matching = [
+        item
+        for item in snapshots
+        if item.get("query_nonce") == str(query_nonce)
+    ]
+    generations = [
+        int(item["snapshot_generation_complete"]) for item in matching
+    ]
+    exact = bool(generations) and generations[0] == generation
+    return {
+        "exact": exact,
+        "query_nonce": query_nonce,
+        "frozen_generation": generation,
+        "matching_generations": generations,
+        "newest_started_generation": newest_started,
+        "reason": (
+            "nonce_bound_post_attachment_snapshot"
+            if exact
+            else "frozen nonce/generation is absent from complete snapshots"
+        ),
+    }
+
+
+def _setup_phase_history(
+    rows: list[dict[str, str]], request: dict[str, object]
+) -> dict[str, Any]:
+    observed: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for row in rows:
+        if row.get("record_type") != "STS" or row.get("component") != (
+            "cx317_setup"
+        ):
+            continue
+        key = row.get("status_key", "")
+        if key == "phase":
+            if current is not None:
+                observed.append(current)
+            current = {"phase": row.get("status_value", "")}
+        elif current is not None:
+            current[key] = row.get("status_value", "")
+    if current is not None:
+        observed.append(current)
+    expected_fields = {
+        "authorization_sequence": str(request["authorization_sequence"]),
+        "status_generation": str(request["status_generation"]),
+        "query_nonce": str(request["query_nonce"]),
+    }
+    exact_phases = {
+        item.get("phase")
+        for item in observed
+        if all(item.get(key) == value for key, value in expected_fields.items())
+    }
+    required = {
+        "firmware_received",
+        "core1_authorized",
+        "core0_accepted",
+        "core1_execution_released",
+        "applied",
+    }
+    return {
+        "exact": required <= exact_phases,
+        "required_phases": sorted(required),
+        "correlated_phases": sorted(item for item in exact_phases if item),
+    }
+
+
 def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
@@ -129,6 +205,12 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         + ":"
         + manifest_value["firmware"]["configuration_sha256"]
     )
+    expected_identity = {
+        "run_identity": spec.run_identity,
+        "build_identity": build_identity,
+        "profile_identity": spec.profile,
+        **identities,
+    }
 
     validations: dict[str, dict[str, Any]] = {}
     for contract in manifest_value["contracts"]:
@@ -271,7 +353,12 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     zero_authority = all(
         _authority_false(run_dir / relative) for relative in preview_paths
     )
-    health = latest_complete_health(run_dir / HEALTH_CSV)
+    health_rows = _read_csv(run_dir / HEALTH_CSV)
+    query_nonce = int(supervisor_state["host_attach_query_nonce"])
+    attach_generation = int(supervisor_state["host_attach_snapshot_generation"])
+    health = latest_complete_health(
+        run_dir / HEALTH_CSV, required_query_nonce=query_nonce
+    )
     telemetry_drop_baseline = int(
         supervisor_state["telemetry_drop_baseline"]
     )
@@ -286,12 +373,26 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         frozen_baseline=telemetry_drop_baseline,
         frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
-    host_attach_history = evaluate_host_attach_history(
-        _read_csv(run_dir / HEALTH_CSV),
-        frozen_uptime_s=int(supervisor_state["host_attach_uptime_s"]),
-        frozen_status_seq=int(
-            supervisor_state["host_attach_uptime_status_seq"]
-        ),
+    host_attach_history = _nonce_bound_attach_history(
+        health_rows,
+        query_nonce=query_nonce,
+        generation=attach_generation,
+    )
+    setup_authority_path = run_dir / SETUP_AUTHORITY_PATH
+    setup_authority_error = ""
+    try:
+        setup_authority = replay_setup_authority_input(
+            setup_authority_path,
+            expected_identity=expected_identity,
+            planned_live_stimulus_code=SETUP_CODE,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        setup_authority = None
+        setup_authority_error = str(exc)
+    setup_phases = (
+        _setup_phase_history(health_rows, setup_authority.request)
+        if setup_authority is not None
+        else {"exact": False, "error": setup_authority_error}
     )
     sources = {
         row.get("source", "").lower()
@@ -335,20 +436,10 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             and supervisor_state.get("setup_confirmed_utc") is not None
             and supervisor_state.get("prewrite_contract_ready_utc")
             <= supervisor_state.get("setup_confirmed_utc")
-            and supervisor_state.get("latest_prewrite_readiness", {}).get(
-                "contract_id"
-            )
-            == RUNTIME_CONTRACT_ID
-            and supervisor_state.get("latest_prewrite_readiness", {}).get(
-                "ready"
-            )
-            is True
-            and not supervisor_state.get("latest_prewrite_readiness", {}).get(
-                "missing"
-            )
-            and not supervisor_state.get("latest_prewrite_readiness", {}).get(
-                "mismatches"
-            )
+            and setup_authority is not None
+            and setup_authority.exact
+            and setup_authority.readiness.contract_id == RUNTIME_CONTRACT_ID
+            and setup_phases["exact"] is True
         ),
         "all_declared_contracts_validate": all(
             item["ok"] for item in validations.values()
@@ -432,6 +523,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         "reports/capture_segment_closure_v1.json",
         str(SUPERVISOR_STATE),
         str(SUPERVISOR_EVENTS),
+        str(SETUP_AUTHORITY_PATH),
         str(EVIDENCE_MANIFEST),
         str(COMPLETE_MARKER),
         *(str(item["path"]) for item in manifest.files),
@@ -481,6 +573,15 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "mismatches": health_integrity.mismatches,
             "telemetry_drop_history": telemetry_drop_history,
             "host_attach_history": host_attach_history,
+        },
+        "setup_authority_replay": {
+            "exact": setup_authority is not None and setup_authority.exact,
+            "errors": (
+                list(setup_authority.errors)
+                if setup_authority is not None
+                else [setup_authority_error]
+            ),
+            "phase_history": setup_phases,
         },
         "checks": checks,
         "contract_validation": validations,

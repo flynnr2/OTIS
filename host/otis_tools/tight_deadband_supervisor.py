@@ -57,6 +57,13 @@ from .prewrite_readiness_contract import (
 from .tight_deadband_replay import replay_tight_deadband
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 from .run_paths import TIGHT_DEADBAND_DECISIONS_CSV
+from .setup_authority_contract import (
+    SETUP_AUTHORITY_CONTRACT,
+    SETUP_AUTHORITY_LIFETIME_S,
+    SETUP_AUTHORITY_PATH,
+    canonical_health,
+    write_setup_authority_input,
+)
 
 
 CONTROL_CSV = Path("csv/control_previews_v1.csv")
@@ -75,6 +82,7 @@ DECISION_CADENCE_S = 1800
 ARM_PROGRESS_THRESHOLD = 520
 ARM_LIFETIME_S = 110
 PREWRITE_CONTRACT_STARTUP_GRACE_S = 30
+SETUP_RESULT_GRACE_S = QUERY_PERIOD_S
 
 
 @dataclass(frozen=True)
@@ -252,6 +260,10 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
         self.state.setdefault("prewrite_contract_ready_utc", None)
         self.state.setdefault("latest_prewrite_readiness", None)
         self.state.setdefault("terminal_event_emitted", False)
+        self.state.setdefault("host_attach_query_nonce", secrets.randbits(32) or 1)
+        self.state.setdefault("setup_authorization_sequence", 0)
+        self.state.setdefault("setup_authority_path", None)
+        self.state.setdefault("setup_requested_utc", None)
         self._save()
 
     def _prewrite_readiness(
@@ -263,12 +275,31 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
             "profile_identity": self.spec.profile,
             **self.identities,
         }
-        return evaluate_prewrite_readiness(
+        readiness = evaluate_prewrite_readiness(
             health,
             expected_identity=identity,
             planned_live_stimulus_code=self.spec.start_code,
             active_row_count=len(_read_csv(self.run_dir / ACTIVE_CSV)),
             dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
+        )
+        mismatches = list(readiness.mismatches)
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
+            mismatches.append("solicited post-attachment snapshot is absent")
+        if not mismatches and not readiness.missing:
+            return readiness
+        return PrewriteReadiness(
+            contract_id=readiness.contract_id,
+            ready=False,
+            missing=readiness.missing,
+            mismatches=tuple(dict.fromkeys(mismatches)),
+            inherited_preview_baseline_code=readiness.inherited_preview_baseline_code,
+            inherited_preview_baseline_provenance=(
+                readiness.inherited_preview_baseline_provenance
+            ),
+            planned_live_stimulus_code=readiness.planned_live_stimulus_code,
+            physical_dac_confirmation=readiness.physical_dac_confirmation,
         )
 
     def _check_prewrite_contract(
@@ -369,6 +400,73 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
 
         return evaluate_health_integrity(health)
 
+    def _status_query_command(self) -> str:
+        return f"ACTIVE SNAPSHOT {self.state['host_attach_query_nonce']}"
+
+    def _current_health(self) -> dict[tuple[str, str], str]:
+        return latest_complete_health(
+            self.run_dir / HEALTH_CSV,
+            required_query_nonce=int(self.state["host_attach_query_nonce"]),
+        )
+
+    def _setup_command(
+        self, health: dict[tuple[str, str], str]
+    ) -> tuple[str, dict[str, object]]:
+        configuration_identity = self.expected_build_identity.split(":", 1)[1]
+        if len(configuration_identity) != 64:
+            raise ValueError("setup configuration identity is not SHA-256")
+        self.state["setup_authorization_sequence"] = (
+            int(self.state["setup_authorization_sequence"]) + 1
+        )
+        request: dict[str, object] = {
+            "authorization_sequence": self.state["setup_authorization_sequence"],
+            "status_generation": int(
+                health[("cx317_active", "snapshot_generation_complete")]
+            ),
+            "query_nonce": int(health[("cx317_active", "query_nonce")]),
+            "expires_s": int(health[("cx317_active", "uptime_s")])
+            + SETUP_AUTHORITY_LIFETIME_S,
+            "session_id": int(health[("cx317_active", "session_id")]),
+            "requested_code": self.spec.start_code,
+            "one_shot_ordinal": 1,
+            "configuration_identity": configuration_identity,
+        }
+        return (
+            "ACTIVE SETUP "
+            f"{request['authorization_sequence']} "
+            f"{request['status_generation']} {request['query_nonce']} "
+            f"{request['expires_s']} {request['session_id']} "
+            f"0x{self.spec.start_code:04X} 1 {configuration_identity}",
+            request,
+        )
+
+    def _retain_setup_authority(
+        self,
+        health: dict[tuple[str, str], str],
+        request: dict[str, object],
+    ) -> Path:
+        path = self.run_dir / SETUP_AUTHORITY_PATH
+        if path.exists():
+            raise ValueError(
+                "an earlier setup authority record exists; refusing an "
+                "ambiguous retry"
+            )
+        write_setup_authority_input(
+            path,
+            {
+                "contract": SETUP_AUTHORITY_CONTRACT,
+                "created_utc": _utc_now(),
+                "request": request,
+                "health": canonical_health(health),
+                "active_row_count": len(_read_csv(self.run_dir / ACTIVE_CSV)),
+                "dac_row_count": len(_read_csv(self.run_dir / DAC_CSV)),
+                "telemetry_drop_baseline": 0,
+            },
+        )
+        self.state["setup_authority_path"] = str(SETUP_AUTHORITY_PATH)
+        self._save()
+        return path
+
     def _process_transactions(self) -> None:
         super()._process_transactions()
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
@@ -447,13 +545,28 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
             # explicitly unknown before this command.
             if not self._prewrite_readiness(health).ready:
                 return
-            self._command(f"DAC SET 0x{self.spec.start_code:04X}")
+            setup_command = getattr(self, "_setup_command", None)
+            retain_authority = getattr(self, "_retain_setup_authority", None)
+            if setup_command is None or retain_authority is None:
+                raise ValueError(
+                    "live setup requires a retained firmware-authority "
+                    "transaction implementation"
+                )
+            command, request = setup_command(health)
+            retain_authority(health, request)
+            self._command(command)
             self.state["manual_start_sent"] = True
+            self.state["setup_requested_utc"] = _utc_now()
             self._save()
             self._event(
                 "stage5_exact_setup_requested",
                 leg=self.leg.leg,
                 code=self.spec.start_code,
+                authorization_sequence=request["authorization_sequence"],
+                status_generation=request["status_generation"],
+                query_nonce=request["query_nonce"],
+                expires_s=request["expires_s"],
+                session_id=request["session_id"],
             )
             return
         if self.state["arm_pending"] and state == "DISARMED":
@@ -539,6 +652,24 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
             expiry_s=expiry,
             selected_interval_count=progress,
         )
+
+    def _check_setup_transaction_timeout(
+        self,
+        health: dict[tuple[str, str], str],
+        now_epoch: float,
+    ) -> None:
+        if self.mode != "live" or not self.state["manual_start_sent"]:
+            return
+        if health.get(("cx317_active", "manual_start_confirmed")) == "true":
+            return
+        requested = self.state.get("setup_requested_utc")
+        if not isinstance(requested, str) or not requested:
+            self._abort("setup_transaction_missing_host_timestamp")
+            return
+        if now_epoch - _parse_utc_epoch(requested) >= (
+            SETUP_AUTHORITY_LIFETIME_S + SETUP_RESULT_GRACE_S
+        ):
+            self._abort("setup_transaction_expired_without_observed_result")
 
     def _rehearsal_evidence_ready(
         self, health: dict[tuple[str, str], str]
@@ -668,11 +799,12 @@ class TightDeadbandSupervisor(Cx317BoundedActiveSupervisor):
                     self._renew_lease()
                     last_lease = now
                 if now - last_query >= QUERY_PERIOD_S:
-                    self._command("ACTIVE?")
+                    self._command(self._status_query_command())
                     last_query = now
                 self._process_transactions()
-                health = latest_complete_health(self.run_dir / HEALTH_CSV)
+                health = self._current_health()
                 self._check_fail_static_health(health)
+                self._check_setup_transaction_timeout(health, time.time())
                 self._check_prewrite_contract(health, now - started)
                 self._maybe_qualify(health)
                 self._maybe_finish(health, time.time(), now - started)

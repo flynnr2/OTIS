@@ -144,7 +144,7 @@ def test_stage4_premise_dispatch_is_explicit_a828_one_shot_only() -> None:
     )
     handler = sketch[
         sketch.index("void handle_dac_set(uint16_t requested_code)") :
-        sketch.index("#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE", sketch.index("void handle_dac_set"))
+        sketch.index("#if OTIS_ENABLE_H1_DAC_SWEEP", sketch.index("void handle_dac_set"))
     ]
     dispatch = sketch[
         sketch.index("} else if (command.kind == OtisSerialCommandKind::DacQuery)") :
@@ -164,9 +164,9 @@ def test_stage4_premise_dispatch_is_explicit_a828_one_shot_only() -> None:
     assert sketch.index(declaration) < dual_core_state_block
     assert "cx318_stage4_premise_write_consumed" in handler
     assert "requested_code != OTIS_CX318_STAGE4_PREMISE_SETUP_CODE" in handler
-    assert handler.index("cx318_stage4_premise_write_consumed = true") < sketch[
-        sketch.index("void handle_dac_set(uint16_t requested_code)") :
-    ].index("otis_dac_ad5693r_set_raw")
+    assert handler.index("cx318_stage4_premise_write_consumed = true") < (
+        handler.index("otis_dac_ad5693r_set_raw")
+    )
     assert "DacMid" in premise and "DacZero" in premise
     assert "rejected_setup_accepts_explicit_dac_set_only" in premise
     assert premise.count("handle_dac_set(command.code)") == 1
@@ -178,11 +178,12 @@ def test_stage4_transport_finishes_a_record_group_before_other_core0_output() ->
     )
     loop = sketch[sketch.index("void loop()") :]
     busy_block = loop[
-        loop.index("if (service_dual_core_serial_frame_transport())") :
+        loop.index("bool frame_active") :
         loop.index("service_dual_core_outputs();")
     ]
 
     assert "service_dual_core_serial_frame_transport()" in busy_block
+    assert "if (frame_active)" in busy_block
     assert "return;" in busy_block
 
     dispatch = sketch[

@@ -12,6 +12,17 @@
 void otis_status_emit_init(OtisStatusEmitContext *context,
                            uint32_t *status_seq) {
   context->status_seq = status_seq;
+  context->sink_context = nullptr;
+  context->sink = nullptr;
+}
+
+void otis_status_emit_init_with_sink(OtisStatusEmitContext *context,
+                                     void *sink_context,
+                                     OtisStatusEmitSink sink) {
+  if (context == nullptr) return;
+  context->status_seq = nullptr;
+  context->sink_context = sink_context;
+  context->sink = sink;
 }
 
 void otis_status_emit(OtisStatusEmitContext *context,
@@ -20,6 +31,13 @@ void otis_status_emit(OtisStatusEmitContext *context,
                       const char *value,
                       const char *severity,
                       uint32_t flags) {
+  if (context == nullptr) return;
+  if (context->sink != nullptr) {
+    context->sink(context->sink_context, component, key, value, severity,
+                  flags);
+    return;
+  }
+  if (context->status_seq == nullptr) return;
   otis_emit_health((*context->status_seq)++, otis_capture_ticks_now(),
                    OTIS_DOMAIN_RP2040_TIMER0, component, key, value, severity,
                    flags);

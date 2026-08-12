@@ -70,6 +70,9 @@ def _boot_path_checks() -> tuple[dict[str, bool], dict[str, str]]:
     )
     preview_boot = _function_body(sketch_source, "void boot_phase_preview_init(void)")
     manual_handler = _function_body(sketch_source, "void handle_dac_set")
+    setup_transaction = _function_body(
+        sketch_source, "void service_dual_core_setup_transaction"
+    )
     checks = {
         "dac_begin_is_address_probe_only": (
             begin.count("Wire.beginTransmission(kDacAddress)") == 1
@@ -85,10 +88,12 @@ def _boot_path_checks() -> tuple[dict[str, bool], dict[str, str]]:
             and "otis_dac_ad5693r_reset" not in peripheral_boot
             and "otis_dac_ad5693r_set_raw" not in preview_boot
         ),
-        "all_value_write_calls_are_command_or_actuator_scoped": (
+        "all_value_write_calls_are_command_actuator_or_setup_scoped": (
             "otis_dac_ad5693r_set_raw(requested_code)" in manual_handler
+            and "otis_dac_ad5693r_set_raw(request.requested_code)"
+            in setup_transaction
             and actuator_source.count("otis_dac_ad5693r_set_raw(") == 1
-            and sketch_source.count("otis_dac_ad5693r_set_raw(") == 2
+            and sketch_source.count("otis_dac_ad5693r_set_raw(") == 3
         ),
     }
     return checks, {

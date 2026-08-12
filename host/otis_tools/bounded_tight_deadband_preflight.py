@@ -56,13 +56,15 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
         "FC0?",
         "ACTIVE?",
         "ACTIVE LEASE 1",
-        "DAC SET 0xA808",
+        "ACTIVE SNAPSHOT 99",
+        "ACTIVE SETUP 1 7 99 650 4 0xA808 1 " + "b" * 64,
         "ACTIVE ARM 1 2 3000",
         "ACTIVE EVIDENCE 1 1",
         "ACTIVE EVIDENCE 1 4",
     ]
     rejected = [
         "DAC SET 0xA809",
+        "DAC SET 0xA808",
         "DAC MID",
         "DAC ZERO",
         "ACTIVE ABORT",

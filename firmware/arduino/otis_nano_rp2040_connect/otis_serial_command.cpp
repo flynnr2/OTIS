@@ -153,6 +153,14 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.kind = OtisSerialCommandKind::Fc0Query;
   } else if (strcmp(command, "ACTIVE?") == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveQuery;
+  } else if (strncmp(command, "ACTIVE SNAPSHOT ", 16) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveSnapshot;
+    parsed.text_argument = trim_command(command + 16);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "ACTIVE SETUP ", 13) == 0) {
+    parsed.kind = OtisSerialCommandKind::ActiveSetup;
+    parsed.text_argument = trim_command(command + 13);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
   } else if (strncmp(command, "ACTIVE LEASE ", 13) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveLease;
     parsed.text_argument = trim_command(command + 13);
