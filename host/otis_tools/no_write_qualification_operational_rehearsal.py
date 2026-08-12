@@ -1,8 +1,8 @@
 """Rehearse the no-flash, no-write host path without hardware I/O.
 
 The timing state machine is exercised with accelerated firmware uptimes. The
-actual G1 analyzer and seal then process a temporary copy of retained passing
-G1 capture/transport evidence rebound to the current exact no-flash bundle.
+actual analyzer and seal then process a temporary copy of retained passing
+Q1 capture/transport evidence rebound to the current exact bundle.
 No serial device is opened and no firmware or DAC command is sent.
 """
 
@@ -195,6 +195,7 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         + ":"
         + bundle["firmware"]["configuration_sha256"]
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     supervisor = NoWriteQualificationSupervisor(
         leg=leg,
         run_dir=run_dir,
@@ -205,6 +206,7 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         identities=identities,
         expected_build_identity=build_identity,
         duration_s=None,
+        qualification_sequence_gate=sequence_gate,
     )
     supervisor.state.update(
         telemetry_drop_baseline=0,
@@ -247,6 +249,7 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         identities=identities,
         expected_build_identity=build_identity,
         duration_s=None,
+        qualification_sequence_gate=sequence_gate,
     )
     deadline.state.update(
         telemetry_drop_baseline=0,
@@ -323,6 +326,25 @@ def _prepare_replay(
         run_dir=replay_run,
         output_path=manifest_path,
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
+    if sequence_gate == "Q3":
+        _atomic_new_json(
+            replay_run / "reports/cx319_q3_topology_confirmation_v1.json",
+            {
+                "schema_version": 1,
+                "report_type": "cx319_q3_topology_confirmation_v1",
+                "status": "operator_confirmed",
+                "recorded_utc": _utc_now(),
+                "qualification_sequence_gate": "Q3",
+                "dac_analogue_output": (
+                    "reconnected_to_oscillator_efc_vctrl"
+                ),
+                "oscillator_powered": True,
+                "q2_inhibited_interval_ended": True,
+                "physical_write_authority": False,
+                "offline_rehearsal_only": True,
+            },
+        )
     transition = replay_run / TRANSITION_RUN_DIR
     with tempfile.TemporaryDirectory(prefix="cx319-g1-transition-") as raw_temp:
         generated = prepare_transition(manifest_path, Path(raw_temp) / "transition")
@@ -378,6 +400,7 @@ def _prepare_replay(
     )
     state["host_attach_uptime_s"] = attach_uptime
     state["host_attach_uptime_status_seq"] = attach_seq
+    state["qualification_sequence_gate"] = sequence_gate
     state["latest_prewrite_readiness"]["contract_id"] = RUNTIME_CONTRACT_ID
     started = datetime.fromisoformat(
         str(state["supervisor_started_utc"]).replace("Z", "+00:00")
@@ -397,6 +420,7 @@ def _prepare_replay(
         "schema_version": 1,
         "tool": TOOL_ID,
         "status": "pass",
+        "qualification_sequence_gate": sequence_gate,
         "firmware_flashes": 0,
         "device": bundle["device"]["path"],
         "bundle_sha256": bundle["bundle_sha256"],
@@ -453,13 +477,15 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
         source_run=source_run.resolve(),
         replay_run=replay_run,
     )
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     analysis = analyze(replay_run)
     _atomic_new_json(replay_run / ANALYSIS_PATH, analysis)
     (replay_run / REPORT_PATH).write_text(
         report_markdown(analysis), encoding="utf-8"
     )
     (replay_run / "COMPLETE").write_text(
-        "CX319 G1 offline operational replay complete\n", encoding="utf-8"
+        f"CX319 {sequence_gate} offline operational replay complete\n",
+        encoding="utf-8",
     )
     snapshot = create_evidence_snapshot(replay_run)
     seal_value = seal(replay_run, analysis)
@@ -473,8 +499,14 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
             source_revision=bundle["host_source_revision"],
             build_identity=bundle["firmware"]["build_manifest"]["sha256"],
             profile_identity=bundle["firmware"]["profile_id"],
-            attempt_classification="successful_rehearsal",
-            result_or_failure_reason="CX319 G1 no-flash operational replay passed",
+            attempt_classification=(
+                "successful_qualification"
+                if sequence_gate == "Q3"
+                else "successful_rehearsal"
+            ),
+            result_or_failure_reason=(
+                f"CX319 {sequence_gate} offline operational replay passed"
+            ),
             analyzer_identity=analysis["bindings"]["analyzer_sha256"],
         )
         registration = validate_index(index)
@@ -494,6 +526,7 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
         "status": "passed" if all(checks.values()) else "failed",
         "bundle_sha256": bundle["bundle_sha256"],
         "host_source_revision": bundle["host_source_revision"],
+        "qualification_sequence_gate": sequence_gate,
         "installed_uf2_sha256": bundle["firmware_entry"].get(
             "installed_uf2_sha256", bundle["firmware"]["uf2"]["sha256"]
         ),

@@ -83,6 +83,9 @@ SUPERVISOR_LOG = Path("reports/cx319_g1_supervisor.log")
 ORCHESTRATION_FAILURE_PATH = Path(
     "reports/cx319_g1_orchestration_failure_v1.json"
 )
+Q3_TOPOLOGY_CONFIRMATION_PATH = Path(
+    "reports/cx319_q3_topology_confirmation_v1.json"
+)
 Q1_PRELUDE_PATH = Path("reports/cx319_q1_real_io_prelude_v1.json")
 Q1_EVIDENCE_BASELINE_PATH = Path(
     "reports/cx319_q1_evidence_session_baseline_v1.json"
@@ -117,7 +120,9 @@ def _wait_until(
     raise RuntimeError(f"timed out waiting for {description}")
 
 
-def _supervisor_terminal(run_dir: Path) -> bool:
+def _supervisor_terminal(
+    run_dir: Path, *, qualification_sequence_gate: str = "Q1"
+) -> bool:
     path = run_dir / "reports/cx317_active_supervisor_state.json"
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
@@ -128,6 +133,8 @@ def _supervisor_terminal(run_dir: Path) -> bool:
         isinstance(terminal, dict)
         and terminal.get("result") == "healthy_stop"
         and state.get("cx319_gate") == "G1"
+        and state.get("qualification_sequence_gate", "Q1")
+        == qualification_sequence_gate
         and state.get("manual_start_sent") is False
         and state.get("authorization_sequence") == 0
     )
@@ -161,6 +168,7 @@ def flash_exact_bundle(
     output_path: Path,
     arduino_cli: str,
     defer_post_upload_identity: bool = False,
+    qualification_sequence_gate: str = "Q1",
 ) -> dict[str, Any]:
     device = str(bundle["device"]["path"])
     owners = _serial_owner_pids(device)
@@ -201,6 +209,7 @@ def flash_exact_bundle(
         "schema_version": 1,
         "tool": TOOL_ID,
         "operation": "exact_cx319_g1_firmware_flash",
+        "qualification_sequence_gate": qualification_sequence_gate,
         "status": "pending_carrier_identity" if pending_identity else (
             "pass" if passed else "fail"
         ),
@@ -783,6 +792,8 @@ def _retain_orchestration_failure(
 ) -> dict[str, Any]:
     """Record and index any failure before the normal analyzer boundary."""
 
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
+
     supervisor_state = _read_json_if_present(
         run_dir / "reports/cx317_active_supervisor_state.json"
     )
@@ -795,8 +806,13 @@ def _retain_orchestration_failure(
         "tool": TOOL_ID,
         "programme_id": PROGRAMME_ID,
         "gate": "G1",
+        "qualification_sequence_gate": sequence_gate,
         "leg": bundle["leg"]["leg"],
-        "attempt_classification": "failed_rehearsal",
+        "attempt_classification": (
+            "failed_qualification"
+            if sequence_gate == "Q3"
+            else "failed_rehearsal"
+        ),
         "failure_class": "platform_defect_caught_in_rehearsal",
         "recorded_utc": _utc_now(),
         "error_type": type(error).__name__,
@@ -823,8 +839,14 @@ def _retain_orchestration_failure(
         source_revision=bundle["firmware"]["git_commit"],
         build_identity=bundle["firmware"]["build_manifest"]["sha256"],
         profile_identity=bundle["firmware"]["profile_id"],
-        attempt_classification="failed_rehearsal",
-        result_or_failure_reason=f"CX319 G1 orchestration failed: {error}",
+        attempt_classification=(
+            "failed_qualification"
+            if sequence_gate == "Q3"
+            else "failed_rehearsal"
+        ),
+        result_or_failure_reason=(
+            f"CX319 {sequence_gate} no-write orchestration failed: {error}"
+        ),
         analyzer_identity=_sha256_file(Path(__file__)),
     )
 
@@ -836,16 +858,45 @@ def run_no_write_qualification(
     evidence_index_path: Path,
     arduino_cli: str,
     q1_real_io: bool = False,
+    q3_physical_no_write: bool = False,
+    oscillator_control_reconnected: bool = False,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, NO_WRITE_BENCH_OPERATION)
     bundle_path = bundle_path.resolve()
     bundle = validate_bundle(bundle_path)
+    sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
+    if q1_real_io and sequence_gate != "Q1":
+        raise ValueError("Q1 real-I/O stimuli are not part of Q3")
+    if q3_physical_no_write != (sequence_gate == "Q3"):
+        raise ValueError("runner gate flag does not match the exact bundle")
+    if sequence_gate == "Q3" and not oscillator_control_reconnected:
+        raise ValueError(
+            "Q3 requires operator confirmation that DAC analogue output is "
+            "reconnected to oscillator EFC/Vctrl"
+        )
     run_dir = run_dir.resolve()
     evidence_index_path = validate_index_location(evidence_index_path)
     if run_dir.exists():
         raise FileExistsError(f"CX319 G1 run already exists: {run_dir}")
     run_dir.mkdir(parents=True)
     (run_dir / "reports").mkdir()
+    if sequence_gate == "Q3":
+        _atomic_new_json(
+            run_dir / Q3_TOPOLOGY_CONFIRMATION_PATH,
+            {
+                "schema_version": 1,
+                "report_type": "cx319_q3_topology_confirmation_v1",
+                "status": "operator_confirmed",
+                "recorded_utc": _utc_now(),
+                "qualification_sequence_gate": "Q3",
+                "dac_analogue_output": (
+                    "reconnected_to_oscillator_efc_vctrl"
+                ),
+                "oscillator_powered": True,
+                "q2_inhibited_interval_ended": True,
+                "physical_write_authority": False,
+            },
+        )
     finalization_journal = begin_finalization(
         run_dir=run_dir,
         index_path=evidence_index_path,
@@ -854,8 +905,14 @@ def run_no_write_qualification(
             "source_revision": bundle["firmware"]["git_commit"],
             "build_identity": bundle["firmware"]["build_manifest"]["sha256"],
             "profile_identity": bundle["firmware"]["profile_id"],
-            "attempt_classification": "failed_rehearsal",
-            "result_or_failure_reason": "pending CX319 G1 finalization",
+            "attempt_classification": (
+                "failed_qualification"
+                if sequence_gate == "Q3"
+                else "failed_rehearsal"
+            ),
+            "result_or_failure_reason": (
+                f"pending CX319 {sequence_gate} no-write finalization"
+            ),
             "analyzer_identity": _sha256_file(Path(__file__)),
         },
     )
@@ -923,7 +980,10 @@ def run_no_write_qualification(
                 bundle=bundle,
                 output_path=run_dir / FLASH_RECORD_PATH,
                 arduino_cli=arduino_cli,
-                defer_post_upload_identity=q1_real_io,
+                defer_post_upload_identity=(
+                    q1_real_io or sequence_gate == "Q3"
+                ),
+                qualification_sequence_gate=sequence_gate,
             )
         elif entry_mode == "reuse_confirmed_installed_firmware":
             flash = confirm_installed_bundle(
@@ -1024,6 +1084,8 @@ def run_no_write_qualification(
             str(host_abort_fifo),
             "--expected-build-identity",
             expected_build,
+            "--qualification-sequence-gate",
+            sequence_gate,
             "--duration-s",
             str(REHEARSAL_DURATION_S + 90.0),
         ]
@@ -1062,13 +1124,19 @@ def run_no_write_qualification(
         )
         _wait_until(
             lambda: (
-                _supervisor_terminal(run_dir)
+                _supervisor_terminal(
+                    run_dir,
+                    qualification_sequence_gate=sequence_gate,
+                )
                 or supervisor.poll() is not None
             ),
             REHEARSAL_DURATION_S + 90.0,
             "2700 second no-write supervisor terminal",
         )
-        if not _supervisor_terminal(run_dir):
+        if not _supervisor_terminal(
+            run_dir,
+            qualification_sequence_gate=sequence_gate,
+        ):
             state = _read_json_if_present(
                 run_dir / "reports/cx317_active_supervisor_state.json"
             )
@@ -1209,8 +1277,15 @@ def run_no_write_qualification(
             source_revision=bundle["firmware"]["git_commit"],
             build_identity=bundle["firmware"]["build_manifest"]["sha256"],
             profile_identity=bundle["firmware"]["profile_id"],
-            attempt_classification="failed_rehearsal",
-            result_or_failure_reason="CX319 G1 failed: " + ", ".join(failed),
+            attempt_classification=(
+                "failed_qualification"
+                if sequence_gate == "Q3"
+                else "failed_rehearsal"
+            ),
+            result_or_failure_reason=(
+                f"CX319 {sequence_gate} no-write failed: "
+                + ", ".join(failed)
+            ),
             analyzer_identity=analysis["bindings"]["analyzer_sha256"],
         )
         raise RuntimeError(
@@ -1236,8 +1311,14 @@ def run_no_write_qualification(
         "source_revision": bundle["firmware"]["git_commit"],
         "build_identity": bundle["firmware"]["build_manifest"]["sha256"],
         "profile_identity": bundle["firmware"]["profile_id"],
-        "attempt_classification": "successful_rehearsal",
-        "result_or_failure_reason": "all CX319 G1 exact no-write gates passed",
+        "attempt_classification": (
+            "successful_qualification"
+            if sequence_gate == "Q3"
+            else "successful_rehearsal"
+        ),
+        "result_or_failure_reason": (
+            f"all CX319 {sequence_gate} exact no-write gates passed"
+        ),
         "analyzer_identity": analysis["bindings"]["analyzer_sha256"],
     }
     set_registration_intent(
@@ -1268,6 +1349,7 @@ def run_no_write_qualification(
         "dac_value_writes": 0,
         "control_arms": 0,
         "q1_real_io": q1_real_io,
+        "qualification_sequence_gate": sequence_gate,
     }
 
 
@@ -1278,6 +1360,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-index", type=Path, default=DEFAULT_INDEX)
     parser.add_argument("--arduino-cli", default="arduino-cli")
     parser.add_argument("--q1-real-io", action="store_true")
+    parser.add_argument("--q3-physical-no-write", action="store_true")
+    parser.add_argument("--oscillator-control-reconnected", action="store_true")
     args = parser.parse_args(argv)
     try:
         result = run_no_write_qualification(
@@ -1286,6 +1370,10 @@ def main(argv: list[str] | None = None) -> int:
             evidence_index_path=args.evidence_index,
             arduino_cli=args.arduino_cli,
             q1_real_io=args.q1_real_io,
+            q3_physical_no_write=args.q3_physical_no_write,
+            oscillator_control_reconnected=(
+                args.oscillator_control_reconnected
+            ),
         )
     except (
         FileExistsError,

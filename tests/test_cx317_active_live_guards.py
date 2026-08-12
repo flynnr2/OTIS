@@ -416,6 +416,7 @@ def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
                 "cx318_stage5_tight_upper",
                 "cx319_tight_lower",
                 "cx319_tight_upper",
+                "cx319_q2_inhibited_transaction",
         }:
             assert enabled == "1"
         else:

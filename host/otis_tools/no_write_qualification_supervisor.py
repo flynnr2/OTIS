@@ -138,12 +138,15 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
         allowed_initial_reconnect_count: int = 0,
         initial_lease_sequence: int = 0,
         q1_real_io: bool = False,
+        qualification_sequence_gate: str = "Q1",
         **kwargs: object,
     ) -> None:
         if allowed_initial_reconnect_count < 0:
             raise ValueError("allowed initial reconnect count cannot be negative")
         if initial_lease_sequence < 0 or initial_lease_sequence > 0xFFFFFFFF:
             raise ValueError("initial lease sequence must be a uint32")
+        if qualification_sequence_gate not in {"Q1", "Q3"}:
+            raise ValueError("qualification sequence gate must be Q1 or Q3")
         super().__init__(
             mode=EXPECTED_MODE,
             leg=leg,
@@ -164,6 +167,7 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
         )
         self.state["lease_sequence"] = initial_lease_sequence
         self.state["q1_real_io"] = q1_real_io
+        self.state["qualification_sequence_gate"] = qualification_sequence_gate
         self.state.setdefault("q1_boundary_burst_sent", False)
         self.state.setdefault("telemetry_drop_candidate", None)
         self.state.setdefault("telemetry_drop_candidate_observations", 0)
@@ -473,6 +477,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allowed-initial-reconnect-count", type=int, default=0)
     parser.add_argument("--initial-lease-sequence", type=int, default=0)
     parser.add_argument("--q1-real-io", action="store_true")
+    parser.add_argument(
+        "--qualification-sequence-gate", choices=("Q1", "Q3"), default="Q1"
+    )
     args = parser.parse_args(argv)
     try:
         require_programme_operation_allowed(
@@ -497,6 +504,10 @@ def main(argv: list[str] | None = None) -> int:
         args.manifest.resolve() != (args.run_dir / "run_manifest.json").resolve()
         or manifest.get("stage") != REHEARSAL_STAGE
         or manifest.get("cx319", {}).get("leg") != args.leg
+        or manifest.get("cx319", {}).get(
+            "qualification_sequence_gate", "Q1"
+        )
+        != args.qualification_sequence_gate
         or args.expected_build_identity != expected_build
     ):
         parser.error("manifest run/leg/build does not match G1 supervisor request")
@@ -515,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         allowed_initial_reconnect_count=args.allowed_initial_reconnect_count,
         initial_lease_sequence=args.initial_lease_sequence,
         q1_real_io=args.q1_real_io,
+        qualification_sequence_gate=args.qualification_sequence_gate,
     )
     try:
         return supervisor.run()

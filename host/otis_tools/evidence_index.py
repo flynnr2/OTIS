@@ -28,6 +28,8 @@ SCHEMA_VERSION = 1
 ATTEMPT_CLASSIFICATIONS = {
     "successful_rehearsal",
     "failed_rehearsal",
+    "successful_qualification",
+    "failed_qualification",
     "completed_campaign",
     "interrupted_campaign",
     "diagnostic",

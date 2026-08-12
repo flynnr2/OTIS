@@ -251,6 +251,40 @@ verified single DAC row; wire ordering is not treated as execution ordering.
 This is an offline consumer correction and does not invalidate the retained
 raw serial evidence or authorize another physical write.
 
+## Q2 result
+
+Q2 passed on 2026-08-12 using retained continuation run
+`q2_inhibited_transaction_continued_20260812T142939Z`. All 38 nonce-bound
+diagnostic cases passed. The production path made exactly one inhibited setup
+write at `0xA808`, made zero automatic writes, and retained the complete
+identity-bound acknowledgement and Core 1 critical-record set. The passing
+seal is
+`86eafb3c3c55cde62c555eec4658fe90fb77faa9a5d44a5db65b2f080567fb66`;
+the registered package identity is
+`1990abe0719f215b2346ef35cd7dc1af35ea6849b51fbcc356d726df995a4233`.
+The analogue output remained disconnected from oscillator EFC/Vctrl for the
+whole physical transaction.
+
+## Q3 exact execution boundary
+
+Q3 reuses the proven no-write carrier, supervisor, analyzer, finalization and
+registration path rather than introducing a second host orchestration path.
+Its fresh bundle must bind the current host revision to the passing Q1 seal,
+the passing Q2 seal and the exact Q1 operational UF2 SHA-256
+`50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083`.
+The ancestor firmware revision is deliberate and is admitted only through
+that passing Q1 evidence binding; Q2 firmware must not be inferred to remain
+installed.
+
+Physical entry additionally requires a retained operator confirmation that
+the DAC analogue output has been reconnected to oscillator EFC/Vctrl. The run
+then permits one exact Q1-UF2 flash and zero DAC value writes, setup stimuli,
+control arms or automatic corrections. The 2,700-second endpoint is retained:
+the selected 600-second non-overlap estimator first emits at about 2,400
+seconds after a fresh boot, so a shorter run would not cross the stated Q3
+estimator boundary. The result is Q3 physical no-write qualification evidence,
+not Q4 or live-control authority.
+
 ## Stop conditions
 
 Stop and retain the shortest affected evidence package on any identity or

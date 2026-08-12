@@ -229,6 +229,38 @@ def test_run_rejects_repo_local_evidence_index_before_run_creation(
     assert not run_dir.exists()
 
 
+def test_q3_requires_explicit_gate_and_reconnection_before_run_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "q3-must-not-be-created"
+    monkeypatch.setattr(
+        rehearsal, "require_programme_operation_allowed", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        rehearsal,
+        "validate_bundle",
+        lambda _path: {"qualification_sequence_gate": "Q3"},
+    )
+
+    with pytest.raises(ValueError, match="runner gate flag"):
+        rehearsal.run_no_write_qualification(
+            bundle_path=tmp_path / "bundle.json",
+            run_dir=run_dir,
+            evidence_index_path=tmp_path / "index.json",
+            arduino_cli="arduino-cli",
+        )
+    with pytest.raises(ValueError, match="reconnected"):
+        rehearsal.run_no_write_qualification(
+            bundle_path=tmp_path / "bundle.json",
+            run_dir=run_dir,
+            evidence_index_path=tmp_path / "index.json",
+            arduino_cli="arduino-cli",
+            q3_physical_no_write=True,
+        )
+
+    assert not run_dir.exists()
+
+
 def test_q1_confirmed_reuse_observes_restart_without_upload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

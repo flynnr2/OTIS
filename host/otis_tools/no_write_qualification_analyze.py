@@ -182,6 +182,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
         raise ValueError("CX319 G1 capture is still active")
     manifest_value = validate_run_manifest(run_dir / "run_manifest.json")
+    sequence_gate = manifest_value["cx319"].get(
+        "qualification_sequence_gate", "Q1"
+    )
     q1_real_io = manifest_value.get("q1_real_io")
     expected_reconnects = (
         len(q1_real_io.get("intentional_detach_schedule", []))
@@ -297,6 +300,16 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if line.strip()
     ]
     transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
+    q3_topology = (
+        json.loads(
+            (
+                run_dir
+                / "reports/cx319_q3_topology_confirmation_v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        if sequence_gate == "Q3"
+        else None
+    )
     q1_prelude = (
         json.loads((run_dir / "reports/cx319_q1_real_io_prelude_v1.json").read_text())
         if expected_reconnects
@@ -469,6 +482,20 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and flash.get("setup_stimulus_attempts") == 0
             and flash.get("control_arm_attempts") == 0
         ),
+        "qualification_sequence_and_physical_topology_exact": (
+            sequence_gate == "Q1"
+            or (
+                isinstance(q3_topology, dict)
+                and q3_topology.get("status") == "operator_confirmed"
+                and q3_topology.get("qualification_sequence_gate") == "Q3"
+                and q3_topology.get("dac_analogue_output")
+                == "reconnected_to_oscillator_efc_vctrl"
+                and q3_topology.get("oscillator_powered") is True
+                and q3_topology.get("q2_inhibited_interval_ended") is True
+                and q3_topology.get("physical_write_authority") is False
+                and flash.get("qualification_sequence_gate") == "Q3"
+            )
+        ),
         "all_declared_contracts_validate": all(
             item["ok"] for item in validations.values()
         ),
@@ -566,6 +593,10 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             supervisor_state.get("programme_id")
             == "cx319_stabilized_tight_deadband"
             and supervisor_state.get("cx319_gate") == "G1"
+            and supervisor_state.get(
+                "qualification_sequence_gate", "Q1"
+            )
+            == sequence_gate
             and supervisor_state.get("cx319_mode") == "no_write_rehearsal"
             and supervisor_state.get("cx319_leg") == leg_name
             and supervisor_state.get("manual_start_sent") is False
@@ -655,6 +686,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "run_dir": str(run_dir),
         "leg": leg_name,
         "profile_id": spec.profile,
+        "qualification_sequence_gate": sequence_gate,
         "checks": checks,
         "observed": {
             "capture_duration_s": duration_s,
@@ -714,8 +746,14 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "analyzer_sha256": _sha256_file(Path(__file__)),
         },
         "claims_boundary": (
-            "G1 no-write operational evidence only; not frequency-control, "
-            "calibration, absolute phase, UTC, lock or holdover evidence"
+            "Q3 physical no-write qualification evidence; it retires the "
+            "current no-physical-pass gap but grants no live actuation, "
+            "frequency-control, calibration, absolute phase, UTC, lock or "
+            "holdover claim"
+            if sequence_gate == "Q3"
+            else "G1 no-write operational evidence only; not "
+            "frequency-control, calibration, absolute phase, UTC, lock or "
+            "holdover evidence"
         ),
     }
     result["analysis_sha256"] = _canonical_sha256(result)
@@ -723,8 +761,13 @@ def analyze(run_dir: Path) -> dict[str, Any]:
 
 
 def report_markdown(result: dict[str, Any]) -> str:
+    sequence_gate = result.get("qualification_sequence_gate", "Q1")
     lines = [
-        "# CX319 G1 Exact No-Write Rehearsal",
+        (
+            "# CX319 Q3 Physical No-Write Qualification"
+            if sequence_gate == "Q3"
+            else "# CX319 G1 Exact No-Write Rehearsal"
+        ),
         "",
         f"Status: **{result['status'].upper()}**",
         "",
@@ -754,15 +797,21 @@ def seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("G1 run is not marked complete")
     evidence_path = run_dir / EVIDENCE_MANIFEST
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    sequence_gate = analysis.get("qualification_sequence_gate", "Q1")
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "seal_type": SEAL_TYPE,
+        "seal_type": (
+            "cx319_q3_physical_no_write_qualification_seal_v1"
+            if sequence_gate == "Q3"
+            else SEAL_TYPE
+        ),
         "tool": TOOL_ID,
         "status": "pass",
         "run_id": run_dir.name,
         "run_dir": str(run_dir),
         "leg": analysis["leg"],
         "profile_id": analysis["profile_id"],
+        "qualification_sequence_gate": sequence_gate,
         "analysis": {
             "path": ANALYSIS_PATH.as_posix(),
             "sha256": _sha256_file(run_dir / ANALYSIS_PATH),
@@ -781,7 +830,7 @@ def seal(run_dir: Path, analysis: dict[str, Any]) -> dict[str, Any]:
         "automatic_writes": 0,
         "control_arms": 0,
         "actuation_authorized": False,
-        "qualification_evidence": False,
+        "qualification_evidence": sequence_gate == "Q3",
     }
     payload["seal_sha256"] = _canonical_sha256(payload)
     _atomic_new_json(run_dir / SEAL_PATH, payload)

@@ -169,6 +169,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx318_stage4_nonactuating_preview",
         "cx318_stage5_tight_lower",
         "cx318_stage5_tight_upper",
+        "cx319_q2_inhibited_transaction",
         "cx319_tight_lower",
         "cx319_tight_upper",
         "cx317_bounded_active_campaign_a",
