@@ -292,10 +292,12 @@ def _prepare_replay(
     *, bundle_path: Path, source_run: Path, replay_run: Path
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     bundle = validate_bundle(bundle_path)
-    if bundle.get("firmware_entry", {}).get("mode") != (
-        "reuse_confirmed_installed_firmware"
-    ):
-        raise ValueError("operational rehearsal requires the exact no-flash bundle")
+    entry_mode = bundle.get("firmware_entry", {}).get("mode")
+    if entry_mode not in {
+        "single_exact_flash",
+        "reuse_confirmed_installed_firmware",
+    }:
+        raise ValueError("operational rehearsal firmware entry is invalid")
     shutil.copytree(
         source_run,
         replay_run,
@@ -388,31 +390,51 @@ def _prepare_replay(
     _replace_json(state_path, state)
 
     entry = bundle["firmware_entry"]
-    flash = {
+    source_flash = json.loads(
+        (replay_run / FLASH_RECORD_PATH).read_text(encoding="utf-8")
+    )
+    flash: dict[str, Any] = {
         "schema_version": 1,
         "tool": TOOL_ID,
-        "operation": "confirmed_installed_cx319_g1_firmware_reuse",
         "status": "pass",
-        "attempt_count": 0,
         "firmware_flashes": 0,
         "device": bundle["device"]["path"],
-        "board_before": entry["installed_board"],
-        "board_after": entry["installed_board"],
-        "installed_board": entry["installed_board"],
         "bundle_sha256": bundle["bundle_sha256"],
         "profile_id": bundle["firmware"]["profile_id"],
         "build_manifest_sha256": bundle["firmware"]["build_manifest"]["sha256"],
         "uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
-        "source_flash_record": entry["source_flash_record"],
-        "source_bundle": entry["source_bundle"],
-        "source_bundle_sha256": entry["source_bundle_sha256"],
-        "source_build_manifest_sha256": entry["source_build_manifest_sha256"],
-        "installed_uf2_sha256": entry["installed_uf2_sha256"],
         "dac_boot_operation": "offline_replay_no_hardware_io",
         "dac_value_write_attempts": 0,
         "setup_stimulus_attempts": 0,
         "control_arm_attempts": 0,
     }
+    if entry_mode == "single_exact_flash":
+        board = source_flash["board_after"]
+        flash.update(
+            operation="exact_cx319_g1_firmware_flash",
+            attempt_count=1,
+            board_before=board,
+            board_after=board,
+            command=["offline-operational-rehearsal", "exact-flash"],
+            exit_code=0,
+            offline_flash_execution=False,
+        )
+    else:
+        board = entry["installed_board"]
+        flash.update(
+            operation="confirmed_installed_cx319_g1_firmware_reuse",
+            attempt_count=0,
+            board_before=board,
+            board_after=board,
+            installed_board=board,
+            source_flash_record=entry["source_flash_record"],
+            source_bundle=entry["source_bundle"],
+            source_bundle_sha256=entry["source_bundle_sha256"],
+            source_build_manifest_sha256=(
+                entry["source_build_manifest_sha256"]
+            ),
+            installed_uf2_sha256=entry["installed_uf2_sha256"],
+        )
     _replace_json(replay_run / FLASH_RECORD_PATH, flash)
     return bundle, manifest
 
@@ -472,9 +494,9 @@ def run(*, bundle_path: Path, source_run: Path, output_dir: Path) -> dict[str, A
         "status": "passed" if all(checks.values()) else "failed",
         "bundle_sha256": bundle["bundle_sha256"],
         "host_source_revision": bundle["host_source_revision"],
-        "installed_uf2_sha256": bundle["firmware_entry"][
-            "installed_uf2_sha256"
-        ],
+        "installed_uf2_sha256": bundle["firmware_entry"].get(
+            "installed_uf2_sha256", bundle["firmware"]["uf2"]["sha256"]
+        ),
         "checks": checks,
         "analysis_sha256": analysis["analysis_sha256"],
         "analysis_file_sha256": _sha256_file(replay_run / ANALYSIS_PATH),
