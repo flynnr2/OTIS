@@ -87,6 +87,7 @@ Q1_LEASE_SEQUENCE = 1
 Q1_LEASE_LIVE_NONCE = 1362165761
 Q1_LEASE_EXPIRED_NONCE = 1362165762
 Q1_PHYSICAL_RESTART_TIMEOUT_S = 180.0
+Q1_DECLARED_INITIAL_HOST_ABSENCE_S = 0.750
 
 
 def _utc_now() -> str:
@@ -111,6 +112,35 @@ def _wait_until(
             return
         time.sleep(0.1)
     raise RuntimeError(f"timed out waiting for {description}")
+
+
+def _hold_q1_host_absent(
+    firmware_entry: dict[str, Any],
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Apply the declared late-attach stimulus with no intervening host work."""
+
+    ready_anchor = firmware_entry.get("restart_reappeared_monotonic_ns")
+    if ready_anchor is None:
+        ready_anchor = firmware_entry.get("upload_completed_monotonic_ns")
+    if not isinstance(ready_anchor, int):
+        raise ValueError("Q1 firmware entry lacks a monotonic ready anchor")
+    started_ns = time.monotonic_ns()
+    sleep(Q1_DECLARED_INITIAL_HOST_ABSENCE_S)
+    completed_ns = time.monotonic_ns()
+    return {
+        **firmware_entry,
+        "declared_initial_host_absence_ms": int(
+            Q1_DECLARED_INITIAL_HOST_ABSENCE_S * 1000
+        ),
+        "host_absence_hold_started_monotonic_ns": started_ns,
+        "host_absence_hold_completed_monotonic_ns": completed_ns,
+        "measured_initial_host_absence_hold_ms": round(
+            (completed_ns - started_ns) / 1_000_000.0,
+            3,
+        ),
+    }
 
 
 def _supervisor_terminal(run_dir: Path) -> bool:
@@ -254,6 +284,14 @@ def _exercise_q1_real_io_prelude(
     hostless_ms = (
         carrier_initial_ready_monotonic_ns - entry_ready_monotonic_ns
     ) / 1_000_000.0
+    declared_host_absence_ms = flash.get("declared_initial_host_absence_ms")
+    if (
+        not isinstance(declared_host_absence_ms, int)
+        or declared_host_absence_ms < 250
+    ):
+        raise RuntimeError(
+            "Q1 firmware entry lacks the declared >=250 ms host-absence stimulus"
+        )
     if not 0.0 < hostless_ms < 2000.0:
         raise RuntimeError(
             "Q1 firmware-entry-to-carrier interval is outside the declared "
@@ -335,6 +373,10 @@ def _exercise_q1_real_io_prelude(
         "firmware_entry_operation": flash.get("operation"),
         "firmware_entry_to_carrier_ready_ms": round(hostless_ms, 3),
         "declared_boot_wait_ms": 250,
+        "declared_initial_host_absence_ms": declared_host_absence_ms,
+        "measured_initial_host_absence_hold_ms": flash.get(
+            "measured_initial_host_absence_hold_ms"
+        ),
         "transport_horizon_ms": 2000,
         "intentional_detach_count": state.get("intentional_detach_count"),
         "intentional_detach_gaps_ms": gaps,
@@ -822,6 +864,8 @@ def run_no_write_qualification(
             "CX319 G1 firmware entry failed; retained evidence "
             f"{indexed['content_sha256']}: {exc}"
         ) from exc
+    if q1_real_io:
+        flash = _hold_q1_host_absent(flash)
     capture = subprocess.Popen(
         capture_args,
         cwd=Path(__file__).resolve().parents[2],

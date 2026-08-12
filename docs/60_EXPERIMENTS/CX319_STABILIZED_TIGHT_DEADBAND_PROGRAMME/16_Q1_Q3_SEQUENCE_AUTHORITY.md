@@ -118,11 +118,12 @@ owner, so the failure is a deterministic host sequencing escape, not a device
 race or firmware defect. Package
 `55e6e92eafa2a607a19a0e3872baee84368eef0a521c16a97d6c365cc2d5fe4e`
 is retained. The correction must pre-stage the run and carrier invocation,
-validate the board and installed-UF2 binding before reset, attach the exclusive
-carrier immediately after reappearance, and only then complete post-reset
-board enumeration while the carrier drains continuously. The immutable entry
-record and analyzer must prove the monotonic order `firmware entry ready <
-carrier ready <= post-reset identity start`; the 2,000 ms horizon is unchanged.
+validate the board and installed-UF2 binding before reset, perform the declared
+host-absence stimulus with no intervening enumeration or preparation, attach
+the exclusive carrier, and only then complete post-reset board enumeration
+while the carrier drains continuously. The immutable entry record and analyzer
+must prove the monotonic order `firmware entry ready < carrier ready <=
+post-reset identity start`; the 2,000 ms horizon is unchanged.
 The confirmed installed UF2 for this recovery is
 `0717d51bff5f14d6935ad58b85a5dfa433d8eb575d909759be63b7f2c2852d66`.
 
@@ -134,6 +135,18 @@ retained raw evidence, recording old/new analyzer identities and explicit
 supersession provenance. A physical repeat remains necessary only when the
 required acquisition interval itself did not complete or one of those live
 surfaces can have changed.
+
+The first carrier-before-enumeration run passed exact board identity and
+attached in 308.901 ms, then retained package
+`6bd5f017a976039c19728dcf217966b43c9debfb8db1eae0a65bbfb37aea18d0`
+because it did not observe the required 250 ms host-absent boot record. USB
+node reappearance precedes the firmware's internal serial-wait clock, so an
+uncontrolled immediate launch does not deterministically exercise Q1's
+declared late-attach branch. The recovery must use one explicit 750 ms
+post-reappearance host-absence hold after all preparation and before carrier
+launch, require the `serial_absent` boot record, and retain the existing
+strictly-less-than-2,000 ms entry-to-carrier limit. The retained run otherwise
+had all three planned detach gaps below the horizon and zero parser errors.
 
 ## Q2 physical prerequisite
 
