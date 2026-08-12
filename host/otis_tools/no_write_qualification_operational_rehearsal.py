@@ -339,11 +339,12 @@ def _prepare_replay(
     shutil.copy2(bundle_path, copied_bundle)
     manifest_path = replay_run / "run_manifest.json"
     manifest_path.unlink(missing_ok=True)
+    source_q1_detach = _source_exercised_q1_detach(replay_run)
     manifest = create_run_manifest(
         bundle_path=copied_bundle,
         run_dir=replay_run,
         output_path=manifest_path,
-        q1_real_io=_source_exercised_q1_detach(replay_run),
+        q1_real_io=source_q1_detach,
     )
     sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     if sequence_gate == "Q3":
@@ -421,11 +422,17 @@ def _prepare_replay(
 
     state_path = replay_run / "reports/cx317_active_supervisor_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    attach_seq, attach_uptime = _first_observation(
-        replay_run / "csv/health.csv", "cx317_active", "uptime_s"
-    )
-    state["host_attach_uptime_s"] = attach_uptime
-    state["host_attach_uptime_status_seq"] = attach_seq
+    if any(
+        state.get(key) is None
+        for key in (
+            "host_attach_uptime_s",
+            "host_attach_uptime_status_seq",
+            "host_attach_snapshot_generation",
+        )
+    ):
+        raise ValueError(
+            "replay source lacks its nonce-bound host-attachment cut point"
+        )
     state["qualification_sequence_gate"] = sequence_gate
     state["latest_prewrite_readiness"]["contract_id"] = RUNTIME_CONTRACT_ID
     started = datetime.fromisoformat(
@@ -469,6 +476,15 @@ def _prepare_replay(
             exit_code=0,
             offline_flash_execution=False,
         )
+        if source_q1_detach:
+            flash.update(
+                upload_completed_monotonic_ns=1,
+                carrier_ready_monotonic_ns=2,
+                post_reset_identity_started_monotonic_ns=3,
+                post_reset_identity_order=(
+                    "carrier_then_board_enumeration"
+                ),
+            )
     else:
         board = entry["installed_board"]
         flash.update(
