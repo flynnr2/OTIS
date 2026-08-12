@@ -327,6 +327,13 @@ def _exercise_q1_real_io_prelude(
             key: int(evidence_snapshot[("cx317_active", key)])
             for key in cumulative_keys
         },
+        "cumulative_transport_counters": {
+            "pre_carrier_records_discarded": int(
+                evidence_snapshot[
+                    ("dual_core", "pre_carrier_records_discarded")
+                ]
+            )
+        },
         "semantics": (
             "Firmware counters remain cumulative; session results are derived "
             "as final values minus this immutable acknowledged baseline."

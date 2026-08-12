@@ -132,6 +132,8 @@ OtisSerialFrameArbiter dual_core_serial_frame_arbiter = {
 };
 OtisTransportLiveness dual_core_transport_liveness = {};
 bool dual_core_transport_abort_queued = false;
+bool dual_core_serial_carrier_seen = false;
+uint32_t dual_core_pre_carrier_records_discarded = 0u;
 OtisStatusEmitContext dual_core_timing_status_context = {};
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 OtisActuatorTransactionGuard dual_core_service_actuator_guard = {};
@@ -1369,6 +1371,31 @@ void discard_dual_core_outputs_after_transport_fault(void) {
   (void)otis_dual_core_take_phase_preview(&phase_preview);
 }
 
+void note_pre_carrier_discard(void) {
+  if (dual_core_pre_carrier_records_discarded != UINT32_MAX)
+    dual_core_pre_carrier_records_discarded++;
+}
+
+void discard_dual_core_outputs_before_first_carrier(void) {
+  OtisObservationMessage observation;
+  for (uint8_t budget = 24u;
+       budget-- > 0u && otis_dual_core_take_observation(&observation);)
+    note_pre_carrier_discard();
+  OtisCriticalRecordMessage critical;
+  for (uint8_t budget = 8u;
+       budget-- > 0u && otis_dual_core_take_critical(&critical);)
+    note_pre_carrier_discard();
+  OtisTelemetryMessage telemetry;
+  for (uint8_t budget = 24u;
+       budget-- > 0u && otis_dual_core_take_telemetry(&telemetry);)
+    note_pre_carrier_discard();
+  OtisEvidenceFrameMessage evidence;
+  if (otis_dual_core_take_evidence(&evidence)) note_pre_carrier_discard();
+  OtisPhasePreviewRecordMessage phase_preview;
+  if (otis_dual_core_take_phase_preview(&phase_preview))
+    note_pre_carrier_discard();
+}
+
 void publish_dual_core_association_loss_decision(
     const char *reason, uint64_t decision_ticks,
     const OtisPpsCountBoundaryObservation &pending_reference,
@@ -2548,6 +2575,9 @@ void emit_periodic_status(void) {
                   queues.telemetry_dropped
                       ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
                       : OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "pre_carrier_records_discarded",
+                  dual_core_pre_carrier_records_discarded,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("dual_core", "service_publish_attempts",
                   queues.service_activity.publish_attempts,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -4004,6 +4034,11 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
   } else if (command.kind == OtisSerialCommandKind::ConfigQuery) {
     emit_status("command", "config_snapshot", "begin",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+    emit_status_u32("dual_core", "pre_carrier_records_discarded",
+                    dual_core_pre_carrier_records_discarded,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
     // A capture opened after the boot banner still needs one complete
     // provenance block for evidence sealing.  Do not repeat the relatively
     // large block at CONFIG? service-load rates.
@@ -4639,7 +4674,12 @@ void setup() {
     // NMEA frame or a false receiver-identity outage.
     otis_gnss_receiver_service(millis());
 #endif
-    service_dual_core_outputs();
+    if (otis_transport_ready()) {
+      dual_core_serial_carrier_seen = true;
+      service_dual_core_outputs();
+    } else {
+      discard_dual_core_outputs_before_first_carrier();
+    }
     delay(1);
   }
   if (!__atomic_load_n(&dual_core_timing_boot_complete,
@@ -4700,6 +4740,15 @@ void loop1() {
     return;
   }
   const uint32_t now_ms = millis();
+  if (otis_transport_ready()) dual_core_serial_carrier_seen = true;
+  if (!dual_core_serial_carrier_seen) {
+    discard_dual_core_outputs_before_first_carrier();
+    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
+                                  otis_transport_written_bytes());
+    otis_gnss_receiver_service(now_ms);
+    otis_status_led_poll(now_ms);
+    return;
+  }
   // Progress instrumentation is deliberately bounded to four complete trace
   // samples per second.  The empty service-queue poll carries no diagnostic
   // atomic accounting, so the protected timing core's hot path stays lean.

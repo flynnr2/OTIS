@@ -288,6 +288,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     )
     evidence_boundary_history: dict[str, object] = {"exact": True}
     evidence_session_counter_deltas: dict[str, int] = {}
+    evidence_session_transport_counter_deltas: dict[str, int] = {}
     if isinstance(q1_evidence_baseline, dict):
         evidence_boundary_history = evaluate_solicited_attach_snapshot_history(
             [*health_rows, *transition_health_rows],
@@ -301,6 +302,13 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         ).items():
             evidence_session_counter_deltas[str(key)] = (
                 int(health.get(("cx317_active", str(key)), "0"))
+                - int(baseline_value)
+            )
+        for key, baseline_value in q1_evidence_baseline.get(
+            "cumulative_transport_counters", {}
+        ).items():
+            evidence_session_transport_counter_deltas[str(key)] = (
+                int(health.get(("dual_core", str(key)), "0"))
                 - int(baseline_value)
             )
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
@@ -500,6 +508,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 and evidence_session_counter_deltas.get(
                     "selected_interval_count", -1
                 ) >= 0
+                and evidence_session_transport_counter_deltas.get(
+                    "pre_carrier_records_discarded"
+                ) == 0
                 and q1_prelude.get("intentional_detach_count")
                 == expected_reconnects
                 and q1_prelude.get(
@@ -650,6 +661,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "host_attach_history": host_attach_history,
         "evidence_boundary_history": evidence_boundary_history,
         "evidence_session_counter_deltas": evidence_session_counter_deltas,
+        "evidence_session_transport_counter_deltas": (
+            evidence_session_transport_counter_deltas
+        ),
         "capture_closure": capture_closure,
         "contract_validation": validations,
         "tight_deadband_replay": tdb_replay.as_dict(),
