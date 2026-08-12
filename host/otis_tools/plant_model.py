@@ -15,13 +15,6 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PLANT_MODEL_SCHEMAS = {
     1: REPOSITORY_ROOT / "schemas" / "plant_model_v1.schema.json",
 }
-HISTORICAL_MODEL_IDENTITIES = frozenset(
-    {
-        (1, "cx317_h1_bench", 2),
-    }
-)
-
-
 @dataclass(frozen=True)
 class ValidationResult:
     valid: bool
@@ -203,7 +196,6 @@ def validate_plant_model_semantics(data: dict[str, Any]) -> ValidationResult:
     )
     _validate_model_envelopes(data, errors)
     _validate_source_evidence(data["source_evidence"], errors)
-    _validate_historical_policy(data, errors)
     return ValidationResult(not errors, tuple(errors))
 
 
@@ -414,9 +406,9 @@ def _reject_non_finite_numbers(
 
 def _validate_status(status: dict[str, Any], errors: list[str]) -> None:
     if status["control_ready"]:
-        errors.append("status.control_ready must remain false for H1 plant models")
+        errors.append("status.control_ready must remain false for the current plant model")
     if status["actuation_enabled"]:
-        errors.append("status.actuation_enabled must remain false for H1 plant models")
+        errors.append("status.actuation_enabled must remain false for the current plant model")
 
 
 def _validate_dac(dac: dict[str, Any], errors: list[str]) -> None:
@@ -629,57 +621,6 @@ def _validate_source_evidence(
     versions = source_evidence["source_versions"]
     if not any(value is not None for value in versions.values()):
         errors.append("source_evidence.source_versions must contain a known version")
-
-
-def _validate_historical_policy(
-    data: dict[str, Any], errors: list[str]
-) -> None:
-    identity = (
-        data["schema_version"],
-        data["model_id"],
-        data["model_version"],
-    )
-    historical_allowed = identity in HISTORICAL_MODEL_IDENTITIES
-    historical_paths = (
-        ("oscillator", "datasheet_tuning_range_ppm"),
-        ("hardware_topology", "pps_witness"),
-        ("plant_response", "observed_frequency_range"),
-        ("plant_response", "run_017_settled_outputs_mhz"),
-        ("plant_response", "reference_integrity"),
-        ("plant_response", "startup_control_eligibility"),
-    )
-    for section, field in historical_paths:
-        if field in data[section] and not historical_allowed:
-            errors.append(
-                f"{section}.{field} is reserved for the retained historical "
-                "model identity schema_version=1, "
-                "model_id=cx317_h1_bench, model_version=2"
-            )
-    uncertainty = data["plant_response"]["local_slope"]["uncertainty"]
-    for field in (
-        "hz_per_v_span",
-        "positive_0x0800_hz_per_v",
-        "negative_0x0800_hz_per_v",
-        "positive_0x1000_hz_per_v",
-        "negative_0x1000_hz_per_v",
-    ):
-        if field in uncertainty and not historical_allowed:
-            errors.append(
-                "plant_response.local_slope.uncertainty."
-                f"{field} is reserved for the retained historical model "
-                "identity schema_version=1, model_id=cx317_h1_bench, "
-                "model_version=2"
-            )
-    if (
-        "model_updated_from_repo_commit"
-        in data["source_evidence"]["source_commits"]
-        and not historical_allowed
-    ):
-        errors.append(
-            "source_evidence.source_commits.model_updated_from_repo_commit is "
-            "reserved for the retained historical model identity "
-            "schema_version=1, model_id=cx317_h1_bench, model_version=2"
-        )
 
 
 def main(argv: list[str] | None = None) -> int:

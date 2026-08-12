@@ -13,8 +13,11 @@ def _write_manifest(run_dir: Path, files: list[dict]) -> None:
         json.dumps(
             {
                 "schema_version": 1,
+                "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
                 "run_id": run_dir.name,
                 "template": False,
+                "stage": "CX319_CURRENT_SESSION_FIXTURE",
+                "cx319": {"profile_id": "cx319_tight_lower"},
                 "files": files,
             }
         ),

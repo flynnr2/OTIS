@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import json
 from pathlib import Path
 
@@ -26,10 +25,6 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "effective_date": "2026-08-11",
         "authority": "passed_completion_gate",
     }
-    assert status["programmes"]["cx318_stage5"]["state"] == (
-        "suspended_incomplete_unsealed"
-    )
-    assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == "q1_q3_sequence_complete_no_q4_authority"
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
@@ -415,11 +410,6 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
 
-def test_suspended_stage5_is_blocked_before_operational_side_effects() -> None:
-    with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
-        require_programme_execution_allowed("cx318_stage5")
-
-
 def test_status_contract_rejects_an_inactive_active_programme(
     tmp_path: Path,
 ) -> None:
@@ -444,33 +434,3 @@ def test_status_contract_rejects_an_inactive_active_programme(
 
     with pytest.raises(ValueError, match="active_programme must permit"):
         load_programme_status(path)
-
-
-def test_stage5_manifest_create_cli_stops_on_programme_status(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from host.otis_tools import tight_deadband_manifest
-
-    with pytest.raises(SystemExit) as exc:
-        tight_deadband_manifest.main(
-            [
-                "create",
-                "--mode",
-                "rehearsal",
-                "--leg",
-                "A",
-                "--run-dir",
-                "/not-used",
-                "--build-manifest",
-                "/not-used/build.json",
-                "--uf2",
-                "/not-used/image.uf2",
-                "--stage4-seal",
-                "/not-used/seal.json",
-                "--serial-device",
-                "/not-used/device",
-            ]
-        )
-
-    assert exc.value.code == 2
-    assert "suspended_incomplete_unsealed" in capsys.readouterr().err

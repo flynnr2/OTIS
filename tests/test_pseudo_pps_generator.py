@@ -60,7 +60,7 @@ def test_generator_has_one_hardware_edge_owner_and_low_stall() -> None:
     assert '"reference_high_sample_count"' in sketch
 
 
-def test_generator_is_disabled_except_explicit_loopback_profile() -> None:
+def test_generator_is_disabled_in_every_current_profile() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
     assert "#define OTIS_ENABLE_PSEUDO_PPS_GENERATOR 0" in config
     matrix = json.loads(Path("firmware/arduino/firmware_matrix.json").read_text())
@@ -70,15 +70,7 @@ def test_generator_is_disabled_except_explicit_loopback_profile() -> None:
         if profile["defines"]["OTIS_ENABLE_PSEUDO_PPS_GENERATOR"] == "1"
         and profile["expect"] == "pass"
     ]
-    assert enabled_pass_profiles == ["pseudo_pps_loopback"]
-    profile = next(
-        p for p in matrix["profiles"] if p["id"] == enabled_pass_profiles[0]
-    )
-    assert profile["defines"]["OTIS_ENABLE_PPS_DUAL_OBSERVER"] == "0"
-    assert profile["defines"]["OTIS_ENABLE_DAC_AD5693R"] == "0"
-    assert profile["defines"]["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
-    assert profile["defines"]["OTIS_PPS_GATE_MIN_INTERVAL_US"] == "999500"
-    assert profile["defines"]["OTIS_PPS_GATE_MAX_INTERVAL_US"] == "1000500"
+    assert enabled_pass_profiles == []
 
 
 def test_test_only_gate_band_does_not_relax_phase4_hash_guard() -> None:

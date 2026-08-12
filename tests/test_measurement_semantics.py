@@ -11,7 +11,6 @@ import pytest
 from tools import audit_measurement_semantics
 
 from host.otis_tools.contracts import (
-    ESTIMATE_V1_FIELDS,
     ESTIMATE_V2_FIELDS,
     CsvValidationContext,
     validate_csv,
@@ -213,29 +212,6 @@ def test_contract_rejects_unimplemented_correlation_policy(
         ),
     )
     assert any("correlation_policy must be one of" in error for error in result.errors)
-
-
-def test_historical_estimate_v1_remains_readable_without_reinterpretation(
-    tmp_path: Path,
-) -> None:
-    source = _base_row()
-    row = {field: source.get(field, "") for field in ESTIMATE_V1_FIELDS}
-    row["schema_version"] = "1"
-    row["frequency_uncertainty_hz"] = row["dispersion_hz"]
-    path = tmp_path / "estimates_v1.csv"
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ESTIMATE_V1_FIELDS)
-        writer.writeheader()
-        writer.writerow(row)
-    result = validate_csv(
-        path,
-        CsvValidationContext(
-            contract="estimates_v1",
-            known_channels=frozenset(),
-            known_domains=frozenset({"fixture"}),
-        ),
-    )
-    assert result.errors == ()
 
 
 def test_repository_wide_measurement_semantics_inventory_is_current() -> None:

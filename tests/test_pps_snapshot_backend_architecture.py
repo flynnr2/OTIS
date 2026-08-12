@@ -163,21 +163,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         for profile in candidate_profiles
         if profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "1"
     ]
-    assert qualified == [
-        "cx317_pps_gated_i_only_preview",
-        "cx318_stage4_premise_setup",
-        "cx318_stage4_nonactuating_preview",
-        "cx318_stage5_tight_lower",
-        "cx318_stage5_tight_upper",
-        "cx319_q2_inhibited_transaction",
-        "cx319_tight_lower",
-        "cx319_tight_upper",
-        "cx317_bounded_active_campaign_a",
-        "cx317_bounded_active_campaign_b",
-        "cx317_dual_core_active_part_a",
-        "cx317_dual_core_active_rehearsal",
-        "cx317_dual_core_active_endurance_part_b",
-    ]
+    assert qualified == ["cx319_tight_lower", "cx319_tight_upper"]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
         for profile in candidate_profiles

@@ -197,8 +197,11 @@ def create_replay_fixture(run_dir: Path) -> dict[str, Any]:
         run_dir / "run_manifest.json",
         {
             "schema_version": 1,
+            "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
             "run_id": run_dir.name,
             "template": False,
+            "stage": "CX319_Q2_INHIBITED_TRANSACTION_REHEARSAL",
+            "cx319": {"profile_id": "cx319_q2_inhibited_transaction"},
             "files": [
                 {"path": "csv/health.csv", "contract": "health_v1"},
                 {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1"},

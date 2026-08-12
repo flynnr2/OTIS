@@ -21,20 +21,20 @@ from .active_status_contract import (
     latest_complete_health,
 )
 from .contracts import CsvValidationContext, validate_csv
-from .cx317_active_campaign import (
+from .active_transactions import (
     ACTIVE_CSV,
     HEALTH_CSV,
     _read_csv,
     validate_transaction_history,
 )
-from .tight_deadband_live_analyze import (
+from .control_evidence_replay import (
     _capsules_exact,
     _commands_exact,
     _controller_replay,
     _measurement_replay,
     _response_replay,
 )
-from .tight_deadband_rehearsal_analyze import (
+from .campaign_finalization import (
     CAPTURE_STATE,
     SUPERVISOR_EVENTS,
     SUPERVISOR_STATE,
@@ -43,7 +43,7 @@ from .tight_deadband_rehearsal_analyze import (
     _contract_path,
     _host_markers,
 )
-from .tight_deadband_supervisor import (
+from .frequency_control_supervisor import (
     CONTROL_CSV,
     DAC_CSV,
     ENVIRONMENT_CSV,
@@ -53,7 +53,7 @@ from .tight_deadband_supervisor import (
     TDB_CSV,
     healthy_required_direction_applications,
 )
-from .tight_deadband_replay import replay_tight_deadband
+from .tight_deadband_policy import replay_tight_deadband
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
 from .bounded_tight_deadband_outcome_contract import (
     MAXIMUM_CORRECTIONS,
@@ -472,7 +472,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
                 for row in applications
             )
         ),
-        "tight_deadband_replay_exact": tdb_replay.exact and bool(tdb_rows),
+        "tight_deadband_policy_exact": tdb_replay.exact and bool(tdb_rows),
         "phase_hybrid_tdb_continuous_and_zero_authority": (
             previews_present and preview_continuity and zero_authority
         ),
@@ -610,7 +610,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         },
         "measurement_replay": measurement_replay,
         "controller_replay": controller_replay,
-        "tight_deadband_replay": tdb_replay.as_dict(),
+        "tight_deadband_policy": tdb_replay.as_dict(),
         "tight_entry_transition_count": len(tight_entries),
         "source_artifacts_sha256": source_hashes,
         "claims_boundary": (

@@ -379,12 +379,12 @@ def create_run_manifest(
     envelope = proposal["intended_live_envelope"]
     manifest: dict[str, Any] = {
         "schema_version": RUN_MANIFEST_SCHEMA_VERSION,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "template": False,
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
         "stage": LIVE_STAGE,
-        "h_phase": "H1",
         "board": "arduino_nano_rp2040_connect",
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
         "control_mode": "cx319_g2_leg_a_frequency_only_live",

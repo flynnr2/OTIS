@@ -16,11 +16,6 @@ from host.otis_tools.reference_relative_phase_estimator import (
     deterministic_digest,
     load_profile,
 )
-from host.otis_tools.relative_phase_candidate_replay import (
-    DEFAULT_CORPUS,
-    _declared_runs,
-    replay_run,
-)
 
 
 TIMER_HZ = 100
@@ -361,52 +356,6 @@ def test_injected_phase_step_exposes_candidate_lag_and_gain_sensitivity() -> Non
         < final_frequency_settle(balanced)
         < final_frequency_settle(slow)
     )
-
-
-def test_frozen_corpus_includes_every_stage7_attempt_and_explicit_missing_case() -> None:
-    corpus = json.loads(DEFAULT_CORPUS.read_text(encoding="utf-8"))
-    declared = _declared_runs(corpus)
-    paths = {item["path"] for item in declared}
-    stage7_root = Path(corpus["discovered_run_groups"][0]["directory"])
-    expected_stage7 = {
-        child.as_posix()
-        for child in stage7_root.glob("*")
-        if child.is_dir()
-    }
-
-    assert expected_stage7 <= paths
-    assert len(declared) == len(paths)
-    assert all(value is False for value in corpus["authority"].values())
-
-
-def test_small_historical_replay_is_source_preserving_and_deterministic() -> None:
-    corpus = json.loads(DEFAULT_CORPUS.read_text(encoding="utf-8"))
-    profile, profile_sha256 = load_profile()
-    item = next(
-        value
-        for value in corpus["explicit_runs"]
-        if value["class"] == "phase5_pseudo_clean"
-    )
-
-    first = replay_run(
-        item,
-        corpus=corpus,
-        candidate_profile=profile,
-        configuration_sha256=profile_sha256,
-    )
-    second = replay_run(
-        item,
-        corpus=corpus,
-        candidate_profile=profile,
-        configuration_sha256=profile_sha256,
-    )
-
-    assert first["status"] == "replayed"
-    assert first["sources_unchanged"] is True
-    assert first["false_continuity_count"] == 0
-    assert first["false_recovery_count"] == 0
-    assert first["raw_phase_records_sha256"] == second["raw_phase_records_sha256"]
-    assert first["candidate_estimates_sha256"] == second["candidate_estimates_sha256"]
 
 
 def test_selected_profile_is_schema_valid_bound_and_retains_zero_authority() -> None:

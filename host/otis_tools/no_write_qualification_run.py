@@ -62,7 +62,7 @@ from .evidence_finalization import (
     recover_registration,
     set_registration_intent,
 )
-from .platform_rehearsal import (
+from .capture_runtime_checks import (
     _capture_state_ready,
     _health_has,
     _inject_transport_fault,

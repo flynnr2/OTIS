@@ -94,36 +94,13 @@ HOST_TOOL_PATHS = {
         "active_status_live_state.py"
     ),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
-    "abort_path": Path(__file__).with_name("cx317_abort_path.py"),
+    "abort_path": Path(__file__).with_name("abort_transport.py"),
     "segment_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "evidence_index": Path(__file__).with_name("evidence_index.py"),
     "run_validation": Path(__file__).with_name("validate_run.py"),
     "offline_preflight": Path(__file__).with_name("no_write_qualification_preflight.py"),
 }
-FROZEN_V1_HOST_TOOL_NAMES = frozenset(
-    {
-        "abort_path",
-        "analyzer",
-        "bundle",
-        "capture",
-        "evidence_index",
-        "evidence_snapshot",
-        "offline_preflight",
-        "rehearsal",
-        "run_validation",
-        "runtime_contract",
-        "segment_rotation",
-        "serial_commands",
-        "supervisor",
-    }
-)
-FROZEN_V2_HOST_TOOL_NAMES = frozenset(
-    {
-        *FROZEN_V1_HOST_TOOL_NAMES,
-        "host_attach_contract",
-    }
-)
 CURRENT_HOST_TOOL_NAMES = frozenset(HOST_TOOL_PATHS)
 
 
@@ -364,11 +341,9 @@ def validate_build(
     profile = profiles.get(spec["profile_id"])
     if not isinstance(profile, dict) or profile.get("expect") != "pass":
         raise ValueError("CX319 exact supported firmware profile is unavailable")
-    if set(profile.get("verification_tiers", [])) != {
-        "standard_campaign",
-        "release",
-        "bench",
-    }:
+    if not {"campaign", "release", "bench"}.issubset(
+        profile.get("verification_tiers", [])
+    ):
         raise ValueError("CX319 exact profile lacks current verification tiers")
 
     build_manifest_path = build_manifest_path.resolve()
@@ -734,7 +709,7 @@ def create_bundle(
         },
         "analysis_and_seal": {
             "all_declared_contracts_validate": True,
-            "tight_deadband_replay_exact": True,
+            "tight_deadband_policy_exact": True,
             "phase_hybrid_and_tight_authority_zero": True,
             "actual_analyzer_and_seal_required": True,
             "external_evidence_registration_required": True,
@@ -867,12 +842,11 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         raise ValueError("CX319 G1 frozen policy or authority identity is invalid")
     tools = bundle.get("host_tools")
     runtime_contract_id = bundle.get("runtime_contract", {}).get("id")
-    expected_tool_names = {
-        "cx319_g1_prewrite_runtime_contract_v1": FROZEN_V1_HOST_TOOL_NAMES,
-        "cx319_g1_prewrite_runtime_contract_v2": FROZEN_V2_HOST_TOOL_NAMES,
-        "cx319_g1_prewrite_runtime_contract_v3": CURRENT_HOST_TOOL_NAMES,
-        RUNTIME_CONTRACT_ID: CURRENT_HOST_TOOL_NAMES,
-    }.get(runtime_contract_id)
+    expected_tool_names = (
+        CURRENT_HOST_TOOL_NAMES
+        if runtime_contract_id == RUNTIME_CONTRACT_ID
+        else None
+    )
     if (
         not isinstance(tools, dict)
         or expected_tool_names is None
@@ -1072,12 +1046,12 @@ def create_run_manifest(
     ]
     manifest = {
         "schema_version": RUN_MANIFEST_SCHEMA_VERSION,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "template": False,
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
         "stage": REHEARSAL_STAGE,
-        "h_phase": "H1",
         "board": "arduino_nano_rp2040_connect",
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
         "control_mode": "cx319_exact_profile_no_write_rehearsal",

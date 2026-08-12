@@ -23,7 +23,7 @@ from .active_status_contract import latest_complete_health
 from .board_identity import read_board_identity
 from .evidence import create_evidence_snapshot
 from .evidence_index import DEFAULT_INDEX, register_package, validate_index_location
-from .platform_rehearsal import _capture_state_ready, _serial_owner_pids
+from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .q2_transaction_analyze import (
     ANALYSIS_PATH,
     BUNDLE_PATH,

@@ -56,7 +56,7 @@ HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
     "capture": Path(__file__).with_name("capture_device.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
-    "abort_path": Path(__file__).with_name("cx317_abort_path.py"),
+    "abort_path": Path(__file__).with_name("abort_transport.py"),
     "segment_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
     "supervisor": Path(__file__).with_name("bounded_tight_deadband_supervisor.py"),
     "runtime_contract": Path(__file__).with_name(

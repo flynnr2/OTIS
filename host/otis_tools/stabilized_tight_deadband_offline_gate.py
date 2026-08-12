@@ -135,8 +135,9 @@ def _profile_checks(policy: dict[str, Any]) -> dict[str, bool]:
         checks[f"leg_{leg.lower()}_policy_profile_identity"] = (
             policy_leg["firmware_profile"] == expected["profile_id"]
             and profile["lifecycle"] == "keep_active"
-            and set(profile["verification_tiers"])
-            == {"standard_campaign", "release", "bench"}
+            and {"campaign", "release", "bench"}.issubset(
+                profile["verification_tiers"]
+            )
         )
         checks[f"leg_{leg.lower()}_exact_firmware_envelope"] = (
             defines.get("OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW") == "1"
@@ -162,11 +163,6 @@ def _profile_checks(policy: dict[str, Any]) -> dict[str, bool]:
             and defines.get("OTIS_CX317_RECOVERY_FRESH_SUPPORT_S") == "600u"
             and defines.get("OTIS_CX317_DECISION_CADENCE_S") == "1800u"
         )
-    checks["historical_cx318_profiles_remain_archived"] = all(
-        profiles[name]["lifecycle"] == "archive_out_of_default_checks"
-        and profiles[name]["verification_tiers"] == []
-        for name in ("cx318_stage5_tight_lower", "cx318_stage5_tight_upper")
-    )
     guard = profiles.get("invalid_cx319_lower_parameters", {})
     checks["current_parameter_guard_is_release_checked"] = (
         guard.get("expect") == "fail"
@@ -504,13 +500,6 @@ def evaluate(
         live_blocked = True
     else:
         live_blocked = False
-    try:
-        require_programme_execution_allowed("cx318_stage5")
-    except ProgrammeExecutionBlocked:
-        historical_blocked = True
-    else:
-        historical_blocked = False
-
     replay = _tight_replay()
     inherited_replay_checks, inherited_replay_evidence = _replay_checks(
         relative_phase_replay,
@@ -521,10 +510,9 @@ def evaluate(
     checks = {
         "programme_offline_preparation_authorized": True,
         "cx319_operational_execution_blocked": live_blocked,
-        "historical_cx318_execution_blocked": historical_blocked,
         **_profile_checks(policy),
         **_firmware_checks(),
-        "tight_deadband_replay_exact_zero_authority": replay["exact"],
+        "tight_deadband_policy_exact_zero_authority": replay["exact"],
         **inherited_replay_checks,
         **_build_checks(matrix_summary),
         "serial_commands_attempted_is_zero": True,
@@ -541,7 +529,7 @@ def evaluate(
         "mode": "offline_no_io",
         "status": "passed" if all(checks.values()) else "failed",
         "checks": checks,
-        "tight_deadband_replay": replay,
+        "tight_deadband_policy": replay,
         "inherited_replay_evidence": inherited_replay_evidence,
         "matrix_summary": str(matrix_summary.resolve()),
         "hardware_operations": {

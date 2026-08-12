@@ -126,7 +126,10 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
                 sources[path.relative_to(run_dir).as_posix()] = {"role": "raw_evidence"}
     for legacy_name in ("serial_raw.log", "raw_serial.log"):
         if _artifact_path(run_dir, legacy_name).is_file():
-            sources[legacy_name] = {"role": "raw_evidence"}
+            raise EvidenceError(
+                f"legacy root evidence file {legacy_name!r} is unsupported; "
+                "use the package's recorded Git revision or an archival checkout"
+            )
 
     for entry in manifest.files:
         rel_path = _safe_relative_path(entry.get("path"))
@@ -329,7 +332,7 @@ def validate_evidence_snapshot(run_dir: Path, manifest) -> tuple[list[str], list
     if not path.exists():
         if manifest.is_template:
             return [], []
-        return [], [f"{EVIDENCE_MANIFEST}: immutable evidence snapshot is missing"]
+        return [f"{EVIDENCE_MANIFEST}: immutable evidence snapshot is required"], []
 
     failures: list[str] = []
     try:
