@@ -10,22 +10,9 @@ from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
 from .capture_serial import RECORD_CONTRACTS
 from .evidence import validate_evidence_snapshot
 from .pps_diagnostics import classify_pps_interval
-from .run_loader import KNOWN_SW1_CAPTURE_MODES, inspect_run_state, load_manifest
+from .run_loader import inspect_run_state, load_manifest
 from .sessions import detect_run_sessions
 from .timebase import unwrap_ticks
-
-KNOWN_BRINGUP_MODES = {
-    "SW1_SYNTHETIC_USB",
-    "SW1_GPIO_LOOPBACK",
-    "SW1_GPS_PPS",
-    "SW1_TCXO_OBSERVE",
-}
-
-KNOWN_H0_CHANNELS = {0, 1, 2}
-KNOWN_H0_COUNT_SOURCE_DOMAINS = {"h0_tcxo_16mhz"}
-KNOWN_H1_COUNT_SOURCE_DOMAINS = {"h1_cx317_ocxo_10mhz"}
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
     if not path.exists():
@@ -106,33 +93,12 @@ def _optional_int(value: object) -> int | None:
 
 def _validate_manifest(run_dir: Path, manifest) -> list[str]:
     failures: list[str] = []
-    mode = manifest.bringup_mode
-    if mode is not None and mode not in KNOWN_BRINGUP_MODES:
-        failures.append(f"run_manifest.json: bringup_mode {mode!r} is not a known SW1 mode")
-
-    profile = manifest.data.get("profile")
-    if manifest.stage == "SW1" or manifest.h_phase == "H0" or profile is not None:
-        if not isinstance(profile, dict):
-            failures.append("run_manifest.json: profile must be an object")
-        else:
-            profile_name = str(profile.get("name", ""))
-            profile_version = profile.get("version")
-            repo_profile_path = REPO_ROOT / "profiles" / f"{profile_name}.yaml"
-            if not profile_name:
-                failures.append("run_manifest.json: profile.name must not be empty")
-            elif not repo_profile_path.exists():
-                failures.append(f"run_manifest.json: profile {profile_name!r} does not match a profile file")
-            if not isinstance(profile_version, int) or profile_version < 1:
-                failures.append("run_manifest.json: profile.version must be a positive integer")
-
     for channel in manifest.data.get("channels", []):
         try:
             channel_id = int(channel["channel_id"])
         except (KeyError, TypeError, ValueError):
             failures.append("run_manifest.json: channel entry missing integer channel_id")
             continue
-        if manifest.h_phase == "H0" and channel_id not in KNOWN_H0_CHANNELS:
-            failures.append(f"run_manifest.json: channel_id {channel_id} is not valid for H0")
         if not channel.get("role"):
             failures.append(f"run_manifest.json: channel_id {channel_id} missing role")
         if not channel.get("record_family"):
@@ -143,13 +109,6 @@ def _validate_manifest(run_dir: Path, manifest) -> list[str]:
 
 def _manifest_warnings(manifest) -> list[str]:
     warnings: list[str] = []
-    allowed_capture_modes = KNOWN_SW1_CAPTURE_MODES
-    if manifest.stage == "SW1" and manifest.capture_mode not in allowed_capture_modes:
-        warnings.append(
-            f"{manifest.path.name}: SW1 capture_mode is {manifest.capture_mode!r}; expected one of {sorted(allowed_capture_modes)}"
-        )
-    if manifest.stage == "SW1" and not manifest.known_limitations:
-        warnings.append(f"{manifest.path.name}: SW1 known_limitations is empty")
     for key in ("firmware_version", "host_tool_version", "firmware_git_commit", "host_git_commit"):
         if key in manifest.data and manifest.data.get(key) in (None, ""):
             warnings.append(f"{manifest.path.name}: {key} is not populated")
@@ -299,27 +258,13 @@ def _validate_count_sanity(count_rows: list[dict[str, str]], manifest, template:
     if template:
         return []
     failures: list[str] = []
-    if manifest.h_phase == "H1":
-        allowed_source_domains = KNOWN_H1_COUNT_SOURCE_DOMAINS | {
-            str(domain["name"])
-            for domain in manifest.data.get("domains", [])
-            if str(domain.get("name", "")).startswith("h1_")
-        }
-        qualification = manifest.data.get("phase5_pps_backend_qualification")
-        if isinstance(qualification, dict):
-            declared_source_domain = str(qualification.get("source_domain", ""))
-            if declared_source_domain in manifest.known_domains:
-                allowed_source_domains.add(declared_source_domain)
-        phase_label = "H1"
-    else:
-        allowed_source_domains = KNOWN_H0_COUNT_SOURCE_DOMAINS
-        phase_label = "H0"
+    allowed_source_domains = set(manifest.known_domains)
 
     for index, row in enumerate(count_rows, start=1):
         if row.get("channel_id") != "2":
             failures.append(
                 f"count_observations.csv: row {index} uses channel_id {row.get('channel_id')!r}; "
-                f"{phase_label} counts belong on CH2"
+                "current count observations belong on CH2"
             )
         try:
             counted_edges = _int(row["counted_edges"])

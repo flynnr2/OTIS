@@ -2,143 +2,76 @@
 
 ## Status
 
-This document is normative for the platform-stabilization programme. Executable
-firmware-profile lifecycle metadata lives beside each profile in
+Normative for `CX319_EVIDENCE_EPOCH_1`. Current HEAD has two supported firmware
+profiles and five expected-failure guards in
 `firmware/arduino/firmware_matrix.json`.
 
-## Lifecycle classifications
+The only lifecycle values are:
 
-- `keep_active`: supported platform or laboratory capability.
-- `keep_diagnostic_recovery`: retained for a named diagnostic, recovery,
-  characterization, or non-qualification rehearsal.
-- `keep_compile_only`: structural expected-fail guard retained at Release.
-- `archive_out_of_default_checks`: retained only as programme history or for an
-  explicit historical investigation.
-- `retire`: no current, diagnostic, safety, or evidentiary purpose; remove after
-  the recorded consumer/guard check.
+- `keep_active`: a supported CX319 build;
+- `keep_compile_only`: a current structural expected-failure guard.
 
-Lifecycle classification is not inferred from a filename, age, or successful
-compile. In particular, the suspended CX318 Stage 5 profiles are archived even
-though the programme-start baseline proved they still compile.
+Archived profiles are not dormant entries in the current matrix. Reproduce one
+by checking out the revision recorded in its manifest, bundle, or reviewed
+report. A historical build is not a current release result.
 
-## Executable verification tiers
+## Offline tiers
+
+All commands below are no-hardware checks.
 
 ### Fast
 
-Focused deterministic tests, native harnesses, contract checks, source topology
-guards, and the smallest selected firmware profile. Use during narrow work.
+Current unit, contract, source-guard tests and the `cx319_tight_lower` firmware
+smoke build:
 
 ```bash
-.venv/bin/python \
-  firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
 ```
 
-### Standard/Campaign
+### Campaign
 
-Current capture ownership, bounded command framing, status snapshots,
-diagnostics, fault injection, independent abort, owner-preserving handoff,
-evidence, and sealing checks. The selected firmware profile is fixed-code and
-non-actuating.
+Current CX319 capture, serial ownership, abort, rotation, transaction,
+supervisor, replay, analyzer, evidence, sealing, registration, and accelerated
+operational-path tests, plus both supported firmware profiles:
 
 ```bash
-.venv/bin/python \
-  firmware/arduino/validation/scripts/run_no_hardware_checks.py \
-  --tier standard_campaign
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier campaign
 ```
 
 ### Release
 
-The complete current Python/native suite, current firmware profiles, permanent
-structural expected-fail guards, wire fixtures, and example validation/report
-path.
+The complete current Python/native suite and both profiles plus all five
+expected-failure guards:
 
 ```bash
-.venv/bin/python \
-  firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
 ```
 
-The default firmware-matrix command selects this tier:
-
-```bash
-.venv/bin/python tools/firmware_matrix.py
-```
-
-Release verification for the current distributed architecture also exercises
-Q0 schedules: both startup orders and exactly-once boot telemetry; diagnostic
-requests at timing boundaries; zero/intermittent/restored TX capacity and abort
-RX; capacity-minus-one/exact/plus-one queue cases; newer partial status
-invalidation; post-attachment nonce binding; setup authority regression and
-I2C failure; timer wrap; every finalization interruption point; and parallel
-external-index registration. These are offline schedule and contract results,
-not a real-I/O rehearsal or physical qualification.
-
-Every successful firmware build is also gated by
-`otis_firmware_resource_budget_v1`: the Nano RP2040 Connect must report no more
-than 157,286 bytes of static dynamic-memory use, preserving at least 104,858
-bytes for runtime stacks and heap. The observed compiler size report and exact
-budget are sealed into `firmware_build_manifest.json`.
-
-### Bench
-
-The exact frozen platform bundle, real capture path, bounded obstruction,
-independent abort, owner-preserving evidence rotation, analyzer, and seal. Bench
-classification in the matrix identifies profiles eligible for a documented
-diagnostic procedure; it does not authorize actuation.
-
-The current executable Bench path is
-`host.otis_tools.platform_rehearsal`. It accepts only the exact current
-`cx317_fixed_code_baseline` build, rejects compiled actuation or preview
-authority, confirms the expected board before and after one flash, and keeps
-one capture process as the physical serial owner. During the run it:
-
-1. obtains exact `CONFIG?` and disabled-`DAC?` responses;
-2. stops that capture process temporarily and saturates its normal command
-   FIFO;
-3. enqueues `ACTIVE ABORT` through the distinct priority FIFO and proves it is
-   transmitted before stale normal work;
-4. confirms the same PID still solely owns the serial device;
-5. rotates at a complete device-record boundary into a no-authority drainage
-   segment without reopening the port;
-6. closes the physical serial device once, analyzes both closure records,
-   snapshots and seals the evidence, and registers its content identity in the
-   external evidence index.
-
-The exact invocation is recorded in the completion report. A failed attempt is
-retained as a failed rehearsal and is never given a `COMPLETE` marker or pass
-seal.
+Release continues to enforce the firmware resource budget, current wire
+parity, command and authority boundaries, fail-static paths, and evidence
+finalization. It does not compile retired profiles.
 
 ### Historical
 
-Archived profiles are excluded from default checks. An explicit historical
-matrix can be listed or built with:
-
 ```bash
-.venv/bin/python tools/firmware_matrix.py --all-profiles --list
-.venv/bin/python tools/firmware_matrix.py --all-profiles
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier historical
 ```
 
-Running this matrix is a compatibility investigation, not a current support
-claim or release requirement.
+This prints reproduction guidance and executes nothing. Use the package's
+recorded source revision (or an explicit archival tag if one is later created),
+then use that checkout's own commands and matrix. There were no archival tags
+at the compatibility reset, so the recorded commit is the authority.
 
-## Current firmware lifecycle summary
+## Bench
 
-- Active: H1 characterization, explicit operator-controlled H1 laboratory
-  actuation, and the two CX319 tight-deadband candidate profiles. Profile
-  lifecycle makes CX319 part of current compilation and structural checks; it
-  does not grant hardware or live authority.
-- Diagnostic/recovery: fixed baseline, open loop, I-only preview, Stage 4
-  recovery/preview, accelerated dual-core rehearsal, GNSS smoke/preflight,
-  synthetic USB, loopback, IRQ/PPS, FC0, sparse PIO, long gate, divided input,
-  and pseudo-PPS.
-- Compile-only: current structural authority, resource, GNSS, topology, and
-  exact CX319 parameter guards.
-- Archived: Phase 4/5 candidates, completed CX317 campaigns, suspended CX318
-  Stage 5 profiles, completed endurance profiles, and the exact historical
-  Campaign A parameter guard.
+Bench work is outside these commands and still requires an exact frozen bundle,
+the applicable programme operation in `profiles/programme_status_v2.json`, and
+explicit operator authority. This repository reset authorizes no serial access,
+flash, arm, or DAC write.
 
 ## Change rule
 
-Adding a profile requires a lifecycle classification, at least one executable
-tier unless it is archived/retired, a named retained value, and a retirement
-condition. Moving a profile out of default verification requires confirmation
-that current safety, diagnostic, and measurement guards remain covered.
+A new current profile requires an explicit retained purpose, verification-tier
+membership, exact policy/build provenance, and any required expected-failure
+guard. Do not add historical profiles back to the current matrix to reproduce
+an old package.

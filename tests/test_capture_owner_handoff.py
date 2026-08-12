@@ -13,8 +13,11 @@ def _run(path: Path, *, active: bool, pid: int | None = None) -> Path:
     path.mkdir(parents=True)
     (path / "run_manifest.json").write_text(json.dumps({
         "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "template": False,
         "run_id": path.name,
+        "stage": "CX319_CURRENT_HANDOFF_FIXTURE",
+        "cx319": {"profile_id": "cx319_tight_lower"},
         "host": {"serial_device": "/dev/cu.usbmodem14601"},
         "domains": [],
         "channels": [],

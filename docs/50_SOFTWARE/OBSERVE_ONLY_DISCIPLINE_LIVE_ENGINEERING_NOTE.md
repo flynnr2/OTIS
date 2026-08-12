@@ -1,5 +1,9 @@
 # Observe-Only Discipline Live Firmware Engineering Note
 
+> Historical engineering record. The referenced Phase 4 host workflow is not
+> supported by current HEAD. Reproduce it from the exact recorded Git revision;
+> see `CX319_EVIDENCE_EPOCH_1.md`.
+
 ## Decision
 
 The minimum live observe-only discipline estimator, state, and correction-preview

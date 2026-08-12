@@ -5,22 +5,16 @@ from pathlib import Path
 import json
 
 
-MANIFEST_CANDIDATES = ("run_manifest.json", "manifest.json")
+CANONICAL_MANIFEST = "run_manifest.json"
 CAPTURE_IN_PROGRESS_FLAG = "capture_in_progress.flag"
 COMPLETE_MARKER = "COMPLETE"
-SW1_CAPTURE_MODE = "irq_reconstructed"
-SW1_PIO_CAPTURE_MODE = "pio_fifo_cpu_timestamped"
-KNOWN_SW1_CAPTURE_MODES = frozenset(
-    {SW1_CAPTURE_MODE, SW1_PIO_CAPTURE_MODE, "pio_fifo", "synthetic_usb"}
+CURRENT_EVIDENCE_EPOCH = "CX319_EVIDENCE_EPOCH_1"
+CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
+    {"cx319_tight_lower", "cx319_tight_upper", "cx319_q2_inhibited_transaction"}
 )
-SW1_LIMITATION_TEXT = (
-    "SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench "
-    "validation and protocol bring-up, not final PIO/DMA metrology."
-)
-SW1_5A_LIMITATION_TEXT = (
-    "SW1.5a capture mode: pio_fifo_cpu_timestamped. PIO detects rising edges, "
-    "but firmware still attaches timestamps when draining the FIFO; DMA and "
-    "hardware-latched timestamping are deferred."
+ARCHIVAL_CHECKOUT_GUIDANCE = (
+    "unsupported historical OTIS package; use its recorded Git revision or "
+    "an archival checkout to reproduce it"
 )
 
 
@@ -43,30 +37,9 @@ class RunManifest:
         return bool(self.data.get("template", False))
 
     @property
-    def bringup_mode(self) -> str | None:
-        mode = self.data.get("bringup_mode")
-        return str(mode) if mode is not None else None
-
-    @property
     def stage(self) -> str | None:
         stage = self.data.get("stage")
-        if stage not in (None, ""):
-            return str(stage)
-        if "h0_sw1" in self.root.parts:
-            return "SW1"
-        firmware = self.data.get("firmware")
-        if isinstance(firmware, dict) and firmware.get("version") == "SW1":
-            return "SW1"
-        return None
-
-    @property
-    def h_phase(self) -> str | None:
-        phase = self.data.get("h_phase")
-        if phase not in (None, ""):
-            return str(phase)
-        if "h0_sw1" in self.root.parts or str(self.data.get("run_id", "")).startswith("h0_"):
-            return "H0"
-        return None
+        return str(stage) if stage not in (None, "") else None
 
     @property
     def capture_mode(self) -> str | None:
@@ -76,10 +49,6 @@ class RunManifest:
         firmware = self.data.get("firmware")
         if isinstance(firmware, dict) and firmware.get("capture_mode"):
             return str(firmware["capture_mode"])
-        if self.bringup_mode == "SW1_SYNTHETIC_USB":
-            return "synthetic_usb"
-        if self.stage == "SW1":
-            return SW1_CAPTURE_MODE
         return None
 
     @property
@@ -174,11 +143,42 @@ class RunState:
 
 
 def find_manifest_path(run_dir: Path) -> Path | None:
-    for candidate in MANIFEST_CANDIDATES:
-        path = run_dir / candidate
-        if path.exists():
-            return path
-    return None
+    path = run_dir / CANONICAL_MANIFEST
+    return path if path.exists() else None
+
+
+def _require_current_epoch(data: dict) -> None:
+    stage = str(data.get("stage", ""))
+    run_id = str(data.get("run_id", ""))
+    cx319 = data.get("cx319")
+    current_profile = (
+        isinstance(cx319, dict)
+        and cx319.get("profile_id") in CURRENT_PACKAGE_PROFILE_IDENTITIES
+    )
+    if stage.startswith("CX319_") and current_profile:
+        return
+    if (
+        stage == "CX318_STAGE5_TRANSITION_SPOOL"
+        and run_id.endswith("owner_handoff_transition")
+    ):
+        return
+    legacy_keys = {
+        "bringup_mode",
+        "phase4_discipline_replay",
+        "phase5_pps_backend_qualification",
+    }
+    if data.get("h_phase") in {"H0", "H1"} or legacy_keys.intersection(data):
+        raise ValueError(ARCHIVAL_CHECKOUT_GUIDANCE)
+    if stage in {"SW1", "H0", "H1"} or stage.startswith(("CX317_", "PHASE4_", "PHASE5_")):
+        raise ValueError(ARCHIVAL_CHECKOUT_GUIDANCE)
+    if stage.startswith("CX318_"):
+        raise ValueError(ARCHIVAL_CHECKOUT_GUIDANCE)
+    if data.get("compatibility_floor") == CURRENT_EVIDENCE_EPOCH and current_profile:
+        return
+    raise ValueError(
+        f"manifest does not satisfy {CURRENT_EVIDENCE_EPOCH}; "
+        f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
+    )
 
 
 def inspect_run_state(run_dir: Path) -> RunState:
@@ -191,8 +191,14 @@ def inspect_run_state(run_dir: Path) -> RunState:
 def load_manifest(run_dir: Path) -> RunManifest:
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is None:
-        names = " or ".join(MANIFEST_CANDIDATES)
-        raise FileNotFoundError(f"missing manifest: expected {names} in {run_dir}")
+        legacy_path = run_dir / "manifest.json"
+        if legacy_path.exists():
+            raise ValueError(
+                f"legacy manifest.json is not supported; {ARCHIVAL_CHECKOUT_GUIDANCE}"
+            )
+        raise FileNotFoundError(
+            f"missing canonical {CANONICAL_MANIFEST} in {run_dir}"
+        )
     with manifest_path.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
 
@@ -203,4 +209,5 @@ def load_manifest(run_dir: Path) -> RunManifest:
     if not isinstance(data.get("files"), list) or not data["files"]:
         raise ValueError("manifest must list at least one data file")
 
+    _require_current_epoch(data)
     return RunManifest(root=run_dir, path=manifest_path, data=data)

@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 import csv
@@ -204,7 +203,7 @@ REFERENCE_OBSERVATION_V1_FIELDS = [
     "config_hash",
 ]
 
-ESTIMATE_V1_FIELDS = [
+ESTIMATE_COMMON_FIELDS = [
     "record_type",
     "schema_version",
     "estimate_seq",
@@ -244,7 +243,7 @@ ESTIMATE_V1_FIELDS = [
 ]
 
 ESTIMATE_V2_FIELDS = [
-    *ESTIMATE_V1_FIELDS[:30],
+    *ESTIMATE_COMMON_FIELDS[:30],
     "dispersion_hz",
     "uncertainty_status",
     "uncertainty_reason_codes",
@@ -258,7 +257,7 @@ ESTIMATE_V2_FIELDS = [
     "expanded_uncertainty_hz",
     "correlation_policy",
     "uncertainty_model_ref",
-    *ESTIMATE_V1_FIELDS[32:],
+    *ESTIMATE_COMMON_FIELDS[32:],
 ]
 
 CONTROL_PREVIEW_V1_FIELDS = [
@@ -486,7 +485,6 @@ CONTRACT_FIELDS = {
     "pseudo_pps_truth_v1": PSEUDO_PPS_TRUTH_FIELDS,
     "diagnostics_v1": DIAGNOSTICS_V1_FIELDS,
     "reference_observations_v1": REFERENCE_OBSERVATION_V1_FIELDS,
-    "estimates_v1": ESTIMATE_V1_FIELDS,
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
     "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
@@ -507,7 +505,6 @@ CONTRACT_RECORD_TYPES = {
     "pseudo_pps_truth_v1": {"PGT"},
     "diagnostics_v1": {"DIAG"},
     "reference_observations_v1": {"RFO"},
-    "estimates_v1": {"EST"},
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
     "active_transactions_v1": {"ACT"},
@@ -528,7 +525,6 @@ CONTRACT_SCHEMA_VERSIONS = {
     "pseudo_pps_truth_v1": 1,
     "diagnostics_v1": 1,
     "reference_observations_v1": 1,
-    "estimates_v1": 1,
     "estimates_v2": 2,
     "control_previews_v1": 1,
     "active_transactions_v1": 1,
@@ -549,7 +545,6 @@ SEQUENCE_FIELDS = {
     "pseudo_pps_truth_v1": "truth_seq",
     "diagnostics_v1": "diagnostic_seq",
     "reference_observations_v1": "reference_observation_seq",
-    "estimates_v1": "estimate_seq",
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
     "active_transactions_v1": "transaction_record_sequence",
@@ -570,7 +565,6 @@ TIMESTAMP_FIELDS = {
     "pseudo_pps_truth_v1": (),
     "diagnostics_v1": ("last_seen_ticks",),
     "reference_observations_v1": ("observation_timestamp_ticks",),
-    "estimates_v1": ("estimator_timestamp_ticks",),
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
     "active_transactions_v1": (),
@@ -596,7 +590,6 @@ DOMAIN_FIELDS = {
     "pseudo_pps_truth_v1": (),
     "diagnostics_v1": ("time_domain",),
     "reference_observations_v1": ("time_domain",),
-    "estimates_v1": ("time_domain",),
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
     "active_transactions_v1": (),
@@ -1334,7 +1327,7 @@ def _check_boolean_text(row: dict[str, str], field_name: str, row_number: int, e
         errors.append(f"row {row_number}: {field_name} must be 'true' or 'false'")
 
 
-def _check_estimate_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+def _check_estimate_common(row: dict[str, str], row_number: int, errors: list[str]) -> None:
     _check_required_text(
         row,
         row_number,
@@ -1378,7 +1371,7 @@ def _check_estimate_v1(row: dict[str, str], row_number: int, errors: list[str]) 
     ):
         _check_boolean_text(row, field_name, row_number, errors)
     if row.get("drift_enabled") != "false":
-        errors.append(f"row {row_number}: drift_enabled must remain false in Phase 4 v1 replay")
+        errors.append(f"row {row_number}: drift_enabled must remain false")
     if row.get("drift_hz_per_s"):
         errors.append(f"row {row_number}: drift_hz_per_s must be unavailable when drift_enabled=false")
 
@@ -1401,7 +1394,7 @@ def _check_estimate_v1(row: dict[str, str], row_number: int, errors: list[str]) 
 
 
 def _check_estimate_v2(row: dict[str, str], row_number: int, errors: list[str]) -> None:
-    _check_estimate_v1(row, row_number, errors)
+    _check_estimate_common(row, row_number, errors)
     status = row.get("uncertainty_status")
     if status not in VALID_UNCERTAINTY_STATUS:
         errors.append(
@@ -2261,8 +2254,6 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_diagnostics_v1(row, row_count, errors)
             if context.contract == "reference_observations_v1":
                 _check_reference_observation_v1(row, row_count, errors)
-            if context.contract == "estimates_v1":
-                _check_estimate_v1(row, row_count, errors)
             if context.contract == "estimates_v2":
                 _check_estimate_v2(row, row_count, errors)
             if context.contract == "control_previews_v1":
@@ -2290,12 +2281,3 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
         warnings.append("CSV has headers but no data rows")
 
     return CsvValidationResult(path=path, row_count=row_count, errors=tuple(errors), warnings=tuple(warnings))
-
-
-def validate_csv_header(path: Path, expected_fields: list[str]) -> CsvValidationResult:
-    """Compatibility wrapper for older callers; prefer validate_csv()."""
-    contract = next((name for name, fields in CONTRACT_FIELDS.items() if fields == expected_fields), "unknown")
-    return validate_csv(
-        path,
-        CsvValidationContext(contract=contract, known_channels=frozenset(), known_domains=frozenset()),
-    )

@@ -91,12 +91,9 @@ EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
 INSTALLATION_NOISE_NAMES = {".DS_Store", "installed.json"}
 LIFECYCLE_CLASSES = {
     "keep_active",
-    "keep_diagnostic_recovery",
     "keep_compile_only",
-    "archive_out_of_default_checks",
-    "retire",
 }
-VERIFICATION_TIERS = {"fast", "standard_campaign", "release", "bench"}
+VERIFICATION_TIERS = {"fast", "campaign", "release", "bench"}
 
 
 class MatrixError(RuntimeError):
@@ -275,13 +272,6 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
             raise MatrixError(
                 f"profile {profile_id} has invalid verification_tiers"
             )
-        if lifecycle in {"archive_out_of_default_checks", "retire"} and (
-            verification_tiers
-        ):
-            raise MatrixError(
-                f"profile {profile_id} is outside default checks but names "
-                "verification tiers"
-            )
         if lifecycle == "keep_active" and expectation != "pass":
             raise MatrixError(
                 f"active profile {profile_id} must be expected to pass"
@@ -330,22 +320,11 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
             expectation == "pass"
             and defines.get("OTIS_ENABLE_CX317_BOUNDED_ACTIVE", "0") == "1"
             and profile_id
-            not in {
-                "cx317_bounded_active_campaign_a",
-                "cx317_bounded_active_campaign_b",
-                "cx317_dual_core_active_part_a",
-                "cx317_dual_core_active_rehearsal",
-                "cx317_dual_core_active_endurance_part_b",
-                "cx318_stage5_tight_lower",
-                "cx318_stage5_tight_upper",
-                "cx319_q2_inhibited_transaction",
-                "cx319_tight_lower",
-                "cx319_tight_upper",
-            }
+            not in {"cx319_tight_lower", "cx319_tight_upper"}
         ):
             raise MatrixError(
                 "bounded controller-to-DAC reachability is restricted to "
-                "the dedicated programme and diagnostic rehearsal profiles"
+                "the current CX319 profiles"
             )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(

@@ -271,10 +271,13 @@ def _create_manifest_if_missing(
         return
     manifest = {
         "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
         "template": False,
+        "stage": "CX319_CURRENT_CAPTURE",
+        "cx319": {"profile_id": "cx319_tight_lower"},
         "host": {
             "tool": "host.otis_tools.capture_device",
             "version": "0",
@@ -282,7 +285,7 @@ def _create_manifest_if_missing(
             "baud": baud,
         },
         "profile": {
-            "name": "h0_reference",
+            "name": "cx319_tight_lower",
             "version": 1,
         },
         "domains": [
@@ -292,9 +295,8 @@ def _create_manifest_if_missing(
             }
         ],
         "channels": [
-            {"channel_id": 0, "role": "generic_pulse", "record_family": "raw_events_v1"},
-            {"channel_id": 1, "role": "pps_reference", "record_family": "raw_events_v1"},
-            {"channel_id": 2, "role": "xcxo_observation", "record_family": "count_observations_v1"},
+            {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},
+            {"channel_id": 2, "role": "pps_gated_oscillator_count", "record_family": "count_observations_v1"},
         ],
         "contracts": {
             "raw_events_v1": 1,
@@ -1054,11 +1056,14 @@ class CaptureDeviceRunner:
             ):
                 raise ValueError("transition segment is not exact no-authority drainage")
         elif mode == "live":
-            from .tight_deadband_manifest import LIVE_STAGE, validate_manifest
+            from .bounded_tight_deadband_activation import (
+                LIVE_STAGE,
+                validate_frozen_run_manifest,
+            )
 
-            validated = validate_manifest(manifest_path)
+            validated = validate_frozen_run_manifest(manifest_path)
             if validated.get("stage") != LIVE_STAGE:
-                raise ValueError("live segment is not a validated Stage 5 live manifest")
+                raise ValueError("live segment is not a validated current CX319 manifest")
             command_value = request.get("command_fifo")
             emergency_value = request.get("emergency_command_fifo")
             if not isinstance(command_value, str) or not isinstance(emergency_value, str):

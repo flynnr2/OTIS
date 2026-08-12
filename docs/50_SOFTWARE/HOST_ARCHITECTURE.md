@@ -1,335 +1,88 @@
 # Host Architecture
 
-OTIS hosts are responsible for observability and analysis, not timing truth.
+OTIS host services preserve and analyze timing evidence; hardware capture is
+timing truth. Host scheduling, logging, networking, and storage must not define
+or modify timestamps.
 
-The preferred OTIS architecture preserves a strong separation between:
+## Current boundary
 
-- deterministic timing capture;
-- timing semantics and discipline;
-- instrumentation services;
-- archival and analysis.
+Current HEAD implements only `CX319_EVIDENCE_EPOCH_1`; see
+`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. Reusable code is organized by
+responsibility:
 
----
+- `capture_device`, `capture_segment_rotation`, and `capture_owner_handoff`
+  preserve one known serial owner and complete-record boundaries;
+- `capture_runtime_checks` holds sole-owner, live-capture, and bounded
+  obstruction/priority-abort checks;
+- `active_transactions`, `active_control_policy`, and
+  `active_control_supervisor` preserve the current transaction and fail-static
+  authority mechanics without retired campaign state modes;
+- `measurement_replay`, `frequency_control_replay`,
+  `control_evidence_replay`, and `tight_deadband_policy` provide deterministic
+  current replay;
+- `campaign_finalization`, `evidence`, `evidence_finalization`, and
+  `evidence_index` preserve acquisition, sealing, recovery, and registration.
 
-# Conceptual Partitioning
+Deployed `cx317_*` strings in wire rows, firmware APIs, hashes, and profile
+paths remain exact provenance. They do not imply that CX317 campaign CLIs or
+formats are supported.
+
+## Capture topology
 
 ```text
-PIO / DMA          deterministic timing fabric
-Core 1             protected timing and discipline core
-Core 0             instrumentation and I/O services
-OTIS Host          archival, replay, dashboards, analysis
+hardware timing fabric
+        ↓
+firmware telemetry
+        ↓
+capture_device (sole USB serial owner)
+        ├── raw/serial.log (canonical immutable observations)
+        ├── csv/ (interpreted products)
+        └── reports/ (state and audit records)
 ```
 
-The host is intentionally outside the timing-critical path.
+Other host processes use bounded run-local FIFOs. The normal FIFO accepts only
+the closed command vocabulary for the current operation. The independent
+emergency FIFO accepts only `ACTIVE ABORT` and remains usable when normal
+command ingress is obstructed. `host_written` proves only that the carrier sent
+bytes; firmware telemetry proves receipt, authorization, application, failure,
+and resulting state.
 
----
+Logical segment rotation waits for a complete device record, closes the source
+segment, and opens the target under the same PID and serial handle. The current
+owner-handoff transition retains its deployed CX318 wire identity because that
+identity is present in current sealed CX319 evidence; it has no command or
+actuation authority.
 
-# Host Responsibilities
+## Canonical package
 
-Potential host responsibilities include:
-
-- append-only logging;
-- telemetry archival;
-- replay tooling;
-- dashboards;
-- report generation;
-- API exposure;
-- long-run analysis;
-- Allan deviation analysis;
-- environmental correlation.
-
-The host should be optimized for:
-
-- observability;
-- reproducibility;
-- archival durability;
-- scientific analysis.
-
----
-
-# Linux Hosts
-
-Linux hosts are first-class. For the current supported OTIS generation, a
-continuously running sole-owner capture carrier is a required instrument
-component during evidence-bearing operation.
-
-Likely initial host environments:
-
-| Host                         | Notes                                 |
-|------------------------------|---------------------------------------|
-| Raspberry Pi Zero 2 W        | likely preferred OTIS appliance host  |
-| Raspberry Pi 4 / 5           | heavier analysis and dashboards       |
-| Linux laptop/workstation     | excellent development environment     |
-
-Hardware capture remains timing truth without the host, but firmware does not
-promise indefinite hostless evidence preservation or lifecycle continuity.
-USB TX obstruction is supported for at most 2,000 ms of total pending-frame
-time; intermittent byte progress does not extend the horizon. If the frame
-does not complete within that horizon, firmware latches a transport partition
-fault, inhibits actuation, requests device abort through the internal service
-path, keeps GNSS and command RX serviced, quarantines the partial wire stream,
-and drains queued records as explicitly non-durable loss. The last confirmed
-DAC code is held; the capture lease expires normally; recovery requires reset
-and a new evidence session. There is no on-device durable spool and detach/
-reattach is not a supported continuity transition.
-
-However, Linux hosts significantly enhance:
-
-- observability;
-- replayability;
-- analysis capability;
-- archival workflows.
-
----
-
-# Timing Isolation
-
-Host activity must not influence:
-
-- deterministic capture;
-- timestamp correctness;
-- timing semantics;
-- discipline-loop behavior.
-
-The host consumes timing telemetry.
-
-The host does not establish timing truth.
-
-## Durable source naming
-
-Reusable source modules and primary APIs are named for their physical quantity,
-responsibility, or operational capability. Programme, gate, and stage identities
-belong in profiles, manifests, authority records, and historical evidence rather
-than the shared implementation namespace. Hardware names such as `cx317` remain
-only where code is coupled to that oscillator, its plant, or immutable campaign
-provenance. The classification and compatibility boundary are recorded in
-`docs/50_SOFTWARE/SEMANTIC_SOURCE_NAMING_MIGRATION.md`.
-
----
-
-# Instrument Service Separation
-
-Optional instrumentation-service functionality may exist within the OTIS appliance.
-
-Examples include:
-
-- OLED displays;
-- environmental sensors;
-- status LEDs;
-- optional local SD logging.
-
-These should remain architecturally separated from:
-
-- the timing fabric;
-- deterministic capture;
-- Core 1 timing work.
-
----
-
-# Recommended Logging Architecture
-
-Preferred architecture:
+A current package contains:
 
 ```text
-OTIS timing appliance
-        ↓
-structured telemetry stream
-        ↓
-OTIS Host append-only archival
-        ↓
-replay and analysis tooling
-```
-
-This preserves:
-
-- deterministic capture isolation;
-- replayability;
-- observability;
-- analysis flexibility.
-
-For unattended hardware runs the host serial path has a single owner:
-
-```text
-USB serial device
-        ↓
-host.otis_tools.capture_device
-        ↓
+run_manifest.json
 raw/serial.log
-        ↓
-manifest-driven CSV splitter
-        ↓
-validate_run / report_run
+csv/
+reports/
+evidence_manifest.json
+COMPLETE
 ```
 
-`capture_device` is the only process that opens `/dev/cu.usbmodem*`. Other host
-tools operate on the raw log, CSV files, manifest, and reports emitted into the
-run directory. This preserves forensic ordering and avoids competing serial
-readers.
+The manifest is authoritative for declared artifacts and contracts. Raw
+observations are append-only during capture and never overwritten by derived
+values. A non-template package without the immutable evidence snapshot is
+invalid. Root-level raw-log aliases and `manifest.json` are rejected.
 
-## Aperiodic Serial Commands
+## Replay and analysis
 
-Some H1 characterization workflows need occasional host commands while a run is
-being captured, for example `DAC MID`, `DAC SET <code>`, `SWEEP START`, or
-`SWEEP STOP`. These commands should still preserve single serial ownership:
-`capture_device` remains the only process that opens the USB serial device.
+Analysis reads manifest-declared evidence and creates new derived products. It
+must preserve raw source hashes, clock domains, estimator/policy/model identity,
+and actionability. Reanalysis and supersession follow
+`docs/50_SOFTWARE/EVIDENCE_LIFECYCLE.md`; no analyzer may silently make a
+historical package current or grant operational authority.
 
-The preferred shape is a small command ingress owned by `capture_device`, with a
-separate one-shot helper writing validated commands into that ingress:
+## Authority
 
-```text
-one-shot host command helper
-        ↓
-run-local command FIFO or socket
-        ↓
-host.otis_tools.capture_device
-        ↓
-USB serial device
-```
-
-The v0.1 host interface is:
-
-```bash
-python3 -m host.otis_tools.capture_device \
-  --device /dev/cu.usbmodem101 \
-  --run-dir runs/.../run_001 \
-  --command-fifo runs/.../run_001/control/commands.fifo
-
-python3 -m host.otis_tools.send_command \
-  --fifo runs/.../run_001/control/commands.fifo \
-  "DAC MID"
-```
-
-This command path is intentionally not a general serial terminal. It should only
-accept known atomic commands whose effects are represented by firmware telemetry:
-
-- `HELP`
-- `DAC?`
-- `DAC LIMITS?`
-- `DAC MID`
-- `DAC ZERO`
-- `DAC SET <decimal-or-0xhex-code>`
-- `FC0?`
-- `SWEEP?`
-- `SWEEP LOAD <known-profile>`
-- `SWEEP START`
-- `SWEEP STOP`
-- `SWEEP STEP`
-- `SWEEP CLEAR`
-
-Open-ended command construction, such as arbitrary `SWEEP ADD` sequences, should
-not be part of this path unless a later runbook defines a bounded, auditable use
-case. Prefer firmware-builtin sweep profiles for repeatable characterization.
-
-Every command decision must be auditable in `raw/serial.log` through
-`# OTIS_HOST` markers. At minimum, rejected commands should record the rejection
-reason, and accepted commands should record the normalized command before serial
-write and `host_written` afterward. `host_written` proves only that the sole
-carrier wrote the command bytes; firmware status separately proves receive,
-authorization, application, failure, and observed result. The command bytes themselves should not be
-inserted into the raw device byte stream because that would pollute replay and
-CSV parsing. Firmware `STS`/`DAC` records remain the command acknowledgement
-source; `capture_device` should not block capture waiting for synchronous
-responses.
-
-Bounded active setup uses `ACTIVE SNAPSHOT <nonce>` followed by one
-`ACTIVE SETUP <authorization-sequence> <status-generation> <nonce>
-<expiry-s> <session> <code> 1 <configuration-sha256>`. Before transmission,
-the supervisor creates the immutable
-`reports/setup_authority_input_v1.json`, containing the exact coherent health
-map and request. The analyzer recomputes readiness and correlation from this
-record; the supervisor's cached readiness Boolean is not evidence authority.
-If no applied or failed result is observed by the 30-second firmware authority
-expiry plus one 10-second status-query interval, the supervisor issues the
-independent abort and terminates without retrying the setup.
-
-## Same-owner logical capture segments
-
-Long evidence workflows sometimes need an immutable run and its seal before a
-subsequent manifest can legally exist. `capture_device` can rotate logical
-evidence sinks without closing or reopening the physical serial handle:
-
-```text
-rehearsal sink → no-authority transition sink → validated live sink
-                 same PID and serial handle
-```
-
-`capture_segment_rotation` writes a capability-bound local request containing
-the expected PID, transport generation, source run, target manifest hash and
-exact target command FIFOs. The capture owner verifies the real `lsof` owner set,
-waits for a complete device-record boundary, closes the source with an
-immutable `capture_segment_closure_v1.json`, and opens command ingress only for
-a fully validated live manifest. The transition manifest forbids command
-ingress and all actuation authority. A serial exception anywhere in a managed
-multi-segment carrier stops fail-static; it never reconnects into another
-logical segment.
-
-`cx318_stage5_promote` performs the Stage 5 sequence in its required order:
-rotate to transition, mark and snapshot the closed rehearsal, require a passed
-rehearsal seal, create the live manifest, then rotate to live. It never opens
-the serial device or transmits a command.
-
----
-
-# SW1 Bring-Up Host Path
-
-For SW1/H0 bring-up, host tooling intentionally stays small:
-
-- `python3 -m host.otis_tools.capture_serial` reads firmware serial text from
-  stdin, preserves it in `raw/serial.log`, and splits only complete,
-  contract-width `EVT`/`REF`, `CNT`, `SNP`, `ASL`, `STS`, `DAC`, and `ENV` rows into a run
-  directory based on a template manifest. It creates
-  `capture_in_progress.flag` while capture is active and removes it after stdin
-  closes cleanly.
-- `python3 -m host.otis_tools.capture_device` owns a USB serial device for
-  unattended runs, appends raw bytes and host reconnect markers to
-  `raw/serial.log`, frames complete lines, and feeds the same CSV splitter used
-  by `capture_serial`. It reconnects after USB/RP2040 resets with bounded
-  buffering and keeps incomplete, oversized, malformed-UTF-8, and
-  contract-width-invalid frames only in raw evidence, with explicit forensic
-  markers or parser diagnostics.
-- `python3 -m host.otis_tools.validate_run` checks manifest/profile consistency,
-  known SW1 modes, known H0 channels, CSV headers, malformed rows, record types,
-  required fields, monotonic sequences/timestamps, PPS cadence sanity, and TCXO
-  count sanity. It warns for in-progress captures, missing `COMPLETE` markers,
-  missing optional artifacts, empty CSVs, and unpopulated provenance fields.
-- `python3 -m host.otis_tools.evidence RUN_DIR` seals a completed run with a
-  deterministic `evidence_manifest.json`. It snapshots the exact manifest,
-  configuration, selected profile, raw logs, and declared data artifacts using
-  byte lengths and SHA-256 digests. Validation then treats any mutation,
-  removal, or uncovered evidence-bearing addition as an error. Historical
-  unsealed runs remain valid with an explicit provenance warning.
-- `python3 -m host.otis_tools.report_run` renders a Markdown A0 replay report
-  covering run identity, SW1 capture limitations, completion state, artifact
-  inventory, row counts, raw-event monotonicity, PPS/reference interval sanity,
-  host-derived count-observation frequency estimates when units are declared,
-  health/status counters, validation findings, warnings, anomalies, and fixture
-  usefulness. Use `--output` to write the Markdown report and `--json` to write
-  the same high-level summary as machine-readable JSON.
-
-SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
-validation and protocol bring-up, not final PIO/DMA metrology.
-
-These tools do not infer PPS quality, oscillator frequency error, lock state,
-discipline state, steering quality, Allan deviation, or other SW2/A-stage
-claims.
-
-`report_run` fields such as `mean_observed_frequency_hz` are derived from raw
-`CNT` windows and manifest domain metadata. They are not firmware-emitted
-fields, and they should not be read as PPS-disciplined results unless the report
-also names the PPS/reference evidence and filtering assumptions used.
-
----
-
-# Long-Term Direction
-
-Future OTIS hosts may eventually support:
-
-- distributed timing analysis;
-- reference comparison dashboards;
-- remote observability;
-- historical telemetry indexing;
-- automated characterization runs;
-- calibration tooling;
-- future OTIS Console functionality.
-
-These remain host-layer responsibilities, not timing-fabric responsibilities.
+Repository code and offline verification do not authorize hardware work.
+Operational tools must request their exact operation from
+`profiles/programme_status_v2.json`, validate the exact frozen bundle, keep the
+serial and abort invariants, and fail static on an identity, health, timeout, or
+evidence discontinuity.

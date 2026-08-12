@@ -15,8 +15,8 @@ import json
 from pathlib import Path
 import time
 
-from .cx317_abort_path import AbortFifo
-from .cx317_active_campaign import (
+from .abort_transport import AbortFifo
+from .active_transactions import (
     ACTIVE_CSV,
     HEALTH_CSV,
     LEASE_PERIOD_S,
@@ -24,12 +24,12 @@ from .cx317_active_campaign import (
     CampaignSpec,
     _read_csv,
 )
-from .cx317_bounded_active_supervisor import (
+from .active_control_supervisor import (
     CAPTURE_TRANSPORT_STATE,
     CAPTURE_TRANSPORT_STATE_MAX_AGE_S,
     _parse_utc_epoch,
 )
-from .tight_deadband_supervisor import DAC_CSV, TightDeadbandLeg, TightDeadbandSupervisor
+from .frequency_control_supervisor import DAC_CSV, TightDeadbandLeg, FrequencyControlSupervisor
 from .no_write_qualification_bundle import (
     NO_WRITE_BENCH_OPERATION,
     POLICY_PATH,
@@ -128,7 +128,7 @@ def load_no_write_qualification_spec(
     return spec, identities, TightDeadbandLeg(leg, direction, direction_name)
 
 
-class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
+class NoWriteQualificationSupervisor(FrequencyControlSupervisor):
     """Current-identity wrapper with an exact no-write command boundary."""
 
     def __init__(

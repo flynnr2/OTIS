@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import shutil
 
 import pytest
 
@@ -10,12 +9,51 @@ from host.otis_tools.evidence import EVIDENCE_MANIFEST, EvidenceError, create_ev
 from host.otis_tools.validate_run import validate_run
 
 
-EXAMPLE = Path("examples/h0_pps_tcxo_synthetic")
-
-
 def _completed_run(tmp_path: Path, name: str = "run") -> Path:
     run_dir = tmp_path / name
-    shutil.copytree(EXAMPLE, run_dir)
+    csv_dir = run_dir / "csv"
+    csv_dir.mkdir(parents=True)
+    (csv_dir / "raw_events.csv").write_text(
+        "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags\n"
+        "EVT,1,1,1,R,16000000,rp2040_timer0,0\n",
+        encoding="utf-8",
+    )
+    (csv_dir / "health.csv").write_text(
+        "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags\n"
+        "STS,1,1,16000000,rp2040_timer0,capture,dropped_count,0,INFO,0\n",
+        encoding="utf-8",
+    )
+    (run_dir / "selected_profile.yaml").write_text(
+        "profile_id: cx319_tight_lower\n", encoding="utf-8"
+    )
+    manifest = {
+        "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+        "run_id": "cx319_evidence_fixture",
+        "created_utc": "2026-08-12T00:00:00Z",
+        "template": False,
+        "stage": "CX319_CURRENT",
+        "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
+        "board": "arduino_nano_rp2040_connect",
+        "cx319": {"profile_id": "cx319_tight_lower"},
+        "firmware": {
+            "name": "otis_nano_rp2040_connect",
+            "build_provenance_required": True,
+        },
+        "domains": [{"name": "rp2040_timer0", "nominal_hz": 16000000}],
+        "channels": [
+            {"channel_id": 1, "role": "reference", "record_family": "raw_events_v1"}
+        ],
+        "files": [
+            {"path": "csv/raw_events.csv", "contract": "raw_events_v1"},
+            {"path": "csv/health.csv", "contract": "health_v1"},
+        ],
+        "profile_snapshot": "selected_profile.yaml",
+    }
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    _append_build_provenance(run_dir)
     (run_dir / "COMPLETE").touch()
     return run_dir
 
@@ -26,7 +64,7 @@ def _snapshot(run_dir: Path) -> dict:
 
 def _append_build_provenance(
     run_dir: Path,
-    filename: str = "health.csv",
+    filename: str = "csv/health.csv",
 ) -> dict[str, str]:
     values = {
         "provenance_format": "otis_generated_build_v1",
@@ -40,7 +78,7 @@ def _append_build_provenance(
         "core_provider": "rp2040",
         "core_version": "6.0.0",
         "core_installed_sha256": "e" * 64,
-        "profile_id": "phase5_qualification",
+        "profile_id": "cx319_tight_lower",
         "toolchain": "pqt-gcc@5.0.0-9576866",
         "compiler": "pqt-gcc@5.0.0-9576866/arm-none-eabi-g++@16.1.0",
         "toolchain_installed_sha256": "f" * 64,
@@ -94,7 +132,7 @@ def test_snapshot_is_deterministic_and_covers_profile_and_declared_evidence(tmp_
     assert _snapshot(first) == _snapshot(second)
     artifacts = {entry["path"]: entry for entry in _snapshot(first)["artifacts"]}
     assert artifacts["run_manifest.json"]["role"] == "run_manifest"
-    assert artifacts["raw_events.csv"]["contract"] == "raw_events_v1"
+    assert artifacts["csv/raw_events.csv"]["contract"] == "raw_events_v1"
     assert artifacts["selected_profile.yaml"]["role"] == "profile_snapshot"
     assert validate_run(first) == 0
 
@@ -147,7 +185,7 @@ def test_snapshot_rejects_partial_or_malformed_build_provenance(
     tmp_path: Path,
 ) -> None:
     run_dir = _completed_run(tmp_path)
-    with (run_dir / "health.csv").open("a", encoding="utf-8") as handle:
+    with (run_dir / "csv/health.csv").open("a", encoding="utf-8") as handle:
         handle.write(
             "STS,1,10,10,rp2040_timer0,build,provenance_format,"
             "otis_generated_build_v1,INFO,32768\n"
@@ -162,13 +200,13 @@ def test_snapshot_rejects_partial_or_malformed_build_provenance(
 def test_complete_banner_cannot_mask_later_partial_boot(tmp_path: Path) -> None:
     run_dir = _completed_run(tmp_path)
     _append_build_provenance(run_dir)
-    with (run_dir / "health.csv").open("a", encoding="utf-8") as handle:
+    with (run_dir / "csv/health.csv").open("a", encoding="utf-8") as handle:
         handle.write(
             "STS,1,99,1632000099,rp2040_timer0,build,provenance_format,"
             "otis_generated_build_v1,INFO,32768\n"
         )
 
-    with pytest.raises(EvidenceError, match="banner 2 is incomplete"):
+    with pytest.raises(EvidenceError, match="banner 3 is incomplete"):
         create_evidence_snapshot(run_dir)
 
 
@@ -177,8 +215,8 @@ def test_each_health_file_ignores_legacy_rows_before_its_own_sentinel(
 ) -> None:
     run_dir = _completed_run(tmp_path)
     expected = _append_build_provenance(run_dir)
-    second_name = "health_second.csv"
-    header = (run_dir / "health.csv").read_text(encoding="utf-8").splitlines()[0]
+    second_name = "csv/health_second.csv"
+    header = (run_dir / "csv/health.csv").read_text(encoding="utf-8").splitlines()[0]
     (run_dir / second_name).write_text(
         header
         + "\n"
@@ -202,35 +240,16 @@ def test_each_health_file_ignores_legacy_rows_before_its_own_sentinel(
     assert validate_run(run_dir) == 0
 
 
-def test_legacy_identity_rows_remain_legacy_even_for_phase5_run(
-    tmp_path: Path,
-) -> None:
-    run_dir = _completed_run(tmp_path)
-    manifest_path = run_dir / "run_manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["stage"] = "PHASE5_PPS_BACKEND_QUALIFICATION"
-    manifest["firmware"]["name"] = "otis_nano_rp2040_connect"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    with (run_dir / "health.csv").open("a", encoding="utf-8") as handle:
-        handle.write(
-            "STS,1,10,1632000010,rp2040_timer0,firmware,git_commit,"
-            f"{'a' * 40},INFO,32768\n"
-            "STS,1,11,1632000011,rp2040_timer0,system,board,"
-            "arduino_nano_rp2040_connect,INFO,32768\n"
-        )
-
-    create_evidence_snapshot(run_dir)
-
-    assert "firmware_build_provenance" not in _snapshot(run_dir)
-    assert validate_run(run_dir) == 0
-
-
 def test_required_generated_banner_must_be_present(tmp_path: Path) -> None:
     run_dir = _completed_run(tmp_path)
     manifest_path = run_dir / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["firmware"]["build_provenance_required"] = True
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "csv/health.csv").write_text(
+        "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags\n",
+        encoding="utf-8",
+    )
 
     with pytest.raises(EvidenceError, match="sentinel banner is missing"):
         create_evidence_snapshot(run_dir)
@@ -282,11 +301,11 @@ def test_snapshot_refuses_in_progress_incomplete_and_overwrite(tmp_path: Path) -
         create_evidence_snapshot(run_dir, allow_incomplete=True)
 
 
-def test_validator_warns_when_legacy_run_has_no_snapshot(tmp_path: Path, capsys) -> None:
+def test_validator_rejects_current_run_without_snapshot(tmp_path: Path, capsys) -> None:
     run_dir = _completed_run(tmp_path)
 
-    assert validate_run(run_dir) == 0
-    assert "immutable evidence snapshot is missing" in capsys.readouterr().err
+    assert validate_run(run_dir) == 1
+    assert "immutable evidence snapshot is required" in capsys.readouterr().err
 
 
 def test_snapshot_rejects_manifest_path_escape(tmp_path: Path) -> None:

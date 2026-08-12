@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1",
+  "status": "current_cx319_deployed_wire_replay_contract",
+  "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+  "bindings": {
+    "current_active_policy_root_path": "profiles/discipline/cx317_bounded_active_v2.json",
+    "current_active_policy_root_sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42",
+    "plant_model_path": "profiles/plant_models/cx317_pps_gated_v2.json",
+    "plant_model_sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1",
+    "selected_estimator_path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+    "selected_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "source_contract_sha256": "d275d73e21bf44e9b34cda047d4265fe4ade787475933227fc86dd6c78be7c90"
+  },
+  "parameters": {
+    "nominal_frequency_hz": 10000000,
+    "gain_min_hz_per_code": 0.00015873009523809524,
+    "gain_nominal_hz_per_code": 0.00017072602587382669,
+    "gain_max_hz_per_code": 0.00017334010044578463,
+    "estimator_span_s": 600,
+    "minimum_applied_correction_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 600,
+    "full_history_reset_s": 1500,
+    "startup_warmup_s": 1800,
+    "empirical_detection_floor_hz": 0.0033333317438761396,
+    "error_deadband_hz": 0.006249995628992717,
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "maximum_update_codes": 21,
+    "dac_min_code": 43008,
+    "dac_max_code": 43776,
+    "fail_static_code": 43050,
+    "temperature_min_c": 27.259,
+    "temperature_max_c": 30.851,
+    "temperature_required_for_control_eligibility": false,
+    "out_of_model_hold": false,
+    "recovery_fresh_support_s": 600
+  },
+  "authority": {
+    "hardware_interaction": false,
+    "actuation_authorized": false,
+    "actionable": false
+  },
+  "provenance": {
+    "meaning": "Tracked reconstruction inputs for the controller identity still emitted by current CX319 firmware; this is not a historical campaign reader or authority grant.",
+    "source_policy_sha256": "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f",
+    "source_contract_sha256": "d275d73e21bf44e9b34cda047d4265fe4ade787475933227fc86dd6c78be7c90"
+  }
+}

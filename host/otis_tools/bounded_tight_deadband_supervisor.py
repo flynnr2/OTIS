@@ -13,14 +13,14 @@ import json
 from pathlib import Path
 import secrets
 
-from .cx317_active_campaign import (
+from .active_transactions import (
     ACTIVE_CSV,
     HEALTH_CSV,
     CampaignSpec,
     _read_csv,
     _utc_now,
 )
-from .tight_deadband_supervisor import DAC_CSV, TightDeadbandLeg, TightDeadbandSupervisor
+from .frequency_control_supervisor import DAC_CSV, TightDeadbandLeg, FrequencyControlSupervisor
 from .no_write_qualification_bundle import POLICY_PATH, PROGRAMME_ID
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
 from .bounded_tight_deadband_prewrite_contract import (
@@ -54,7 +54,7 @@ def _sha256(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-class BoundedTightDeadbandSupervisor(TightDeadbandSupervisor):
+class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
     """Current-identity Leg A live controller with frozen G2 limits."""
 
     def __init__(self, **kwargs: object) -> None:
@@ -325,9 +325,9 @@ def create_supervisor(
     expected_build_identity: str,
     duration_s: float | None = None,
     console_events: bool = False,
-) -> BoundedTightDeadbandSupervisor:
+) -> BoundedFrequencyControlSupervisor:
     spec, identities, leg = load_no_write_qualification_spec("A")
-    return BoundedTightDeadbandSupervisor(
+    return BoundedFrequencyControlSupervisor(
         leg=leg,
         run_dir=run_dir,
         command_fifo=command_fifo,

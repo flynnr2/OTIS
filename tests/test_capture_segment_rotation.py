@@ -9,7 +9,7 @@ import time
 import pytest
 
 import host.otis_tools.capture_device as capture_device
-import host.otis_tools.tight_deadband_manifest as stage5_manifest
+import host.otis_tools.bounded_tight_deadband_activation as current_activation
 from host.otis_tools.capture_device import CaptureDeviceConfig, CaptureDeviceRunner
 from host.otis_tools.capture_segment_rotation import (
     PROTOCOL_ID,
@@ -45,7 +45,7 @@ def test_same_open_serial_rotates_rehearsal_transition_live_and_only_live_can_wr
         json.dumps(
             {
                 "schema_version": 1,
-                "stage": stage5_manifest.LIVE_STAGE,
+                "stage": current_activation.LIVE_STAGE,
                 "host": {"serial_device": device, "baud": 115200},
                 "files": default_csv_files(),
             }
@@ -53,9 +53,9 @@ def test_same_open_serial_rotates_rehearsal_transition_live_and_only_live_can_wr
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        stage5_manifest,
-        "validate_manifest",
-        lambda _: {"stage": stage5_manifest.LIVE_STAGE},
+        current_activation,
+        "validate_frozen_run_manifest",
+        lambda _: {"stage": current_activation.LIVE_STAGE},
     )
 
     class StreamingSerial:

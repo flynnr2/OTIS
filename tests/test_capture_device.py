@@ -5,7 +5,6 @@ from hashlib import sha256
 import json
 import os
 import signal
-import shutil
 import threading
 import time
 
@@ -392,70 +391,6 @@ def test_capture_device_creates_manifest_and_layout(tmp_path: Path) -> None:
     assert paths.reports_dir.exists()
     assert manifest["files"] == default_csv_files()
     assert not (config.run_dir / "capture_in_progress.flag").exists()
-
-
-def test_capture_device_instantiates_exact_manifest_template(tmp_path: Path) -> None:
-    stop_event = threading.Event()
-    run_dir = tmp_path / "stage5_open_loop_20260802T120000Z"
-    config = CaptureDeviceConfig(
-        device="/dev/cu.usbmodemTEST",
-        baud=115200,
-        run_dir=run_dir,
-        manifest_template=Path(
-            "profiles/run_templates/cx317_pps_gated_open_loop_v1/manifest.json"
-        ),
-        reconnect_initial_s=0.001,
-        reconnect_max_s=0.001,
-        status_interval_s=999,
-    )
-    serial = FakeSerial([], stop_event=stop_event)
-    runner = CaptureDeviceRunner(
-        config,
-        serial_factory=lambda *_args, **_kwargs: serial,
-        stop_event=stop_event,
-    )
-
-    assert runner.run() == 0
-
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["run_id"] == run_dir.name
-    assert manifest["template"] is False
-    assert manifest["host"]["serial_device"] == config.device
-    assert manifest["firmware"]["config_id"] == "cx317_pps_gated_open_loop"
-    assert (run_dir / "csv" / "dac_steps.csv").exists()
-
-
-def test_capture_device_uses_h1_manifest_split_targets(tmp_path: Path) -> None:
-    stop_event = threading.Event()
-    run_dir = tmp_path / "h1_run"
-    shutil.copytree(
-        "profiles/run_templates/h1_open_loop/dac_manual_sweep",
-        run_dir,
-    )
-    config = _config(tmp_path)
-    config = CaptureDeviceConfig(
-        device=config.device,
-        baud=config.baud,
-        run_dir=run_dir,
-        reconnect_initial_s=config.reconnect_initial_s,
-        reconnect_max_s=config.reconnect_max_s,
-        status_interval_s=config.status_interval_s,
-    )
-    serial = FakeSerial(
-        [
-            b"EVT,1,1000,0,R,16000000,rp2040_timer0,0\n",
-            b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
-            b"DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0\n",
-        ],
-        stop_event=stop_event,
-    )
-    runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
-
-    assert runner.run() == 0
-    assert "EVT,1,1000" in (run_dir / "csv" / "evt.csv").read_text(encoding="utf-8")
-    assert "REF,1,1001" in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
-    assert "EVT,1,1000" not in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
-    assert "DAC,1,1,1000" in (run_dir / "csv" / "dac_steps.csv").read_text(encoding="utf-8")
 
 
 def test_capture_device_clean_shutdown_drops_partial_line(tmp_path: Path) -> None:

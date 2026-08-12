@@ -217,26 +217,6 @@ def test_g0_gate_rejects_missing_expected_firmware_result(tmp_path: Path) -> Non
     assert not result["checks"]["required_profile_set_present_once"]
 
 
-def test_g0_gate_accepts_other_valid_profiles_from_tier_selection(
-    tmp_path: Path,
-) -> None:
-    summary = _matrix_summary(tmp_path)
-    payload = json.loads(summary.read_text(encoding="utf-8"))
-    payload["results"].append(
-        {
-            "profile_id": "synthetic_usb",
-            "outcome": "pass",
-            "verified": True,
-        }
-    )
-    summary.write_text(json.dumps(payload), encoding="utf-8")
-
-    result = stabilized_tight_deadband_offline_gate.evaluate(summary, *_replay_reports(tmp_path))
-
-    assert result["status"] == "passed"
-    assert result["checks"]["required_profile_set_present_once"]
-
-
 def test_g0_gate_rejects_hybrid_replay_authority(tmp_path: Path) -> None:
     stage2, stage3, parity = _replay_reports(tmp_path)
     payload = json.loads(stage3.read_text(encoding="utf-8"))

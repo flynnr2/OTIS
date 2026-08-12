@@ -75,15 +75,16 @@ def _write_run(
 
     manifest = {
         "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "run_id": "span_fixture",
         "template": False,
-        "stage": "PHASE5_PPS_BACKEND_QUALIFICATION",
-        "h_phase": "H1",
+        "stage": "CX319_CURRENT_MEASUREMENT_REPLAY",
+        "cx319": {"profile_id": "cx319_tight_lower"},
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
         "board": "arduino_nano_rp2040_connect",
         "domains": [
             {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h0_tcxo_16mhz", "nominal_hz": 10_000_000},
+            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
             {"channel_id": 1, "role": "reference", "record_family": "raw_events_v1"},
@@ -137,7 +138,7 @@ def _write_run(
                     "rp2040_timer0",
                     counts[index],
                     "R",
-                    "h0_tcxo_16mhz",
+                    "h1_cx317_ocxo_10mhz",
                     16,
                 ]
             )

@@ -16,8 +16,8 @@ from .active_status_contract import (
 )
 from .board_identity import EXPECTED_SERIAL
 from .contracts import CsvValidationContext, validate_csv
-from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
-from .tight_deadband_rehearsal_analyze import (
+from .active_transactions import ACTIVE_CSV, HEALTH_CSV, _read_csv
+from .campaign_finalization import (
     CAPTURE_STATE,
     SUPERVISOR_EVENTS,
     SUPERVISOR_STATE,
@@ -27,7 +27,7 @@ from .tight_deadband_rehearsal_analyze import (
     _contract_path,
     _host_markers,
 )
-from .tight_deadband_supervisor import (
+from .frequency_control_supervisor import (
     CONTROL_CSV,
     DAC_CSV,
     ENVIRONMENT_CSV,
@@ -37,7 +37,7 @@ from .tight_deadband_supervisor import (
     RPH_CSV,
     TDB_CSV,
 )
-from .tight_deadband_replay import replay_tight_deadband_chain
+from .tight_deadband_policy import replay_tight_deadband_chain
 from .no_write_qualification_bundle import (
     EMERGENCY_COMMAND,
     FORBIDDEN_COMMAND_PREFIXES,
@@ -626,7 +626,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             )
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
-        "tight_deadband_replay_exact": (
+        "tight_deadband_policy_exact": (
             tdb_replay.exact and tdb_replay.row_count >= 1
         ),
         "phase_hybrid_and_tight_zero_authority": all(
@@ -729,7 +729,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         ),
         "capture_closure": capture_closure,
         "contract_validation": validations,
-        "tight_deadband_replay": tdb_replay.as_dict(),
+        "tight_deadband_policy": tdb_replay.as_dict(),
         "bindings": {
             "manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
             "bundle_sha256": manifest_value["bundle"]["bundle_sha256"],

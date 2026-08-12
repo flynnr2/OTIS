@@ -16,16 +16,12 @@ PYTHON = sys.executable
 
 FAST_TESTS = (
     "tests/test_firmware_matrix.py",
-    "tests/test_measurement_semantics.py",
-    "tests/test_pps_count_boundary.py",
-    "tests/test_pps_snapshot_reconstruction.py",
+    "tests/test_run_tools.py",
     "tests/test_diagnostics_contract.py",
     "tests/test_active_status_contract.py",
     "tests/test_programme_status.py",
-    "tests/test_dual_core_partition.py",
-    "tests/test_serial_frame_arbiter.py",
-    "tests/test_capture_device.py",
-    "tests/test_semantic_source_naming.py",
+    "tests/test_frequency_control_replay.py",
+    "tests/test_tight_deadband_policy.py",
 )
 
 CAMPAIGN_TESTS = (
@@ -38,48 +34,21 @@ CAMPAIGN_TESTS = (
     "tests/test_capture_device.py",
     "tests/test_capture_segment_rotation.py",
     "tests/test_capture_owner_handoff.py",
-    "tests/test_cx317_abort_path.py",
-    "tests/test_cx317_stage7_transport_rehearsal.py",
+    "tests/test_abort_transport.py",
+    "tests/test_active_transactions.py",
+    "tests/test_frequency_control_supervisor.py",
+    "tests/test_control_evidence_replay.py",
     "tests/test_evidence.py",
+    "tests/test_evidence_finalization.py",
     "tests/test_evidence_index.py",
-    "tests/test_platform_rehearsal.py",
+    "tests/test_no_write_qualification_operational_rehearsal.py",
+    "tests/test_bounded_tight_deadband_bundle.py",
 )
 
-
-COMMON_FIXTURE_COMMANDS: tuple[tuple[str, ...], ...] = (
-    (
-        PYTHON,
-        "tools/otis_wire_validate.py",
-        "firmware/arduino/validation/golden/synthetic_sw1_excerpt.txt",
-        "--profile",
-        "synthetic",
-    ),
-    (
-        PYTHON,
-        "tools/otis_wire_validate.py",
-        "firmware/arduino/validation/golden/gpio_loopback_sw1_excerpt.txt",
-        "--profile",
-        "gpio_loopback",
-    ),
-    (
-        PYTHON,
-        "tools/otis_wire_validate.py",
-        "firmware/arduino/validation/golden/gpin0_observe_sw1_excerpt.txt",
-        "--profile",
-        "gpin0_observe",
-    ),
-    (
-        PYTHON,
-        "-m",
-        "host.otis_tools.validate_run",
-        "examples/h0_pps_tcxo_synthetic",
-    ),
-    (
-        PYTHON,
-        "-m",
-        "host.otis_tools.report_run",
-        "examples/h0_pps_tcxo_synthetic",
-    ),
+HISTORICAL_GUIDANCE = (
+    "Historical verification is intentionally outside current HEAD. Check out "
+    "the exact source revision recorded by the package manifest or scientific "
+    "report, then run that revision's documented verification command."
 )
 
 
@@ -88,25 +57,19 @@ def commands_for_tier(tier: str) -> tuple[tuple[str, ...], ...]:
         return (
             (PYTHON, "-m", "pytest", "-q", *FAST_TESTS),
             (PYTHON, "tools/firmware_matrix.py", "--tier", "fast"),
-            *COMMON_FIXTURE_COMMANDS,
         )
-    if tier == "standard_campaign":
+    if tier == "campaign":
         return (
             (PYTHON, "-m", "pytest", "-q", *CAMPAIGN_TESTS),
-            (
-                PYTHON,
-                "tools/firmware_matrix.py",
-                "--tier",
-                "standard_campaign",
-            ),
-            *COMMON_FIXTURE_COMMANDS,
+            (PYTHON, "tools/firmware_matrix.py", "--tier", "campaign"),
         )
     if tier == "release":
         return (
             (PYTHON, "-m", "pytest"),
             (PYTHON, "tools/firmware_matrix.py", "--tier", "release"),
-            *COMMON_FIXTURE_COMMANDS,
         )
+    if tier == "historical":
+        return ()
     raise ValueError(f"unsupported verification tier: {tier}")
 
 
@@ -121,11 +84,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--tier",
-        choices=("fast", "standard_campaign", "release"),
+        choices=("fast", "campaign", "release", "historical"),
         default="release",
         help="Executable no-hardware verification tier (default: release).",
     )
     args = parser.parse_args()
+
+    if args.tier == "historical":
+        print(HISTORICAL_GUIDANCE)
+        return 0
 
     for command in commands_for_tier(args.tier):
         resolved_command = (

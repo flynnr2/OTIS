@@ -2,6 +2,12 @@
 
 ## Current policy
 
+Current HEAD reads only `CX319_EVIDENCE_EPOCH_1` packages. Every non-template
+package requires canonical `run_manifest.json`, `raw/serial.log`, and immutable
+`evidence_manifest.json`; see
+`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. Historical packages remain
+immutable and are interpreted with their recorded source revision.
+
 Raw OTIS evidence remains outside Git. Each retained package is registered in
 the external content-addressed `otis_evidence_index_v1` with its content hash,
 per-file manifest, storage location, source revision, build identity, profile
@@ -146,7 +152,16 @@ hold:
    authority.
 
 Preserve the original report. Store a new provenance-linked result rather than
-rewriting the acquisition package. If any condition is not met, repeat the
+rewriting the acquisition package. The new product must record:
+
+- source package content hash and each consumed source-file hash;
+- original source revision, analyzer identity, and verdict;
+- new source revision, analyzer identity, and verdict;
+- superseded product identity, supersession reason, review authority, and UTC;
+- `actionable: false`, `actuation_authorized: false`, and
+  `hardware_interaction: false`.
+
+If any condition is not met, repeat the
 shortest affected operational gate: a short operational-path rehearsal for
 live host orchestration changes, or physical qualification when firmware,
 real-time I/O, plant behavior, or acquired evidence could change.

@@ -48,7 +48,7 @@ from .evidence_finalization import (
     recover_registration,
     set_registration_intent,
 )
-from .platform_rehearsal import _capture_state_ready, _serial_owner_pids
+from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .programme_status import (
     BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
     require_programme_operation_allowed,

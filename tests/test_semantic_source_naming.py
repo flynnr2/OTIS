@@ -10,19 +10,22 @@ HOST = ROOT / "host" / "otis_tools"
 FIRMWARE = ROOT / "firmware" / "arduino" / "otis_nano_rp2040_connect"
 
 SEMANTIC_HOST_MODULES = {
-    "pps_boundary_frequency_estimator",
-    "observe_only_discipline_replay",
+    "abort_transport",
+    "active_control_policy",
+    "active_control_supervisor",
+    "active_transactions",
+    "measurement_replay",
+    "frequency_control_replay",
     "reference_relative_phase_estimator",
     "phase_frequency_hybrid_preview",
     "capture_segment_rotation",
     "capture_owner_handoff",
     "integer_count_tight_deadband",
-    "tight_deadband_replay",
+    "tight_deadband_policy",
     "prewrite_readiness_contract",
-    "tight_deadband_supervisor",
-    "tight_deadband_manifest",
-    "tight_deadband_rehearsal_analyze",
-    "tight_deadband_live_analyze",
+    "frequency_control_supervisor",
+    "campaign_finalization",
+    "control_evidence_replay",
     "host_attach_health_contract",
     "no_write_prewrite_readiness_contract",
     "stabilized_tight_deadband_offline_gate",
@@ -42,13 +45,8 @@ SEMANTIC_HOST_MODULES = {
     "bounded_tight_deadband_run",
     "bounded_tight_deadband_prewrite_contract",
     "bounded_tight_deadband_supervisor",
-    "cx317_bounded_active_supervisor",
-    "cx317_frequency_preview_live_analyze",
-    "frequency_control_handoff_reconstruction",
-    "relative_phase_candidate_replay",
-    "hybrid_preview_candidate_replay",
+    "active_control_supervisor",
     "selected_preview_firmware_parity",
-    "cx317_counterfactual_deadband",
 }
 
 RETIRED_HOST_MODULES = {
@@ -91,6 +89,14 @@ RETIRED_HOST_MODULES = {
     "cx318_stage3_replay",
     "cx318_stage4_firmware_parity",
     "cx317_stage7_shadow",
+    "cx317_frequency_preview_live_analyze",
+    "frequency_control_handoff_reconstruction",
+    "relative_phase_candidate_replay",
+    "hybrid_preview_candidate_replay",
+    "cx317_counterfactual_deadband",
+    "observe_only_discipline_replay",
+    "pps_boundary_frequency_estimator",
+    "tight_deadband_manifest",
 }
 
 SEMANTIC_FIRMWARE_UNITS = {
@@ -199,11 +205,9 @@ def _string_assignment(path: Path, name: str) -> str:
     raise AssertionError(f"missing string assignment {name} in {path}")
 
 
-def test_provenance_bearing_tool_ids_remain_exactly_legacy() -> None:
+def test_current_provenance_bearing_tool_ids_remain_exact_wire_identities() -> None:
     expected = {
         "capture_owner_handoff": "cx318_capture_handoff_v1",
-        "tight_deadband_rehearsal_analyze": "cx318_stage5_rehearsal_analyze_v1",
-        "tight_deadband_live_analyze": "cx318_stage5_live_analyze_v1",
         "stabilized_tight_deadband_offline_gate": "cx319_offline_gate_v1",
         "no_write_qualification_analyze": "cx319_g1_analyze_v1",
         "no_write_qualification_bundle": "cx319_g1_bundle_v1",
@@ -228,9 +232,11 @@ def test_provenance_bearing_tool_ids_remain_exactly_legacy() -> None:
 
 
 def test_provenance_bearing_replay_and_wire_identities_are_unchanged() -> None:
-    replay = (HOST / "observe_only_discipline_replay.py").read_text(encoding="utf-8")
-    assert 'OUTPUT_SUBDIRECTORY = Path("derived") / "phase4_replay_v3"' in replay
-    assert 'manifest.data.get("phase4_replay")' in replay
+    replay_contract = (
+        ROOT / "profiles/discipline/current_frequency_control_replay_v1.json"
+    ).read_text(encoding="utf-8")
+    assert '"CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1"' in replay_contract
+    assert '"compatibility_floor": "CX319_EVIDENCE_EPOCH_1"' in replay_contract
 
     partition = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
         encoding="utf-8"

@@ -1,5 +1,9 @@
 # Observe-Only Discipline Replay Engineering Note
 
+> Historical engineering record. The referenced Phase 4 replay command and
+> reader are not present in current HEAD. Reproduce it from the exact recorded
+> Git revision; see `CX319_EVIDENCE_EPOCH_1.md`.
+
 ## Decision
 
 The observe-only discipline replay (developed during historical Phase 4) is

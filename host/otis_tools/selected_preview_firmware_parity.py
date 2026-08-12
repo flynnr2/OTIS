@@ -24,8 +24,7 @@ from typing import Any, Iterator
 
 from .phase_frequency_hybrid_preview import HybridCandidateEngine, HybridPreviewDecision, load_profile as load_hybrid_profile
 from .reference_relative_phase_estimator import CandidateEstimate, PhaseRecord, RelativePhaseAccumulator, Snapshot, load_profile as load_phase_profile
-from .relative_phase_candidate_replay import DEFAULT_CORPUS, REPO_ROOT, _candidate_file, _rates, _read_csv, _sha256_file
-from .hybrid_preview_candidate_replay import _dac_events, _start_code
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 FIRMWARE_ROOT = REPO_ROOT / "firmware/arduino/otis_nano_rp2040_connect"
@@ -34,9 +33,94 @@ ENGINE_HEADER = FIRMWARE_ROOT / "otis_selected_phase_frequency_preview_engine.h"
 HARNESS_SOURCE = REPO_ROOT / "tests/cpp/selected_phase_frequency_preview_engine_harness.cpp"
 SELECTED_PHASE_PROFILE = REPO_ROOT / "profiles/estimators/cx318_relative_phase_selected_v1.json"
 SELECTED_HYBRID_PROFILE = REPO_ROOT / "profiles/discipline/cx318_hybrid_preview_selected_v1.json"
-OFFICIAL_CORPUS_ID = "cx318_stage2_replay_corpus_v1"
 MAX_MISMATCHES = 32
 NUMERIC_ABSOLUTE_FLOOR = 1e-15
+
+
+def _sha256_file(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _read_csv(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _candidate_file(run_dir: Path, candidates: list[str]) -> Path | None:
+    return next(
+        (run_dir / relative for relative in candidates if (run_dir / relative).is_file()),
+        None,
+    )
+
+
+def _rates(manifest: dict[str, Any], nominal_override: str | None = None) -> tuple[int, int, float]:
+    oscillator = manifest.get("oscillator") or {}
+    nominal = oscillator.get("nominal_frequency_hz")
+    domains = manifest.get("domains") or []
+    timer = next(
+        (item.get("nominal_hz") for item in domains if item.get("name") == "rp2040_timer0"),
+        None,
+    )
+    if nominal is None and nominal_override is not None:
+        nominal = int(nominal_override.split("_", 1)[0])
+    if nominal is None or timer is None:
+        raise ValueError("run manifest lacks oscillator or timer nominal rate")
+    if float(nominal) != round(float(nominal)):
+        raise ValueError("non-integer nominal edge rate is unsupported")
+    return int(round(float(nominal))), int(round(float(timer))), 1e9 / float(nominal)
+
+
+def _dac_events(run_dir: Path) -> list[tuple[float, int]]:
+    path = _candidate_file(run_dir, ["csv/dac_steps.csv", "csv/dac.csv"])
+    if path is None:
+        return []
+    result: list[tuple[float, int]] = []
+    for row in _read_csv(path):
+        if not row.get("elapsed_ms") or row.get("flags", "0") not in {"", "0"}:
+            continue
+        requested = row.get("dac_code_requested")
+        applied = row.get("dac_code_applied")
+        if not applied or (requested and requested != applied):
+            continue
+        code = int(applied)
+        if 0xA800 <= code <= 0xAB00:
+            result.append((float(row["elapsed_ms"]) / 1000.0, code))
+    return sorted(set(result))
+
+
+def _recursive_codes(value: Any) -> list[tuple[str, int]]:
+    keys = {"start_code", "initial_code", "fixed_code", "dac_code", "fail_static_code"}
+    result: list[tuple[str, int]] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in keys and isinstance(item, (int, float)) and float(item).is_integer():
+                code = int(item)
+                if 0xA800 <= code <= 0xAB00:
+                    result.append((key, code))
+            result.extend(_recursive_codes(item))
+    elif isinstance(value, list):
+        for item in value:
+            result.extend(_recursive_codes(item))
+    return result
+
+
+def _start_code(
+    manifest: dict[str, Any],
+    dac_events: list[tuple[float, int]],
+    profile: dict[str, Any],
+) -> tuple[int, str]:
+    active = manifest.get("active_campaign")
+    if isinstance(active, dict) and isinstance(active.get("start_code"), int):
+        return int(active["start_code"]), "run_manifest.active_campaign.start_code"
+    codes = _recursive_codes(manifest)
+    if codes:
+        return codes[0][1], f"run_manifest_recursive.{codes[0][0]}"
+    if dac_events:
+        return dac_events[0][1], "first_accepted_dac_event"
+    return (
+        int(profile["numerical_policy"]["counterfactual_seed_code_when_source_unavailable"]),
+        "profile_counterfactual_seed_source_code_unavailable",
+    )
 
 
 @dataclass(frozen=True)
@@ -560,7 +644,7 @@ def _run_one(
 
 
 def run_corpus(
-    corpus_path: Path = DEFAULT_CORPUS,
+    corpus_path: Path,
     *,
     harness: Path | None = None,
     compiler: str | None = None,
@@ -573,9 +657,6 @@ def run_corpus(
     corpus_path = corpus_path.resolve()
     repo_root = repo_root.resolve()
     corpus = json.loads(corpus_path.read_text(encoding="utf-8"))
-    selected_phase = json.loads(
-        SELECTED_PHASE_PROFILE.read_text(encoding="utf-8")
-    )
     phase_profile, phase_hash = load_phase_profile()
     hybrid_profile, hybrid_hash = load_hybrid_profile()
     selected_hybrid = json.loads(SELECTED_HYBRID_PROFILE.read_text(encoding="utf-8"))
@@ -586,36 +667,16 @@ def run_corpus(
     )
     if selected_candidate is None:
         raise ValueError("selected CX318 hybrid candidate is absent from its frozen profile")
-    accepted_stage2_result: dict[str, Any] | None = None
-    accepted_stage2_identity: dict[str, str] | None = None
-    if corpus.get("corpus_id") == OFFICIAL_CORPUS_ID:
-        replay_binding = selected_phase["bindings"]["replay_result"]
-        accepted_stage2_path = REPO_ROOT / str(replay_binding["path"])
-        if (
-            not accepted_stage2_path.is_file()
-            or _sha256_file(accepted_stage2_path) != replay_binding["sha256"]
-        ):
-            raise ValueError(
-                "sealed Stage 2 replay-result binding is unavailable or changed"
-            )
-        accepted_stage2_result = json.loads(
-            accepted_stage2_path.read_text(encoding="utf-8")
-        )
-        accepted_stage2_identity = _file_identity(
-            accepted_stage2_path, REPO_ROOT
-        )
     if harness is None:
         with tempfile.TemporaryDirectory(prefix="cx318-parity-build-") as temporary_directory:
             executable = compile_harness(Path(temporary_directory) / "selected_preview", compiler=compiler)
             return _run_corpus_with_harness(
                 corpus_path, corpus, repo_root, executable, phase_profile, phase_hash,
                 hybrid_profile, hybrid_hash, selected_candidate, max_mismatches,
-                accepted_stage2_result, accepted_stage2_identity,
             )
     return _run_corpus_with_harness(
         corpus_path, corpus, repo_root, harness.resolve(), phase_profile, phase_hash,
         hybrid_profile, hybrid_hash, selected_candidate, max_mismatches,
-        accepted_stage2_result, accepted_stage2_identity,
     )
 
 
@@ -630,23 +691,8 @@ def _run_corpus_with_harness(
     hybrid_hash: str,
     selected_candidate: dict[str, Any],
     max_mismatches: int,
-    accepted_stage2_result: dict[str, Any] | None,
-    accepted_stage2_identity: dict[str, str] | None,
 ) -> dict[str, Any]:
     declared = _declared_runs(corpus, repo_root)
-    expected_stage2_statuses = (
-        {
-            str(item["path"]): str(item["status"])
-            for item in accepted_stage2_result["runs"]
-        }
-        if accepted_stage2_result is not None
-        else {}
-    )
-    declared_paths = {str(item["path"]) for item in declared}
-    membership_matches = (
-        not expected_stage2_statuses
-        or declared_paths == set(expected_stage2_statuses)
-    )
     runs = [
         _run_one(
             item,
@@ -658,7 +704,7 @@ def _run_corpus_with_harness(
             hybrid_profile=hybrid_profile,
             selected_candidate=selected_candidate,
             max_mismatches=max_mismatches,
-            expected_stage2_status=expected_stage2_statuses.get(item["path"]),
+            expected_stage2_status=None,
         )
         for item in declared
     ]
@@ -667,10 +713,8 @@ def _run_corpus_with_harness(
     return {
         "schema_version": 1,
         "tool": "cx318_stage4_firmware_parity_v1",
-        "status": "passed" if not failures and membership_matches else "failed",
+        "status": "passed" if not failures else "failed",
         "corpus": _file_identity(corpus_path, repo_root),
-        "accepted_stage2_replay_result": accepted_stage2_identity,
-        "corpus_membership_matches_accepted_stage2": membership_matches,
         "profiles": {
             "phase_candidates": _file_identity(REPO_ROOT / "profiles/estimators/cx318_relative_phase_candidates_v1.json", REPO_ROOT),
             "phase_selected": _file_identity(SELECTED_PHASE_PROFILE, REPO_ROOT),
@@ -707,7 +751,7 @@ def _run_corpus_with_harness(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--harness", type=Path)
     parser.add_argument("--compiler")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.tight_deadband_supervisor import TightDeadbandSupervisor
+from host.otis_tools.frequency_control_supervisor import FrequencyControlSupervisor
 from host.otis_tools.no_write_qualification_supervisor import (
     NoWriteQualificationSupervisor,
     POLICY_PATH,
@@ -76,7 +76,7 @@ def test_supervisor_command_override_rejects_every_write_path(
 ) -> None:
     submitted: list[str] = []
     monkeypatch.setattr(
-        TightDeadbandSupervisor,
+        FrequencyControlSupervisor,
         "_command",
         lambda _self, command: submitted.append(command),
     )

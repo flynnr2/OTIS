@@ -1,960 +1,126 @@
 from __future__ import annotations
 
-import csv
-import io
 import json
 from pathlib import Path
-import shutil
-import subprocess
-import sys
 
-from host.otis_tools.capture_serial import capture_serial
-from host.otis_tools.h1_dac_sweep import build_builtin_profile, validate_step
-from host.otis_tools.report_run import build_summary, render_report
-from host.otis_tools.run_loader import load_manifest
-from host.otis_tools.validate_run import _validate_pps_cadence, validate_run
+import pytest
 
-EXAMPLE = Path("examples/h0_pps_tcxo_synthetic")
-TEMPLATE_EXAMPLES = [
-    Path("examples/h0_usb_synthetic"),
-    Path("examples/h0_gpio_loopback"),
-    Path("examples/h0_gps_pps"),
-    Path("examples/h0_pps_tcxo_real"),
-]
-H1_TEMPLATE = Path("profiles/run_templates/h1_open_loop/dac_manual_sweep")
+from host.otis_tools.evidence import (
+    EvidenceError,
+    create_evidence_snapshot,
+    validate_evidence_snapshot,
+)
+from host.otis_tools.run_loader import (
+    ARCHIVAL_CHECKOUT_GUIDANCE,
+    load_manifest,
+)
 
 
-def _copy_example(tmp_path: Path) -> Path:
-    run_dir = tmp_path / "run"
-    shutil.copytree(EXAMPLE, run_dir)
-    return run_dir
-
-
-def _rewrite_csv_cell(path: Path, row_index: int, field_name: str, value: str) -> None:
-    with path.open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = reader.fieldnames
-        rows = list(reader)
-    assert fieldnames is not None
-    rows[row_index][field_name] = value
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-def test_load_manifest() -> None:
-    manifest = load_manifest(EXAMPLE)
-    assert manifest.run_id == "h0_pps_tcxo_synthetic_001"
-    assert manifest.known_channels == frozenset({0, 1, 2})
-    assert "rp2040_timer0" in manifest.known_domains
-    assert manifest.stage == "SW1"
-    assert manifest.h_phase == "H0"
-    assert manifest.capture_mode == "synthetic_usb"
-    assert manifest.firmware_version == "SW1"
-
-
-def test_validate_example_run() -> None:
-    assert validate_run(EXAMPLE) == 0
-
-
-def test_validate_run_rejects_host_marker_inside_raw_device_record(tmp_path: Path, capsys) -> None:
-    run_dir = _copy_example(tmp_path)
-    raw_dir = run_dir / "raw"
-    raw_dir.mkdir(exist_ok=True)
-    (raw_dir / "serial.log").write_bytes(
-        b"CNT,1,7,2,1,16000001\n"
-        b'# OTIS_HOST {"event":"host_command_sent"}\n'
-        b",rp2040_timer0,16000000,R,h0_tcxo_16mhz,16\n"
-    )
-
-    assert validate_run(run_dir) == 1
-    errors = capsys.readouterr().err
-    assert "raw device record may be interrupted" in errors
-    assert "orphaned device-record continuation" in errors
-
-
-def test_validate_run_accepts_fragment_acquired_before_protocol_start(
-    tmp_path: Path, capsys
-) -> None:
-    run_dir = _copy_example(tmp_path)
-    raw_dir = run_dir / "raw"
-    raw_dir.mkdir(exist_ok=True)
-    (raw_dir / "serial.log").write_bytes(
-        b'# OTIS_HOST {"event":"serial_opened"}\n'
-        b",wd_s3=0x00010100,clk_ref_ctrl=0x00000002\n"
-        b"record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags\n"
-        b"STS,1,1,1,rp2040_timer0,system,state,ready,INFO,0\n"
-    )
-
-    assert validate_run(run_dir) == 0
-    assert "orphaned device-record continuation" not in capsys.readouterr().err
-
-
-def test_validate_bringup_templates() -> None:
-    for run_dir in TEMPLATE_EXAMPLES:
-        assert validate_run(run_dir) == 0
-
-
-def test_validate_h1_template() -> None:
-    assert validate_run(H1_TEMPLATE) == 0
-
-
-def test_validate_run_accepts_h1_count_source_domain(tmp_path: Path) -> None:
-    run_dir = tmp_path / "h1"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "h1_count_test"
-    manifest["template"] = False
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "manifest.json").unlink()
-    (run_dir / "csv" / "cnt.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-
-def test_validate_run_accepts_phase5_declared_h0_source_in_h1_stage(tmp_path: Path) -> None:
-    run_dir = tmp_path / "phase5_h0_source"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "phase5_h0_source_test"
-    manifest["template"] = False
-    manifest["domains"].append({"name": "h0_tcxo_16mhz", "nominal_hz": 16_000_000})
-    manifest["phase5_pps_backend_qualification"] = {"source_domain": "h0_tcxo_16mhz"}
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "manifest.json").unlink()
-    (run_dir / "csv" / "cnt.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,15999998,R,h0_tcxo_16mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-
-def test_validate_run_accepts_h1_rp2040_timer_wrap(tmp_path: Path) -> None:
-    run_dir = tmp_path / "h1_wrap"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "h1_wrap_test"
-    manifest["template"] = False
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "manifest.json").unlink()
-    wrap = (1 << 32) * 16
-    (run_dir / "csv" / "ref.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                f"REF,1,1000,1,R,{wrap - 16_000_000},rp2040_timer0,16",
-                "REF,1,1001,1,R,0,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "csv" / "cnt.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                f"CNT,1,1,2,{wrap - 2_000_000},{wrap - 1_000_000},rp2040_timer0,625000,R,h1_cx317_ocxo_10mhz,16",
-                "CNT,1,2,2,1000000,2000000,rp2040_timer0,625000,R,h1_cx317_ocxo_10mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-    summary = build_summary(run_dir)
-    assert summary["reference_pps_summary"]["domains"]["rp2040_timer0"]["timestamp_wrap_count"] == 1
-    assert summary["count_observation_summary"]["row_count"] == 2
-    assert summary["count_observation_summary"]["mean_window_seconds"] == 0.0625
-    assert not summary["anomalies"]
-
-
-def test_validate_run_accepts_rp2040_timer_wrap_outside_h1(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    wrap = (1 << 32) * 16
-    (run_dir / "raw_events.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                f"REF,1,1000,1,R,{wrap - 16_000_000},rp2040_timer0,0",
-                "REF,1,1001,1,R,0,rp2040_timer0,0",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "count_observations.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                f"CNT,1,1,2,{wrap - 16_000_000},0,rp2040_timer0,10000000,R,h0_tcxo_16mhz,0",
-                "CNT,1,2,2,0,16000000,rp2040_timer0,10000000,R,h0_tcxo_16mhz,0",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "health.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
-                f"STS,1,1,{wrap - 1},rp2040_timer0,system,uptime_seconds,1,INFO,0",
-                "STS,1,2,1,rp2040_timer0,system,uptime_seconds,2,INFO,0",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-
-def test_report_run_uses_manifest_nominal_interval_for_pps_gated_counts(tmp_path: Path) -> None:
-    run_dir = tmp_path / "pps_gated"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "pps_gated_report_test"
-    manifest["template"] = False
-    manifest["phase5_pps_backend_qualification"] = {
-        "nominal_reference_interval_s": 1.0,
+def _write_manifest(run_dir: Path, **changes: object) -> dict:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    value = {
+        "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+        "run_id": "cx319_current_fixture",
+        "stage": "CX319_CURRENT_EVIDENCE_FIXTURE",
+        "cx319": {"profile_id": "cx319_tight_lower"},
+        "template": False,
+        "channels": [],
+        "domains": [],
+        "files": [
+            {
+                "path": "csv/raw_events.csv",
+                "contract": "raw_events_v1",
+            }
+        ],
     }
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "manifest.json").unlink()
-    (run_dir / "csv" / "cnt.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,16000000,31999920,rp2040_timer0,9999993,R,h1_cx317_ocxo_10mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
+    value.update(changes)
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(value), encoding="utf-8"
     )
-
-    summary = build_summary(run_dir)
-    counts = summary["count_observation_summary"]
-    assert counts["mean_observed_frequency_hz"] == 9_999_993.0
-    assert "manifest-declared nominal reference interval" in counts["frequency_note"]
+    return value
 
 
-def test_h1_dac_sweep_profiles_are_conservative() -> None:
-    steps = build_builtin_profile("tiny_plus_minus_2", 0x7000, 0x9000, dwell_ms=5000)
-
-    assert [step.code for step in steps] == [
-        0x8000,
-        0x8400,
-        0x8000,
-        0x7C00,
-        0x8000,
-        0x8800,
-        0x8000,
-        0x7800,
-        0x8000,
-    ]
-    assert all(0x7000 <= step.code <= 0x9000 for step in steps)
-    assert all(step.dwell_ms == 5000 for step in steps)
+def test_current_canonical_manifest_loads_without_identity_translation(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "current"
+    value = _write_manifest(run_dir)
+    manifest = load_manifest(run_dir)
+    assert manifest.data == value
+    assert manifest.stage == "CX319_CURRENT_EVIDENCE_FIXTURE"
 
 
-def test_h1_dac_sweep_profile_rejects_missing_or_narrow_clamps() -> None:
-    for min_code, max_code in ((0x0000, 0xFFFF), (0x8000, 0x8001)):
-        try:
-            build_builtin_profile("tiny_plus_minus_2", min_code, max_code)
-        except ValueError as exc:
-            assert "clamps" in str(exc)
-        else:
-            raise AssertionError("unsafe H1 DAC sweep profile was accepted")
-
-    assert validate_step(0x8000, 0x7000, 0x9000)
-    assert not validate_step(0x6FFF, 0x7000, 0x9000)
+def test_current_floor_requires_supported_cx319_profile_identity(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "unknown-profile"
+    _write_manifest(run_dir, cx319={"profile_id": "cx319_unknown"})
+    with pytest.raises(ValueError, match="CX319_EVIDENCE_EPOCH_1"):
+        load_manifest(run_dir)
 
 
-def test_validate_run_accepts_gps_pps_bringup_records(tmp_path: Path) -> None:
-    run_dir = tmp_path / "gps_pps"
-    shutil.copytree(Path("examples/h0_gps_pps"), run_dir)
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "gps_pps_test"
-    manifest["template"] = False
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "raw_events.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
-                "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "health.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
-                "STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-
-def test_validate_run_accepts_sw1_5a_pio_capture_mode(tmp_path: Path) -> None:
-    run_dir = tmp_path / "gps_pps_pio"
-    shutil.copytree(Path("examples/h0_gps_pps"), run_dir)
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "gps_pps_pio_test"
-    manifest["template"] = False
-    manifest["capture_mode"] = "pio_fifo_cpu_timestamped"
-    manifest["known_limitations"] = [
-        "PIO detects rising edges; firmware attaches timestamps while draining the FIFO.",
-        "DMA is intentionally deferred to SW1.5b.",
-    ]
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "raw_events.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
-                "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "health.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
-                "STS,1,1,1,rp2040_timer0,capture,mode,pio_fifo_cpu_timestamped,INFO,32768",
-                "STS,1,2,2,rp2040_timer0,build,capture_backend,pio_fifo,INFO,32768",
-                "STS,1,3,3,rp2040_timer0,capture,pio_init,ok,INFO,32768",
-                "STS,1,4,4,rp2040_timer0,capture,pio_gpio,26,INFO,32768",
-                "STS,1,5,5,rp2040_timer0,capture,pio_fifo_drained_event_count,2,INFO,0",
-                "STS,1,6,6,rp2040_timer0,capture,pio_fifo_overflow_drop_count,0,INFO,0",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-    summary = build_summary(run_dir)
-    report = render_report(run_dir)
-    assert summary["run_identity"]["capture_mode"] == "pio_fifo_cpu_timestamped"
-    assert summary["health_status_summary"]["latest_capture_status"]["pio_init"] == "ok"
-    assert "SW1.5a capture mode: pio_fifo_cpu_timestamped" in report
-    assert "latest_capture_status" in report
-
-
-def test_report_identifies_pps_gated_cumulative_snapshot_mode(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    manifest_path = run_dir / "run_manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["capture_mode"] = "pio_wait_cumulative_snapshot_with_independent_gpio_ref"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    report = render_report(run_dir)
-
-    assert "PPS-gated cumulative snapshot mode" in report
-    assert "PIO owns the count boundary" in report
-    assert "SW1 capture mode: irq_reconstructed" not in report
-
-
-def test_capture_serial_splits_records(tmp_path: Path, monkeypatch) -> None:
-    run_dir = tmp_path / "captured"
-    monkeypatch.setattr(
-        sys,
-        "stdin",
-        io.StringIO(
-            "\n".join(
-                [
-                    "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                    "STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768",
-                    "REF,1,1000,1,R,16000000,rp2040_timer0,16",
-                    "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                    "",
-                ]
-            )
-        ),
-    )
-
-    assert capture_serial(run_dir, Path("examples/h0_gps_pps"), "captured_gps_pps") == 0
-    assert validate_run(run_dir) == 0
-    assert not (run_dir / "capture_in_progress.flag").exists()
-    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16" in (
-        run_dir / "raw" / "serial.log"
-    ).read_text(encoding="utf-8")
-
-
-def test_capture_serial_keeps_malformed_frame_out_of_contract_csv(tmp_path: Path, monkeypatch) -> None:
-    run_dir = tmp_path / "captured_malformed"
-    malformed = "REF,1,1000,1,R,16000000,rp2040_timer0,16,extra"
-    monkeypatch.setattr(sys, "stdin", io.StringIO(malformed + "\n"))
-
-    assert capture_serial(run_dir, Path("examples/h0_gps_pps"), "captured_malformed") == 0
-    assert malformed in (run_dir / "raw" / "serial.log").read_text(encoding="utf-8")
-    assert malformed not in (run_dir / "raw_events.csv").read_text(encoding="utf-8")
-
-
-def test_capture_serial_splits_h1_evt_and_ref_files(tmp_path: Path, monkeypatch) -> None:
-    run_dir = tmp_path / "captured_h1"
-    monkeypatch.setattr(
-        sys,
-        "stdin",
-        io.StringIO(
-            "\n".join(
-                [
-                    "EVT,1,1000,0,R,16000000,rp2040_timer0,0",
-                    "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                    "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                    "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
-                    "DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0",
-                    "DAC,1,2,2000,0,32768,32768,0,,,5000,fc0_window,16",
-                    "",
-                ]
-            )
-        ),
-    )
-
-    assert capture_serial(run_dir, H1_TEMPLATE, "captured_h1") == 0
-    assert "EVT,1,1000" in (run_dir / "csv" / "evt.csv").read_text(encoding="utf-8")
-    assert "REF,1,1001" in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
-    assert "EVT,1,1000" not in (run_dir / "csv" / "ref.csv").read_text(encoding="utf-8")
-    dac_steps = (run_dir / "csv" / "dac_steps.csv").read_text(encoding="utf-8")
-    assert "DAC,1,1,1000,-1,32768,32768,0,,,5000,start,0" in dac_steps
-    assert "DAC,1,2,2000,0,32768,32768,0,,,5000,fc0_window,16" in dac_steps
-    assert validate_run(run_dir) == 0
-
-
-def test_validate_run_accepts_h1_dac_safety_rejection(tmp_path: Path) -> None:
-    run_dir = tmp_path / "h1_sweep_reject"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest["run_id"] = "h1_sweep_reject"
-    manifest["template"] = False
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "manifest.json").unlink()
-    (run_dir / "csv" / "dac_steps.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags",
-                "DAC,1,1,1000,-1,65535,36864,1,,,5000,safety_reject,32768",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-
-def test_verify_h1_manual_log_command(tmp_path: Path) -> None:
-    raw_log = tmp_path / "h1.log"
-    run_dir = tmp_path / "h1_run"
-    raw_log.write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags",
-                "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
-                "STS,1,2,2,rp2040_timer0,system,h1_open_loop,true,WARN,32768",
-                "STS,1,3,3,rp2040_timer0,control,gpsdo_steering,not_implemented,INFO,32768",
-                "STS,1,4,4,rp2040_timer0,build,enable_dac_ad5693r,1,INFO,32768",
-                "STS,1,5,5,rp2040_timer0,dac,enabled,true,INFO,32768",
-                "STS,1,6,6,rp2040_timer0,dac,initialized,true,INFO,0",
-                "STS,1,7,7,rp2040_timer0,dac,init,ok,INFO,0",
-                "STS,1,8,8,rp2040_timer0,capture,tcxo_counter_backend,rp2040_fc0_gpin0,INFO,32768",
-                "STS,1,9,9,rp2040_timer0,command,h1_help,DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP,INFO,0",
-                "STS,1,10,10,rp2040_timer0,dac,min_code,0x7000,INFO,32768",
-                "STS,1,11,11,rp2040_timer0,dac,max_code,0x9000,INFO,32768",
-                "STS,1,12,12,rp2040_timer0,dac,accepted_code,0x8000,INFO,0",
-                "STS,1,13,13,rp2040_timer0,dac,accepted_code,0x7000,INFO,0",
-                "STS,1,14,14,rp2040_timer0,dac,rejected_code,0x0000,WARN,32768",
-                "STS,1,15,15,rp2040_timer0,dac,rejected_code,0xFFFF,WARN,32768",
-                "STS,1,16,16,rp2040_timer0,dac,set,rejected_outside_clamps,WARN,32768",
-                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
-                "REF,1,1001,1,R,32000000,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "host.otis_tools.verify_h1_manual_log",
-            str(raw_log),
-            "--run-dir",
-            str(run_dir),
-        ],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "OK H1 manual command checks" in result.stdout
-    assert "CNT,1,1,2" in (run_dir / "csv" / "cnt.csv").read_text(encoding="utf-8")
-
-
-def test_verify_h1_manual_log_skips_initial_two_second_pps(tmp_path: Path) -> None:
-    raw_log = tmp_path / "h1_first_pps_2s.log"
-    run_dir = tmp_path / "h1_first_pps_2s_run"
-    raw_log.write_text(
-        "\n".join(
-            [
-                "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
-                "STS,1,2,2,rp2040_timer0,system,h1_open_loop,true,WARN,32768",
-                "STS,1,3,3,rp2040_timer0,control,gpsdo_steering,not_implemented,INFO,32768",
-                "STS,1,4,4,rp2040_timer0,build,enable_dac_ad5693r,1,INFO,32768",
-                "STS,1,5,5,rp2040_timer0,dac,enabled,true,INFO,32768",
-                "STS,1,6,6,rp2040_timer0,dac,initialized,true,INFO,0",
-                "STS,1,7,7,rp2040_timer0,dac,init,ok,INFO,0",
-                "STS,1,8,8,rp2040_timer0,capture,tcxo_counter_backend,rp2040_fc0_gpin0,INFO,32768",
-                "STS,1,9,9,rp2040_timer0,command,h1_help,DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP,INFO,0",
-                "STS,1,10,10,rp2040_timer0,dac,min_code,0x7000,INFO,32768",
-                "STS,1,11,11,rp2040_timer0,dac,max_code,0x9000,INFO,32768",
-                "STS,1,12,12,rp2040_timer0,dac,accepted_code,0x8000,INFO,0",
-                "STS,1,13,13,rp2040_timer0,dac,accepted_code,0x7000,INFO,0",
-                "STS,1,14,14,rp2040_timer0,dac,rejected_code,0x0000,WARN,32768",
-                "STS,1,15,15,rp2040_timer0,dac,rejected_code,0xFFFF,WARN,32768",
-                "STS,1,16,16,rp2040_timer0,dac,set,rejected_outside_clamps,WARN,32768",
-                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                "REF,1,1000,1,R,16000000,rp2040_timer0,16",
-                "REF,1,1001,1,R,48000000,rp2040_timer0,16",
-                "REF,1,1002,1,R,64000000,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "host.otis_tools.verify_h1_manual_log",
-            str(raw_log),
-            "--run-dir",
-            str(run_dir),
-        ],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "INFO skipped initial PPS intervals ticks: [32000000]" in result.stdout
-
-
-def test_verify_h1_manual_log_allows_missing_dac(tmp_path: Path) -> None:
-    raw_log = tmp_path / "h1_no_dac.log"
-    run_dir = tmp_path / "h1_no_dac_run"
-    raw_log.write_text(
-        "\n".join(
-            [
-                "STS,1,1,1,rp2040_timer0,system,mode,H1_OCXO_OBSERVE_OPEN_LOOP,INFO,32768",
-                "STS,1,2,2,rp2040_timer0,system,h1_open_loop,true,WARN,32768",
-                "STS,1,3,3,rp2040_timer0,control,gpsdo_steering,not_implemented,INFO,32768",
-                "STS,1,4,4,rp2040_timer0,build,enable_dac_ad5693r,1,INFO,32768",
-                "STS,1,5,5,rp2040_timer0,dac,enabled,true,INFO,32768",
-                "STS,1,6,6,rp2040_timer0,dac,initialized,false,WARN,0",
-                "STS,1,7,7,rp2040_timer0,dac,init,failed,ERROR,32",
-                "STS,1,8,8,rp2040_timer0,capture,tcxo_counter_backend,rp2040_fc0_gpin0,INFO,32768",
-                "STS,1,9,9,rp2040_timer0,command,h1_help,DAC?_DAC_SET_code_DAC_MID_DAC_ZERO_DAC_LIMITS?_FC0?_HELP,INFO,0",
-                "STS,1,10,10,rp2040_timer0,dac,min_code,0x7000,INFO,32768",
-                "STS,1,11,11,rp2040_timer0,dac,max_code,0x9000,INFO,32768",
-                "STS,1,12,12,rp2040_timer0,dac,requested_code,0x8000,INFO,0",
-                "STS,1,13,13,rp2040_timer0,dac,requested_code,0x7000,INFO,0",
-                "STS,1,14,14,rp2040_timer0,dac,requested_code,0x0000,INFO,0",
-                "STS,1,15,15,rp2040_timer0,dac,requested_code,0xFFFF,INFO,0",
-                "STS,1,16,16,rp2040_timer0,dac,set,rejected_not_initialized,WARN,32",
-                "STS,1,17,17,rp2040_timer0,count_path,observation_valid,true,INFO,0",
-                "CNT,1,1,2,16000000,32000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "host.otis_tools.verify_h1_manual_log",
-            str(raw_log),
-            "--run-dir",
-            str(run_dir),
-            "--allow-dac-init-fail",
-        ],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "OK H1 manual command checks" in result.stdout
-
-
-def test_render_report_mentions_contracts() -> None:
-    report = render_report(EXAMPLE)
-    assert "raw_events_v1" in report
-    assert "count_observations_v1" in report
-    assert "health_v1" in report
-    assert "# OTIS Run Report" in report
-    assert "stage: SW1" in report
-    assert "capture_mode: synthetic_usb" in report
-    assert "SW1 capture mode: irq_reconstructed" in report
-    assert "## Validation Findings" in report
-    assert "## Validation Warnings" in report
-    assert "## Development Usefulness" in report
-
-
-def test_render_report_handles_missing_optional_count_file() -> None:
-    report = render_report(Path("examples/h0_gps_pps"))
-
-    assert "## Count Observation Summary" in report
-    assert "- not present" in report
-    assert "keep_as_fixture: True" in report
-
-
-def test_validate_run_warns_for_in_progress_and_missing_complete(tmp_path: Path, capsys) -> None:
-    run_dir = _copy_example(tmp_path)
-    (run_dir / "capture_in_progress.flag").touch()
-
-    assert validate_run(run_dir) == 0
-    captured = capsys.readouterr()
-
-    assert "capture_in_progress.flag exists" in captured.err
-    assert "COMPLETE marker is missing" in captured.err
-
-
-def test_validate_run_accepts_complete_marker_without_warning(tmp_path: Path, capsys) -> None:
-    run_dir = _copy_example(tmp_path)
-    (run_dir / "COMPLETE").touch()
-
-    assert validate_run(run_dir) == 0
-    captured = capsys.readouterr()
-
-    assert "COMPLETE marker is missing" not in captured.err
-
-
-def test_validate_run_warns_for_missing_optional_artifact(tmp_path: Path, capsys) -> None:
-    run_dir = _copy_example(tmp_path)
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
-    manifest["files"].append({"path": "reports/extra.json", "contract": "health_v1", "optional": True})
-    manifest["expected_artifacts"].append("reports/extra.json")
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-
-    assert validate_run(run_dir) == 0
-    captured = capsys.readouterr()
-
-    assert "optional expected artifact is missing" in captured.err
-
-
-def test_validate_run_reports_missing_manifest(tmp_path: Path, capsys) -> None:
-    run_dir = tmp_path / "no_manifest"
+def test_legacy_manifest_filename_is_rejected_with_revision_guidance(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "legacy"
     run_dir.mkdir()
-
-    assert validate_run(run_dir) == 1
-    captured = capsys.readouterr()
-
-    assert "missing manifest" in captured.err
+    (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="recorded Git revision"):
+        load_manifest(run_dir)
 
 
-def test_report_run_reports_malformed_manifest(tmp_path: Path) -> None:
-    run_dir = tmp_path / "bad_manifest"
-    run_dir.mkdir()
-    (run_dir / "run_manifest.json").write_text("{not json}\n", encoding="utf-8")
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"stage": "SW1", "h_phase": "H0"},
+        {"stage": "CX317_STAGE7_PART_B"},
+        {"stage": "CX318_STAGE4_LIVE"},
+        {"stage": "PHASE5_PPS_BACKEND_QUALIFICATION"},
+    ],
+)
+def test_retired_epochs_are_rejected_at_load_time(
+    tmp_path: Path, changes: dict
+) -> None:
+    run_dir = tmp_path / "retired"
+    _write_manifest(run_dir, **changes)
+    with pytest.raises(ValueError, match="archival checkout") as raised:
+        load_manifest(run_dir)
+    assert ARCHIVAL_CHECKOUT_GUIDANCE in str(raised.value)
 
-    report = render_report(run_dir)
 
-    assert "manifest_loaded: False" in report
-    assert "manifest_error:" in report
-    assert "not fixture-ready: manifest could not be loaded" in report
+def test_current_owner_handoff_preserves_deployed_transition_identity(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "transition"
+    _write_manifest(
+        run_dir,
+        run_id="g1_owner_handoff_transition",
+        stage="CX318_STAGE5_TRANSITION_SPOOL",
+    )
+    assert load_manifest(run_dir).stage == "CX318_STAGE5_TRANSITION_SPOOL"
 
 
-def test_validate_run_warns_for_empty_csv(tmp_path: Path, capsys) -> None:
-    run_dir = _copy_example(tmp_path)
-    (run_dir / "raw_events.csv").write_text(
+def test_current_non_template_package_requires_evidence_snapshot(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "unsealed"
+    _write_manifest(run_dir)
+    failures, warnings = validate_evidence_snapshot(run_dir, load_manifest(run_dir))
+    assert failures == ["evidence_manifest.json: immutable evidence snapshot is required"]
+    assert warnings == []
+
+
+def test_legacy_root_raw_log_is_not_silently_normalized(tmp_path: Path) -> None:
+    run_dir = tmp_path / "legacy_raw"
+    _write_manifest(run_dir)
+    csv_path = run_dir / "csv/raw_events.csv"
+    csv_path.parent.mkdir()
+    csv_path.write_text(
         "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags\n",
         encoding="utf-8",
     )
-
-    assert validate_run(run_dir) == 0
-    captured = capsys.readouterr()
-
-    assert "CSV has headers but no data rows" in captured.err
-
-
-def test_render_report_summarizes_monotonicity_failure(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 1, "timestamp_ticks", "1")
-
-    summary = build_summary(run_dir)
-    report = render_report(run_dir)
-
-    assert summary["raw_event_summary"]["timestamp_monotonic"] is False
-    assert "timestamp_ticks are not monotonic" in report
-    assert "keep_as_fixture: False" in report
-
-
-def test_report_command_handles_malformed_csv_without_fatal_exit(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    with (run_dir / "raw_events.csv").open("a", encoding="utf-8") as handle:
-        handle.write("EVT,1,1004,0,R,1632000100,rp2040_timer0,0,extra\n")
-
-    result = subprocess.run(
-        [sys.executable, "-m", "host.otis_tools.report_run", str(run_dir)],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "malformed row has too many columns" in result.stdout
-    assert "row 5 has too many columns" in result.stdout
-
-
-def test_report_command_writes_markdown_and_json(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    report_path = tmp_path / "summary.md"
-    json_path = tmp_path / "summary.json"
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "host.otis_tools.report_run",
-            str(run_dir),
-            "--output",
-            str(report_path),
-            "--json",
-            str(json_path),
-        ],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "# OTIS Run Report" in report_path.read_text(encoding="utf-8")
-    summary = json.loads(json_path.read_text(encoding="utf-8"))
-    assert summary["row_counts"]["raw_events_v1"] == 4
-
-
-def test_validate_run_rejects_bad_channel(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "channel_id", "99")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_rejects_non_monotonic_raw_timestamps(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 1, "timestamp_ticks", "1")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_rejects_malformed_rows(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    with (run_dir / "raw_events.csv").open("a", encoding="utf-8") as handle:
-        handle.write("EVT,1,1004,0,R,1632000100,rp2040_timer0,0,extra\n")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_rejects_bad_pps_cadence(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 3, "timestamp_ticks", "1700000000")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_pps_cadence_accepts_only_consistent_declared_detach_gap() -> None:
-    rows = [
-        {
-            "record_type": "REF",
-            "event_seq": "1",
-            "channel_id": "1",
-            "edge": "R",
-            "timestamp_ticks": "0",
-            "capture_domain": "rp2040_timer0",
-        },
-        {
-            "record_type": "REF",
-            "event_seq": "3",
-            "channel_id": "1",
-            "edge": "R",
-            "timestamp_ticks": "32000000",
-            "capture_domain": "rp2040_timer0",
-        },
-        {
-            "record_type": "REF",
-            "event_seq": "4",
-            "channel_id": "1",
-            "edge": "R",
-            "timestamp_ticks": "48000000",
-            "capture_domain": "rp2040_timer0",
-        },
-    ]
-    domains = {"rp2040_timer0": 16000000.0}
-
-    assert _validate_pps_cadence(rows, domains, False)
-    assert not _validate_pps_cadence(
-        rows,
-        domains,
-        False,
-        declared_sequence_gap_budget=1,
-    )
-    rows[1]["timestamp_ticks"] = "48000000"
-    assert _validate_pps_cadence(
-        rows,
-        domains,
-        False,
-        declared_sequence_gap_budget=1,
-    )
-
-
-def test_validate_run_accepts_exact_pps_cadence_gate(tmp_path: Path) -> None:
-    run_dir = tmp_path / "h1_gated_pps"
-    shutil.copytree(H1_TEMPLATE, run_dir)
-    manifest_path = run_dir / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["run_id"] = "h1_gated_pps"
-    manifest["template"] = False
-    manifest["validation_gates"] = {
-        "pps_cadence": [
-            {
-                "domain": "rp2040_timer0",
-                "classification": "short_interval",
-                "count": 1,
-                "first_index": 1,
-                "last_index": 1,
-                "first_event_seq": 1,
-                "last_event_seq": 2,
-                "root_cause": "unresolved",
-                "control_eligibility": "not_control_eligible",
-            }
-        ]
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    (run_dir / "csv" / "ref.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags",
-                "REF,1,1,1,R,0,rp2040_timer0,16",
-                "REF,1,2,1,R,100,rp2040_timer0,16",
-                "REF,1,3,1,R,16000100,rp2040_timer0,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (run_dir / "csv" / "cnt.csv").write_text(
-        "\n".join(
-            [
-                "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags",
-                "CNT,1,1,2,0,16000000,rp2040_timer0,10000000,R,h1_cx317_ocxo_10mhz,16",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    assert validate_run(run_dir) == 0
-
-    manifest["validation_gates"]["pps_cadence"][0]["count"] = 2
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_rejects_zero_count_without_flag(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "count_observations.csv", 0, "counted_edges", "0")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_rejects_reserved_flags(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "health.csv", 0, "flags", str(1 << 16))
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_accepts_contract_edge_enums(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "edge", "B")
-    _rewrite_csv_cell(run_dir / "count_observations.csv", 0, "source_edge", "B")
-
-    assert validate_run(run_dir) == 0
-
-
-def test_validate_run_rejects_invalid_edge(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "raw_events.csv", 0, "edge", "X")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_validate_run_accepts_contract_health_severities(tmp_path: Path) -> None:
-    for severity in ("INFO", "WARN", "ERROR", "FATAL"):
-        run_dir = tmp_path / severity.lower()
-        shutil.copytree(EXAMPLE, run_dir)
-        _rewrite_csv_cell(run_dir / "health.csv", 0, "severity", severity)
-
-        assert validate_run(run_dir) == 0
-
-
-def test_validate_run_rejects_invalid_health_severity(tmp_path: Path) -> None:
-    run_dir = _copy_example(tmp_path)
-    _rewrite_csv_cell(run_dir / "health.csv", 0, "severity", "CRITICAL")
-
-    assert validate_run(run_dir) == 1
-
-
-def test_load_manifest_requires_files(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "run_manifest.json").write_text(
-        json.dumps({"schema_version": 1, "run_id": "empty", "files": []}),
-        encoding="utf-8",
-    )
-
-    try:
-        load_manifest(run_dir)
-    except ValueError as exc:
-        assert "at least one data file" in str(exc)
-    else:
-        raise AssertionError("load_manifest accepted an empty file list")
+    (run_dir / "raw_serial.log").write_text("legacy", encoding="utf-8")
+    (run_dir / "COMPLETE").touch()
+    with pytest.raises(EvidenceError, match="archival checkout"):
+        create_evidence_snapshot(run_dir)
