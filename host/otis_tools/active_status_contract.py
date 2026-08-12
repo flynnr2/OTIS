@@ -136,6 +136,56 @@ def complete_active_status_snapshots(
     return snapshots, newest_started_generation
 
 
+def evaluate_solicited_attach_snapshot_history(
+    rows: Iterable[Mapping[str, str]],
+    *,
+    query_nonce: int,
+    frozen_uptime_s: int,
+    frozen_generation: int,
+    maximum_uptime_s: int,
+) -> dict[str, object]:
+    """Prove the retained attach boundary came from its solicited generation."""
+
+    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
+    matching = [
+        snapshot
+        for snapshot in snapshots
+        if snapshot.get("query_nonce") == str(query_nonce)
+    ]
+    first = matching[0] if matching else None
+    try:
+        first_generation = (
+            int(first[SNAPSHOT_COMPLETE_KEY]) if first is not None else None
+        )
+        first_uptime_s = int(first["uptime_s"]) if first is not None else None
+    except (KeyError, ValueError):
+        first_generation = None
+        first_uptime_s = None
+    exact = (
+        query_nonce > 0
+        and 0 <= frozen_uptime_s <= maximum_uptime_s
+        and frozen_generation > 0
+        and first_generation == frozen_generation
+        and first_uptime_s == frozen_uptime_s
+        and all(
+            int(snapshot.get(SNAPSHOT_COMPLETE_KEY, "0"))
+            == int(snapshot.get(SNAPSHOT_BEGIN_KEY, "-1"))
+            for snapshot in matching
+        )
+    )
+    return {
+        "exact": exact,
+        "query_nonce": query_nonce,
+        "frozen_uptime_s": frozen_uptime_s,
+        "frozen_generation": frozen_generation,
+        "maximum_uptime_s": maximum_uptime_s,
+        "matching_snapshot_count": len(matching),
+        "first_matching_generation": first_generation,
+        "first_matching_uptime_s": first_uptime_s,
+        "newest_started_generation": newest_started_generation,
+    }
+
+
 def latest_complete_health(
     path: Path, *, required_query_nonce: int | None = None
 ) -> dict[tuple[str, str], str]:

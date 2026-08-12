@@ -10,7 +10,10 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .active_status_contract import latest_complete_health
+from .active_status_contract import (
+    evaluate_solicited_attach_snapshot_history,
+    latest_complete_health,
+)
 from .board_identity import EXPECTED_SERIAL
 from .contracts import CsvValidationContext, validate_csv
 from .cx317_active_campaign import ACTIVE_CSV, HEALTH_CSV, _read_csv
@@ -44,7 +47,7 @@ from .no_write_qualification_bundle import (
     validate_run_manifest,
 )
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .host_attach_health_contract import evaluate_host_attach_history
+from .host_attach_health_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 from .no_write_prewrite_readiness_contract import (
     RUNTIME_CONTRACT_ID,
     environment_streams_ready,
@@ -156,6 +159,12 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
         raise ValueError("CX319 G1 capture is still active")
     manifest_value = validate_run_manifest(run_dir / "run_manifest.json")
+    q1_real_io = manifest_value.get("q1_real_io")
+    expected_reconnects = (
+        len(q1_real_io.get("intentional_detach_schedule", []))
+        if isinstance(q1_real_io, dict)
+        else 0
+    )
     manifest = load_manifest(run_dir)
     transition_dir = run_dir / TRANSITION_RUN_DIR
     transition_manifest = load_manifest(transition_dir)
@@ -238,18 +247,24 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         frozen_baseline=telemetry_drop_baseline,
         frozen_status_seq=telemetry_drop_baseline_status_seq,
     )
-    host_attach_history = evaluate_host_attach_history(
+    host_attach_history = evaluate_solicited_attach_snapshot_history(
         [*health_rows, *transition_health_rows],
+        query_nonce=int(supervisor_state["host_attach_query_nonce"]),
         frozen_uptime_s=int(supervisor_state["host_attach_uptime_s"]),
-        frozen_status_seq=int(
-            supervisor_state["host_attach_uptime_status_seq"]
+        frozen_generation=int(
+            supervisor_state["host_attach_snapshot_generation"]
         ),
+        maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
     )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
     capture_state = json.loads((run_dir / CAPTURE_STATE).read_text())
     capture_closure = _capture_closure(
-        run_dir, capture_state, markers, allowed_emergency_aborts=1
+        run_dir,
+        capture_state,
+        markers,
+        allowed_emergency_aborts=1,
+        allowed_reconnects=expected_reconnects,
     )
     supervisor_events = [
         json.loads(line)
@@ -259,6 +274,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if line.strip()
     ]
     transport = json.loads((run_dir / TRANSPORT_REPORT_PATH).read_text())
+    q1_prelude = (
+        json.loads((run_dir / "reports/cx319_q1_real_io_prelude_v1.json").read_text())
+        if expected_reconnects
+        else None
+    )
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
     run_bundle = json.loads(
         Path(manifest_value["bundle"]["path"]).read_text(encoding="utf-8")
@@ -346,13 +366,17 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                     required == "ACTIVE LEASE"
                     and command.startswith("ACTIVE LEASE ")
                 )
+                or (
+                    required == "ACTIVE SNAPSHOT"
+                    and command.startswith("ACTIVE SNAPSHOT ")
+                )
                 for command in commands_sent
             )
             for required in (
                 "CONFIG?",
                 "DAC?",
                 "FC0?",
-                "ACTIVE?",
+                "ACTIVE SNAPSHOT",
                 "ACTIVE LEASE",
             )
         )
@@ -387,7 +411,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and transition_state.get("capture_active") is False
             and transition_state.get("serial_open") is False
             and transition_state.get("physical_serial_open") is False
-            and transition_state.get("reconnect_count") == 0
+            and transition_state.get("reconnect_count") == expected_reconnects
             and transition_state.get("pid") == transport.get("capture_pid")
             and transition_closure.get("closure_mode")
             == "physical_serial_close"
@@ -400,6 +424,35 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             )
         ),
         "normal_commands_exact_no_write_allowlist": command_allowlist_exact,
+        "q1_real_io_prelude_exact": (
+            expected_reconnects == 0
+            or (
+                isinstance(q1_prelude, dict)
+                and q1_prelude.get("status") == "pass"
+                and q1_prelude.get("intentional_detach_count")
+                == expected_reconnects
+                and q1_prelude.get(
+                    "all_detach_gaps_below_transport_horizon"
+                )
+                is True
+                and q1_prelude.get("serial_exclusive_requested") is True
+                and q1_prelude.get("competing_open_rejected") is True
+                and q1_prelude.get("sole_owner_after_probe") is True
+                and q1_prelude.get("lease_live_snapshot", {}).get(
+                    "capture_lease_live"
+                )
+                == "true"
+                and q1_prelude.get("lease_expired_snapshot", {}).get(
+                    "capture_lease_live"
+                )
+                == "false"
+                and q1_prelude.get("lease_expired_snapshot", {}).get(
+                    "setup_partition_healthy"
+                )
+                == "true"
+                and supervisor_state.get("q1_boundary_burst_sent") is True
+            )
+        ),
         "supervisor_exact_no_write_terminal": (
             supervisor_state.get("programme_id")
             == "cx319_stabilized_tight_deadband"
@@ -453,22 +506,24 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 for key in (
                     "malformed_utf8",
                     "parser_errors",
-                    "reconnect_count",
                     "commands_rejected",
                 )
             )
+            and capture_state.get("reconnect_count") == expected_reconnects
+            and capture_state.get("intentional_detach_count")
+            == expected_reconnects
             and capture_state.get("emergency_aborts_sent") == 1
             and all(
                 transition_state.get(key) == 0
                 for key in (
                     "malformed_utf8",
                     "parser_errors",
-                    "reconnect_count",
                     "commands_rejected",
                     "commands_sent",
                     "emergency_aborts_sent",
                 )
             )
+            and transition_state.get("reconnect_count") == expected_reconnects
             and not fatal_rows
             and health.get(("resource_registry", "valid")) == "true"
             and health.get(("resource_registry", "complete")) == "true"
@@ -508,6 +563,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "snapshot_backlog_high_water": snapshot_high_water,
             "snapshot_ring_capacity": snapshot_capacity,
             "fatal_rows": len(fatal_rows),
+            "expected_intentional_reconnects": expected_reconnects,
             "post_abort_state": transition_health.get(
                 ("cx317_active", "state")
             ),

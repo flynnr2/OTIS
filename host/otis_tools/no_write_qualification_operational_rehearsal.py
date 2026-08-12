@@ -192,6 +192,10 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         expected_identity=expected_identity,
         planned_live_stimulus_code=spec.start_code,
     )
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    health[("cx317_active", "snapshot_generation_complete")] = "7"
     health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
     health[("gnss_receiver", "control_eligible")] = "false"
     health[("cx317_active", "uptime_s")] = "30"
@@ -220,6 +224,9 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         host_attach_uptime_s=30,
         host_attach_uptime_status_seq=1,
     )
+    health[("cx317_active", "query_nonce")] = str(
+        deadline.state["host_attach_query_nonce"]
+    )
     health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
     health[("gnss_receiver", "control_eligible")] = "false"
     deadline_rejected = False
@@ -231,9 +238,15 @@ def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, A
         deadline_rejected = "raw_pps_control_eligible" in str(exc)
 
     stale = dict(health)
+    stale[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
     stale[("gnss_receiver", "identity_epoch")] = "2"
     epoch_two_rejected = not supervisor._prewrite_readiness(stale).ready
     supervisor.state["host_attach_uptime_s"] = 121
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
     late_attach_rejected = not supervisor._prewrite_readiness(health).ready
     return {
         "contract_id": RUNTIME_CONTRACT_ID,

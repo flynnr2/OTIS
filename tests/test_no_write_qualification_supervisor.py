@@ -82,13 +82,21 @@ def test_supervisor_command_override_rejects_every_write_path(
     )
     supervisor = NoWriteQualificationSupervisor.__new__(NoWriteQualificationSupervisor)
 
-    for command in ("CONFIG?", "DAC?", "FC0?", "ACTIVE?", "ACTIVE LEASE 7"):
+    for command in (
+        "CONFIG?",
+        "DAC?",
+        "FC0?",
+        "ACTIVE?",
+        "ACTIVE SNAPSHOT 99",
+        "ACTIVE LEASE 7",
+    ):
         supervisor._command(command)
     assert submitted == [
         "CONFIG?",
         "DAC?",
         "FC0?",
         "ACTIVE?",
+        "ACTIVE SNAPSHOT 99",
         "ACTIVE LEASE 7",
     ]
 
@@ -211,6 +219,10 @@ def test_g1_accepts_pps_qualification_at_the_observed_612_seconds(
         planned_live_stimulus_code=supervisor.spec.start_code,
     )
     health[("cx317_active", "uptime_s")] = "612"
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    health[("cx317_active", "snapshot_generation_complete")] = "7"
 
     readiness = supervisor._check_prewrite_contract(health, 612)
 

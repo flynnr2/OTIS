@@ -107,3 +107,8 @@ requalification is recorded in
 The successful exact flash, retained zero-write timing stop and corrected
 recovery boundary are recorded in
 [`15_G1_RECOVERY_HOST_TIMING_STOP.md`](15_G1_RECOVERY_HOST_TIMING_STOP.md).
+
+The operator's current sequential authority for the adversarial-review Q1,
+electrically inhibited or stubbed Q2, and no-write Q3 gates is recorded in
+[`16_Q1_Q3_SEQUENCE_AUTHORITY.md`](16_Q1_Q3_SEQUENCE_AUTHORITY.md). Q4 and all
+live actuation remain blocked.

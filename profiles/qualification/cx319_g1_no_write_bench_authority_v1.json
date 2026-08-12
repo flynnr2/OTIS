@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "authority_id": "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1",
+  "authority_id": "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1",
   "programme_id": "cx319_stabilized_tight_deadband",
   "gate": "G1",
   "operation": "g1_no_write_bench_rehearsal",
-  "effective_date": "2026-08-11",
+  "effective_date": "2026-08-12",
   "operator_authority": "explicit_operator_instruction",
   "bindings": {
     "frequency_control_policy": {
@@ -12,12 +12,12 @@
       "sha256": "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698"
     },
     "operator_decision_record": {
-      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/02_G1_NO_WRITE_BENCH_AUTHORITY.md",
-      "sha256": "fa189150e1a389cc3f99779f989f18d99ddc6993baebfe72303bd2ee67648cf8"
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
+      "sha256": "5256355e57eca3a9e809026b8eb812b3ee7b8d0721905c74a536387f74bcb72b"
     },
-    "recovery_operator_decision_record": {
-      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/14_G1_RECOVERY_NO_WRITE_AUTHORITY.md",
-      "sha256": "178a1370d205cfccd69dbbd91e653890602338da04f05346b3503dbea55a374d"
+    "qualification_plan": {
+      "path": "docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md",
+      "sha256": "066a133caedd60a41c250b6eb455988e011b4d4bff250efec42f0c1326f23f3e"
     }
   },
   "authority_model": {
@@ -31,6 +31,10 @@
     "open_expected_serial_device_with_one_capture_owner",
     "create_bounded_normal_emergency_and_host_abort_fifos",
     "send_read_only_queries_and_active_capture_leases",
+    "exercise_nonce_bound_active_snapshots",
+    "exercise_sub_horizon_serial_detach_and_reattach",
+    "verify_competing_serial_open_is_rejected",
+    "observe_natural_capture_lease_expiry",
     "inject_bounded_normal_transport_obstruction",
     "send_priority_active_abort",
     "perform_same_owner_logical_evidence_rotation",

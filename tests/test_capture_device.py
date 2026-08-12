@@ -216,6 +216,53 @@ def test_capture_device_reconnect_drops_partial_without_truncating(tmp_path: Pat
     )
 
 
+def test_q1_intentional_detach_requires_no_actuation_manifest_and_reattaches(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    config = CaptureDeviceConfig(
+        **{
+            **_config(tmp_path).__dict__,
+            "intentional_detach_schedule": ((0.0001, 0.001),),
+        }
+    )
+    ensure_run_layout(config.run_dir)
+    capture_device_module._create_manifest_if_missing(
+        config.run_dir, config.device, config.baud
+    )
+    manifest_path = config.run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["actuation_authorized"] = False
+    manifest["closed_loop_control"] = False
+    manifest["q1_real_io"] = {
+        "intentional_detach_schedule": [
+            {"after_first_open_s": 0.0001, "detached_s": 0.001}
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    serials = [
+        FakeSerial([b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"]),
+        FakeSerial(
+            [b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"],
+            stop_event=stop_event,
+        ),
+    ]
+
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serials.pop(0),
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+    assert runner.intentional_detach_count == 1
+    assert runner.reconnect_count == 1
+    assert len(runner.intentional_detach_gaps_ms) == 1
+    raw = RunPaths(config.run_dir).raw_serial_log.read_text(encoding="utf-8")
+    assert "intentional_serial_detach_started" in raw
+    assert "intentional_serial_reattached" in raw
+
+
 def test_capture_device_malformed_utf8_preserves_raw_bytes(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)

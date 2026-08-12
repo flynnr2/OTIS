@@ -86,6 +86,7 @@ def _capture_closure(
     markers: list[dict[str, Any]],
     *,
     allowed_emergency_aborts: int = 0,
+    allowed_reconnects: int = 0,
 ) -> dict[str, Any]:
     starts = [item for item in markers if item.get("event") == "capture_started"]
     stops = [item for item in markers if item.get("event") == "capture_stopped"]
@@ -95,7 +96,8 @@ def _capture_closure(
     stop = stops[0]
     counters_clean = (
         capture_state.get("capture_active") is False
-        and int(capture_state.get("reconnect_count", -1)) == 0
+        and int(capture_state.get("reconnect_count", -1))
+        == allowed_reconnects
         and int(capture_state.get("parser_errors", -1)) == 0
         and int(capture_state.get("malformed_utf8", -1)) == 0
         and int(capture_state.get("commands_rejected", -1)) == 0

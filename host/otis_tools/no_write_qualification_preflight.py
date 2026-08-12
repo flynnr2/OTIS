@@ -134,12 +134,15 @@ def evaluate(bundle_path: Path) -> dict[str, Any]:
         "DAC?",
         "FC0?",
         "ACTIVE?",
+        "ACTIVE SNAPSHOT 99",
         "ACTIVE LEASE 1",
         "ACTIVE LEASE 4294967295",
     }
     forbidden_examples = {
         "ACTIVE LEASE 0",
         "ACTIVE LEASE 4294967296",
+        "ACTIVE SNAPSHOT 0",
+        "ACTIVE SNAPSHOT 4294967296",
         "ACTIVE ABORT",
         "DAC SET 0xA808",
         "DAC MID",
@@ -207,7 +210,7 @@ def evaluate(bundle_path: Path) -> dict[str, Any]:
         ),
         "authority_overlay_is_nonpromoting_and_zero_write": (
             bundle["operator_authority"]["authority_id"]
-            == "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+            == "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
             and bundle["rehearsal"]["rehearsal_to_live_promotion"] is False
             and all(
                 bundle["rehearsal"][key] == 0

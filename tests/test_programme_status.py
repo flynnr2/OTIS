@@ -31,15 +31,16 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     )
     assert status["programmes"]["cx318_stage5"]["allowed_operations"] == []
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == (
-        "g1_recovery_host_timing_repair_in_offline_preparation"
-    )
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["state"] == "q1_q3_sequence_authorized_q1_entry"
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        NO_WRITE_BENCH_REHEARSAL,
+    ]
     assert successor["authority"] == (
-        "explicit_operator_g1_recovery_no_write_authority"
+        "explicit_operator_q1_q3_sequence_authority"
     )
     assert successor["next_gate"] == (
-        "host_timing_repair_complete_operational_rehearsal_then_fresh_no_flash_g1_authority"
+        "passing_q1_then_bound_inhibited_or_stubbed_q2"
     )
     assert successor["operator_authority"] == {
         "record": (
@@ -327,6 +328,20 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
         "observed_historical_raw_pps_eligibility_s"
     ] == 612
     assert successor["g1_recovery_timing_stop"]["dac_value_writes"] == 0
+    assert successor["q1_q3_sequence_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "16_Q1_Q3_SEQUENCE_AUTHORITY.md"
+        ),
+        "effective": True,
+        "current_gate": "Q1",
+        "q1_exact_lower_flash_limit": 1,
+        "q1_dac_value_writes": 0,
+        "q2_requires_bound_stub_or_confirmed_electrical_inhibition": True,
+        "q3_no_write": True,
+        "q4_authorized": False,
+    }
     assert successor["forbidden_until_next_gate"] == [
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
@@ -347,11 +362,10 @@ def test_tracked_status_records_g2_v7_nonpass_and_blocks_g3() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            NO_WRITE_BENCH_REHEARSAL,
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        NO_WRITE_BENCH_REHEARSAL,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG

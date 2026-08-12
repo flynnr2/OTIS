@@ -58,6 +58,7 @@ class CaptureDeviceConfig:
     duration_s: float | None = None
     segment_control_dir: Path | None = None
     segment_capability: str | None = None
+    intentional_detach_schedule: tuple[tuple[float, float], ...] = ()
 
 
 def _utc_now() -> str:
@@ -558,6 +559,10 @@ class CaptureDeviceRunner:
             config.emergency_command_fifo is not None
         )
         self.last_rotation_serial_owner_check: dict[str, object] | None = None
+        self.intentional_detach_count = 0
+        self.intentional_detach_gaps_ms: list[float] = []
+        self._first_serial_open_monotonic: float | None = None
+        self._intentional_detach_started_monotonic: float | None = None
 
     def request_stop(self, signum: int | None = None) -> None:
         if signum == signal.SIGINT and not self.graceful_stop_requested:
@@ -572,6 +577,40 @@ class CaptureDeviceRunner:
             return self.serial_factory
         serial_module = _load_serial_module()
         return serial_module.Serial
+
+    def _validate_intentional_detach_authority(self) -> None:
+        schedule = self.config.intentional_detach_schedule
+        if not schedule:
+            return
+        if any(
+            after_s <= 0.0 or detach_s <= 0.0 or detach_s >= 2.0
+            for after_s, detach_s in schedule
+        ):
+            raise ValueError(
+                "intentional detach schedule requires positive offsets and "
+                "detach intervals strictly below the 2 s transport horizon"
+            )
+        offsets = [item[0] for item in schedule]
+        if offsets != sorted(offsets) or len(set(offsets)) != len(offsets):
+            raise ValueError("intentional detach offsets must be unique and ordered")
+        manifest_path = self.current_run_dir / "run_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        declared = manifest.get("q1_real_io", {}).get(
+            "intentional_detach_schedule"
+        )
+        expected = [
+            {"after_first_open_s": after_s, "detached_s": detach_s}
+            for after_s, detach_s in schedule
+        ]
+        if (
+            manifest.get("actuation_authorized") is not False
+            or manifest.get("closed_loop_control") is not False
+            or declared != expected
+        ):
+            raise ValueError(
+                "intentional serial detach requires an exact Q1 no-actuation "
+                "manifest declaration"
+            )
 
     def _serial_exceptions(self) -> tuple[type[BaseException], ...]:
         if self.serial_factory is not None:
@@ -773,6 +812,9 @@ class CaptureDeviceRunner:
                 "malformed_utf8": self.malformed_utf8,
                 "parser_errors": self.parser_errors,
                 "reconnect_count": self.reconnect_count,
+                "serial_exclusive_requested": self.serial_factory is None,
+                "intentional_detach_count": self.intentional_detach_count,
+                "intentional_detach_gaps_ms": self.intentional_detach_gaps_ms,
                 "commands_sent": self.commands_sent,
                 "commands_rejected": self.commands_rejected,
                 "normal_command_buffered_bytes_discarded": (
@@ -1046,6 +1088,7 @@ class CaptureDeviceRunner:
             raise
 
     def run(self) -> int:
+        self._validate_intentional_detach_authority()
         if self.config.segment_control_dir is not None:
             self.config.segment_control_dir.mkdir(parents=True, exist_ok=True)
             if not self.config.segment_capability:
@@ -1079,18 +1122,40 @@ class CaptureDeviceRunner:
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
+                intentional_detach_index = 0
                 while not self.stop_event.is_set():
                     serial_handle = None
                     try:
                         _log_event(logging.INFO, "serial_opening", device=self.config.device, baud=self.config.baud)
+                        serial_kwargs = {
+                            "baudrate": self.config.baud,
+                            "timeout": self.config.read_timeout_s,
+                            "write_timeout": self.config.write_timeout_s,
+                        }
+                        if self.serial_factory is None:
+                            serial_kwargs["exclusive"] = True
                         serial_handle = factory(
                             self.config.device,
-                            baudrate=self.config.baud,
-                            timeout=self.config.read_timeout_s,
-                            write_timeout=self.config.write_timeout_s,
+                            **serial_kwargs,
                         )
                         _log_event(logging.INFO, "serial_opened", device=self.config.device, baud=self.config.baud)
                         self.serial_open = True
+                        opened_monotonic = time.monotonic()
+                        if self._first_serial_open_monotonic is None:
+                            self._first_serial_open_monotonic = opened_monotonic
+                        if self._intentional_detach_started_monotonic is not None:
+                            gap_ms = (
+                                opened_monotonic
+                                - self._intentional_detach_started_monotonic
+                            ) * 1000.0
+                            self.intentional_detach_gaps_ms.append(gap_ms)
+                            self._intentional_detach_started_monotonic = None
+                            _write_marker(
+                                raw_writer,
+                                "intentional_serial_reattached",
+                                detach_index=self.intentional_detach_count,
+                                gap_ms=round(gap_ms, 3),
+                            )
                         self._emit_status()
                         self._write_carrier_state(status="running")
                         _write_marker(raw_writer, "serial_opened", device=self.config.device, baud=self.config.baud)
@@ -1148,6 +1213,31 @@ class CaptureDeviceRunner:
                                     command_fifo, serial_handle, raw_writer
                                 )
                             now = time.monotonic()
+                            schedule = self.config.intentional_detach_schedule
+                            if (
+                                intentional_detach_index < len(schedule)
+                                and self._first_serial_open_monotonic is not None
+                                and now - self._first_serial_open_monotonic
+                                >= schedule[intentional_detach_index][0]
+                            ):
+                                _, detach_s = schedule[intentional_detach_index]
+                                intentional_detach_index += 1
+                                self.intentional_detach_count += 1
+                                _write_marker(
+                                    raw_writer,
+                                    "intentional_serial_detach_started",
+                                    detach_index=self.intentional_detach_count,
+                                    planned_gap_ms=round(detach_s * 1000.0, 3),
+                                )
+                                self._intentional_detach_started_monotonic = (
+                                    time.monotonic()
+                                )
+                                serial_handle.close()
+                                self.serial_open = False
+                                self.reconnect_count += 1
+                                self._emit_status()
+                                self.sleep(detach_s)
+                                break
                             if capture_deadline is not None and now >= capture_deadline:
                                 duration_reached = True
                             if (
@@ -1317,6 +1407,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--segment-capability",
         help="Exact non-empty capability required by every segment rotation request.",
     )
+    parser.add_argument(
+        "--intentional-detach",
+        action="append",
+        default=[],
+        metavar="AFTER_S:DETACH_MS",
+        help=(
+            "Q1-only no-actuation serial detach schedule; repeat for ordered "
+            "offsets after the first serial open."
+        ),
+    )
     return parser
 
 
@@ -1353,6 +1453,17 @@ def main() -> None:
         parser.error(
             "--segment-control-dir and --segment-capability must be supplied together"
         )
+    detach_schedule: list[tuple[float, float]] = []
+    for value in args.intentional_detach:
+        try:
+            after_text, detach_ms_text = value.split(":", 1)
+            after_s = float(after_text)
+            detach_s = float(detach_ms_text) / 1000.0
+        except (TypeError, ValueError):
+            parser.error(
+                "--intentional-detach must use AFTER_S:DETACH_MS numeric syntax"
+            )
+        detach_schedule.append((after_s, detach_s))
     log_path = args.run_dir / "reports/capture_device.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -1378,6 +1489,7 @@ def main() -> None:
         duration_s=args.duration_s,
         segment_control_dir=args.segment_control_dir,
         segment_capability=args.segment_capability,
+        intentional_detach_schedule=tuple(detach_schedule),
     )
     runner = CaptureDeviceRunner(config)
     signal.signal(signal.SIGINT, lambda signum, _frame: runner.request_stop(signum))

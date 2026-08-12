@@ -49,6 +49,11 @@ RUN_MANIFEST_SCHEMA_VERSION = 1
 REHEARSAL_STAGE = "CX319_G1_EXACT_NO_WRITE_REHEARSAL"
 REHEARSAL_DURATION_S = 2700
 SELECTED_ESTIMATE_SPAN_S = 600
+Q1_INTENTIONAL_DETACH_SCHEDULE = (
+    (2.0, 0.250),
+    (5.0, 0.750),
+    (9.0, 1.250),
+)
 RUN_BUNDLE_PATH = Path("cx319_g1_exact_bundle_v1.json")
 TRANSITION_RUN_DIR = Path("g1_owner_handoff_transition")
 NORMAL_COMMAND_ALLOWLIST = (
@@ -56,6 +61,7 @@ NORMAL_COMMAND_ALLOWLIST = (
     "DAC?",
     "FC0?",
     "ACTIVE?",
+    "ACTIVE SNAPSHOT <nonzero_uint32>",
     "ACTIVE LEASE <nonzero_uint32>",
 )
 FORBIDDEN_COMMAND_PREFIXES = (
@@ -140,11 +146,11 @@ def _canonical_sha256(value: object) -> str:
 def normal_command_allowed(command: str) -> bool:
     if command in {"CONFIG?", "DAC?", "FC0?", "ACTIVE?"}:
         return True
-    prefix = "ACTIVE LEASE "
-    if not command.startswith(prefix):
-        return False
-    sequence = command[len(prefix) :]
-    return sequence.isdigit() and 0 < int(sequence) <= 0xFFFFFFFF
+    for prefix in ("ACTIVE SNAPSHOT ", "ACTIVE LEASE "):
+        if command.startswith(prefix):
+            sequence = command[len(prefix) :]
+            return sequence.isdigit() and 0 < int(sequence) <= 0xFFFFFFFF
+    return False
 
 
 def _read_object(path: Path, label: str) -> dict[str, Any]:
@@ -259,7 +265,7 @@ def _load_authority() -> dict[str, Any]:
     if (
         authority.get("schema_version") != 1
         or authority.get("authority_id")
-        != "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        != "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
         or authority.get("programme_id") != PROGRAMME_ID
         or authority.get("operation") != NO_WRITE_BENCH_OPERATION
         or authority.get("gate") != "G1"
@@ -569,6 +575,15 @@ def create_bundle(
             "capture_resume_required": True,
             "same_owner_after_resume_required": True,
         },
+        "q1_real_io": {
+            "intentional_detach_schedule": [
+                {"after_first_open_s": after_s, "detached_s": detached_s}
+                for after_s, detached_s in Q1_INTENTIONAL_DETACH_SCHEDULE
+            ],
+            "lease_expiry_observation_s": 31,
+            "qualification_boundary_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            "dac_value_writes": 0,
+        },
         "rotation": {
             "protocol": "otis_same_owner_logical_segment_rotation_v1",
             "serial_reopen_allowed": False,
@@ -698,7 +713,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or len(policy["sha256"]) != 64
         or not isinstance(operator_authority, dict)
         or operator_authority.get("authority_id")
-        != "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        != "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
     ):
         raise ValueError("CX319 G1 frozen policy or authority identity is invalid")
     tools = bundle.get("host_tools")
@@ -719,6 +734,7 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
     rehearsal = bundle.get("rehearsal", {})
     commands = bundle.get("commands", {})
     runtime_contract = bundle.get("runtime_contract", {})
+    q1_real_io = bundle.get("q1_real_io", {})
     if (
         authority.get("programme_operation_required") != NO_WRITE_BENCH_OPERATION
         or any(
@@ -752,6 +768,16 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or commands.get("emergency_allowlist") != [EMERGENCY_COMMAND]
         or tuple(commands.get("forbidden_prefixes", []))
         != FORBIDDEN_COMMAND_PREFIXES
+        or q1_real_io
+        != {
+            "intentional_detach_schedule": [
+                {"after_first_open_s": after_s, "detached_s": detached_s}
+                for after_s, detached_s in Q1_INTENTIONAL_DETACH_SCHEDULE
+            ],
+            "lease_expiry_observation_s": 31,
+            "qualification_boundary_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            "dac_value_writes": 0,
+        }
         or (
             runtime_contract_id == RUNTIME_CONTRACT_ID
             and (
@@ -846,7 +872,11 @@ def _required_files() -> list[dict[str, Any]]:
 
 
 def create_run_manifest(
-    *, bundle_path: Path, run_dir: Path, output_path: Path
+    *,
+    bundle_path: Path,
+    run_dir: Path,
+    output_path: Path,
+    q1_real_io: bool = False,
 ) -> dict[str, Any]:
     bundle = validate_bundle(bundle_path)
     run_dir = run_dir.resolve()
@@ -946,6 +976,11 @@ def create_run_manifest(
             "reports/cx319_g1_capture_launcher.log",
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
+            *(
+                ["reports/cx319_q1_real_io_prelude_v1.json"]
+                if q1_real_io
+                else []
+            ),
             *transition_evidence,
         ],
         "evidence_artifacts": [
@@ -958,6 +993,11 @@ def create_run_manifest(
             "reports/cx319_g1_capture_launcher.log",
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
+            *(
+                ["reports/cx319_q1_real_io_prelude_v1.json"]
+                if q1_real_io
+                else []
+            ),
             *transition_evidence,
         ],
         "known_limitations": [
@@ -966,6 +1006,8 @@ def create_run_manifest(
             "Relative phase remains arbitrary-epoch and phase/hybrid outputs have zero authority.",
         ],
     }
+    if q1_real_io:
+        manifest["q1_real_io"] = bundle["q1_real_io"]
     _atomic_new_json(output_path, manifest)
     return manifest
 
@@ -995,6 +1037,10 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
         or manifest.get("cx319", {}).get("leg") != bundle["leg"]["leg"]
         or manifest.get("cx319", {}).get("authority") != bundle["authority"]
         or manifest.get("cx319", {}).get("commands") != bundle["commands"]
+        or (
+            "q1_real_io" in manifest
+            and manifest.get("q1_real_io") != bundle.get("q1_real_io")
+        )
     ):
         raise ValueError("CX319 G1 run manifest differs from its exact bundle")
     return manifest

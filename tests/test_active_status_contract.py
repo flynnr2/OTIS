@@ -9,6 +9,7 @@ from host.otis_tools.active_status_contract import (
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
+    evaluate_solicited_attach_snapshot_history,
     latest_complete_active_status,
     latest_complete_health,
 )
@@ -145,3 +146,26 @@ def test_required_query_nonce_rejects_buffered_pre_boundary_status(
     )
     current = latest_complete_health(path, required_query_nonce=222)
     assert current[("cx317_active", "query_nonce")] == "222"
+
+
+def test_solicited_attach_history_binds_nonce_generation_and_uptime() -> None:
+    rows = [*_burst(4), *_burst(5)]
+    for row in rows:
+        if row.get("status_key") == "query_nonce":
+            generation = row["status_value"].split(":", 1)[0]
+            row["status_value"] = "77" if generation == "4" else "88"
+        if row.get("status_key") == "uptime_s":
+            generation = row["status_value"].split(":", 1)[0]
+            row["status_value"] = "42" if generation == "4" else "52"
+
+    result = evaluate_solicited_attach_snapshot_history(
+        rows,
+        query_nonce=77,
+        frozen_uptime_s=42,
+        frozen_generation=4,
+        maximum_uptime_s=120,
+    )
+
+    assert result["exact"] is True
+    assert result["first_matching_generation"] == 4
+    assert result["first_matching_uptime_s"] == 42

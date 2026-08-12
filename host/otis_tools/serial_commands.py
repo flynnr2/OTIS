@@ -123,6 +123,48 @@ def parse_serial_command(text: str) -> SerialCommand:
             raise ValueError("ACTIVE LEASE requires one non-zero uint32 sequence")
         return SerialCommand(f"ACTIVE LEASE {int(value, 10)}")
 
+    if command.startswith("ACTIVE SNAPSHOT "):
+        value = command[len("ACTIVE SNAPSHOT ") :]
+        if not re.fullmatch(r"[1-9][0-9]*", value) or int(value, 10) > 0xFFFFFFFF:
+            raise ValueError("ACTIVE SNAPSHOT requires one non-zero uint32 nonce")
+        return SerialCommand(f"ACTIVE SNAPSHOT {int(value, 10)}")
+
+    if command.startswith("ACTIVE SETUP "):
+        fields = command[len("ACTIVE SETUP ") :].split()
+        if len(fields) != 8:
+            raise ValueError(
+                "ACTIVE SETUP requires authorization, generation, nonce, "
+                "expiry, session, code, ordinal, and configuration identity"
+            )
+        numeric = fields[:5]
+        if any(
+            not re.fullmatch(r"[1-9][0-9]*", field)
+            or int(field, 10) > 0xFFFFFFFF
+            for field in numeric
+        ):
+            raise ValueError(
+                "ACTIVE SETUP authority fields must be non-zero uint32 values"
+            )
+        code = _normalize_code(fields[5])
+        if code is None:
+            raise ValueError("ACTIVE SETUP requires one 16-bit setup code")
+        ordinal = fields[6]
+        if (
+            not re.fullmatch(r"[1-9][0-9]*", ordinal)
+            or int(ordinal, 10) > 0xFFFF
+        ):
+            raise ValueError("ACTIVE SETUP ordinal must be a non-zero uint16")
+        identity = fields[7].lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", identity):
+            raise ValueError(
+                "ACTIVE SETUP configuration identity must be one SHA-256 digest"
+            )
+        return SerialCommand(
+            "ACTIVE SETUP "
+            + " ".join(str(int(field, 10)) for field in numeric)
+            + f" {code} {int(ordinal, 10)} {identity}"
+        )
+
     if command.startswith("ACTIVE ARM "):
         fields = command[len("ACTIVE ARM ") :].split()
         if len(fields) != 3 or any(

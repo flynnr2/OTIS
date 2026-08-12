@@ -38,6 +38,7 @@ from .no_write_qualification_analyze import (
 from .no_write_qualification_bundle import (
     NO_WRITE_BENCH_OPERATION,
     PROGRAMME_ID,
+    Q1_INTENTIONAL_DETACH_SCHEDULE,
     REHEARSAL_DURATION_S,
     RUN_BUNDLE_PATH,
     TRANSITION_RUN_DIR,
@@ -45,6 +46,7 @@ from .no_write_qualification_bundle import (
     validate_bundle,
     validate_confirmed_installed_firmware,
 )
+from .active_status_contract import latest_complete_health
 from .evidence import create_evidence_snapshot, validate_evidence_snapshot
 from .evidence_index import DEFAULT_INDEX, package_identity, register_package
 from .evidence_finalization import (
@@ -75,6 +77,10 @@ SUPERVISOR_LOG = Path("reports/cx319_g1_supervisor.log")
 ORCHESTRATION_FAILURE_PATH = Path(
     "reports/cx319_g1_orchestration_failure_v1.json"
 )
+Q1_PRELUDE_PATH = Path("reports/cx319_q1_real_io_prelude_v1.json")
+Q1_LEASE_SEQUENCE = 1
+Q1_LEASE_LIVE_NONCE = 1362165761
+Q1_LEASE_EXPIRED_NONCE = 1362165762
 
 
 def _utc_now() -> str:
@@ -140,6 +146,7 @@ def flash_exact_bundle(
     completed = subprocess.run(
         command, text=True, capture_output=True, check=False
     )
+    upload_completed_monotonic_ns = time.monotonic_ns()
     after: dict[str, str] | None = None
     reappearance_error: str | None = None
     if completed.returncode == 0:
@@ -152,6 +159,7 @@ def flash_exact_bundle(
                 reappearance_error = str(exc)
                 time.sleep(0.5)
     passed = completed.returncode == 0 and before == after
+    completed_monotonic_ns = time.monotonic_ns()
     record = {
         "schema_version": 1,
         "tool": TOOL_ID,
@@ -159,6 +167,8 @@ def flash_exact_bundle(
         "status": "pass" if passed else "fail",
         "started_utc": started,
         "completed_utc": _utc_now(),
+        "completed_monotonic_ns": completed_monotonic_ns,
+        "upload_completed_monotonic_ns": upload_completed_monotonic_ns,
         "attempt_count": 1,
         "device": device,
         "command": command,
@@ -183,6 +193,165 @@ def flash_exact_bundle(
     if not passed:
         raise RuntimeError(f"exact CX319 G1 flash failed: {output_path}")
     return record
+
+
+def _capture_state(run_dir: Path) -> dict[str, Any]:
+    value = _read_json_if_present(run_dir / "reports/capture_device_state.json")
+    return value or {}
+
+
+def _active_snapshot(
+    run_dir: Path, *, required_query_nonce: int
+) -> dict[tuple[str, str], str]:
+    return latest_complete_health(
+        run_dir / "csv/health.csv",
+        required_query_nonce=required_query_nonce,
+    )
+
+
+def _exercise_q1_real_io_prelude(
+    *,
+    run_dir: Path,
+    device: str,
+    capture_pid: int,
+    normal_fifo: Path,
+    flash: dict[str, Any],
+    carrier_initial_ready_monotonic_ns: int,
+) -> dict[str, Any]:
+    expected_detaches = len(Q1_INTENTIONAL_DETACH_SCHEDULE)
+    _wait_until(
+        lambda: (
+            _capture_state(run_dir).get("serial_open") is True
+            and _capture_state(run_dir).get("intentional_detach_count")
+            == expected_detaches
+            and len(
+                _capture_state(run_dir).get("intentional_detach_gaps_ms", [])
+            )
+            == expected_detaches
+        ),
+        20.0,
+        "Q1 bounded detach and reattach schedule",
+    )
+    hostless_ms = (
+        carrier_initial_ready_monotonic_ns
+        - int(flash["upload_completed_monotonic_ns"])
+    ) / 1_000_000.0
+    if not 0.0 < hostless_ms < 2000.0:
+        raise RuntimeError(
+            "Q1 upload-to-carrier interval is outside the declared <2000 ms "
+            f"boot/transport window: {hostless_ms:.3f} ms"
+        )
+    _wait_until(
+        lambda: b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250" in (
+            run_dir / "raw/serial.log"
+        ).read_bytes(),
+        10.0,
+        "Q1 host-absent 250 ms boot record",
+    )
+
+    serial_module = __import__("serial")
+    competing_open_rejected = False
+    competing_error = ""
+    competing = None
+    try:
+        competing = serial_module.Serial(
+            device,
+            baudrate=115200,
+            timeout=0.1,
+            write_timeout=0.1,
+            exclusive=True,
+        )
+    except (OSError, serial_module.SerialException) as exc:
+        competing_open_rejected = True
+        competing_error = str(exc)
+    finally:
+        if competing is not None:
+            competing.close()
+    if not competing_open_rejected:
+        raise RuntimeError("Q1 competing serial open was not rejected by the OS")
+    if _serial_owner_pids(device) != {capture_pid}:
+        raise RuntimeError("Q1 carrier lost sole serial ownership after open probe")
+
+    send_timestamped_command_to_fifo(
+        normal_fifo, f"ACTIVE LEASE {Q1_LEASE_SEQUENCE}"
+    )
+    send_timestamped_command_to_fifo(
+        normal_fifo, f"ACTIVE SNAPSHOT {Q1_LEASE_LIVE_NONCE}"
+    )
+    _wait_until(
+        lambda: _active_snapshot(
+            run_dir, required_query_nonce=Q1_LEASE_LIVE_NONCE
+        ).get(("cx317_active", "capture_lease_live"))
+        == "true",
+        15.0,
+        "Q1 live lease snapshot",
+    )
+    lease_live = _active_snapshot(
+        run_dir, required_query_nonce=Q1_LEASE_LIVE_NONCE
+    )
+    time.sleep(31.0)
+    send_timestamped_command_to_fifo(
+        normal_fifo, f"ACTIVE SNAPSHOT {Q1_LEASE_EXPIRED_NONCE}"
+    )
+    _wait_until(
+        lambda: _active_snapshot(
+            run_dir, required_query_nonce=Q1_LEASE_EXPIRED_NONCE
+        ).get(("cx317_active", "capture_lease_live"))
+        == "false",
+        15.0,
+        "Q1 expired lease snapshot",
+    )
+    lease_expired = _active_snapshot(
+        run_dir, required_query_nonce=Q1_LEASE_EXPIRED_NONCE
+    )
+    state = _capture_state(run_dir)
+    gaps = state.get("intentional_detach_gaps_ms", [])
+    result = {
+        "schema_version": 1,
+        "report_type": "cx319_q1_real_io_prelude_v1",
+        "status": "pass",
+        "recorded_utc": _utc_now(),
+        "device": device,
+        "capture_pid": capture_pid,
+        "upload_to_carrier_ready_ms": round(hostless_ms, 3),
+        "declared_boot_wait_ms": 250,
+        "transport_horizon_ms": 2000,
+        "intentional_detach_count": state.get("intentional_detach_count"),
+        "intentional_detach_gaps_ms": gaps,
+        "all_detach_gaps_below_transport_horizon": all(
+            isinstance(value, (int, float)) and value < 2000 for value in gaps
+        ),
+        "serial_exclusive_requested": state.get("serial_exclusive_requested"),
+        "competing_open_rejected": competing_open_rejected,
+        "competing_open_error": competing_error,
+        "sole_owner_after_probe": _serial_owner_pids(device) == {capture_pid},
+        "lease_live_snapshot": {
+            "query_nonce": lease_live.get(("cx317_active", "query_nonce")),
+            "capture_lease_live": lease_live.get(
+                ("cx317_active", "capture_lease_live")
+            ),
+            "generation": lease_live.get(
+                ("cx317_active", "snapshot_generation_complete")
+            ),
+        },
+        "lease_expired_snapshot": {
+            "query_nonce": lease_expired.get(("cx317_active", "query_nonce")),
+            "capture_lease_live": lease_expired.get(
+                ("cx317_active", "capture_lease_live")
+            ),
+            "generation": lease_expired.get(
+                ("cx317_active", "snapshot_generation_complete")
+            ),
+            "setup_partition_healthy": lease_expired.get(
+                ("cx317_active", "setup_partition_healthy")
+            ),
+        },
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+    }
+    _atomic_new_json(run_dir / Q1_PRELUDE_PATH, result)
+    return result
 
 
 def confirm_installed_bundle(
@@ -344,6 +513,7 @@ def run_no_write_qualification(
     run_dir: Path,
     evidence_index_path: Path,
     arduino_cli: str,
+    q1_real_io: bool = False,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, NO_WRITE_BENCH_OPERATION)
     bundle_path = bundle_path.resolve()
@@ -373,10 +543,13 @@ def run_no_write_qualification(
         bundle_path=run_bundle_path,
         run_dir=run_dir,
         output_path=manifest_path,
+        q1_real_io=q1_real_io,
     )
     entry_mode = bundle.get("firmware_entry", {}).get(
         "mode", "single_exact_flash"
     )
+    if q1_real_io and entry_mode != "single_exact_flash":
+        raise ValueError("Q1 real-I/O entry requires one exact known-start flash")
     if entry_mode == "single_exact_flash":
         flash = flash_exact_bundle(
             bundle=bundle,
@@ -428,6 +601,14 @@ def run_no_write_qualification(
         "--segment-capability",
         segment_capability,
     ]
+    if q1_real_io:
+        for after_s, detached_s in Q1_INTENTIONAL_DETACH_SCHEDULE:
+            capture_args.extend(
+                [
+                    "--intentional-detach",
+                    f"{after_s}:{detached_s * 1000.0}",
+                ]
+            )
     capture = subprocess.Popen(
         capture_args,
         cwd=Path(__file__).resolve().parents[2],
@@ -451,6 +632,18 @@ def run_no_write_qualification(
             20.0,
             "capture ownership and bounded command paths",
         )
+        carrier_initial_ready_monotonic_ns = time.monotonic_ns()
+        if q1_real_io:
+            _exercise_q1_real_io_prelude(
+                run_dir=run_dir,
+                device=device,
+                capture_pid=capture.pid,
+                normal_fifo=normal_fifo,
+                flash=flash,
+                carrier_initial_ready_monotonic_ns=(
+                    carrier_initial_ready_monotonic_ns
+                ),
+            )
         expected_build = (
             bundle["firmware"]["source_sha256"]
             + ":"
@@ -477,6 +670,16 @@ def run_no_write_qualification(
             "--duration-s",
             str(REHEARSAL_DURATION_S + 90.0),
         ]
+        if q1_real_io:
+            supervisor_args.extend(
+                [
+                    "--allowed-initial-reconnect-count",
+                    str(len(Q1_INTENTIONAL_DETACH_SCHEDULE)),
+                    "--initial-lease-sequence",
+                    str(Q1_LEASE_SEQUENCE),
+                    "--q1-real-io",
+                ]
+            )
         supervisor = subprocess.Popen(
             supervisor_args,
             cwd=Path(__file__).resolve().parents[2],
@@ -689,6 +892,7 @@ def run_no_write_qualification(
         "board": flash["board_after"],
         "dac_value_writes": 0,
         "control_arms": 0,
+        "q1_real_io": q1_real_io,
     }
 
 
@@ -698,6 +902,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--evidence-index", type=Path, default=DEFAULT_INDEX)
     parser.add_argument("--arduino-cli", default="arduino-cli")
+    parser.add_argument("--q1-real-io", action="store_true")
     args = parser.parse_args(argv)
     try:
         result = run_no_write_qualification(
@@ -705,6 +910,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir=args.run_dir,
             evidence_index_path=args.evidence_index,
             arduino_cli=args.arduino_cli,
+            q1_real_io=args.q1_real_io,
         )
     except (
         FileExistsError,

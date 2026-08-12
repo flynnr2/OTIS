@@ -79,7 +79,7 @@ def test_exact_bundle_manifest_and_offline_preflight_cross_all_surfaces(
 
     assert bundle_tool.validate_bundle(path) == value
     assert value["operator_authority"]["authority_id"] == (
-        "CX319_G1_NO_WRITE_BENCH_AUTHORITY_V1"
+        "CX319_Q1_Q3_SEQUENCE_AUTHORITY_V1"
     )
     assert value["authority"]["dac_value_write"] is False
     assert value["authority"]["control_arm"] is False
@@ -118,6 +118,30 @@ def test_bundle_rejects_write_authority_even_with_recomputed_digest(
 
     with pytest.raises(ValueError, match="write/live authority"):
         bundle_tool.validate_bundle(path)
+
+
+def test_q1_run_manifest_binds_the_exact_sub_horizon_detach_schedule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, value = _create_bundle(tmp_path, monkeypatch)
+    run_dir = tmp_path / "q1-run"
+    run_dir.mkdir()
+
+    manifest = bundle_tool.create_run_manifest(
+        bundle_path=path,
+        run_dir=run_dir,
+        output_path=run_dir / "run_manifest.json",
+        q1_real_io=True,
+    )
+
+    assert manifest["q1_real_io"] == value["q1_real_io"]
+    assert all(
+        item["detached_s"] < 2.0
+        for item in manifest["q1_real_io"]["intentional_detach_schedule"]
+    )
+    assert "reports/cx319_q1_real_io_prelude_v1.json" in manifest[
+        "expected_artifacts"
+    ]
 
 
 def test_closed_run_manifest_uses_its_frozen_bundle_not_current_worktree(
@@ -167,6 +191,10 @@ def test_historical_v1_frozen_bundle_remains_structurally_valid(
         ("DAC?", True),
         ("FC0?", True),
         ("ACTIVE?", True),
+        ("ACTIVE SNAPSHOT 1", True),
+        ("ACTIVE SNAPSHOT 4294967295", True),
+        ("ACTIVE SNAPSHOT 0", False),
+        ("ACTIVE SNAPSHOT 4294967296", False),
         ("ACTIVE LEASE 1", True),
         ("ACTIVE LEASE 4294967295", True),
         ("ACTIVE LEASE 0", False),
