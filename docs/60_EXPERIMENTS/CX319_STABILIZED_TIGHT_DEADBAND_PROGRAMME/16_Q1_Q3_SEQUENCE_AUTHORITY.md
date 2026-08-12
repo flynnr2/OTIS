@@ -52,6 +52,16 @@ serial `503533748A919118`:
 Q1 permits zero DAC value writes, setup stimuli, control arms, automatic
 corrections, pseudo-reference generation, sweep activity, or live promotion.
 
+The first Q1 entry on 2026-08-12 established the exact image with its one
+permitted upload, then stopped before the evidence-bearing interval when the
+host's intentional detach cut a partial device record. Following the
+operator's direction to continue, the shortest affected-gate recovery may use
+one observed ordinary board restart and immediate carrier attachment. The
+recovery bundle must bind the successful original flash record and
+byte-identical UF2, permit zero further uploads, retain the failed package as
+failed-rehearsal evidence, and repeat Q1 in full. This recovery authority does
+not extend Q2, Q3, or live-control authority.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names

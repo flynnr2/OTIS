@@ -385,6 +385,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "manifest_bundle_profile_build_and_policy_exact": True,
         "exact_firmware_entry_same_board": (
             (single_flash_exact or confirmed_reuse_exact)
+            and (
+                expected_reconnects == 0
+                or single_flash_exact
+                or flash.get("ordinary_restart_count") == 1
+            )
             and flash.get("dac_value_write_attempts") == 0
             and flash.get("setup_stimulus_attempts") == 0
             and flash.get("control_arm_attempts") == 0

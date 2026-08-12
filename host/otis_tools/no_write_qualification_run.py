@@ -86,6 +86,7 @@ Q1_PRELUDE_PATH = Path("reports/cx319_q1_real_io_prelude_v1.json")
 Q1_LEASE_SEQUENCE = 1
 Q1_LEASE_LIVE_NONCE = 1362165761
 Q1_LEASE_EXPIRED_NONCE = 1362165762
+Q1_PHYSICAL_RESTART_TIMEOUT_S = 180.0
 
 
 def _utc_now() -> str:
@@ -237,13 +238,18 @@ def _exercise_q1_real_io_prelude(
         20.0,
         "Q1 bounded detach and reattach schedule",
     )
+    entry_ready_monotonic_ns = flash.get("upload_completed_monotonic_ns")
+    if entry_ready_monotonic_ns is None:
+        entry_ready_monotonic_ns = flash.get("restart_reappeared_monotonic_ns")
+    if not isinstance(entry_ready_monotonic_ns, int):
+        raise RuntimeError("Q1 firmware entry lacks a monotonic ready anchor")
     hostless_ms = (
-        carrier_initial_ready_monotonic_ns
-        - int(flash["upload_completed_monotonic_ns"])
+        carrier_initial_ready_monotonic_ns - entry_ready_monotonic_ns
     ) / 1_000_000.0
     if not 0.0 < hostless_ms < 2000.0:
         raise RuntimeError(
-            "Q1 upload-to-carrier interval is outside the declared <2000 ms "
+            "Q1 firmware-entry-to-carrier interval is outside the declared "
+            "<2000 ms "
             f"boot/transport window: {hostless_ms:.3f} ms"
         )
     _wait_until(
@@ -318,7 +324,8 @@ def _exercise_q1_real_io_prelude(
         "recorded_utc": _utc_now(),
         "device": device,
         "capture_pid": capture_pid,
-        "upload_to_carrier_ready_ms": round(hostless_ms, 3),
+        "firmware_entry_operation": flash.get("operation"),
+        "firmware_entry_to_carrier_ready_ms": round(hostless_ms, 3),
         "declared_boot_wait_ms": 250,
         "transport_horizon_ms": 2000,
         "intentional_detach_count": state.get("intentional_detach_count"),
@@ -355,6 +362,12 @@ def _exercise_q1_real_io_prelude(
         "setup_stimuli": 0,
         "control_arms": 0,
     }
+    if flash.get("operation") == "exact_cx319_g1_firmware_flash":
+        result["upload_to_carrier_ready_ms"] = round(hostless_ms, 3)
+    else:
+        result["restart_reappearance_to_carrier_ready_ms"] = round(
+            hostless_ms, 3
+        )
     _atomic_new_json(run_dir / Q1_PRELUDE_PATH, result)
     return result
 
@@ -418,6 +431,118 @@ def confirm_installed_bundle(
     if not passed:
         raise RuntimeError(
             "current board identity differs from confirmed installed firmware"
+        )
+    return record
+
+
+def restart_confirmed_installed_bundle(
+    *,
+    bundle: dict[str, Any],
+    output_path: Path,
+    arduino_cli: str,
+    timeout_s: float = Q1_PHYSICAL_RESTART_TIMEOUT_S,
+    device_exists: Callable[[Path], bool] | None = None,
+) -> dict[str, Any]:
+    """Observe one physical restart of exact confirmed firmware, without upload."""
+
+    entry = bundle.get("firmware_entry", {})
+    source_binding = entry.get("source_flash_record", {})
+    if entry.get("mode") != "reuse_confirmed_installed_firmware" or not isinstance(
+        source_binding, dict
+    ):
+        raise ValueError("bundle does not bind confirmed installed firmware")
+    expected_entry = validate_confirmed_installed_firmware(
+        firmware=bundle["firmware"],
+        flash_record_path=Path(str(source_binding.get("path", ""))),
+    )
+    if entry != expected_entry:
+        raise ValueError("confirmed installed firmware binding differs")
+    device = str(bundle["device"]["path"])
+    owners = _serial_owner_pids(device)
+    if owners:
+        raise ValueError(f"serial device already has owners: {sorted(owners)}")
+    before = read_board_identity(device, arduino_cli=arduino_cli)
+    if before != entry["installed_board"]:
+        raise RuntimeError(
+            "current board identity differs from confirmed installed firmware"
+        )
+
+    started = _utc_now()
+    print(
+        "Q1_RESTART_REQUIRED: press the board reset button once; "
+        "the runner is waiting for USB disappearance and reappearance",
+        flush=True,
+    )
+    deadline = time.monotonic() + timeout_s
+    device_path = Path(device)
+    present = device_exists or (lambda path: path.exists())
+    while present(device_path) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if present(device_path):
+        raise RuntimeError(
+            f"timed out after {timeout_s:.0f}s waiting for Q1 board restart"
+        )
+    restart_disappeared_monotonic_ns = time.monotonic_ns()
+    while not present(device_path) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if not present(device_path):
+        raise RuntimeError(
+            f"Q1 board did not reappear within {timeout_s:.0f}s restart window"
+        )
+    restart_reappeared_monotonic_ns = time.monotonic_ns()
+
+    after: dict[str, str] | None = None
+    identity_error: str | None = None
+    identity_deadline = time.monotonic() + 30.0
+    while time.monotonic() < identity_deadline:
+        try:
+            after = read_board_identity(device, arduino_cli=arduino_cli)
+            break
+        except (ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            identity_error = str(exc)
+            time.sleep(0.1)
+    passed = before == after == entry["installed_board"]
+    record = {
+        "schema_version": 1,
+        "tool": TOOL_ID,
+        "operation": "confirmed_installed_cx319_g1_firmware_reuse",
+        "status": "pass" if passed else "fail",
+        "started_utc": started,
+        "completed_utc": _utc_now(),
+        "attempt_count": 0,
+        "firmware_flashes": 0,
+        "ordinary_restart_count": 1,
+        "device": device,
+        "board_before": before,
+        "board_after": after,
+        "installed_board": entry["installed_board"],
+        "restart_disappeared_monotonic_ns": (
+            restart_disappeared_monotonic_ns
+        ),
+        "restart_reappeared_monotonic_ns": restart_reappeared_monotonic_ns,
+        "board_identity_error": identity_error,
+        "bundle_sha256": bundle["bundle_sha256"],
+        "profile_id": bundle["firmware"]["profile_id"],
+        "build_manifest_sha256": bundle["firmware"]["build_manifest"][
+            "sha256"
+        ],
+        "uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
+        "source_flash_record": entry["source_flash_record"],
+        "source_bundle": entry["source_bundle"],
+        "source_bundle_sha256": entry["source_bundle_sha256"],
+        "source_build_manifest_sha256": entry[
+            "source_build_manifest_sha256"
+        ],
+        "installed_uf2_sha256": entry["installed_uf2_sha256"],
+        "dac_boot_operation": "none_no_upload_ordinary_board_restart",
+        "dac_value_write_attempts": 0,
+        "setup_stimulus_attempts": 0,
+        "control_arm_attempts": 0,
+    }
+    _atomic_new_json(output_path, record)
+    if not passed:
+        raise RuntimeError(
+            "board identity differed after the confirmed-firmware restart"
         )
     return record
 
@@ -554,22 +679,42 @@ def run_no_write_qualification(
     entry_mode = bundle.get("firmware_entry", {}).get(
         "mode", "single_exact_flash"
     )
-    if q1_real_io and entry_mode != "single_exact_flash":
-        raise ValueError("Q1 real-I/O entry requires one exact known-start flash")
-    if entry_mode == "single_exact_flash":
-        flash = flash_exact_bundle(
-            bundle=bundle,
-            output_path=run_dir / FLASH_RECORD_PATH,
-            arduino_cli=arduino_cli,
+    try:
+        if entry_mode == "single_exact_flash":
+            flash = flash_exact_bundle(
+                bundle=bundle,
+                output_path=run_dir / FLASH_RECORD_PATH,
+                arduino_cli=arduino_cli,
+            )
+        elif entry_mode == "reuse_confirmed_installed_firmware":
+            entry = (
+                restart_confirmed_installed_bundle
+                if q1_real_io
+                else confirm_installed_bundle
+            )
+            flash = entry(
+                bundle=bundle,
+                output_path=run_dir / FLASH_RECORD_PATH,
+                arduino_cli=arduino_cli,
+            )
+        else:
+            raise ValueError("unsupported G1 firmware entry mode")
+    except Exception as exc:
+        record_failure(
+            finalization_journal,
+            phase="capture_closed",
+            error=exc,
         )
-    elif entry_mode == "reuse_confirmed_installed_firmware":
-        flash = confirm_installed_bundle(
+        indexed = _retain_orchestration_failure(
+            run_dir=run_dir,
             bundle=bundle,
-            output_path=run_dir / FLASH_RECORD_PATH,
-            arduino_cli=arduino_cli,
+            evidence_index_path=evidence_index_path,
+            error=exc,
         )
-    else:
-        raise ValueError("unsupported G1 firmware entry mode")
+        raise RuntimeError(
+            "CX319 G1 firmware entry failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
     transition_dir = run_dir / TRANSITION_DIR
     prepare_transition(manifest_path, transition_dir)
 

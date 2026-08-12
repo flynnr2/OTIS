@@ -303,7 +303,7 @@ docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PRO
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/07_FINAL_REVIEW_AND_NEXT_GOAL_PROMPT.md,30,uncertainty,measurement_uncertainty_semantics,"uncertainty, phase lock or holdover."
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/PROGRAMME_STATE_TEMPLATE.md,49,uncertainty,measurement_uncertainty_semantics,phase_uncertainty_status:
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/00_MASTER_PROGRAMME.md,228,uncertainty,measurement_uncertainty_semantics,"physical delay, timing-grade receiver performance or combined uncertainty."
-docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md,68,uncertainty,measurement_uncertainty_semantics,"analyzer non-pass, seal/registration failure, or any uncertainty about the Q2"
+docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md,78,uncertainty,measurement_uncertainty_semantics,"analyzer non-pass, seal/registration failure, or any uncertainty about the Q2"
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,340,confidence,confidence_semantics,measurement-confidence baseline preceding `run_019`. It reports 242 count
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,412,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
 docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT.md,122,uncertainty,measurement_uncertainty_semantics,expanded measurement uncertainty. Those limitations remain governed by
