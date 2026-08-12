@@ -8,6 +8,48 @@ import pytest
 from host.otis_tools import no_write_qualification_run as rehearsal
 
 
+def test_same_owner_rotation_preserves_cumulative_reconnect_count() -> None:
+    response = {
+        "status": "completed",
+        "pid": 5436,
+        "serial_reopened": False,
+        "reconnect_count": 3,
+    }
+
+    assert rehearsal._same_owner_rotation_completed(
+        response,
+        capture_pid=5436,
+        reconnect_count_before_rotation=3,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("status", "failed"),
+        ("pid", 9999),
+        ("serial_reopened", True),
+        ("reconnect_count", 4),
+    ),
+)
+def test_same_owner_rotation_rejects_changed_transport_state(
+    field: str, value: object
+) -> None:
+    response = {
+        "status": "completed",
+        "pid": 5436,
+        "serial_reopened": False,
+        "reconnect_count": 3,
+    }
+    response[field] = value
+
+    assert not rehearsal._same_owner_rotation_completed(
+        response,
+        capture_pid=5436,
+        reconnect_count_before_rotation=3,
+    )
+
+
 def test_supervisor_terminal_requires_explicit_healthy_stop(
     tmp_path: Path,
 ) -> None:

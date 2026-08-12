@@ -12,7 +12,7 @@ from host.otis_tools.capture_serial import capture_serial
 from host.otis_tools.h1_dac_sweep import build_builtin_profile, validate_step
 from host.otis_tools.report_run import build_summary, render_report
 from host.otis_tools.run_loader import load_manifest
-from host.otis_tools.validate_run import validate_run
+from host.otis_tools.validate_run import _validate_pps_cadence, validate_run
 
 EXAMPLE = Path("examples/h0_pps_tcxo_synthetic")
 TEMPLATE_EXAMPLES = [
@@ -799,6 +799,51 @@ def test_validate_run_rejects_bad_pps_cadence(tmp_path: Path) -> None:
     _rewrite_csv_cell(run_dir / "raw_events.csv", 3, "timestamp_ticks", "1700000000")
 
     assert validate_run(run_dir) == 1
+
+
+def test_pps_cadence_accepts_only_consistent_declared_detach_gap() -> None:
+    rows = [
+        {
+            "record_type": "REF",
+            "event_seq": "1",
+            "channel_id": "1",
+            "edge": "R",
+            "timestamp_ticks": "0",
+            "capture_domain": "rp2040_timer0",
+        },
+        {
+            "record_type": "REF",
+            "event_seq": "3",
+            "channel_id": "1",
+            "edge": "R",
+            "timestamp_ticks": "32000000",
+            "capture_domain": "rp2040_timer0",
+        },
+        {
+            "record_type": "REF",
+            "event_seq": "4",
+            "channel_id": "1",
+            "edge": "R",
+            "timestamp_ticks": "48000000",
+            "capture_domain": "rp2040_timer0",
+        },
+    ]
+    domains = {"rp2040_timer0": 16000000.0}
+
+    assert _validate_pps_cadence(rows, domains, False)
+    assert not _validate_pps_cadence(
+        rows,
+        domains,
+        False,
+        declared_sequence_gap_budget=1,
+    )
+    rows[1]["timestamp_ticks"] = "48000000"
+    assert _validate_pps_cadence(
+        rows,
+        domains,
+        False,
+        declared_sequence_gap_budget=1,
+    )
 
 
 def test_validate_run_accepts_exact_pps_cadence_gate(tmp_path: Path) -> None:

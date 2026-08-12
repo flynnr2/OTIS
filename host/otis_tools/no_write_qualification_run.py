@@ -133,6 +133,28 @@ def _supervisor_terminal(run_dir: Path) -> bool:
     )
 
 
+def _same_owner_rotation_completed(
+    response: dict[str, Any],
+    *,
+    capture_pid: int,
+    reconnect_count_before_rotation: int,
+) -> bool:
+    """Require rotation to preserve both owner identity and transport state.
+
+    ``reconnect_count`` is cumulative for the carrier lifetime.  Q1 deliberately
+    exercises bounded detach/reconnect before logical rotation, so zero is not
+    the invariant here: the counter must remain unchanged across the rotation.
+    """
+
+    return (
+        response.get("status") == "completed"
+        and response.get("pid") == capture_pid
+        and response.get("serial_reopened") is False
+        and response.get("reconnect_count")
+        == reconnect_count_before_rotation
+    )
+
+
 def flash_exact_bundle(
     *,
     bundle: dict[str, Any],
@@ -1074,6 +1096,19 @@ def run_no_write_qualification(
             normal_fifo=normal_fifo,
             emergency_fifo=emergency_fifo,
         )
+        _wait_until(
+            lambda: _health_has(
+                run_dir / "csv/health.csv",
+                "cx317_active",
+                "critical_record",
+                "abort_accepted_on_core1",
+            ),
+            10.0,
+            "Core 1 priority-abort acknowledgement",
+        )
+        reconnect_count_before_rotation = int(
+            _capture_state(run_dir).get("reconnect_count", -1)
+        )
         owner_handoff = request_rotation(
             control_dir=segment_control_dir,
             capability=segment_capability,
@@ -1082,13 +1117,18 @@ def run_no_write_qualification(
             wait_timeout_s=10.0,
             operation_id=ROTATION_OPERATION_ID,
         )
-        if (
-            owner_handoff.get("status") != "completed"
-            or owner_handoff.get("pid") != capture.pid
-            or owner_handoff.get("serial_reopened") is not False
-            or owner_handoff.get("reconnect_count") != 0
+        if not _same_owner_rotation_completed(
+            owner_handoff,
+            capture_pid=capture.pid,
+            reconnect_count_before_rotation=reconnect_count_before_rotation,
         ):
             raise RuntimeError("G1 same-owner transition changed serial ownership")
+        transport["reconnect_count_before_owner_handoff"] = (
+            reconnect_count_before_rotation
+        )
+        transport["reconnect_count_after_owner_handoff"] = owner_handoff[
+            "reconnect_count"
+        ]
         transport["owner_handoff"] = owner_handoff
         _atomic_new_json(run_dir / TRANSPORT_REPORT_PATH, transport)
         try:

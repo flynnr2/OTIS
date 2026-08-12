@@ -118,15 +118,39 @@ def _authority_false_or_absent(path: Path) -> bool:
 def _post_abort_health_exact(
     primary: dict[tuple[str, str], str],
     transition: dict[tuple[str, str], str],
+    rows: list[dict[str, str]] | None = None,
 ) -> bool:
-    return (
+    pre_abort_exact = (
         primary.get(("cx317_active", "state")) == "DISARMED"
         and primary.get(("cx317_active", "fail_static")) == "false"
-        and transition.get(("cx317_active", "state")) == "ABORTED"
+    )
+    periodic_snapshot_exact = (
+        transition.get(("cx317_active", "state")) == "ABORTED"
         and transition.get(("cx317_active", "reason"))
         == "device_abort_command_via_core0"
         and transition.get(("cx317_active", "fail_static")) == "true"
     )
+    critical_ack_exact = False
+    if rows:
+        for queued, accepted in zip(rows, rows[1:]):
+            try:
+                consecutive = int(accepted["status_seq"]) == int(
+                    queued["status_seq"]
+                ) + 1
+            except (KeyError, TypeError, ValueError):
+                consecutive = False
+            if (
+                consecutive
+                and queued.get("component") == "cx317_active"
+                and queued.get("status_key") == "abort"
+                and queued.get("status_value") == "queued_to_core1"
+                and accepted.get("component") == "cx317_active"
+                and accepted.get("status_key") == "critical_record"
+                and accepted.get("status_value") == "abort_accepted_on_core1"
+            ):
+                critical_ack_exact = True
+                break
+    return pre_abort_exact and (periodic_snapshot_exact or critical_ack_exact)
 
 
 def _priority_abort_ordered(markers: list[dict[str, Any]]) -> bool:
@@ -564,7 +588,11 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and readiness.ready
             and telemetry_drop_history["exact"] is True
             and host_attach_history["exact"] is True
-            and _post_abort_health_exact(health, transition_health)
+            and _post_abort_health_exact(
+                health,
+                transition_health,
+                [*health_rows, *transition_health_rows],
+            )
         ),
         "selected_600s_estimate_present": len(estimates) >= 1,
         "tight_deadband_replay_exact": (

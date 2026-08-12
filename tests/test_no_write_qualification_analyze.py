@@ -58,3 +58,28 @@ def test_abort_health_is_verified_across_the_segment_boundary() -> None:
     assert _post_abort_health_exact(primary, transition)
     transition[("cx317_active", "reason")] = "capture_lease_expired"
     assert not _post_abort_health_exact(primary, transition)
+
+
+def test_abort_health_accepts_exact_core1_critical_ack_before_rotation() -> None:
+    primary = {
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "fail_static"): "false",
+    }
+    rows = [
+        {
+            "status_seq": "66674",
+            "component": "cx317_active",
+            "status_key": "abort",
+            "status_value": "queued_to_core1",
+        },
+        {
+            "status_seq": "66675",
+            "component": "cx317_active",
+            "status_key": "critical_record",
+            "status_value": "abort_accepted_on_core1",
+        },
+    ]
+
+    assert _post_abort_health_exact(primary, {}, rows)
+    rows[1]["status_value"] = "abort_rejected_on_core1"
+    assert not _post_abort_health_exact(primary, {}, rows)

@@ -174,6 +174,33 @@ The recovery must record zero or one initial BOOT-record loss from the exact
 post-attach firmware source/configuration hashes. Any other missing or partial
 boot sequence remains a failure.
 
+## Q1 result
+
+Q1 passed on 2026-08-12 using run
+`q1_running_attach_final_20260812T121948Z`. The 2,768-second retained capture
+completed with zero DAC or active-transaction rows, one selected 600-second
+estimate, zero parser errors, zero rejected commands, three declared detach
+gaps below 2,000 ms, one independently delivered priority abort, and a
+same-PID logical rotation with no serial reopen. The passing seal is
+`0d8c4863a48930f40057b6bc665f8fa880a83548a4ff7a4b30525c3bff7639df`;
+the registered package identity is
+`9e3506c855ea949cc65d2a2c090334386a94e732e6d7c5a0dfdb0c6df8ba1e67`.
+
+The physical acquisition first encountered three host-only verdict errors.
+The rotation check incorrectly required the carrier's cumulative reconnect
+counter to be zero after Q1 had deliberately exercised three reconnects. The
+abort check required a later periodic status snapshot even though the retained
+consecutive critical records `abort=queued_to_core1` and
+`critical_record=abort_accepted_on_core1` bind the exact firmware state change.
+Finally, generic PPS cadence validation interpreted the two non-adjacent REF
+sequence pairs produced at declared detach boundaries as physical two-second
+PPS intervals. The corrected checks require an unchanged reconnect counter,
+accept the exact Core 1 abort acknowledgement, and exclude only sequence gaps
+whose missing count and elapsed ticks agree within the manifest's declared
+detach-gap budget. The original failed analyzer result is retained with an
+explicit supersession record; raw serial evidence was not changed and no
+physical rerun was performed.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names
