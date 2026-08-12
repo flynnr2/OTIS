@@ -511,6 +511,9 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                 and evidence_session_transport_counter_deltas.get(
                     "pre_carrier_records_discarded"
                 ) == 0
+                and evidence_session_transport_counter_deltas.get(
+                    "periodic_service_deferred"
+                ) == 0
                 and q1_prelude.get("intentional_detach_count")
                 == expected_reconnects
                 and q1_prelude.get(

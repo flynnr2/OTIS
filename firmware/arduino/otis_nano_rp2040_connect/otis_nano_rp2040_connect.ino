@@ -135,6 +135,7 @@ OtisTransportLiveness dual_core_transport_liveness = {};
 bool dual_core_transport_abort_queued = false;
 bool dual_core_serial_carrier_seen = false;
 uint32_t dual_core_pre_carrier_records_discarded = 0u;
+uint32_t dual_core_periodic_service_deferred = 0u;
 OtisStatusEmitContext dual_core_timing_status_context = {};
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 OtisActuatorTransactionGuard dual_core_service_actuator_guard = {};
@@ -715,6 +716,17 @@ void publish_dual_core_service_metadata(uint32_t now_ms) {
     return;
   if ((uint32_t)(now_ms - dual_core_last_metadata_ms) < 1000u) return;
   dual_core_last_metadata_ms = now_ms;
+
+  OtisDualCoreQueueStats service_queues = {};
+  otis_dual_core_get_stats(&service_queues);
+  if (service_queues.service_to_timing_depth >
+      OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH - 2u) {
+    if (dual_core_periodic_service_deferred <= UINT32_MAX - 2u)
+      dual_core_periodic_service_deferred += 2u;
+    else
+      dual_core_periodic_service_deferred = UINT32_MAX;
+    return;
+  }
 
 #if OTIS_ENABLE_GNSS_RECEIVER
   OtisGnssReceiverSnapshot gnss;
@@ -2581,6 +2593,9 @@ void emit_periodic_status(void) {
   emit_status_u32("dual_core", "pre_carrier_records_discarded",
                   dual_core_pre_carrier_records_discarded,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "periodic_service_deferred",
+                  dual_core_periodic_service_deferred,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("dual_core", "service_publish_attempts",
                   queues.service_activity.publish_attempts,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -3510,6 +3525,13 @@ void emit_env_sample(const OtisEnvSample &sample,
   }
   if (strcmp(sample.role, "vcocxo_near") == 0) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisDualCoreQueueStats service_queues = {};
+    otis_dual_core_get_stats(&service_queues);
+    if (service_queues.service_to_timing_depth >=
+        OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH) {
+      if (dual_core_periodic_service_deferred != UINT32_MAX)
+        dual_core_periodic_service_deferred++;
+    } else {
     OtisServiceMessage environment = {};
     environment.kind = OtisServiceMessageKind::Environment;
     environment.environment.sequence = dual_core_service_sequence++;
@@ -3522,6 +3544,7 @@ void emit_env_sample(const OtisEnvSample &sample,
     environment.environment.humidity_valid = sample.has_humidity;
     environment.environment.pressure_valid = sample.has_pressure;
     otis_dual_core_publish_service(&environment);
+    }
 #else
     otis_observe_only_discipline_live_on_temperature(
         true, sample.temperature_c, timestamp_ticks);
@@ -3564,12 +3587,20 @@ void service_environment_sensors(void) {
     emit_env_sample(sample, timestamp_ticks);
   } else {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisDualCoreQueueStats service_queues = {};
+    otis_dual_core_get_stats(&service_queues);
+    if (service_queues.service_to_timing_depth >=
+        OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH) {
+      if (dual_core_periodic_service_deferred != UINT32_MAX)
+        dual_core_periodic_service_deferred++;
+    } else {
     OtisServiceMessage environment = {};
     environment.kind = OtisServiceMessageKind::Environment;
     environment.environment.sequence = dual_core_service_sequence++;
     environment.environment.timestamp_ticks = otis_capture_ticks_now();
     environment.environment.temperature_valid = false;
     otis_dual_core_publish_service(&environment);
+    }
 #else
     otis_observe_only_discipline_live_on_temperature(
         false, 0.0f, otis_capture_ticks_now());
@@ -4040,6 +4071,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
     emit_status_u32("dual_core", "pre_carrier_records_discarded",
                     dual_core_pre_carrier_records_discarded,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "periodic_service_deferred",
+                    dual_core_periodic_service_deferred,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 #endif
     // A capture opened after the boot banner still needs one complete

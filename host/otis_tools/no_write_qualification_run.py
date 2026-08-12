@@ -332,7 +332,12 @@ def _exercise_q1_real_io_prelude(
                 evidence_snapshot[
                     ("dual_core", "pre_carrier_records_discarded")
                 ]
-            )
+            ),
+            "periodic_service_deferred": int(
+                evidence_snapshot[
+                    ("dual_core", "periodic_service_deferred")
+                ]
+            ),
         },
         "semantics": (
             "Firmware counters remain cumulative; session results are derived "
