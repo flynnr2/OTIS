@@ -106,6 +106,7 @@ constexpr uint32_t kDualCoreTimingTracePeriodMs = 250u;
 bool dual_core_service_boot_ready = false;
 bool dual_core_timing_boot_complete = false;
 bool dual_core_timing_boot_in_progress = false;
+bool dual_core_timing_loop_started = false;
 constexpr uint32_t kDualCoreBootHandshakeTimeoutMs = 10000u;
 uint32_t dual_core_service_sequence = 0u;
 uint32_t dual_core_timing_telemetry_sequence = 0u;
@@ -710,6 +711,8 @@ void publish_dual_core_timing_health(uint32_t now_ms) {
 }
 
 void publish_dual_core_service_metadata(uint32_t now_ms) {
+  if (!__atomic_load_n(&dual_core_timing_loop_started, __ATOMIC_ACQUIRE))
+    return;
   if ((uint32_t)(now_ms - dual_core_last_metadata_ms) < 1000u) return;
   dual_core_last_metadata_ms = now_ms;
 
@@ -4739,6 +4742,8 @@ void loop1() {
       runtime_state.boot.safe_mode_active) {
     return;
   }
+  __atomic_store_n(&dual_core_timing_loop_started, true,
+                   __ATOMIC_RELEASE);
   const uint32_t now_ms = millis();
   if (otis_transport_ready()) dual_core_serial_carrier_seen = true;
   if (!dual_core_serial_carrier_seen) {
