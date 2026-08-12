@@ -158,8 +158,21 @@ TinyUSB `tud_cdc_connected()`: on macOS the OS CDC driver may satisfy that
 predicate during enumeration without a user-space serial owner. The warning
 is therefore retained as optional firmware telemetry, not used as proof of
 host-owner absence. Q1 instead requires the direct monotonic hold transcript,
-zero owners at both boundaries, intact boot backlog, exclusive carrier, and
-the unchanged 2,000 ms limit.
+zero owners at both boundaries, a classifiable and quantified boot backlog,
+exclusive carrier, and the unchanged 2,000 ms limit.
+
+The next controlled run retained package
+`875f4bb68d0dda35cd5a96079504e3848d2834fe79eab80b4a4438592cfc51bd`.
+It held zero owners for 753.998 ms and attached at 1,302.812 ms, but the USB
+backlog began with the tail of the first `BOOT` record followed by complete
+`BOOT_WARN`, `BOOTDIAG`, headers, build-provenance status, and 727 parsed
+records. All three detach gaps remained below the horizon with zero parser
+errors. This is one observed and bounded initial-record prefix loss, which the
+Q1 exit criterion already permits when explicitly declared and quantified.
+The recovery must record zero or one initial BOOT-record loss from the exact
+`BOOT`/`BOOT_WARN`/`BOOTDIAG` sequence and independently require the complete
+post-attach firmware source/configuration hashes. Any other missing or partial
+boot sequence remains a failure.
 
 ## Q2 physical prerequisite
 

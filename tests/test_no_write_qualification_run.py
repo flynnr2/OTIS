@@ -212,6 +212,25 @@ def test_q1_host_absence_is_one_explicit_bounded_hold(
     assert result["host_absence_owner_pids_after"] == []
 
 
+def test_q1_boot_backlog_accepts_complete_or_one_quantified_prefix_loss() -> None:
+    complete = rehearsal._classify_q1_boot_backlog(
+        b"# host\nBOOT,v=1,boot_count=1\nBOOTDIAG,v=1,wd_reason=0\n"
+    )
+    assert complete["complete_boot_record_observed"] is True
+    assert complete["quantified_initial_record_loss"] == 0
+
+    truncated = rehearsal._classify_q1_boot_backlog(
+        b"# host\n,safe_mode=0\n"
+        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250\n"
+        b"BOOTDIAG,v=1,wd_reason=0\n"
+    )
+    assert truncated["initial_boot_record_prefix_truncated"] is True
+    assert truncated["quantified_initial_record_loss"] == 1
+
+    with pytest.raises(RuntimeError, match="lacks a classifiable"):
+        rehearsal._classify_q1_boot_backlog(b"BOOTDIAG,v=1\n")
+
+
 def test_q1_confirmed_reuse_observes_restart_without_upload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

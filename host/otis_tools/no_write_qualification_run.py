@@ -269,6 +269,36 @@ def _active_snapshot(
     )
 
 
+def _classify_q1_boot_backlog(raw: bytes) -> dict[str, Any]:
+    """Classify the one permitted late-attach boot-prefix loss."""
+
+    complete_boot = b"\nBOOT,v=1," in raw
+    serial_absent_warning = (
+        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250" in raw
+    )
+    boot_diag = b"\nBOOTDIAG,v=1," in raw
+    if complete_boot and boot_diag:
+        return {
+            "complete_boot_record_observed": True,
+            "initial_boot_record_prefix_truncated": False,
+            "quantified_initial_record_loss": 0,
+            "firmware_serial_absent_warning_observed": (
+                serial_absent_warning
+            ),
+        }
+    if not complete_boot and serial_absent_warning and boot_diag:
+        return {
+            "complete_boot_record_observed": False,
+            "initial_boot_record_prefix_truncated": True,
+            "quantified_initial_record_loss": 1,
+            "firmware_serial_absent_warning_observed": True,
+        }
+    raise RuntimeError(
+        "Q1 late-attach backlog lacks a classifiable BOOT/BOOT_WARN/BOOTDIAG "
+        "sequence"
+    )
+
+
 def _exercise_q1_real_io_prelude(
     *,
     run_dir: Path,
@@ -277,6 +307,8 @@ def _exercise_q1_real_io_prelude(
     normal_fifo: Path,
     flash: dict[str, Any],
     carrier_initial_ready_monotonic_ns: int,
+    expected_source_sha256: str,
+    expected_configuration_sha256: str,
 ) -> dict[str, Any]:
     expected_detaches = len(Q1_INTENTIONAL_DETACH_SCHEDULE)
     _wait_until(
@@ -320,13 +352,25 @@ def _exercise_q1_real_io_prelude(
     ):
         raise RuntimeError("Q1 host-absence hold did not retain zero owners")
     _wait_until(
-        lambda: b"BOOT,v=1," in (run_dir / "raw/serial.log").read_bytes(),
-        10.0,
-        "Q1 retained boot banner",
+        lambda: (
+            _health_has(
+                run_dir / "csv/health.csv",
+                "firmware",
+                "source_hash",
+                expected_source_sha256,
+            )
+            and _health_has(
+                run_dir / "csv/health.csv",
+                "firmware",
+                "config_hash",
+                expected_configuration_sha256,
+            )
+        ),
+        15.0,
+        "Q1 exact post-attach firmware provenance",
     )
-    serial_absent_warning_observed = (
-        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250"
-        in (run_dir / "raw/serial.log").read_bytes()
+    boot_backlog = _classify_q1_boot_backlog(
+        (run_dir / "raw/serial.log").read_bytes()
     )
 
     serial_module = __import__("serial")
@@ -406,10 +450,12 @@ def _exercise_q1_real_io_prelude(
         "host_absence_owner_pids_after": flash.get(
             "host_absence_owner_pids_after"
         ),
-        "firmware_serial_absent_warning_observed": (
-            serial_absent_warning_observed
-        ),
+        **boot_backlog,
         "firmware_serial_absent_warning_required": False,
+        "post_attach_source_sha256": expected_source_sha256,
+        "post_attach_configuration_sha256": (
+            expected_configuration_sha256
+        ),
         "transport_horizon_ms": 2000,
         "intentional_detach_count": state.get("intentional_detach_count"),
         "intentional_detach_gaps_ms": gaps,
@@ -942,6 +988,10 @@ def run_no_write_qualification(
                 carrier_initial_ready_monotonic_ns=(
                     carrier_initial_ready_monotonic_ns
                 ),
+                expected_source_sha256=bundle["firmware"]["source_sha256"],
+                expected_configuration_sha256=bundle["firmware"][
+                    "configuration_sha256"
+                ],
             )
         expected_build = (
             bundle["firmware"]["source_sha256"]
