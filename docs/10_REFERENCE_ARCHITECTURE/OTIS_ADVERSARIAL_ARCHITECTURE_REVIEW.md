@@ -1144,6 +1144,18 @@ Real firmware/host path, no physical oscillator movement. Requires authority;
 Exit: retained analyzer independently reproduces every disposition from the
 exact status generation and transaction evidence.
 
+The bounded implementation is now present but does not count as execution.
+The diagnostic firmware exposes 38 nonce-bound cases through a closed command
+surface; that case engine is source-guarded from the DAC driver. The host then
+uses one current complete device snapshot to send one ordinary production
+`ACTIVE SETUP`, requiring the exact received, Core 1 authorized, Core 0
+accepted, Core 1 released, and applied chain plus one `manual_apply` row. The
+analyzer independently maps every case identity, phase mask, injected attempt,
+terminal/no-retry result, recovery result, and the physical setup row before
+sealing. Physical execution remains blocked on the retained operator
+confirmation that the DAC analogue output is disconnected from oscillator
+EFC/Vctrl while DAC I2C remains reachable.
+
 ### Q3 — Fresh physical no-write qualification
 
 Use the exact bundle that passed Q1/Q2. **Not executed.** Run only long enough to

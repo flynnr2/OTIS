@@ -208,6 +208,31 @@ the stub or inhibited topology and records the operator's confirmation that the
 physical oscillator control input cannot move. This is a physical
 configuration prerequisite, not permission to broaden the experiment.
 
+The prepared Q2 implementation uses the existing
+`cx317_dual_core_active_rehearsal` diagnostic profile and a closed
+`Q2 CASE <nonce> <case-id>` vocabulary. Its 38 finite cases exercise every
+initial setup predicate, every mutable current-to-stale release predicate,
+every Core 0 execution recheck, six setup interruption boundaries, one
+injected terminal setup-I2C failure, and one injected ambiguous automatic
+outcome with explicit no-retry and fresh-transaction recovery. The diagnostic
+case engine cannot call the DAC driver. After all 38 cases pass, exactly one
+ordinary `ACTIVE SETUP` command must traverse the production Core 0/Core 1
+authorization, acceptance, release, physical application, and acknowledgement
+path. That sole physical DAC write is permitted only while the DAC analogue
+output is disconnected from the oscillator EFC/Vctrl input, the oscillator
+remains powered, and the DAC remains reachable over I2C.
+
+The exact host path must continuously own and drain serial, retain every
+nonce-bound case result and the complete setup authority snapshot, require one
+and only one `manual_apply` DAC row, require zero automatic physical writes,
+then run the independent analyzer, snapshot, seal, and temporary-index
+registration path. The deterministic replay of that actual analyzer/seal/
+registration path and the pinned-profile firmware compilation must pass before
+the operator is asked to change the bench topology. The inhibited interval is
+bounded to 30 minutes; the expected execution is 10–20 minutes. Q3 then
+requires reconnection of the oscillator control input and an exact recorded
+flash of the Q1 operational UF2 before its no-write qualification begins.
+
 ## Stop conditions
 
 Stop and retain the shortest affected evidence package on any identity or

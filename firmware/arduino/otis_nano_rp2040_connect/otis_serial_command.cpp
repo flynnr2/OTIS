@@ -151,6 +151,12 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.arguments_valid = parse_u16_code(command + 8, &parsed.code);
   } else if (strcmp(command, "FC0?") == 0) {
     parsed.kind = OtisSerialCommandKind::Fc0Query;
+  } else if (strncmp(command, "Q2 CASE ", 8) == 0) {
+    parsed.kind = OtisSerialCommandKind::Q2Case;
+    parsed.text_argument = trim_command(command + 8);
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "Q2", 2) == 0) {
+    parsed.kind = OtisSerialCommandKind::Q2Other;
   } else if (strcmp(command, "ACTIVE?") == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveQuery;
   } else if (strncmp(command, "ACTIVE SNAPSHOT ", 16) == 0) {

@@ -41,6 +41,8 @@ enum class OtisSerialCommandKind : uint8_t {
   DacZero,
   DacSet,
   Fc0Query,
+  Q2Case,
+  Q2Other,
   ActiveQuery,
   ActiveSnapshot,
   ActiveSetup,

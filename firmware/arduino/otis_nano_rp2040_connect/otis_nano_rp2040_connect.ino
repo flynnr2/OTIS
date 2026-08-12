@@ -36,6 +36,7 @@
 #include "otis_pps_snapshot_backend.h"
 #include "otis_pseudo_pps.h"
 #include "otis_protocol.h"
+#include "otis_q2_transaction_rehearsal.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
 #include "otis_serial_frame_arbiter.h"
@@ -4313,6 +4314,69 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
         &runtime_state, &status_emit_context, &config);
     otis_count_observation_emit_status(&runtime_state,
                                        &status_emit_context);
+#endif
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_ENABLE_DUAL_CORE_PARTITION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+  } else if (command.kind == OtisSerialCommandKind::Q2Case) {
+    uint32_t values[2] = {};
+    const bool parsed = command.arguments_valid &&
+                        parse_active_u32_fields(command.text_argument, values,
+                                                2u) &&
+                        values[0] != 0u && values[1] != 0u &&
+                        values[1] <= OTIS_Q2_TRANSACTION_CASE_COUNT;
+    OtisQ2CaseResult result = {};
+    const bool passed = parsed && otis_q2_transaction_run_case(
+                                      values[0],
+                                      static_cast<uint16_t>(values[1]),
+                                      &result);
+    if (!parsed) {
+      emit_status("q2_transaction", "command", "rejected_invalid_case",
+                  OTIS_SEVERITY_ERROR, OTIS_FLAG_PROFILE_ASSUMPTION);
+    } else {
+      emit_status_u32("q2_transaction", "case_begin", result.case_id,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status_u32("q2_transaction", "query_nonce", result.query_nonce,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status_u32("q2_transaction", "case_id", result.case_id,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status("q2_transaction", "case_name", result.case_name,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status("q2_transaction", "transaction", result.transaction,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status("q2_transaction", "disposition", result.disposition,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status_u32("q2_transaction", "phase_mask", result.phase_mask,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status_u32("q2_transaction", "setup_i2c_attempts",
+                      result.setup_i2c_attempts, OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_NONE);
+      emit_status_u32("q2_transaction", "automatic_i2c_attempts",
+                      result.automatic_i2c_attempts, OTIS_SEVERITY_INFO,
+                      OTIS_FLAG_NONE);
+      emit_status("q2_transaction", "retry_rejected",
+                  result.retry_rejected ? "true" : "false",
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+      emit_status("q2_transaction", "case_pass",
+                  passed ? "true" : "false",
+                  passed ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+                  passed ? OTIS_FLAG_NONE
+                         : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+      emit_status_u32("q2_transaction", "case_complete", result.case_id,
+                      passed ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
+                      passed ? OTIS_FLAG_NONE
+                             : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    }
+  } else if (command.kind == OtisSerialCommandKind::Q2Other) {
+    emit_status("q2_transaction", "command", "rejected_unknown",
+                OTIS_SEVERITY_ERROR, OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
+  } else if (command.kind == OtisSerialCommandKind::Q2Case ||
+             command.kind == OtisSerialCommandKind::Q2Other) {
+    emit_status("q2_transaction", "command",
+                "rejected_diagnostic_profile_required",
+                OTIS_SEVERITY_ERROR, OTIS_FLAG_PROFILE_ASSUMPTION);
 #endif
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   } else if (command.kind == OtisSerialCommandKind::ActiveQuery) {

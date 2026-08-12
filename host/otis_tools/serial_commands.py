@@ -123,6 +123,20 @@ def parse_serial_command(text: str) -> SerialCommand:
             raise ValueError("ACTIVE LEASE requires one non-zero uint32 sequence")
         return SerialCommand(f"ACTIVE LEASE {int(value, 10)}")
 
+    if command.startswith("Q2 CASE "):
+        fields = command[len("Q2 CASE ") :].split()
+        if len(fields) != 2 or any(
+            not re.fullmatch(r"[1-9][0-9]*", field)
+            or int(field, 10) > 0xFFFFFFFF
+            for field in fields
+        ):
+            raise ValueError("Q2 CASE requires nonce and case id as non-zero uint32 values")
+        if int(fields[1], 10) > 38:
+            raise ValueError("Q2 CASE id must be in 1..38")
+        return SerialCommand(
+            f"Q2 CASE {int(fields[0], 10)} {int(fields[1], 10)}"
+        )
+
     if command.startswith("ACTIVE SNAPSHOT "):
         value = command[len("ACTIVE SNAPSHOT ") :]
         if not re.fullmatch(r"[1-9][0-9]*", value) or int(value, 10) > 0xFFFFFFFF:
