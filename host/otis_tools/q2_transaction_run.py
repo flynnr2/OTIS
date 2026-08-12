@@ -331,7 +331,8 @@ def run_q2(
             "--device", bundle["device"]["path"], "--run-dir", str(run_dir),
             "--duration-s", str(RUN_TIMEOUT_S), "--status-interval", "5",
             "--command-fifo", str(normal_fifo), "--write-timeout-s", "1",
-            "--normal-command-max-age-s", "2",
+            "--normal-command-max-age-s",
+            str(bundle["commands"]["normal_command_max_age_s"]),
         ],
         cwd=Path(__file__).resolve().parents[2], stdout=capture_log,
         stderr=capture_log, text=True,
@@ -370,7 +371,7 @@ def run_q2(
             "query_nonce": int(health[(active, "query_nonce")]),
             "expires_s": int(health[(active, "uptime_s")]) + 30,
             "session_id": int(health[(active, "session_id")]),
-            "requested_code": 0xA800,
+            "requested_code": int(bundle["firmware"]["start_code"]),
             "one_shot_ordinal": 1,
             "configuration_identity": bundle["firmware"]["configuration_sha256"],
         }
@@ -389,7 +390,8 @@ def run_q2(
         setup_command = (
             "ACTIVE SETUP 1 "
             f"{request['status_generation']} {request['query_nonce']} "
-            f"{request['expires_s']} {request['session_id']} 0xA800 1 "
+            f"{request['expires_s']} {request['session_id']} "
+            f"0x{request['requested_code']:04X} 1 "
             f"{request['configuration_identity']}"
         )
         send_timestamped_command_to_fifo(normal_fifo, setup_command)

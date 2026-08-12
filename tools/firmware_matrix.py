@@ -70,6 +70,7 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_GNSS_RECEIVER",
     "OTIS_GNSS_UART_TX_ENABLED",
     "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
+    "OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL",
     "OTIS_CX317_ACTIVE_CAMPAIGN",
     "OTIS_CX317_ACTIVE_START_CODE",
     "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
@@ -337,6 +338,7 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx317_dual_core_active_endurance_part_b",
                 "cx318_stage5_tight_lower",
                 "cx318_stage5_tight_upper",
+                "cx319_q2_inhibited_transaction",
                 "cx319_tight_lower",
                 "cx319_tight_upper",
             }

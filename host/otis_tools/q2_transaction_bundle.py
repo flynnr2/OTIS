@@ -13,7 +13,7 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROFILE_ID = "cx317_dual_core_active_rehearsal"
+PROFILE_ID = "cx319_q2_inhibited_transaction"
 BUNDLE_ID = "cx319_q2_inhibited_transaction_bundle_v1"
 FIRMWARE_MODULE = REPO_ROOT / "firmware/arduino/otis_nano_rp2040_connect/otis_q2_transaction_rehearsal.cpp"
 AUTHORITY_DOCUMENT = REPO_ROOT / "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md"
@@ -99,14 +99,23 @@ def create_bundle(
     provenance = build.get("provenance", {})
     source = provenance.get("source", {})
     configuration = provenance.get("configuration", {})
+    defines = configuration.get("defines", {})
     if (
         source.get("state") != "clean"
         or source.get("git_commit") != head
         or configuration.get("profile_id") != PROFILE_ID
-        or configuration.get("defines", {}).get("OTIS_CX317_ACTIVE_CAMPAIGN")
-        != "OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL"
+        or defines.get("OTIS_CX317_ACTIVE_CAMPAIGN")
+        != "OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER"
+        or defines.get("OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL") != "1"
     ):
         raise ValueError("Q2 build manifest is not the clean diagnostic profile at HEAD")
+    start_code_literal = str(defines.get("OTIS_CX317_ACTIVE_START_CODE", ""))
+    try:
+        start_code = int(start_code_literal.rstrip("uUlL"), 0)
+    except ValueError as error:
+        raise ValueError("Q2 build manifest has no valid active start code") from error
+    if start_code != 0xA808:
+        raise ValueError("Q2 diagnostic profile requires the exact A808 setup code")
     uf2_artifact = next(
         (entry for entry in build.get("artifacts", []) if str(entry.get("name", "")).endswith(".uf2")),
         None,
@@ -128,6 +137,7 @@ def create_bundle(
             "source_state": source["state"],
             "source_sha256": source["sha256"],
             "configuration_sha256": configuration["sha256"],
+            "start_code": start_code,
             "fqbn": configuration["fqbn"],
             "build_manifest": _binding(build_manifest_path),
             "uf2": _binding(uf2_path),
@@ -162,7 +172,7 @@ def create_bundle(
             ],
             "forbidden": ["ACTIVE ARM", "DAC SET", "DAC MID", "DAC ZERO", "SWEEP", "PPSGEN"],
             "write_timeout_s": 1.0,
-            "normal_command_max_age_s": 2.0,
+            "normal_command_max_age_s": 5.0,
         },
         "host_tools": {
             "bundle": _binding(Path(__file__)),

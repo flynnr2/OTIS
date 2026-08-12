@@ -57,6 +57,6 @@ def test_q2_serial_surface_is_diagnostic_profile_gated() -> None:
         source.rfind("#if", 0, source.index("OtisSerialCommandKind::Q2Case")) :
         source.index("OtisSerialCommandKind::Q2Case")
     ]
-    assert "OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL" in guard
+    assert "OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL" in guard
     assert "otis_q2_transaction_run_case" in q2_handler
     assert "otis_dac_ad5693r_set_raw" not in q2_handler

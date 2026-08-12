@@ -289,6 +289,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if cursor < len(required_phase_order) and phase == required_phase_order[cursor]:
             cursor += 1
     setup_rows = [row for row in dac if row.get("event") == "manual_apply"]
+    expected_setup_code = int(bundle["firmware"]["start_code"])
     checks = {
         "bundle_digest_exact": bundle.get("bundle_sha256")
         == _canonical_sha256(
@@ -329,8 +330,8 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         == len(required_phase_order),
         "one_physical_inhibited_setup_write": (
             len(setup_rows) == 1
-            and setup_rows[0].get("dac_code_requested") == str(0xA800)
-            and setup_rows[0].get("dac_code_applied") == str(0xA800)
+            and setup_rows[0].get("dac_code_requested") == str(expected_setup_code)
+            and setup_rows[0].get("dac_code_applied") == str(expected_setup_code)
         ),
         "zero_automatic_physical_writes": len(dac) == len(setup_rows) == 1,
         "setup_authority_bound_to_complete_snapshot": (

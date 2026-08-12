@@ -18,7 +18,7 @@ OtisSetupAuthorityRequest setup_request() {
   value.query_nonce = 0x12345678u;
   value.expires_s = 1020u;
   value.session_id = 7u;
-  value.requested_code = 0xA800u;
+  value.requested_code = 0xA808u;
   value.one_shot_ordinal = 1u;
   strcpy(value.configuration_identity, kConfigurationIdentity);
   return value;
@@ -26,13 +26,13 @@ OtisSetupAuthorityRequest setup_request() {
 
 OtisSetupAuthorityContext setup_context() {
   return {
-      1000u, 17u, 0x12345678u, 7u, 0xA800u, kConfigurationIdentity,
+      1000u, 17u, 0x12345678u, 7u, 0xA808u, kConfigurationIdentity,
       true, true, true, true, true, true,
   };
 }
 
 OtisSetupExecutionContext execution_context() {
-  return {1001u, 0xA800u, kConfigurationIdentity, true, true};
+  return {1001u, 0xA808u, kConfigurationIdentity, true, true};
 }
 
 OtisSetupApplicationAck setup_ack(
@@ -351,7 +351,7 @@ bool run_setup_i2c_failure(OtisQ2CaseResult *result) {
 OtisCx317ActiveBinding active_binding() {
   return {
       "q2_run", "q2_build", "q2_profile", "estimator", "model",
-      "policy", "response", "numerical", 7u, 0xA800u, 0xA800u,
+      "policy", "response", "numerical", 7u, 0xA808u, 0xA808u,
       0xAB00u, 21u, 2u, 42u, false, true,
   };
 }
@@ -370,7 +370,7 @@ bool run_automatic_ambiguous(OtisQ2CaseResult *result) {
   otis_cx317_active_transaction_init(&transaction, &binding);
   const OtisCx317ArmRequest arm = {binding, 1u, 0xA11CEu, 120u};
   const OtisCx317ActiveDecision decision = {
-      1u, 1u, 120u, 100u, 0xA800u, 1, 0xA801u, 0.25,
+      1u, 1u, 120u, 100u, 0xA808u, 1, 0xA809u, 0.25,
   };
   OtisCx317ActionableRequest request = {};
   OtisCx317AcceptedRequest accepted = {};

@@ -79,8 +79,13 @@ constexpr char kRunIdentity[] = "cx318_stage5_tight_upper:3185002";
 constexpr char kExpectedProfile[] = "cx318_stage5_tight_upper";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER
+#if OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL
+constexpr char kRunIdentity[] = "cx319_q2_inhibited_transaction:3195200";
+constexpr char kExpectedProfile[] = "cx319_q2_inhibited_transaction";
+#else
 constexpr char kRunIdentity[] = "cx319_tight_lower:3195001";
 constexpr char kExpectedProfile[] = "cx319_tight_lower";
+#endif
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
 constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";

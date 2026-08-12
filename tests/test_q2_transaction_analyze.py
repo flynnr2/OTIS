@@ -69,9 +69,10 @@ def test_full_q2_analyzer_replays_fixture(tmp_path) -> None:
     bundle = {
         "schema_version": 1,
         "firmware": {
-            "profile_id": "cx317_dual_core_active_rehearsal",
+            "profile_id": "cx319_q2_inhibited_transaction",
             "source_sha256": "a" * 64,
             "configuration_sha256": "b" * 64,
+            "start_code": 0xA808,
             "uf2": {"sha256": "c" * 64},
         },
     }
@@ -124,7 +125,7 @@ def test_full_q2_analyzer_replays_fixture(tmp_path) -> None:
     for component, key, value in (
         ("firmware", "source_hash", "a" * 64),
         ("firmware", "config_hash", "b" * 64),
-        ("build", "profile_id", "cx317_dual_core_active_rehearsal"),
+        ("build", "profile_id", "cx319_q2_inhibited_transaction"),
         ("dac", "enabled", "true"),
         ("dac", "initialized", "true"),
         ("dac", "i2c_address", "76"),
@@ -160,8 +161,8 @@ def test_full_q2_analyzer_replays_fixture(tmp_path) -> None:
         writer.writerow(
             {
                 "event": "manual_apply",
-                "dac_code_requested": str(0xA800),
-                "dac_code_applied": str(0xA800),
+                "dac_code_requested": str(0xA808),
+                "dac_code_applied": str(0xA808),
             }
         )
     result = analyze(run_dir)

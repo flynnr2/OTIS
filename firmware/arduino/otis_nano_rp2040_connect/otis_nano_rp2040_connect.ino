@@ -4315,10 +4315,7 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     otis_count_observation_emit_status(&runtime_state,
                                        &status_emit_context);
 #endif
-#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
-    OTIS_ENABLE_DUAL_CORE_PARTITION && \
-    OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
+#if OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL
   } else if (command.kind == OtisSerialCommandKind::Q2Case) {
     uint32_t values[2] = {};
     const bool parsed = command.arguments_valid &&

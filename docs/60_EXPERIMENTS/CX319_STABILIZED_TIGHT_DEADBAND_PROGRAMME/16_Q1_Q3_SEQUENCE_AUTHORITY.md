@@ -208,9 +208,12 @@ the stub or inhibited topology and records the operator's confirmation that the
 physical oscillator control input cannot move. This is a physical
 configuration prerequisite, not permission to broaden the experiment.
 
-The prepared Q2 implementation uses the existing
-`cx317_dual_core_active_rehearsal` diagnostic profile and a closed
-`Q2 CASE <nonce> <case-id>` vocabulary. Its 38 finite cases exercise every
+The prepared Q2 implementation uses the dedicated
+`cx319_q2_inhibited_transaction` diagnostic profile and a closed
+`Q2 CASE <nonce> <case-id>` vocabulary. That profile retains the Q1-proven
+`cx319_tight_lower` scheduling, capture, and qualification timings while
+enabling only the finite Q2 command surface; it does not reuse the historical
+accelerated Stage 7 rehearsal timings. Its 38 finite cases exercise every
 initial setup predicate, every mutable current-to-stale release predicate,
 every Core 0 execution recheck, six setup interruption boundaries, one
 injected terminal setup-I2C failure, and one injected ambiguous automatic
@@ -218,7 +221,7 @@ outcome with explicit no-retry and fresh-transaction recovery. The diagnostic
 case engine cannot call the DAC driver. After all 38 cases pass, exactly one
 ordinary `ACTIVE SETUP` command must traverse the production Core 0/Core 1
 authorization, acceptance, release, physical application, and acknowledgement
-path. That sole physical DAC write is permitted only while the DAC analogue
+path at the profile-bound `0xA808` setup code. That sole physical DAC write is permitted only while the DAC analogue
 output is disconnected from the oscillator EFC/Vctrl input, the oscillator
 remains powered, and the DAC remains reachable over I2C.
 

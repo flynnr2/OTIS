@@ -68,6 +68,7 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "cx318_stage4_nonactuating_preview",
         "cx318_stage5_tight_lower",
         "cx318_stage5_tight_upper",
+        "cx319_q2_inhibited_transaction",
         "cx319_tight_lower",
         "cx319_tight_upper",
         "cx317_bounded_active_campaign_a",
@@ -102,7 +103,7 @@ def test_matrix_is_intentional_and_covers_required_profiles() -> None:
         "invalid_cx318_stage4_with_cx317_preview",
         "invalid_cx318_stage4_unqualified_backend",
     } <= set(profiles)
-    assert sum(item["expect"] == "pass" for item in profiles.values()) == 28
+    assert sum(item["expect"] == "pass" for item in profiles.values()) == 29
     assert sum(item["expect"] == "fail" for item in profiles.values()) == 16
     assert matrix["resource_budgets"] == {
         "dynamic_memory_total_bytes": 262144,
@@ -164,7 +165,7 @@ def test_matrix_lifecycle_separates_current_release_from_history() -> None:
     historical = _selected_profiles(
         matrix, [], False, all_profiles=True
     )
-    assert len(historical) == 44
+    assert len(historical) == 45
 
     fast = _selected_profiles(
         matrix, [], False, verification_tier="fast"
@@ -198,6 +199,7 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
         "cx317_dual_core_active_endurance_part_b",
         "cx318_stage5_tight_lower",
         "cx318_stage5_tight_upper",
+        "cx319_q2_inhibited_transaction",
         "cx319_tight_lower",
         "cx319_tight_upper",
     }
@@ -223,6 +225,9 @@ def test_only_exact_programme_profiles_have_active_controller_reachability() -> 
     assert active["cx317_dual_core_active_endurance_part_b"]["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "672u"
     assert active["cx319_tight_lower"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA808u"
     assert active["cx319_tight_upper"]["OTIS_CX317_ACTIVE_START_CODE"] == "0xA848u"
+    q2 = active["cx319_q2_inhibited_transaction"]
+    assert q2["OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL"] == "1"
+    assert q2["OTIS_CX317_ACTIVE_START_CODE"] == "0xA808u"
     for defines in active.values():
         assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
         assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"

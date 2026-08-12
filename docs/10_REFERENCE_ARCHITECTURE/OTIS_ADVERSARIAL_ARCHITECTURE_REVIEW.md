@@ -1145,8 +1145,10 @@ Exit: retained analyzer independently reproduces every disposition from the
 exact status generation and transaction evidence.
 
 The bounded implementation is now present but does not count as execution.
-The diagnostic firmware exposes 38 nonce-bound cases through a closed command
-surface; that case engine is source-guarded from the DAC driver. The host then
+The dedicated `cx319_q2_inhibited_transaction` firmware retains the
+Q1-proven lower-leg scheduling and exposes 38 nonce-bound cases through a
+closed command surface; that case engine is source-guarded from the DAC
+driver. The host then
 uses one current complete device snapshot to send one ordinary production
 `ACTIVE SETUP`, requiring the exact received, Core 1 authorized, Core 0
 accepted, Core 1 released, and applied chain plus one `manual_apply` row. The
