@@ -186,6 +186,19 @@ def _first_observation(
     raise ValueError(f"missing {component}.{status_key} in {path}")
 
 
+def _source_exercised_q1_detach(run_dir: Path) -> bool:
+    state = json.loads(
+        (run_dir / "reports/capture_device_state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    reconnects = int(state.get("reconnect_count", 0))
+    detaches = int(state.get("intentional_detach_count", 0))
+    if reconnects != detaches:
+        raise ValueError("replay source reconnect/detach evidence is inconsistent")
+    return detaches > 0
+
+
 def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, Any]:
     run_dir = root / "accelerated-supervisor"
     (run_dir / "csv").mkdir(parents=True)
@@ -325,6 +338,7 @@ def _prepare_replay(
         bundle_path=copied_bundle,
         run_dir=replay_run,
         output_path=manifest_path,
+        q1_real_io=_source_exercised_q1_detach(replay_run),
     )
     sequence_gate = bundle.get("qualification_sequence_gate", "Q1")
     if sequence_gate == "Q3":
