@@ -195,8 +195,12 @@ def test_q1_host_absence_is_one_explicit_bounded_hold(
     )
 
     result = rehearsal._hold_q1_host_absent(
-        {"restart_reappeared_monotonic_ns": 1_000_000_000},
+        {
+            "device": "/dev/cu.test-otis",
+            "restart_reappeared_monotonic_ns": 1_000_000_000,
+        },
         sleep=sleeps.append,
+        owner_pids=lambda _device: set(),
     )
 
     assert sleeps == [rehearsal.Q1_DECLARED_INITIAL_HOST_ABSENCE_S]
@@ -204,6 +208,8 @@ def test_q1_host_absence_is_one_explicit_bounded_hold(
     assert result["measured_initial_host_absence_hold_ms"] == 750.0
     assert result["host_absence_hold_started_monotonic_ns"] == 1_100_000_000
     assert result["host_absence_hold_completed_monotonic_ns"] == 1_850_000_000
+    assert result["host_absence_owner_pids_before"] == []
+    assert result["host_absence_owner_pids_after"] == []
 
 
 def test_q1_confirmed_reuse_observes_restart_without_upload(

@@ -118,6 +118,7 @@ def _hold_q1_host_absent(
     firmware_entry: dict[str, Any],
     *,
     sleep: Callable[[float], None] = time.sleep,
+    owner_pids: Callable[[str], set[int]] = _serial_owner_pids,
 ) -> dict[str, Any]:
     """Apply the declared late-attach stimulus with no intervening host work."""
 
@@ -126,9 +127,22 @@ def _hold_q1_host_absent(
         ready_anchor = firmware_entry.get("upload_completed_monotonic_ns")
     if not isinstance(ready_anchor, int):
         raise ValueError("Q1 firmware entry lacks a monotonic ready anchor")
+    device = str(firmware_entry.get("device", ""))
+    owners_before = owner_pids(device)
+    if owners_before:
+        raise RuntimeError(
+            "Q1 host-absence hold began with serial owners: "
+            f"{sorted(owners_before)}"
+        )
     started_ns = time.monotonic_ns()
     sleep(Q1_DECLARED_INITIAL_HOST_ABSENCE_S)
     completed_ns = time.monotonic_ns()
+    owners_after = owner_pids(device)
+    if owners_after:
+        raise RuntimeError(
+            "Q1 host-absence hold ended with serial owners: "
+            f"{sorted(owners_after)}"
+        )
     return {
         **firmware_entry,
         "declared_initial_host_absence_ms": int(
@@ -140,6 +154,8 @@ def _hold_q1_host_absent(
             (completed_ns - started_ns) / 1_000_000.0,
             3,
         ),
+        "host_absence_owner_pids_before": sorted(owners_before),
+        "host_absence_owner_pids_after": sorted(owners_after),
     }
 
 
@@ -298,12 +314,19 @@ def _exercise_q1_real_io_prelude(
             "<2000 ms "
             f"boot/transport window: {hostless_ms:.3f} ms"
         )
+    if (
+        flash.get("host_absence_owner_pids_before") != []
+        or flash.get("host_absence_owner_pids_after") != []
+    ):
+        raise RuntimeError("Q1 host-absence hold did not retain zero owners")
     _wait_until(
-        lambda: b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250" in (
-            run_dir / "raw/serial.log"
-        ).read_bytes(),
+        lambda: b"BOOT,v=1," in (run_dir / "raw/serial.log").read_bytes(),
         10.0,
-        "Q1 host-absent 250 ms boot record",
+        "Q1 retained boot banner",
+    )
+    serial_absent_warning_observed = (
+        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250"
+        in (run_dir / "raw/serial.log").read_bytes()
     )
 
     serial_module = __import__("serial")
@@ -377,6 +400,16 @@ def _exercise_q1_real_io_prelude(
         "measured_initial_host_absence_hold_ms": flash.get(
             "measured_initial_host_absence_hold_ms"
         ),
+        "host_absence_owner_pids_before": flash.get(
+            "host_absence_owner_pids_before"
+        ),
+        "host_absence_owner_pids_after": flash.get(
+            "host_absence_owner_pids_after"
+        ),
+        "firmware_serial_absent_warning_observed": (
+            serial_absent_warning_observed
+        ),
+        "firmware_serial_absent_warning_required": False,
         "transport_horizon_ms": 2000,
         "intentional_detach_count": state.get("intentional_detach_count"),
         "intentional_detach_gaps_ms": gaps,

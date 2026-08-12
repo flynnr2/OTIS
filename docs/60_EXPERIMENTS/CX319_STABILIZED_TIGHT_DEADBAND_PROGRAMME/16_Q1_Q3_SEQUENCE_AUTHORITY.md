@@ -144,9 +144,22 @@ node reappearance precedes the firmware's internal serial-wait clock, so an
 uncontrolled immediate launch does not deterministically exercise Q1's
 declared late-attach branch. The recovery must use one explicit 750 ms
 post-reappearance host-absence hold after all preparation and before carrier
-launch, require the `serial_absent` boot record, and retain the existing
-strictly-less-than-2,000 ms entry-to-carrier limit. The retained run otherwise
-had all three planned detach gaps below the horizon and zero parser errors.
+launch and retain the existing strictly-less-than-2,000 ms entry-to-carrier
+limit. The retained run otherwise had all three planned detach gaps below the
+horizon and zero parser errors.
+
+The controlled retry retained package
+`329c152452cd0da58cc1d9ae42bbee2bcba435744edd0e1f1f251e08c7e08daa`.
+It proved a 754.269 ms interval with zero user-space serial owners, attached
+the exclusive carrier at 965.993 ms, retained the complete boot banner and
+build provenance, passed all three detach gaps, and had zero parser errors.
+The firmware did not emit `serial_absent` because its readiness predicate is
+TinyUSB `tud_cdc_connected()`: on macOS the OS CDC driver may satisfy that
+predicate during enumeration without a user-space serial owner. The warning
+is therefore retained as optional firmware telemetry, not used as proof of
+host-owner absence. Q1 instead requires the direct monotonic hold transcript,
+zero owners at both boundaries, intact boot backlog, exclusive carrier, and
+the unchanged 2,000 ms limit.
 
 ## Q2 physical prerequisite
 
