@@ -93,7 +93,9 @@ def _replace_json(path: Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _replace_build_identity(path: Path, expected_build: str) -> None:
+def _replace_build_identity(
+    path: Path, expected_build: str, *, required: bool = True
+) -> bool:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fields = reader.fieldnames
@@ -110,7 +112,9 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
             row["status_value"] = expected_build
             replacements += 1
     if replacements == 0:
-        raise ValueError(f"health CSV has no build identity: {path}")
+        if required:
+            raise ValueError(f"health CSV has no build identity: {path}")
+        return False
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -127,6 +131,7 @@ def _replace_build_identity(path: Path, expected_build: str) -> None:
         os.fsync(handle.fileno())
         temporary = Path(handle.name)
     os.replace(temporary, path)
+    return True
 
 
 def _publish_replayed_live_state(health_path: Path, state_path: Path) -> None:
@@ -397,15 +402,22 @@ def _prepare_replay(
         + ":"
         + bundle["firmware"]["configuration_sha256"]
     )
-    for health_path in (
-        replay_run / "csv/health.csv",
-        transition / "csv/health.csv",
+    primary_health = replay_run / "csv/health.csv"
+    _replace_build_identity(primary_health, expected_build)
+    _publish_replayed_live_state(
+        primary_health,
+        primary_health.parents[1] / LIVE_STATE_PATH,
+    )
+    transition_health = transition / "csv/health.csv"
+    if _replace_build_identity(
+        transition_health, expected_build, required=False
     ):
-        _replace_build_identity(health_path, expected_build)
         _publish_replayed_live_state(
-            health_path,
-            health_path.parents[1] / LIVE_STATE_PATH,
+            transition_health,
+            transition_health.parents[1] / LIVE_STATE_PATH,
         )
+    else:
+        (transition / LIVE_STATE_PATH).unlink(missing_ok=True)
 
     state_path = replay_run / "reports/cx317_active_supervisor_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
