@@ -130,7 +130,11 @@ def _supervisor_terminal(run_dir: Path) -> bool:
 
 
 def flash_exact_bundle(
-    *, bundle: dict[str, Any], output_path: Path, arduino_cli: str
+    *,
+    bundle: dict[str, Any],
+    output_path: Path,
+    arduino_cli: str,
+    defer_post_upload_identity: bool = False,
 ) -> dict[str, Any]:
     device = str(bundle["device"]["path"])
     owners = _serial_owner_pids(device)
@@ -155,7 +159,7 @@ def flash_exact_bundle(
     upload_completed_monotonic_ns = time.monotonic_ns()
     after: dict[str, str] | None = None
     reappearance_error: str | None = None
-    if completed.returncode == 0:
+    if completed.returncode == 0 and not defer_post_upload_identity:
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
             try:
@@ -164,13 +168,16 @@ def flash_exact_bundle(
             except (ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
                 reappearance_error = str(exc)
                 time.sleep(0.5)
+    pending_identity = completed.returncode == 0 and defer_post_upload_identity
     passed = completed.returncode == 0 and before == after
     completed_monotonic_ns = time.monotonic_ns()
     record = {
         "schema_version": 1,
         "tool": TOOL_ID,
         "operation": "exact_cx319_g1_firmware_flash",
-        "status": "pass" if passed else "fail",
+        "status": "pending_carrier_identity" if pending_identity else (
+            "pass" if passed else "fail"
+        ),
         "started_utc": started,
         "completed_utc": _utc_now(),
         "completed_monotonic_ns": completed_monotonic_ns,
@@ -195,8 +202,9 @@ def flash_exact_bundle(
         "setup_stimulus_attempts": 0,
         "control_arm_attempts": 0,
     }
-    _atomic_new_json(output_path, record)
-    if not passed:
+    if not pending_identity:
+        _atomic_new_json(output_path, record)
+    if not passed and not pending_identity:
         raise RuntimeError(f"exact CX319 G1 flash failed: {output_path}")
     return record
 
@@ -438,12 +446,18 @@ def confirm_installed_bundle(
 def restart_confirmed_installed_bundle(
     *,
     bundle: dict[str, Any],
-    output_path: Path,
     arduino_cli: str,
     timeout_s: float = Q1_PHYSICAL_RESTART_TIMEOUT_S,
     device_exists: Callable[[Path], bool] | None = None,
 ) -> dict[str, Any]:
-    """Observe one physical restart of exact confirmed firmware, without upload."""
+    """Observe one physical restart without delaying the post-reset carrier.
+
+    The accepted board and installed-image binding are checked before the
+    operator reset.  After USB reappearance this function deliberately does
+    no board enumeration: the caller must attach the sole drain owner first,
+    then finish the identity transcript with
+    :func:`confirm_firmware_entry_after_carrier_attach`.
+    """
 
     entry = bundle.get("firmware_entry", {})
     source_binding = entry.get("source_flash_record", {})
@@ -491,36 +505,23 @@ def restart_confirmed_installed_bundle(
         )
     restart_reappeared_monotonic_ns = time.monotonic_ns()
 
-    after: dict[str, str] | None = None
-    identity_error: str | None = None
-    identity_deadline = time.monotonic() + 30.0
-    while time.monotonic() < identity_deadline:
-        try:
-            after = read_board_identity(device, arduino_cli=arduino_cli)
-            break
-        except (ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
-            identity_error = str(exc)
-            time.sleep(0.1)
-    passed = before == after == entry["installed_board"]
-    record = {
+    return {
         "schema_version": 1,
         "tool": TOOL_ID,
         "operation": "confirmed_installed_cx319_g1_firmware_reuse",
-        "status": "pass" if passed else "fail",
+        "status": "pending_carrier_identity",
         "started_utc": started,
-        "completed_utc": _utc_now(),
         "attempt_count": 0,
         "firmware_flashes": 0,
         "ordinary_restart_count": 1,
         "device": device,
         "board_before": before,
-        "board_after": after,
+        "board_after": None,
         "installed_board": entry["installed_board"],
         "restart_disappeared_monotonic_ns": (
             restart_disappeared_monotonic_ns
         ),
         "restart_reappeared_monotonic_ns": restart_reappeared_monotonic_ns,
-        "board_identity_error": identity_error,
         "bundle_sha256": bundle["bundle_sha256"],
         "profile_id": bundle["firmware"]["profile_id"],
         "build_manifest_sha256": bundle["firmware"]["build_manifest"][
@@ -538,6 +539,62 @@ def restart_confirmed_installed_bundle(
         "dac_value_write_attempts": 0,
         "setup_stimulus_attempts": 0,
         "control_arm_attempts": 0,
+    }
+
+
+def confirm_firmware_entry_after_carrier_attach(
+    *,
+    pending_record: dict[str, Any],
+    output_path: Path,
+    arduino_cli: str,
+    carrier_ready_monotonic_ns: int,
+) -> dict[str, Any]:
+    """Finish a flash/restart identity transcript after drainage exists."""
+
+    ready_anchor = pending_record.get("restart_reappeared_monotonic_ns")
+    if ready_anchor is None:
+        ready_anchor = pending_record.get("upload_completed_monotonic_ns")
+    if pending_record.get("status") != "pending_carrier_identity":
+        raise ValueError("firmware entry is not pending carrier identity")
+    if not isinstance(ready_anchor, int) or not (
+        ready_anchor < carrier_ready_monotonic_ns
+    ):
+        raise ValueError("carrier did not attach after firmware entry became ready")
+
+    identity_started_monotonic_ns = time.monotonic_ns()
+    if identity_started_monotonic_ns < carrier_ready_monotonic_ns:
+        raise RuntimeError("post-reset identity started before carrier attachment")
+    after: dict[str, str] | None = None
+    identity_error: str | None = None
+    identity_deadline = time.monotonic() + 30.0
+    while time.monotonic() < identity_deadline:
+        try:
+            after = read_board_identity(
+                str(pending_record["device"]), arduino_cli=arduino_cli
+            )
+            break
+        except (ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            identity_error = str(exc)
+            time.sleep(0.1)
+    expected_after = pending_record.get(
+        "installed_board", pending_record.get("board_before")
+    )
+    passed = pending_record.get("board_before") == after == expected_after
+    record = {
+        **pending_record,
+        "status": "pass" if passed else "fail",
+        "completed_utc": _utc_now(),
+        "board_after": after,
+        "board_identity_error": identity_error,
+        "post_reset_identity_order": "carrier_then_board_enumeration",
+        "carrier_ready_monotonic_ns": carrier_ready_monotonic_ns,
+        "post_reset_identity_started_monotonic_ns": (
+            identity_started_monotonic_ns
+        ),
+        "firmware_entry_to_carrier_ready_ms": round(
+            (carrier_ready_monotonic_ns - ready_anchor) / 1_000_000.0,
+            3,
+        ),
     }
     _atomic_new_json(output_path, record)
     if not passed:
@@ -676,45 +733,6 @@ def run_no_write_qualification(
         output_path=manifest_path,
         q1_real_io=q1_real_io,
     )
-    entry_mode = bundle.get("firmware_entry", {}).get(
-        "mode", "single_exact_flash"
-    )
-    try:
-        if entry_mode == "single_exact_flash":
-            flash = flash_exact_bundle(
-                bundle=bundle,
-                output_path=run_dir / FLASH_RECORD_PATH,
-                arduino_cli=arduino_cli,
-            )
-        elif entry_mode == "reuse_confirmed_installed_firmware":
-            entry = (
-                restart_confirmed_installed_bundle
-                if q1_real_io
-                else confirm_installed_bundle
-            )
-            flash = entry(
-                bundle=bundle,
-                output_path=run_dir / FLASH_RECORD_PATH,
-                arduino_cli=arduino_cli,
-            )
-        else:
-            raise ValueError("unsupported G1 firmware entry mode")
-    except Exception as exc:
-        record_failure(
-            finalization_journal,
-            phase="capture_closed",
-            error=exc,
-        )
-        indexed = _retain_orchestration_failure(
-            run_dir=run_dir,
-            bundle=bundle,
-            evidence_index_path=evidence_index_path,
-            error=exc,
-        )
-        raise RuntimeError(
-            "CX319 G1 firmware entry failed; retained evidence "
-            f"{indexed['content_sha256']}: {exc}"
-        ) from exc
     transition_dir = run_dir / TRANSITION_DIR
     prepare_transition(manifest_path, transition_dir)
 
@@ -760,6 +778,50 @@ def run_no_write_qualification(
                     f"{after_s}:{detached_s * 1000.0}",
                 ]
             )
+
+    entry_mode = bundle.get("firmware_entry", {}).get(
+        "mode", "single_exact_flash"
+    )
+    try:
+        if entry_mode == "single_exact_flash":
+            flash = flash_exact_bundle(
+                bundle=bundle,
+                output_path=run_dir / FLASH_RECORD_PATH,
+                arduino_cli=arduino_cli,
+                defer_post_upload_identity=q1_real_io,
+            )
+        elif entry_mode == "reuse_confirmed_installed_firmware":
+            if q1_real_io:
+                flash = restart_confirmed_installed_bundle(
+                    bundle=bundle,
+                    arduino_cli=arduino_cli,
+                )
+            else:
+                flash = confirm_installed_bundle(
+                    bundle=bundle,
+                    output_path=run_dir / FLASH_RECORD_PATH,
+                    arduino_cli=arduino_cli,
+                )
+        else:
+            raise ValueError("unsupported G1 firmware entry mode")
+    except Exception as exc:
+        capture_log.close()
+        supervisor_log.close()
+        record_failure(
+            finalization_journal,
+            phase="capture_closed",
+            error=exc,
+        )
+        indexed = _retain_orchestration_failure(
+            run_dir=run_dir,
+            bundle=bundle,
+            evidence_index_path=evidence_index_path,
+            error=exc,
+        )
+        raise RuntimeError(
+            "CX319 G1 firmware entry failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
     capture = subprocess.Popen(
         capture_args,
         cwd=Path(__file__).resolve().parents[2],
@@ -784,6 +846,15 @@ def run_no_write_qualification(
             "capture ownership and bounded command paths",
         )
         carrier_initial_ready_monotonic_ns = time.monotonic_ns()
+        if flash.get("status") == "pending_carrier_identity":
+            flash = confirm_firmware_entry_after_carrier_attach(
+                pending_record=flash,
+                output_path=run_dir / FLASH_RECORD_PATH,
+                arduino_cli=arduino_cli,
+                carrier_ready_monotonic_ns=(
+                    carrier_initial_ready_monotonic_ns
+                ),
+            )
         if q1_real_io:
             _exercise_q1_real_io_prelude(
                 run_dir=run_dir,

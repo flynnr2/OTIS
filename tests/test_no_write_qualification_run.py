@@ -231,9 +231,13 @@ def test_q1_confirmed_reuse_observes_restart_without_upload(
         lambda **_kwargs: entry,
     )
     monkeypatch.setattr(rehearsal, "_serial_owner_pids", lambda _device: set())
-    monkeypatch.setattr(
-        rehearsal, "read_board_identity", lambda *_args, **_kwargs: board
-    )
+    identity_calls: list[str] = []
+
+    def read_identity(*_args: object, **_kwargs: object) -> dict[str, str]:
+        identity_calls.append("board_list")
+        return board
+
+    monkeypatch.setattr(rehearsal, "read_board_identity", read_identity)
     monkeypatch.setattr(rehearsal.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
         rehearsal.subprocess,
@@ -243,15 +247,32 @@ def test_q1_confirmed_reuse_observes_restart_without_upload(
 
     record = rehearsal.restart_confirmed_installed_bundle(
         bundle=bundle,
-        output_path=tmp_path / "restart-record.json",
         arduino_cli="arduino-cli",
         timeout_s=1.0,
         device_exists=lambda _path: next(existence),
     )
 
-    assert record["status"] == "pass"
+    assert record["status"] == "pending_carrier_identity"
     assert record["ordinary_restart_count"] == 1
     assert record["firmware_flashes"] == 0
+    assert identity_calls == ["board_list"]
     assert record["restart_reappeared_monotonic_ns"] >= record[
         "restart_disappeared_monotonic_ns"
     ]
+
+    carrier_ready = record["restart_reappeared_monotonic_ns"] + 1
+    completed = rehearsal.confirm_firmware_entry_after_carrier_attach(
+        pending_record=record,
+        output_path=tmp_path / "restart-record.json",
+        arduino_cli="arduino-cli",
+        carrier_ready_monotonic_ns=carrier_ready,
+    )
+
+    assert completed["status"] == "pass"
+    assert completed["post_reset_identity_order"] == (
+        "carrier_then_board_enumeration"
+    )
+    assert completed["post_reset_identity_started_monotonic_ns"] >= (
+        carrier_ready
+    )
+    assert identity_calls == ["board_list", "board_list"]

@@ -108,6 +108,33 @@ use zero further uploads, align the live-snapshot deadline with the existing
 2,000 ms horizon, and repeat Q1 in full after an ordinary reset and exact
 identity transcript.
 
+The next reset observer timed out without a physical reset and retained package
+`08619c0106bec9dcb131ef8117728635b1a58f7c7aedcdb7c2177d2dd01d0fbf` as
+failed-rehearsal evidence. The following observer obtained the
+reset and exact pre/post board identity, but attached the carrier 2,389.319 ms
+after USB reappearance. The runner had synchronously executed
+`arduino-cli board list` after reappearance and before launching the drain
+owner, so the failure is a deterministic host sequencing escape, not a device
+race or firmware defect. Package
+`55e6e92eafa2a607a19a0e3872baee84368eef0a521c16a97d6c365cc2d5fe4e`
+is retained. The correction must pre-stage the run and carrier invocation,
+validate the board and installed-UF2 binding before reset, attach the exclusive
+carrier immediately after reappearance, and only then complete post-reset
+board enumeration while the carrier drains continuously. The immutable entry
+record and analyzer must prove the monotonic order `firmware entry ready <
+carrier ready <= post-reset identity start`; the 2,000 ms horizon is unchanged.
+The confirmed installed UF2 for this recovery is
+`0717d51bff5f14d6935ad58b85a5dfa433d8eb575d909759be63b7f2c2852d66`.
+
+A host-only defect after complete, immutable acquisition does not require a
+new physical run when the correction cannot alter commands, capture
+completeness, serial ownership, timing, segmentation, firmware behavior, or
+the scientific result. Re-run the shortest affected host gate against the
+retained raw evidence, recording old/new analyzer identities and explicit
+supersession provenance. A physical repeat remains necessary only when the
+required acquisition interval itself did not complete or one of those live
+surfaces can have changed.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names

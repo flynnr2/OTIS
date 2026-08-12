@@ -287,6 +287,22 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "firmware_entry",
         {"mode": "single_exact_flash", "firmware_flashes_allowed": 1},
     )
+    firmware_entry_ready_ns = flash.get("restart_reappeared_monotonic_ns")
+    if firmware_entry_ready_ns is None:
+        firmware_entry_ready_ns = flash.get("upload_completed_monotonic_ns")
+    carrier_ready_ns = flash.get("carrier_ready_monotonic_ns")
+    identity_started_ns = flash.get("post_reset_identity_started_monotonic_ns")
+    deferred_identity_ordered = (
+        expected_reconnects == 0
+        or (
+            flash.get("post_reset_identity_order")
+            == "carrier_then_board_enumeration"
+            and isinstance(firmware_entry_ready_ns, int)
+            and isinstance(carrier_ready_ns, int)
+            and isinstance(identity_started_ns, int)
+            and firmware_entry_ready_ns < carrier_ready_ns <= identity_started_ns
+        )
+    )
     single_flash_exact = (
         firmware_entry.get("mode") == "single_exact_flash"
         and flash.get("operation") == "exact_cx319_g1_firmware_flash"
@@ -295,6 +311,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         and flash.get("board_before") == flash.get("board_after")
         and flash.get("board_after", {}).get("serial_number")
         == EXPECTED_SERIAL
+        and deferred_identity_ordered
     )
     confirmed_reuse_exact = (
         firmware_entry.get("mode") == "reuse_confirmed_installed_firmware"
@@ -318,6 +335,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         and flash.get("installed_uf2_sha256")
         == firmware_entry.get("installed_uf2_sha256")
         and flash.get("uf2_sha256") == manifest_value["firmware"]["uf2"]["sha256"]
+        and deferred_identity_ordered
     )
     transition_state = json.loads(
         (transition_dir / "reports/capture_device_state.json").read_text()
