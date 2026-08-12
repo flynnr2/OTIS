@@ -1148,8 +1148,11 @@ The bounded implementation is now present but does not count as execution.
 The dedicated `cx319_q2_inhibited_transaction` firmware retains the
 Q1-proven lower-leg scheduling and exposes 38 nonce-bound cases through a
 closed command surface; that case engine is source-guarded from the DAC
-driver. The host then
-uses one current complete device snapshot to send one ordinary production
+driver. A normal PPS-session acquisition or temporary zero-session absence is
+non-faulting only for a pristine disarmed pre-setup transaction; once an
+actuator context or transaction evidence exists, session change remains
+fail-static. The host then uses one current complete device snapshot to send
+one ordinary production
 `ACTIVE SETUP`, requiring the exact received, Core 1 authorized, Core 0
 accepted, Core 1 released, and applied chain plus one `manual_apply` row. The
 analyzer independently maps every case identity, phase mask, injected attempt,

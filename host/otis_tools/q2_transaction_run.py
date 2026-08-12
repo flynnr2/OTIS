@@ -500,7 +500,10 @@ def main(argv: list[str] | None = None) -> int:
             arduino_cli=args.arduino_cli,
             operator_confirmed_inhibited=args.operator_confirmed_inhibited,
         )
-    except (FileExistsError, OSError, RuntimeError, TimeoutError, ValueError) as exc:
+    except (
+        FileExistsError, KeyboardInterrupt, OSError, RuntimeError, TimeoutError,
+        ValueError,
+    ) as exc:
         retained = _retain_failed_attempt(
             run_dir=args.run_dir.resolve(), bundle_path=args.bundle.resolve(),
             evidence_index_path=args.evidence_index, error=exc

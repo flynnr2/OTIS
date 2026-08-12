@@ -500,7 +500,8 @@ void otis_cx317_active_live_update_health(
     otis_cx317_active_transaction_init(&transaction, &binding);
     transaction_bound = true;
   } else if (transaction_bound) {
-    otis_cx317_active_note_session(&transaction, health->session_id);
+    otis_cx317_active_note_session(&transaction, health->session_id,
+                                   manual_start_confirmed);
   }
   if (transaction_bound && manual_start_confirmed &&
       !health->applied_code_confirmed)

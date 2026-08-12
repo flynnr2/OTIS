@@ -540,10 +540,31 @@ bool otis_cx317_active_record_response(
 }
 
 void otis_cx317_active_note_session(OtisCx317ActiveTransaction *transaction,
-                                    uint32_t session_id) {
-  if (transaction != nullptr &&
-      session_id != transaction->expected_binding.session_id)
-    otis_cx317_active_fault(transaction, "session_change_clears_arming");
+                                    uint32_t session_id,
+                                    bool actuator_context_established) {
+  if (transaction == nullptr ||
+      session_id == transaction->expected_binding.session_id)
+    return;
+  const bool pristine_disarmed =
+      transaction->state == OtisCx317ActiveState::Disarmed &&
+      !transaction->have_last_application && !transaction->have_arm &&
+      !transaction->have_request && !transaction->have_acceptance &&
+      !transaction->have_application && transaction->correction_count == 0u &&
+      transaction->cumulative_movement_codes == 0u &&
+      transaction->dac_epoch == 0u &&
+      transaction->last_decision_sequence == 0u &&
+      transaction->last_request_sequence == 0u &&
+      transaction->last_authorization_sequence == 0u;
+  if (!actuator_context_established && pristine_disarmed) {
+    // Zero denotes transient absence, not replacement authority. Preserve
+    // the last nonzero binding until another qualified session appears.
+    if (session_id != 0u) {
+      transaction->expected_binding.session_id = session_id;
+      transaction->reason = "pre_setup_session_rebound";
+    }
+    return;
+  }
+  otis_cx317_active_fault(transaction, "session_change_clears_arming");
 }
 
 const char *otis_cx317_active_state_name(OtisCx317ActiveState state) {

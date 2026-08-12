@@ -206,7 +206,8 @@ void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
 void otis_cx317_active_abort(OtisCx317ActiveTransaction *transaction,
                              const char *reason);
 void otis_cx317_active_note_session(OtisCx317ActiveTransaction *transaction,
-                                    uint32_t session_id);
+                                    uint32_t session_id,
+                                    bool actuator_context_established);
 const char *otis_cx317_active_state_name(OtisCx317ActiveState state);
 const char *otis_cx317_response_class_name(OtisCx317ResponseClass value);
 
