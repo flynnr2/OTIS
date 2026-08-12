@@ -47,7 +47,6 @@ from .no_write_qualification_bundle import (
     validate_run_manifest,
 )
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .host_attach_health_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 from .no_write_prewrite_readiness_contract import (
     RUNTIME_CONTRACT_ID,
     environment_streams_ready,
@@ -254,7 +253,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         frozen_generation=int(
             supervisor_state["host_attach_snapshot_generation"]
         ),
-        maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
+        maximum_uptime_s=None,
     )
     markers = _host_markers(run_dir / "raw/serial.log")
     duration_s = _capture_duration(markers)
@@ -279,6 +278,31 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         if expected_reconnects
         else None
     )
+    q1_evidence_baseline = (
+        json.loads(
+            (run_dir / "reports/cx319_q1_evidence_session_baseline_v1.json")
+            .read_text()
+        )
+        if expected_reconnects
+        else None
+    )
+    evidence_boundary_history: dict[str, object] = {"exact": True}
+    evidence_session_counter_deltas: dict[str, int] = {}
+    if isinstance(q1_evidence_baseline, dict):
+        evidence_boundary_history = evaluate_solicited_attach_snapshot_history(
+            [*health_rows, *transition_health_rows],
+            query_nonce=int(q1_evidence_baseline["query_nonce"]),
+            frozen_uptime_s=int(q1_evidence_baseline["firmware_uptime_s"]),
+            frozen_generation=int(q1_evidence_baseline["snapshot_generation"]),
+            maximum_uptime_s=None,
+        )
+        for key, baseline_value in q1_evidence_baseline.get(
+            "cumulative_counters", {}
+        ).items():
+            evidence_session_counter_deltas[str(key)] = (
+                int(health.get(("cx317_active", str(key)), "0"))
+                - int(baseline_value)
+            )
     flash = json.loads((run_dir / FLASH_RECORD_PATH).read_text())
     run_bundle = json.loads(
         Path(manifest_value["bundle"]["path"]).read_text(encoding="utf-8")
@@ -294,6 +318,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     identity_started_ns = flash.get("post_reset_identity_started_monotonic_ns")
     deferred_identity_ordered = (
         expected_reconnects == 0
+        or flash.get("attachment_mode") == "running_instrument"
         or (
             flash.get("post_reset_identity_order")
             == "carrier_then_board_enumeration"
@@ -317,7 +342,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         firmware_entry.get("mode") == "reuse_confirmed_installed_firmware"
         and firmware_entry.get("firmware_flashes_allowed") == 0
         and flash.get("operation")
-        == "confirmed_installed_cx319_g1_firmware_reuse"
+        == "confirmed_installed_cx319_g1_running_attach"
         and flash.get("status") == "pass"
         and flash.get("attempt_count") == 0
         and flash.get("firmware_flashes") == 0
@@ -406,7 +431,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             and (
                 expected_reconnects == 0
                 or single_flash_exact
-                or flash.get("ordinary_restart_count") == 1
+                or flash.get("attachment_mode") == "running_instrument"
             )
             and flash.get("dac_value_write_attempts") == 0
             and flash.get("setup_stimulus_attempts") == 0
@@ -452,6 +477,29 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             or (
                 isinstance(q1_prelude, dict)
                 and q1_prelude.get("status") == "pass"
+                and q1_prelude.get("attachment_mode")
+                == "running_instrument"
+                and q1_prelude.get("boot_record_required") is False
+                and q1_prelude.get("firmware_uptime_limit_s") is None
+                and q1_prelude.get("device_snapshot", {}).get(
+                    "setup_partition_healthy"
+                )
+                == "true"
+                and isinstance(q1_evidence_baseline, dict)
+                and q1_evidence_baseline.get("status") == "acknowledged"
+                and evidence_boundary_history.get("exact") is True
+                and all(
+                    evidence_session_counter_deltas.get(key) == 0
+                    for key in (
+                        "evidence_request_sequence",
+                        "correction_count",
+                        "cumulative_movement_codes",
+                        "dac_epoch",
+                    )
+                )
+                and evidence_session_counter_deltas.get(
+                    "selected_interval_count", -1
+                ) >= 0
                 and q1_prelude.get("intentional_detach_count")
                 == expected_reconnects
                 and q1_prelude.get(
@@ -600,6 +648,8 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "runtime_contract": supervisor_state.get("latest_prewrite_readiness"),
         "telemetry_drop_history": telemetry_drop_history,
         "host_attach_history": host_attach_history,
+        "evidence_boundary_history": evidence_boundary_history,
+        "evidence_session_counter_deltas": evidence_session_counter_deltas,
         "capture_closure": capture_closure,
         "contract_validation": validations,
         "tight_deadband_replay": tdb_replay.as_dict(),

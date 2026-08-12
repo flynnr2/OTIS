@@ -149,6 +149,8 @@ def test_confirmed_firmware_reuse_performs_no_upload(
     assert record["status"] == "pass"
     assert record["attempt_count"] == 0
     assert record["firmware_flashes"] == 0
+    assert record["ordinary_restart_count"] == 0
+    assert record["attachment_mode"] == "running_instrument"
 
 
 def test_run_rejects_repo_local_evidence_index_before_run_creation(
@@ -183,52 +185,6 @@ def test_run_rejects_repo_local_evidence_index_before_run_creation(
         )
 
     assert not run_dir.exists()
-
-
-def test_q1_host_absence_is_one_explicit_bounded_hold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clock = iter((1_100_000_000, 1_850_000_000))
-    sleeps: list[float] = []
-    monkeypatch.setattr(
-        rehearsal.time, "monotonic_ns", lambda: next(clock)
-    )
-
-    result = rehearsal._hold_q1_host_absent(
-        {
-            "device": "/dev/cu.test-otis",
-            "restart_reappeared_monotonic_ns": 1_000_000_000,
-        },
-        sleep=sleeps.append,
-        owner_pids=lambda _device: set(),
-    )
-
-    assert sleeps == [rehearsal.Q1_DECLARED_INITIAL_HOST_ABSENCE_S]
-    assert result["declared_initial_host_absence_ms"] == 750
-    assert result["measured_initial_host_absence_hold_ms"] == 750.0
-    assert result["host_absence_hold_started_monotonic_ns"] == 1_100_000_000
-    assert result["host_absence_hold_completed_monotonic_ns"] == 1_850_000_000
-    assert result["host_absence_owner_pids_before"] == []
-    assert result["host_absence_owner_pids_after"] == []
-
-
-def test_q1_boot_backlog_accepts_complete_or_one_quantified_prefix_loss() -> None:
-    complete = rehearsal._classify_q1_boot_backlog(
-        b"# host\nBOOT,v=1,boot_count=1\nBOOTDIAG,v=1,wd_reason=0\n"
-    )
-    assert complete["complete_boot_record_observed"] is True
-    assert complete["quantified_initial_record_loss"] == 0
-
-    truncated = rehearsal._classify_q1_boot_backlog(
-        b"# host\n,safe_mode=0\n"
-        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250\n"
-        b"BOOTDIAG,v=1,wd_reason=0\n"
-    )
-    assert truncated["initial_boot_record_prefix_truncated"] is True
-    assert truncated["quantified_initial_record_loss"] == 1
-
-    with pytest.raises(RuntimeError, match="lacks a classifiable"):
-        rehearsal._classify_q1_boot_backlog(b"BOOTDIAG,v=1\n")
 
 
 def test_q1_confirmed_reuse_observes_restart_without_upload(

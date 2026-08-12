@@ -28,7 +28,6 @@ from .no_write_prewrite_readiness_contract import (
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
-from .host_attach_health_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 
 
 TOOL_ID = "cx319_g1_offline_preflight_v1"
@@ -157,17 +156,18 @@ def evaluate(bundle_path: Path) -> dict[str, Any]:
     checks = {
         **boot_checks,
         "runtime_contract_fixture_ready_without_transactions": readiness.ready,
-        "fresh_attach_and_pps_qualification_clocks_are_separate": (
-            bundle["runtime_contract"][
-                "fresh_host_attach_maximum_uptime_s"
-            ]
-            == FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+        "running_attach_and_evidence_boundary_are_explicit": (
+            bundle["runtime_contract"]["attachment_mode"]
+            == "arbitrary_running_instrument"
+            and bundle["runtime_contract"]["firmware_uptime_limit_s"] is None
+            and bundle["runtime_contract"]["device_snapshot"]
+            == "nonce_bound_complete_generation"
+            and bundle["runtime_contract"]["evidence_session_boundary"]
+            == "separate_nonce_bound_immutable_cumulative_baseline"
             and bundle["runtime_contract"][
                 "gnss_pps_qualification_deadline_s"
             ]
             == RAW_PPS_QUALIFICATION_DEADLINE_S
-            and FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
-            < RAW_PPS_QUALIFICATION_DEADLINE_S
         ),
         "normal_allowlist_accepts_only_read_queries_and_leases": (
             all(normal_command_allowed(command) for command in allowed_examples)

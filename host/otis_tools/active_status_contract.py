@@ -142,7 +142,7 @@ def evaluate_solicited_attach_snapshot_history(
     query_nonce: int,
     frozen_uptime_s: int,
     frozen_generation: int,
-    maximum_uptime_s: int,
+    maximum_uptime_s: int | None,
 ) -> dict[str, object]:
     """Prove the retained attach boundary came from its solicited generation."""
 
@@ -163,7 +163,11 @@ def evaluate_solicited_attach_snapshot_history(
         first_uptime_s = None
     exact = (
         query_nonce > 0
-        and 0 <= frozen_uptime_s <= maximum_uptime_s
+        and frozen_uptime_s >= 0
+        and (
+            maximum_uptime_s is None
+            or frozen_uptime_s <= maximum_uptime_s
+        )
         and frozen_generation > 0
         and first_generation == frozen_generation
         and first_uptime_s == frozen_uptime_s

@@ -19,7 +19,6 @@ from typing import Any
 
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
-from .host_attach_health_contract import FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
 from .no_write_prewrite_readiness_contract import (
     ACTIVE_STATUS_KEYS,
     INHERITED_PREVIEW_BASELINE_PROVENANCE,
@@ -50,9 +49,9 @@ REHEARSAL_STAGE = "CX319_G1_EXACT_NO_WRITE_REHEARSAL"
 REHEARSAL_DURATION_S = 2700
 SELECTED_ESTIMATE_SPAN_S = 600
 Q1_INTENTIONAL_DETACH_SCHEDULE = (
-    (2.0, 0.250),
-    (5.0, 0.750),
-    (9.0, 1.250),
+    (8.0, 0.250),
+    (12.0, 0.750),
+    (16.0, 1.250),
 )
 RUN_BUNDLE_PATH = Path("cx319_g1_exact_bundle_v1.json")
 TRANSITION_RUN_DIR = Path("g1_owner_handoff_transition")
@@ -615,8 +614,11 @@ def create_bundle(
             ),
             "physical_applied_code_before_live_stimulus": "unknown",
             "missing_status_is_failure": True,
-            "fresh_host_attach_maximum_uptime_s": (
-                FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+            "attachment_mode": "arbitrary_running_instrument",
+            "firmware_uptime_limit_s": None,
+            "device_snapshot": "nonce_bound_complete_generation",
+            "evidence_session_boundary": (
+                "separate_nonce_bound_immutable_cumulative_baseline"
             ),
             "gnss_pps_qualification_deadline_s": (
                 RAW_PPS_QUALIFICATION_DEADLINE_S
@@ -790,8 +792,13 @@ def validate_frozen_bundle(path: Path) -> dict[str, Any]:
         or (
             runtime_contract_id == RUNTIME_CONTRACT_ID
             and (
-                runtime_contract.get("fresh_host_attach_maximum_uptime_s")
-                != FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+                runtime_contract.get("attachment_mode")
+                != "arbitrary_running_instrument"
+                or runtime_contract.get("firmware_uptime_limit_s") is not None
+                or runtime_contract.get("device_snapshot")
+                != "nonce_bound_complete_generation"
+                or runtime_contract.get("evidence_session_boundary")
+                != "separate_nonce_bound_immutable_cumulative_baseline"
                 or runtime_contract.get("gnss_pps_qualification_deadline_s")
                 != RAW_PPS_QUALIFICATION_DEADLINE_S
             )
@@ -987,7 +994,10 @@ def create_run_manifest(
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
             *(
-                ["reports/cx319_q1_real_io_prelude_v1.json"]
+                [
+                    "reports/cx319_q1_real_io_prelude_v1.json",
+                    "reports/cx319_q1_evidence_session_baseline_v1.json",
+                ]
                 if q1_real_io
                 else []
             ),
@@ -1005,7 +1015,10 @@ def create_run_manifest(
             "reports/cx319_g1_supervisor.log",
             RUN_BUNDLE_PATH.as_posix(),
             *(
-                ["reports/cx319_q1_real_io_prelude_v1.json"]
+                [
+                    "reports/cx319_q1_real_io_prelude_v1.json",
+                    "reports/cx319_q1_evidence_session_baseline_v1.json",
+                ]
                 if q1_real_io
                 else []
             ),

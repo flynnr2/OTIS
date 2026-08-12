@@ -16,6 +16,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import secrets
 import stat
 import subprocess
 import sys
@@ -83,11 +84,13 @@ ORCHESTRATION_FAILURE_PATH = Path(
     "reports/cx319_g1_orchestration_failure_v1.json"
 )
 Q1_PRELUDE_PATH = Path("reports/cx319_q1_real_io_prelude_v1.json")
+Q1_EVIDENCE_BASELINE_PATH = Path(
+    "reports/cx319_q1_evidence_session_baseline_v1.json"
+)
 Q1_LEASE_SEQUENCE = 1
 Q1_LEASE_LIVE_NONCE = 1362165761
 Q1_LEASE_EXPIRED_NONCE = 1362165762
 Q1_PHYSICAL_RESTART_TIMEOUT_S = 180.0
-Q1_DECLARED_INITIAL_HOST_ABSENCE_S = 0.750
 
 
 def _utc_now() -> str:
@@ -112,51 +115,6 @@ def _wait_until(
             return
         time.sleep(0.1)
     raise RuntimeError(f"timed out waiting for {description}")
-
-
-def _hold_q1_host_absent(
-    firmware_entry: dict[str, Any],
-    *,
-    sleep: Callable[[float], None] = time.sleep,
-    owner_pids: Callable[[str], set[int]] = _serial_owner_pids,
-) -> dict[str, Any]:
-    """Apply the declared late-attach stimulus with no intervening host work."""
-
-    ready_anchor = firmware_entry.get("restart_reappeared_monotonic_ns")
-    if ready_anchor is None:
-        ready_anchor = firmware_entry.get("upload_completed_monotonic_ns")
-    if not isinstance(ready_anchor, int):
-        raise ValueError("Q1 firmware entry lacks a monotonic ready anchor")
-    device = str(firmware_entry.get("device", ""))
-    owners_before = owner_pids(device)
-    if owners_before:
-        raise RuntimeError(
-            "Q1 host-absence hold began with serial owners: "
-            f"{sorted(owners_before)}"
-        )
-    started_ns = time.monotonic_ns()
-    sleep(Q1_DECLARED_INITIAL_HOST_ABSENCE_S)
-    completed_ns = time.monotonic_ns()
-    owners_after = owner_pids(device)
-    if owners_after:
-        raise RuntimeError(
-            "Q1 host-absence hold ended with serial owners: "
-            f"{sorted(owners_after)}"
-        )
-    return {
-        **firmware_entry,
-        "declared_initial_host_absence_ms": int(
-            Q1_DECLARED_INITIAL_HOST_ABSENCE_S * 1000
-        ),
-        "host_absence_hold_started_monotonic_ns": started_ns,
-        "host_absence_hold_completed_monotonic_ns": completed_ns,
-        "measured_initial_host_absence_hold_ms": round(
-            (completed_ns - started_ns) / 1_000_000.0,
-            3,
-        ),
-        "host_absence_owner_pids_before": sorted(owners_before),
-        "host_absence_owner_pids_after": sorted(owners_after),
-    }
 
 
 def _supervisor_terminal(run_dir: Path) -> bool:
@@ -269,36 +227,6 @@ def _active_snapshot(
     )
 
 
-def _classify_q1_boot_backlog(raw: bytes) -> dict[str, Any]:
-    """Classify the one permitted late-attach boot-prefix loss."""
-
-    complete_boot = b"\nBOOT,v=1," in raw
-    serial_absent_warning = (
-        b"BOOT_WARN,v=1,key=serial_absent,wait_ms=250" in raw
-    )
-    boot_diag = b"\nBOOTDIAG,v=1," in raw
-    if complete_boot and boot_diag:
-        return {
-            "complete_boot_record_observed": True,
-            "initial_boot_record_prefix_truncated": False,
-            "quantified_initial_record_loss": 0,
-            "firmware_serial_absent_warning_observed": (
-                serial_absent_warning
-            ),
-        }
-    if not complete_boot and serial_absent_warning and boot_diag:
-        return {
-            "complete_boot_record_observed": False,
-            "initial_boot_record_prefix_truncated": True,
-            "quantified_initial_record_loss": 1,
-            "firmware_serial_absent_warning_observed": True,
-        }
-    raise RuntimeError(
-        "Q1 late-attach backlog lacks a classifiable BOOT/BOOT_WARN/BOOTDIAG "
-        "sequence"
-    )
-
-
 def _exercise_q1_real_io_prelude(
     *,
     run_dir: Path,
@@ -309,7 +237,98 @@ def _exercise_q1_real_io_prelude(
     carrier_initial_ready_monotonic_ns: int,
     expected_source_sha256: str,
     expected_configuration_sha256: str,
+    expected_profile_identity: str,
+    expected_run_identity: str,
 ) -> dict[str, Any]:
+    device_nonce = secrets.randbits(32) or 1
+    evidence_nonce = secrets.randbits(32) or 1
+    while evidence_nonce == device_nonce:
+        evidence_nonce = secrets.randbits(32) or 1
+    for command in ("CONFIG?", "DAC?", "FC0?"):
+        send_timestamped_command_to_fifo(normal_fifo, command)
+    send_timestamped_command_to_fifo(
+        normal_fifo, f"ACTIVE SNAPSHOT {device_nonce}"
+    )
+    expected_build_identity = (
+        expected_source_sha256 + ":" + expected_configuration_sha256
+    )
+    _wait_until(
+        lambda: (
+            _health_has(
+                run_dir / "csv/health.csv", "firmware", "source_hash",
+                expected_source_sha256,
+            )
+            and _health_has(
+                run_dir / "csv/health.csv", "firmware", "config_hash",
+                expected_configuration_sha256,
+            )
+            and _active_snapshot(
+                run_dir, required_query_nonce=device_nonce
+            ).get(("cx317_active", "build_identity"))
+            == expected_build_identity
+            and _active_snapshot(
+                run_dir, required_query_nonce=device_nonce
+            ).get(("cx317_active", "profile_identity"))
+            == expected_profile_identity
+            and _active_snapshot(
+                run_dir, required_query_nonce=device_nonce
+            ).get(("cx317_active", "run_identity"))
+            == expected_run_identity
+            and _active_snapshot(
+                run_dir, required_query_nonce=device_nonce
+            ).get(("cx317_active", "setup_partition_healthy"))
+            == "true"
+        ),
+        15.0,
+        "Q1 nonce-bound device compatibility snapshot",
+    )
+    device_snapshot = _active_snapshot(
+        run_dir, required_query_nonce=device_nonce
+    )
+    send_timestamped_command_to_fifo(
+        normal_fifo, f"ACTIVE SNAPSHOT {evidence_nonce}"
+    )
+    _wait_until(
+        lambda: _active_snapshot(
+            run_dir, required_query_nonce=evidence_nonce
+        ).get(("cx317_active", "query_nonce"))
+        == str(evidence_nonce),
+        15.0,
+        "Q1 separately acknowledged evidence-session boundary",
+    )
+    evidence_snapshot = _active_snapshot(
+        run_dir, required_query_nonce=evidence_nonce
+    )
+    cumulative_keys = (
+        "evidence_request_sequence",
+        "correction_count",
+        "cumulative_movement_codes",
+        "dac_epoch",
+        "selected_interval_count",
+    )
+    evidence_baseline = {
+        "schema_version": 1,
+        "report_type": "cx319_q1_evidence_session_baseline_v1",
+        "status": "acknowledged",
+        "recorded_utc": _utc_now(),
+        "query_nonce": evidence_nonce,
+        "snapshot_generation": int(
+            evidence_snapshot[("cx317_active", "snapshot_generation_complete")]
+        ),
+        "firmware_uptime_s": int(
+            evidence_snapshot[("cx317_active", "uptime_s")]
+        ),
+        "cumulative_counters": {
+            key: int(evidence_snapshot[("cx317_active", key)])
+            for key in cumulative_keys
+        },
+        "semantics": (
+            "Firmware counters remain cumulative; session results are derived "
+            "as final values minus this immutable acknowledged baseline."
+        ),
+    }
+    _atomic_new_json(run_dir / Q1_EVIDENCE_BASELINE_PATH, evidence_baseline)
+
     expected_detaches = len(Q1_INTENTIONAL_DETACH_SCHEDULE)
     _wait_until(
         lambda: (
@@ -324,55 +343,6 @@ def _exercise_q1_real_io_prelude(
         20.0,
         "Q1 bounded detach and reattach schedule",
     )
-    entry_ready_monotonic_ns = flash.get("upload_completed_monotonic_ns")
-    if entry_ready_monotonic_ns is None:
-        entry_ready_monotonic_ns = flash.get("restart_reappeared_monotonic_ns")
-    if not isinstance(entry_ready_monotonic_ns, int):
-        raise RuntimeError("Q1 firmware entry lacks a monotonic ready anchor")
-    hostless_ms = (
-        carrier_initial_ready_monotonic_ns - entry_ready_monotonic_ns
-    ) / 1_000_000.0
-    declared_host_absence_ms = flash.get("declared_initial_host_absence_ms")
-    if (
-        not isinstance(declared_host_absence_ms, int)
-        or declared_host_absence_ms < 250
-    ):
-        raise RuntimeError(
-            "Q1 firmware entry lacks the declared >=250 ms host-absence stimulus"
-        )
-    if not 0.0 < hostless_ms < 2000.0:
-        raise RuntimeError(
-            "Q1 firmware-entry-to-carrier interval is outside the declared "
-            "<2000 ms "
-            f"boot/transport window: {hostless_ms:.3f} ms"
-        )
-    if (
-        flash.get("host_absence_owner_pids_before") != []
-        or flash.get("host_absence_owner_pids_after") != []
-    ):
-        raise RuntimeError("Q1 host-absence hold did not retain zero owners")
-    _wait_until(
-        lambda: (
-            _health_has(
-                run_dir / "csv/health.csv",
-                "firmware",
-                "source_hash",
-                expected_source_sha256,
-            )
-            and _health_has(
-                run_dir / "csv/health.csv",
-                "firmware",
-                "config_hash",
-                expected_configuration_sha256,
-            )
-        ),
-        15.0,
-        "Q1 exact post-attach firmware provenance",
-    )
-    boot_backlog = _classify_q1_boot_backlog(
-        (run_dir / "raw/serial.log").read_bytes()
-    )
-
     serial_module = __import__("serial")
     competing_open_rejected = False
     competing_error = ""
@@ -438,20 +408,29 @@ def _exercise_q1_real_io_prelude(
         "device": device,
         "capture_pid": capture_pid,
         "firmware_entry_operation": flash.get("operation"),
-        "firmware_entry_to_carrier_ready_ms": round(hostless_ms, 3),
-        "declared_boot_wait_ms": 250,
-        "declared_initial_host_absence_ms": declared_host_absence_ms,
-        "measured_initial_host_absence_hold_ms": flash.get(
-            "measured_initial_host_absence_hold_ms"
-        ),
-        "host_absence_owner_pids_before": flash.get(
-            "host_absence_owner_pids_before"
-        ),
-        "host_absence_owner_pids_after": flash.get(
-            "host_absence_owner_pids_after"
-        ),
-        **boot_backlog,
-        "firmware_serial_absent_warning_required": False,
+        "attachment_mode": "running_instrument",
+        "boot_record_required": False,
+        "firmware_uptime_limit_s": None,
+        "device_snapshot": {
+            "query_nonce": device_nonce,
+            "generation": device_snapshot.get(
+                ("cx317_active", "snapshot_generation_complete")
+            ),
+            "uptime_s": device_snapshot.get(("cx317_active", "uptime_s")),
+            "build_identity": device_snapshot.get(
+                ("cx317_active", "build_identity")
+            ),
+            "profile_identity": device_snapshot.get(
+                ("cx317_active", "profile_identity")
+            ),
+            "run_identity": device_snapshot.get(
+                ("cx317_active", "run_identity")
+            ),
+            "setup_partition_healthy": device_snapshot.get(
+                ("cx317_active", "setup_partition_healthy")
+            ),
+        },
+        "evidence_session_boundary": evidence_baseline,
         "post_attach_source_sha256": expected_source_sha256,
         "post_attach_configuration_sha256": (
             expected_configuration_sha256
@@ -491,12 +470,6 @@ def _exercise_q1_real_io_prelude(
         "setup_stimuli": 0,
         "control_arms": 0,
     }
-    if flash.get("operation") == "exact_cx319_g1_firmware_flash":
-        result["upload_to_carrier_ready_ms"] = round(hostless_ms, 3)
-    else:
-        result["restart_reappearance_to_carrier_ready_ms"] = round(
-            hostless_ms, 3
-        )
     _atomic_new_json(run_dir / Q1_PRELUDE_PATH, result)
     return result
 
@@ -528,12 +501,14 @@ def confirm_installed_bundle(
     record = {
         "schema_version": 1,
         "tool": TOOL_ID,
-        "operation": "confirmed_installed_cx319_g1_firmware_reuse",
+        "operation": "confirmed_installed_cx319_g1_running_attach",
         "status": "pass" if passed else "fail",
         "started_utc": _utc_now(),
         "completed_utc": _utc_now(),
         "attempt_count": 0,
         "firmware_flashes": 0,
+        "ordinary_restart_count": 0,
+        "attachment_mode": "running_instrument",
         "device": device,
         "board_before": current,
         "board_after": current,
@@ -551,7 +526,7 @@ def confirm_installed_bundle(
             "source_build_manifest_sha256"
         ],
         "installed_uf2_sha256": entry["installed_uf2_sha256"],
-        "dac_boot_operation": "none_no_reset_no_upload",
+        "dac_boot_operation": "none_running_attach_no_reset_no_upload",
         "dac_value_write_attempts": 0,
         "setup_stimulus_attempts": 0,
         "control_arm_attempts": 0,
@@ -912,17 +887,11 @@ def run_no_write_qualification(
                 defer_post_upload_identity=q1_real_io,
             )
         elif entry_mode == "reuse_confirmed_installed_firmware":
-            if q1_real_io:
-                flash = restart_confirmed_installed_bundle(
-                    bundle=bundle,
-                    arduino_cli=arduino_cli,
-                )
-            else:
-                flash = confirm_installed_bundle(
-                    bundle=bundle,
-                    output_path=run_dir / FLASH_RECORD_PATH,
-                    arduino_cli=arduino_cli,
-                )
+            flash = confirm_installed_bundle(
+                bundle=bundle,
+                output_path=run_dir / FLASH_RECORD_PATH,
+                arduino_cli=arduino_cli,
+            )
         else:
             raise ValueError("unsupported G1 firmware entry mode")
     except Exception as exc:
@@ -943,8 +912,6 @@ def run_no_write_qualification(
             "CX319 G1 firmware entry failed; retained evidence "
             f"{indexed['content_sha256']}: {exc}"
         ) from exc
-    if q1_real_io:
-        flash = _hold_q1_host_absent(flash)
     capture = subprocess.Popen(
         capture_args,
         cwd=Path(__file__).resolve().parents[2],
@@ -992,6 +959,8 @@ def run_no_write_qualification(
                 expected_configuration_sha256=bundle["firmware"][
                     "configuration_sha256"
                 ],
+                expected_profile_identity=bundle["firmware"]["profile_id"],
+                expected_run_identity=bundle["leg"]["run_identity"],
             )
         expected_build = (
             bundle["firmware"]["source_sha256"]

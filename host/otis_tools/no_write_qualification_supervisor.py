@@ -38,9 +38,6 @@ from .no_write_qualification_bundle import (
     normal_command_allowed,
     validate_run_manifest,
 )
-from .host_attach_health_contract import (
-    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
-)
 from .no_write_prewrite_readiness_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
@@ -225,13 +222,7 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
             mismatches.append("solicited post-attachment snapshot is absent")
         host_attach_uptime_s = self.state.get("host_attach_uptime_s")
         if host_attach_uptime_s is None:
-            mismatches.append("fresh host-attach firmware uptime is not recorded")
-        elif int(host_attach_uptime_s) > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            mismatches.append(
-                "fresh host-attach firmware uptime "
-                f"{host_attach_uptime_s}s exceeds "
-                f"{FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
+            mismatches.append("nonce-bound device-snapshot uptime is not recorded")
         if not mismatches and not readiness.missing:
             return readiness
         return PrewriteReadiness(
@@ -270,16 +261,12 @@ class NoWriteQualificationSupervisor(TightDeadbandSupervisor):
         self.state["host_attach_snapshot_generation"] = status_seq
         self._save()
         self._event(
-            "cx319_g1_fresh_host_attach_uptime_frozen",
+            "cx319_g1_nonce_bound_device_snapshot_frozen",
+            query_nonce=self.state["host_attach_query_nonce"],
+            snapshot_generation=status_seq,
             status_seq=status_seq,
             uptime_s=uptime_s,
-            maximum_uptime_s=FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
         )
-        if uptime_s > FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S:
-            raise ValueError(
-                f"fresh host attachment occurred at firmware uptime {uptime_s}s, "
-                f"later than {FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S}s"
-            )
 
     def _observe_telemetry_drop_baseline(self) -> None:
         if self.state.get("telemetry_drop_baseline") is not None:

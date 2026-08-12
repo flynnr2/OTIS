@@ -142,6 +142,9 @@ def test_q1_run_manifest_binds_the_exact_sub_horizon_detach_schedule(
     assert "reports/cx319_q1_real_io_prelude_v1.json" in manifest[
         "expected_artifacts"
     ]
+    assert "reports/cx319_q1_evidence_session_baseline_v1.json" in manifest[
+        "expected_artifacts"
+    ]
 
 
 def test_closed_run_manifest_uses_its_frozen_bundle_not_current_worktree(
