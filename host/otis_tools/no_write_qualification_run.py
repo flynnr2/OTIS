@@ -244,8 +244,6 @@ def _exercise_q1_real_io_prelude(
     evidence_nonce = secrets.randbits(32) or 1
     while evidence_nonce == device_nonce:
         evidence_nonce = secrets.randbits(32) or 1
-    for command in ("CONFIG?", "DAC?", "FC0?"):
-        send_timestamped_command_to_fifo(normal_fifo, command)
     send_timestamped_command_to_fifo(
         normal_fifo, f"ACTIVE SNAPSHOT {device_nonce}"
     )
@@ -254,15 +252,7 @@ def _exercise_q1_real_io_prelude(
     )
     _wait_until(
         lambda: (
-            _health_has(
-                run_dir / "csv/health.csv", "firmware", "source_hash",
-                expected_source_sha256,
-            )
-            and _health_has(
-                run_dir / "csv/health.csv", "firmware", "config_hash",
-                expected_configuration_sha256,
-            )
-            and _active_snapshot(
+            _active_snapshot(
                 run_dir, required_query_nonce=device_nonce
             ).get(("cx317_active", "build_identity"))
             == expected_build_identity
@@ -284,6 +274,21 @@ def _exercise_q1_real_io_prelude(
     )
     device_snapshot = _active_snapshot(
         run_dir, required_query_nonce=device_nonce
+    )
+    send_timestamped_command_to_fifo(normal_fifo, "CONFIG?")
+    _wait_until(
+        lambda: (
+            _health_has(
+                run_dir / "csv/health.csv", "firmware", "source_hash",
+                expected_source_sha256,
+            )
+            and _health_has(
+                run_dir / "csv/health.csv", "firmware", "config_hash",
+                expected_configuration_sha256,
+            )
+        ),
+        15.0,
+        "Q1 exact running firmware provenance",
     )
     send_timestamped_command_to_fifo(
         normal_fifo, f"ACTIVE SNAPSHOT {evidence_nonce}"
