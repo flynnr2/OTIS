@@ -62,6 +62,17 @@ byte-identical UF2, permit zero further uploads, retain the failed package as
 failed-rehearsal evidence, and repeat Q1 in full. This recovery authority does
 not extend Q2, Q3, or live-control authority.
 
+The full recovery attempt then reached the 660-second boundary with clean host
+transport but correctly rejected the installed firmware. The receiver carried
+a valid differential GGA fix and three-dimensional GSA state, while the status
+burst reused an earlier millisecond sample after interleaved UART service. The
+resulting small negative ages wrapped near `UINT32_MAX` and falsely inhibited
+freshness. The failed package is retained and the sequence remains stopped.
+On 2026-08-12 the operator explicitly authorized the narrow freshness-anchor
+repair, one new build-manifest-bound exact lower-profile flash, and one complete
+Q1 retry. Write, setup, arm, automatic-correction, Q2, Q3, and Q4 boundaries
+remain unchanged.
+
 ## Q2 physical prerequisite
 
 The Q2 transaction authority is not executable until the retained bundle names

@@ -1093,8 +1093,19 @@ with the declared recoverable state, and docs match source.
 
 ### Q1 — Exact current firmware/host real-I/O rehearsal, non-actuating
 
-Physical serial but no DAC value write. Requires explicit operator authority;
-**not executed**.
+Physical serial but no DAC value write. Explicit operator authority was granted
+on 2026-08-12. The first entry exposed and retained a host record-boundary
+detach defect before the long interval. After that repair, the full retry
+reached the 660 s boundary with 22,699 parsed records, zero parser errors, zero
+rejected commands, and only the three declared reconnects, but correctly
+stopped non-pass. GNSS status reused the periodic-burst entry `millis()` value
+after interleaved UART service had parsed newer RMC/GGA/GSA sentences: 59 of 69
+numeric metadata ages wrapped near `UINT32_MAX`, GGA fix quality was `2` in
+69/70 snapshots, GSA dimension was `3` in 69/70, yet `gsa_3d_fresh` was false
+in all 70. Package `b875720fdd245b22d094f1f7d654c8e2c863b5488371748a2a890f7e673c7e5a`
+is retained as failed Q1 evidence. The operator authorized the narrow firmware
+clock-anchor repair, one exact flash, and a complete Q1 retry; Q1 has not yet
+passed.
 
 - use the final frozen bundle and current binary;
 - boot without a host for the declared supported interval, attach through a

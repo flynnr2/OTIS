@@ -115,3 +115,20 @@ def test_status_output_interleaves_bounded_gnss_service() -> None:
         "otis_gnss_receiver_service(millis())"
     )
     assert "#if OTIS_ENABLE_GNSS_RECEIVER" in emitter
+
+
+def test_gnss_status_freshness_uses_a_local_post_service_clock_anchor() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    status = sketch[
+        sketch.index("void emit_gnss_receiver_status(void)") :
+        sketch.index("void emit_h0_pin_status(void)")
+    ]
+
+    assert status.index("const uint32_t now_ms = millis();") < status.index(
+        "otis_gnss_receiver_get_snapshot(now_ms, &status);"
+    )
+    assert sketch.count("emit_gnss_receiver_status();") == 3
+    assert "emit_gnss_receiver_status(now_ms);" not in sketch
+    assert "emit_gnss_receiver_status(millis());" not in sketch

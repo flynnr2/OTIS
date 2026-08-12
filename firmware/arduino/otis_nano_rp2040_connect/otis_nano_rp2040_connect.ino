@@ -2144,7 +2144,12 @@ void emit_env_sensor_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
-void emit_gnss_receiver_status(uint32_t now_ms) {
+void emit_gnss_receiver_status(void) {
+  // Status bursts deliberately service UART0 after every complete STS frame.
+  // Take the freshness anchor here, after any preceding burst service, so a
+  // newly parsed sentence cannot appear a few milliseconds in the future and
+  // wrap its unsigned age to nearly UINT32_MAX.
+  const uint32_t now_ms = millis();
   OtisGnssReceiverSnapshot status;
   otis_gnss_receiver_get_snapshot(now_ms, &status);
   bool raw_pps_control_eligible = false;
@@ -2693,7 +2698,7 @@ void emit_periodic_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   otis_cx317_preview_live_emit_status(&status_emit_context);
 #if OTIS_ENABLE_GNSS_RECEIVER
-  emit_gnss_receiver_status(now_ms);
+  emit_gnss_receiver_status();
 #endif
 #if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   OtisPhasePreviewLiveStatus cx318 = {};
@@ -2760,7 +2765,7 @@ void emit_periodic_status(void) {
   otis_cx317_active_live_emit_status(&status_emit_context, now_ms / 1000u);
 #endif
 #if OTIS_ENABLE_GNSS_RECEIVER
-  emit_gnss_receiver_status(now_ms);
+  emit_gnss_receiver_status();
 #endif
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
   OtisCaptureIrqReferenceStats d14_stats;
@@ -3451,7 +3456,7 @@ void configure_h1_ocxo_observe_mode(void) {
 #endif
   emit_env_sensor_status();
 #if OTIS_ENABLE_GNSS_RECEIVER
-  emit_gnss_receiver_status(millis());
+  emit_gnss_receiver_status();
 #endif
 #if OTIS_ENABLE_H1_DAC_SWEEP
   emit_sweep_status();
