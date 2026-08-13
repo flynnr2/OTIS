@@ -17,6 +17,7 @@ from .no_write_qualification_bundle import (
     PROGRAMME_ID,
     _git_identity,
     _q3_prerequisites,
+    validate_build,
     validate_frozen_bundle,
     validate_run_manifest,
 )
@@ -468,16 +469,66 @@ def validate_current_firmware_qualification_pass(
     }
 
 
+def apply_deterministic_narrow_repair(
+    *,
+    qualification: dict[str, Any],
+    build_manifest_path: Path,
+    uf2_path: Path,
+) -> dict[str, Any]:
+    """Rebind a qualified image after a deterministic narrow repair."""
+
+    firmware = validate_build(
+        leg="A",
+        build_manifest_path=build_manifest_path,
+        uf2_path=uf2_path,
+        allow_clean_ancestor_source=True,
+        allow_qualified_ancestor_image=False,
+    )
+    prior_firmware = qualification["firmware"]
+    for key in ("profile_id", "configuration_sha256", "fqbn"):
+        if firmware.get(key) != prior_firmware.get(key):
+            raise ValueError(
+                f"narrow repair changed qualified firmware {key}"
+            )
+    prior_delta = qualification.get("current_firmware_qualification")
+    if not isinstance(prior_delta, dict):
+        raise ValueError("narrow repair requires a current-firmware basis")
+    return {
+        **qualification,
+        "firmware": firmware,
+        "current_firmware_qualification": {
+            "type": "deterministic_narrow_repair_overlay",
+            "physical_basis": prior_delta,
+            "physical_basis_uf2_sha256": prior_firmware["uf2"]["sha256"],
+            "repair_scope": "setup_ack_periodic_health_confirmation_handoff",
+            "build_manifest": _binding(build_manifest_path),
+            "uf2": _binding(uf2_path),
+            "physical_requalification_repeated": False,
+            "q2_q3_repeated": False,
+        },
+    }
+
+
 def create_proposal(
     *,
     no_write_run_dir: Path,
     output_path: Path,
     current_firmware_qualification_run_dir: Path | None = None,
+    narrow_repair_build_manifest: Path | None = None,
+    narrow_repair_uf2: Path | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("G2 proposal bundle requires a clean repository")
+    if (narrow_repair_build_manifest is None) != (narrow_repair_uf2 is None):
+        raise ValueError("narrow repair requires both build manifest and UF2")
+    if narrow_repair_build_manifest is not None and (
+        current_firmware_qualification_run_dir is None
+    ):
+        raise ValueError(
+            "narrow repair requires a current-firmware physical basis"
+        )
     qualification = (
         validate_no_write_qualification_pass(no_write_run_dir)
         if current_firmware_qualification_run_dir is None
@@ -486,6 +537,12 @@ def create_proposal(
             retained_q3_run_dir=no_write_run_dir,
         )
     )
+    if narrow_repair_build_manifest is not None:
+        qualification = apply_deterministic_narrow_repair(
+            qualification=qualification,
+            build_manifest_path=narrow_repair_build_manifest,
+            uf2_path=narrow_repair_uf2,
+        )
     if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
         raise ValueError("Q3 policy differs from the current G2 policy")
     build_provenance = _firmware_build_provenance(qualification["firmware"])
@@ -693,6 +750,13 @@ def validate_proposal(path: Path) -> dict[str, Any]:
                 / retained_q3_run_id
             ),
         )
+        repair = value["g1_pass"]["current_firmware_qualification"]
+        if repair.get("type") == "deterministic_narrow_repair_overlay":
+            observed_qualification = apply_deterministic_narrow_repair(
+                qualification=observed_qualification,
+                build_manifest_path=Path(repair["build_manifest"]["path"]),
+                uf2_path=Path(repair["uf2"]["path"]),
+            )
     else:
         observed_qualification = validate_no_write_qualification_pass(
             Path(value["g1_pass"]["run_dir"])
@@ -714,6 +778,8 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument(
         "--current-firmware-qualification-run-dir", type=Path
     )
+    create.add_argument("--narrow-repair-build-manifest", type=Path)
+    create.add_argument("--narrow-repair-uf2", type=Path)
     create.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("proposal", type=Path)
@@ -725,6 +791,8 @@ def main(argv: list[str] | None = None) -> int:
             current_firmware_qualification_run_dir=(
                 args.current_firmware_qualification_run_dir
             ),
+            narrow_repair_build_manifest=args.narrow_repair_build_manifest,
+            narrow_repair_uf2=args.narrow_repair_uf2,
         )
     else:
         result = validate_proposal(args.proposal)

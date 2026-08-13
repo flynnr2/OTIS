@@ -157,6 +157,47 @@ def test_g2_current_firmware_delta_reuses_q3_and_accepts_unattended_phase(
     assert set(result["hardware_operations"].values()) == {0}
 
 
+def test_deterministic_narrow_repair_rebinds_same_firmware_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    qualification = {
+        **_fake_g1(),
+        "current_firmware_qualification": {"type": "physical_basis"},
+    }
+    manifest = tmp_path / "manifest.json"
+    uf2 = tmp_path / "image.uf2"
+    manifest.write_text("{}\n")
+    uf2.write_bytes(b"uf2")
+    repaired = {
+        **qualification["firmware"],
+        "source_sha256": "d" * 64,
+        "uf2": {
+            "path": str(uf2.resolve()),
+            "sha256": sha256(uf2.read_bytes()).hexdigest(),
+            "size_bytes": uf2.stat().st_size,
+        },
+    }
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "validate_build",
+        lambda **kwargs: repaired,
+    )
+
+    result = bounded_tight_deadband_bundle.apply_deterministic_narrow_repair(
+        qualification=qualification,
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+    )
+
+    assert result["firmware"] == repaired
+    delta = result["current_firmware_qualification"]
+    assert delta["type"] == "deterministic_narrow_repair_overlay"
+    assert delta["physical_basis"] == {"type": "physical_basis"}
+    assert delta["physical_basis_uf2_sha256"] == "c" * 64
+    assert delta["physical_requalification_repeated"] is False
+    assert delta["q2_q3_repeated"] is False
+
+
 def test_g2_rejects_pre_q3_no_write_evidence_before_reading_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
