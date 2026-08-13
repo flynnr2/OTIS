@@ -606,9 +606,10 @@ def create_bundle(
         leg=leg,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
-        allow_clean_ancestor_source=(
-            confirmed_flash_record_path is not None or sequence_gate == "Q3"
-        ),
+        # A later host-only commit does not invalidate an exact clean firmware
+        # build when its complete firmware-source and configuration hashes are
+        # still current. Preserve the original build revision as provenance.
+        allow_clean_ancestor_source=True,
         allow_qualified_ancestor_image=sequence_gate == "Q3",
     )
     host_source_revision, host_source_state = _git_identity()

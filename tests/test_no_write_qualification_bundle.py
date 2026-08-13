@@ -210,6 +210,25 @@ def test_q3_bundle_binds_passing_q1_q2_and_requires_fresh_exact_flash(
     assert run_manifest["cx319"]["qualification_sequence_gate"] == "Q3"
 
 
+def test_q1_bundle_reuses_clean_ancestor_build_with_identical_firmware_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, uf2 = _fake_build(tmp_path)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+
+    value = bundle_tool.create_bundle(
+        leg="A",
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+        serial_device="/dev/cu.test-otis",
+        output_path=tmp_path / "q1-bundle.json",
+    )
+
+    assert value["firmware"]["git_commit"] == "1" * 40
+    assert value["host_source_revision"] == "2" * 40
+
+
 def test_bundle_rejects_write_authority_even_with_recomputed_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

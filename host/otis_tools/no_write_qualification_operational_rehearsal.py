@@ -204,6 +204,18 @@ def _source_exercised_q1_detach(run_dir: Path) -> bool:
     return detaches > 0
 
 
+def _prepare_replay_transition(
+    source_manifest: Path, transition_dir: Path
+) -> None:
+    """Rebind a retained transition to its current canonical run identity."""
+    with tempfile.TemporaryDirectory(prefix="cx319-g1-transition-") as raw_temp:
+        generated = prepare_transition(
+            source_manifest,
+            Path(raw_temp) / transition_dir.name,
+        )
+        shutil.copy2(generated, transition_dir / "run_manifest.json")
+
+
 def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, Any]:
     run_dir = root / "accelerated-supervisor"
     (run_dir / "csv").mkdir(parents=True)
@@ -366,9 +378,7 @@ def _prepare_replay(
             },
         )
     transition = replay_run / TRANSITION_RUN_DIR
-    with tempfile.TemporaryDirectory(prefix="cx319-g1-transition-") as raw_temp:
-        generated = prepare_transition(manifest_path, Path(raw_temp) / "transition")
-        shutil.copy2(generated, transition / "run_manifest.json")
+    _prepare_replay_transition(manifest_path, transition)
 
     _replace_capture_stop_target(replay_run / "raw/serial.log", transition)
     primary_closure_path = (
