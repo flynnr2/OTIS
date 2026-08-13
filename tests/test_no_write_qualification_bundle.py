@@ -216,15 +216,17 @@ def test_q1_bundle_reuses_clean_ancestor_build_with_identical_firmware_inputs(
     manifest, uf2 = _fake_build(tmp_path)
     monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
     monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+    output = tmp_path / "q1-bundle.json"
 
     value = bundle_tool.create_bundle(
         leg="A",
         build_manifest_path=manifest,
         uf2_path=uf2,
         serial_device="/dev/cu.test-otis",
-        output_path=tmp_path / "q1-bundle.json",
+        output_path=output,
     )
 
+    assert bundle_tool.validate_bundle(output) == value
     assert value["firmware"]["git_commit"] == "1" * 40
     assert value["host_source_revision"] == "2" * 40
 

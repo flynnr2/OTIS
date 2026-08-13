@@ -938,11 +938,7 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         leg=leg,
         build_manifest_path=Path(firmware["build_manifest"]["path"]),
         uf2_path=Path(firmware["uf2"]["path"]),
-        allow_clean_ancestor_source=(
-            firmware_entry.get("mode")
-            == "reuse_confirmed_installed_firmware"
-            or bundle.get("qualification_sequence_gate", "Q1") == "Q3"
-        ),
+        allow_clean_ancestor_source=True,
         allow_qualified_ancestor_image=(
             bundle.get("qualification_sequence_gate", "Q1") == "Q3"
         ),
