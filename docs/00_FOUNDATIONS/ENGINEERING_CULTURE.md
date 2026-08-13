@@ -126,6 +126,15 @@ A long bench run should not be where ordinary host integration failures are
 first discovered. Conversely, a short rehearsal must not be mistaken for
 scientific evidence about real duration or plant behavior.
 
+An acknowledgement is a local fact, not an end-to-end fact. When a setup,
+application, authority, session, or epoch crosses cores or processes, the
+verification claim is complete only when the exact identity and ordering are
+observed at every decision-bearing consumer. A coherent host fixture proves
+the host path against that fixture; it does not prove that firmware actually
+propagates the corresponding state between cores. Rehearsal reports should say
+which real boundaries they exercise, and focused deterministic regressions
+should cover the boundaries they simulate.
+
 ---
 
 # Deliver the Instrument
@@ -160,6 +169,11 @@ The normal recovery sequence is:
 3. rebuild the exact affected profile;
 4. exercise the existing operational-path rehearsal; and
 5. resume the bounded, guarded experiment.
+
+For a handoff escape, "directly covers" means exercising both sides of the
+handoff and at least the first downstream decision that depends on it. Merely
+checking that the producer accepted or logged the transition recreates the
+same blind spot.
 
 Another physical qualification is justified only when its outcome could change
 safety, scientific validity, or the next decision. It must also have a

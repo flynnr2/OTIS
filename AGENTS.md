@@ -135,6 +135,21 @@ An evidence-bearing rehearsal must exercise the actual long-run path:
 Use accelerated time, replay, or fault injection for boundaries longer than a
 short bench rehearsal, while still testing the genuine real-time I/O path.
 
+For every decision-bearing handoff, define and verify an end-to-end propagation
+invariant. A producer acknowledgement proves acceptance only at that boundary;
+it does not prove that the applied code, DAC epoch, session, authority, or other
+state reached every estimator, preview, controller, recorder, and supervisor
+that consumes it. Before a live campaign, trace each critical transition from
+producer acknowledgement through all downstream consumers and assert exact
+identity and ordering at each boundary.
+
+State explicitly which real components a rehearsal exercises. A fixture-driven
+host rehearsal cannot establish a firmware cross-core, device-driver, or
+physical propagation claim merely because its synthetic records are coherent.
+Cover an unexercised boundary with the cheapest deterministic firmware or
+integration regression available, and retain the live pre-actuation gate for
+the remaining physical integration risk.
+
 ## Serial and process invariants
 
 - Maintain exactly one known serial owner and continuous bounded drainage when
@@ -177,6 +192,10 @@ toolchain, and all other relevant inputs have identical identities.
   rehearsal, and return to the finite live experiment. Add another physical
   qualification only when it can change safety, scientific validity, or the
   next decision.
+- When the defect is a missed handoff, the regression must cover both sides of
+  the boundary and the first decision-bearing downstream consumer. Checking
+  only that the producer emitted or acknowledged the transition is
+  insufficient.
 - Do not make qualification depend on the spontaneous occurrence of a rare or
   nondeterministic diagnostic. Absence of such an event is a non-result. Test
   serialization, framing, parsing, and verdict logic with a deterministic
