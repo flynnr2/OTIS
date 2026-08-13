@@ -766,6 +766,21 @@ void publish_dual_core_service_metadata(uint32_t now_ms) {
   otis_dual_core_publish_service(&applied);
 }
 
+void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
+                                               uint32_t dac_epoch,
+                                               uint32_t now_s) {
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+  otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
+                                               now_s);
+  if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
+    otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
+#else
+  (void)applied_code;
+  (void)dac_epoch;
+  (void)now_s;
+#endif
+}
+
 void service_dual_core_timing_inputs(void) {
   OtisServiceMessage message;
   for (uint32_t consumed = 0u;
@@ -872,6 +887,12 @@ void service_dual_core_timing_inputs(void) {
             OTIS_SEVERITY_INFO);
         otis_cx317_active_live_note_manual_start(
             ack.applied_code, true, millis() / 1000u);
+        OtisCx317ActiveLiveStatus active_status = {};
+        otis_cx317_active_live_get_status(&active_status, millis() / 1000u);
+        if (active_status.manual_start_confirmed &&
+            active_status.dac_epoch != 0u)
+          propagate_cx317_applied_epoch_to_previews(
+              ack.applied_code, active_status.dac_epoch, millis() / 1000u);
       } else {
         publish_dual_core_setup_phase(
             ack.kind == OtisSetupApplicationAck::Kind::Failed
@@ -1645,12 +1666,9 @@ void service_cx317_active_health(void) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
-    otis_cx317_preview_live_on_dac_applied_epoch(
+    propagate_cx317_applied_epoch_to_previews(
         dual_core_static_code.applied_code, active_status.dac_epoch,
         now_ms / 1000u);
-    if (!otis_phase_preview_live_update_applied_code(
-            dual_core_static_code.applied_code, active_status.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #endif
   }
 #endif
@@ -1786,12 +1804,9 @@ void service_cx317_active_application_outcome(void) {
 #endif
   if (active_outcome.applied) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-    otis_cx317_preview_live_on_dac_applied_epoch(
+    propagate_cx317_applied_epoch_to_previews(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u);
-    if (!otis_phase_preview_live_update_applied_code(
-            active_outcome.applied_code, active_outcome.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #else
     otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
                                            millis() / 1000u);

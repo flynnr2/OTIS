@@ -220,6 +220,33 @@ def test_setup_ack_survives_one_in_flight_pre_setup_health_sample() -> None:
     assert confirmation < loss_gate < fault
 
 
+def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    setup_ack = sketch[
+        sketch.index(
+            "OtisServiceMessageKind::SetupApplicationAcknowledgement"
+        ) : sketch.index(
+            "if (message.kind == OtisServiceMessageKind::RunControl)"
+        )
+    ]
+    helper = sketch[
+        sketch.index("void propagate_cx317_applied_epoch_to_previews") :
+        sketch.index("void service_dual_core_timing_inputs")
+    ]
+
+    manual_start = setup_ack.index("otis_cx317_active_live_note_manual_start")
+    propagation = setup_ack.index(
+        "propagate_cx317_applied_epoch_to_previews", manual_start
+    )
+    assert manual_start < propagation
+    assert "active_status.manual_start_confirmed" in setup_ack
+    assert "active_status.dac_epoch != 0u" in setup_ack
+    assert "otis_cx317_preview_live_on_dac_applied_epoch" in helper
+    assert "otis_phase_preview_live_update_applied_code" in helper
+
+
 def test_completed_response_is_not_gated_by_preview_actionability() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
