@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_session_absence_no_flash_low_cadence_retry_authorized",
+      "state": "q4_unattended_phase_authorized",
       "allowed_operations": [
         "offline_preparation",
-        "g1_no_write_bench_rehearsal"
+        "g1_no_write_bench_rehearsal",
+        "g2_live_leg"
       ],
       "effective_date": "2026-08-13",
-      "authority": "effective_one_attempt_no_flash_low_cadence_recovery_authority",
+      "authority": "effective_unattended_q4_phase_authority",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -83,7 +84,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "execute_no_flash_low_cadence_session_absence_qualification",
+      "next_gate": "execute_unattended_current_session_absence_qualification_then_bounded_q4",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
@@ -188,8 +189,9 @@
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md",
         "operator_instruction": "you are authorized to continue with flashing the board, etc.",
         "physical_presence_confirmed": true,
-        "effective": true,
+        "effective": false,
         "consumed": false,
+        "superseded_by": "q4_unattended_phase_authority",
         "programme_operation": "g1_no_write_bench_rehearsal",
         "expected_board_serial": "503533748A919118",
         "firmware_profile": "cx319_tight_lower",
@@ -210,6 +212,27 @@
         "control_arms": 0,
         "automatic_corrections": 0,
         "live_authority": false
+      },
+      "q4_unattended_phase_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/32_Q4_UNATTENDED_PHASE_AUTHORITY.md",
+        "operator_instruction": "consider it authorized ... I can not wait on your messages, so I can not always act - you should consider that you are runing this unattended, I can check in from time to time, but you can't rely on me for timely authorizations (so consider this pahse fully authorizzed), reset (for timeouts), etc.",
+        "effective": true,
+        "unattended": true,
+        "physical_presence_or_timely_reply_required": false,
+        "q4_phase_fully_authorized": true,
+        "exact_firmware_flash_for_entry_or_recovery": true,
+        "board_reset_for_entry_or_timeout_recovery": true,
+        "no_write_physical_qualification": true,
+        "fresh_q4_candidate_preparation": true,
+        "bounded_q4_lower_live_execution_after_passing_candidate_gate": true,
+        "offline_analysis_seal_registration": true,
+        "reuse_unchanged_q2_q3": true,
+        "finite_recovery_only": true,
+        "preserve_failed_attempts": true,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "phase_or_hybrid_actionable": false,
+        "g4_authorized": false
       },
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
@@ -539,12 +562,9 @@
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
-        "firmware_flash",
-        "board_reset_outside_current_session_absence_authority",
-        "automatic_retry",
+        "unbounded_or_unrecorded_retry",
         "automatic_restore",
         "duration_extension",
-        "second_q4_lower_live_run",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression"

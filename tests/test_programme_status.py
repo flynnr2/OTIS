@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
+def test_tracked_status_authorizes_unattended_q4_phase() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,17 +27,18 @@ def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_session_absence_no_flash_low_cadence_retry_authorized"
+        "q4_unattended_phase_authorized"
     )
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
     ]
     assert successor["authority"] == (
-        "effective_one_attempt_no_flash_low_cadence_recovery_authority"
+        "effective_unattended_q4_phase_authority"
     )
     assert successor["next_gate"] == (
-        "execute_no_flash_low_cadence_session_absence_qualification"
+        "execute_unattended_current_session_absence_qualification_then_bounded_q4"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -124,8 +125,9 @@ def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
         "you are authorized to continue with flashing the board, etc."
     )
     assert retry["physical_presence_confirmed"] is True
-    assert retry["effective"] is True
+    assert retry["effective"] is False
     assert retry["consumed"] is False
+    assert retry["superseded_by"] == "q4_unattended_phase_authority"
     assert retry["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
     assert retry["firmware_flash_limit"] == 0
     assert retry["manual_reset_button_limit"] == 1
@@ -143,6 +145,25 @@ def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
         retry["control_arms"],
         retry["automatic_corrections"],
     } == {0}
+    unattended = successor["q4_unattended_phase_authority"]
+    assert unattended["effective"] is True
+    assert unattended["unattended"] is True
+    assert unattended["physical_presence_or_timely_reply_required"] is False
+    assert unattended["q4_phase_fully_authorized"] is True
+    assert unattended["exact_firmware_flash_for_entry_or_recovery"] is True
+    assert unattended["board_reset_for_entry_or_timeout_recovery"] is True
+    assert unattended["no_write_physical_qualification"] is True
+    assert unattended["fresh_q4_candidate_preparation"] is True
+    assert unattended[
+        "bounded_q4_lower_live_execution_after_passing_candidate_gate"
+    ] is True
+    assert unattended["reuse_unchanged_q2_q3"] is True
+    assert unattended["finite_recovery_only"] is True
+    assert unattended["preserve_failed_attempts"] is True
+    assert unattended["minimum_code"] == 0xA800
+    assert unattended["maximum_code"] == 0xAB00
+    assert unattended["phase_or_hybrid_actionable"] is False
+    assert unattended["g4_authorized"] is False
     assert successor["q4_lower_live_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -817,12 +838,9 @@ def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
-        "firmware_flash",
-        "board_reset_outside_current_session_absence_authority",
-        "automatic_retry",
+        "unbounded_or_unrecorded_retry",
         "automatic_restore",
         "duration_extension",
-        "second_q4_lower_live_run",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression",
@@ -837,11 +855,10 @@ def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
         "cx319_stabilized_tight_deadband",
         NO_WRITE_BENCH_REHEARSAL,
     ) == successor
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

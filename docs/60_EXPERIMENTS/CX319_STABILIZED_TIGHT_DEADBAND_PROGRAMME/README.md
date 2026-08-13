@@ -189,3 +189,9 @@ The first reset occurred after an arbitrary five-minute observer wait expired,
 before capture or any command. The zero-I/O platform stop and effective
 one-reset recovery authority are recorded in
 [`31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md`](31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md).
+
+The operator subsequently made the remaining Q4 phase fully authorized for
+unattended execution, including exact flashing and reset recovery, so progress
+does not depend on timely replies. The effective scope and unchanged safety,
+scientific and evidence boundaries are recorded in
+[`32_Q4_UNATTENDED_PHASE_AUTHORITY.md`](32_Q4_UNATTENDED_PHASE_AUTHORITY.md).
