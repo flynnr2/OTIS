@@ -10,12 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_lower_manual_restart_prewrite_stop_authority_retired",
+      "state": "q4_current_session_rebinding_focused_no_write_authorized",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "g1_no_write_bench_rehearsal"
       ],
       "effective_date": "2026-08-13",
-      "authority": "no_effective_live_authority_after_manual_restart_prewrite_stop",
+      "authority": "operator_authorized_one_exact_flash_and_focused_no_write_session_rebinding_check",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -82,7 +83,29 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "qualify_current_session_rebinding_firmware_before_new_q4_candidate",
+      "next_gate": "execute_focused_current_session_rebinding_no_write_qualification",
+      "current_session_rebinding_focused_no_write_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
+        "operator_instruction": "authorized",
+        "effective": true,
+        "consumed": false,
+        "programme_operation": "g1_no_write_bench_rehearsal",
+        "expected_board_serial": "503533748A919118",
+        "firmware_profile": "cx319_tight_lower",
+        "exact_firmware_flash_limit": 1,
+        "physical_no_write_attempt_limit": 1,
+        "post_capture_observation_limit_s": 120,
+        "required_uf2_sha256": "e62cfb7c5df58a4471425a2045cc7d7fba03ed57d35eccb8cdd45ad34c7bf510",
+        "bundle_sha256": "4666041ff61ab23df2c0e4c10af5f4bf6afef526c5f3bb425ddd9d7856cd3dc9",
+        "operational_rehearsal_seal_sha256": "54121cf7aea3090b59256f5d755e702cfcf7640fdf2f7030e441548843ecbbed",
+        "q2_repeat_authorized": false,
+        "q3_repeat_authorized": false,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "live_authority": false
+      },
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
         "operator_instruction": "move_on_to_the_physical_q4_live_run",
@@ -411,7 +434,7 @@
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
-        "firmware_flash",
+        "firmware_flash_outside_current_session_rebinding_focused_no_write_authority",
         "board_reset",
         "automatic_retry",
         "automatic_restore",

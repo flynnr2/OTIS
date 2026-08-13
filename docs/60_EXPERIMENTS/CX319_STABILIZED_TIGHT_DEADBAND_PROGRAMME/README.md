@@ -166,3 +166,9 @@ The effective manual-reset-button-only live authority is recorded in
 The retained pre-write result, relaxed diagnostic deadline and firmware entry
 decision are recorded in
 [`26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md`](26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md).
+
+The operator's one-flash, maximum-120-second, zero-write authority for the
+exact current firmware's session-rebinding check is recorded in
+[`27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md`](27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md).
+It deliberately does not repeat Q2, Q3 or unchanged transport/scientific gates
+and grants no Q4 live authority.
