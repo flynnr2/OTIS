@@ -59,8 +59,6 @@ def _run(
             ("pps_gate", "aperture_validity"): "valid",
             ("pps_gate", "fifo_continuity"): "continuous",
             ("pps_gate", "association_state"): "clean",
-            ("pps_dual_observer", "agreement_state"): "MATCHING",
-            ("pps_dual_observer", "burst_active"): "false",
             ("capture", "dropped_count"): "0",
         }.items()
     ]
@@ -187,6 +185,30 @@ def test_due_probe_rejects_nonzero_firmware_fault(tmp_path: Path) -> None:
         )
     with pytest.raises(RuntimeError, match="health_dropped_count_nonzero"):
         execute_probe(run, sleep=lambda _seconds: None)
+
+
+def test_due_probe_does_not_promote_d10_diagnostics_to_authority(
+    tmp_path: Path,
+) -> None:
+    run = _run(tmp_path)
+    with (run / "csv" / "sts.csv").open("a", encoding="utf-8") as handle:
+        handle.write(
+            "STS,1,99,0,rp2040_timer0,pps_dual_observer,agreement_state,MISMATCH,WARN,0\n"
+        )
+        handle.write(
+            "STS,1,100,0,rp2040_timer0,pps_d10,buffer_overflow_count,12,WARN,32\n"
+        )
+    calls: list[str] = []
+
+    result = execute_probe(
+        run,
+        sender=lambda _fifo, command: calls.append(command)
+        or _append_sent_marker(run, command),
+        sleep=lambda _seconds: None,
+    )
+
+    assert result["status"] == "complete"
+    assert calls == ["CONFIG?"] * 60
 
 
 def test_due_probe_rejects_host_disconnect_marker(tmp_path: Path) -> None:

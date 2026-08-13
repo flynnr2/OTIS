@@ -12,6 +12,8 @@
 #define OTIS_TARGET_BOARD_NAME OTIS_BUILD_BOARD_NAME
 
 #define OTIS_GPIO_OSC_OBSERVATION 20u
+#define OTIS_GPIO_EXTERNAL_EVENT_INPUT 5u
+#define OTIS_GPIO_PPS_REFERENCE 26u
 #define OTIS_GPIO_PSEUDO_PPS_OUTPUT 15u
 #define OTIS_GPIO_GNSS_RX 1u
 #define OTIS_GPIO_GNSS_TX_SILENT 0u
@@ -30,6 +32,12 @@ enum OtisNanoRp2040Pins : uint8_t {
 
 static_assert(OTIS_PIN_PSEUDO_PPS_OUTPUT == OTIS_GPIO_PSEUDO_PPS_OUTPUT,
               "Nano RP2040 Connect D3 must map to RP2040 GPIO15");
+static_assert(OTIS_PIN_GENERIC_EVENT == OTIS_GPIO_EXTERNAL_EVENT_INPUT,
+              "Nano RP2040 Connect D10 must remain GPIO5 external-event input");
+static_assert(OTIS_PIN_PPS_REFERENCE == OTIS_GPIO_PPS_REFERENCE,
+              "Nano RP2040 Connect D14 must remain GPIO26 PPS authority");
+static_assert(OTIS_PIN_OSC_OBSERVATION == OTIS_GPIO_OSC_OBSERVATION,
+              "Nano RP2040 Connect D8 must remain GPIO20 oscillator authority");
 static_assert(OTIS_PIN_GNSS_RX == OTIS_GPIO_GNSS_RX,
               "Nano RP2040 Connect Serial1 RX/D0 must map to GPIO1");
 static_assert(OTIS_PIN_GNSS_TX_SILENT == OTIS_GPIO_GNSS_TX_SILENT,

@@ -137,16 +137,13 @@ Derived outputs may include:
 
 These are not firmware responsibilities.
 
-## Temporary D10 PPS Witness Telemetry
+## Retired D10 PPS witness experiment
 
-For the H1 PPS anomaly investigation, firmware can be built with
-`OTIS_ENABLE_PPS_DUAL_OBSERVER=1`. D14 remains the normal PPS reference path.
-D10 is configured as `INPUT`, rising-edge only, with no internal pull, and is
-temporarily tied to the same physical PPS signal as an independent diagnostic
-witness.
+Historical H1 anomaly captures may contain `pps_d10` and
+`pps_dual_observer` status rows from a temporary experiment that connected D10
+to PPS. Current firmware no longer implements or emits that experiment.
 
-Periodic `STS` records expose raw diagnostic accounting without changing REF
-acceptance, count gates, DAC behavior, or control eligibility:
+Those historical `STS` records included:
 
 - `pps_d14.raw_edge_count`, `accepted_pps_count`, `rejected_short_count`,
   `rejected_long_count`, `last_raw_timestamp`, `last_raw_interval`,
@@ -157,18 +154,7 @@ acceptance, count gates, DAC behavior, or control eligibility:
 - `pps_dual_observer.d14_raw_minus_d10_raw`, `agreement_state`,
   `burst_active`, and `burst_count`.
 
-The D14 and D10 interval diagnostics classify intervals with modular RP2040
-`micros()`-derived timer arithmetic. A normal PPS interval that crosses the
-32-bit timer rollover must remain a normal interval and must not increment
-`rejected_long_count` or the D10 long-interval diagnostic. Historical captures
-made before this correction can still contain rollover-contaminated D14
-`rejected_long_count` values; preserve those raw counts as evidence and qualify
-them with host-side unwrapped REF analysis before using them in readiness
-judgements.
-
-Interpretation is diagnostic: both pins bursting suggests shared electrical or
-upstream PPS behavior; D14-only activity points toward the D14 capture/backend or
-downstream path; D10-only activity points toward D10-local wiring/configuration
-or threshold asymmetry; normal raw counters with anomalous emitted records points
-downstream of capture. Sampled pin level is evidence, but it cannot reconstruct
-electrical glitches shorter than ISR latency.
+Preserve those rows as historical raw evidence and interpret them only with the
+revision and manifest that created them. In the current canonical topology D10
+is `CH0`, an external event/edge input to be measured against the disciplined D8
+oscillator; D14 alone is `REF`/PPS.

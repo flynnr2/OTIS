@@ -90,17 +90,6 @@ void add_edge_capture_owner(uint16_t gpio, const char *role) {
 #endif
 }
 
-void add_pps_witness_owner(void) {
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
-                  OTIS_PIN_GENERIC_EVENT, OTIS_OWNER_PPS_WITNESS,
-                  "diagnostic_pps_input");
-  add_bound_claim(OtisResourceType::GpioIrq, kRp2040Instance,
-                  OTIS_PIN_GENERIC_EVENT, OTIS_OWNER_PPS_WITNESS,
-                  "diagnostic_pps_rising");
-#endif
-}
-
 void add_count_observation_owner(void) {
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
                   OTIS_PIN_OSC_OBSERVATION, OTIS_OWNER_COUNT_OBSERVATION,
@@ -121,7 +110,7 @@ void add_count_observation_owner(void) {
                 kLongGatePioProgramLength);
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   add_pio_owner(OTIS_OWNER_COUNT_OBSERVATION,
-                "pps_dual_input_cumulative_snapshot",
+                "d8_d14_cumulative_snapshot",
                 kPpsSnapshotPioProgramLength);
   add_dynamic_claim(OtisResourceType::DmaChannel, kRp2040Instance, 1u,
                     OTIS_OWNER_COUNT_OBSERVATION,
@@ -268,7 +257,6 @@ bool otis_resource_registry_begin(void) {
   add_edge_capture_owner(OTIS_PIN_GENERIC_EVENT, "generic_event_input");
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPS_PPS
   add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE, "pps_reference_input");
-  add_pps_witness_owner();
 #elif OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
@@ -277,7 +265,6 @@ bool otis_resource_registry_begin(void) {
 #else
   add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE, "pps_reference_input");
 #endif
-  add_pps_witness_owner();
   add_count_observation_owner();
 #endif
 

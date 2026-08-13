@@ -15,7 +15,7 @@
     },
     "hybrid_candidate_profile": {
       "path": "profiles/discipline/cx318_hybrid_preview_candidates_v1.json",
-      "sha256": "4c316e81f2b87cc66652027b2d9884538022213f6aee08ea063aa4be5d87953c"
+      "sha256": "b967f74532936cb5a3940c5eb2ac91fa80c1e3e5ead6ad8ccafac780a81ee49d"
     },
     "replay_corpus": {
       "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",
@@ -27,7 +27,7 @@
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
     }
   },
   "selection": {

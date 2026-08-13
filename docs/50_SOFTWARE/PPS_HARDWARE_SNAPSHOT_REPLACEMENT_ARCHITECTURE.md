@@ -280,12 +280,11 @@ aperture.
 If the PIO and GPIO observers do not see the same sequence, no clean CNT sample
 is published until association is re-established.
 
-### D10 dual observer
+### D10 exclusion from the PPS fabric
 
-The D10 observer stays independent and diagnostic-only. It must never trigger,
-reset, validate, or substitute for the PIO snapshot. Disagreement among D10,
-D14, and PIO sequences is a fail-closed quality diagnostic, not a voting
-mechanism.
+D10 is the external event/edge input, not a PPS observer. The temporary H1
+D10-as-PPS witness experiment is retired from current firmware. D10 must not
+trigger, reset, validate, veto, or substitute for D14 or the PIO snapshot.
 
 ## Resource ownership
 
@@ -301,7 +300,7 @@ implementation, not ahead of it.
 | PIO RX DREQ | Snapshot transport request |
 | DMA channel | One dynamically claimed high-priority channel |
 | SRAM | One aligned 128 × 32-bit snapshot ring plus consumer state |
-| D10 / GPIO5 | Existing independent PPS witness; unchanged |
+| D10 / GPIO5 | External event/edge input; unclaimed by this PPS backend |
 
 The ownership model must represent D14's two read-only consumers without
 claiming that the GPIO IRQ owns the count boundary. A suitable composite role is
@@ -344,7 +343,7 @@ Startup/status telemetry should additionally expose:
   sequence;
 - snapshot overwrite count, PIO RX stall state, DMA error state, and recovery
   session number;
-- D14-to-PIO association state and D10 observer disagreement counters; and
+- D14-to-PIO association state; and
 - an explicit `qualified=false` state until the new backend passes its own
   qualification campaign.
 
@@ -376,7 +375,7 @@ Each stage should be a reviewable commit and leave all no-hardware checks green.
    - keep the new backend unreachable except from focused tests.
 3. **Measurement integration**
    - replace the ISR boundary hook with PIO/DMA snapshot consumption;
-   - keep D14 REF capture and D10 witness independent;
+   - keep D14 REF capture authoritative and D10 outside the PPS path;
    - implement sequence association, down-counter delta, validity, rearm, and
      session behavior.
 4. **Contracts, resources, and host**

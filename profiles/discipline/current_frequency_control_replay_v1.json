@@ -5,9 +5,9 @@
   "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
   "bindings": {
     "current_active_policy_root_path": "profiles/discipline/cx317_bounded_active_v2.json",
-    "current_active_policy_root_sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42",
+    "current_active_policy_root_sha256": "9fb037a5f435361928d36a2a6bc7a010b74100588cd83692051d6a093da9f27f",
     "plant_model_path": "profiles/plant_models/cx317_pps_gated_v2.json",
-    "plant_model_sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1",
+    "plant_model_sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
     "selected_estimator_path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
     "selected_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
     "source_contract_sha256": "d275d73e21bf44e9b34cda047d4265fe4ade787475933227fc86dd6c78be7c90"

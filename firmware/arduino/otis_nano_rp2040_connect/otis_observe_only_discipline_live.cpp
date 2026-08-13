@@ -57,9 +57,9 @@ constexpr char kUncertaintyModelRef[] =
 constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_TIMER0;
 constexpr char kRuntimeApplicabilityMode[] = "observe_only";
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
-    OTIS_ENABLE_PPS_DUAL_OBSERVER
+    OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 constexpr char kRuntimeTopologyId[] =
-    "h1_run_020_g17_reworked_d14_d10_pps_witness";
+    "cx317_run020_g17_d8_pps_gated_ratio_v1";
 #else
 constexpr char kRuntimeTopologyId[] = "unsupported_topology";
 #endif

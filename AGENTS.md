@@ -23,6 +23,15 @@ lasting preference changes.
 
 ## Timing, telemetry, and control semantics
 
+- Treat the bench topology as invariant unless the operator explicitly changes
+  it: D14 is the sole authoritative PPS/reference input, D8 is the sole
+  authoritative oscillator/count input, and D10 is the external event/edge
+  input to be measured against the disciplined oscillator. D10 must never be
+  configured, named, interpreted, or compared as a PPS witness, nor enter PPS
+  validity, setup authority, control eligibility, or actuation.
+- Treat GNSS serial metadata as qualification evidence from the same receiver
+  that supplies D14 PPS. It may qualify receiver state but must never replace
+  D14 as timing authority.
 - Hardware capture establishes timing truth. The CPU may observe timing events
   but interrupt latency, scheduling, logging, networking, UI, and storage must
   not define or contaminate their timestamps.

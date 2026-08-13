@@ -44,8 +44,6 @@ REQUIRED_LATEST_HEALTH = {
     ("pps_gate", "aperture_validity"): "valid",
     ("pps_gate", "fifo_continuity"): "continuous",
     ("pps_gate", "association_state"): "clean",
-    ("pps_dual_observer", "agreement_state"): "MATCHING",
-    ("pps_dual_observer", "burst_active"): "false",
 }
 
 

@@ -63,13 +63,9 @@ def test_stop_onset_full_fifo_startup_and_counter_wrap_fail_closed() -> None:
     assert transport["overwrite_by_one"].startswith("detected")
 
 
-def test_d14_and_d10_isrs_only_preserve_compact_events() -> None:
+def test_d14_isr_only_preserves_compact_reference_events() -> None:
     capture = (FW / "otis_capture_irq.cpp").read_text(encoding="utf-8")
     d14 = _function_body(capture, "void handle_capture_edge(void)")
-    d10_source = (FW / "otis_pps_dual_observer.cpp").read_text(
-        encoding="utf-8"
-    )
-    d10 = _function_body(d10_source, "void handle_d10_witness_edge(void)")
 
     prohibited = (
         "Serial",
@@ -83,21 +79,20 @@ def test_d14_and_d10_isrs_only_preserve_compact_events() -> None:
         "float",
         "double",
     )
-    for body in (d14, d10):
-        assert not any(token in body for token in prohibited)
-        assert "otis_capture_ticks_now_from_isr" in body
-        assert "gpio_get" in body
+    assert not any(token in d14 for token in prohibited)
+    assert "otis_capture_ticks_now_from_isr" in d14
+    assert "gpio_get" in d14
     assert "otis_capture_ring_push_from_isr" in d14
-    assert "push_d10_event_from_isr" in d10
     assert "d14_sampled_high_count" not in d14
     assert "d14_last_raw_timestamp" not in d14
-    assert "d10_sampled_high_count" not in d10
-    assert "d10_last_edge_timestamp" not in d10
 
     timestamp = d14.index("otis_capture_ticks_now_from_isr()")
     sampled_level = d14.index("gpio_get(capture_gpio)")
     ring_publish = d14.index("otis_capture_ring_push_from_isr")
     assert timestamp < sampled_level < ring_publish
+
+    assert not (FW / "otis_pps_dual_observer.cpp").exists()
+    assert not (FW / "otis_pps_dual_observer.h").exists()
 
 
 def test_d14_isr_has_no_count_aperture_control() -> None:

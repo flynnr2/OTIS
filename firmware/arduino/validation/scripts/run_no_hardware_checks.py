@@ -65,7 +65,7 @@ def commands_for_tier(tier: str) -> tuple[tuple[str, ...], ...]:
         )
     if tier == "release":
         return (
-            (PYTHON, "-m", "pytest"),
+            (PYTHON, "-m", "pytest", "-m", "not historical"),
             (PYTHON, "tools/firmware_matrix.py", "--tier", "release"),
         )
     if tier == "historical":

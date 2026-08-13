@@ -23,16 +23,16 @@
     },
     "inherited_frequency_controller_numerics": {
       "path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
-      "sha256": "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521",
+      "sha256": "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6",
       "scope": "integrator_gain_rounding_step_range_and_timing_only; the historical float deadband is replaced by this policy's integer hysteretic state machine"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec"
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
     },
     "selected_relative_phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
@@ -40,7 +40,7 @@
     },
     "selected_hybrid_preview": {
       "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
-      "sha256": "08f1897bfaefc5f248d5a3ed4bb160acb447cc010ec744917ab36a573ca45c33"
+      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76"
     }
   },
   "prerequisites": {

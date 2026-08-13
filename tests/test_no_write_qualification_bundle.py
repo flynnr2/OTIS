@@ -11,6 +11,12 @@ from host.otis_tools import no_write_qualification_preflight
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
 
+# This creator is bound to the consumed Q1--Q3 authority overlay and its exact
+# historical policy identity. Current release verification must not rewrite or
+# migrate that authority merely because the active CX319 policy has advanced.
+pytestmark = pytest.mark.historical
+
+
 def _fake_build(tmp_path: Path, leg: str = "A") -> tuple[Path, Path]:
     matrix = load_matrix(bundle_tool.MATRIX_PATH)
     profile_id = bundle_tool.leg_spec(leg)["profile_id"]

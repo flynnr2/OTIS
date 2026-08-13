@@ -556,8 +556,6 @@ const char *otis_timing_progress_phase_name(OtisTimingProgressPhase phase) {
       return "loop_enter";
     case OtisTimingProgressPhase::ServiceInput:
       return "service_input";
-    case OtisTimingProgressPhase::PpsObserver:
-      return "pps_observer";
     case OtisTimingProgressPhase::CaptureBackend:
       return "capture_backend";
     case OtisTimingProgressPhase::BoundaryDrain:

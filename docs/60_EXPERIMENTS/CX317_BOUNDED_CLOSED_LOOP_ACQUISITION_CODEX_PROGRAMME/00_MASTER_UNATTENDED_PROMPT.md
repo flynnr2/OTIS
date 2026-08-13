@@ -1,5 +1,10 @@
 # Master Prompt: CX317 Bounded Closed-Loop Acquisition Programme
 
+> Historical topology note: this completed programme included a temporary
+> same-PPS D10 witness experiment. Current OTIS topology forbids that use: D14
+> alone is PPS authority, D8 is the oscillator input, and D10 is reserved for
+> independent external-event measurement.
+
 You are operating in the OTIS repository on the same computer as the connected
 bench rig. Execute this programme in order and continue through every safe gate
 without asking for routine confirmation.
@@ -174,7 +179,8 @@ if any of these occurs:
 - GNSS metadata invalid, stale, checksum-invalid, fix-invalid or inconsistent
   with the declared receiver policy;
 - missing, duplicate, short, long or discontinuous PPS used by the estimator;
-- D14/D10 disagreement when the run declares both connected to the same PPS;
+- any current use of D10 as PPS witness, authority, health veto, or control
+  input;
 - snapshot sequence gap, association loss, zero/saturated count, FIFO/DMA/ring
   fault, parser loss or transport discontinuity;
 - estimator invalidity or loss of required fresh estimator support;

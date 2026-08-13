@@ -427,7 +427,6 @@ def test_loader_fails_closed_on_invalid_snapshot_status(tmp_path: Path) -> None:
         ("boundary_ring_dropped_count", "1", "health_boundary_ring_dropped_count_nonzero"),
         ("association_loss_count", "2", "health_association_loss_count_nonzero"),
         ("actuation_authorized", "true", "unsafe_actuation_authorized_true"),
-        ("agreement_state", "MISMATCH", "d14_d10_disagreement"),
     ],
 )
 def test_loader_fails_closed_on_run_health_fault(
@@ -442,6 +441,30 @@ def test_loader_fails_closed_on_run_health_fault(
     inputs = load_run_inputs(run_dir, _config(spans=(1,)))
     assert expected_reason in inputs.global_reason_codes
     assert inputs.invalid_interval_count == 1
+
+
+@pytest.mark.parametrize(
+    ("health_key", "health_value"),
+    [
+        ("agreement_state", "MISMATCH"),
+        ("d14_raw_minus_d10_raw", "7"),
+        ("buffer_overflow_count", "12"),
+    ],
+)
+def test_loader_keeps_d10_observations_diagnostic_only(
+    tmp_path: Path, health_key: str, health_value: str
+) -> None:
+    run_dir = _write_run(
+        tmp_path,
+        [10_000_000],
+        health_key=health_key,
+        health_value=health_value,
+    )
+
+    inputs = load_run_inputs(run_dir, _config(spans=(1,)))
+
+    assert inputs.global_reason_codes == ()
+    assert inputs.invalid_interval_count == 0
 
 
 def test_loader_fails_closed_on_transport_fault(tmp_path: Path) -> None:

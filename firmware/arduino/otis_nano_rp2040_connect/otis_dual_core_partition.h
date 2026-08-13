@@ -10,8 +10,8 @@ constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
 constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
-// The non-active portion of Stage 7 timing health reaches 71 telemetry
-// messages. ACTIVE status has one fixed 29-field vocabulary plus three
+// The non-active portion of Stage 7 timing health reaches 67 telemetry
+// messages. ACTIVE status has one fixed 33-field vocabulary plus three
 // complete-generation envelope records in both the direct and cross-core
 // publishers. A periodic health burst and one ACTIVE? response can align
 // while Core 0 is occupied with serial transport.
@@ -20,18 +20,18 @@ constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
     OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
     OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT;
-constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u;
+constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 67u;
 constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 142u,
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 139u,
               "Stage 7 health plus one ACTIVE? response must remain exact");
-// The Stage 4 split boot produced 163 one-time records before the redundant
-// count-path validity alias was removed. The three complete-generation
-// envelope records are now part of the declared startup budget.
+// Retain the already-proven conservative split-boot capacity after removing
+// the obsolete D10 witness records; a smaller exact startup count is not
+// needed to protect the finite queue.
 constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u;
 constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 192u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
@@ -63,7 +63,6 @@ enum class OtisTimingProgressPhase : uint8_t {
   Reset,
   LoopEnter,
   ServiceInput,
-  PpsObserver,
   CaptureBackend,
   BoundaryDrain,
   CaptureDrain,

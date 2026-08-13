@@ -186,11 +186,9 @@ missing-edge total.
 Suggested first bench sequence:
 
 1. GPIO loopback: jumper `D7` to `D10`, build `SW1_GPIO_LOOPBACK` with
-   `OTIS_CAPTURE_BACKEND_PIO_FIFO` and `OTIS_ENABLE_PPS_DUAL_OBSERVER=0`, and
-   confirm `EVT` rows and PIO counters.
+   `OTIS_CAPTURE_BACKEND_PIO_FIFO`, and confirm `EVT` rows and PIO counters.
 2. GPS PPS: wire conditioned GPS PPS to `D14`, build `SW1_GPS_PPS` with the PIO
-   backend and `OTIS_ENABLE_PPS_DUAL_OBSERVER=0`, and confirm `REF` rows and
-   host PPS cadence checks.
+   backend, and confirm `REF` rows and host PPS cadence checks.
 3. TCXO/count observation: use `SW1_TCXO_OBSERVE` with the selected
    count-observation backend; do not feed raw high-rate oscillator edges into
    the SW1.5a PIO FIFO edge path.
@@ -446,12 +444,10 @@ The SW1 live-capture pass uses this Arduino pin convention:
 `SW1_GPIO_LOOPBACK` additionally drives `D7` as a local output. Jumper `D7` to
 `D10` for that mode only.
 
-For the temporary H1 PPS anomaly investigation,
-`OTIS_ENABLE_PPS_DUAL_OBSERVER` is currently checked in as `1`. In that
-configuration `D14` remains the PPS reference path and `D10` is a
-diagnostic-only rising-edge PPS witness configured as `INPUT` with no internal
-pull. Set it to `0` for `SW1_GPIO_LOOPBACK` or any non-IRQ capture backend; the
-compile guards reject those ambiguous combinations.
+D10 remains the external event/edge input. It is not a PPS witness and is not
+claimed by the TCXO/OCXO PPS-gated profiles. A future D10 measurement profile
+must capture or count its external edges against the disciplined D8 oscillator
+under an explicit event-measurement contract.
 
 These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
 conditioning, voltage limits, and final bench wiring remain hardware

@@ -75,7 +75,6 @@ FAULT_COUNTER_KEYS = frozenset(
         "boundary_ring_dropped_count",
         "boundary_sequence_duplicate_count",
         "boundary_sequence_gap_count",
-        "buffer_overflow_count",
         "count_saturated_count",
         "counter_snapshot_invalid_count",
         "dropped_count",
@@ -413,14 +412,6 @@ def _health_global_reasons(path: Path) -> tuple[str, ...]:
                 reasons.add(f"health_{key}_malformed")
         if key in {"actuation_authorized", "actionable"} and value.lower() == "true":
             reasons.add(f"unsafe_{key}_true")
-        if key == "agreement_state" and value != "MATCHING":
-            reasons.add("d14_d10_disagreement")
-        if key == "d14_raw_minus_d10_raw":
-            try:
-                if int(value, 0) != 0:
-                    reasons.add("d14_d10_count_difference")
-            except ValueError:
-                reasons.add("d14_d10_count_difference_malformed")
     return tuple(sorted(reasons))
 
 

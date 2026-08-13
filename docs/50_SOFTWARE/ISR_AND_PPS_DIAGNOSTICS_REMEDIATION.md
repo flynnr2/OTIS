@@ -22,7 +22,6 @@ Costs below are source-level upper bounds, not bench timing measurements.
 | Source / handler | Trigger and effective frequency | State read | State written | Peripheral and queue operations | Branches / loops / calls | Policy in ISR | Cost and justification |
 |---|---|---|---|---|---|---|---|
 | D14 GPIO26 / `handle_capture_edge` | Configured GPIO edge; nominal PPS is 1 Hz, malformed bursts remain input-limited | RP2040 `timerawl`, one `gpio_get`, immutable channel/config scalars, ring head/tail | One compact `OtisCapturedEdge`, ring head, raw D14 producer sequence or accepted capture sequence; ring drop counter on full | Direct timer/GPIO reads; one bounded capture-ring push | Fixed configuration/level branches and one capacity branch; no loop; calls only the inline timer helper, SDK GPIO read, and fixed push | None | Constant time: one timer register read, one GPIO register read, one fixed record copy. Sequence increments remain because they preserve causality and expose gaps. |
-| D10 GPIO5 / `handle_d10_witness_edge` | Diagnostic rising edge; nominal 1 Hz plus malformed bursts | RP2040 `timerawl`, one `gpio_get`, witness ring head/tail | One `D10WitnessEvent`, ring head, saturating raw/overflow/buffered counters | Direct timer/GPIO reads; one bounded witness-ring push | One capacity branch; no loop; fixed helper calls only | None | Constant time. Timestamp and sampled level are the minimum witness evidence; level statistics, intervals, and burst classification are deferred. |
 | Divided oscillator GPIO / `handle_tcxo_observation_edge` | Only the explicitly divided GPIO-counter profile; rate must satisfy that profile's interrupt-safe constraint | `tcxo_edge_count` | `tcxo_edge_count` | None | One increment; no branch, loop, or call | None | Minimum possible software edge counter. The counter is gate-bounded and read/reset by foreground; raw MHz input is prohibited. |
 
 No timer/alarm, DMA IRQ, PIO IRQ handler, serial/USB interrupt callback,
@@ -35,7 +34,7 @@ callback code and has no OTIS policy callback.
 There are no serial calls, formatting, floating-point operations, estimators,
 control decisions, dynamic allocation, policy classifiers, PIO stop/start/read,
 or DMA manipulation in repository-owned handlers. Static tests extract the
-actual handler bodies, require direct RP2040 GPIO/timer reads for D14/D10, and
+actual handler bodies, require direct RP2040 GPIO/timer reads for D14, and
 enforce the principal prohibitions.
 
 ## Removed interrupt responsibilities
@@ -50,19 +49,17 @@ state machine owns oscillator counting and the cumulative PPS snapshot. DMA
 transports the already-owned snapshot. Foreground associates the immutable PIO
 word with the queued D14 record and rejects any mismatch.
 
-D10 previously computed intervals and applied short/long policy in its ISR.
-Those operations now run in `otis_pps_dual_observer_service`; the ISR only
-preserves the event. Its sampled-level counts and latest timestamp also move in
-foreground from the queued raw record. D14 sampled-level counts, accepted
-counts, latest timestamps, and interval classification likewise update only
-when foreground drains the immutable capture record.
+The temporary D10-as-PPS witness implementation has been retired. D10 is the
+external event/edge input and remains outside this PPS diagnostic path. D14
+sampled-level counts, accepted counts, latest timestamps, and interval
+classification update only when foreground drains the immutable capture
+record.
 
 ## Queue and counter audit
 
 | Queue / transport | Capacity and overflow | Continuity response |
 |---|---|---|
 | D14/general capture ring | 31 usable fixed records; reject-new on full; saturating drop counter; no overwrite | Producer sequence plus drop status exposes loss. PPS association cannot silently recover through a dropped REF. |
-| D10 witness ring | 15 usable fixed records; reject-new on full; saturating overflow counter; no overwrite | D10 is diagnostic-only; overflow remains explicit and cannot validate/rearm PPS. |
 | REF/SNP association ring | 127 usable fixed records; reject-new; saturating drop counter and overflow-pending flag | Overflow flags the next evidence, fails measurement validity, and cannot rearm physical state merely by draining. |
 | PIO RX + snapshot DMA ring | 8-word RX FIFO and 128-word SRAM ring; producer-distance overwrite detection; saturating overwrite/continuity/fault counters | Transport stops or association rearms; unread words are discarded and a fresh anchor plus adjacent snapshot is required. |
 
