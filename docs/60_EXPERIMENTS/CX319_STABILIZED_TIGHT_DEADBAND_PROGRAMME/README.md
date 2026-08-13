@@ -6,6 +6,11 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
+Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence is
+complete, Q4 lower-side offline preparation has passed, and a non-effective
+finite-live authority proposal is ready for explicit operator review. Only
+`offline_preparation` is permitted; no Q4/G2 live authority is effective.
+
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
 live envelope and conditionally authorized G3 if G2 passes and a fresh upper
@@ -108,7 +113,7 @@ The successful exact flash, retained zero-write timing stop and corrected
 recovery boundary are recorded in
 [`15_G1_RECOVERY_HOST_TIMING_STOP.md`](15_G1_RECOVERY_HOST_TIMING_STOP.md).
 
-The operator's current sequential authority for the adversarial-review Q1,
+The operator's consumed sequential authority for the adversarial-review Q1,
 electrically inhibited or stubbed Q2, and no-write Q3 gates is recorded in
 [`16_Q1_Q3_SEQUENCE_AUTHORITY.md`](16_Q1_Q3_SEQUENCE_AUTHORITY.md). Q4 and all
 live actuation remain blocked.
@@ -118,3 +123,11 @@ which maps to the CX319 G2 lower-side finite frequency-only leg, is
 [`17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md`](17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md).
 It stops after offline verification and an optional non-effective authority
 proposal; it grants no hardware or live-control authority.
+
+The passing Q4 offline result, exact candidate identities and Q3-to-Q4
+transfer audit are recorded in
+[`18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md`](18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md).
+
+The proposed finite live envelope is recorded for review in
+[`19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md`](19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md).
+That draft is not effective and cannot be executed.

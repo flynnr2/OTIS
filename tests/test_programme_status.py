@@ -26,14 +26,55 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q1_q3_sequence_complete_no_q4_authority"
+    assert successor["state"] == "q4_offline_ready_no_live_authority"
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "explicit_operator_q1_q3_sequence_authority"
+        "cx319_q4_offline_readiness_no_live_authority"
     )
     assert successor["next_gate"] == (
-        "new_explicit_post_q3_operator_decision_q4_remains_forbidden"
+        "explicit_operator_review_of_non_effective_q4_lower_live_authority_draft"
     )
+    assert successor["q4_offline_readiness"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_authority_proposal_v1.json"
+        ),
+        "outcome": "q4_offline_ready_for_separate_live_authority_decision",
+        "source_revision": "2f46e1f01da75a17c69b259626d282df4ca1bcdc",
+        "proposal_bundle_sha256": (
+            "f08c9a581ec92271828f9c7c0ff87b5"
+            "e0d1ce04e6015c92d4100c75f7882bbfe"
+        ),
+        "proposal_file_sha256": (
+            "4c83e4736af8ab1a5ef07840c28a6b98"
+            "841932fcbf3402a0ae329c554cbf9a40"
+        ),
+        "preflight_file_sha256": (
+            "444dc38dcff124341b868a9ba48e510e5"
+            "0b51dce3c1d99a286b8e4db12f4068b"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "95ec5a8916d1f63f73a62308823ec32d"
+            "43acaf2b580cf28d418698094b49584b"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "2d45d94cdfd4477ca5f028e1007843ae"
+            "385539c91add7d05abec593f43a0d7c7"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "4e6d20094a80e9a3ffcabc6db93302b4"
+            "9acfbf5d48a2da6faeaa70ebe1f65084"
+        ),
+        "release_tests_passed": 723,
+        "supported_profiles_passed": 2,
+        "expected_failure_guards_passed": 5,
+        "live_authority_effective": False,
+    }
     assert successor["operator_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -390,7 +431,6 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "phase_or_hybrid_actuation",
         "g4_progression",
     ]
-
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("platform_stabilization")
 
@@ -408,6 +448,36 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
+
+
+def test_q4_lower_live_authority_proposal_is_machine_readable_and_non_effective() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_FINITE_LIVE_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["required_separate_transition"] == {
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "explicit_operator_decision": True,
+        "effective_authority_record": True,
+        "exact_candidate_and_rehearsal_binding": True,
+    }
+    assert proposal["proposed_future_entry"]["firmware_entry"] == (
+        "verify_installed_exact_q3_image_no_flash"
+    )
+    assert proposal["proposed_future_live_envelope"][
+        "phase_or_hybrid_actionable"
+    ] is False
 
 
 def test_status_contract_rejects_an_inactive_active_programme(
