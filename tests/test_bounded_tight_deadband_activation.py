@@ -210,6 +210,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "sha256": policy_sha,
     }
     fake_g1 = {
+        "qualification_sequence_gate": "Q3",
         "run_id": "g1-pass",
         "run_dir": "/retained/g1-pass",
         "run_manifest_sha256": "1" * 64,
@@ -219,6 +220,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "seal_file_sha256": "5" * 64,
         "evidence_content_sha256": "6" * 64,
         "bundle_sha256": "7" * 64,
+        "sequence_prerequisites": {"q1": {}, "q2": {}},
         "firmware": firmware,
         "policy": policy,
     }

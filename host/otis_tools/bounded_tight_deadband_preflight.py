@@ -81,8 +81,10 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             and OFFLINE_PREPARATION in status["allowed_operations"]
             and "g2_live_leg" not in status["allowed_operations"]
         ),
-        "passed_g1_same_firmware_and_policy_bound": (
-            proposal["g1_pass"]["firmware"] == proposal["firmware"]
+        "passed_q1_q3_sequence_same_firmware_and_policy_bound": (
+            proposal["g1_pass"]["qualification_sequence_gate"] == "Q3"
+            and set(proposal["g1_pass"]["sequence_prerequisites"]) == {"q1", "q2"}
+            and proposal["g1_pass"]["firmware"] == proposal["firmware"]
             and proposal["g1_pass"]["policy"] == proposal["policy"]
         ),
         "leg_a_identity_setup_and_direction_exact": (

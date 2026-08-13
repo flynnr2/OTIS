@@ -15,6 +15,7 @@ from host.otis_tools import bounded_tight_deadband_preflight
 def _fake_g1() -> dict[str, object]:
     policy_sha = sha256(bounded_tight_deadband_bundle.POLICY_PATH.read_bytes()).hexdigest()
     return {
+        "qualification_sequence_gate": "Q3",
         "run_id": "g1-pass",
         "run_dir": "/retained/g1-pass",
         "run_manifest_sha256": "1" * 64,
@@ -24,6 +25,7 @@ def _fake_g1() -> dict[str, object]:
         "seal_file_sha256": "5" * 64,
         "evidence_content_sha256": "6" * 64,
         "bundle_sha256": "7" * 64,
+        "sequence_prerequisites": {"q1": {}, "q2": {}},
         "firmware": {
             "source_sha256": "a" * 64,
             "configuration_sha256": "b" * 64,
@@ -60,7 +62,7 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     assert proposal["authority"]["effective"] is False
 
 
-def test_g2_rejects_historical_g1_contract_before_reading_evidence(
+def test_g2_rejects_pre_q3_no_write_evidence_before_reading_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -69,6 +71,7 @@ def test_g2_rejects_historical_g1_contract_before_reading_evidence(
         lambda path: {
             "cx319": {
                 "leg": "A",
+                "qualification_sequence_gate": "Q1",
                 "runtime_contract": {
                     "id": "cx319_g1_prewrite_runtime_contract_v1"
                 },
@@ -76,8 +79,126 @@ def test_g2_rejects_historical_g1_contract_before_reading_evidence(
         },
     )
 
-    with pytest.raises(ValueError, match="current GNSS-bearing G1 contract"):
+    with pytest.raises(ValueError, match="Q3 physical no-write qualification"):
         bounded_tight_deadband_bundle.validate_no_write_qualification_pass(tmp_path)
+
+
+def test_g2_uses_q3_sequence_status_not_superseded_g1_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "q3-pass"
+    run_dir.mkdir()
+    firmware = {
+        "git_commit": "a" * 40,
+        "uf2": {"sha256": "b" * 64},
+    }
+    manifest = {
+        "qualification_evidence": True,
+        "firmware": firmware,
+        "bundle": {"path": str(run_dir / "bundle.json"), "bundle_sha256": "c" * 64},
+        "cx319": {
+            "leg": "A",
+            "qualification_sequence_gate": "Q3",
+            "runtime_contract": {"id": bounded_tight_deadband_bundle.NO_WRITE_RUNTIME_CONTRACT_ID},
+        },
+    }
+    unsigned_analysis: dict[str, object] = {
+        "status": "pass",
+        "checks": {"canonical": True},
+        "qualification_sequence_gate": "Q3",
+    }
+    analysis = {
+        **unsigned_analysis,
+        "analysis_sha256": bounded_tight_deadband_bundle._canonical_sha256(
+            unsigned_analysis
+        ),
+    }
+    unsigned_seal: dict[str, object] = {
+        "status": "pass",
+        "leg": "A",
+        "profile_id": "cx319_tight_lower",
+        "qualification_sequence_gate": "Q3",
+        "seal_type": "cx319_q3_physical_no_write_qualification_seal_v1",
+        "qualification_evidence": True,
+        "bundle_sha256": "c" * 64,
+        "analysis": {
+            "sha256": "d" * 64,
+            "analysis_sha256": analysis["analysis_sha256"],
+        },
+        "uf2_sha256": "b" * 64,
+        "setup_writes": 0,
+        "dac_value_writes": 0,
+        "automatic_writes": 0,
+        "control_arms": 0,
+    }
+    seal = {
+        **unsigned_seal,
+        "seal_sha256": bounded_tight_deadband_bundle._canonical_sha256(unsigned_seal),
+    }
+    frozen_bundle = {
+        "host_source_revision": "e" * 40,
+        "firmware": firmware,
+        "policy": {"sha256": "f" * 64},
+    }
+    status = {
+        "completed_g1_evidence": {"run_id": "superseded-g1"},
+        "q3_sequence_result": {
+            "run_id": run_dir.name,
+            "host_source_revision": "e" * 40,
+            "firmware_source_revision": "a" * 40,
+            "bundle_sha256": "c" * 64,
+            "seal_sha256": seal["seal_sha256"],
+            "evidence_content_sha256": "1" * 64,
+            "uf2_sha256": "b" * 64,
+            "dac_value_writes": 0,
+            "setup_stimuli": 0,
+            "control_arms": 0,
+            "automatic_corrections": 0,
+        },
+    }
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "validate_run_manifest",
+        lambda path: manifest,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_read",
+        lambda path, label: analysis if "analysis" in label else seal,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_sha256_file",
+        lambda path: "d" * 64,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "validate_frozen_bundle",
+        lambda path: frozen_bundle,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "load_programme_status",
+        lambda: {"programmes": {bounded_tight_deadband_bundle.PROGRAMME_ID: status}},
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "package_identity",
+        lambda path: {"content_sha256": "1" * 64},
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_validate_q1_q3_sequence",
+        lambda **kwargs: {"q1": {}, "q2": {}},
+    )
+
+    observed = bounded_tight_deadband_bundle.validate_no_write_qualification_pass(
+        run_dir
+    )
+
+    assert observed["qualification_sequence_gate"] == "Q3"
+    assert observed["run_id"] == run_dir.name
+    assert observed["evidence_content_sha256"] == "1" * 64
 
 
 def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(

@@ -16,6 +16,7 @@ from .no_write_qualification_bundle import (
     POLICY_PATH,
     PROGRAMME_ID,
     _git_identity,
+    _q3_prerequisites,
     validate_frozen_bundle,
     validate_run_manifest,
 )
@@ -140,49 +141,143 @@ def _atomic_new(path: Path, value: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _validate_q1_q3_sequence(
+    *, frozen_bundle: dict[str, Any], programme_status: dict[str, Any]
+) -> dict[str, Any]:
+    prerequisites = frozen_bundle.get("q3_prerequisites")
+    if not isinstance(prerequisites, dict):
+        raise ValueError("Q4 requires Q3 bindings to the passing Q1/Q2 sequence")
+    frozen_q1 = prerequisites.get("q1")
+    frozen_q2 = prerequisites.get("q2")
+    if not isinstance(frozen_q1, dict) or not isinstance(frozen_q2, dict):
+        raise ValueError("Q4 requires complete frozen Q1/Q2 prerequisite bindings")
+
+    observed = _q3_prerequisites(
+        q1_run_dir=Path(str(frozen_q1.get("complete", {}).get("path", ""))).parent,
+        q2_run_dir=Path(str(frozen_q2.get("complete", {}).get("path", ""))).parent,
+        firmware=frozen_bundle["firmware"],
+    )
+    if (
+        observed["q1"] != frozen_q1
+        or observed["q2"] != frozen_q2
+        or prerequisites.get("physical_topology_confirmation_required_at_execution")
+        != observed["physical_topology_confirmation_required_at_execution"]
+    ):
+        raise ValueError("retained Q1/Q2 evidence differs from the frozen Q3 bindings")
+
+    q1_content = package_identity(
+        Path(str(frozen_q1["complete"]["path"])).parent
+    )["content_sha256"]
+    q2_content = package_identity(
+        Path(str(frozen_q2["complete"]["path"])).parent
+    )["content_sha256"]
+    q1_status = programme_status.get("q1_sequence_result", {})
+    q2_status = programme_status.get("q2_sequence_result", {})
+    if (
+        q1_status.get("run_id") != frozen_q1["run_id"]
+        or q1_status.get("seal_sha256") != frozen_q1["seal_sha256"]
+        or q1_status.get("evidence_content_sha256") != q1_content
+        or q1_status.get("uf2_sha256") != frozen_q1["uf2_sha256"]
+        or q2_status.get("run_id") != frozen_q2["run_id"]
+        or q2_status.get("seal_sha256") != frozen_q2["seal_sha256"]
+        or q2_status.get("evidence_content_sha256") != q2_content
+        or q2_status.get("physical_setup_writes") != 1
+        or q2_status.get("physical_automatic_writes") != 0
+        or q2_status.get("physical_oscillator_movement_possible") is not False
+    ):
+        raise ValueError("Q1/Q2 programme status or retained content binding differs")
+    return {
+        "q1": {
+            "run_id": frozen_q1["run_id"],
+            "seal_sha256": frozen_q1["seal_sha256"],
+            "evidence_content_sha256": q1_content,
+            "uf2_sha256": frozen_q1["uf2_sha256"],
+        },
+        "q2": {
+            "run_id": frozen_q2["run_id"],
+            "seal_sha256": frozen_q2["seal_sha256"],
+            "evidence_content_sha256": q2_content,
+            "physical_setup_writes": 1,
+            "physical_automatic_writes": 0,
+            "physical_oscillator_movement_possible": False,
+        },
+    }
+
+
 def validate_no_write_qualification_pass(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     manifest = validate_run_manifest(run_dir / "run_manifest.json")
     if manifest.get("cx319", {}).get("leg") != "A":
-        raise ValueError("G2 requires a passed G1 Leg A source")
+        raise ValueError("Q4 requires a passed lower-side Leg A source")
+    if (
+        manifest.get("cx319", {}).get("qualification_sequence_gate") != "Q3"
+        or manifest.get("qualification_evidence") is not True
+    ):
+        raise ValueError("Q4 requires Q3 physical no-write qualification evidence")
     if (
         manifest.get("cx319", {}).get("runtime_contract", {}).get("id")
         != NO_WRITE_RUNTIME_CONTRACT_ID
     ):
-        raise ValueError("G2 requires the current GNSS-bearing G1 contract")
+        raise ValueError("Q4 requires the current GNSS-bearing no-write contract")
     analysis_path = run_dir / NO_WRITE_ANALYSIS
     seal_path = run_dir / NO_WRITE_SEAL
     analysis = _read(analysis_path, "G1 analysis")
     seal = _read(seal_path, "G1 seal")
+    unsigned_analysis = {
+        key: value for key, value in analysis.items() if key != "analysis_sha256"
+    }
     unsigned_seal = {key: value for key, value in seal.items() if key != "seal_sha256"}
     if (
         analysis.get("status") != "pass"
         or not isinstance(analysis.get("checks"), dict)
         or not analysis["checks"]
         or not all(value is True for value in analysis["checks"].values())
+        or analysis.get("analysis_sha256") != _canonical_sha256(unsigned_analysis)
         or seal.get("status") != "pass"
         or seal.get("leg") != "A"
         or seal.get("profile_id") != "cx319_tight_lower"
+        or analysis.get("qualification_sequence_gate") != "Q3"
+        or seal.get("qualification_sequence_gate") != "Q3"
+        or seal.get("seal_type")
+        != "cx319_q3_physical_no_write_qualification_seal_v1"
+        or seal.get("qualification_evidence") is not True
         or seal.get("bundle_sha256") != manifest["bundle"]["bundle_sha256"]
         or seal.get("seal_sha256") != _canonical_sha256(unsigned_seal)
         or seal.get("analysis", {}).get("sha256") != _sha256_file(analysis_path)
+        or seal.get("analysis", {}).get("analysis_sha256")
+        != analysis.get("analysis_sha256")
+        or seal.get("setup_writes") != 0
         or seal.get("dac_value_writes") != 0
+        or seal.get("automatic_writes") != 0
         or seal.get("control_arms") != 0
     ):
-        raise ValueError("G1 source is not a canonical no-write pass")
+        raise ValueError("Q3 source is not a canonical physical no-write pass")
+    frozen_bundle_path = Path(manifest["bundle"]["path"])
+    frozen_bundle = validate_frozen_bundle(frozen_bundle_path)
     status = load_programme_status()["programmes"][PROGRAMME_ID]
-    completed = status.get("completed_g1_evidence", {})
+    completed = status.get("q3_sequence_result", {})
     content = package_identity(run_dir)["content_sha256"]
     if (
         completed.get("run_id") != run_dir.name
+        or completed.get("host_source_revision")
+        != frozen_bundle.get("host_source_revision")
+        or completed.get("firmware_source_revision")
+        != manifest["firmware"].get("git_commit")
         or completed.get("bundle_sha256") != seal["bundle_sha256"]
         or completed.get("seal_sha256") != seal["seal_sha256"]
         or completed.get("evidence_content_sha256") != content
+        or completed.get("uf2_sha256") != seal.get("uf2_sha256")
+        or completed.get("dac_value_writes") != 0
+        or completed.get("setup_stimuli") != 0
+        or completed.get("control_arms") != 0
+        or completed.get("automatic_corrections") != 0
     ):
-        raise ValueError("G1 programme status or registered content binding differs")
-    frozen_bundle_path = Path(manifest["bundle"]["path"])
-    frozen_bundle = validate_frozen_bundle(frozen_bundle_path)
+        raise ValueError("Q3 programme status or registered content binding differs")
+    sequence = _validate_q1_q3_sequence(
+        frozen_bundle=frozen_bundle, programme_status=status
+    )
     return {
+        "qualification_sequence_gate": "Q3",
         "run_id": run_dir.name,
         "run_dir": str(run_dir),
         "run_manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
@@ -192,6 +287,7 @@ def validate_no_write_qualification_pass(run_dir: Path) -> dict[str, Any]:
         "seal_file_sha256": _sha256_file(seal_path),
         "evidence_content_sha256": content,
         "bundle_sha256": seal["bundle_sha256"],
+        "sequence_prerequisites": sequence,
         "firmware": frozen_bundle["firmware"],
         "policy": frozen_bundle["policy"],
     }
@@ -204,9 +300,9 @@ def create_proposal(
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("G2 proposal bundle requires a clean repository")
-    g1 = validate_no_write_qualification_pass(no_write_run_dir)
-    if g1["policy"]["sha256"] != _sha256_file(POLICY_PATH):
-        raise ValueError("G1 policy differs from the current G2 policy")
+    qualification = validate_no_write_qualification_pass(no_write_run_dir)
+    if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
+        raise ValueError("Q3 policy differs from the current G2 policy")
     host_tools = {name: _binding(path) for name, path in HOST_TOOL_PATHS.items()}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
@@ -232,9 +328,9 @@ def create_proposal(
             "required_future_operation": "g2_live_leg",
             "explicit_operator_transition_required": True,
         },
-        "g1_pass": g1,
-        "firmware": g1["firmware"],
-        "policy": g1["policy"],
+        "g1_pass": qualification,
+        "firmware": qualification["firmware"],
+        "policy": qualification["policy"],
         "host_tools": host_tools,
         "leg_spec": {
             "profile_id": "cx319_tight_lower",
@@ -330,13 +426,15 @@ def validate_proposal(path: Path) -> dict[str, Any]:
         name: _binding(tool_path) for name, tool_path in HOST_TOOL_PATHS.items()
     }:
         raise ValueError("G2 proposal host tool binding is stale")
-    observed_g1 = validate_no_write_qualification_pass(Path(value["g1_pass"]["run_dir"]))
-    if value.get("g1_pass") != observed_g1:
-        raise ValueError("G2 proposal G1 binding is stale")
-    if value.get("firmware") != observed_g1["firmware"]:
-        raise ValueError("G2 proposal firmware differs from G1")
-    if value.get("policy") != observed_g1["policy"]:
-        raise ValueError("G2 proposal policy differs from G1")
+    observed_qualification = validate_no_write_qualification_pass(
+        Path(value["g1_pass"]["run_dir"])
+    )
+    if value.get("g1_pass") != observed_qualification:
+        raise ValueError("G2 proposal Q1-Q3 qualification binding is stale")
+    if value.get("firmware") != observed_qualification["firmware"]:
+        raise ValueError("G2 proposal firmware differs from Q3")
+    if value.get("policy") != observed_qualification["policy"]:
+        raise ValueError("G2 proposal policy differs from Q3")
     return value
 
 
