@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> None:
+def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -26,14 +26,52 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q4_offline_ready_no_live_authority"
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["state"] == "q4_lower_live_authorized_not_started"
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    ]
     assert successor["authority"] == (
-        "cx319_q4_offline_readiness_no_live_authority"
+        "explicit_operator_q4_lower_finite_live_authority"
     )
     assert successor["next_gate"] == (
-        "explicit_operator_review_of_non_effective_q4_lower_live_authority_draft"
+        "execute_exact_q4_lower_live_once_then_retire_authority"
     )
+    assert successor["q4_lower_live_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md"
+        ),
+        "operator_instruction": "move_on_to_the_physical_q4_live_run",
+        "effective": True,
+        "consumed": False,
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "live_run_limit": 1,
+        "firmware_flash_limit": 0,
+        "board_reset_limit": 0,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 0xA800,
+        "maximum_code": 0xAB00,
+        "phase_or_hybrid_actionable": False,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "proposal_bundle_sha256": (
+            "f08c9a581ec92271828f9c7c0ff87b5"
+            "e0d1ce04e6015c92d4100c75f7882bbfe"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "4e6d20094a80e9a3ffcabc6db93302b4"
+            "9acfbf5d48a2da6faeaa70ebe1f65084"
+        ),
+    }
     assert successor["q4_offline_readiness"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -422,11 +460,13 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
-        "dac_write",
-        "control_arm",
-        "setup_stimulus",
-        "automatic_correction",
         "rehearsal_to_live_promotion",
+        "firmware_flash",
+        "board_reset",
+        "automatic_retry",
+        "automatic_restore",
+        "duration_extension",
+        "second_q4_lower_live_run",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression",
@@ -442,10 +482,9 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
             "cx319_stabilized_tight_deadband",
             NO_WRITE_BENCH_REHEARSAL,
         )
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

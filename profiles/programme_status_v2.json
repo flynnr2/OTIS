@@ -10,12 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_offline_ready_no_live_authority",
+      "state": "q4_lower_live_authorized_not_started",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "g2_live_leg"
       ],
       "effective_date": "2026-08-13",
-      "authority": "cx319_q4_offline_readiness_no_live_authority",
+      "authority": "explicit_operator_q4_lower_finite_live_authority",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -82,7 +83,29 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "explicit_operator_review_of_non_effective_q4_lower_live_authority_draft",
+      "next_gate": "execute_exact_q4_lower_live_once_then_retire_authority",
+      "q4_lower_live_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
+        "operator_instruction": "move_on_to_the_physical_q4_live_run",
+        "effective": true,
+        "consumed": false,
+        "programme_operation": "g2_live_leg",
+        "live_run_limit": 1,
+        "firmware_flash_limit": 0,
+        "board_reset_limit": 0,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "phase_or_hybrid_actionable": false,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+        "proposal_bundle_sha256": "f08c9a581ec92271828f9c7c0ff87b5e0d1ce04e6015c92d4100c75f7882bbfe",
+        "operational_rehearsal_seal_sha256": "4e6d20094a80e9a3ffcabc6db93302b49acfbf5d48a2da6faeaa70ebe1f65084"
+      },
       "q4_offline_readiness": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md",
         "authority_proposal": "profiles/qualification/cx319_q4_lower_live_authority_proposal_v1.json",
@@ -263,11 +286,13 @@
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
-        "dac_write",
-        "control_arm",
-        "setup_stimulus",
-        "automatic_correction",
         "rehearsal_to_live_promotion",
+        "firmware_flash",
+        "board_reset",
+        "automatic_retry",
+        "automatic_restore",
+        "duration_extension",
+        "second_q4_lower_live_run",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression"

@@ -69,6 +69,17 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     monkeypatch.setattr(bounded_tight_deadband_bundle, "_git_identity", lambda: ("e" * 40, "clean"))
     assert bounded_tight_deadband_bundle.validate_proposal(proposal_path) == proposal
 
+    monkeypatch.setattr(
+        bounded_tight_deadband_preflight,
+        "load_programme_status",
+        lambda: {
+            "programmes": {
+                bounded_tight_deadband_bundle.PROGRAMME_ID: {
+                    "allowed_operations": ["offline_preparation"]
+                }
+            }
+        },
+    )
     result = bounded_tight_deadband_preflight.evaluate(proposal_path)
     assert result["status"] == "passed"
     assert all(result["checks"].values())

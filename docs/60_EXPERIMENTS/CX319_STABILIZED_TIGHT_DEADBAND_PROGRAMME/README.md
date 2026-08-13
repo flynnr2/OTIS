@@ -7,9 +7,10 @@ then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
 Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence is
-complete, Q4 lower-side offline preparation has passed, and a non-effective
-finite-live authority proposal is ready for explicit operator review. Only
-`offline_preparation` is permitted; no Q4/G2 live authority is effective.
+complete, Q4 lower-side offline preparation has passed, and the operator has
+authorized exactly one finite Q4/G2 lower-side live qualification. The exact
+`g2_live_leg` operation is effective; firmware changes, retries, additional
+runs, and phase/hybrid actuation remain forbidden.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -131,3 +132,8 @@ transfer audit are recorded in
 The proposed finite live envelope is recorded for review in
 [`19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md`](19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md).
 That draft is not effective and cannot be executed.
+
+The operator's subsequent exact one-run authority is recorded in
+[`20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md`](20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md).
+It binds the passing candidate and rehearsal, permits no firmware flash or
+reset, and is consumed by the first terminal live attempt.
