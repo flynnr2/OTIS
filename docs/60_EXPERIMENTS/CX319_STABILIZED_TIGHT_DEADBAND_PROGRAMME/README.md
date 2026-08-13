@@ -171,4 +171,7 @@ The operator's one-flash, maximum-120-second, zero-write authority for the
 exact current firmware's session-rebinding check is recorded in
 [`27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md`](27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md).
 It deliberately does not repeat Q2, Q3 or unchanged transport/scientific gates
-and grants no Q4 live authority.
+and grants no Q4 live authority. The resulting exact flash, frozen-criterion
+non-pass, zero-actuation evidence and excessive snapshot-cadence process escape
+are recorded in
+[`28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md`](28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md).

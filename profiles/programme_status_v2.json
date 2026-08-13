@@ -10,13 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_current_session_rebinding_focused_no_write_authorized",
+      "state": "q4_current_session_rebinding_focused_no_write_nonpass",
       "allowed_operations": [
-        "offline_preparation",
-        "g1_no_write_bench_rehearsal"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-13",
-      "authority": "operator_authorized_one_exact_flash_and_focused_no_write_session_rebinding_check",
+      "authority": "no_effective_physical_or_live_authority_after_focused_nonpass",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -83,12 +82,13 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "execute_focused_current_session_rebinding_no_write_qualification",
+      "next_gate": "prepare_no_flash_low_cadence_session_absence_qualification",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "focused_session_rebinding_20260813T085754Z",
         "programme_operation": "g1_no_write_bench_rehearsal",
         "expected_board_serial": "503533748A919118",
         "firmware_profile": "cx319_tight_lower",
@@ -104,6 +104,36 @@
         "setup_stimuli": 0,
         "control_arms": 0,
         "automatic_corrections": 0,
+        "live_authority": false
+      },
+      "current_session_rebinding_focused_no_write_nonpass": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md",
+        "run_id": "focused_session_rebinding_20260813T085754Z",
+        "result": "frozen_required_rebound_reason_not_observed",
+        "failure_class": "platform_escape_into_focused_physical_qualification",
+        "bundle_sha256": "4666041ff61ab23df2c0e4c10af5f4bf6afef526c5f3bb425ddd9d7856cd3dc9",
+        "uf2_sha256": "e62cfb7c5df58a4471425a2045cc7d7fba03ed57d35eccb8cdd45ad34c7bf510",
+        "flash_record_sha256": "9c204517b022778c0473c2244f4a93b8ab84481a42e4cd75689dbe216791b0ea",
+        "result_file_sha256": "f151d2fe670ef7d36b27a4a568c1431734d5e0fee94a8068c98ddb474fb4a32d",
+        "evidence_content_sha256": "3bb16918e2db573d76546832cae6363fe121824dbae88f486def6abbdd1119c1",
+        "firmware_flash_passed": true,
+        "exact_installed_firmware_confirmed": true,
+        "observation_elapsed_s": 120.287,
+        "snapshot_commands_sent": 395,
+        "snapshot_generations_begun": 403,
+        "snapshot_generations_complete": 394,
+        "observed_states": ["DISARMED"],
+        "observed_reasons": ["initialized_disarmed"],
+        "observed_fail_static": [false],
+        "observed_sessions": [1],
+        "telemetry_dropped_final": 48,
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "dac_value_writes": 0,
+        "setup_stimuli": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "scientific_result": false,
         "live_authority": false
       },
       "q4_lower_live_authority": {
@@ -434,7 +464,7 @@
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
-        "firmware_flash_outside_current_session_rebinding_focused_no_write_authority",
+        "firmware_flash",
         "board_reset",
         "automatic_retry",
         "automatic_restore",

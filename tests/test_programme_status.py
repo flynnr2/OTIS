@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_focused_session_rebinding_check() -> None:
+def test_tracked_status_retires_focused_session_rebinding_nonpass() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,22 +27,22 @@ def test_tracked_status_authorizes_focused_session_rebinding_check() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_current_session_rebinding_focused_no_write_authorized"
+        "q4_current_session_rebinding_focused_no_write_nonpass"
     )
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        NO_WRITE_BENCH_REHEARSAL,
-    ]
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "operator_authorized_one_exact_flash_and_focused_no_write_session_rebinding_check"
+        "no_effective_physical_or_live_authority_after_focused_nonpass"
     )
     assert successor["next_gate"] == (
-        "execute_focused_current_session_rebinding_no_write_qualification"
+        "prepare_no_flash_low_cadence_session_absence_qualification"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
-    assert focused["effective"] is True
-    assert focused["consumed"] is False
+    assert focused["effective"] is False
+    assert focused["consumed"] is True
+    assert focused["consumed_by_run_id"] == (
+        "focused_session_rebinding_20260813T085754Z"
+    )
     assert focused["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
     assert focused["exact_firmware_flash_limit"] == 1
     assert focused["physical_no_write_attempt_limit"] == 1
@@ -56,6 +56,21 @@ def test_tracked_status_authorizes_focused_session_rebinding_check() -> None:
         focused["control_arms"],
         focused["automatic_corrections"],
     } == {0}
+    nonpass = successor["current_session_rebinding_focused_no_write_nonpass"]
+    assert nonpass["failure_class"] == (
+        "platform_escape_into_focused_physical_qualification"
+    )
+    assert nonpass["firmware_flash_passed"] is True
+    assert nonpass["exact_installed_firmware_confirmed"] is True
+    assert nonpass["snapshot_commands_sent"] == 395
+    assert nonpass["snapshot_generations_begun"] == 403
+    assert nonpass["snapshot_generations_complete"] == 394
+    assert nonpass["observed_states"] == ["DISARMED"]
+    assert nonpass["observed_reasons"] == ["initialized_disarmed"]
+    assert nonpass["observed_fail_static"] == [False]
+    assert nonpass["observed_sessions"] == [1]
+    assert nonpass["telemetry_dropped_final"] == 48
+    assert nonpass["live_authority"] is False
     assert successor["q4_lower_live_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -730,7 +745,7 @@ def test_tracked_status_authorizes_focused_session_rebinding_check() -> None:
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
-        "firmware_flash_outside_current_session_rebinding_focused_no_write_authority",
+        "firmware_flash",
         "board_reset",
         "automatic_retry",
         "automatic_restore",
@@ -746,10 +761,11 @@ def test_tracked_status_authorizes_focused_session_rebinding_check() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        NO_WRITE_BENCH_REHEARSAL,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            NO_WRITE_BENCH_REHEARSAL,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband",
