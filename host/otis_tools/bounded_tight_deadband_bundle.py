@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any
 
@@ -474,8 +475,12 @@ def apply_deterministic_narrow_repair(
     qualification: dict[str, Any],
     build_manifest_path: Path,
     uf2_path: Path,
+    repair_scope: str,
 ) -> dict[str, Any]:
     """Rebind a qualified image after a deterministic narrow repair."""
+
+    if not re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", repair_scope):
+        raise ValueError("narrow repair scope must be a stable snake-case id")
 
     firmware = validate_build(
         leg="A",
@@ -500,7 +505,7 @@ def apply_deterministic_narrow_repair(
             "type": "deterministic_narrow_repair_overlay",
             "physical_basis": prior_delta,
             "physical_basis_uf2_sha256": prior_firmware["uf2"]["sha256"],
-            "repair_scope": "setup_ack_periodic_health_confirmation_handoff",
+            "repair_scope": repair_scope,
             "build_manifest": _binding(build_manifest_path),
             "uf2": _binding(uf2_path),
             "physical_requalification_repeated": False,
@@ -516,13 +521,23 @@ def create_proposal(
     current_firmware_qualification_run_dir: Path | None = None,
     narrow_repair_build_manifest: Path | None = None,
     narrow_repair_uf2: Path | None = None,
+    narrow_repair_scope: str | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("G2 proposal bundle requires a clean repository")
-    if (narrow_repair_build_manifest is None) != (narrow_repair_uf2 is None):
-        raise ValueError("narrow repair requires both build manifest and UF2")
+    narrow_values = (
+        narrow_repair_build_manifest,
+        narrow_repair_uf2,
+        narrow_repair_scope,
+    )
+    if any(value is not None for value in narrow_values) and not all(
+        value is not None for value in narrow_values
+    ):
+        raise ValueError(
+            "narrow repair requires build manifest, UF2 and repair scope"
+        )
     if narrow_repair_build_manifest is not None and (
         current_firmware_qualification_run_dir is None
     ):
@@ -542,6 +557,7 @@ def create_proposal(
             qualification=qualification,
             build_manifest_path=narrow_repair_build_manifest,
             uf2_path=narrow_repair_uf2,
+            repair_scope=narrow_repair_scope,
         )
     if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
         raise ValueError("Q3 policy differs from the current G2 policy")
@@ -756,6 +772,7 @@ def validate_proposal(path: Path) -> dict[str, Any]:
                 qualification=observed_qualification,
                 build_manifest_path=Path(repair["build_manifest"]["path"]),
                 uf2_path=Path(repair["uf2"]["path"]),
+                repair_scope=str(repair["repair_scope"]),
             )
     else:
         observed_qualification = validate_no_write_qualification_pass(
@@ -780,6 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     create.add_argument("--narrow-repair-build-manifest", type=Path)
     create.add_argument("--narrow-repair-uf2", type=Path)
+    create.add_argument("--narrow-repair-scope")
     create.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("proposal", type=Path)
@@ -793,6 +811,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             narrow_repair_build_manifest=args.narrow_repair_build_manifest,
             narrow_repair_uf2=args.narrow_repair_uf2,
+            narrow_repair_scope=args.narrow_repair_scope,
         )
     else:
         result = validate_proposal(args.proposal)

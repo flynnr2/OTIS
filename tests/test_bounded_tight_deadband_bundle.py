@@ -187,6 +187,7 @@ def test_deterministic_narrow_repair_rebinds_same_firmware_profile(
         qualification=qualification,
         build_manifest_path=manifest,
         uf2_path=uf2,
+        repair_scope="setup_epoch_preview_propagation",
     )
 
     assert result["firmware"] == repaired
@@ -194,6 +195,7 @@ def test_deterministic_narrow_repair_rebinds_same_firmware_profile(
     assert delta["type"] == "deterministic_narrow_repair_overlay"
     assert delta["physical_basis"] == {"type": "physical_basis"}
     assert delta["physical_basis_uf2_sha256"] == "c" * 64
+    assert delta["repair_scope"] == "setup_epoch_preview_propagation"
     assert delta["physical_requalification_repeated"] is False
     assert delta["q2_q3_repeated"] is False
 
