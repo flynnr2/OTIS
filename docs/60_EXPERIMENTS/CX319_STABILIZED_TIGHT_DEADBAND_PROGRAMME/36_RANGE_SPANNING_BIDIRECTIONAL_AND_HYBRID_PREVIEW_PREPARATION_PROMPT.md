@@ -2,26 +2,27 @@
 
 ## Authority and immediate duty
 
-Continue actively monitoring the current CX319 G3 upper-side live run until it
-reaches its immutable terminal state. Do not intervene, extend it, change its
-criteria, or stop monitoring merely to begin the next programme. Answer
-operator questions in commentary while monitoring continues.
+The CX319 G3 upper-side live run reached its immutable terminal state on
+2026-08-13. Do not repeat or reinterpret that physical acquisition. Use the
+finalized result and evidence identities in
+`37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md` as a frozen input to this
+preparation.
 
 This prompt authorizes offline preparation only. It does not authorize a
 firmware flash, serial-device access, reset, DAC write, control arm, physical
 rehearsal, live acquisition, or phase/hybrid actuation. Those operations require
 a later explicit operator decision bound to an exact machine-readable bundle.
 
-If the current run concludes without an actionable negative-direction
-condition:
+The completed run did not produce an actionable negative-direction condition.
+Its required disposition is already complete:
 
-1. Preserve and finalize the acquisition through the existing analyzer,
-   sealing, and registration path.
-2. Classify the result precisely as an insufficient or non-actionable upper
-   stimulus with demonstrated stable tight-band hold. Do not classify it as
-   controller rejection or successful upper-direction qualification.
-3. Preserve the exact terminal DAC state, identities, raw evidence, and
-   non-pass provenance.
+1. the unchanged acquisition was finalized through the analyzer, sealing and
+   registration path;
+2. the result is classified as a non-actionable upper stimulus with
+   demonstrated stable tight-band hold, not controller rejection or successful
+   upper-direction qualification; and
+3. the exact terminal DAC state, identities, raw evidence and non-pass
+   provenance are preserved.
 
 ## Decision-bearing objective
 

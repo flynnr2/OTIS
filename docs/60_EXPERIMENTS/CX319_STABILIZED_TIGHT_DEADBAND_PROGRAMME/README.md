@@ -7,14 +7,16 @@ then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
 Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and the
-Q4/G2 lower-side physical qualification passed. The successful run made one
-bounded positive correction from `0xA808` to `0xA81D`, demonstrated a healthy
-response, and established two consecutive tight `-2` count estimates. Its
-immutable acquisition is sealed by a provenance-linked passing offline
-reanalysis after three deterministic finalizer defects were corrected; no
-physical rerun was required. The conditional G3 upper-side authority may now
-advance through its required fresh exact upper bundle, structural preflight and
-complete accelerated operational-path rehearsal. G4 and phase/hybrid
+Q4/G2 lower-side physical qualification passed. The matched Q4/G3 upper run
+completed its four-hour qualified interval, but `0xA848` produced 25 selected
+estimates confined to `+1..+3` counts and therefore never elicited the required
+negative automatic transaction. This is useful evidence of an insufficiently
+margined upper stimulus, not controller rejection or a G3 pass. A separate
+terminal shutdown race prevented the submitted priority abort from being sent
+before capture closed; the acquisition remained complete and replay-exact, and
+the runner now waits for delivery before closure. The consumed G3 authority is
+retired. Only offline preparation of the range-spanning bidirectional and
+zero-authority hybrid-preview follow-up is permitted. G4 and phase/hybrid
 actuation remain unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
@@ -214,3 +216,8 @@ excited bidirectional frequency-control trajectory, evidence-based cadence
 acceleration, automatic domain-aware rollover semantics, and continuous
 zero-authority hybrid preview is
 [`36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md`](36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md).
+
+The upper-side physical bounded non-pass, immutable evidence identities,
+terminal abort-delivery race, deterministic repair and exact next gate are
+recorded in
+[`37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md`](37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md).

@@ -318,6 +318,9 @@ def test_physical_runner_allows_only_the_upper_leg_firmware_flash() -> None:
     assert "exact_cx319_g3_upper_firmware_flash" in source
     assert "if not selected.firmware_flash" in source
     assert '"firmware_flashes": int(selected.firmware_flash)' in source
+    assert source.index(
+        "_wait_for_terminal_abort_delivery(run_dir, terminal)"
+    ) < source.index("capture_exit = _graceful_capture_stop(capture)")
 
 
 def test_upper_flash_is_exactly_one_upload_and_binds_reenumerated_board(
@@ -454,6 +457,70 @@ def test_missing_abort_reader_does_not_mask_primary_orchestration_failure(
     bounded_tight_deadband_run._best_effort_emergency_abort(
         emergency_fifo, capture
     )
+
+
+def test_runner_waits_for_terminal_abort_delivery_before_capture_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "reports" / "capture_device_state.json"
+    state.parent.mkdir()
+    _write(
+        state,
+        {
+            "capture_active": True,
+            "emergency_abort_latched": True,
+            "emergency_aborts_sent": 1,
+        },
+    )
+    observed: dict[str, object] = {}
+
+    def wait_until(predicate, timeout_s, description):  # type: ignore[no-untyped-def]
+        observed.update(
+            predicate=predicate(), timeout_s=timeout_s, description=description
+        )
+
+    monkeypatch.setattr(bounded_tight_deadband_run, "_wait_until", wait_until)
+
+    bounded_tight_deadband_run._wait_for_terminal_abort_delivery(
+        tmp_path,
+        {"result": "aborted", "reason": "finite_endpoint"},
+    )
+
+    assert observed == {
+        "predicate": True,
+        "timeout_s": bounded_tight_deadband_run.TERMINAL_ABORT_DELIVERY_TIMEOUT_S,
+        "description": "terminal independent abort delivery before capture close",
+    }
+
+
+def test_live_outcome_classifies_terminal_abort_race_separately() -> None:
+    assert bounded_tight_deadband_live_analyze._classify_outcome(
+        common_pass=False,
+        pass_checks_exact=False,
+        terminal_bounded_nonpass=True,
+        terminal_abort_delivery_escape=True,
+    ) == (
+        "failed",
+        "terminal_abort_delivery_race_after_scientific_bounded_nonpass",
+    )
+
+
+def test_live_outcome_preserves_clean_bounded_nonpass_and_pass() -> None:
+    assert bounded_tight_deadband_live_analyze._classify_outcome(
+        common_pass=True,
+        pass_checks_exact=False,
+        terminal_bounded_nonpass=True,
+        terminal_abort_delivery_escape=False,
+    ) == (
+        "bounded_nonpass",
+        "finite_endpoint_without_required_direction_transaction",
+    )
+    assert bounded_tight_deadband_live_analyze._classify_outcome(
+        common_pass=True,
+        pass_checks_exact=True,
+        terminal_bounded_nonpass=False,
+        terminal_abort_delivery_escape=False,
+    ) == ("passed", "none")
 
 
 def test_live_analyzer_wires_a_complete_physical_evidence_surface(

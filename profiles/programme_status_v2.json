@@ -10,20 +10,19 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g3_upper_ready_for_exact_live_execution",
+      "state": "g3_upper_nonactionable_followup_offline_preparation",
       "allowed_operations": [
-        "offline_preparation",
-        "g1_no_write_bench_rehearsal",
-        "g2_live_leg",
-        "g3_live_leg"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-13",
-      "authority": "conditional_g3_upper_authority_effective_exact_bundle",
+      "authority": "range_spanning_followup_offline_preparation_only",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
         "g2_v5_activation_retired_after_prewrite_entry": true,
         "g3_conditional_on_passing_g2_and_fresh_upper_rehearsal": true,
+        "g3_authority_consumed": true,
+        "g3_consumed_by_run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
         "g4_authorized": false
       },
       "g2_v6_operator_authority": {
@@ -48,12 +47,14 @@
       },
       "g3_conditional_upper_flash_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md",
-        "currently_executable": true,
+        "currently_executable": false,
         "requires_passing_g2_analysis_and_seal": true,
         "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": true,
         "firmware_profile": "cx319_tight_upper",
         "exact_firmware_flash_limit": 1,
-        "g3_live_execution": true,
+        "g3_live_execution": false,
+        "consumed": true,
+        "consumed_by_run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
         "existing_bounded_envelope": true,
         "manual_reset_expected_after_successful_upload": false,
         "operator_assistance_required_if_upload_or_reenumeration_fails": true,
@@ -84,6 +85,26 @@
         "superseding_registered_content_sha256": "0f1c250c348c56446217b38981c3d0e0e649eea40f67b929a791390cca0d4843",
         "physical_rerun_for_reanalysis": false
       },
+      "q4_g3_upper_physical_qualification_result": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md",
+        "status": "scientific_bounded_nonpass_with_terminal_platform_escape",
+        "run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
+        "terminal_utc": "2026-08-13T22:17:01Z",
+        "terminal_reason": "stage5_finite_qualified_endpoint_nonpass",
+        "profile_id": "cx319_tight_upper",
+        "setup_code": 43080,
+        "selected_estimate_count": 25,
+        "selected_error_counts_minimum": 1,
+        "selected_error_counts_maximum": 3,
+        "selected_error_counts_mean": 1.96,
+        "automatic_corrections": 0,
+        "healthy_responses": 0,
+        "scientific_outcome": "stimulus_nonactionable_stable_tight_hold",
+        "platform_failure_class": "terminal_abort_delivery_race_after_scientific_bounded_nonpass",
+        "superseding_seal_sha256": "9cccf5a9a063a126c4f9807c719afca5d1b0ee90faae7a80c212918b0939975e",
+        "superseding_registered_content_sha256": "df25581561d80f2c69880f04502a386c87f5c6b6febf67dd37c9eeba764b0d9b",
+        "physical_rerun_for_reanalysis": false
+      },
       "g1_recovery_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/14_G1_RECOVERY_NO_WRITE_AUTHORITY.md",
         "effective": false,
@@ -111,7 +132,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "execute_exact_g3_upper_flash_and_finite_live_leg",
+      "next_gate": "prepare_range_spanning_bidirectional_and_hybrid_preview_candidate",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
@@ -243,7 +264,9 @@
       "q4_unattended_phase_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/32_Q4_UNATTENDED_PHASE_AUTHORITY.md",
         "operator_instruction": "consider it authorized ... I can not wait on your messages, so I can not always act - you should consider that you are runing this unattended, I can check in from time to time, but you can't rely on me for timely authorizations (so consider this pahse fully authorizzed), reset (for timeouts), etc.",
-        "effective": true,
+        "effective": false,
+        "completed": true,
+        "completed_by_run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
         "unattended": true,
         "physical_presence_or_timely_reply_required": false,
         "q4_phase_fully_authorized": true,
@@ -686,7 +709,8 @@
         "unbounded_or_unrecorded_retry",
         "automatic_restore",
         "duration_extension",
-        "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
+        "consumed_g3_live_authority_reuse",
+        "range_spanning_physical_execution_without_new_exact_authority",
         "phase_or_hybrid_actuation",
         "g4_progression"
       ]

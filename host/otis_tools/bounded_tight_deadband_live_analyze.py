@@ -119,6 +119,28 @@ def _contiguous(rows: list[dict[str, str]], field: str) -> bool:
     return observed == list(range(observed[0], observed[-1] + 1))
 
 
+def _classify_outcome(
+    *,
+    common_pass: bool,
+    pass_checks_exact: bool,
+    terminal_bounded_nonpass: bool,
+    terminal_abort_delivery_escape: bool,
+) -> tuple[str, str]:
+    if common_pass and pass_checks_exact:
+        return "passed", "none"
+    if common_pass and terminal_bounded_nonpass:
+        return (
+            "bounded_nonpass",
+            "finite_endpoint_without_required_direction_transaction",
+        )
+    if terminal_abort_delivery_escape:
+        return (
+            "failed",
+            "terminal_abort_delivery_race_after_scientific_bounded_nonpass",
+        )
+    return "failed", "integrity_or_live_stop_rule_failure"
+
+
 def _nonce_bound_attach_history(
     rows: list[dict[str, str]], *, query_nonce: int, generation: int
 ) -> dict[str, Any]:
@@ -425,6 +447,23 @@ def analyze(
         }
     )
     allowed_emergency_aborts = 1 if terminal_bounded_nonpass else 0
+    terminal_abort_submissions = len(
+        [
+            item
+            for item in supervisor_events
+            if item.get("event") == "emergency_device_abort_submitted"
+        ]
+    )
+    terminal_abort_sends = int(capture_state.get("emergency_aborts_sent", 0))
+    terminal_abort_delivery = {
+        "required": terminal_bounded_nonpass,
+        "supervisor_submission_count": terminal_abort_submissions,
+        "capture_send_count": terminal_abort_sends,
+        "exact": (
+            terminal_abort_submissions == allowed_emergency_aborts
+            and terminal_abort_sends == allowed_emergency_aborts
+        ),
+    }
     capture_closure = _capture_closure(
         run_dir,
         capture_state,
@@ -542,15 +581,43 @@ def analyze(
         ),
     }
     common_pass = all(value is True for value in common_checks.values())
-    if common_pass and all(pass_checks.values()):
-        status = "passed"
-        failure_class = "none"
-    elif common_pass and terminal_bounded_nonpass:
-        status = "bounded_nonpass"
-        failure_class = "finite_endpoint_without_required_tight_entry"
-    else:
-        status = "failed"
-        failure_class = "integrity_or_live_stop_rule_failure"
+    scientific_evidence_exact = all(
+        value is True
+        for name, value in common_checks.items()
+        if name
+        not in {
+            "capture_closed_cleanly_with_one_owner",
+            "command_stream_matches_supervisor_exactly",
+        }
+    )
+    stimulus_nonactionable = (
+        terminal_bounded_nonpass
+        and scientific_evidence_exact
+        and bool(tight_entries)
+        and current_tight
+        and not applications
+        and not responses
+    )
+    terminal_abort_delivery_escape = (
+        stimulus_nonactionable
+        and terminal_abort_submissions == 1
+        and terminal_abort_sends == 0
+        and common_checks["capture_closed_cleanly_with_one_owner"] is False
+        and common_checks["command_stream_matches_supervisor_exactly"] is False
+    )
+    status, failure_class = _classify_outcome(
+        common_pass=common_pass,
+        pass_checks_exact=all(pass_checks.values()),
+        terminal_bounded_nonpass=terminal_bounded_nonpass,
+        terminal_abort_delivery_escape=terminal_abort_delivery_escape,
+    )
+    scientific_outcome = (
+        "stimulus_nonactionable_stable_tight_hold"
+        if stimulus_nonactionable
+        else "required_direction_qualification_passed"
+        if status == "passed"
+        else "not_established"
+    )
     checks = {**common_checks, **pass_checks}
 
     source_paths = {
@@ -581,6 +648,8 @@ def analyze(
         "leg": selected.leg,
         "status": status,
         "failure_class": failure_class,
+        "scientific_outcome": scientific_outcome,
+        "terminal_abort_delivery": terminal_abort_delivery,
         "profile_id": spec.profile,
         "required_direction": selected.required_direction,
         "proposal_bundle_sha256": manifest_value["proposal"]["bundle_sha256"],

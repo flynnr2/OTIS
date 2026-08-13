@@ -1,15 +1,23 @@
 # Conditional G3 Upper-Profile Flash and Live Authority
 
+## Authority disposition
+
+This one-run authority was consumed by
+`g3_upper_live_20260813T173645Z/live_leg_b` on 2026-08-13. The run reached its
+finite endpoint without an actionable upper-side condition and does not
+authorize a retry. The result, evidence identities and next gate are recorded
+in `37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md`.
+
 ## Operator decision
 
 On 2026-08-11 the operator explicitly authorized, if and only if G2 passes,
 one exact `cx319_tight_upper` firmware flash and G3 execution under the existing
 bounded envelope.
 
-This decision extends the conditional G3 authority in
-`05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md`. It is not presently executable
-and does not authorize an unidentified image, an early G3 entry, a G2 retry or
-any additional firmware operation.
+This decision extended the conditional G3 authority in
+`05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md`. Before its execution it did not
+authorize an unidentified image, an early G3 entry, a G2 retry or any
+additional firmware operation.
 
 The operator further directed on 2026-08-13 that G2 and G3 remain a matched
 pair. G3 must preserve G2's firmware and host semantics, cadence behavior,

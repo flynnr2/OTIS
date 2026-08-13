@@ -1,5 +1,15 @@
 # CX319 Q4 Unattended Phase Authority
 
+## Authority disposition
+
+This unattended authority has completed with the matched Q4/G2 and Q4/G3
+physical sequence. It remains the provenance for actions taken during that
+sequence, but is no longer effective and does not carry into the new
+range-spanning bidirectional or hybrid-preview programme. The G2 pass and G3
+bounded non-pass are recorded in
+`35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md` and
+`37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md` respectively.
+
 ## Operator instruction
 
 On 2026-08-13 the operator instructed:
@@ -10,8 +20,9 @@ On 2026-08-13 the operator instructed:
 > authorizations (so consider this pahse fully authorizzed), reset (for
 > timeouts), etc.
 
-This is effective authority to complete the current CX319 Q4 phase unattended.
-It supersedes reliance on timely operator replies or physical button presses.
+This was effective authority to complete the CX319 Q4 phase unattended. It
+superseded reliance on timely operator replies or physical button presses
+during that phase.
 
 ## Effective operational scope
 

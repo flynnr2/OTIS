@@ -135,6 +135,12 @@ propagates the corresponding state between cores. Rehearsal reports should say
 which real boundaries they exercise, and focused deterministic regressions
 should cover the boundaries they simulate.
 
+An abort submission is likewise intent, not delivery. An aborting terminal must
+retain the sole serial owner until the priority abort is recorded as sent, or a
+bounded delivery failure is recorded. Closing capture merely because the
+supervisor has published its terminal state can otherwise race the abort queue
+and turn an otherwise valid finite endpoint into an avoidable platform escape.
+
 ---
 
 # Deliver the Instrument
