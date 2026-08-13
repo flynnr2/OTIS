@@ -1,5 +1,5 @@
 path,line,matched_terms,classification,source_text
-AGENTS.md,190,uncertainty,measurement_uncertainty_semantics,"- Distinguish provenance uncertainty (for example, an unknown applied code)"
+AGENTS.md,216,uncertainty,measurement_uncertainty_semantics,"- Distinguish provenance uncertainty (for example, an unknown applied code)"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,23,confidence,confidence_semantics,"`diagnostic`, `health`, `confidence`, `valid`, `eligible`, `fault`, `EST`,"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,30,uncertainty,measurement_uncertainty_semantics,and uncertainty;
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,36,confidence,confidence_semantics,"state/transition, confidence in the diagnosis, first/last seen, evidence"
@@ -73,8 +73,8 @@ derived/stage1_diagnostics_metrology_reference_closure.md,51,uncertainty,measure
 derived/stage1_diagnostics_metrology_reference_closure.md,57,uncertainty,measurement_uncertainty_semantics,"uncertainty, and staleness. Unsupported values remain unknown/empty."
 derived/stage1_diagnostics_metrology_reference_closure.md,73,uncertainty,measurement_uncertainty_semantics,"PPS-gated physical aperture and latency, reference/calibration uncertainty,"
 derived/stage1_diagnostics_metrology_reference_closure.md,75,uncertainty,measurement_uncertainty_semantics,"evidence is promoted through versioned contracts, uncertainty remains"
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,178,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,183,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,216,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,221,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,56,uncertainty,measurement_uncertainty_semantics,uncertainty from measurements using explicit assumptions and provenance.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,81,uncertainty,measurement_uncertainty_semantics,- Make uncertainty and reason codes visible.
 docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md,72,uncertainty,measurement_uncertainty_semantics,"Component quality affects uncertainty, noise floor, holdover, lock robustness,"
