@@ -87,6 +87,60 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             and proposal["g1_pass"]["firmware"] == proposal["firmware"]
             and proposal["g1_pass"]["policy"] == proposal["policy"]
         ),
+        "evidence_epoch_build_and_no_flash_entry_exact": (
+            proposal["compatibility_floor"] == "CX319_EVIDENCE_EPOCH_1"
+            and proposal["firmware_entry"]
+            == {
+                "mode": "verify_installed_exact_q3_image_no_flash",
+                "required_uf2_sha256": proposal["firmware"]["uf2"]["sha256"],
+                "firmware_flash_allowed": False,
+                "unknown_or_mismatched_installed_image": (
+                    "stop_and_require_shortest_affected_physical_no_write_requalification"
+                ),
+            }
+            and proposal["firmware_build_provenance"]["configuration"]["sha256"]
+            == proposal["firmware"]["configuration_sha256"]
+            and proposal["firmware_build_provenance"]["target"]["fqbn"]
+            == proposal["firmware"]["fqbn"]
+            and proposal["expected_device"]["expected_board_serial"]
+            == "503533748A919118"
+            and proposal["expected_device"]["single_continuously_draining_owner"]
+            is True
+        ),
+        "expected_entry_transcript_is_fail_closed": (
+            proposal["expected_entry_transcript"]["build"]
+            == {
+                "profile_id": proposal["firmware"]["profile_id"],
+                "source_sha256": proposal["firmware"]["source_sha256"],
+                "configuration_sha256": proposal["firmware"][
+                    "configuration_sha256"
+                ],
+                "uf2_sha256": proposal["firmware"]["uf2"]["sha256"],
+            }
+            and proposal["expected_entry_transcript"]["dac"]
+            == {
+                "physical_applied_code_before_setup": "unknown",
+                "planned_setup_code": 0xA808,
+                "setup_opens_new_dac_epoch": True,
+            }
+            and proposal["expected_entry_transcript"]["gnss_pps"]
+            == {
+                "identity_epoch": 1,
+                "identity_stable": True,
+                "metadata_control_eligible": True,
+                "raw_pps_control_eligible": True,
+                "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            }
+            and proposal["expected_entry_transcript"]["active_snapshot"]
+            == {
+                "complete_single_generation": True,
+                "post_attach_nonce_exact": True,
+                "session_nonzero": True,
+                "state_before_setup": "DISARMED",
+                "fail_static": False,
+                "setup_partition_healthy": True,
+            }
+        ),
         "leg_a_identity_setup_and_direction_exact": (
             spec.profile == "cx319_tight_lower"
             and spec.run_identity == "cx319_tight_lower:3195001"

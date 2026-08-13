@@ -30,6 +30,7 @@ def _fake_g1() -> dict[str, object]:
             "source_sha256": "a" * 64,
             "configuration_sha256": "b" * 64,
             "profile_id": "cx319_tight_lower",
+            "fqbn": "rp2040:test",
             "uf2": {"sha256": "c" * 64},
         },
         "policy": {
@@ -45,6 +46,19 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     fake_g1 = _fake_g1()
     monkeypatch.setattr(bounded_tight_deadband_bundle, "_git_identity", lambda: ("d" * 40, "clean"))
     monkeypatch.setattr(bounded_tight_deadband_bundle, "validate_no_write_qualification_pass", lambda path: fake_g1)
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_firmware_build_provenance",
+        lambda firmware: {
+            "configuration": {"sha256": firmware["configuration_sha256"]},
+            "target": {"fqbn": firmware["fqbn"]},
+            "invocation": {"arduino_cli_version": "test"},
+            "toolchain": {
+                "compiler_identity": "test",
+                "installed_sha256": "0" * 64,
+            },
+        },
+    )
     proposal_path = tmp_path / "proposal.json"
 
     proposal = bounded_tight_deadband_bundle.create_proposal(

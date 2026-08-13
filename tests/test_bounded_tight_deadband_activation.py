@@ -202,6 +202,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "source_sha256": "a" * 64,
         "configuration_sha256": "b" * 64,
         "profile_id": "cx319_tight_lower",
+        "fqbn": "rp2040:test",
         "build_manifest": {"sha256": "c" * 64},
         "uf2": {"sha256": "d" * 64},
     }
@@ -229,6 +230,19 @@ def test_authorized_activation_creates_an_exact_live_manifest(
     )
     monkeypatch.setattr(
         bounded_tight_deadband_bundle, "validate_no_write_qualification_pass", lambda path: fake_g1
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_firmware_build_provenance",
+        lambda observed: {
+            "configuration": {"sha256": observed["configuration_sha256"]},
+            "target": {"fqbn": observed["fqbn"]},
+            "invocation": {"arduino_cli_version": "test"},
+            "toolchain": {
+                "compiler_identity": "test",
+                "installed_sha256": "0" * 64,
+            },
+        },
     )
     proposal_path = tmp_path / "proposal.json"
     proposal = bounded_tight_deadband_bundle.create_proposal(

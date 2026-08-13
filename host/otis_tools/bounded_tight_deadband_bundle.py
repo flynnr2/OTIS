@@ -118,6 +118,39 @@ def _binding(path: Path) -> dict[str, Any]:
     }
 
 
+def _firmware_build_provenance(firmware: dict[str, Any]) -> dict[str, Any]:
+    manifest_path = Path(str(firmware.get("build_manifest", {}).get("path", "")))
+    if (
+        not manifest_path.is_file()
+        or firmware.get("build_manifest", {}).get("sha256")
+        != _sha256_file(manifest_path)
+    ):
+        raise ValueError("Q4 firmware build-manifest binding differs")
+    manifest = _read(manifest_path, "Q4 firmware build manifest")
+    provenance = manifest.get("provenance", {})
+    configuration = provenance.get("configuration", {})
+    target = provenance.get("target", {})
+    invocation = provenance.get("invocation", {})
+    toolchain = provenance.get("toolchain", {})
+    if (
+        configuration.get("profile_id") != firmware.get("profile_id")
+        or configuration.get("sha256") != firmware.get("configuration_sha256")
+        or target.get("fqbn") != firmware.get("fqbn")
+        or not isinstance(configuration.get("defines"), dict)
+        or not configuration["defines"]
+        or not isinstance(invocation.get("arduino_cli_version"), str)
+        or not isinstance(toolchain.get("compiler_identity"), str)
+        or not isinstance(toolchain.get("installed_sha256"), str)
+    ):
+        raise ValueError("Q4 firmware build provenance is incomplete or inconsistent")
+    return {
+        "configuration": configuration,
+        "target": target,
+        "invocation": invocation,
+        "toolchain": toolchain,
+    }
+
+
 def _atomic_new(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -303,9 +336,11 @@ def create_proposal(
     qualification = validate_no_write_qualification_pass(no_write_run_dir)
     if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
         raise ValueError("Q3 policy differs from the current G2 policy")
+    build_provenance = _firmware_build_provenance(qualification["firmware"])
     host_tools = {name: _binding(path) for name, path in HOST_TOOL_PATHS.items()}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "tool": TOOL_ID,
         "bundle_id": BUNDLE_ID,
         "created_utc": _utc_now(),
@@ -330,8 +365,71 @@ def create_proposal(
         },
         "g1_pass": qualification,
         "firmware": qualification["firmware"],
+        "firmware_build_provenance": build_provenance,
+        "firmware_entry": {
+            "mode": "verify_installed_exact_q3_image_no_flash",
+            "required_uf2_sha256": qualification["firmware"]["uf2"]["sha256"],
+            "firmware_flash_allowed": False,
+            "unknown_or_mismatched_installed_image": (
+                "stop_and_require_shortest_affected_physical_no_write_requalification"
+            ),
+        },
         "policy": qualification["policy"],
         "host_tools": host_tools,
+        "expected_device": {
+            "last_qualified_serial_path": "/dev/cu.usbmodem14601",
+            "expected_board_serial": "503533748A919118",
+            "baud": 115200,
+            "single_continuously_draining_owner": True,
+            "serial_path_may_reenumerate_but_board_identity_may_not": True,
+        },
+        "expected_entry_transcript": {
+            "queries_before_setup": [
+                "CONFIG?",
+                "DAC?",
+                "FC0?",
+                "ACTIVE LEASE <nonzero_uint32>",
+                "ACTIVE SNAPSHOT <post_attach_nonce>",
+            ],
+            "boot": {
+                "fresh_host_attach_maximum_uptime_s": (
+                    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+                ),
+                "automatic_reboot_recovery": False,
+            },
+            "build": {
+                "profile_id": qualification["firmware"]["profile_id"],
+                "source_sha256": qualification["firmware"]["source_sha256"],
+                "configuration_sha256": qualification["firmware"][
+                    "configuration_sha256"
+                ],
+                "uf2_sha256": qualification["firmware"]["uf2"]["sha256"],
+            },
+            "dac": {
+                "physical_applied_code_before_setup": "unknown",
+                "planned_setup_code": SETUP_CODE,
+                "setup_opens_new_dac_epoch": True,
+            },
+            "timing": {
+                "status_clock_domain": "rp2040_timer0",
+                "measurement_reference": "gnss_raw_pps",
+            },
+            "gnss_pps": {
+                "identity_epoch": 1,
+                "identity_stable": True,
+                "metadata_control_eligible": True,
+                "raw_pps_control_eligible": True,
+                "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            },
+            "active_snapshot": {
+                "complete_single_generation": True,
+                "post_attach_nonce_exact": True,
+                "session_nonzero": True,
+                "state_before_setup": "DISARMED",
+                "fail_static": False,
+                "setup_partition_healthy": True,
+            },
+        },
         "leg_spec": {
             "profile_id": "cx319_tight_lower",
             "run_binding_tag": 3195001,
