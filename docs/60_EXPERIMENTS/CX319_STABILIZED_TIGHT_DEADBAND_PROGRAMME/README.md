@@ -175,3 +175,9 @@ and grants no Q4 live authority. The resulting exact flash, frozen-criterion
 non-pass, zero-actuation evidence and excessive snapshot-cadence process escape
 are recorded in
 [`28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md`](28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md).
+
+The corrected non-effective no-flash proposal freezes one manual reset, three
+snapshots at a minimum five-second cadence and a 30-second deadline in
+[`29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md`](29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md).
+Its structural preflight and actual analyzer/seal replay pass, but it requires
+a separate operator decision before any physical action.

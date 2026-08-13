@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_retires_focused_session_rebinding_nonpass() -> None:
+def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,14 +27,14 @@ def test_tracked_status_retires_focused_session_rebinding_nonpass() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_current_session_rebinding_focused_no_write_nonpass"
+        "q4_session_absence_no_flash_low_cadence_offline_ready"
     )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "no_effective_physical_or_live_authority_after_focused_nonpass"
+        "no_effective_physical_or_live_authority_pending_separate_no_flash_decision"
     )
     assert successor["next_gate"] == (
-        "prepare_no_flash_low_cadence_session_absence_qualification"
+        "operator_decision_on_no_flash_low_cadence_session_absence_qualification"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -71,6 +71,18 @@ def test_tracked_status_retires_focused_session_rebinding_nonpass() -> None:
     assert nonpass["observed_sessions"] == [1]
     assert nonpass["telemetry_dropped_final"] == 48
     assert nonpass["live_authority"] is False
+    readiness = successor["current_session_absence_no_flash_offline_readiness"]
+    assert readiness["outcome"] == (
+        "offline_ready_for_separate_no_flash_authority_decision"
+    )
+    assert readiness["firmware_flashes_proposed"] == 0
+    assert readiness["manual_resets_proposed"] == 1
+    assert readiness["snapshot_query_count"] == 3
+    assert readiness["minimum_snapshot_cadence_s"] == 5
+    assert readiness["post_attach_deadline_s"] == 30
+    assert readiness["q2_q3_repeated"] is False
+    assert readiness["physical_authority_effective"] is False
+    assert readiness["live_authority_effective"] is False
     assert successor["q4_lower_live_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -800,6 +812,34 @@ def test_q4_lower_live_authority_proposal_is_machine_readable_and_non_effective(
     assert proposal["proposed_future_entry"]["firmware_entry"] == (
         "verify_installed_exact_q3_image_no_flash"
     )
+
+
+def test_session_absence_no_flash_proposal_is_narrow_and_non_effective() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_current_session_absence_no_flash_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["effective"] is False
+    assert proposal["operator_authority_required"] is True
+    assert proposal["firmware_flash_limit"] == 0
+    assert proposal["manual_reset_button_limit"] == 1
+    assert proposal["snapshot_query_count"] == 3
+    assert proposal["minimum_snapshot_cadence_s"] == 5
+    assert proposal["post_attach_deadline_s"] == 30
+    assert proposal["q2_repeat_authorized"] is False
+    assert proposal["q3_repeat_authorized"] is False
+    assert proposal["live_authority"] is False
+    assert {
+        proposal["dac_value_writes"],
+        proposal["setup_stimuli"],
+        proposal["control_arms"],
+        proposal["automatic_corrections"],
+    } == {0}
 
 
 def test_q4_lower_retry_authority_proposal_is_non_effective_and_reset_bounded() -> None:

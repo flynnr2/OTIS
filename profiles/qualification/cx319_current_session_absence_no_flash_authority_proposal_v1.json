@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "proposal_id": "CX319_CURRENT_SESSION_ABSENCE_NO_FLASH_AUTHORITY_PROPOSAL_V1",
+  "programme_id": "cx319_stabilized_tight_deadband",
+  "effective": false,
+  "operator_authority_required": true,
+  "programme_operation": "g1_no_write_bench_rehearsal",
+  "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md",
+  "device": "/dev/cu.usbmodem14601",
+  "expected_board_serial": "503533748A919118",
+  "firmware_profile": "cx319_tight_lower",
+  "installed_uf2_sha256": "e62cfb7c5df58a4471425a2045cc7d7fba03ed57d35eccb8cdd45ad34c7bf510",
+  "source_flash_record_sha256": "9c204517b022778c0473c2244f4a93b8ab84481a42e4cd75689dbe216791b0ea",
+  "bundle_sha256": "bfc5c11d8fc75787c15d6a9acd8d2ade54ec7e970a37bbde222e26f8d44c464c",
+  "operational_rehearsal_seal_sha256": "ddcb52e2e8ffba29c68966df22b391c663c3efd4fa97114eefa2d45f5cf01b47",
+  "manual_reset_button_limit": 1,
+  "firmware_flash_limit": 0,
+  "physical_no_write_attempt_limit": 1,
+  "post_attach_deadline_s": 30,
+  "snapshot_query_count": 3,
+  "minimum_snapshot_cadence_s": 5,
+  "normal_commands": [
+    "CONFIG?",
+    "ACTIVE SNAPSHOT <nonce>"
+  ],
+  "q2_repeat_authorized": false,
+  "q3_repeat_authorized": false,
+  "dac_value_writes": 0,
+  "setup_stimuli": 0,
+  "control_arms": 0,
+  "automatic_corrections": 0,
+  "live_authority": false
+}
