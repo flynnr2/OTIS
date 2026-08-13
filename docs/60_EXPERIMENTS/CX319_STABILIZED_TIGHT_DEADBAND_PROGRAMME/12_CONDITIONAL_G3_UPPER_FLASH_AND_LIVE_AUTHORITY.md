@@ -11,6 +11,12 @@ This decision extends the conditional G3 authority in
 and does not authorize an unidentified image, an early G3 entry, a G2 retry or
 any additional firmware operation.
 
+The operator further directed on 2026-08-13 that G2 and G3 remain a matched
+pair. G3 must preserve G2's firmware and host semantics, cadence behavior,
+gates, monitoring, analysis, and stop rules, changing only the upper-leg
+profile, `0xA848` setup code, and negative required direction. Cadence
+acceleration is deferred until both approach directions have completed.
+
 ## Conditions before execution
 
 The authority becomes executable only when:

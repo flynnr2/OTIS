@@ -143,6 +143,13 @@ rehearsal, then apply one exact `0xA848` setup stimulus. Demonstrate the same
 bounded result in the negative automatic direction. Both G2 and G3 must pass
 for bidirectional tight-deadband validation.
 
+Treat G2 and G3 as a matched physical pair. Preserve the same firmware and
+host semantics, control cadence, readiness gates, monitoring, analysis, and
+stop rules; change only the leg-specific profile, setup code, and required
+automatic direction. Defer any cadence acceleration until both legs have
+completed so an optimization cannot weaken comparability or introduce a new
+operational escape between the two decision-bearing runs.
+
 ### G4 — Combined observation and fault campaign
 
 G4 preserves the scientific purpose of the former CX318 Stage 6 while using

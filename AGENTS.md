@@ -171,6 +171,24 @@ the remaining physical integration risk.
 - Bound serial reads, writes, flushes, process shutdown, and command waits.
 - Send console output to a continuously drained file or bounded logger.
 - Keep abort independent of normal-command backpressure.
+- For unattended finite runs, monitor the authoritative supervisor state and
+  retained evidence records at a cadence shorter than the smallest material
+  fault or milestone interval. Process existence and a silent runner terminal
+  prove only liveness; they do not establish capture freshness, scientific
+  progress, control transactions, or milestone completion.
+- Keep the controlling Codex turn active with bounded polling until an
+  unattended physical run reaches a terminal state. A background watcher that
+  Codex is no longer consuming is not active monitoring. Answer intervening
+  operator questions in commentary and continue the same control turn; do not
+  yield a final response while the run remains active unless an independent
+  recurring monitor has been explicitly requested and verified.
+- Make unattended monitors report state transitions, decision-bearing
+  milestones, terminal faults, and stale evidence rather than transient query
+  snapshots. If a monitor is too noisy or defective, replace it before stopping
+  it; never leave an active physical run with only process-liveness polling.
+- Derive expected milestone times from the component that owns each boundary
+  (for example, firmware decision cadence from the preceding firmware decision),
+  then confirm the actual evidence record at the boundary before reporting it.
 - Treat these as reusable platform invariants rather than rebuilding them for
   each experiment. A passive bridge is one possible implementation, not a
   required architecture.
