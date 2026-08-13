@@ -36,6 +36,8 @@ lasting preference changes.
   Preserve sufficient schema, ordering, identity, configuration, and provenance
   to permit deterministic replay, offline reconstruction, independent
   verification, and later reinterpretation.
+- Do not interpret missing, partial, late, duplicated, or out-of-order telemetry
+  as clean, zero, unchanged, or causally ordered without explicit evidence.
 - Keep capture, measurement, metrology, diagnostics, telemetry, and control as
   distinct responsibilities. Diagnostics must state why control is permitted,
   degraded, held, or inhibited.
@@ -80,6 +82,14 @@ lasting preference changes.
 
 ## Optimize for decision-bearing capability
 
+- Treat working firmware, the operational host path, and reproducible
+  decision-bearing evidence as the deliverable. Verification harnesses are
+  supporting infrastructure: harden them where they protect that outcome or
+  prevent a repeated escape, but do not turn them into a parallel product.
+- Prefer the largest safe, finite end-to-end programme that can affect the next
+  decision and exercise the complete producer-to-consumer path plus relevant
+  failure modes. Use narrow tests to localize known defects; do not substitute
+  an accumulation of isolated micro-tests for an outcome-bearing integration.
 - A bounded experiment that rejects a controller or reveals a real firmware
   limitation is useful progress. Avoidable host, orchestration, and artifact
   failures are verification escapes and should be moved into rehearsal.
@@ -100,6 +110,11 @@ when firmware, host behavior, configuration, protocol, FIFO/process topology,
 command timing, verifier semantics, authority, or stop conditions change. A
 path rename, documentation-only edit, or other non-operational change does not
 by itself invalidate a successful rehearsal.
+
+Derive shared deadlines, baselines, counters, command boundaries, and verdict
+predicates from one frozen contract or manifest wherever practical. Runners,
+supervisors, analyzers, recovery tools, and test harnesses must not invent
+conflicting operational semantics.
 
 Validate historical artifacts against the manifest and matrix with which they
 were created. Do not require them to satisfy the current expanding product
@@ -172,13 +187,24 @@ Do not describe a structural preflight as a rehearsal. A physical qualification
 should confirm the scientific or real-time behavior, not be the first place an
 ordinary host integration defect can appear.
 
-When a failure is confined to a deterministic offline host consumer and the
-sealed raw acquisition evidence remains complete, immutable, and sufficient,
-reanalyse that evidence with explicit old/new analyzer identities and
-supersession provenance. Do not repeat successful firmware or physical
-acquisition merely to repair an offline verdict. Repeat the shortest affected
-gate when a change can alter commands, capture completeness, ownership, timing,
-segmentation, safety, firmware behavior, or the scientific result.
+Judge physical acquisition, live host orchestration, offline analysis,
+finalization, and registration as distinct gates. A downstream failure does not
+retroactively invalidate an earlier successful gate.
+
+When a failure is confined to a deterministic offline consumer or finalizer and
+the retained raw acquisition evidence remains complete and sufficient, and is
+immutable or content-addressed and unchanged, repair the tool, replay the exact
+evidence, and produce a provenance-linked analysis, seal, or registration.
+Preserve the original failure and the old and new tool identities. Do not repeat
+successful firmware or physical acquisition merely to obtain a clean downstream
+tool run.
+
+"Host-side" alone is not grounds to waive a repeat. Repeat the shortest affected
+gate when a correction can alter commands, capture completeness, serial
+ownership, timing, segmentation, safety, firmware behavior, plant behavior, or
+the scientific result. Do not weaken or redefine an acceptance criterion after
+examining evidence; a superseding replay may correct implementation of a frozen
+criterion, not move the gate.
 
 ## Operating premises and safety
 
@@ -208,6 +234,11 @@ For each anomaly:
 Do not improve optional telemetry, historical validation, or general
 architecture during an active campaign. Do not turn every defect into a
 repository-wide framework project.
+
+Move each escaped platform defect into the cheapest deterministic regression or
+rehearsal capable of catching it at the earliest practical layer. Implement no
+more supporting machinery than is needed to protect the instrument outcome or
+prevent recurrence.
 
 Classify failures in reports as scientific rejection, firmware defect under
 intended stress, platform defect caught in rehearsal, platform escape into a

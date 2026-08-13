@@ -151,6 +151,10 @@ hold:
    identities, original verdict, superseding verdict, reason, and review
    authority.
 
+Reanalysis may correct the implementation of a criterion frozen before the
+acquisition. It must not weaken, replace, or reinterpret an acceptance criterion
+after examining the evidence merely to turn a non-pass into a pass.
+
 Preserve the original report. Store a new provenance-linked result rather than
 rewriting the acquisition package. The new product must record:
 

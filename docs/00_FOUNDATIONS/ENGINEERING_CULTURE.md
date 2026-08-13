@@ -88,10 +88,24 @@ OTIS should preserve enough information to permit:
 - future reinterpretation.
 
 That replayability should save bench time as well as support audit. If a
-sealed acquisition is complete and a later defect is demonstrably confined to
-a deterministic offline analyzer, the correct response is a provenance-linked
-reanalysis—not another physical run. Preserve both verdicts and their analyzer
-identities so the supersession is explicit.
+complete acquisition that is immutable, or content-addressed and unchanged,
+later encounters a defect demonstrably confined to a deterministic offline
+analyzer or finalizer, the correct response is a provenance-linked replay,
+completion, or reanalysis—not another physical run. Preserve the original
+failure and the old and new tool identities so the supersession is explicit. A
+replay may correct implementation of a frozen criterion; it must not redefine
+success after the evidence is seen.
+
+Acquisition, live host orchestration, offline analysis, sealing, and
+registration are separate gates. Failure in a downstream gate does not rewrite
+the result of a completed upstream gate. Conversely, calling a defect
+"host-side" is not sufficient to preserve a run: changes to capture, commands,
+ownership, timing, segmentation, safety, plant interaction, or firmware-visible
+behavior require repetition of the shortest affected operational gate.
+
+Missing, partial, late, duplicated, or out-of-order telemetry is not evidence of
+a clean, zero, unchanged, or causally ordered state. Those claims require direct
+evidence or an explicit reconstruction with stated assumptions.
 
 ---
 
@@ -114,6 +128,25 @@ scientific evidence about real duration or plant behavior.
 
 ---
 
+# Deliver the Instrument
+
+The deliverable is working firmware, a working operational host path, and
+reproducible evidence sufficient to support the next decision. Test harnesses
+and campaign scaffolding are supporting infrastructure, not parallel products.
+They should be hardened when they protect the instrument outcome, make evidence
+credible, or prevent a demonstrated escape from recurring. They should not grow
+merely to make the verification machinery more elaborate.
+
+OTIS prefers ambitious but bounded programmes: broad in the interfaces,
+state transitions, and failure modes they exercise, while finite in authority,
+duration, and cost. Accelerated time, replay, fault injection, and short
+complete-path rehearsals should expose ordinary integration failures before an
+expensive physical qualification. Narrow tests are valuable for discriminating
+and localizing a known defect; a collection of isolated micro-tests is not a
+substitute for an outcome-bearing end-to-end result.
+
+---
+
 # DRY, But Not Abstract For Its Own Sake
 
 OTIS values DRY principles strongly.
@@ -123,8 +156,13 @@ Repeated:
 - validation logic;
 - telemetry definitions;
 - timing transforms;
+- deadlines, baselines, counters, and verdict predicates;
 
 should be treated as architectural smells.
+
+Operational semantics should come from one frozen contract or manifest wherever
+practical. A runner, supervisor, analyzer, recovery tool, and test harness must
+not each carry a subtly different version of the same rule.
 
 However:
 
