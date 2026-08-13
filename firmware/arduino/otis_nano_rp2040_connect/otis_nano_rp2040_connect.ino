@@ -1438,7 +1438,7 @@ void publish_dual_core_association_loss_decision(
   const int used = snprintf(
       dual_core_association_loss_scratch.data,
       sizeof(dual_core_association_loss_scratch.data),
-      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
+      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
       static_cast<unsigned long>(dual_core_association_loss_scratch.sequence),
       reason == nullptr ? "association_loss_unspecified" : reason,
       classification, static_cast<unsigned long long>(decision_ticks),
