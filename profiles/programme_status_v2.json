@@ -10,12 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_lower_retry_offline_ready_for_separate_authority",
+      "state": "q4_lower_retry_authorized_awaiting_single_restart",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "g2_live_leg"
       ],
       "effective_date": "2026-08-13",
-      "authority": "no_effective_live_authority_after_consumed_q4_attempt",
+      "authority": "explicit_operator_q4_lower_single_restart_retry_authority",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -82,7 +83,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "separate_authority_for_one_board_restart_and_exact_retry_candidate",
+      "next_gate": "execute_one_restart_then_exact_retry_candidate_once",
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
         "operator_instruction": "move_on_to_the_physical_q4_live_run",
@@ -139,6 +140,28 @@
         "live_runner_sha256": "833bc0f3c07a2bb678cd7a863f8a1f44e947a5e5ae9772114cf54ac192d657c5",
         "reused_q1_q3_and_firmware_evidence": true,
         "live_authority_effective": false
+      },
+      "q4_lower_retry_live_authority": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md",
+        "operator_instruction": "authorized",
+        "effective": true,
+        "consumed": false,
+        "programme_operation": "g2_live_leg",
+        "board_restart_limit": 1,
+        "firmware_flash_limit": 0,
+        "physical_live_run_limit": 1,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "phase_or_hybrid_actionable": false,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+        "proposal_bundle_sha256": "9697652d963c0bcfe44800c1f3ff7c6cf032ca382c5479c8cec0edb1ddccbd56",
+        "operational_rehearsal_seal_sha256": "c56d402abd3ac208ca10b73f78863372ca4abb176c10c8d56c3c3d2845c84c6d"
       },
       "q4_offline_readiness": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md",

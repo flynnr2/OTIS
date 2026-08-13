@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_retires_consumed_q4_live_authority() -> None:
+def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,14 +27,17 @@ def test_tracked_status_retires_consumed_q4_live_authority() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_lower_retry_offline_ready_for_separate_authority"
+        "q4_lower_retry_authorized_awaiting_single_restart"
     )
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    ]
     assert successor["authority"] == (
-        "no_effective_live_authority_after_consumed_q4_attempt"
+        "explicit_operator_q4_lower_single_restart_retry_authority"
     )
     assert successor["next_gate"] == (
-        "separate_authority_for_one_board_restart_and_exact_retry_candidate"
+        "execute_one_restart_then_exact_retry_candidate_once"
     )
     assert successor["q4_lower_live_authority"] == {
         "record": (
@@ -155,6 +158,41 @@ def test_tracked_status_retires_consumed_q4_live_authority() -> None:
         ),
         "reused_q1_q3_and_firmware_evidence": True,
         "live_authority_effective": False,
+    }
+    assert successor["q4_lower_retry_live_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md"
+        ),
+        "operator_instruction": "authorized",
+        "effective": True,
+        "consumed": False,
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "board_restart_limit": 1,
+        "firmware_flash_limit": 0,
+        "physical_live_run_limit": 1,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 0xA800,
+        "maximum_code": 0xAB00,
+        "phase_or_hybrid_actionable": False,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "proposal_bundle_sha256": (
+            "9697652d963c0bcfe44800c1f3ff7c6c"
+            "f032ca382c5479c8cec0edb1ddccbd56"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "c56d402abd3ac208ca10b73f78863372"
+            "ca4abb176c10c8d56c3c3d2845c84c6d"
+        ),
     }
     assert successor["q4_offline_readiness"] == {
         "record": (
@@ -566,11 +604,10 @@ def test_tracked_status_retires_consumed_q4_live_authority() -> None:
             "cx319_stabilized_tight_deadband",
             NO_WRITE_BENCH_REHEARSAL,
         )
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
