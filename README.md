@@ -21,10 +21,10 @@ and Git history. Reproduce a historical package from the exact revision named
 by its manifest, bundle, index record, or report; do not treat a successful
 historical reproduction as current validation or authority.
 
-The active CX319 programme currently permits offline preparation only, as
-recorded in `profiles/programme_status_v2.json`. This does not authorize
-flashing, serial access, command FIFOs, DAC writes, control arming, bench
-rehearsal, or live execution.
+The active CX319 programme currently permits offline preparation and one
+explicitly bounded no-flash, no-write, low-cadence physical check, as recorded
+in `profiles/programme_status_v2.json`. This does not authorize firmware
+flashing, DAC writes, control arming, Q2/Q3 repetition, or live execution.
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute

@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
+def test_tracked_status_authorizes_no_flash_low_cadence_attempt() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,14 +27,17 @@ def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_session_absence_no_flash_low_cadence_offline_ready"
+        "q4_session_absence_no_flash_low_cadence_authorized"
     )
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        NO_WRITE_BENCH_REHEARSAL,
+    ]
     assert successor["authority"] == (
-        "no_effective_physical_or_live_authority_pending_separate_no_flash_decision"
+        "effective_one_attempt_no_flash_low_cadence_physical_authority"
     )
     assert successor["next_gate"] == (
-        "operator_decision_on_no_flash_low_cadence_session_absence_qualification"
+        "execute_no_flash_low_cadence_session_absence_qualification"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -83,6 +86,31 @@ def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
     assert readiness["q2_q3_repeated"] is False
     assert readiness["physical_authority_effective"] is False
     assert readiness["live_authority_effective"] is False
+    authority = successor[
+        "current_session_absence_no_flash_low_cadence_authority"
+    ]
+    assert authority["operator_instruction"] == (
+        "I authorize the no-flash low-cadence proposal and I am at the bench"
+    )
+    assert authority["physical_presence_confirmed"] is True
+    assert authority["effective"] is True
+    assert authority["consumed"] is False
+    assert authority["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
+    assert authority["firmware_flash_limit"] == 0
+    assert authority["manual_reset_button_limit"] == 1
+    assert authority["physical_no_write_attempt_limit"] == 1
+    assert authority["snapshot_query_count"] == 3
+    assert authority["minimum_snapshot_cadence_s"] == 5
+    assert authority["post_attach_deadline_s"] == 30
+    assert authority["q2_repeat_authorized"] is False
+    assert authority["q3_repeat_authorized"] is False
+    assert authority["live_authority"] is False
+    assert {
+        authority["dac_value_writes"],
+        authority["setup_stimuli"],
+        authority["control_arms"],
+        authority["automatic_corrections"],
+    } == {0}
     assert successor["q4_lower_live_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -758,7 +786,7 @@ def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
         "g2_v7_activation_reuse",
         "rehearsal_to_live_promotion",
         "firmware_flash",
-        "board_reset",
+        "board_reset_outside_current_session_absence_authority",
         "automatic_retry",
         "automatic_restore",
         "duration_extension",
@@ -773,11 +801,10 @@ def test_tracked_status_prepares_no_flash_low_cadence_decision() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            NO_WRITE_BENCH_REHEARSAL,
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        NO_WRITE_BENCH_REHEARSAL,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
         require_programme_operation_allowed(
             "cx319_stabilized_tight_deadband",

@@ -180,4 +180,7 @@ The corrected non-effective no-flash proposal freezes one manual reset, three
 snapshots at a minimum five-second cadence and a 30-second deadline in
 [`29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md`](29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md).
 Its structural preflight and actual analyzer/seal replay pass, but it requires
-a separate operator decision before any physical action.
+a separate operator decision before any physical action. The operator's
+effective one-reset, no-flash, three-snapshot authority is recorded in
+[`30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md`](30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md).
+It repeats neither Q2/Q3 nor any live actuation.
