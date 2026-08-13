@@ -231,6 +231,16 @@ def test_q1_bundle_reuses_clean_ancestor_build_with_identical_firmware_inputs(
     assert value["host_source_revision"] == "2" * 40
 
 
+def test_bundle_survives_later_docs_only_revision_when_host_tools_are_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, value = _create_bundle(tmp_path, monkeypatch)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+
+    assert bundle_tool.validate_bundle(output) == value
+
+
 def test_bundle_rejects_write_authority_even_with_recomputed_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

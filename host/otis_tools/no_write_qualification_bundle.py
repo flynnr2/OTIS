@@ -948,7 +948,13 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     current_host_revision, current_host_state = _git_identity()
     if (
         current_host_state != "clean"
-        or bundle.get("host_source_revision") != current_host_revision
+        or not isinstance(bundle.get("host_source_revision"), str)
+        or not (
+            bundle["host_source_revision"] == current_host_revision
+            or _git_is_ancestor(
+                bundle["host_source_revision"], current_host_revision
+            )
+        )
     ):
         raise ValueError("CX319 G1 bundle host source binding is stale")
     if firmware_entry.get("mode") == "reuse_confirmed_installed_firmware":
