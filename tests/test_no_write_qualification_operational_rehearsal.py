@@ -8,6 +8,7 @@ from host.otis_tools.no_write_qualification_operational_rehearsal import (
     _exercise_timing_contract,
     _ignore_nonregular_entries,
     _prepare_replay_transition,
+    _replayed_entry_semantics,
     _replace_capture_stop_target,
     _replace_build_identity,
     _source_exercised_q1_detach,
@@ -119,3 +120,10 @@ def test_transition_replay_retains_canonical_owner_handoff_identity(
     _prepare_replay_transition(source, transition)
 
     assert load_manifest(transition).data["run_id"] == transition.name
+
+
+def test_no_flash_replay_uses_physical_running_attach_semantics() -> None:
+    assert _replayed_entry_semantics("reuse_confirmed_installed_firmware") == {
+        "operation": "confirmed_installed_cx319_g1_running_attach",
+        "attachment_mode": "running_instrument",
+    }

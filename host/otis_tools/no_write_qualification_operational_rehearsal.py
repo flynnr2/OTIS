@@ -216,6 +216,17 @@ def _prepare_replay_transition(
         shutil.copy2(generated, transition_dir / "run_manifest.json")
 
 
+def _replayed_entry_semantics(entry_mode: str) -> dict[str, str]:
+    if entry_mode == "single_exact_flash":
+        return {"operation": "exact_cx319_g1_firmware_flash"}
+    if entry_mode == "reuse_confirmed_installed_firmware":
+        return {
+            "operation": "confirmed_installed_cx319_g1_running_attach",
+            "attachment_mode": "running_instrument",
+        }
+    raise ValueError("operational rehearsal firmware entry is invalid")
+
+
 def _exercise_timing_contract(bundle: dict[str, Any], root: Path) -> dict[str, Any]:
     run_dir = root / "accelerated-supervisor"
     (run_dir / "csv").mkdir(parents=True)
@@ -462,6 +473,7 @@ def _prepare_replay(
     flash: dict[str, Any] = {
         "schema_version": 1,
         "tool": TOOL_ID,
+        **_replayed_entry_semantics(entry_mode),
         "status": "pass",
         "qualification_sequence_gate": sequence_gate,
         "firmware_flashes": 0,
@@ -478,7 +490,6 @@ def _prepare_replay(
     if entry_mode == "single_exact_flash":
         board = source_flash["board_after"]
         flash.update(
-            operation="exact_cx319_g1_firmware_flash",
             attempt_count=1,
             board_before=board,
             board_after=board,
@@ -498,7 +509,6 @@ def _prepare_replay(
     else:
         board = entry["installed_board"]
         flash.update(
-            operation="confirmed_installed_cx319_g1_firmware_reuse",
             attempt_count=0,
             board_before=board,
             board_after=board,
