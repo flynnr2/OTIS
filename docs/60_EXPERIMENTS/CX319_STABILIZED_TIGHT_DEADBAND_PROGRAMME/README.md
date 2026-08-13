@@ -14,8 +14,9 @@ correction occurred. The attempt is a platform escape, not a scientific Q4
 result. Its authority is consumed. The narrow runner repair, fresh candidate,
 and accelerated rehearsal pass. The first retry authority was consumed by a
 software restart-path failure before any hardware effect. The candidate and
-rehearsal remain current, but live execution is blocked pending a separate
-manual-button restart decision.
+rehearsal remain current. The operator has now authorized one observed manual
+reset-button press followed by one exact physical run and confirmed presence
+at the bench.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -157,3 +158,6 @@ The operator's exact one-restart, one-run retry authority is recorded in
 The zero-effect software restart stop and non-effective manual-button-only
 replacement proposal are recorded in
 [`24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md`](24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md).
+
+The effective manual-reset-button-only live authority is recorded in
+[`25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md`](25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md).
