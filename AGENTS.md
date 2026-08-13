@@ -154,6 +154,10 @@ the remaining physical integration risk.
 
 - Maintain exactly one known serial owner and continuous bounded drainage when
   firmware queue health depends on host consumption.
+- Once capture producers are enabled, service their internal queues regardless
+  of whether an external serial carrier has attached. Bound and explicitly
+  discard pre-attachment output if necessary; host presence must not gate the
+  timing, capture, witness, boundary, estimator, or health service planes.
 - Make capture handoff atomic; analysis must not create an ownerless interval.
 - Bound serial reads, writes, flushes, process shutdown, and command waits.
 - Send console output to a continuously drained file or bounded logger.

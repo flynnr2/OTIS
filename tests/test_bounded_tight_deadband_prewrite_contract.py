@@ -111,6 +111,32 @@ def test_prewrite_rejects_receiver_identity_epoch_two_before_setup() -> None:
     )
 
 
+def test_prewrite_rejects_proxy_ready_snapshot_when_firmware_authority_is_false(
+) -> None:
+    health = canonical_prewrite_fixture(
+        expected_identity=IDENTITY,
+        planned_live_stimulus_code=0xA808,
+    )
+    # Reproduce the escaped live state: every broad receiver proxy is healthy,
+    # but the exact firmware setup predicate rejects the reference evidence.
+    assert health[("gnss_receiver", "control_eligible")] == "true"
+    assert health[("gnss_receiver", "raw_pps_control_eligible")] == "true"
+    health[("cx317_active", "setup_reference_eligible")] = "false"
+
+    readiness = evaluate_prewrite_readiness(
+        health,
+        expected_identity=IDENTITY,
+        planned_live_stimulus_code=0xA808,
+        active_row_count=0,
+        dac_row_count=0,
+    )
+
+    assert readiness.ready is False
+    assert readiness.mismatches == (
+        "cx317_active.setup_reference_eligible='false', expected 'true' before setup",
+    )
+
+
 def test_history_allows_convergence_then_requires_a_frozen_value() -> None:
     result = evaluate_telemetry_drop_history(
         _rows([0, 3, 3, 3]),

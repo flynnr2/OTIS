@@ -189,6 +189,17 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
     assert loop1.index("otis_capture_backend_service();") < loop1.index(
         "service_tcxo_gate();"
     )
+    carrier_gate = loop1.index("if (!dual_core_serial_carrier_seen)")
+    for call in (
+        "service_dual_core_timing_inputs();",
+        "otis_pps_dual_observer_service();",
+        "otis_capture_backend_service();",
+        "drain_pps_count_boundary_ring();",
+        "drain_capture_ring();",
+        "service_tcxo_gate();",
+        "publish_dual_core_timing_health(now_ms);",
+    ):
+        assert loop1.index(call) < carrier_gate
 
     dual_core0 = loop0[
         loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :

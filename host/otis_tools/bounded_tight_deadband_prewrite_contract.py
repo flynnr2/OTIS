@@ -34,7 +34,14 @@ from .no_write_prewrite_readiness_contract import (
 )
 
 
-RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v5"
+RUNTIME_CONTRACT_ID = "cx319_g2_prewrite_runtime_contract_v6"
+SETUP_AUTHORITY_EXACT = {
+    ("cx317_active", "setup_gnss_eligible"): "true",
+    ("cx317_active", "setup_reference_eligible"): "true",
+    ("cx317_active", "setup_partition_healthy"): "true",
+}
+
+
 def evaluate_prewrite_readiness(
     health: Health,
     *,
@@ -75,6 +82,15 @@ def evaluate_prewrite_readiness(
             mismatches.append(
                 f"{name}={observed!r}, expected {required!r} before setup"
             )
+    for key, required in SETUP_AUTHORITY_EXACT.items():
+        observed = health.get(key)
+        name = f"{key[0]}.{key[1]}"
+        if observed is None:
+            missing.append(f"missing {name}")
+        elif observed != required:
+            mismatches.append(
+                f"{name}={observed!r}, expected {required!r} before setup"
+            )
     return PrewriteReadiness(
         contract_id=base.contract_id,
         ready=not missing and not mismatches,
@@ -101,6 +117,7 @@ def canonical_prewrite_fixture(
         planned_live_stimulus_code=planned_live_stimulus_code,
     )
     health.update(GNSS_PREWRITE_EXACT)
+    health.update(SETUP_AUTHORITY_EXACT)
     return health
 
 
@@ -111,6 +128,7 @@ __all__ = [
     "GNSS_PREWRITE_EXACT",
     "INHERITED_PREVIEW_BASELINE_PROVENANCE",
     "RUNTIME_CONTRACT_ID",
+    "SETUP_AUTHORITY_EXACT",
     "RAW_PPS_QUALIFICATION_DEADLINE_S",
     "TELEMETRY_BASELINE_STABLE_OBSERVATIONS",
     "TELEMETRY_DROP_KEY",

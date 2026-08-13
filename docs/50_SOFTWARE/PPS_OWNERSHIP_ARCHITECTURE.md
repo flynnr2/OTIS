@@ -84,6 +84,12 @@ transition; repeated watchdog polls do not create new outages. A later new D14
 event creates one restoration transition. Optional reminders use their own
 counter.
 
+Once the PPS producers are enabled, their foreground capture, witness,
+snapshot, association, boundary, and estimator service remains live before and
+independently of USB serial-carrier attachment. Pre-attachment outbound records
+may be consumed and explicitly counted as discarded, but host presence must not
+gate internal drainage or manufacture a capture/witness overflow.
+
 PIO snapshot production, snapshot drain, measurement reconstruction, telemetry
 emission, control consumption, foreground backlog, and telemetry backpressure
 are separate progress planes. Backlog within capacity can delay reporting but

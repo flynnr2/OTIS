@@ -145,6 +145,33 @@ def test_g2_supervisor_requests_exact_setup_once(tmp_path: Path) -> None:
     assert supervisor.state["manual_start_sent"] is True
 
 
+def test_g2_supervisor_issues_no_setup_when_exact_firmware_authority_is_false(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": BUILD_IDENTITY,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    _freeze_baseline(supervisor)
+    _bind_snapshot(supervisor, health)
+    health[("cx317_active", "setup_reference_eligible")] = "false"
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["manual_start_sent"] is False
+    assert not (supervisor.run_dir / "reports/setup_authority_input_v1.json").exists()
+
+
 def test_g2_prewrite_allows_pps_qualification_after_fresh_attach_window(
     tmp_path: Path,
 ) -> None:

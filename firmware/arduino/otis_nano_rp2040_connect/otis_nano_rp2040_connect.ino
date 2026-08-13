@@ -4856,14 +4856,10 @@ void loop1() {
                    __ATOMIC_RELEASE);
   const uint32_t now_ms = millis();
   if (otis_transport_ready()) dual_core_serial_carrier_seen = true;
-  if (!dual_core_serial_carrier_seen) {
-    discard_dual_core_outputs_before_first_carrier();
-    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
-                                  otis_transport_written_bytes());
-    otis_gnss_receiver_service(now_ms);
-    otis_status_led_poll(now_ms);
-    return;
-  }
+  // Host attachment controls only delivery of the timing plane's outbound
+  // records. It must never gate capture, witness, boundary, estimator, or
+  // health service: those producers are already live and their finite queues
+  // must remain continuously drained even when USB attaches late.
   // Progress instrumentation is deliberately bounded to four complete trace
   // samples per second.  The empty service-queue poll carries no diagnostic
   // atomic accounting, so the protected timing core's hot path stays lean.
@@ -4906,6 +4902,13 @@ void loop1() {
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
                                         otis_capture_ticks_now());
+  if (!dual_core_serial_carrier_seen) {
+    discard_dual_core_outputs_before_first_carrier();
+    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
+                                  otis_transport_written_bytes());
+    otis_gnss_receiver_service(now_ms);
+    otis_status_led_poll(now_ms);
+  }
 }
 #endif
 
