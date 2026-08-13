@@ -96,6 +96,25 @@ def test_g2_spec_is_exact_lower_positive_leg() -> None:
     assert identities["active_policy_sha256"]
 
 
+def test_g3_supervisor_is_exact_upper_negative_leg(tmp_path: Path) -> None:
+    run = tmp_path / "g3"
+    (run / "csv").mkdir(parents=True)
+    supervisor = create_supervisor(
+        run_dir=run,
+        command_fifo=tmp_path / "normal.fifo",
+        emergency_command_fifo=tmp_path / "emergency.fifo",
+        abort_fifo=tmp_path / "abort.fifo",
+        expected_build_identity=BUILD_IDENTITY,
+        leg_name="B",
+    )
+
+    assert supervisor.spec.profile == "cx319_tight_upper"
+    assert supervisor.spec.start_code == 0xA848
+    assert supervisor.leg.required_direction == -1
+    assert supervisor.state["cx319_gate"] == "G3"
+    assert supervisor.state["cx319_leg"] == "B"
+
+
 def test_g2_prewrite_contract_has_live_leg_identity(tmp_path: Path) -> None:
     supervisor = _supervisor(tmp_path)
     expected = {

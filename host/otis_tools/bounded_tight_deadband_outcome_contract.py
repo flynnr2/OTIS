@@ -7,10 +7,14 @@ import json
 import re
 from typing import Any
 
+from .bounded_tight_deadband_leg import LOWER, UPPER, leg_for
+
 
 SCHEMA_VERSION = 1
-CONTRACT_ID = "cx319_g2_leg_a_outcome_contract_v2"
-SETUP_CODE = 0xA808
+CONTRACT_ID = LOWER.outcome_contract_id
+UPPER_CONTRACT_ID = UPPER.outcome_contract_id
+SETUP_CODE = LOWER.setup_code
+UPPER_SETUP_CODE = UPPER.setup_code
 MINIMUM_CODE = 0xA800
 MAXIMUM_CODE = 0xAB00
 MAXIMUM_CORRECTIONS = 4
@@ -26,7 +30,7 @@ _EVIDENCE = re.compile(r"ACTIVE EVIDENCE ([1-9][0-9]*) ([1-4])\Z")
 _SNAPSHOT = re.compile(r"ACTIVE SNAPSHOT ([1-9][0-9]*)\Z")
 _SETUP = re.compile(
     r"ACTIVE SETUP ([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*) "
-    r"([1-9][0-9]*) ([1-9][0-9]*) 0xA808 1 ([0-9a-f]{64})\Z",
+    r"([1-9][0-9]*) ([1-9][0-9]*) 0x(?:A808|A848) 1 ([0-9a-f]{64})\Z",
     re.IGNORECASE,
 )
 
@@ -61,6 +65,16 @@ def _bool_false(value: Any) -> bool:
 
 
 def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
+    gate = transcript.get("gate")
+    leg = transcript.get("leg")
+    try:
+        selected_leg = leg_for(gate, leg)
+    except ValueError:
+        selected_leg = None
+    contract_id = selected_leg.outcome_contract_id if selected_leg else None
+    setup_code = selected_leg.setup_code if selected_leg else None
+    required_sign = selected_leg.required_sign if selected_leg else 0
+    required_name = selected_leg.required_direction if selected_leg else "unknown"
     mode = transcript.get("mode")
     offline = mode == "accelerated_offline_no_io"
     physical = mode == "physical_frequency_only_live"
@@ -113,8 +127,10 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
         later - earlier >= MINIMUM_CADENCE_S
         for earlier, later in zip(application_times, application_times[1:])
     )
-    positive_healthy = [
-        item for item in applications if int(item.get("delta_codes", 0)) > 0
+    required_direction_healthy = [
+        item
+        for item in applications
+        if int(item.get("delta_codes", 0)) * required_sign > 0
     ]
     hardware = transcript.get("hardware_operations", {})
     authority = transcript.get("authority", {})
@@ -126,11 +142,12 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
     checks = {
         "identity_and_mode_exact": (
             transcript.get("schema_version") == SCHEMA_VERSION
-            and transcript.get("contract_id") == CONTRACT_ID
+            and contract_id is not None
+            and transcript.get("contract_id") == contract_id
             and transcript.get("programme_id")
             == "cx319_stabilized_tight_deadband"
-            and transcript.get("gate") == "G2"
-            and transcript.get("leg") == "A"
+            and transcript.get("gate") == gate
+            and transcript.get("leg") == leg
             and (offline or physical)
         ),
         "authority_and_hardware_operations_match_mode": (
@@ -151,7 +168,9 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
                 physical
                 and authority.get("effective") is True
                 and hardware.get("serial_opens") == 1
-                and hardware.get("firmware_flashes") == 0
+                and selected_leg is not None
+                and hardware.get("firmware_flashes")
+                == int(selected_leg.firmware_flash)
                 and hardware.get("dac_writes") == len(transactions) + 1
                 and isinstance(hardware.get("control_arms"), int)
                 and hardware["control_arms"] >= len(transactions)
@@ -169,8 +188,8 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
         ),
         "single_exact_setup_transaction": (
             len(setups) == 1
-            and setup.get("requested_code") == SETUP_CODE
-            and setup.get("applied_code") == SETUP_CODE
+            and setup.get("requested_code") == setup_code
+            and setup.get("applied_code") == setup_code
             and setup.get("dac_epoch") == 1
             and setup.get("acknowledged") is True
         ),
@@ -183,7 +202,9 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
                 "ACTIVE EVIDENCE 1 4",
             ]
         ),
-        "healthy_positive_automatic_transaction": bool(positive_healthy),
+        "healthy_required_direction_automatic_transaction": bool(
+            required_direction_healthy
+        ),
         "automatic_limits_range_and_cadence_exact": (
             len(transactions) <= MAXIMUM_CORRECTIONS
             and all(0 < movement <= MAXIMUM_STEP_CODES for movement in movements)
@@ -291,7 +312,7 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
     }
     return {
         "schema_version": SCHEMA_VERSION,
-        "contract_id": CONTRACT_ID,
+        "contract_id": contract_id,
         "status": "passed" if all(checks.values()) else "failed",
         "checks": checks,
         "observed": {
@@ -301,7 +322,10 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             "arm_count": len(arms),
             "evidence_ack_count": len(evidence),
             "automatic_transaction_count": len(transactions),
-            "healthy_positive_transaction_count": len(positive_healthy),
+            "required_direction": required_name,
+            "healthy_required_direction_transaction_count": len(
+                required_direction_healthy
+            ),
             "cumulative_movement_codes": sum(movements),
         },
     }

@@ -63,6 +63,9 @@ CURRENT_FIRMWARE_QUALIFICATION_RESULT = Path(
 )
 HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
+    "upper_bundle": Path(__file__).with_name("bounded_tight_deadband_upper_bundle.py"),
+    "proposal_dispatch": Path(__file__).with_name("bounded_tight_deadband_proposal.py"),
+    "leg_contract": Path(__file__).with_name("bounded_tight_deadband_leg.py"),
     "capture": Path(__file__).with_name("capture_device.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("abort_transport.py"),

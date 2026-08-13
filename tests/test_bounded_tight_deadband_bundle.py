@@ -428,6 +428,8 @@ def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     proposal = {
+        "gate": "G2",
+        "leg": "A",
         "bundle_sha256": "e" * 64,
         "source_revision": "f" * 40,
         "firmware": {
@@ -485,3 +487,60 @@ def test_accelerated_operational_path_runs_supervisor_analyzer_seal_and_package(
         item["attempt_classification"]
         for item in registration["attempt_classifications_exercised"]
     } == {"completed_campaign", "interrupted_campaign"}
+
+
+def test_matched_upper_operational_path_exercises_negative_direction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proposal = {
+        "gate": "G3",
+        "leg": "B",
+        "bundle_sha256": "e" * 64,
+        "source_revision": "f" * 40,
+        "firmware": {
+            "source_sha256": "a" * 64,
+            "configuration_sha256": "b" * 64,
+            "build_manifest": {"sha256": "c" * 64},
+        },
+        "leg_spec": {"profile_id": "cx319_tight_upper"},
+        "intended_live_envelope": {
+            "setup_writes": 1,
+            "automatic_corrections": 4,
+            "maximum_step_codes": 21,
+            "maximum_cumulative_codes": 84,
+            "minimum_code": 0xA800,
+            "maximum_code": 0xAB00,
+            "minimum_applied_cadence_s": 1800,
+            "settling_exclusion_s": 900,
+            "fresh_support_s": 600,
+            "qualification_deadline_s": 5400,
+            "maximum_qualified_duration_s": 14400,
+            "one_request_outstanding": True,
+            "automatic_retry": False,
+            "automatic_restore": False,
+        },
+    }
+    proposal_path = tmp_path / "upper-proposal.json"
+    proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+    monkeypatch.setattr(
+        bounded_tight_deadband_operational_rehearsal,
+        "validate_proposal",
+        lambda path: proposal,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_rehearsal_analyze,
+        "validate_proposal",
+        lambda path: proposal,
+    )
+
+    result = bounded_tight_deadband_operational_rehearsal.run(
+        proposal_path=proposal_path,
+        output_dir=tmp_path / "upper-operational",
+    )
+    transcript = json.loads(
+        (tmp_path / "upper-operational/artifacts/cx319_g3_operational_transcript_v1.json").read_text()
+    )
+
+    assert result["status"] == "passed"
+    assert transcript["automatic_transactions"][0]["delta_codes"] == -21
+    assert transcript["setup"]["requested_code"] == 0xA848

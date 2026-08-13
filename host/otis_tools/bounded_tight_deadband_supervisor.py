@@ -32,6 +32,7 @@ from .bounded_tight_deadband_prewrite_contract import (
     telemetry_drop_observations,
 )
 from .bounded_tight_deadband_outcome_contract import normal_command_allowed
+from .bounded_tight_deadband_leg import leg_for, leg_for_manifest
 from .setup_authority_contract import (
     SETUP_AUTHORITY_CONTRACT,
     SETUP_AUTHORITY_LIFETIME_S,
@@ -47,7 +48,6 @@ from .programme_status import (
 
 
 TOOL_ID = "cx319_g2_supervisor_v1"
-BOUNDED_TIGHT_DEADBAND_OPERATION = BOUNDED_TIGHT_DEADBAND_LIVE_LEG
 
 
 def _sha256(path: Path) -> str:
@@ -55,15 +55,17 @@ def _sha256(path: Path) -> str:
 
 
 class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
-    """Current-identity Leg A live controller with frozen G2 limits."""
+    """Current-identity matched live controller with frozen finite limits."""
 
     def __init__(self, **kwargs: object) -> None:
         spec = kwargs.get("spec")
         leg = kwargs.get("leg")
         if not isinstance(spec, CampaignSpec) or not isinstance(leg, TightDeadbandLeg):
-            raise TypeError("CX319 G2 requires explicit current spec and leg")
-        if leg.leg != "A" or leg.required_direction != 1:
-            raise ValueError("CX319 G2 is exactly Leg A positive direction")
+            raise TypeError("CX319 requires explicit current spec and leg")
+        selected = leg_for("G2" if leg.leg == "A" else "G3", leg.leg)
+        if leg.required_direction != selected.required_sign:
+            raise ValueError("CX319 live leg direction differs from its exact contract")
+        self.selected_leg = selected
         super().__init__(
             mode="live",
             allow_manual_start=True,
@@ -75,9 +77,9 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
             **kwargs,
         )
         self.state["programme_id"] = PROGRAMME_ID
-        self.state["cx319_gate"] = "G2"
+        self.state["cx319_gate"] = selected.gate
         self.state["cx319_mode"] = "live_frequency_only"
-        self.state["cx319_leg"] = "A"
+        self.state["cx319_leg"] = selected.leg
         self.state.setdefault("telemetry_drop_candidate", None)
         self.state.setdefault("telemetry_drop_candidate_observations", 0)
         self.state.setdefault("telemetry_drop_last_status_seq", 0)
@@ -95,7 +97,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
 
     def _event(self, event: str, **fields: object) -> None:
         current_event = (
-            "cx319_g2_" + event[len("stage5_") :]
+            self.selected_leg.prefix + "_" + event[len("stage5_") :]
             if event.startswith("stage5_")
             else event
         )
@@ -104,7 +106,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
     def _command(self, command: str) -> None:
         if not normal_command_allowed(command):
             raise ValueError(
-                f"CX319 G2 command is outside the exact normal allowlist: {command}"
+                f"CX319 {self.selected_leg.gate} command is outside the exact normal allowlist: {command}"
             )
         super()._command(command)
 
@@ -178,7 +180,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
         self.state["host_attach_snapshot_generation"] = generation
         self._save()
         self._event(
-            "cx319_g2_nonce_bound_host_attach_snapshot_frozen",
+            "stage5_nonce_bound_host_attach_snapshot_frozen",
             query_nonce=self.state["host_attach_query_nonce"],
             snapshot_generation=generation,
             uptime_s=uptime_s,
@@ -204,7 +206,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
                 self.state["telemetry_drop_candidate"] = value
                 self.state["telemetry_drop_candidate_observations"] = 1
                 self._event(
-                    "cx319_g2_telemetry_attach_candidate_observed",
+                    "stage5_telemetry_attach_candidate_observed",
                     status_seq=status_seq,
                     telemetry_dropped=value,
                 )
@@ -216,7 +218,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
                 self.state["telemetry_drop_baseline"] = value
                 self.state["telemetry_drop_baseline_status_seq"] = status_seq
                 self._event(
-                    "cx319_g2_telemetry_attach_baseline_frozen",
+                    "stage5_telemetry_attach_baseline_frozen",
                     status_seq=status_seq,
                     telemetry_dropped=value,
                     stable_observations=(
@@ -323,10 +325,11 @@ def create_supervisor(
     emergency_command_fifo: Path,
     abort_fifo: Path,
     expected_build_identity: str,
+    leg_name: str = "A",
     duration_s: float | None = None,
     console_events: bool = False,
 ) -> BoundedFrequencyControlSupervisor:
-    spec, identities, leg = load_no_write_qualification_spec("A")
+    spec, identities, leg = load_no_write_qualification_spec(leg_name)
     return BoundedFrequencyControlSupervisor(
         leg=leg,
         run_dir=run_dir,
@@ -353,14 +356,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration-s", type=float)
     parser.add_argument("--console-events", action="store_true")
     args = parser.parse_args(argv)
-    try:
-        require_programme_operation_allowed(PROGRAMME_ID, BOUNDED_TIGHT_DEADBAND_OPERATION)
-    except ProgrammeExecutionBlocked as exc:
-        parser.error(str(exc))
     if args.run_spec is not None:
+        try:
+            require_programme_operation_allowed(
+                PROGRAMME_ID, BOUNDED_TIGHT_DEADBAND_LIVE_LEG
+            )
+        except ProgrammeExecutionBlocked as exc:
+            parser.error(str(exc))
         value = json.loads(args.run_spec.read_text(encoding="utf-8"))
         if value.get("authority", {}).get("effective") is not True:
-            parser.error("CX319 G2 run spec is not an effective operator authority")
+            parser.error("CX319 run spec is not an effective operator authority")
         parser.error("use the exact activated run manifest through bounded_tight_deadband_run")
     required = {
         "manifest": args.manifest,
@@ -372,10 +377,14 @@ def main(argv: list[str] | None = None) -> int:
     }
     missing = sorted(name for name, value in required.items() if value is None)
     if missing:
-        parser.error("missing exact G2 supervisor arguments: " + ", ".join(missing))
-    from .bounded_tight_deadband_activation import LIVE_STAGE, validate_run_manifest
+        parser.error("missing exact CX319 supervisor arguments: " + ", ".join(missing))
+    from .bounded_tight_deadband_activation import validate_run_manifest
 
-    manifest = validate_run_manifest(args.manifest)
+    try:
+        manifest = validate_run_manifest(args.manifest)
+    except ProgrammeExecutionBlocked as exc:
+        parser.error(str(exc))
+    selected = leg_for_manifest(manifest)
     fifo_paths = {
         args.command_fifo.absolute(),
         args.emergency_command_fifo.absolute(),
@@ -389,8 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     if (
         len(fifo_paths) != 3
         or args.manifest.resolve() != (args.run_dir / "run_manifest.json").resolve()
-        or manifest.get("stage") != LIVE_STAGE
-        or manifest.get("cx319", {}).get("leg") != "A"
+        or manifest.get("stage") != selected.stage
         or args.expected_build_identity != build_identity
     ):
         parser.error("manifest, FIFOs, leg, or build identity differs")
@@ -400,14 +408,15 @@ def main(argv: list[str] | None = None) -> int:
         emergency_command_fifo=args.emergency_command_fifo,
         abort_fifo=args.abort_fifo,
         expected_build_identity=args.expected_build_identity,
+        leg_name=selected.leg,
         duration_s=args.duration_s,
         console_events=args.console_events,
     )
     try:
         return supervisor.run()
     except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
-        supervisor._event("cx319_g2_supervisor_fault", error=str(exc))
-        supervisor._abort(f"cx319_g2_supervisor_fault:{exc}")
+        supervisor._event("stage5_supervisor_fault", error=str(exc))
+        supervisor._abort(f"{selected.prefix}_supervisor_fault:{exc}")
         return 2
 
 
