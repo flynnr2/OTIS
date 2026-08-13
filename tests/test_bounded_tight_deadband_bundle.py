@@ -87,6 +87,76 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     assert proposal["authority"]["effective"] is False
 
 
+def test_g2_current_firmware_delta_reuses_q3_and_accepts_unattended_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    qualification = {
+        **_fake_g1(),
+        "run_id": "current-firmware-pass",
+        "run_dir": str(tmp_path / "current-firmware-pass"),
+        "current_firmware_qualification": {
+            "type": "exact_flash_session_absence_low_cadence"
+        },
+        "retained_q3_pass": {"run_id": "retained-q3"},
+    }
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_git_identity",
+        lambda: ("d" * 40, "clean"),
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "validate_current_firmware_qualification_pass",
+        lambda **kwargs: qualification,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_firmware_build_provenance",
+        lambda firmware: {
+            "configuration": {"sha256": firmware["configuration_sha256"]},
+            "target": {"fqbn": firmware["fqbn"]},
+            "invocation": {"arduino_cli_version": "test"},
+            "toolchain": {
+                "compiler_identity": "test",
+                "installed_sha256": "0" * 64,
+            },
+        },
+    )
+    proposal_path = tmp_path / "current-proposal.json"
+    proposal = bounded_tight_deadband_bundle.create_proposal(
+        no_write_run_dir=tmp_path / "retained-q3",
+        current_firmware_qualification_run_dir=(
+            tmp_path / "current-firmware-pass"
+        ),
+        output_path=proposal_path,
+    )
+
+    assert proposal["firmware_entry"]["mode"] == (
+        "verify_installed_exact_current_qualified_image_no_flash"
+    )
+    assert bounded_tight_deadband_bundle.validate_proposal(proposal_path) == proposal
+
+    monkeypatch.setattr(
+        bounded_tight_deadband_preflight,
+        "load_programme_status",
+        lambda: {
+            "programmes": {
+                bounded_tight_deadband_bundle.PROGRAMME_ID: {
+                    "allowed_operations": [
+                        "offline_preparation",
+                        "g2_live_leg",
+                    ],
+                    "q4_unattended_phase_authority": {"effective": True},
+                }
+            }
+        },
+    )
+    result = bounded_tight_deadband_preflight.evaluate(proposal_path)
+    assert result["status"] == "passed"
+    assert all(result["checks"].values())
+    assert set(result["hardware_operations"].values()) == {0}
+
+
 def test_g2_rejects_pre_q3_no_write_evidence_before_reading_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

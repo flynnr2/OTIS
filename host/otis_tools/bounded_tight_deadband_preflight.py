@@ -79,7 +79,13 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             proposal["status"] == "proposed_not_authorized"
             and proposal["authority"]["effective"] is False
             and OFFLINE_PREPARATION in status["allowed_operations"]
-            and "g2_live_leg" not in status["allowed_operations"]
+            and (
+                "g2_live_leg" not in status["allowed_operations"]
+                or status.get("q4_unattended_phase_authority", {}).get(
+                    "effective"
+                )
+                is True
+            )
         ),
         "passed_q1_q3_sequence_same_firmware_and_policy_bound": (
             proposal["g1_pass"]["qualification_sequence_gate"] == "Q3"
@@ -89,9 +95,14 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
         ),
         "evidence_epoch_build_and_no_flash_entry_exact": (
             proposal["compatibility_floor"] == "CX319_EVIDENCE_EPOCH_1"
+            and proposal["firmware_entry"].get("mode")
+            in {
+                "verify_installed_exact_q3_image_no_flash",
+                "verify_installed_exact_current_qualified_image_no_flash",
+            }
             and proposal["firmware_entry"]
             == {
-                "mode": "verify_installed_exact_q3_image_no_flash",
+                "mode": proposal["firmware_entry"]["mode"],
                 "required_uf2_sha256": proposal["firmware"]["uf2"]["sha256"],
                 "firmware_flash_allowed": False,
                 "unknown_or_mismatched_installed_image": (

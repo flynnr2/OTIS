@@ -41,11 +41,13 @@ from .no_write_prewrite_readiness_contract import (
     RUNTIME_CONTRACT_ID as NO_WRITE_RUNTIME_CONTRACT_ID,
 )
 from .evidence_index import package_identity
+from .evidence import validate_evidence_snapshot
 from .programme_status import (
     OFFLINE_PREPARATION,
     load_programme_status,
     require_programme_operation_allowed,
 )
+from .run_loader import load_manifest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,6 +55,9 @@ TOOL_ID = "cx319_g2_proposal_bundle_v1"
 BUNDLE_ID = "cx319_g2_leg_a_proposal_bundle_v1"
 NO_WRITE_ANALYSIS = Path("reports/cx319_g1_analysis_v1.json")
 NO_WRITE_SEAL = Path("reports/cx319_g1_rehearsal_seal_v1.json")
+CURRENT_FIRMWARE_QUALIFICATION_RESULT = Path(
+    "reports/cx319_session_absence_low_cadence_v1.json"
+)
 HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
     "capture": Path(__file__).with_name("capture_device.py"),
@@ -326,14 +331,161 @@ def validate_no_write_qualification_pass(run_dir: Path) -> dict[str, Any]:
     }
 
 
+def validate_current_firmware_qualification_pass(
+    *, run_dir: Path, retained_q3_run_dir: Path
+) -> dict[str, Any]:
+    """Bind a focused current-firmware pass to retained canonical Q1-Q3.
+
+    The focused qualification does not claim to be another Q3 run. It proves
+    only the firmware delta that invalidated the prior Q4 entry: exact-image
+    reset/session handling. The unchanged Q1/Q2/Q3 scientific, topology and
+    operational evidence remains canonical and is validated independently.
+    """
+
+    run_dir = run_dir.resolve()
+    retained_q3 = validate_no_write_qualification_pass(retained_q3_run_dir)
+    manifest = load_manifest(run_dir)
+    manifest_value = manifest.data
+    result_path = run_dir / CURRENT_FIRMWARE_QUALIFICATION_RESULT
+    result = _read(result_path, "current-firmware qualification result")
+    evidence_path = run_dir / "evidence_manifest.json"
+    evidence = _read(evidence_path, "current-firmware evidence manifest")
+    failures, _warnings = validate_evidence_snapshot(run_dir, manifest)
+    frozen_bundle = validate_frozen_bundle(
+        Path(str(manifest_value.get("bundle", {}).get("path", "")))
+    )
+    status = load_programme_status()["programmes"][PROGRAMME_ID]
+    completed = status.get(
+        "current_session_absence_exact_flash_qualification_pass", {}
+    )
+    content = package_identity(run_dir)["content_sha256"]
+    snapshots = result.get("snapshots", [])
+    expected_build = (
+        frozen_bundle["firmware"]["source_sha256"]
+        + ":"
+        + frozen_bundle["firmware"]["configuration_sha256"]
+    )
+    snapshot_pass = (
+        isinstance(snapshots, list)
+        and len(snapshots) == 3
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("active"), dict)
+            and item["active"].get("build_identity") == expected_build
+            and item["active"].get("profile_identity")
+            == frozen_bundle["firmware"]["profile_id"]
+            and item["active"].get("run_identity")
+            == "cx319_tight_lower:3195001"
+            and item["active"].get("state") == "DISARMED"
+            and item["active"].get("fail_static") == "false"
+            and item["active"].get("manual_start_confirmed") == "false"
+            and int(item["active"].get("session_id", "0")) > 0
+            and item["active"].get("correction_count") == "0"
+            and item["active"].get("cumulative_movement_codes") == "0"
+            and item["active"].get("dac_epoch") == "0"
+            for item in snapshots
+        )
+    )
+    hardware = result.get("hardware_actions", {})
+    checks = result.get("checks", {})
+    if (
+        failures
+        or not (run_dir / "COMPLETE").is_file()
+        or manifest_value.get("stage")
+        != "CX319_Q4_CURRENT_SESSION_ABSENCE_EXACT_FLASH_LOW_CADENCE"
+        or manifest_value.get("qualification_evidence") is not True
+        or manifest_value.get("firmware") != frozen_bundle["firmware"]
+        or result.get("status") != "passed"
+        or result.get("run_id") != run_dir.name
+        or result.get("bundle_sha256") != frozen_bundle["bundle_sha256"]
+        or result.get("uf2_sha256")
+        != frozen_bundle["firmware"]["uf2"]["sha256"]
+        or not isinstance(checks, dict)
+        or not checks
+        or not all(value is True for value in checks.values())
+        or not snapshot_pass
+        or hardware
+        != {
+            "automatic_corrections": 0,
+            "control_arms": 0,
+            "dac_value_writes": 0,
+            "firmware_flashes": 1,
+            "manual_resets": 0,
+            "setup_stimuli": 0,
+        }
+        or result.get("row_counts")
+        != {"active_transactions_v1": 0, "dac_steps_v1": 0}
+        or evidence.get("run_state") != "complete"
+        or completed.get("run_id") != run_dir.name
+        or completed.get("status") != "passed"
+        or completed.get("firmware_entry_bundle_sha256")
+        != frozen_bundle["bundle_sha256"]
+        or completed.get("uf2_sha256")
+        != frozen_bundle["firmware"]["uf2"]["sha256"]
+        or completed.get("result_file_sha256") != _sha256_file(result_path)
+        or completed.get("evidence_manifest_file_sha256")
+        != _sha256_file(evidence_path)
+        or completed.get("evidence_snapshot_sha256")
+        != evidence.get("snapshot_digest")
+        or completed.get("evidence_content_sha256") != content
+        or completed.get("q2_q3_reused") is not True
+    ):
+        raise ValueError(
+            "current firmware qualification or retained programme binding differs"
+        )
+    if frozen_bundle["policy"] != retained_q3["policy"]:
+        raise ValueError("current firmware qualification policy differs from Q3")
+    return {
+        "qualification_sequence_gate": "Q3",
+        "run_id": run_dir.name,
+        "run_dir": str(run_dir),
+        "run_manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
+        "analysis_sha256": evidence["snapshot_digest"],
+        "analysis_file_sha256": _sha256_file(result_path),
+        "seal_sha256": evidence["snapshot_digest"],
+        "seal_file_sha256": _sha256_file(evidence_path),
+        "evidence_content_sha256": content,
+        "bundle_sha256": frozen_bundle["bundle_sha256"],
+        "sequence_prerequisites": retained_q3["sequence_prerequisites"],
+        "firmware": frozen_bundle["firmware"],
+        "policy": frozen_bundle["policy"],
+        "current_firmware_qualification": {
+            "type": "exact_flash_session_absence_low_cadence",
+            "result_file_sha256": _sha256_file(result_path),
+            "evidence_snapshot_sha256": evidence["snapshot_digest"],
+            "firmware_flashes": 1,
+            "snapshot_queries": 3,
+            "q2_q3_repeated": False,
+        },
+        "retained_q3_pass": {
+            "run_id": retained_q3["run_id"],
+            "seal_sha256": retained_q3["seal_sha256"],
+            "evidence_content_sha256": retained_q3[
+                "evidence_content_sha256"
+            ],
+            "uf2_sha256": retained_q3["firmware"]["uf2"]["sha256"],
+        },
+    }
+
+
 def create_proposal(
-    *, no_write_run_dir: Path, output_path: Path
+    *,
+    no_write_run_dir: Path,
+    output_path: Path,
+    current_firmware_qualification_run_dir: Path | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("G2 proposal bundle requires a clean repository")
-    qualification = validate_no_write_qualification_pass(no_write_run_dir)
+    qualification = (
+        validate_no_write_qualification_pass(no_write_run_dir)
+        if current_firmware_qualification_run_dir is None
+        else validate_current_firmware_qualification_pass(
+            run_dir=current_firmware_qualification_run_dir,
+            retained_q3_run_dir=no_write_run_dir,
+        )
+    )
     if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
         raise ValueError("Q3 policy differs from the current G2 policy")
     build_provenance = _firmware_build_provenance(qualification["firmware"])
@@ -367,7 +519,11 @@ def create_proposal(
         "firmware": qualification["firmware"],
         "firmware_build_provenance": build_provenance,
         "firmware_entry": {
-            "mode": "verify_installed_exact_q3_image_no_flash",
+            "mode": (
+                "verify_installed_exact_q3_image_no_flash"
+                if current_firmware_qualification_run_dir is None
+                else "verify_installed_exact_current_qualified_image_no_flash"
+            ),
             "required_uf2_sha256": qualification["firmware"]["uf2"]["sha256"],
             "firmware_flash_allowed": False,
             "unknown_or_mismatched_installed_image": (
@@ -524,9 +680,23 @@ def validate_proposal(path: Path) -> dict[str, Any]:
         name: _binding(tool_path) for name, tool_path in HOST_TOOL_PATHS.items()
     }:
         raise ValueError("G2 proposal host tool binding is stale")
-    observed_qualification = validate_no_write_qualification_pass(
-        Path(value["g1_pass"]["run_dir"])
-    )
+    if "current_firmware_qualification" in value["g1_pass"]:
+        retained_q3 = value["g1_pass"].get("retained_q3_pass", {})
+        retained_q3_run_id = retained_q3.get("run_id")
+        if not isinstance(retained_q3_run_id, str) or not retained_q3_run_id:
+            raise ValueError("current-firmware proposal has no retained Q3 run")
+        observed_qualification = validate_current_firmware_qualification_pass(
+            run_dir=Path(value["g1_pass"]["run_dir"]),
+            retained_q3_run_dir=(
+                REPO_ROOT
+                / "runs/cx319_stabilized_tight_deadband/q3"
+                / retained_q3_run_id
+            ),
+        )
+    else:
+        observed_qualification = validate_no_write_qualification_pass(
+            Path(value["g1_pass"]["run_dir"])
+        )
     if value.get("g1_pass") != observed_qualification:
         raise ValueError("G2 proposal Q1-Q3 qualification binding is stale")
     if value.get("firmware") != observed_qualification["firmware"]:
@@ -541,13 +711,20 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create")
     create.add_argument("--no-write-run-dir", type=Path, required=True)
+    create.add_argument(
+        "--current-firmware-qualification-run-dir", type=Path
+    )
     create.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("proposal", type=Path)
     args = parser.parse_args(argv)
     if args.command == "create":
         result = create_proposal(
-            no_write_run_dir=args.no_write_run_dir, output_path=args.output
+            no_write_run_dir=args.no_write_run_dir,
+            output_path=args.output,
+            current_firmware_qualification_run_dir=(
+                args.current_firmware_qualification_run_dir
+            ),
         )
     else:
         result = validate_proposal(args.proposal)
