@@ -12,9 +12,10 @@ stopped before setup because the serial path received no firmware records and
 ended on a write timeout. No DAC value write, control arm, or automatic
 correction occurred. The attempt is a platform escape, not a scientific Q4
 result. Its authority is consumed. The narrow runner repair, fresh candidate,
-and accelerated rehearsal pass. The operator has now authorized exactly one
-ordinary board restart followed by one execution of that repaired candidate;
-zero firmware flashes and no further retry are permitted.
+and accelerated rehearsal pass. The first retry authority was consumed by a
+software restart-path failure before any hardware effect. The candidate and
+rehearsal remain current, but live execution is blocked pending a separate
+manual-button restart decision.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -152,3 +153,7 @@ verification and non-effective restart-plus-retry proposal are recorded in
 
 The operator's exact one-restart, one-run retry authority is recorded in
 [`23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md`](23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md).
+
+The zero-effect software restart stop and non-effective manual-button-only
+replacement proposal are recorded in
+[`24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md`](24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md).

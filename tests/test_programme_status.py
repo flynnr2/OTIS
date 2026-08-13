@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> None:
+def test_tracked_status_retires_restart_path_and_proposes_manual_restart() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,17 +27,14 @@ def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> No
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_lower_retry_authorized_awaiting_single_restart"
+        "q4_lower_manual_restart_proposal_awaiting_authority"
     )
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ]
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "explicit_operator_q4_lower_single_restart_retry_authority"
+        "no_effective_live_authority_after_restart_path_stop"
     )
     assert successor["next_gate"] == (
-        "execute_one_restart_then_exact_retry_candidate_once"
+        "separate_authority_for_one_observed_manual_restart_and_exact_candidate"
     )
     assert successor["q4_lower_live_authority"] == {
         "record": (
@@ -166,8 +163,16 @@ def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> No
             "23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md"
         ),
         "operator_instruction": "authorized",
-        "effective": True,
-        "consumed": False,
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "439c201d91d5e3e3a17dad28d3fcffcc"
+            "e55959768c2d9b83c42f366f3ed12958"
+        ),
+        "consumed_by_restart_attempt_record_sha256": (
+            "e06e59e266f2d96adceb9dd1bb67c2f8"
+            "df7560a8a4ebfc3fbae1a5237a09c878"
+        ),
         "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
         "board_restart_limit": 1,
         "firmware_flash_limit": 0,
@@ -193,6 +198,35 @@ def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> No
             "c56d402abd3ac208ca10b73f78863372"
             "ca4abb176c10c8d56c3c3d2845c84c6d"
         ),
+    }
+    assert successor["q4_lower_retry_restart_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_manual_restart_authority_proposal_v1.json"
+        ),
+        "activation_sha256": (
+            "439c201d91d5e3e3a17dad28d3fcffcc"
+            "e55959768c2d9b83c42f366f3ed12958"
+        ),
+        "restart_attempt_record_sha256": (
+            "e06e59e266f2d96adceb9dd1bb67c2f8"
+            "df7560a8a4ebfc3fbae1a5237a09c878"
+        ),
+        "restart_observed": False,
+        "firmware_flashes": 0,
+        "physical_live_runs": 0,
+        "serial_opens": 0,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "candidate_and_rehearsal_remain_current": True,
+        "failure_class": "platform_defect_before_hardware_effect",
     }
     assert successor["q4_offline_readiness"] == {
         "record": (
@@ -604,10 +638,11 @@ def test_tracked_status_authorizes_exact_q4_retry_after_consumed_attempt() -> No
             "cx319_stabilized_tight_deadband",
             NO_WRITE_BENCH_REHEARSAL,
         )
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
@@ -667,6 +702,29 @@ def test_q4_lower_retry_authority_proposal_is_non_effective_and_reset_bounded() 
     assert proposal["proposed_future_live_envelope"][
         "phase_or_hybrid_actionable"
     ] is False
+
+
+def test_q4_manual_restart_proposal_is_non_effective_and_button_only() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_manual_restart_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_MANUAL_RESTART_LIVE_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["proposed_future_entry"]["manual_reset_button_only"] is True
+    assert proposal["proposed_future_entry"]["software_restart_commands"] is False
+    assert proposal["proposed_future_entry"]["board_restart_limit"] == 1
+    assert proposal["proposed_future_entry"]["firmware_flash_limit"] == 0
+    assert proposal["proposed_future_entry"]["physical_live_run_limit"] == 1
 
 
 def test_status_contract_rejects_an_inactive_active_programme(
