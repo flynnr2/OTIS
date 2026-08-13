@@ -379,6 +379,27 @@ def test_prewrite_failure_uses_the_existing_interrupted_campaign_index_class(
     assert failure["attempt_classification"] == "interrupted_campaign"
 
 
+def test_missing_abort_reader_does_not_mask_primary_orchestration_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    emergency_fifo = tmp_path / "emergency_abort.fifo"
+    emergency_fifo.touch()
+    capture = SimpleNamespace(poll=lambda: None)
+
+    def no_reader(*args: object, **kwargs: object) -> None:
+        raise SystemExit("no capture_device command reader is active")
+
+    monkeypatch.setattr(
+        bounded_tight_deadband_run,
+        "send_timestamped_command_to_fifo",
+        no_reader,
+    )
+
+    bounded_tight_deadband_run._best_effort_emergency_abort(
+        emergency_fifo, capture
+    )
+
+
 def test_live_analyzer_wires_a_complete_physical_evidence_surface(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

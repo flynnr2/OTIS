@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
+def test_tracked_status_retires_consumed_q4_live_authority() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -26,16 +26,15 @@ def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q4_lower_live_authorized_not_started"
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ]
+    assert successor["state"] == (
+        "q4_lower_live_prewrite_transport_stop_authority_retired"
+    )
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "explicit_operator_q4_lower_finite_live_authority"
+        "q4_lower_live_authority_consumed_prewrite_platform_escape"
     )
     assert successor["next_gate"] == (
-        "execute_exact_q4_lower_live_once_then_retire_authority"
+        "repair_and_rehearse_transport_stop_then_separate_retry_authority"
     )
     assert successor["q4_lower_live_authority"] == {
         "record": (
@@ -44,8 +43,13 @@ def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
             "20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md"
         ),
         "operator_instruction": "move_on_to_the_physical_q4_live_run",
-        "effective": True,
-        "consumed": False,
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "fc138d94f9c858b1c54e73364635fc34"
+            "11fe2726ea16ff357cda5ef667b294fe"
+        ),
+        "consumed_by_run_id": "live_leg_a_20260813T074315Z",
         "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
         "live_run_limit": 1,
         "firmware_flash_limit": 0,
@@ -71,6 +75,43 @@ def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
             "4e6d20094a80e9a3ffcabc6db93302b4"
             "9acfbf5d48a2da6faeaa70ebe1f65084"
         ),
+    }
+    assert successor["q4_lower_live_prewrite_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md"
+        ),
+        "run_id": "live_leg_a_20260813T074315Z",
+        "activation_sha256": (
+            "fc138d94f9c858b1c54e73364635fc34"
+            "11fe2726ea16ff357cda5ef667b294fe"
+        ),
+        "activation_file_sha256": (
+            "9f436238a598f4860d323126a6cb3b14"
+            "abf663dffa4bb0844f152dc023e7e8c2"
+        ),
+        "run_manifest_sha256": (
+            "aa301587e20fe935aed9e0303a53a8234"
+            "f216ad9dbf20f2b59db1aa7ac5f4c0d"
+        ),
+        "terminal_reason": (
+            "cx319_g2_supervisor_fault:capture transport state mismatch: "
+            "capture_active=False, expected True"
+        ),
+        "evidence_content_sha256": (
+            "ae3cbc42e62b05daa41de6502b2ed27a"
+            "0a18eeb6bcfc2672f55f6c79c099ab93"
+        ),
+        "capture_commands_sent": 32,
+        "firmware_lines_received": 0,
+        "serial_write_timeout": True,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "failure_class": "platform_escape_into_campaign",
+        "scientific_result": False,
     }
     assert successor["q4_offline_readiness"] == {
         "record": (
@@ -482,9 +523,11 @@ def test_tracked_status_records_exact_one_run_q4_live_authority() -> None:
             "cx319_stabilized_tight_deadband",
             NO_WRITE_BENCH_REHEARSAL,
         )
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

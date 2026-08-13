@@ -167,6 +167,20 @@ def _graceful_capture_stop(capture: subprocess.Popen[str]) -> int:
             return capture.wait(timeout=5.0)
 
 
+def _best_effort_emergency_abort(
+    emergency_fifo: Path, capture: subprocess.Popen[str]
+) -> None:
+    """Try the independent abort without masking the primary live-run failure."""
+
+    if not emergency_fifo.exists() or capture.poll() is not None:
+        return
+    try:
+        send_timestamped_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
+        time.sleep(0.5)
+    except (OSError, SystemExit, TimeoutError, ValueError):
+        pass
+
+
 def _retain_failure(
     *,
     run_dir: Path,
@@ -406,12 +420,7 @@ def run_bounded_tight_deadband_qualification(
         )
     except Exception as exc:
         orchestration_error = exc
-        if emergency_fifo.exists() and capture.poll() is None:
-            try:
-                send_timestamped_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
-                time.sleep(0.5)
-            except (OSError, TimeoutError, ValueError):
-                pass
+        _best_effort_emergency_abort(emergency_fifo, capture)
         _graceful_capture_stop(capture)
     finally:
         capture_log.close()

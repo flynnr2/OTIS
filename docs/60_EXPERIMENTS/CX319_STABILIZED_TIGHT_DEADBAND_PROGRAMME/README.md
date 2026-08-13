@@ -6,11 +6,12 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence is
-complete, Q4 lower-side offline preparation has passed, and the operator has
-authorized exactly one finite Q4/G2 lower-side live qualification. The exact
-`g2_live_leg` operation is effective; firmware changes, retries, additional
-runs, and phase/hybrid actuation remain forbidden.
+Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and Q4
+lower-side offline preparation passed. The one authorized Q4/G2 attempt then
+stopped before setup because the serial path received no firmware records and
+ended on a write timeout. No DAC value write, control arm, or automatic
+correction occurred. The attempt is a platform escape, not a scientific Q4
+result. Its authority is consumed; only offline preparation is now permitted.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -137,3 +138,7 @@ The operator's subsequent exact one-run authority is recorded in
 [`20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md`](20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md).
 It binds the passing candidate and rehearsal, permits no firmware flash or
 reset, and is consumed by the first terminal live attempt.
+
+The retained zero-write transport stop, evidence identities, authority
+retirement, and narrow recovery gate are recorded in
+[`21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md`](21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md).

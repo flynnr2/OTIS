@@ -10,13 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_lower_live_authorized_not_started",
+      "state": "q4_lower_live_prewrite_transport_stop_authority_retired",
       "allowed_operations": [
-        "offline_preparation",
-        "g2_live_leg"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-13",
-      "authority": "explicit_operator_q4_lower_finite_live_authority",
+      "authority": "q4_lower_live_authority_consumed_prewrite_platform_escape",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -83,12 +82,14 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "execute_exact_q4_lower_live_once_then_retire_authority",
+      "next_gate": "repair_and_rehearse_transport_stop_then_separate_retry_authority",
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
         "operator_instruction": "move_on_to_the_physical_q4_live_run",
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_activation_sha256": "fc138d94f9c858b1c54e73364635fc3411fe2726ea16ff357cda5ef667b294fe",
+        "consumed_by_run_id": "live_leg_a_20260813T074315Z",
         "programme_operation": "g2_live_leg",
         "live_run_limit": 1,
         "firmware_flash_limit": 0,
@@ -105,6 +106,24 @@
         "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
         "proposal_bundle_sha256": "f08c9a581ec92271828f9c7c0ff87b5e0d1ce04e6015c92d4100c75f7882bbfe",
         "operational_rehearsal_seal_sha256": "4e6d20094a80e9a3ffcabc6db93302b49acfbf5d48a2da6faeaa70ebe1f65084"
+      },
+      "q4_lower_live_prewrite_stop": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md",
+        "run_id": "live_leg_a_20260813T074315Z",
+        "activation_sha256": "fc138d94f9c858b1c54e73364635fc3411fe2726ea16ff357cda5ef667b294fe",
+        "activation_file_sha256": "9f436238a598f4860d323126a6cb3b14abf663dffa4bb0844f152dc023e7e8c2",
+        "run_manifest_sha256": "aa301587e20fe935aed9e0303a53a8234f216ad9dbf20f2b59db1aa7ac5f4c0d",
+        "terminal_reason": "cx319_g2_supervisor_fault:capture transport state mismatch: capture_active=False, expected True",
+        "evidence_content_sha256": "ae3cbc42e62b05daa41de6502b2ed27a0a18eeb6bcfc2672f55f6c79c099ab93",
+        "capture_commands_sent": 32,
+        "firmware_lines_received": 0,
+        "serial_write_timeout": true,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "failure_class": "platform_escape_into_campaign",
+        "scientific_result": false
       },
       "q4_offline_readiness": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md",
