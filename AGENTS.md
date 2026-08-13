@@ -169,6 +169,35 @@ Do not automatically run the full repository suite or complete firmware matrix
 after every narrow repair. Reuse build results only when source, configuration,
 toolchain, and all other relevant inputs have identical identities.
 
+## Recover narrow campaign defects without creating mini-campaigns
+
+- When a narrow defect stops an active campaign, preserve the stop evidence,
+  add the cheapest deterministic regression that directly covers the defect,
+  build the affected exact profile, run the already-required operational-path
+  rehearsal, and return to the finite live experiment. Add another physical
+  qualification only when it can change safety, scientific validity, or the
+  next decision.
+- Do not make qualification depend on the spontaneous occurrence of a rare or
+  nondeterministic diagnostic. Absence of such an event is a non-result. Test
+  serialization, framing, parsing, and verdict logic with a deterministic
+  source check, fixture, or replay; retain the live pre-actuation stop as the
+  integration guard.
+- A new firmware or artifact hash requires exact identity binding, but does not
+  by itself invalidate unrelated physical, topology, or scientific evidence.
+  State the semantic change and repeat only the shortest gate whose relevant
+  inputs changed.
+- Prefer the frozen campaign runner and rehearsal path over a bespoke bench
+  runner. If a one-off helper is unavoidable, verify its imports, CLI,
+  configuration, and no-I/O path before flashing, resetting, or acquiring.
+- Complete the minimum authority, identity, and provenance bindings required
+  to execute safely. Defer narrative reporting and non-executable bookkeeping
+  until after the decision-bearing gate when raw evidence and exact identities
+  can be preserved without it.
+- Once the direct regression, affected build, and required rehearsal pass, stop
+  expanding repair validation and resume the campaign. Verification
+  completeness is not the unit of progress; the next safe, decision-bearing
+  result is.
+
 ## Distinguish preflight, rehearsal, and qualification
 
 - **Preflight** is a no-I/O structural and identity check. It proves declared

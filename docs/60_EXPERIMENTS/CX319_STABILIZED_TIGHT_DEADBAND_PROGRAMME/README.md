@@ -200,3 +200,9 @@ The unattended exact-current-image reset/session-absence qualification passed
 all frozen checks with stable zero telemetry drops and zero actuation. The
 decision and exact registered evidence are recorded in
 [`33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md`](33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md).
+
+The first current-image live entry subsequently exposed a malformed `ASL`
+evidence frame before any actuation. The exact root cause, firmware repair,
+reproducible image, focused physical requalification and Q2/Q3 reuse decision
+are recorded in
+[`34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md`](34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md).

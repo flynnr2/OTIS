@@ -147,6 +147,46 @@ substitute for an outcome-bearing end-to-end result.
 
 ---
 
+# Recover Defects Without Creating Mini-Campaigns
+
+A campaign stop should teach us something concrete and then move us back toward
+the decision the campaign exists to make. A narrow repair is not an invitation
+to construct a second qualification programme around the defect.
+
+The normal recovery sequence is:
+
+1. preserve the failed evidence and identify the changed risk surface;
+2. add the cheapest deterministic regression that directly covers the defect;
+3. rebuild the exact affected profile;
+4. exercise the existing operational-path rehearsal; and
+5. resume the bounded, guarded experiment.
+
+Another physical qualification is justified only when its outcome could change
+safety, scientific validity, or the next decision. It must also have a
+deterministic stimulus. Requiring a rare diagnostic to occur spontaneously is
+not meaningful qualification: if it does not occur, nothing has been learned
+about the repair. Formatter, framing, parser, and contract repairs are usually
+better covered with deterministic source checks, fixtures, or retained-evidence
+replay, while the live path's pre-actuation stop remains the integration guard.
+
+Artifact identity and semantic invalidation are distinct. A new firmware hash
+must be bound exactly to its build and candidate, but it does not automatically
+erase physical, topology, or scientific evidence whose relevant inputs did not
+change. Repeat the shortest affected gate and explicitly reuse the rest.
+
+Prefer the actual frozen rehearsal and campaign runner. A temporary helper,
+when truly necessary, should have its imports, configuration, and no-I/O path
+checked before it consumes a flash, reset, bench interval, or acquisition.
+Complete only the authority and provenance bookkeeping needed to execute
+safely; write the broader narrative after the decision-bearing gate when the
+raw evidence and identities can be preserved without blocking it.
+
+Once the direct regression, affected build, and required rehearsal pass, stop
+expanding the validation tree. Returning promptly to the guarded experiment is
+part of rigorous engineering, not a relaxation of it.
+
+---
+
 # DRY, But Not Abstract For Its Own Sake
 
 OTIS values DRY principles strongly.
