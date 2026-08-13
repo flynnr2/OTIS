@@ -208,3 +208,9 @@ are recorded in
 The successful lower-side physical result, immutable evidence identities,
 offline analyzer supersession and exact G3 next gate are recorded in
 [`35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md`](35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md).
+
+The non-authorizing preparation prompt for a fine boundary map, deliberately
+excited bidirectional frequency-control trajectory, evidence-based cadence
+acceleration, automatic domain-aware rollover semantics, and continuous
+zero-authority hybrid preview is
+[`36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md`](36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md).
