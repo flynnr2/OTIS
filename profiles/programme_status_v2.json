@@ -10,14 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_unattended_phase_authorized",
+      "state": "q4_current_image_qualified_unattended_candidate_preparation",
       "allowed_operations": [
         "offline_preparation",
         "g1_no_write_bench_rehearsal",
         "g2_live_leg"
       ],
       "effective_date": "2026-08-13",
-      "authority": "effective_unattended_q4_phase_authority",
+      "authority": "effective_unattended_q4_phase_authority_current_image_qualified",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -84,7 +84,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "execute_unattended_current_session_absence_qualification_then_bounded_q4",
+      "next_gate": "prepare_and_rehearse_fresh_current_image_q4_candidate_then_execute",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
@@ -233,6 +233,40 @@
         "maximum_code": 43776,
         "phase_or_hybrid_actionable": false,
         "g4_authorized": false
+      },
+      "current_session_absence_exact_flash_qualification_pass": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md",
+        "run_id": "session_absence_exact_flash_low_cadence_20260813T092834Z",
+        "status": "passed",
+        "firmware_entry_bundle_sha256": "4666041ff61ab23df2c0e4c10af5f4bf6afef526c5f3bb425ddd9d7856cd3dc9",
+        "frozen_criterion_bundle_sha256": "bfc5c11d8fc75787c15d6a9acd8d2ade54ec7e970a37bbde222e26f8d44c464c",
+        "uf2_sha256": "e62cfb7c5df58a4471425a2045cc7d7fba03ed57d35eccb8cdd45ad34c7bf510",
+        "flash_record_file_sha256": "c79be2272ca0e0853262fe3ef11abaa33b6a416adf9c5b50d32600f06c59c46e",
+        "raw_serial_sha256": "1e28623ad308bebda53522cdceac5cb14ad86c145e2d5e4a30ee5de8a21b3a5a",
+        "result_file_sha256": "3458937be44ff0e35660d28612bfcf5db94c5522b071a65bbf61f6b926fa54c7",
+        "evidence_manifest_file_sha256": "ed2e89023b289c8febfa50036abf9396a8ddc54b136488a7dbc22c2763089a34",
+        "evidence_snapshot_sha256": "1b8513ba36f0b6cf455318f7d841a6b8e43f898b6e2d1f5891c4d09436e98330",
+        "evidence_content_sha256": "f8e1abf9fc689d5eb9a4b894b53584ca44ee41ee6636ba82aba17bd9e44111e0",
+        "firmware_flashes": 1,
+        "snapshot_queries": 3,
+        "snapshot_send_cadence_s": [5.001222, 5.004889],
+        "usb_reappeared_to_capture_ready_ms": 254.913,
+        "config_sent_after_capture_ready_ms": 0.165,
+        "observed_states": ["DISARMED"],
+        "observed_reasons": ["initialized_disarmed"],
+        "observed_fail_static": [false],
+        "observed_sessions": [1],
+        "telemetry_dropped_observations": [0, 0],
+        "serial_reconnects": 0,
+        "serial_parser_errors": 0,
+        "active_transaction_rows": 0,
+        "dac_step_rows": 0,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "q2_q3_reused": true,
+        "q4_live_result": false
       },
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",

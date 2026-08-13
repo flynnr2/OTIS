@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_unattended_q4_phase() -> None:
+def test_tracked_status_records_current_image_pass_and_unattended_q4() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,7 +27,7 @@ def test_tracked_status_authorizes_unattended_q4_phase() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_unattended_phase_authorized"
+        "q4_current_image_qualified_unattended_candidate_preparation"
     )
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
@@ -35,10 +35,10 @@ def test_tracked_status_authorizes_unattended_q4_phase() -> None:
         BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
     ]
     assert successor["authority"] == (
-        "effective_unattended_q4_phase_authority"
+        "effective_unattended_q4_phase_authority_current_image_qualified"
     )
     assert successor["next_gate"] == (
-        "execute_unattended_current_session_absence_qualification_then_bounded_q4"
+        "prepare_and_rehearse_fresh_current_image_q4_candidate_then_execute"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -164,6 +164,37 @@ def test_tracked_status_authorizes_unattended_q4_phase() -> None:
     assert unattended["maximum_code"] == 0xAB00
     assert unattended["phase_or_hybrid_actionable"] is False
     assert unattended["g4_authorized"] is False
+    current_pass = successor[
+        "current_session_absence_exact_flash_qualification_pass"
+    ]
+    assert current_pass["status"] == "passed"
+    assert current_pass["run_id"] == (
+        "session_absence_exact_flash_low_cadence_20260813T092834Z"
+    )
+    assert current_pass["uf2_sha256"] == (
+        "e62cfb7c5df58a4471425a2045cc7d7f"
+        "ba03ed57d35eccb8cdd45ad34c7bf510"
+    )
+    assert current_pass["firmware_flashes"] == 1
+    assert current_pass["snapshot_queries"] == 3
+    assert current_pass["snapshot_send_cadence_s"] == [5.001222, 5.004889]
+    assert current_pass["observed_states"] == ["DISARMED"]
+    assert current_pass["observed_reasons"] == ["initialized_disarmed"]
+    assert current_pass["observed_fail_static"] == [False]
+    assert current_pass["observed_sessions"] == [1]
+    assert current_pass["telemetry_dropped_observations"] == [0, 0]
+    assert current_pass["q2_q3_reused"] is True
+    assert current_pass["q4_live_result"] is False
+    assert {
+        current_pass["serial_reconnects"],
+        current_pass["serial_parser_errors"],
+        current_pass["active_transaction_rows"],
+        current_pass["dac_step_rows"],
+        current_pass["setup_stimuli"],
+        current_pass["dac_value_writes"],
+        current_pass["control_arms"],
+        current_pass["automatic_corrections"],
+    } == {0}
     assert successor["q4_lower_live_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"

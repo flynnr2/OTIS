@@ -195,3 +195,8 @@ unattended execution, including exact flashing and reset recovery, so progress
 does not depend on timely replies. The effective scope and unchanged safety,
 scientific and evidence boundaries are recorded in
 [`32_Q4_UNATTENDED_PHASE_AUTHORITY.md`](32_Q4_UNATTENDED_PHASE_AUTHORITY.md).
+
+The unattended exact-current-image reset/session-absence qualification passed
+all frozen checks with stable zero telemetry drops and zero actuation. The
+decision and exact registered evidence are recorded in
+[`33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md`](33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md).
