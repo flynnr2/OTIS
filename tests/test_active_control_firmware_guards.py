@@ -193,6 +193,33 @@ def test_measurement_model_control_and_arm_gates_are_separate() -> None:
     assert "latest_health.applied_code == transaction.applied_code" in live
 
 
+def test_setup_ack_survives_one_in_flight_pre_setup_health_sample() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    health_update = live[
+        live.index("void otis_cx317_active_live_update_health") :
+        live.index("void otis_cx317_active_live_service")
+    ]
+    manual_start = live[
+        live.index("void otis_cx317_active_live_note_manual_start") :
+        live.index("void otis_cx317_active_live_on_decision")
+    ]
+
+    assert "periodic_applied_code_confirmation_seen = false;" in manual_start
+    assert (
+        "health->applied_code == transaction.applied_code" in health_update
+    )
+    confirmation = health_update.index(
+        "periodic_applied_code_confirmation_seen = true;"
+    )
+    loss_gate = health_update.index(
+        "periodic_applied_code_confirmation_seen &&"
+    )
+    fault = health_update.index('"confirmed_applied_code_lost"')
+    assert confirmation < loss_gate < fault
+
+
 def test_completed_response_is_not_gated_by_preview_actionability() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"

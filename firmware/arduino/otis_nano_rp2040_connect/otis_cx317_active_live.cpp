@@ -129,6 +129,7 @@ bool transaction_bound = false;
 bool have_health = false;
 bool have_capture_lease = false;
 bool manual_start_confirmed = false;
+bool periodic_applied_code_confirmation_seen = false;
 EvidencePhase evidence_phase = EvidencePhase::None;
 uint32_t last_capture_lease_s = 0u;
 uint32_t last_capture_lease_sequence = 0u;
@@ -463,6 +464,7 @@ bool otis_cx317_active_live_begin(void) {
   have_health = false;
   have_capture_lease = false;
   manual_start_confirmed = false;
+  periodic_applied_code_confirmation_seen = false;
   evidence_phase = EvidencePhase::None;
   last_capture_lease_sequence = 0u;
   evidence_request_sequence = 0u;
@@ -503,9 +505,19 @@ void otis_cx317_active_live_update_health(
     otis_cx317_active_note_session(&transaction, health->session_id,
                                    manual_start_confirmed);
   }
-  if (transaction_bound && manual_start_confirmed &&
-      !health->applied_code_confirmed)
-    otis_cx317_active_fault(&transaction, "confirmed_applied_code_lost");
+  if (transaction_bound && manual_start_confirmed) {
+    // The setup application acknowledgement is the first authoritative
+    // confirmation. A periodic health message already in flight may still
+    // contain the pre-setup "unknown" state, so absence cannot become loss
+    // until periodic health has caught up and confirmed this exact code once.
+    if (health->applied_code_confirmed &&
+        health->applied_code == transaction.applied_code) {
+      periodic_applied_code_confirmation_seen = true;
+    } else if (periodic_applied_code_confirmation_seen &&
+               !health->applied_code_confirmed) {
+      otis_cx317_active_fault(&transaction, "confirmed_applied_code_lost");
+    }
+  }
   fault_if_active_continuity_lost(now_s);
 #else
   (void)health;
@@ -794,6 +806,7 @@ void otis_cx317_active_live_note_manual_start(uint16_t code, bool i2c_ok,
     return;
   }
   manual_start_confirmed = true;
+  periodic_applied_code_confirmation_seen = false;
   if (transaction_bound) {
     transaction.applied_code = code;
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
