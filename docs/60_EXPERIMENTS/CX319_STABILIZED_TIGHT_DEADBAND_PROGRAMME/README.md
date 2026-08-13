@@ -184,3 +184,8 @@ a separate operator decision before any physical action. The operator's
 effective one-reset, no-flash, three-snapshot authority is recorded in
 [`30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md`](30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md).
 It repeats neither Q2/Q3 nor any live actuation.
+
+The first reset occurred after an arbitrary five-minute observer wait expired,
+before capture or any command. The zero-I/O platform stop and effective
+one-reset recovery authority are recorded in
+[`31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md`](31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md).

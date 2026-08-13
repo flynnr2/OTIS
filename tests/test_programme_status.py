@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_no_flash_low_cadence_attempt() -> None:
+def test_tracked_status_authorizes_no_flash_low_cadence_retry() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,14 +27,14 @@ def test_tracked_status_authorizes_no_flash_low_cadence_attempt() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_session_absence_no_flash_low_cadence_authorized"
+        "q4_session_absence_no_flash_low_cadence_retry_authorized"
     )
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,
     ]
     assert successor["authority"] == (
-        "effective_one_attempt_no_flash_low_cadence_physical_authority"
+        "effective_one_attempt_no_flash_low_cadence_recovery_authority"
     )
     assert successor["next_gate"] == (
         "execute_no_flash_low_cadence_session_absence_qualification"
@@ -93,8 +93,14 @@ def test_tracked_status_authorizes_no_flash_low_cadence_attempt() -> None:
         "I authorize the no-flash low-cadence proposal and I am at the bench"
     )
     assert authority["physical_presence_confirmed"] is True
-    assert authority["effective"] is True
-    assert authority["consumed"] is False
+    assert authority["effective"] is False
+    assert authority["consumed"] is True
+    assert authority["consumed_by_attempt_id"] == (
+        "session_absence_no_flash_low_cadence_20260813T091617Z"
+    )
+    assert authority["terminal_reason"] == (
+        "operator_reset_after_observer_wait_timeout_before_capture"
+    )
     assert authority["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
     assert authority["firmware_flash_limit"] == 0
     assert authority["manual_reset_button_limit"] == 1
@@ -110,6 +116,32 @@ def test_tracked_status_authorizes_no_flash_low_cadence_attempt() -> None:
         authority["setup_stimuli"],
         authority["control_arms"],
         authority["automatic_corrections"],
+    } == {0}
+    retry = successor[
+        "current_session_absence_no_flash_low_cadence_retry_authority"
+    ]
+    assert retry["operator_instruction"] == (
+        "you are authorized to continue with flashing the board, etc."
+    )
+    assert retry["physical_presence_confirmed"] is True
+    assert retry["effective"] is True
+    assert retry["consumed"] is False
+    assert retry["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
+    assert retry["firmware_flash_limit"] == 0
+    assert retry["manual_reset_button_limit"] == 1
+    assert retry["physical_no_write_attempt_limit"] == 1
+    assert retry["operator_wait_liveness_bound_s"] == 7200
+    assert retry["snapshot_query_count"] == 3
+    assert retry["minimum_snapshot_cadence_s"] == 5
+    assert retry["post_attach_deadline_s"] == 30
+    assert retry["q2_repeat_authorized"] is False
+    assert retry["q3_repeat_authorized"] is False
+    assert retry["live_authority"] is False
+    assert {
+        retry["dac_value_writes"],
+        retry["setup_stimuli"],
+        retry["control_arms"],
+        retry["automatic_corrections"],
     } == {0}
     assert successor["q4_lower_live_authority"] == {
         "record": (
