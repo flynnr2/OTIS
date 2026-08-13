@@ -6,18 +6,16 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and Q4
-lower-side offline preparation passed. The one authorized Q4/G2 attempt then
-stopped before setup because the serial path received no firmware records and
-ended on a write timeout. No DAC value write, control arm, or automatic
-correction occurred. The attempt is a platform escape, not a scientific Q4
-result. Its authority is consumed. The narrow runner repair, fresh candidate,
-and accelerated rehearsal pass. The first retry authority was consumed by a
-software restart-path failure before any hardware effect. The candidate and
-rehearsal remain current. The subsequent observed manual reset and live entry
-stopped before setup: an unjustified two-second host snapshot deadline fired,
-while retained rows already showed the Q3 firmware correctly fail-static on a
-session change. The authority is retired and live execution is blocked.
+Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and the
+Q4/G2 lower-side physical qualification passed. The successful run made one
+bounded positive correction from `0xA808` to `0xA81D`, demonstrated a healthy
+response, and established two consecutive tight `-2` count estimates. Its
+immutable acquisition is sealed by a provenance-linked passing offline
+reanalysis after three deterministic finalizer defects were corrected; no
+physical rerun was required. The conditional G3 upper-side authority may now
+advance through its required fresh exact upper bundle, structural preflight and
+complete accelerated operational-path rehearsal. G4 and phase/hybrid
+actuation remain unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -206,3 +204,7 @@ evidence frame before any actuation. The exact root cause, firmware repair,
 reproducible image, focused physical requalification and Q2/Q3 reuse decision
 are recorded in
 [`34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md`](34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md).
+
+The successful lower-side physical result, immutable evidence identities,
+offline analyzer supersession and exact G3 next gate are recorded in
+[`35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md`](35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md).

@@ -8,6 +8,7 @@ from host.otis_tools.control_evidence_replay import (
     _commands_exact,
     _controller_replay,
     _response_replay,
+    _selected_windows_nonoverlap,
 )
 from host.otis_tools.frequency_control_replay import load_current_replay_policy
 from host.otis_tools.frequency_control_supervisor import (
@@ -66,6 +67,11 @@ def test_response_replay_matches_firmware_without_float_deadband() -> None:
             "exact": True,
         }
     ]
+
+
+def test_selected_windows_allow_reset_gaps_but_reject_overlap() -> None:
+    assert _selected_windows_nonoverlap([(0, 600), (600, 1200), (2700, 3300)])
+    assert not _selected_windows_nonoverlap([(0, 600), (599, 1199)])
 
 
 def test_required_direction_is_bound_to_its_own_healthy_response() -> None:
@@ -306,6 +312,56 @@ def test_controller_replay_binds_integer_gate_and_application_delta() -> None:
         applications,
         stage5_policy_sha256=stage5_hash,
     )[0] is False
+
+
+def test_controller_replay_preserves_startup_support_before_first_estimate() -> None:
+    policy = load_current_replay_policy()
+    stage5_hash = "d" * 64
+    control = {
+        "control_seq": "0",
+        "decision_id": "ctl:cx317:000000",
+        "decision_timestamp_ticks": str(policy.warmup_s * 16_000_000),
+        "time_domain": "rp2040_timer0",
+        "est_input_ref": "est:cx317:selected600:000000",
+        "plant_model_hash": policy.plant_model_hash,
+        "policy_version": "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",
+        "config_hash": stage5_hash,
+        "control_state": "QUALIFYING",
+        "previous_control_state": "WARMUP_INHIBIT",
+        "state_transition": "true",
+        "transition_reason_code": "fresh_estimator_support",
+        "preview_eligibility": "false",
+        "current_dac_code": str(0xA808),
+        "frequency_error_hz": "",
+        "model_applicability": "applicable",
+        "raw_delta_codes": "",
+        "limited_delta_codes": "",
+        "proposed_dac_code": "",
+        "step_limited": "false",
+        "range_clamped": "false",
+        "preview_available": "false",
+        "preview_only": "true",
+        "actuation_authorized": "false",
+        "actionable": "false",
+        "decision_reason_code": "fresh_estimator_support",
+    }
+    manual_setup = {
+        "elapsed_ms": "600000",
+        "event": "manual_apply",
+    }
+
+    exact, replay = _controller_replay(
+        [control],
+        {},
+        [],
+        [manual_setup],
+        [],
+        stage5_policy_sha256=stage5_hash,
+    )
+
+    assert exact is True, replay
+    assert replay["comparisons"][0]["host_state"] == "QUALIFYING"
+    assert replay["comparisons"][0]["host_reason"] == "fresh_estimator_support"
 
 
 def test_current_analyzer_keeps_phase_hybrid_authority_zero() -> None:

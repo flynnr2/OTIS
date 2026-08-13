@@ -125,6 +125,12 @@ predicates from one frozen contract or manifest wherever practical. Runners,
 supervisors, analyzers, recovery tools, and test harnesses must not invent
 conflicting operational semantics.
 
+When a record declares its clock or counter domain, validators and replay
+tools must derive legal rollover behavior from that declared domain. Do not
+make canonical wrap handling depend on a caller remembering an optional
+Boolean. Reject an unknown or contradictory domain, and retain strict backward-
+movement rejection for domains whose contract does not permit wrapping.
+
 Validate historical artifacts against the manifest and matrix with which they
 were created. Do not require them to satisfy the current expanding product
 matrix unless the task explicitly concerns migration or current compatibility.

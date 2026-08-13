@@ -15,6 +15,7 @@ OFFLINE_PREPARATION = "offline_preparation"
 OPERATIONAL_EXECUTION = "operational_execution"
 NO_WRITE_BENCH_REHEARSAL = "g1_no_write_bench_rehearsal"
 BOUNDED_TIGHT_DEADBAND_LIVE_LEG = "g2_live_leg"
+BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG = "g3_live_leg"
 
 
 class ProgrammeExecutionBlocked(RuntimeError):

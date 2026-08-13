@@ -7,6 +7,7 @@ import pytest
 from host.otis_tools.programme_status import (
     NO_WRITE_BENCH_REHEARSAL,
     BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
     OFFLINE_PREPARATION,
     ProgrammeExecutionBlocked,
     load_programme_status,
@@ -15,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_repaired_current_image_pass_and_unattended_q4() -> None:
+def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -26,21 +27,18 @@ def test_tracked_status_records_repaired_current_image_pass_and_unattended_q4() 
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == (
-        "q4_asl_formatter_fixed_current_image_qualified_"
-        "unattended_candidate_preparation"
-    )
+    assert successor["state"] == "q4_lower_passed_g3_upper_preparation"
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,
         BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
     ]
     assert successor["authority"] == (
-        "effective_unattended_q4_phase_authority_"
-        "repaired_current_image_qualified"
+        "g2_lower_passed_conditional_g3_upper_prerequisites_pending"
     )
     assert successor["next_gate"] == (
-        "prepare_and_rehearse_fresh_current_image_q4_candidate_then_execute"
+        "build_preflight_and_rehearse_exact_g3_upper_candidate_then_execute"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"

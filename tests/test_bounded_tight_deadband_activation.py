@@ -543,10 +543,16 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
         lambda path: manifest_value,
     )
     monkeypatch.setattr(bounded_tight_deadband_live_analyze, "load_manifest", lambda path: loaded)
+    validation_contexts = []
+
+    def validate_csv_with_context(path, context):  # type: ignore[no-untyped-def]
+        validation_contexts.append(context)
+        return SimpleNamespace(ok=True, row_count=0, errors=[])
+
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
         "validate_csv",
-        lambda *args, **kwargs: SimpleNamespace(ok=True, row_count=0, errors=[]),
+        validate_csv_with_context,
     )
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
@@ -654,3 +660,8 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
         "dac_writes": 2,
         "control_arms": 0,
     }
+    assert validation_contexts
+    assert all(
+        context.tight_deadband_policy_sha256 == manifest_value["policy"]["sha256"]
+        for context in validation_contexts
+    )

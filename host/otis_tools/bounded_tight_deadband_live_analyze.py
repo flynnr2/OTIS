@@ -189,7 +189,12 @@ def _setup_phase_history(
     }
 
 
-def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
+def analyze(
+    run_dir: Path,
+    *,
+    output_path: Path | None = None,
+    supersedes_seal: Path | None = None,
+) -> tuple[Path, dict[str, Any]]:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
         raise ValueError("G2 live capture is still active")
@@ -221,6 +226,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
                 known_channels=manifest.known_channels,
                 known_domains=manifest.known_domains,
                 allow_rp2040_timer0_wrap=True,
+                tight_deadband_policy_sha256=manifest_value["policy"]["sha256"],
             ),
         )
         validations[contract] = {
@@ -618,8 +624,25 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "hybrid preview remained zero-authority."
         ),
     }
+    if supersedes_seal is not None:
+        superseded = supersedes_seal.resolve()
+        superseded_value = json.loads(superseded.read_text(encoding="utf-8"))
+        unsigned["analysis_supersession"] = {
+            "reason": "deterministic_offline_analyzer_repair",
+            "superseded_seal_path": str(superseded),
+            "superseded_seal_file_sha256": _sha256_file(superseded),
+            "superseded_seal_sha256": superseded_value.get("seal_sha256"),
+            "superseded_status": superseded_value.get("status"),
+            "superseded_tool_sha256": superseded_value.get("tool_sha256"),
+            "raw_acquisition_unchanged": True,
+            "physical_rerun": False,
+        }
     result = {**unsigned, "seal_sha256": canonical_sha256(unsigned)}
-    output = run_dir / LIVE_SEAL_PATH
+    output = (
+        output_path.resolve()
+        if output_path is not None
+        else run_dir / LIVE_SEAL_PATH
+    )
     _atomic_new_json(output, result)
     return output, result
 
@@ -627,9 +650,15 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--supersedes-seal", type=Path)
     args = parser.parse_args(argv)
     try:
-        output, result = analyze(args.run_dir)
+        output, result = analyze(
+            args.run_dir,
+            output_path=args.output,
+            supersedes_seal=args.supersedes_seal,
+        )
     except (
         FileExistsError,
         FileNotFoundError,
