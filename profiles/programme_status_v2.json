@@ -10,13 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_lower_manual_restart_authorized_awaiting_observer",
+      "state": "q4_lower_manual_restart_prewrite_stop_authority_retired",
       "allowed_operations": [
-        "offline_preparation",
-        "g2_live_leg"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-13",
-      "authority": "explicit_operator_q4_lower_manual_restart_live_authority",
+      "authority": "no_effective_live_authority_after_manual_restart_prewrite_stop",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -83,7 +82,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "arm_observer_then_one_manual_reset_and_exact_candidate_once",
+      "next_gate": "qualify_current_session_rebinding_firmware_before_new_q4_candidate",
       "q4_lower_live_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md",
         "operator_instruction": "move_on_to_the_physical_q4_live_run",
@@ -185,8 +184,11 @@
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md",
         "operator_instruction": "I authorize the manual-reset proposal and I am at the bench.",
         "physical_presence_confirmed": true,
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_activation_sha256": "73eb4dac26ecf9be89dcd2af67efd330d336e5376e6f4dcfbd593bb79114d15d",
+        "consumed_by_restart_observation_sha256": "349ad8e0a47cf27a5aa1116d4a50307378f33d29acf9cc146ddccbd5f72f201d",
+        "consumed_by_run_id": "live_leg_a_manual_restart_20260813T083106Z",
         "programme_operation": "g2_live_leg",
         "manual_reset_button_only": true,
         "restart_observer_required_before_press": true,
@@ -206,6 +208,27 @@
         "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
         "proposal_bundle_sha256": "9697652d963c0bcfe44800c1f3ff7c6cf032ca382c5479c8cec0edb1ddccbd56",
         "operational_rehearsal_seal_sha256": "c56d402abd3ac208ca10b73f78863372ca4abb176c10c8d56c3c3d2845c84c6d"
+      },
+      "q4_lower_manual_restart_prewrite_stop": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md",
+        "run_id": "live_leg_a_manual_restart_20260813T083106Z",
+        "activation_sha256": "73eb4dac26ecf9be89dcd2af67efd330d336e5376e6f4dcfbd593bb79114d15d",
+        "activation_file_sha256": "fa4366b659f45f3f42a00f5ea70cd4fc95ba8d39c916886258be71f9a8cd860f",
+        "restart_observation_sha256": "349ad8e0a47cf27a5aa1116d4a50307378f33d29acf9cc146ddccbd5f72f201d",
+        "run_manifest_sha256": "5d54612b7468f9fd9e9428a5cabc6c92203dc5a1fc86def066f08eac4f9da0fb",
+        "terminal_reason": "cx319_g2_supervisor_fault:active live-health snapshot did not complete within 2.000 s: generation=2",
+        "evidence_content_sha256": "38002306a1f6885105502da78ab91fb42063b2def384a2cf9accae98c749e3bb",
+        "observed_incomplete_generation_state": "FAULT",
+        "observed_incomplete_generation_reason": "session_change_clears_arming",
+        "observed_incomplete_generation_fail_static": true,
+        "host_snapshot_completion_timeout_old_s": 2,
+        "host_snapshot_completion_timeout_new_s": 30,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "scientific_result": false,
+        "failure_class": "platform_escape_masking_firmware_entry_stop"
       },
       "q4_offline_readiness": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md",

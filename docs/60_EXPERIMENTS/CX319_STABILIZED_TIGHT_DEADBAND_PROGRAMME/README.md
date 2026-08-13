@@ -14,9 +14,10 @@ correction occurred. The attempt is a platform escape, not a scientific Q4
 result. Its authority is consumed. The narrow runner repair, fresh candidate,
 and accelerated rehearsal pass. The first retry authority was consumed by a
 software restart-path failure before any hardware effect. The candidate and
-rehearsal remain current. The operator has now authorized one observed manual
-reset-button press followed by one exact physical run and confirmed presence
-at the bench.
+rehearsal remain current. The subsequent observed manual reset and live entry
+stopped before setup: an unjustified two-second host snapshot deadline fired,
+while retained rows already showed the Q3 firmware correctly fail-static on a
+session change. The authority is retired and live execution is blocked.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -161,3 +162,7 @@ replacement proposal are recorded in
 
 The effective manual-reset-button-only live authority is recorded in
 [`25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md`](25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md).
+
+The retained pre-write result, relaxed diagnostic deadline and firmware entry
+decision are recorded in
+[`26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md`](26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md).

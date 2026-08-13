@@ -15,7 +15,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_authorizes_observed_manual_restart_once() -> None:
+def test_tracked_status_retires_manual_restart_prewrite_stop() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,17 +27,14 @@ def test_tracked_status_authorizes_observed_manual_restart_once() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_lower_manual_restart_authorized_awaiting_observer"
+        "q4_lower_manual_restart_prewrite_stop_authority_retired"
     )
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ]
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "explicit_operator_q4_lower_manual_restart_live_authority"
+        "no_effective_live_authority_after_manual_restart_prewrite_stop"
     )
     assert successor["next_gate"] == (
-        "arm_observer_then_one_manual_reset_and_exact_candidate_once"
+        "qualify_current_session_rebinding_firmware_before_new_q4_candidate"
     )
     assert successor["q4_lower_live_authority"] == {
         "record": (
@@ -241,8 +238,17 @@ def test_tracked_status_authorizes_observed_manual_restart_once() -> None:
             "I authorize the manual-reset proposal and I am at the bench."
         ),
         "physical_presence_confirmed": True,
-        "effective": True,
-        "consumed": False,
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "73eb4dac26ecf9be89dcd2af67efd330"
+            "d336e5376e6f4dcfbd593bb79114d15d"
+        ),
+        "consumed_by_restart_observation_sha256": (
+            "349ad8e0a47cf27a5aa1116d4a503073"
+            "78f33d29acf9cc146ddccbd5f72f201d"
+        ),
+        "consumed_by_run_id": "live_leg_a_manual_restart_20260813T083106Z",
         "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
         "manual_reset_button_only": True,
         "restart_observer_required_before_press": True,
@@ -271,6 +277,49 @@ def test_tracked_status_authorizes_observed_manual_restart_once() -> None:
             "c56d402abd3ac208ca10b73f78863372"
             "ca4abb176c10c8d56c3c3d2845c84c6d"
         ),
+    }
+    assert successor["q4_lower_manual_restart_prewrite_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md"
+        ),
+        "run_id": "live_leg_a_manual_restart_20260813T083106Z",
+        "activation_sha256": (
+            "73eb4dac26ecf9be89dcd2af67efd330"
+            "d336e5376e6f4dcfbd593bb79114d15d"
+        ),
+        "activation_file_sha256": (
+            "fa4366b659f45f3f42a00f5ea70cd4fc"
+            "95ba8d39c916886258be71f9a8cd860f"
+        ),
+        "restart_observation_sha256": (
+            "349ad8e0a47cf27a5aa1116d4a503073"
+            "78f33d29acf9cc146ddccbd5f72f201d"
+        ),
+        "run_manifest_sha256": (
+            "5d54612b7468f9fd9e9428a5cabc6c92"
+            "203dc5a1fc86def066f08eac4f9da0fb"
+        ),
+        "terminal_reason": (
+            "cx319_g2_supervisor_fault:active live-health snapshot did not "
+            "complete within 2.000 s: generation=2"
+        ),
+        "evidence_content_sha256": (
+            "38002306a1f6885105502da78ab91fb4"
+            "2063b2def384a2cf9accae98c749e3bb"
+        ),
+        "observed_incomplete_generation_state": "FAULT",
+        "observed_incomplete_generation_reason": "session_change_clears_arming",
+        "observed_incomplete_generation_fail_static": True,
+        "host_snapshot_completion_timeout_old_s": 2,
+        "host_snapshot_completion_timeout_new_s": 30,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "scientific_result": False,
+        "failure_class": "platform_escape_masking_firmware_entry_stop",
     }
     assert successor["q4_offline_readiness"] == {
         "record": (
@@ -682,10 +731,11 @@ def test_tracked_status_authorizes_observed_manual_restart_once() -> None:
             "cx319_stabilized_tight_deadband",
             NO_WRITE_BENCH_REHEARSAL,
         )
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ) == successor
+    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
+        require_programme_operation_allowed(
+            "cx319_stabilized_tight_deadband",
+            BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 
