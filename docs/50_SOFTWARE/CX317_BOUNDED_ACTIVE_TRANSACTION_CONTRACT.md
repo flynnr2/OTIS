@@ -82,9 +82,13 @@ GGA fix quality, GSA fix dimension, and the 1PPS pin are separate evidence:
   evidence;
 - GGA quality 1 or 2 may be valid; quality 2 means a differential position
   solution and does not itself encode 2D/3D;
-- the raw D14 1PPS/reference path remains the timing authority. D10/D14 health,
-  accepted interval bounds, snapshot continuity, count validity, and all ring
-  and backend fault counters must remain clean.
+- the raw D14 1PPS/reference path remains the sole timing authority. Its
+  accepted interval bounds, snapshot continuity, count validity, and all
+  authoritative capture/boundary/backend fault counters must remain clean;
+- D10 is the external event/edge input and is outside this PPS/oscillator
+  control transaction. It is neither configured nor interpreted as a PPS
+  witness and never enters setup authority, control eligibility, response
+  validity, or actuation.
 
 ## Arming, capture lease, and abort
 

@@ -53,6 +53,15 @@ def _serialized_difference(value: str, expected: float) -> float:
     return float(abs(Decimal(value) - Decimal.from_float(expected)))
 
 
+def _selected_windows_nonoverlap(windows: list[tuple[int, int]]) -> bool:
+    """Accept adjacent or deliberately skipped windows, but never overlap."""
+
+    return bool(windows) and all(
+        later_first >= earlier_last
+        for (_, earlier_last), (later_first, _) in zip(windows, windows[1:])
+    )
+
+
 def _measurement_replay(
     manifest: Any,
     manifest_value: dict[str, Any],
@@ -74,7 +83,7 @@ def _measurement_replay(
     sequence_exact = sequences == list(range(sequences[0], sequences[-1] + 1))
     identifiers: set[str] = set()
     comparisons: list[dict[str, Any]] = []
-    selected_last: list[int] = []
+    selected_windows: list[tuple[int, int]] = []
     maximum_frequency_difference = 0.0
     maximum_error_difference = 0.0
     exact = continuity_exact and sequence_exact
@@ -87,10 +96,10 @@ def _measurement_replay(
         selected = row["estimator_version"] == EXPECTED_SELECTED_VERSION
         diagnostic = row["estimator_version"] == EXPECTED_DIAGNOSTIC_VERSION
         span = 600 if selected else 60 if diagnostic else 0
-        if selected:
-            selected_last.append(int(row["source_reference_last_seq"]))
         first = int(row["source_reference_first_seq"])
         last = int(row["source_reference_last_seq"])
+        if selected:
+            selected_windows.append((first, last))
         sources = [count_by_seq.get(sequence) for sequence in range(first + 1, last + 1)]
         source_exact = span > 0 and len(sources) == span and all(sources)
         if source_exact:
@@ -149,10 +158,7 @@ def _measurement_replay(
                 "pass": fields_exact,
             }
         )
-    selected_nonoverlap = bool(selected_last) and all(
-        later - earlier == 600
-        for earlier, later in zip(selected_last, selected_last[1:])
-    )
+    selected_nonoverlap = _selected_windows_nonoverlap(selected_windows)
     exact &= selected_nonoverlap
     return exact, {
         "continuity": [
@@ -160,7 +166,7 @@ def _measurement_replay(
             for item in continuity
         ],
         "estimate_sequence_exact": sequence_exact,
-        "selected_count": len(selected_last),
+        "selected_count": len(selected_windows),
         "selected_nonoverlap": selected_nonoverlap,
         "maximum_frequency_difference_hz": (
             maximum_frequency_difference
@@ -205,7 +211,16 @@ def _controller_replay(
     decision_ticks, wrap_count = unwrap_ticks(
         [int(row["decision_timestamp_ticks"]) for row in controls]
     )
-    ordered_dac = sorted(dac_rows, key=lambda row: int(row["elapsed_ms"]))
+    # The exact setup establishes the controller's initial operating point; it
+    # is not an automatic correction epoch.  Replaying it through
+    # note_dac_epoch() would replace the firmware's startup warmup with a
+    # fictitious settling epoch.  Rows without an event remain accepted for
+    # the older focused replay fixtures, where the sole row represents an
+    # automatic epoch.
+    ordered_dac = sorted(
+        (row for row in dac_rows if row.get("event") != "manual_apply"),
+        key=lambda row: int(row["elapsed_ms"]),
+    )
     next_dac = 0
     tdb_by_estimate = {row["estimate_id"]: row for row in tdb_rows}
     if len(tdb_by_estimate) != len(tdb_rows):
@@ -231,6 +246,13 @@ def _controller_replay(
             )
             next_dac += 1
         source = estimates_by_id.get(row["est_input_ref"])
+        startup_support_transition = (
+            source is None
+            and row["frequency_error_hz"] == ""
+            and row["decision_reason_code"] == "fresh_estimator_support"
+            and int(row["control_seq"]) == 0
+        )
+        source_valid = source is not None or startup_support_transition
         tdb = tdb_by_estimate.get(row["est_input_ref"])
         frequency_error = (
             float(source["frequency_error_hz"]) if source is not None else None
@@ -241,9 +263,9 @@ def _controller_replay(
                 timestamp_s=timestamp_s,
                 frequency_error_hz=frequency_error,
                 current_code=int(row["current_dac_code"]),
-                estimator_valid=source is not None,
-                reference_valid=source is not None,
-                count_valid=source is not None,
+                estimator_valid=source_valid,
+                reference_valid=source_valid,
+                count_valid=source_valid,
                 model_applicable=row["model_applicability"] == "applicable",
                 frequency_controller_eligible=(
                     _bool(tdb["frequency_controller_eligible"])
@@ -272,7 +294,7 @@ def _controller_replay(
         maximum_error_difference = max(maximum_error_difference, error_difference)
         maximum_delta_difference = max(maximum_delta_difference, delta_difference)
         row_exact = (
-            source is not None
+            source_valid
             and row["time_domain"] == "rp2040_timer0"
             and row["plant_model_hash"] == policy.plant_model_hash
             and row["policy_version"] == policy_id

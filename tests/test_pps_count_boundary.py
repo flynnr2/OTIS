@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
+import re
 
 import pytest
 
@@ -279,6 +280,13 @@ def test_association_loss_freezes_decision_local_backend_evidence_before_rearm()
         '"no_unread_snapshot_healthy_backend"',
     ):
         assert evidence in capsule
+
+    format_start = capsule.index('"ASL,1,')
+    format_end = capsule.index('\\r\\n"', format_start) + len('\\r\\n"')
+    format_literal = capsule[format_start:format_end]
+    format_fields = re.findall(r"%(?:ll|l)?[us]", format_literal)
+    assert len(format_fields) == 32
+    assert format_fields[-4:] == ["%lu", "%s", "%llu", "%llu"]
 
 def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(

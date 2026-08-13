@@ -21,8 +21,9 @@ from .no_write_qualification_bundle import PROGRAMME_ID
 from .bounded_tight_deadband_bundle import (
     HOST_TOOL_PATHS,
     _binding,
-    validate_frozen_proposal,
 )
+from .bounded_tight_deadband_proposal import validate_frozen_proposal
+from .bounded_tight_deadband_leg import LOWER, leg_for, leg_for_manifest, leg_for_proposal
 from .bounded_tight_deadband_outcome_contract import (
     CONTRACT_ID,
     MAXIMUM_CODE,
@@ -33,7 +34,6 @@ from .bounded_tight_deadband_outcome_contract import (
     MINIMUM_CADENCE_S,
     MINIMUM_CODE,
     QUALIFICATION_DEADLINE_S,
-    SETUP_CODE,
     canonical_sha256,
 )
 from .bounded_tight_deadband_prewrite_contract import (
@@ -42,11 +42,7 @@ from .bounded_tight_deadband_prewrite_contract import (
     RUNTIME_CONTRACT_ID,
     TELEMETRY_BASELINE_STABLE_OBSERVATIONS,
 )
-from .programme_status import (
-    BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ProgrammeExecutionBlocked,
-    require_programme_operation_allowed,
-)
+from .programme_status import ProgrammeExecutionBlocked, require_programme_operation_allowed
 from .run_paths import default_csv_files
 
 
@@ -54,16 +50,14 @@ TOOL_ID = "cx319_g2_live_activation_v1"
 ACTIVATION_ID = "cx319_g2_leg_a_live_activation_v1"
 LIVE_STAGE = "CX319_G2_LEG_A_FREQUENCY_ONLY_LIVE"
 RUN_MANIFEST_SCHEMA_VERSION = 1
-RUN_ACTIVATION_PATH = Path("cx319_g2_live_activation_v1.json")
-RUN_PROPOSAL_PATH = Path("cx319_g2_leg_a_proposal_bundle_v1.json")
-LIVE_SEAL_PATH = Path("reports/cx319_g2_live_leg_seal_v1.json")
-OPERATIONAL_REHEARSAL_TOOL = "cx319_g2_accelerated_operational_rehearsal_v1"
+RUN_ACTIVATION_PATH = LOWER.activation_filename
+RUN_PROPOSAL_PATH = LOWER.proposal_filename
+LIVE_SEAL_PATH = LOWER.live_seal_filename
+OPERATIONAL_REHEARSAL_TOOL = LOWER.rehearsal_tool
 LEGACY_OPERATIONAL_REHEARSAL_TOOL = (
     "cx319_g2_accelerated_operational_rehearsal_v1"
 )
-OPERATIONAL_REHEARSAL_SEAL = (
-    "cx319_g2_accelerated_operational_rehearsal_seal_v1"
-)
+OPERATIONAL_REHEARSAL_SEAL = LOWER.rehearsal_seal_type
 
 
 def _utc_now() -> str:
@@ -128,15 +122,16 @@ def _git_clean() -> bool:
 
 
 def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict[str, Any]:
+    selected = leg_for_proposal(proposal)
     path = path.resolve()
-    result = _read(path, "G2 operational rehearsal result")
+    result = _read(path, f"{selected.gate} operational rehearsal result")
     seal_path = Path(str(result.get("seal", ""))).resolve()
-    seal = _read(seal_path, "G2 operational rehearsal seal")
+    seal = _read(seal_path, f"{selected.gate} operational rehearsal seal")
     unsigned_seal = {key: value for key, value in seal.items() if key != "seal_sha256"}
     if (
         result.get("schema_version") != 1
         or result.get("tool")
-        not in {OPERATIONAL_REHEARSAL_TOOL, LEGACY_OPERATIONAL_REHEARSAL_TOOL}
+        not in {selected.rehearsal_tool, LEGACY_OPERATIONAL_REHEARSAL_TOOL}
         or result.get("status") != "passed"
         or result.get("proposal_bundle_sha256") != proposal["bundle_sha256"]
         or any(result.get("hardware_operations", {}).get(key) != 0 for key in (
@@ -145,18 +140,18 @@ def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict
             "dac_writes",
             "control_arms",
         ))
-        or seal.get("seal_type") != OPERATIONAL_REHEARSAL_SEAL
+        or seal.get("seal_type") != selected.rehearsal_seal_type
         or seal.get("status") != "passed"
         or seal.get("proposal_bundle_sha256") != proposal["bundle_sha256"]
         or seal.get("seal_sha256") != canonical_sha256(unsigned_seal)
     ):
-        raise ValueError("G2 operational rehearsal is not an exact no-I/O pass")
+        raise ValueError(f"{selected.gate} operational rehearsal is not an exact no-I/O pass")
     analysis_path = Path(str(result.get("analysis", ""))).resolve()
     if (
         not analysis_path.is_file()
         or seal.get("analysis_file_sha256") != _sha256_file(analysis_path)
     ):
-        raise ValueError("G2 operational rehearsal analysis binding differs")
+        raise ValueError(f"{selected.gate} operational rehearsal analysis binding differs")
     return {
         "path": str(path),
         "sha256": _sha256_file(path),
@@ -187,27 +182,32 @@ def create_activation(
     serial_device: str,
     operator_instruction_ref: str,
     output_path: Path,
+    leg_name: str = "A",
 ) -> dict[str, Any]:
-    require_programme_operation_allowed(PROGRAMME_ID, BOUNDED_TIGHT_DEADBAND_LIVE_LEG)
+    requested = leg_for("G2" if leg_name == "A" else "G3", leg_name)
+    require_programme_operation_allowed(PROGRAMME_ID, requested.operation)
     if not serial_device.startswith("/dev/"):
-        raise ValueError("G2 activation requires an explicit /dev serial path")
+        raise ValueError(f"{requested.gate} activation requires an explicit /dev serial path")
     if not operator_instruction_ref.strip():
-        raise ValueError("G2 activation requires an operator-instruction reference")
+        raise ValueError(f"{requested.gate} activation requires an operator-instruction reference")
     proposal_path = proposal_path.resolve()
     proposal = validate_frozen_proposal(proposal_path)
+    selected = leg_for_proposal(proposal)
+    if selected != requested:
+        raise ValueError("requested activation leg differs from the proposal")
     _validate_current_operational_inputs(proposal)
     rehearsal = validate_operational_rehearsal(
         operational_rehearsal_path, proposal
     )
     unsigned: dict[str, Any] = {
         "schema_version": 1,
-        "tool": TOOL_ID,
-        "activation_id": ACTIVATION_ID,
+        "tool": selected.activation_tool,
+        "activation_id": selected.activation_id,
         "created_utc": _utc_now(),
         "programme_id": PROGRAMME_ID,
-        "operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-        "gate": "G2",
-        "leg": "A",
+        "operation": selected.operation,
+        "gate": selected.gate,
+        "leg": selected.leg,
         "status": "effective_exact_leg_authority",
         "operator_instruction_ref": operator_instruction_ref.strip(),
         "proposal": {
@@ -224,7 +224,7 @@ def create_activation(
         "authority": {
             "effective": True,
             "physical_execution": True,
-            "firmware_flash": False,
+            "firmware_flash": selected.firmware_flash,
             "fresh_host_attach_maximum_uptime_s": (
                 FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
             ),
@@ -238,7 +238,7 @@ def create_activation(
             "evidence_capture_preview_partition_and_control_gates_absolute": True,
             "serial_open": True,
             "setup_stimulus": True,
-            "setup_code": SETUP_CODE,
+            "setup_code": selected.setup_code,
             "setup_write_limit": 1,
             "control_arm": True,
             "automatic_correction": True,
@@ -271,22 +271,21 @@ def validate_frozen_activation(
     path: Path, *, proposal_path: Path | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     path = path.resolve()
-    value = _read(path, "G2 live activation")
+    value = _read(path, "CX319 live activation")
+    selected = leg_for(value.get("gate"), value.get("leg"))
     unsigned = {key: item for key, item in value.items() if key != "activation_sha256"}
     authority = value.get("authority", {})
     if (
         value.get("schema_version") != 1
-        or value.get("tool") != TOOL_ID
-        or value.get("activation_id") != ACTIVATION_ID
+        or value.get("tool") != selected.activation_tool
+        or value.get("activation_id") != selected.activation_id
         or value.get("programme_id") != PROGRAMME_ID
-        or value.get("operation") != BOUNDED_TIGHT_DEADBAND_LIVE_LEG
-        or value.get("gate") != "G2"
-        or value.get("leg") != "A"
+        or value.get("operation") != selected.operation
         or value.get("status") != "effective_exact_leg_authority"
         or value.get("activation_sha256") != canonical_sha256(unsigned)
         or not isinstance(authority, dict)
         or authority.get("effective") is not True
-        or authority.get("firmware_flash") is not False
+        or authority.get("firmware_flash") is not selected.firmware_flash
         or authority.get("fresh_host_attach_maximum_uptime_s")
         != FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
         or authority.get("gnss_pps_qualification_deadline_s")
@@ -301,7 +300,7 @@ def validate_frozen_activation(
             "evidence_capture_preview_partition_and_control_gates_absolute"
         )
         is not True
-        or authority.get("setup_code") != SETUP_CODE
+        or authority.get("setup_code") != selected.setup_code
         or authority.get("setup_write_limit") != 1
         or authority.get("automatic_correction_limit") != MAXIMUM_CORRECTIONS
         or authority.get("maximum_automatic_step_codes") != MAXIMUM_STEP_CODES
@@ -312,7 +311,7 @@ def validate_frozen_activation(
         or authority.get("automatic_retry") is not False
         or authority.get("automatic_restore") is not False
     ):
-        raise ValueError("G2 live activation identity, digest, or authority differs")
+        raise ValueError(f"{selected.gate} live activation identity, digest, or authority differs")
     proposal_binding = value.get("proposal", {})
     bound_proposal_path = Path(str(proposal_binding.get("path", ""))).resolve()
     proposal_path = (
@@ -330,10 +329,11 @@ def validate_frozen_activation(
 def validate_activation(
     path: Path, *, proposal_path: Path | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    require_programme_operation_allowed(PROGRAMME_ID, BOUNDED_TIGHT_DEADBAND_LIVE_LEG)
     value, proposal = validate_frozen_activation(
         path, proposal_path=proposal_path
     )
+    selected = leg_for_proposal(proposal)
+    require_programme_operation_allowed(PROGRAMME_ID, selected.operation)
     _validate_current_operational_inputs(proposal)
     rehearsal = validate_operational_rehearsal(
         Path(value["operational_rehearsal"]["path"]), proposal
@@ -369,13 +369,18 @@ def create_run_manifest(
     proposal_path: Path,
     run_dir: Path,
     output_path: Path,
+    serial_device: str | None = None,
 ) -> dict[str, Any]:
     activation, proposal = validate_activation(
         activation_path, proposal_path=proposal_path
     )
+    selected = leg_for_proposal(proposal)
     run_dir = run_dir.resolve()
     files = _required_files()
     authority = activation["authority"]
+    actual_serial_device = serial_device or activation["device"]["path"]
+    if not isinstance(actual_serial_device, str) or not actual_serial_device.startswith("/dev/"):
+        raise ValueError("CX319 live manifest requires an explicit serial device")
     envelope = proposal["intended_live_envelope"]
     manifest: dict[str, Any] = {
         "schema_version": RUN_MANIFEST_SCHEMA_VERSION,
@@ -384,17 +389,17 @@ def create_run_manifest(
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
-        "stage": LIVE_STAGE,
+        "stage": selected.stage,
         "board": "arduino_nano_rp2040_connect",
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
-        "control_mode": "cx319_g2_leg_a_frequency_only_live",
+        "control_mode": selected.control_mode,
         "closed_loop_control": True,
         "actionable": True,
         "actuation_authorized": True,
         "qualification_evidence": True,
         "firmware": proposal["firmware"],
         "policy": proposal["policy"],
-        "g1_pass": proposal["g1_pass"],
+        selected.prerequisite_key: proposal[selected.prerequisite_key],
         "proposal": {
             "path": str(proposal_path.resolve()),
             "sha256": activation["proposal"]["sha256"],
@@ -410,30 +415,31 @@ def create_run_manifest(
             "supervisor_tool": "host.otis_tools.bounded_tight_deadband_supervisor",
             "runner_tool": "host.otis_tools.bounded_tight_deadband_run",
             "analyzer_tool": "host.otis_tools.bounded_tight_deadband_live_analyze",
-            "serial_device": activation["device"]["path"],
+            "serial_device": actual_serial_device,
+            "activation_serial_device": activation["device"]["path"],
             "baud": 115200,
             "sole_serial_owner": True,
             "independent_abort_fifo_required": True,
             "tool_bindings": proposal["host_tools"],
         },
         "cx319": {
-            "gate": "G2",
-            "leg": "A",
+            "gate": selected.gate,
+            "leg": selected.leg,
             "mode": "frequency_only_live",
             "profile_id": proposal["leg_spec"]["profile_id"],
             "run_binding_tag": proposal["leg_spec"]["run_binding_tag"],
             "run_identity": proposal["leg_spec"]["run_identity"],
             "runtime_contract_id": RUNTIME_CONTRACT_ID,
-            "outcome_contract_id": CONTRACT_ID,
+            "outcome_contract_id": selected.outcome_contract_id,
             "planned_live_stimulus": {
-                "code": SETUP_CODE,
-                "code_hex": "0xA808",
+                "code": selected.setup_code,
+                "code_hex": selected.setup_code_hex,
                 "maximum_writes": 1,
                 "authorized": True,
             },
             "automatic_frequency_control": {
                 "authorized": True,
-                "required_direction": "positive",
+                "required_direction": selected.required_direction,
                 "maximum_corrections": MAXIMUM_CORRECTIONS,
                 "maximum_step_codes": MAXIMUM_STEP_CODES,
                 "maximum_cumulative_movement_codes": MAXIMUM_CUMULATIVE_CODES,
@@ -488,8 +494,13 @@ def create_run_manifest(
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
-            str(RUN_ACTIVATION_PATH),
-            str(RUN_PROPOSAL_PATH),
+            str(selected.activation_filename),
+            str(selected.proposal_filename),
+            *(
+                [str(selected.flash_record_filename)]
+                if selected.flash_record_filename is not None
+                else []
+            ),
         ],
         "evidence_artifacts": [
             "reports/capture_device_state.json",
@@ -497,14 +508,19 @@ def create_run_manifest(
             "reports/capture_segment_closure_v1.json",
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
-            "reports/cx319_g2_capture_launcher.log",
-            "reports/cx319_g2_supervisor.log",
-            str(RUN_ACTIVATION_PATH),
-            str(RUN_PROPOSAL_PATH),
+            f"reports/{selected.prefix}_capture_launcher.log",
+            f"reports/{selected.prefix}_supervisor.log",
+            str(selected.activation_filename),
+            str(selected.proposal_filename),
+            *(
+                [str(selected.flash_record_filename)]
+                if selected.flash_record_filename is not None
+                else []
+            ),
             "COMPLETE",
         ],
         "known_limitations": [
-            "G2 grants frequency-only authority for one finite lower-side leg.",
+            f"{selected.gate} grants frequency-only authority for one finite {'lower' if selected.leg == 'A' else 'upper'}-side leg.",
             "Phase and hybrid preview remain zero-authority.",
             "The result does not establish traceable absolute frequency, UTC, calibrated phase, or holdover.",
         ],
@@ -517,16 +533,17 @@ def _validate_run_manifest(
     path: Path, *, require_current_authority: bool
 ) -> dict[str, Any]:
     path = path.resolve()
-    manifest = _read(path, "G2 live run manifest")
+    manifest = _read(path, "CX319 live run manifest")
+    selected = leg_for_manifest(manifest)
     if (
         manifest.get("schema_version") != RUN_MANIFEST_SCHEMA_VERSION
-        or manifest.get("stage") != LIVE_STAGE
+        or manifest.get("stage") != selected.stage
         or manifest.get("closed_loop_control") is not True
         or manifest.get("actionable") is not True
         or manifest.get("actuation_authorized") is not True
         or manifest.get("qualification_evidence") is not True
     ):
-        raise ValueError("G2 live manifest identity or authority differs")
+        raise ValueError(f"{selected.gate} live manifest identity or authority differs")
     activation_binding = manifest.get("activation", {})
     activation_path = Path(str(activation_binding.get("path", ""))).resolve()
     proposal_path = Path(str(manifest.get("proposal", {}).get("path", "")))
@@ -540,25 +557,35 @@ def _validate_run_manifest(
         != activation["activation_sha256"]
         or manifest.get("firmware") != proposal["firmware"]
         or manifest.get("policy") != proposal["policy"]
-        or manifest.get("g1_pass") != proposal["g1_pass"]
+        or manifest.get(selected.prerequisite_key)
+        != proposal[selected.prerequisite_key]
         or manifest.get("proposal", {}).get("bundle_sha256")
         != proposal["bundle_sha256"]
         or manifest.get("host", {}).get("tool_bindings")
         != proposal["host_tools"]
-        or manifest.get("host", {}).get("serial_device")
+        or manifest.get("host", {}).get(
+            "activation_serial_device",
+            manifest.get("host", {}).get("serial_device"),
+        )
         != activation["device"]["path"]
+        or not str(manifest.get("host", {}).get("serial_device", "")).startswith("/dev/")
+        or (
+            not selected.firmware_flash
+            and manifest.get("host", {}).get("serial_device")
+            != activation["device"]["path"]
+        )
         or manifest.get("cx319", {}).get("authority") != activation["authority"]
     ):
         raise ValueError("G2 live manifest differs from activation or proposal")
     exact = manifest.get("cx319", {})
     if (
-        exact.get("gate") != "G2"
-        or exact.get("leg") != "A"
+        exact.get("gate") != selected.gate
+        or exact.get("leg") != selected.leg
         or exact.get("runtime_contract_id") != RUNTIME_CONTRACT_ID
-        or exact.get("outcome_contract_id") != CONTRACT_ID
-        or exact.get("planned_live_stimulus", {}).get("code") != SETUP_CODE
+        or exact.get("outcome_contract_id") != selected.outcome_contract_id
+        or exact.get("planned_live_stimulus", {}).get("code") != selected.setup_code
         or exact.get("automatic_frequency_control", {}).get("required_direction")
-        != "positive"
+        != selected.required_direction
         or exact.get("automatic_frequency_control", {}).get("maximum_corrections")
         != MAXIMUM_CORRECTIONS
         or exact.get("automatic_frequency_control", {}).get("maximum_step_codes")
@@ -578,7 +605,7 @@ def _validate_run_manifest(
             "frequency_controller_input",
         ))
     ):
-        raise ValueError("G2 live manifest bounds or zero-authority surface differs")
+        raise ValueError(f"{selected.gate} live manifest bounds or zero-authority surface differs")
     return manifest
 
 
@@ -602,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
     activate.add_argument("--operational-rehearsal", type=Path, required=True)
     activate.add_argument("--serial-device", required=True)
     activate.add_argument("--operator-instruction-ref", required=True)
+    activate.add_argument("--leg", choices=("A", "B"), default="A")
     activate.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("activation", type=Path)
@@ -614,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
                 serial_device=args.serial_device,
                 operator_instruction_ref=args.operator_instruction_ref,
                 output_path=args.output,
+                leg_name=args.leg,
             )
         else:
             value, _ = validate_activation(args.activation)

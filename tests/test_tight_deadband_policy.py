@@ -152,6 +152,21 @@ def test_tdb_replay_reports_exact_field_mismatch(tmp_path: Path) -> None:
     assert any("symmetric_two_count_inside" in error for error in replay.errors)
 
 
+def test_tdb_replay_accepts_rp2040_timer0_rollover(tmp_path: Path) -> None:
+    path = tmp_path / "tight_deadband_decisions_v1.csv"
+    rows = _exact_rows()
+    wrap_ticks = (1 << 32) * 16
+    for index, row in enumerate(rows[:4]):
+        row["decision_timestamp_ticks"] = str(wrap_ticks - 4_000 + index * 1_000)
+    rows[4]["decision_timestamp_ticks"] = "1000"
+    _write(path, rows)
+
+    replay = replay_tight_deadband(path)
+
+    assert replay.exact
+    assert replay.row_count == len(rows)
+
+
 def test_tdb_chain_preserves_state_across_same_owner_logical_rotation(
     tmp_path: Path,
 ) -> None:

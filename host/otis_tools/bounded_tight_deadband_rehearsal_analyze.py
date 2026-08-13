@@ -9,7 +9,9 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .bounded_tight_deadband_bundle import _sha256_file, validate_proposal
+from .bounded_tight_deadband_bundle import _sha256_file
+from .bounded_tight_deadband_proposal import validate_proposal
+from .bounded_tight_deadband_leg import LOWER, leg_for_proposal
 from .bounded_tight_deadband_outcome_contract import canonical_sha256, evaluate
 
 
@@ -43,19 +45,20 @@ def analyze(
     *, proposal_path: Path, transcript_path: Path, output_path: Path
 ) -> dict[str, Any]:
     proposal = validate_proposal(proposal_path)
+    selected = leg_for_proposal(proposal)
     transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
     if not isinstance(transcript, dict):
-        raise ValueError("G2 transcript must be a JSON object")
+        raise ValueError(f"{selected.gate} transcript must be a JSON object")
     if transcript.get("proposal_bundle_sha256") != proposal["bundle_sha256"]:
-        raise ValueError("G2 transcript differs from its proposal bundle")
+        raise ValueError(f"{selected.gate} transcript differs from its proposal bundle")
     verdict = evaluate(transcript)
     unsigned = {
         "schema_version": 1,
-        "tool": TOOL_ID,
+        "tool": selected.rehearsal_analyzer_tool,
         "status": verdict["status"],
         "claims_boundary": (
             "accelerated no-I/O host operational-path evidence only; not "
-            "physical setup, actuation, plant-response, or G2 live authority"
+            f"physical setup, actuation, plant-response, or {selected.gate} live authority"
         ),
         "bindings": {
             "proposal_bundle_sha256": proposal["bundle_sha256"],

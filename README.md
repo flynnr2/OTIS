@@ -21,10 +21,11 @@ and Git history. Reproduce a historical package from the exact revision named
 by its manifest, bundle, index record, or report; do not treat a successful
 historical reproduction as current validation or authority.
 
-The active CX319 programme currently permits offline preparation only, as
-recorded in `profiles/programme_status_v2.json`. This does not authorize
-flashing, serial access, command FIFOs, DAC writes, control arming, bench
-rehearsal, or live execution.
+The current CX319 Q4 phase is authorized for unattended execution, as recorded
+in `profiles/programme_status_v2.json`. Exact-image flashing and reset recovery
+may be used without timely operator replies. Existing electrical limits,
+candidate gates, finite-live bounds, fail-static behavior and evidence
+requirements remain mandatory; unchanged Q2/Q3 results are not repeated.
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute

@@ -429,6 +429,50 @@ def test_current_health_allows_completion_after_declared_q1_detach(
     assert supervisor._current_health() == completed_health
 
 
+def test_current_health_allows_bounded_post_reset_serial_burst(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    completed_health = _health(supervisor)
+    pending_observed_ns = 100_000_000_000
+    completion_delay_ns = 25_000_000_000
+    selections = iter(
+        (
+            LiveHealthState(
+                "in_progress", {}, 2, pending_observed_ns, "started"
+            ),
+            LiveHealthState(
+                "complete",
+                completed_health,
+                2,
+                pending_observed_ns + completion_delay_ns,
+                "complete",
+            ),
+        )
+    )
+    monotonic_values = iter(
+        (
+            pending_observed_ns + 5_000_000_000,
+            pending_observed_ns + completion_delay_ns,
+        )
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.frequency_control_supervisor."
+        "read_live_health_state",
+        lambda *_args, **_kwargs: next(selections),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.frequency_control_supervisor.time.monotonic_ns",
+        lambda: next(monotonic_values),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.frequency_control_supervisor.time.sleep",
+        lambda _seconds: None,
+    )
+
+    assert supervisor._current_health() == completed_health
+
+
 def test_current_health_returns_negative_evidence_after_bounded_wire_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

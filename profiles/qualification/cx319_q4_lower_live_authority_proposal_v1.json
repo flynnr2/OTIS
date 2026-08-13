@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "authority_id": "CX319_Q4_LOWER_FINITE_LIVE_AUTHORITY_PROPOSAL_V1",
+  "programme_id": "cx319_stabilized_tight_deadband",
+  "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+  "status": "draft_non_effective",
+  "effective": false,
+  "readiness_outcome": "q4_offline_ready_for_separate_live_authority_decision",
+  "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md",
+  "readiness_report": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md",
+  "candidate": {
+    "source_revision": "2f46e1f01da75a17c69b259626d282df4ca1bcdc",
+    "path": "runs/cx319_stabilized_tight_deadband/q4/q4_offline_preparation_20260813T072443Z/cx319_g2_leg_a_proposal_bundle_v1.json",
+    "file_sha256": "4c83e4736af8ab1a5ef07840c28a6b98841932fcbf3402a0ae329c554cbf9a40",
+    "bundle_sha256": "f08c9a581ec92271828f9c7c0ff87b5e0d1ce04e6015c92d4100c75f7882bbfe",
+    "operational_rehearsal_seal_sha256": "4e6d20094a80e9a3ffcabc6db93302b49acfbf5d48a2da6faeaa70ebe1f65084"
+  },
+  "qualification_sequence": {
+    "q1": {
+      "run_id": "q1_running_attach_final_20260812T121948Z",
+      "seal_sha256": "0d8c4863a48930f40057b6bc665f8fa880a83548a4ff7a4b30525c3bff7639df",
+      "evidence_content_sha256": "9e3506c855ea949cc65d2a2c090334386a94e732e6d7c5a0dfdb0c6df8ba1e67"
+    },
+    "q2": {
+      "run_id": "q2_inhibited_transaction_continued_20260812T142939Z",
+      "seal_sha256": "86eafb3c3c55cde62c555eec4658fe90fb77faa9a5d44a5db65b2f080567fb66",
+      "evidence_content_sha256": "1990abe0719f215b2346ef35cd7dc1af35ea6849b51fbcc356d726df995a4233",
+      "physical_setup_writes": 1,
+      "physical_automatic_writes": 0,
+      "physical_oscillator_movement_possible": false
+    },
+    "q3": {
+      "run_id": "q3_physical_no_write_20260812T150928Z",
+      "seal_sha256": "4d0747017fa77810bf3967a4f3bbe64e8f0d7ce962cb3143a1d56540f3fa8c35",
+      "evidence_content_sha256": "989170aaad2cabfd7454a9e8c047ab3514f1e6da90ff423d34461e783dd641e7",
+      "uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083"
+    }
+  },
+  "current_permissions": {
+    "physical_execution": false,
+    "serial_open": false,
+    "command_fifo_create": false,
+    "firmware_flash": false,
+    "board_reset": false,
+    "setup_stimulus": false,
+    "control_arm": false,
+    "automatic_correction": false,
+    "dac_value_write": false,
+    "phase_or_hybrid_actionable": false
+  },
+  "required_separate_transition": {
+    "programme_operation": "g2_live_leg",
+    "explicit_operator_decision": true,
+    "effective_authority_record": true,
+    "exact_candidate_and_rehearsal_binding": true
+  },
+  "proposed_future_entry": {
+    "expected_board_serial": "503533748A919118",
+    "last_qualified_serial_path": "/dev/cu.usbmodem14601",
+    "serial_path_reenumeration_allowed": true,
+    "firmware_entry": "verify_installed_exact_q3_image_no_flash",
+    "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+    "installed_image_mismatch": "stop_without_flash_and_require_shortest_affected_physical_no_write_requalification",
+    "initial_physical_dac_code": "unknown_until_entry_query_and_setup",
+    "setup_code": 43016,
+    "setup_code_hex": "0xA808",
+    "setup_opens_new_dac_epoch": true,
+    "topology_confirmation": "dac_analogue_output_connected_to_oscillator_efc_vctrl"
+  },
+  "proposed_future_live_envelope": {
+    "frequency_only": true,
+    "setup_write_limit": 1,
+    "required_automatic_direction": "positive",
+    "minimum_healthy_positive_automatic_transactions": 1,
+    "tight_entry_consecutive_fresh_estimates": 2,
+    "tight_entry_estimate_span_s": 600,
+    "tight_entry_maximum_absolute_edge_error_counts": 2,
+    "maximum_automatic_corrections": 4,
+    "maximum_step_codes": 21,
+    "maximum_cumulative_codes": 84,
+    "minimum_applied_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "qualification_deadline_s": 5400,
+    "maximum_qualified_duration_s": 14400,
+    "one_request_outstanding": true,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "phase_or_hybrid_actionable": false
+  },
+  "independent_abort": {
+    "command": "ACTIVE ABORT",
+    "independent_of_normal_backpressure": true,
+    "required_before_live_entry": true
+  },
+  "stop_conditions": [
+    "candidate, firmware, board, policy, contract, tool, or authority identity mismatch",
+    "unexpected serial owner or loss of continuous bounded drainage",
+    "incomplete, stale, partial, duplicated, reordered, wrong-session, wrong-generation, or wrong-nonce setup evidence",
+    "GNSS or raw-PPS control ineligibility",
+    "transport, partition, queue, parser, acknowledgement, or application fault",
+    "range, cadence, step, cumulative-budget, retry, or restoration violation",
+    "phase-derived or hybrid-derived actuator influence",
+    "priority abort, analyzer, seal, or registration failure"
+  ],
+  "terminal_physical_state_obligations": {
+    "control_disarmed": true,
+    "abort_acknowledged": true,
+    "last_confirmed_applied_code_recorded": true,
+    "dac_epoch_recorded": true,
+    "no_automatic_restore": true,
+    "serial_owner_closes_only_after_capture_finalization_boundary": true
+  }
+}

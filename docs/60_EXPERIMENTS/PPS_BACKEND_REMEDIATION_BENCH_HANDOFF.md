@@ -63,7 +63,8 @@ git check-ignore -v "$OTIS_RUN_DIR"
 Bench equipment and cautions:
 
 - conditioned ECS 16 MHz TCXO on D8/GPIO20; verify 3.3 V levels at the RP2040 pad;
-- PPS on D14/GPIO26; D10/GPIO5 is a diagnostic witness only;
+- PPS on D14/GPIO26 only; D10/GPIO5 remains the independent external-event
+  input and is not part of this backend test;
 - oscilloscope or logic analyser capable of measuring duty, rise/fall time,
   and PPS-to-oscillator phase;
 - approximately 1 kOhm series resistor for D3-to-D14 pseudo-PPS loopback;

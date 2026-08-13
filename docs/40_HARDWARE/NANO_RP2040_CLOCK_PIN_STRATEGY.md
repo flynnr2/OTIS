@@ -62,7 +62,7 @@ from GPSDO/OCXO reference-clock observations.
 | Arduino pin | RP2040 GPIO | Normal role | Loopback-only role |
 |---|---:|---|---|
 | D14 | GPIO26 | physical GPS PPS input; shared read-only by PIO and GPIO REF observer | pseudo-PPS input |
-| D10 | GPIO5 | independent diagnostic PPS witness | unchanged |
+| D10 | GPIO5 | external event/edge input to be measured against the disciplined oscillator | unchanged input |
 | D3 | GPIO15 | unclaimed input/high impedance | deterministic pseudo-PPS output |
 
 The `pseudo_pps_loopback` build is the only profile allowed to drive D3. Before

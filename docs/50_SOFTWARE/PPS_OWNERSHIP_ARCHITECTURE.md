@@ -9,9 +9,10 @@ PPS has two independent read-only observers with different authority:
 - the D14 GPIO IRQ owns a reconstructed REF timestamp and physical-presence
   diagnostic event.
 
-Neither observer substitutes for the other. The optional D10 input is a third,
-diagnostic-only witness. DMA and foreground transport or associate truth but do
-not own it.
+Neither observer substitutes for the other. DMA and foreground transport or
+associate truth but do not own it. D10 is outside the PPS fabric: it is the
+external event/edge input for future measurement against the disciplined D8
+oscillator.
 
 The hard rule is:
 
@@ -38,8 +39,6 @@ The hard rule is:
                          adjacent X difference
                                   |
                   raw SNP + REF + bounded CNT + STS
-
-D10 / GPIO5 witness -> separate compact ISR record -> diagnostics only
 ```
 
 ## Authority by field
@@ -51,7 +50,6 @@ D10 / GPIO5 witness -> separate compact ISR record -> diagnostics only
 | `REF.timestamp_ticks` | D14 GPIO IRQ | reconstructed RP2040 timer observation of physical PPS |
 | `CNT.counted_edges` | foreground arithmetic over adjacent PIO snapshots | `previous_X - current_X mod 2^32`; no foreground time participates |
 | `CNT.gate_open/close_ticks` | associated adjacent D14 records | reference/gate-time evidence, not the count aperture |
-| D10 witness | D10 minimal ISR/foreground diagnostics | independent corroboration only; never a voting authority |
 
 ## Deterministic association
 
@@ -84,10 +82,21 @@ transition; repeated watchdog polls do not create new outages. A later new D14
 event creates one restoration transition. Optional reminders use their own
 counter.
 
+Once the PPS producers are enabled, their foreground capture, snapshot,
+association, boundary, and estimator service remains live before and
+independently of USB serial-carrier attachment. Pre-attachment outbound records
+may be consumed and explicitly counted as discarded, but host presence must not
+gate internal drainage or manufacture a capture overflow.
+
 PIO snapshot production, snapshot drain, measurement reconstruction, telemetry
 emission, control consumption, foreground backlog, and telemetry backpressure
 are separate progress planes. Backlog within capacity can delay reporting but
 cannot alter captured count values or become `reference_missing_pps`.
+
+D10 is not a PPS observer. It remains an independent external-event input and
+is not claimed by the CX319 PPS/oscillator profile. A future D10 measurement
+path must define how external edges are counted or timestamped against the
+disciplined D8 oscillator without entering PPS or control authority.
 
 ## Failure behavior
 
@@ -119,7 +128,7 @@ cannot alter captured count values or become `reference_missing_pps`.
 3. Quiet/load changes may alter backlog and reporting latency but not raw count
    distribution or mean beyond the reviewed thresholds.
 4. One outage/restoration must produce exactly one transition each.
-5. D14 and D10 ISR bodies must remain bounded event-preservation paths with no
+5. The D14 ISR body must remain a bounded event-preservation path with no
    policy, formatting, serial, floating point, PIO, or DMA choreography.
 
 See `PPS_PIO_PROOF_AND_VERIFICATION.md`,

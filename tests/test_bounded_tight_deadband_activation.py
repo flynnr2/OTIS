@@ -13,6 +13,7 @@ from host.otis_tools import bounded_tight_deadband_live_analyze
 from host.otis_tools import bounded_tight_deadband_run
 from host.otis_tools.bounded_tight_deadband_bundle import BUNDLE_ID, TOOL_ID as PROPOSAL_TOOL
 from host.otis_tools.bounded_tight_deadband_outcome_contract import canonical_sha256
+from host.otis_tools.bounded_tight_deadband_leg import UPPER
 from host.otis_tools.bounded_tight_deadband_activation import (
     ACTIVATION_ID,
     OPERATIONAL_REHEARSAL_SEAL,
@@ -154,7 +155,7 @@ def test_activation_cli_reports_the_block_without_a_traceback(
 def test_activation_consumer_accepts_the_exact_accelerated_rehearsal_seal(
     tmp_path: Path,
 ) -> None:
-    proposal = {"bundle_sha256": "a" * 64}
+    proposal = {"gate": "G2", "leg": "A", "bundle_sha256": "a" * 64}
     analysis_path = tmp_path / "analysis.json"
     _write(analysis_path, {"status": "passed"})
     unsigned_seal: dict[str, object] = {
@@ -202,6 +203,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "source_sha256": "a" * 64,
         "configuration_sha256": "b" * 64,
         "profile_id": "cx319_tight_lower",
+        "fqbn": "rp2040:test",
         "build_manifest": {"sha256": "c" * 64},
         "uf2": {"sha256": "d" * 64},
     }
@@ -210,6 +212,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "sha256": policy_sha,
     }
     fake_g1 = {
+        "qualification_sequence_gate": "Q3",
         "run_id": "g1-pass",
         "run_dir": "/retained/g1-pass",
         "run_manifest_sha256": "1" * 64,
@@ -219,6 +222,7 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         "seal_file_sha256": "5" * 64,
         "evidence_content_sha256": "6" * 64,
         "bundle_sha256": "7" * 64,
+        "sequence_prerequisites": {"q1": {}, "q2": {}},
         "firmware": firmware,
         "policy": policy,
     }
@@ -227,6 +231,19 @@ def test_authorized_activation_creates_an_exact_live_manifest(
     )
     monkeypatch.setattr(
         bounded_tight_deadband_bundle, "validate_no_write_qualification_pass", lambda path: fake_g1
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_firmware_build_provenance",
+        lambda observed: {
+            "configuration": {"sha256": observed["configuration_sha256"]},
+            "target": {"fqbn": observed["fqbn"]},
+            "invocation": {"arduino_cli_version": "test"},
+            "toolchain": {
+                "compiler_identity": "test",
+                "installed_sha256": "0" * 64,
+            },
+        },
     )
     proposal_path = tmp_path / "proposal.json"
     proposal = bounded_tight_deadband_bundle.create_proposal(
@@ -295,11 +312,62 @@ def test_authorized_activation_creates_an_exact_live_manifest(
     ) == manifest
 
 
-def test_physical_runner_explicitly_forbids_a_firmware_flash() -> None:
+def test_physical_runner_allows_only_the_upper_leg_firmware_flash() -> None:
     source = Path("host/otis_tools/bounded_tight_deadband_run.py").read_text(encoding="utf-8")
 
-    assert "arduino_cli, \"upload\"" not in source
-    assert '"firmware_flashes": 0' in source
+    assert "exact_cx319_g3_upper_firmware_flash" in source
+    assert "if not selected.firmware_flash" in source
+    assert '"firmware_flashes": int(selected.firmware_flash)' in source
+
+
+def test_upper_flash_is_exactly_one_upload_and_binds_reenumerated_board(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    board = {"serial_number": "503533748A919118", "address": "/dev/cu.before"}
+    board_after = {**board, "address": "/dev/cu.after"}
+    monkeypatch.setattr(bounded_tight_deadband_run.subprocess, "run", run)
+    monkeypatch.setattr(
+        bounded_tight_deadband_run,
+        "_locate_board_by_serial",
+        lambda *args, **kwargs: ("/dev/cu.after", board_after),
+    )
+    (tmp_path / "reports").mkdir()
+    proposal = {
+        "bundle_sha256": "a" * 64,
+        "firmware": {
+            "fqbn": "rp2040:test",
+            "profile_id": UPPER.profile_id,
+            "build_manifest": {"sha256": "b" * 64},
+            "uf2": {"path": "/tmp/upper.uf2", "sha256": "c" * 64},
+        },
+    }
+    activation = {"device": {"expected_board_serial": "503533748A919118"}}
+
+    device, observed, record = bounded_tight_deadband_run._flash_exact_upper(
+        run_dir=tmp_path,
+        selected=UPPER,
+        proposal=proposal,
+        activation=activation,
+        device="/dev/cu.before",
+        board_before=board,
+        arduino_cli="arduino-cli",
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1] == "upload"
+    assert device == "/dev/cu.after"
+    assert observed == board_after
+    assert record["firmware_flash_count"] == 1
+    assert record["status"] == "passed"
+    assert record["record_sha256"] == canonical_sha256(
+        {key: value for key, value in record.items() if key != "record_sha256"}
+    )
 
 
 def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
@@ -319,6 +387,8 @@ def test_post_snapshot_finalization_failure_registers_without_mutating_capture(
     result = bounded_tight_deadband_run._retain_finalization_failure(
         run_dir=run_dir,
         activation={
+            "gate": "G2",
+            "leg": "A",
             "activation_sha256": "a" * 64,
             "proposal": {"bundle_sha256": "b" * 64},
         },
@@ -347,6 +417,8 @@ def test_prewrite_failure_uses_the_existing_interrupted_campaign_index_class(
     record = bounded_tight_deadband_run._retain_failure(
         run_dir=run_dir,
         activation={
+            "gate": "G2",
+            "leg": "A",
             "activation_sha256": "a" * 64,
             "proposal": {"bundle_sha256": "b" * 64},
         },
@@ -361,6 +433,27 @@ def test_prewrite_failure_uses_the_existing_interrupted_campaign_index_class(
         )
     )
     assert failure["attempt_classification"] == "interrupted_campaign"
+
+
+def test_missing_abort_reader_does_not_mask_primary_orchestration_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    emergency_fifo = tmp_path / "emergency_abort.fifo"
+    emergency_fifo.touch()
+    capture = SimpleNamespace(poll=lambda: None)
+
+    def no_reader(*args: object, **kwargs: object) -> None:
+        raise SystemExit("no capture_device command reader is active")
+
+    monkeypatch.setattr(
+        bounded_tight_deadband_run,
+        "send_timestamped_command_to_fifo",
+        no_reader,
+    )
+
+    bounded_tight_deadband_run._best_effort_emergency_abort(
+        emergency_fifo, capture
+    )
 
 
 def test_live_analyzer_wires_a_complete_physical_evidence_surface(
@@ -408,6 +501,7 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
 
     manifest_value = {
         "stage": bounded_tight_deadband_activation.LIVE_STAGE,
+        "cx319": {"gate": "G2", "leg": "A"},
         "contracts": {"association_loss_decisions_v1": 1},
         "policy": {
             "sha256": "a" * 64,
@@ -506,10 +600,16 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
         lambda path: manifest_value,
     )
     monkeypatch.setattr(bounded_tight_deadband_live_analyze, "load_manifest", lambda path: loaded)
+    validation_contexts = []
+
+    def validate_csv_with_context(path, context):  # type: ignore[no-untyped-def]
+        validation_contexts.append(context)
+        return SimpleNamespace(ok=True, row_count=0, errors=[])
+
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
         "validate_csv",
-        lambda *args, **kwargs: SimpleNamespace(ok=True, row_count=0, errors=[]),
+        validate_csv_with_context,
     )
     monkeypatch.setattr(
         bounded_tight_deadband_live_analyze,
@@ -617,3 +717,8 @@ def test_live_analyzer_wires_a_complete_physical_evidence_surface(
         "dac_writes": 2,
         "control_arms": 0,
     }
+    assert validation_contexts
+    assert all(
+        context.tight_deadband_policy_sha256 == manifest_value["policy"]["sha256"]
+        for context in validation_contexts
+    )

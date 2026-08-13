@@ -7,6 +7,7 @@ import pytest
 from host.otis_tools.programme_status import (
     NO_WRITE_BENCH_REHEARSAL,
     BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
     OFFLINE_PREPARATION,
     ProgrammeExecutionBlocked,
     load_programme_status,
@@ -15,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> None:
+def test_tracked_status_records_exact_upper_live_readiness() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -26,14 +27,524 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q1_q3_sequence_complete_no_q4_authority"
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert successor["state"] == "g3_upper_ready_for_exact_live_execution"
+    assert successor["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        NO_WRITE_BENCH_REHEARSAL,
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
+    ]
     assert successor["authority"] == (
-        "explicit_operator_q1_q3_sequence_authority"
+        "conditional_g3_upper_authority_effective_exact_bundle"
     )
     assert successor["next_gate"] == (
-        "new_explicit_post_q3_operator_decision_q4_remains_forbidden"
+        "execute_exact_g3_upper_flash_and_finite_live_leg"
     )
+    focused = successor["current_session_rebinding_focused_no_write_authority"]
+    assert focused["operator_instruction"] == "authorized"
+    assert focused["effective"] is False
+    assert focused["consumed"] is True
+    assert focused["consumed_by_run_id"] == (
+        "focused_session_rebinding_20260813T085754Z"
+    )
+    assert focused["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
+    assert focused["exact_firmware_flash_limit"] == 1
+    assert focused["physical_no_write_attempt_limit"] == 1
+    assert focused["post_capture_observation_limit_s"] == 120
+    assert focused["q2_repeat_authorized"] is False
+    assert focused["q3_repeat_authorized"] is False
+    assert focused["live_authority"] is False
+    assert {
+        focused["dac_value_writes"],
+        focused["setup_stimuli"],
+        focused["control_arms"],
+        focused["automatic_corrections"],
+    } == {0}
+    nonpass = successor["current_session_rebinding_focused_no_write_nonpass"]
+    assert nonpass["failure_class"] == (
+        "platform_escape_into_focused_physical_qualification"
+    )
+    assert nonpass["firmware_flash_passed"] is True
+    assert nonpass["exact_installed_firmware_confirmed"] is True
+    assert nonpass["snapshot_commands_sent"] == 395
+    assert nonpass["snapshot_generations_begun"] == 403
+    assert nonpass["snapshot_generations_complete"] == 394
+    assert nonpass["observed_states"] == ["DISARMED"]
+    assert nonpass["observed_reasons"] == ["initialized_disarmed"]
+    assert nonpass["observed_fail_static"] == [False]
+    assert nonpass["observed_sessions"] == [1]
+    assert nonpass["telemetry_dropped_final"] == 48
+    assert nonpass["live_authority"] is False
+    readiness = successor["current_session_absence_no_flash_offline_readiness"]
+    assert readiness["outcome"] == (
+        "offline_ready_for_separate_no_flash_authority_decision"
+    )
+    assert readiness["firmware_flashes_proposed"] == 0
+    assert readiness["manual_resets_proposed"] == 1
+    assert readiness["snapshot_query_count"] == 3
+    assert readiness["minimum_snapshot_cadence_s"] == 5
+    assert readiness["post_attach_deadline_s"] == 30
+    assert readiness["q2_q3_repeated"] is False
+    assert readiness["physical_authority_effective"] is False
+    assert readiness["live_authority_effective"] is False
+    authority = successor[
+        "current_session_absence_no_flash_low_cadence_authority"
+    ]
+    assert authority["operator_instruction"] == (
+        "I authorize the no-flash low-cadence proposal and I am at the bench"
+    )
+    assert authority["physical_presence_confirmed"] is True
+    assert authority["effective"] is False
+    assert authority["consumed"] is True
+    assert authority["consumed_by_attempt_id"] == (
+        "session_absence_no_flash_low_cadence_20260813T091617Z"
+    )
+    assert authority["terminal_reason"] == (
+        "operator_reset_after_observer_wait_timeout_before_capture"
+    )
+    assert authority["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
+    assert authority["firmware_flash_limit"] == 0
+    assert authority["manual_reset_button_limit"] == 1
+    assert authority["physical_no_write_attempt_limit"] == 1
+    assert authority["snapshot_query_count"] == 3
+    assert authority["minimum_snapshot_cadence_s"] == 5
+    assert authority["post_attach_deadline_s"] == 30
+    assert authority["q2_repeat_authorized"] is False
+    assert authority["q3_repeat_authorized"] is False
+    assert authority["live_authority"] is False
+    assert {
+        authority["dac_value_writes"],
+        authority["setup_stimuli"],
+        authority["control_arms"],
+        authority["automatic_corrections"],
+    } == {0}
+    retry = successor[
+        "current_session_absence_no_flash_low_cadence_retry_authority"
+    ]
+    assert retry["operator_instruction"] == (
+        "you are authorized to continue with flashing the board, etc."
+    )
+    assert retry["physical_presence_confirmed"] is True
+    assert retry["effective"] is False
+    assert retry["consumed"] is False
+    assert retry["superseded_by"] == "q4_unattended_phase_authority"
+    assert retry["programme_operation"] == NO_WRITE_BENCH_REHEARSAL
+    assert retry["firmware_flash_limit"] == 0
+    assert retry["manual_reset_button_limit"] == 1
+    assert retry["physical_no_write_attempt_limit"] == 1
+    assert retry["operator_wait_liveness_bound_s"] == 7200
+    assert retry["snapshot_query_count"] == 3
+    assert retry["minimum_snapshot_cadence_s"] == 5
+    assert retry["post_attach_deadline_s"] == 30
+    assert retry["q2_repeat_authorized"] is False
+    assert retry["q3_repeat_authorized"] is False
+    assert retry["live_authority"] is False
+    assert {
+        retry["dac_value_writes"],
+        retry["setup_stimuli"],
+        retry["control_arms"],
+        retry["automatic_corrections"],
+    } == {0}
+    unattended = successor["q4_unattended_phase_authority"]
+    assert unattended["effective"] is True
+    assert unattended["unattended"] is True
+    assert unattended["physical_presence_or_timely_reply_required"] is False
+    assert unattended["q4_phase_fully_authorized"] is True
+    assert unattended["exact_firmware_flash_for_entry_or_recovery"] is True
+    assert unattended["board_reset_for_entry_or_timeout_recovery"] is True
+    assert unattended["no_write_physical_qualification"] is True
+    assert unattended["fresh_q4_candidate_preparation"] is True
+    assert unattended[
+        "bounded_q4_lower_live_execution_after_passing_candidate_gate"
+    ] is True
+    assert unattended["reuse_unchanged_q2_q3"] is True
+    assert unattended["finite_recovery_only"] is True
+    assert unattended["preserve_failed_attempts"] is True
+    assert unattended["minimum_code"] == 0xA800
+    assert unattended["maximum_code"] == 0xAB00
+    assert unattended["phase_or_hybrid_actionable"] is False
+    assert unattended["g4_authorized"] is False
+    superseded_pass = successor[
+        "superseded_current_session_absence_exact_flash_qualification_pass"
+    ]
+    assert superseded_pass["run_id"] == (
+        "session_absence_exact_flash_low_cadence_20260813T092834Z"
+    )
+    stop = successor["q4_current_image_asl_formatter_prewrite_stop"]
+    assert stop["failure_class"] == (
+        "firmware_defect_under_intended_prewrite_stress"
+    )
+    assert stop["repair_commit"] == (
+        "21e8cf9de247ab53bad097c37dba3b12702dc5b4"
+    )
+    assert stop["malformed_utf8"] == 1
+    assert stop["scientific_result"] is False
+    assert {
+        stop["setup_stimuli"],
+        stop["dac_value_writes"],
+        stop["control_arms"],
+        stop["automatic_corrections"],
+    } == {0}
+    current_pass = successor[
+        "current_session_absence_exact_flash_qualification_pass"
+    ]
+    assert current_pass["status"] == "passed"
+    assert current_pass["run_id"] == (
+        "asl_formatter_exact_flash_qualification_20260813T094505Z"
+    )
+    assert current_pass["uf2_sha256"] == (
+        "1f3563c244b3da47ea9d477b685e8edd"
+        "91e13659cc3c33e6f0c1404fd1879d11"
+    )
+    assert current_pass["firmware_flashes"] == 1
+    assert current_pass["snapshot_queries"] == 3
+    assert current_pass["snapshot_send_cadence_s"] == [5.002208, 5.000738]
+    assert current_pass["observed_states"] == ["DISARMED"]
+    assert current_pass["observed_reasons"] == ["initialized_disarmed"]
+    assert current_pass["observed_fail_static"] == [False]
+    assert current_pass["observed_sessions"] == [1]
+    assert current_pass["telemetry_dropped_observations"] == [0, 0]
+    assert current_pass["association_loss_rows"] == 0
+    assert current_pass["asl_formatter_source_contract_regression_tests"] == 23
+    assert current_pass["q2_q3_reused"] is True
+    assert current_pass["q4_live_result"] is False
+    assert {
+        current_pass["serial_reconnects"],
+        current_pass["serial_malformed_utf8"],
+        current_pass["serial_parser_errors"],
+        current_pass["active_transaction_rows"],
+        current_pass["dac_step_rows"],
+        current_pass["setup_stimuli"],
+        current_pass["dac_value_writes"],
+        current_pass["control_arms"],
+        current_pass["automatic_corrections"],
+    } == {0}
+    assert successor["q4_lower_live_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md"
+        ),
+        "operator_instruction": "move_on_to_the_physical_q4_live_run",
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "fc138d94f9c858b1c54e73364635fc34"
+            "11fe2726ea16ff357cda5ef667b294fe"
+        ),
+        "consumed_by_run_id": "live_leg_a_20260813T074315Z",
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "live_run_limit": 1,
+        "firmware_flash_limit": 0,
+        "board_reset_limit": 0,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 0xA800,
+        "maximum_code": 0xAB00,
+        "phase_or_hybrid_actionable": False,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "proposal_bundle_sha256": (
+            "f08c9a581ec92271828f9c7c0ff87b5"
+            "e0d1ce04e6015c92d4100c75f7882bbfe"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "4e6d20094a80e9a3ffcabc6db93302b4"
+            "9acfbf5d48a2da6faeaa70ebe1f65084"
+        ),
+    }
+    assert successor["q4_lower_live_prewrite_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md"
+        ),
+        "run_id": "live_leg_a_20260813T074315Z",
+        "activation_sha256": (
+            "fc138d94f9c858b1c54e73364635fc34"
+            "11fe2726ea16ff357cda5ef667b294fe"
+        ),
+        "activation_file_sha256": (
+            "9f436238a598f4860d323126a6cb3b14"
+            "abf663dffa4bb0844f152dc023e7e8c2"
+        ),
+        "run_manifest_sha256": (
+            "aa301587e20fe935aed9e0303a53a8234"
+            "f216ad9dbf20f2b59db1aa7ac5f4c0d"
+        ),
+        "terminal_reason": (
+            "cx319_g2_supervisor_fault:capture transport state mismatch: "
+            "capture_active=False, expected True"
+        ),
+        "evidence_content_sha256": (
+            "ae3cbc42e62b05daa41de6502b2ed27a"
+            "0a18eeb6bcfc2672f55f6c79c099ab93"
+        ),
+        "capture_commands_sent": 32,
+        "firmware_lines_received": 0,
+        "serial_write_timeout": True,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "failure_class": "platform_escape_into_campaign",
+        "scientific_result": False,
+    }
+    assert successor["q4_lower_retry_offline_readiness"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_retry_authority_proposal_v1.json"
+        ),
+        "outcome": "q4_lower_retry_offline_ready_for_separate_authority",
+        "source_revision": "421501dc49d29eb91f6160a0b7965475c12c706b",
+        "proposal_bundle_sha256": (
+            "9697652d963c0bcfe44800c1f3ff7c6c"
+            "f032ca382c5479c8cec0edb1ddccbd56"
+        ),
+        "proposal_file_sha256": (
+            "1c9e64cab6ca10d7d114927dcb378d75"
+            "f350150633c188f73642f874c8b94a8d"
+        ),
+        "preflight_file_sha256": (
+            "07df6e2d08f1fbfa38978091d0174d2b"
+            "bd020a6f55ee743fd9a4cbfe3ecab7a1"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "413e64508bc1ae7dadffac816e157335f"
+            "f4db899ec7bc01aadfb50018c232e6b"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "89f8df3952218cb729f22d62acc5969e"
+            "c2b30d447f21fedb8a4d178f2b755877"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "c56d402abd3ac208ca10b73f78863372"
+            "ca4abb176c10c8d56c3c3d2845c84c6d"
+        ),
+        "live_runner_sha256": (
+            "833bc0f3c07a2bb678cd7a863f8a1f44"
+            "e947a5e5ae9772114cf54ac192d657c5"
+        ),
+        "reused_q1_q3_and_firmware_evidence": True,
+        "live_authority_effective": False,
+    }
+    assert successor["q4_lower_retry_live_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md"
+        ),
+        "operator_instruction": "authorized",
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "439c201d91d5e3e3a17dad28d3fcffcc"
+            "e55959768c2d9b83c42f366f3ed12958"
+        ),
+        "consumed_by_restart_attempt_record_sha256": (
+            "e06e59e266f2d96adceb9dd1bb67c2f8"
+            "df7560a8a4ebfc3fbae1a5237a09c878"
+        ),
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "board_restart_limit": 1,
+        "firmware_flash_limit": 0,
+        "physical_live_run_limit": 1,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 0xA800,
+        "maximum_code": 0xAB00,
+        "phase_or_hybrid_actionable": False,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "proposal_bundle_sha256": (
+            "9697652d963c0bcfe44800c1f3ff7c6c"
+            "f032ca382c5479c8cec0edb1ddccbd56"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "c56d402abd3ac208ca10b73f78863372"
+            "ca4abb176c10c8d56c3c3d2845c84c6d"
+        ),
+    }
+    assert successor["q4_lower_retry_restart_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_manual_restart_authority_proposal_v1.json"
+        ),
+        "activation_sha256": (
+            "439c201d91d5e3e3a17dad28d3fcffcc"
+            "e55959768c2d9b83c42f366f3ed12958"
+        ),
+        "restart_attempt_record_sha256": (
+            "e06e59e266f2d96adceb9dd1bb67c2f8"
+            "df7560a8a4ebfc3fbae1a5237a09c878"
+        ),
+        "restart_observed": False,
+        "firmware_flashes": 0,
+        "physical_live_runs": 0,
+        "serial_opens": 0,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "candidate_and_rehearsal_remain_current": True,
+        "failure_class": "platform_defect_before_hardware_effect",
+    }
+    assert successor["q4_lower_manual_restart_live_authority"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md"
+        ),
+        "operator_instruction": (
+            "I authorize the manual-reset proposal and I am at the bench."
+        ),
+        "physical_presence_confirmed": True,
+        "effective": False,
+        "consumed": True,
+        "consumed_by_activation_sha256": (
+            "73eb4dac26ecf9be89dcd2af67efd330"
+            "d336e5376e6f4dcfbd593bb79114d15d"
+        ),
+        "consumed_by_restart_observation_sha256": (
+            "349ad8e0a47cf27a5aa1116d4a503073"
+            "78f33d29acf9cc146ddccbd5f72f201d"
+        ),
+        "consumed_by_run_id": "live_leg_a_manual_restart_20260813T083106Z",
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "manual_reset_button_only": True,
+        "restart_observer_required_before_press": True,
+        "software_restart_commands": False,
+        "board_restart_limit": 1,
+        "firmware_flash_limit": 0,
+        "physical_live_run_limit": 1,
+        "setup_write_limit": 1,
+        "control_arm_limit": 1,
+        "automatic_correction_limit": 4,
+        "maximum_step_codes": 21,
+        "maximum_cumulative_codes": 84,
+        "minimum_code": 0xA800,
+        "maximum_code": 0xAB00,
+        "phase_or_hybrid_actionable": False,
+        "expected_board_serial": "503533748A919118",
+        "required_uf2_sha256": (
+            "50f863a2150d1b1391504553a1d20e1c"
+            "b951daae5b450a83c90628265a522083"
+        ),
+        "proposal_bundle_sha256": (
+            "9697652d963c0bcfe44800c1f3ff7c6c"
+            "f032ca382c5479c8cec0edb1ddccbd56"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "c56d402abd3ac208ca10b73f78863372"
+            "ca4abb176c10c8d56c3c3d2845c84c6d"
+        ),
+    }
+    assert successor["q4_lower_manual_restart_prewrite_stop"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md"
+        ),
+        "run_id": "live_leg_a_manual_restart_20260813T083106Z",
+        "activation_sha256": (
+            "73eb4dac26ecf9be89dcd2af67efd330"
+            "d336e5376e6f4dcfbd593bb79114d15d"
+        ),
+        "activation_file_sha256": (
+            "fa4366b659f45f3f42a00f5ea70cd4fc"
+            "95ba8d39c916886258be71f9a8cd860f"
+        ),
+        "restart_observation_sha256": (
+            "349ad8e0a47cf27a5aa1116d4a503073"
+            "78f33d29acf9cc146ddccbd5f72f201d"
+        ),
+        "run_manifest_sha256": (
+            "5d54612b7468f9fd9e9428a5cabc6c92"
+            "203dc5a1fc86def066f08eac4f9da0fb"
+        ),
+        "terminal_reason": (
+            "cx319_g2_supervisor_fault:active live-health snapshot did not "
+            "complete within 2.000 s: generation=2"
+        ),
+        "evidence_content_sha256": (
+            "38002306a1f6885105502da78ab91fb4"
+            "2063b2def384a2cf9accae98c749e3bb"
+        ),
+        "observed_incomplete_generation_state": "FAULT",
+        "observed_incomplete_generation_reason": "session_change_clears_arming",
+        "observed_incomplete_generation_fail_static": True,
+        "host_snapshot_completion_timeout_old_s": 2,
+        "host_snapshot_completion_timeout_new_s": 30,
+        "setup_stimuli": 0,
+        "dac_value_writes": 0,
+        "control_arms": 0,
+        "automatic_corrections": 0,
+        "scientific_result": False,
+        "failure_class": "platform_escape_masking_firmware_entry_stop",
+    }
+    assert successor["q4_offline_readiness"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_authority_proposal_v1.json"
+        ),
+        "outcome": "q4_offline_ready_for_separate_live_authority_decision",
+        "source_revision": "2f46e1f01da75a17c69b259626d282df4ca1bcdc",
+        "proposal_bundle_sha256": (
+            "f08c9a581ec92271828f9c7c0ff87b5"
+            "e0d1ce04e6015c92d4100c75f7882bbfe"
+        ),
+        "proposal_file_sha256": (
+            "4c83e4736af8ab1a5ef07840c28a6b98"
+            "841932fcbf3402a0ae329c554cbf9a40"
+        ),
+        "preflight_file_sha256": (
+            "444dc38dcff124341b868a9ba48e510e5"
+            "0b51dce3c1d99a286b8e4db12f4068b"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "95ec5a8916d1f63f73a62308823ec32d"
+            "43acaf2b580cf28d418698094b49584b"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "2d45d94cdfd4477ca5f028e1007843ae"
+            "385539c91add7d05abec593f43a0d7c7"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "4e6d20094a80e9a3ffcabc6db93302b4"
+            "9acfbf5d48a2da6faeaa70ebe1f65084"
+        ),
+        "release_tests_passed": 723,
+        "supported_profiles_passed": 2,
+        "expected_failure_guards_passed": 5,
+        "live_authority_effective": False,
+    }
     assert successor["operator_authority"] == {
         "record": (
             "docs/60_EXPERIMENTS/"
@@ -218,7 +729,7 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md"
         ),
-        "currently_executable": False,
+        "currently_executable": True,
         "requires_passing_g2_analysis_and_seal": True,
         "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": True,
         "firmware_profile": "cx319_tight_upper",
@@ -227,6 +738,34 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "existing_bounded_envelope": True,
         "manual_reset_expected_after_successful_upload": False,
         "operator_assistance_required_if_upload_or_reenumeration_fails": True,
+        "proposal_bundle_sha256": (
+            "1db8416d1d2577b07c954a9bfb339fa6"
+            "eda48559ff14d32f4dd540656e919b02"
+        ),
+        "proposal_file_sha256": (
+            "c24c53931803898b8fca09831c7578d7"
+            "fd5f815e12008a3da3064d8b4f94e40e"
+        ),
+        "preflight_file_sha256": (
+            "89103a7ee8c78918c8789e23c3171589"
+            "9d245d0606483d3aaf07f598f187465c"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "a39b2d8e4d9505613d6cd376babc9d81"
+            "cb2ceb90c57d2d259da44dda1c84c3ad"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "ae3c15131169ab27db31611d3f5d5f36"
+            "1682a43cd1005fd94c6ea12048790461"
+        ),
+        "upper_build_manifest_sha256": (
+            "307f321da6b5ad5f5fef9f4e2ce31bc5"
+            "1948fbc5db41d2eb0c0fea6b925acb27"
+        ),
+        "upper_uf2_sha256": (
+            "0fb15bc7b5b4f63d174aabaffcefc27b"
+            "d096d4cdc76723863b1f712d7628edb4"
+        ),
     }
     assert successor["g2_v7_qualification_deadline_nonpass"] == {
         "run_id": "live_leg_a_v7_20260811T170842Z",
@@ -381,33 +920,138 @@ def test_tracked_status_records_completed_q1_q3_and_blocks_physical_work() -> No
         "g2_v5_activation_reuse",
         "g2_v6_activation_reuse",
         "g2_v7_activation_reuse",
-        "dac_write",
-        "control_arm",
-        "setup_stimulus",
-        "automatic_correction",
         "rehearsal_to_live_promotion",
+        "unbounded_or_unrecorded_retry",
+        "automatic_restore",
+        "duration_extension",
         "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression",
     ]
-
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("platform_stabilization")
 
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband",
-            NO_WRITE_BENCH_REHEARSAL,
-        )
-    with pytest.raises(ProgrammeExecutionBlocked, match="operation .* is blocked"):
-        require_programme_operation_allowed(
-            "cx319_stabilized_tight_deadband", BOUNDED_TIGHT_DEADBAND_LIVE_LEG
-        )
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        NO_WRITE_BENCH_REHEARSAL,
+    ) == successor
+    assert require_programme_operation_allowed(
+        "cx319_stabilized_tight_deadband",
+        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+    ) == successor
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
+
+
+def test_q4_lower_live_authority_proposal_is_machine_readable_and_non_effective() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_FINITE_LIVE_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["required_separate_transition"] == {
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "explicit_operator_decision": True,
+        "effective_authority_record": True,
+        "exact_candidate_and_rehearsal_binding": True,
+    }
+    assert proposal["proposed_future_entry"]["firmware_entry"] == (
+        "verify_installed_exact_q3_image_no_flash"
+    )
+
+
+def test_session_absence_no_flash_proposal_is_narrow_and_non_effective() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_current_session_absence_no_flash_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["effective"] is False
+    assert proposal["operator_authority_required"] is True
+    assert proposal["firmware_flash_limit"] == 0
+    assert proposal["manual_reset_button_limit"] == 1
+    assert proposal["snapshot_query_count"] == 3
+    assert proposal["minimum_snapshot_cadence_s"] == 5
+    assert proposal["post_attach_deadline_s"] == 30
+    assert proposal["q2_repeat_authorized"] is False
+    assert proposal["q3_repeat_authorized"] is False
+    assert proposal["live_authority"] is False
+    assert {
+        proposal["dac_value_writes"],
+        proposal["setup_stimuli"],
+        proposal["control_arms"],
+        proposal["automatic_corrections"],
+    } == {0}
+
+
+def test_q4_lower_retry_authority_proposal_is_non_effective_and_reset_bounded() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_retry_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_FINITE_LIVE_RETRY_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["required_separate_transition"] == {
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "explicit_operator_decision": True,
+        "effective_authority_record": True,
+        "exact_candidate_and_rehearsal_binding": True,
+    }
+    assert proposal["proposed_future_entry"]["board_restart_limit"] == 1
+    assert proposal["proposed_future_entry"]["firmware_flash_limit"] == 0
+    assert proposal["proposed_future_entry"]["physical_live_run_limit"] == 1
+    assert proposal["proposed_future_live_envelope"][
+        "phase_or_hybrid_actionable"
+    ] is False
+
+
+def test_q4_manual_restart_proposal_is_non_effective_and_button_only() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_manual_restart_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_MANUAL_RESTART_LIVE_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["proposed_future_entry"]["manual_reset_button_only"] is True
+    assert proposal["proposed_future_entry"]["software_restart_commands"] is False
+    assert proposal["proposed_future_entry"]["board_restart_limit"] == 1
+    assert proposal["proposed_future_entry"]["firmware_flash_limit"] == 0
+    assert proposal["proposed_future_entry"]["physical_live_run_limit"] == 1
 
 
 def test_status_contract_rejects_an_inactive_active_programme(

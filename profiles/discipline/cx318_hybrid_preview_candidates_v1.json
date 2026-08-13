@@ -19,11 +19,11 @@
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
     },
     "frequency_preview_policy": {
       "path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
-      "sha256": "a5151f2fa3462e6b7dbd5d0562fd8a7ea94220e72ac2dfaf808f474ded765521"
+      "sha256": "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6"
     },
     "replay_corpus": {
       "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",

@@ -1,5 +1,5 @@
 path,line,matched_terms,classification,source_text
-AGENTS.md,190,uncertainty,measurement_uncertainty_semantics,"- Distinguish provenance uncertainty (for example, an unknown applied code)"
+AGENTS.md,301,uncertainty,measurement_uncertainty_semantics,"- Distinguish provenance uncertainty (for example, an unknown applied code)"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,23,confidence,confidence_semantics,"`diagnostic`, `health`, `confidence`, `valid`, `eligible`, `fault`, `EST`,"
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,30,uncertainty,measurement_uncertainty_semantics,and uncertainty;
 CODEX_PROMPT_DIAGNOSTICS_INTEGRATION.md,36,confidence,confidence_semantics,"state/transition, confidence in the diagnosis, first/last seen, evidence"
@@ -73,8 +73,8 @@ derived/stage1_diagnostics_metrology_reference_closure.md,51,uncertainty,measure
 derived/stage1_diagnostics_metrology_reference_closure.md,57,uncertainty,measurement_uncertainty_semantics,"uncertainty, and staleness. Unsupported values remain unknown/empty."
 derived/stage1_diagnostics_metrology_reference_closure.md,73,uncertainty,measurement_uncertainty_semantics,"PPS-gated physical aperture and latency, reference/calibration uncertainty,"
 derived/stage1_diagnostics_metrology_reference_closure.md,75,uncertainty,measurement_uncertainty_semantics,"evidence is promoted through versioned contracts, uncertainty remains"
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,178,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
-docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,183,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,270,uncertainty,measurement_uncertainty_semantics,- measurement uncertainty;
+docs/00_FOUNDATIONS/ENGINEERING_CULTURE.md,275,uncertainty,measurement_uncertainty_semantics,Scientific instrumentation becomes stronger when uncertainty is acknowledged clearly.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,56,uncertainty,measurement_uncertainty_semantics,uncertainty from measurements using explicit assumptions and provenance.
 docs/00_FOUNDATIONS/OTIS_ARCHITECTURE_OVERVIEW.md,81,uncertainty,measurement_uncertainty_semantics,- Make uncertainty and reason codes visible.
 docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md,72,uncertainty,measurement_uncertainty_semantics,"Component quality affects uncertainty, noise floor, holdover, lock robustness,"
@@ -190,9 +190,9 @@ docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md,61,uncertainty,measur
 docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md,63,uncertainty,measurement_uncertainty_semantics,"| Accepted reference interval, s | nominal `1.0` for each accepted PPS interval | architecture screen | `docs/datasheets/adafruit-ultimate-gps.pdf`, p. 13, PPS output described as once per second; accepted backend contract in `docs/50_SOFTWARE/PPS_GATED_RATIO_BACKEND_DESIGN.md`, §§3–5 | Actual rig uses the GPS PPS path; exact fitted receiver revision and calibrated timing uncertainty are not established | `N` accepted PPS intervals give nominal duration `N × 1.0 s` | Reference/cable/aperture uncertainty unavailable; no calibrated-accuracy claim | Stage 1: 1,234 adjacent accepted intervals; diagnostic timer mean 0.999995469 s | pass for estimator architecture; characterization-only for timing | Reject the affected interval and every span crossing it |"
 docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md,66,uncertainty,measurement_uncertainty_semantics,"| Span accumulator width, bits | at least `64` | architecture screen | documented calculation from the accepted 133 MHz loose envelope and 600 s candidate span | Applies to host integer total only | `133,000,000 × 600 = 79,800,000,000`, below `2^64 − 1 = 18,446,744,073,709,551,615` | Arithmetic headroom about `2.31 × 10^8`; does not address metrology uncertainty | Synthetic 600 s and multi-wrap cases exact | pass | Raise overflow and emit no result |"
 docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md,69,uncertainty,measurement_uncertainty_semantics,"| Span uncertainty, Hz | all required components must be known before claiming calibrated uncertainty; otherwise unavailable | model-applicability bound | master programme rules; Stage 2 prompt, “Required estimator semantics” | Current rig lacks a complete aperture/reference/calibration uncertainty budget | No conversion is permitted from empirical spread to calibrated uncertainty | Counter aperture, reference, calibration, and correlation components unavailable | Output reason codes name each missing component | unavailable | Do not use results as calibrated accuracy or an uncertainty-qualified controller input |"
-docs/50_SOFTWARE/PPS_HARDWARE_SNAPSHOT_REPLACEMENT_ARCHITECTURE.md,458,uncertainty,measurement_uncertainty_semantics,The remaining uncertainty is not architectural ownership. It is the unmeasured
-docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/00_MASTER_UNATTENDED_PROMPT.md,33,uncertainty,measurement_uncertainty_semantics,"- calibrated combined uncertainty, sub-resolution t95, connected-voltage"
-docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/00_MASTER_UNATTENDED_PROMPT.md,37,uncertainty,measurement_uncertainty_semantics,"For this programme, unavailable calibrated combined uncertainty blocks a"
+docs/50_SOFTWARE/PPS_HARDWARE_SNAPSHOT_REPLACEMENT_ARCHITECTURE.md,457,uncertainty,measurement_uncertainty_semantics,The remaining uncertainty is not architectural ownership. It is the unmeasured
+docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/00_MASTER_UNATTENDED_PROMPT.md,38,uncertainty,measurement_uncertainty_semantics,"- calibrated combined uncertainty, sub-resolution t95, connected-voltage"
+docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/00_MASTER_UNATTENDED_PROMPT.md,42,uncertainty,measurement_uncertainty_semantics,"For this programme, unavailable calibrated combined uncertainty blocks a"
 docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/02_GNSS_AND_ACTUATOR_PREFLIGHT_PROMPT.md,56,uncertainty,measurement_uncertainty_semantics,screen unless calibration uncertainty is genuinely available;
 docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_CODEX_PROGRAMME/07_DUAL_CORE_ACTIVE_ENDURANCE_PROMPT.md,251,uncertainty,measurement_uncertainty_semantics,"5. records its finite-run uncertainty, temporal-support limitations and any"
 docs/60_EXPERIMENTS/CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md,270,uncertainty,measurement_uncertainty_semantics,"Full fixed-code distributions, residence segments, autocorrelation, Newey–West uncertainty, service/environment associations, candidate replay, dither and hysteresis records remain verbatim in the immutable Stage 7B gate listed above."
@@ -296,6 +296,8 @@ docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PRO
 docs/60_EXPERIMENTS/CX318_RELATIVE_PHASE_HYBRID_PREVIEW_TIGHT_DEADBAND_CODEX_PROGRAMME/PROGRAMME_STATE_TEMPLATE.md,49,uncertainty,measurement_uncertainty_semantics,phase_uncertainty_status:
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/00_MASTER_PROGRAMME.md,228,uncertainty,measurement_uncertainty_semantics,"physical delay, timing-grade receiver performance or combined uncertainty."
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md,318,uncertainty,measurement_uncertainty_semantics,"analyzer non-pass, seal/registration failure, or any uncertainty about the Q2"
+docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md,83,uncertainty,measurement_uncertainty_semantics,registration path. Record uncertainty explicitly if physical application is
+docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md,6,uncertainty,measurement_uncertainty_semantics,absence criterion. This closes the firmware-entry uncertainty that blocked Q4
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,340,confidence,confidence_semantics,measurement-confidence baseline preceding `run_019`. It reports 242 count
 docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md,412,standard_deviation,sample_dispersion_or_repeatability,"9,999,997.974452 Hz, standard deviation 0.043665 Hz, and fitted drift"
 docs/60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_COMPLETION_REPORT.md,122,uncertainty,measurement_uncertainty_semantics,expanded measurement uncertainty. Those limitations remain governed by
@@ -311,15 +313,15 @@ docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,262,uncertainty,
 docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,267,uncertainty,measurement_uncertainty_semantics,"uncertainty, and must not present computed digits as physical accuracy."
 docs/60_EXPERIMENTS/PHASE_5_CRITERIA_AND_TOLERANCE_RATIONALE.md,273,standard_deviation,sample_dispersion_or_repeatability,"standard deviation is no more than the 1.5 Hz architecture screen, and all"
 docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,6,uncertainty,measurement_uncertainty_semantics,single-PIO-state-machine-owned count boundary. Longer independent-metrology and uncertainty
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,123,uncertainty,measurement_uncertainty_semantics,- `EST v2` live/replay uncertainty fields match for unavailable and incomplete
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,217,uncertainty,measurement_uncertainty_semantics,pps_gate/counter_aperture_uncertainty_ns=unavailable
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,218,uncertainty,measurement_uncertainty_semantics,pps_gate/reference_frequency_uncertainty_ppb=unavailable
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,228,uncertainty,measurement_uncertainty_semantics,The two uncertainty status values remain `unavailable` until promoted from
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,371,uncertainty,measurement_uncertainty_semantics,## Separate metrology and uncertainty evidence
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,377,uncertainty,measurement_uncertainty_semantics,- `count_quantization_standard_uncertainty_hz`;
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,383,uncertainty,measurement_uncertainty_semantics,compute a combined uncertainty when any required component is unavailable.
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,388,uncertainty,measurement_uncertainty_semantics,"including UTC end, exact sequence segments, uncertainty sources, fault notes,"
-docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,433,uncertainty,measurement_uncertainty_semantics,unavailable uncertainty component limits metrology claims but does not fail the
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,122,uncertainty,measurement_uncertainty_semantics,- `EST v2` live/replay uncertainty fields match for unavailable and incomplete
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,216,uncertainty,measurement_uncertainty_semantics,pps_gate/counter_aperture_uncertainty_ns=unavailable
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,217,uncertainty,measurement_uncertainty_semantics,pps_gate/reference_frequency_uncertainty_ppb=unavailable
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,227,uncertainty,measurement_uncertainty_semantics,The two uncertainty status values remain `unavailable` until promoted from
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,370,uncertainty,measurement_uncertainty_semantics,## Separate metrology and uncertainty evidence
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,376,uncertainty,measurement_uncertainty_semantics,- `count_quantization_standard_uncertainty_hz`;
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,382,uncertainty,measurement_uncertainty_semantics,compute a combined uncertainty when any required component is unavailable.
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,387,uncertainty,measurement_uncertainty_semantics,"including UTC end, exact sequence segments, uncertainty sources, fault notes,"
+docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUNBOOK.md,432,uncertainty,measurement_uncertainty_semantics,unavailable uncertainty component limits metrology claims but does not fail the
 docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,24,uncertainty,measurement_uncertainty_semantics,"measurement, and combined uncertainty remain open."
 docs/60_EXPERIMENTS/PHASE_5_PPS_GATED_BACKEND_BENCH_RUN_001_RESULTS.md,203,uncertainty,measurement_uncertainty_semantics,5. Measure counter aperture and populate evidence-backed uncertainty.
 docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_EXTENDED_AND_OVERNIGHT_CAMPAIGN_20260801.md,45,standard_deviation,sample_dispersion_or_repeatability,“Spread” is population standard deviation of the stated segment product. The
@@ -328,8 +330,8 @@ docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,63,standard_devi
 docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,74,standard_deviation,sample_dispersion_or_repeatability,| Segment | Eligible windows | Mean (Hz) | Population standard deviation (Hz) |
 docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,97,standard_deviation,sample_dispersion_or_repeatability,| Segment | Mean (Hz) | Population standard deviation (Hz) |
 docs/60_EXPERIMENTS/PHASE_5_REAL_GPS_SHORT_CAMPAIGN_20260731.md,157,uncertainty,measurement_uncertainty_semantics,"width-only glitch case, or create an absolute metrology uncertainty budget."
-docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,256,standard_deviation,sample_dispersion_or_repeatability,"sequence loss, capture/transport fault, or population standard deviation above"
-docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,296,uncertainty,measurement_uncertainty_semantics,"uncertainty, resets, and all integrity counters. Only an explicit reviewed"
+docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,257,standard_deviation,sample_dispersion_or_repeatability,"sequence loss, capture/transport fault, or population standard deviation above"
+docs/60_EXPERIMENTS/PPS_BACKEND_REMEDIATION_BENCH_HANDOFF.md,297,uncertainty,measurement_uncertainty_semantics,"uncertainty, resets, and all integrity counters. Only an explicit reviewed"
 docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md,58,standard_deviation,sample_dispersion_or_repeatability,residual standard deviation = 0.029423806 Hz
 docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md,98,standard_deviation,sample_dispersion_or_repeatability,- standard deviation: 0.043665 Hz
 docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md,79,standard_deviation,sample_dispersion_or_repeatability,"Corrected `0xAE00` return medians span 0.056718 Hz, with standard deviation"
@@ -485,9 +487,9 @@ host/otis_tools/contracts.py,1906,uncertainty,measurement_uncertainty_semantics,
 host/otis_tools/contracts.py,1966,uncertainty,measurement_uncertainty_semantics,"if row.get(""uncertainty_status"") not in VALID_UNCERTAINTY_STATUS:"
 host/otis_tools/contracts.py,1968,uncertainty,measurement_uncertainty_semantics,"f""row {row_number}: uncertainty_status must be one of """
 host/otis_tools/contracts.py,1969,uncertainty,measurement_uncertainty_semantics,"f""{sorted(VALID_UNCERTAINTY_STATUS)}"""
-host/otis_tools/control_evidence_replay.py,129,uncertainty,measurement_uncertainty_semantics,"and row[""uncertainty_status""] == ""unavailable"""
-host/otis_tools/control_evidence_replay.py,130,uncertainty,measurement_uncertainty_semantics,"and row[""combined_standard_uncertainty_hz""] == """""
-host/otis_tools/control_evidence_replay.py,131,uncertainty,measurement_uncertainty_semantics,"and row[""expanded_uncertainty_hz""] == """""
+host/otis_tools/control_evidence_replay.py,138,uncertainty,measurement_uncertainty_semantics,"and row[""uncertainty_status""] == ""unavailable"""
+host/otis_tools/control_evidence_replay.py,139,uncertainty,measurement_uncertainty_semantics,"and row[""combined_standard_uncertainty_hz""] == """""
+host/otis_tools/control_evidence_replay.py,140,uncertainty,measurement_uncertainty_semantics,"and row[""expanded_uncertainty_hz""] == """""
 host/otis_tools/diagnostics.py,81,confidence,confidence_semantics,"confidence: str = ""1"","
 host/otis_tools/diagnostics.py,134,confidence,confidence_semantics,"""diagnostic_confidence"": confidence,"
 host/otis_tools/frequency_control_replay.py,26,uncertainty,measurement_uncertainty_semantics,"""measurement_uncertainty_and_safety_margin"","
@@ -498,23 +500,23 @@ host/otis_tools/plant_model.py,464,uncertainty,measurement_uncertainty_semantics
 host/otis_tools/plant_model.py,467,uncertainty,measurement_uncertainty_semantics,"""plant_response.local_slope.uncertainty.hz_per_v_min must be <= """
 host/otis_tools/plant_model.py,483,uncertainty,measurement_uncertainty_semantics,if uncertainty.get(key) is None:
 host/otis_tools/plant_model.py,486,uncertainty,measurement_uncertainty_semantics,"f""plant_response.local_slope.uncertainty.{key}"""
-host/otis_tools/pps_cumulative_span_estimator.py,111,uncertainty,measurement_uncertainty_semantics,uncertainty_policy: str
-host/otis_tools/pps_cumulative_span_estimator.py,130,uncertainty,measurement_uncertainty_semantics,"""uncertainty_policy"","
-host/otis_tools/pps_cumulative_span_estimator.py,166,uncertainty,measurement_uncertainty_semantics,"if value[""uncertainty_policy""] != ""unknown_components_unavailable"":"
-host/otis_tools/pps_cumulative_span_estimator.py,167,uncertainty,measurement_uncertainty_semantics,"raise ValueError(""v1 uncertainty policy must fail unavailable"")"
-host/otis_tools/pps_cumulative_span_estimator.py,185,uncertainty,measurement_uncertainty_semantics,"uncertainty_policy=""unknown_components_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,234,uncertainty,measurement_uncertainty_semantics,uncertainty_status: str
-host/otis_tools/pps_cumulative_span_estimator.py,235,uncertainty,measurement_uncertainty_semantics,"uncertainty_reason_codes: tuple[str, ...]"
-host/otis_tools/pps_cumulative_span_estimator.py,340,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,341,uncertainty,measurement_uncertainty_semantics,uncertainty_reason_codes=(
-host/otis_tools/pps_cumulative_span_estimator.py,342,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,343,uncertainty,measurement_uncertainty_semantics,"""reference_uncertainty_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,344,uncertainty,measurement_uncertainty_semantics,"""calibration_uncertainty_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,754,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,755,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ["
-host/otis_tools/pps_cumulative_span_estimator.py,756,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,757,uncertainty,measurement_uncertainty_semantics,"""reference_uncertainty_unavailable"","
-host/otis_tools/pps_cumulative_span_estimator.py,758,uncertainty,measurement_uncertainty_semantics,"""calibration_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,110,uncertainty,measurement_uncertainty_semantics,uncertainty_policy: str
+host/otis_tools/pps_cumulative_span_estimator.py,129,uncertainty,measurement_uncertainty_semantics,"""uncertainty_policy"","
+host/otis_tools/pps_cumulative_span_estimator.py,165,uncertainty,measurement_uncertainty_semantics,"if value[""uncertainty_policy""] != ""unknown_components_unavailable"":"
+host/otis_tools/pps_cumulative_span_estimator.py,166,uncertainty,measurement_uncertainty_semantics,"raise ValueError(""v1 uncertainty policy must fail unavailable"")"
+host/otis_tools/pps_cumulative_span_estimator.py,184,uncertainty,measurement_uncertainty_semantics,"uncertainty_policy=""unknown_components_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,233,uncertainty,measurement_uncertainty_semantics,uncertainty_status: str
+host/otis_tools/pps_cumulative_span_estimator.py,234,uncertainty,measurement_uncertainty_semantics,"uncertainty_reason_codes: tuple[str, ...]"
+host/otis_tools/pps_cumulative_span_estimator.py,339,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,340,uncertainty,measurement_uncertainty_semantics,uncertainty_reason_codes=(
+host/otis_tools/pps_cumulative_span_estimator.py,341,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,342,uncertainty,measurement_uncertainty_semantics,"""reference_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,343,uncertainty,measurement_uncertainty_semantics,"""calibration_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,745,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,746,uncertainty,measurement_uncertainty_semantics,"""uncertainty_reason_codes"": ["
+host/otis_tools/pps_cumulative_span_estimator.py,747,uncertainty,measurement_uncertainty_semantics,"""counter_aperture_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,748,uncertainty,measurement_uncertainty_semantics,"""reference_uncertainty_unavailable"","
+host/otis_tools/pps_cumulative_span_estimator.py,749,uncertainty,measurement_uncertainty_semantics,"""calibration_uncertainty_unavailable"","
 host/otis_tools/pps_estimator_selection.py,80,uncertainty,measurement_uncertainty_semantics,"uncertainty = slope[""uncertainty""]"
 host/otis_tools/pps_estimator_selection.py,83,uncertainty,measurement_uncertainty_semantics,"minimum = uncertainty[""hz_per_v_min""] * voltage_per_code"
 host/otis_tools/pps_estimator_selection.py,84,uncertainty,measurement_uncertainty_semantics,"maximum = uncertainty[""hz_per_v_max""] * voltage_per_code"

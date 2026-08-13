@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "authority_id": "CX319_Q4_LOWER_FINITE_LIVE_RETRY_AUTHORITY_PROPOSAL_V1",
+  "programme_id": "cx319_stabilized_tight_deadband",
+  "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+  "status": "draft_non_effective",
+  "effective": false,
+  "readiness_outcome": "q4_lower_retry_offline_ready_for_separate_authority",
+  "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md",
+  "predecessor_stop": {
+    "run_id": "live_leg_a_20260813T074315Z",
+    "activation_sha256": "fc138d94f9c858b1c54e73364635fc3411fe2726ea16ff357cda5ef667b294fe",
+    "evidence_content_sha256": "ae3cbc42e62b05daa41de6502b2ed27a0a18eeb6bcfc2672f55f6c79c099ab93",
+    "setup_stimuli": 0,
+    "dac_value_writes": 0,
+    "control_arms": 0,
+    "automatic_corrections": 0,
+    "authority_consumed": true
+  },
+  "candidate": {
+    "source_revision": "421501dc49d29eb91f6160a0b7965475c12c706b",
+    "path": "runs/cx319_stabilized_tight_deadband/q4/q4_retry_offline_preparation_20260813T075000Z/cx319_g2_leg_a_proposal_bundle_v1.json",
+    "file_sha256": "1c9e64cab6ca10d7d114927dcb378d75f350150633c188f73642f874c8b94a8d",
+    "bundle_sha256": "9697652d963c0bcfe44800c1f3ff7c6cf032ca382c5479c8cec0edb1ddccbd56",
+    "live_runner_sha256": "833bc0f3c07a2bb678cd7a863f8a1f44e947a5e5ae9772114cf54ac192d657c5",
+    "operational_rehearsal_content_sha256": "89f8df3952218cb729f22d62acc5969ec2b30d447f21fedb8a4d178f2b755877",
+    "operational_rehearsal_seal_sha256": "c56d402abd3ac208ca10b73f78863372ca4abb176c10c8d56c3c3d2845c84c6d"
+  },
+  "reused_unchanged_evidence": {
+    "q1_evidence_content_sha256": "9e3506c855ea949cc65d2a2c090334386a94e732e6d7c5a0dfdb0c6df8ba1e67",
+    "q2_evidence_content_sha256": "1990abe0719f215b2346ef35cd7dc1af35ea6849b51fbcc356d726df995a4233",
+    "q3_evidence_content_sha256": "989170aaad2cabfd7454a9e8c047ab3514f1e6da90ff423d34461e783dd641e7",
+    "q3_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083"
+  },
+  "current_permissions": {
+    "physical_execution": false,
+    "serial_open": false,
+    "command_fifo_create": false,
+    "firmware_flash": false,
+    "board_reset": false,
+    "setup_stimulus": false,
+    "control_arm": false,
+    "automatic_correction": false,
+    "dac_value_write": false,
+    "phase_or_hybrid_actionable": false
+  },
+  "required_separate_transition": {
+    "programme_operation": "g2_live_leg",
+    "explicit_operator_decision": true,
+    "effective_authority_record": true,
+    "exact_candidate_and_rehearsal_binding": true
+  },
+  "proposed_future_entry": {
+    "expected_board_serial": "503533748A919118",
+    "board_restart_limit": 1,
+    "firmware_flash_limit": 0,
+    "physical_live_run_limit": 1,
+    "firmware_entry": "verify_installed_exact_q3_image_after_restart_no_flash",
+    "required_uf2_sha256": "50f863a2150d1b1391504553a1d20e1cb951daae5b450a83c90628265a522083",
+    "installed_image_mismatch": "stop_without_flash_and_require_shortest_affected_physical_no_write_requalification",
+    "fresh_host_attach_maximum_uptime_s": 120,
+    "initial_serial_requirement": "firmware_records_and_nonce_bound_snapshot_received_before_setup",
+    "initial_physical_dac_code": "unknown_until_entry_query_and_setup",
+    "setup_code": 43016,
+    "setup_code_hex": "0xA808",
+    "topology_confirmation": "dac_analogue_output_connected_to_oscillator_efc_vctrl"
+  },
+  "proposed_future_live_envelope": {
+    "frequency_only": true,
+    "setup_write_limit": 1,
+    "required_automatic_direction": "positive",
+    "maximum_automatic_corrections": 4,
+    "maximum_step_codes": 21,
+    "maximum_cumulative_codes": 84,
+    "minimum_applied_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "qualification_deadline_s": 5400,
+    "maximum_qualified_duration_s": 14400,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "phase_or_hybrid_actionable": false
+  },
+  "stop_conditions": [
+    "restart or re-enumeration does not yield the exact expected board and firmware records",
+    "candidate, firmware, policy, contract, tool, or authority identity mismatch",
+    "unexpected serial owner or loss of continuous bounded drainage",
+    "incomplete, stale, partial, duplicated, reordered, wrong-session, wrong-generation, or wrong-nonce setup evidence",
+    "GNSS or raw-PPS control ineligibility",
+    "transport, partition, queue, parser, acknowledgement, or application fault",
+    "range, cadence, step, cumulative-budget, retry, or restoration violation",
+    "phase-derived or hybrid-derived actuator influence",
+    "priority abort, analyzer, seal, or registration failure"
+  ]
+}

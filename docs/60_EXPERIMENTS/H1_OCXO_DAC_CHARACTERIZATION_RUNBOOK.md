@@ -125,10 +125,10 @@ is marked hardware-clean.
 10. Use locally PPS-calibrated H1 host estimates as the preferred report, with
     the legacy run-wide estimate retained for comparison in
     `csv/h1_count_frequency_estimates.csv`.
-11. Enable `OTIS_ENABLE_PPS_DUAL_OBSERVER=1` only for the temporary D10 PPS
-    witness experiment. Do not change DAC/CX317 control semantics and do not
-    switch to the PPS-gated-ratio backend in the same run unless explicitly
-    performing a separate backend A/B validation.
+11. Keep D10 as the independent external-event edge input. Do not connect it
+    to PPS or use it as a reference witness, health veto, or control input.
+    Do not switch to the PPS-gated-ratio backend in the same run unless
+    explicitly performing a separate backend A/B validation.
 
 Suggested run layout for scripted sweeps:
 

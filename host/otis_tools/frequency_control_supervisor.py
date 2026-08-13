@@ -70,11 +70,12 @@ ARM_PROGRESS_THRESHOLD = 520
 ARM_LIFETIME_S = 110
 PREWRITE_CONTRACT_STARTUP_GRACE_S = 30
 SETUP_RESULT_GRACE_S = QUERY_PERIOD_S
-# One active burst may straddle the platform's declared maximum supported USB
-# TX obstruction.  The deadline is the same 2,000 ms transport horizon used by
-# Q1 detach authority; a completed snapshot still grants no authority until its
-# atomic handoff replaces the in-progress state.
-ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = 2.0
+# Snapshot completion is a bounded diagnostic wait, not a control-authority or
+# USB pending-frame deadline.  Reuse the existing pre-write grace: waiting
+# carries no actuator authority, while an atomic complete snapshot and every
+# health gate remain mandatory before setup.  A genuinely stuck generation
+# still stops 90 seconds before the fresh-attachment ceiling.
+ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = PREWRITE_CONTRACT_STARTUP_GRACE_S
 ACTIVE_SNAPSHOT_COMPLETION_POLL_S = 0.02
 ACTIVE_STATUS_COMPLETE_MAX_AGE_S = QUERY_PERIOD_S + 2.0
 

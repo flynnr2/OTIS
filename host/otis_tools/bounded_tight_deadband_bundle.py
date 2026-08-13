@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any
 
@@ -16,6 +17,9 @@ from .no_write_qualification_bundle import (
     POLICY_PATH,
     PROGRAMME_ID,
     _git_identity,
+    _load_policy,
+    _q3_prerequisites,
+    validate_build,
     validate_frozen_bundle,
     validate_run_manifest,
 )
@@ -40,11 +44,13 @@ from .no_write_prewrite_readiness_contract import (
     RUNTIME_CONTRACT_ID as NO_WRITE_RUNTIME_CONTRACT_ID,
 )
 from .evidence_index import package_identity
+from .evidence import validate_evidence_snapshot
 from .programme_status import (
     OFFLINE_PREPARATION,
     load_programme_status,
     require_programme_operation_allowed,
 )
+from .run_loader import load_manifest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -52,8 +58,14 @@ TOOL_ID = "cx319_g2_proposal_bundle_v1"
 BUNDLE_ID = "cx319_g2_leg_a_proposal_bundle_v1"
 NO_WRITE_ANALYSIS = Path("reports/cx319_g1_analysis_v1.json")
 NO_WRITE_SEAL = Path("reports/cx319_g1_rehearsal_seal_v1.json")
+CURRENT_FIRMWARE_QUALIFICATION_RESULT = Path(
+    "reports/cx319_session_absence_low_cadence_v1.json"
+)
 HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
+    "upper_bundle": Path(__file__).with_name("bounded_tight_deadband_upper_bundle.py"),
+    "proposal_dispatch": Path(__file__).with_name("bounded_tight_deadband_proposal.py"),
+    "leg_contract": Path(__file__).with_name("bounded_tight_deadband_leg.py"),
     "capture": Path(__file__).with_name("capture_device.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "abort_path": Path(__file__).with_name("abort_transport.py"),
@@ -77,6 +89,9 @@ HOST_TOOL_PATHS = {
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "evidence_index": Path(__file__).with_name("evidence_index.py"),
 }
+TIMING_TOPOLOGY_REPAIR_SCOPE = (
+    "current_prewrite_authoritative_timing_topology"
+)
 
 
 def _utc_now() -> str:
@@ -117,6 +132,137 @@ def _binding(path: Path) -> dict[str, Any]:
     }
 
 
+def _firmware_build_provenance(firmware: dict[str, Any]) -> dict[str, Any]:
+    manifest_path = Path(str(firmware.get("build_manifest", {}).get("path", "")))
+    if (
+        not manifest_path.is_file()
+        or firmware.get("build_manifest", {}).get("sha256")
+        != _sha256_file(manifest_path)
+    ):
+        raise ValueError("Q4 firmware build-manifest binding differs")
+    manifest = _read(manifest_path, "Q4 firmware build manifest")
+    provenance = manifest.get("provenance", {})
+    configuration = provenance.get("configuration", {})
+    target = provenance.get("target", {})
+    invocation = provenance.get("invocation", {})
+    toolchain = provenance.get("toolchain", {})
+    if (
+        configuration.get("profile_id") != firmware.get("profile_id")
+        or configuration.get("sha256") != firmware.get("configuration_sha256")
+        or target.get("fqbn") != firmware.get("fqbn")
+        or not isinstance(configuration.get("defines"), dict)
+        or not configuration["defines"]
+        or not isinstance(invocation.get("arduino_cli_version"), str)
+        or not isinstance(toolchain.get("compiler_identity"), str)
+        or not isinstance(toolchain.get("installed_sha256"), str)
+    ):
+        raise ValueError("Q4 firmware build provenance is incomplete or inconsistent")
+    return {
+        "configuration": configuration,
+        "target": target,
+        "invocation": invocation,
+        "toolchain": toolchain,
+    }
+
+
+def _build_defines(firmware: dict[str, Any]) -> dict[str, str]:
+    binding = firmware.get("build_manifest", {})
+    path = Path(str(binding.get("path", "")))
+    if (
+        not path.is_file()
+        or binding.get("sha256") != _sha256_file(path)
+    ):
+        raise ValueError("firmware build-manifest binding differs")
+    manifest = _read(path, "firmware build manifest")
+    defines = (
+        manifest.get("provenance", {})
+        .get("configuration", {})
+        .get("defines")
+    )
+    if not isinstance(defines, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in defines.items()
+    ):
+        raise ValueError("firmware build defines are unavailable")
+    return dict(defines)
+
+
+def _validated_current_topology_policy_binding() -> dict[str, Any]:
+    policy = _load_policy()
+    if policy.get("frequency_controller") != {
+        "type": "incremental_I_only_frequency_control",
+        "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+        "rounding_rule": "round_half_away_from_zero_after_step_limit",
+        "maximum_automatic_step_codes": 21,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "minimum_applied_correction_cadence_s": 1800,
+        "settling_exclusion_s": 900,
+        "fresh_support_after_settling_s": 600,
+        "full_history_reset_s": 1500,
+        "startup_warmup_s": 1800,
+        "maximum_outstanding_requests": 1,
+        "automatic_retry": False,
+        "automatic_restore": False,
+        "reboot_recovery": False,
+    }:
+        raise ValueError("timing-topology repair changed frequency control")
+    if policy.get("tight_hysteretic_band") != {
+        "initial_and_rearm_state": "REQUALIFY_OUTSIDE",
+        "outside_state": "OUTSIDE",
+        "inside_state": "TIGHT_INSIDE",
+        "entry_absolute_counts_lte": 2,
+        "entry_consecutive_fresh_estimates": 2,
+        "release_absolute_counts_gte": 4,
+        "release_consecutive_fresh_estimates": 2,
+        "three_count_rule": "retain_previous_band_state",
+        "pending_counter_reset_on": [
+            "opposite_evidence",
+            "invalidity",
+            "dac_epoch_transition",
+            "capture_session_transition",
+        ],
+    }:
+        raise ValueError("timing-topology repair changed tight deadband")
+    leg = policy.get("legs", {}).get("A", {})
+    if leg != {
+        "description": "below_operating_point_positive_correction",
+        "firmware_profile": "cx319_tight_lower",
+        "run_binding_tag": 3195001,
+        "exact_setup_code": 43016,
+        "exact_setup_code_hex": "0xA808",
+        "required_automatic_direction": "positive",
+        "maximum_automatic_corrections": 4,
+        "maximum_cumulative_automatic_movement_codes": 84,
+    }:
+        raise ValueError("timing-topology repair changed lower-leg envelope")
+    phase = policy.get("phase_and_hybrid_authority", {})
+    if phase.get("continuous_preview_required") is not True or any(
+        phase.get(key) is not False
+        for key in (
+            "actionable",
+            "actuation_authorized",
+            "authorization_consumed",
+            "may_influence_frequency_controller_delta",
+            "may_influence_frequency_controller_eligibility",
+            "may_mutate_frequency_controller_response_or_budget_state",
+            "may_issue_command_or_write_dac",
+        )
+    ):
+        raise ValueError("timing-topology repair changed phase authority")
+    model_binding = policy["bindings"]["plant_model"]
+    model = _read(REPO_ROOT / model_binding["path"], "current plant model")
+    conditions = " ".join(model.get("invalidation_conditions", []))
+    if "Any use of D10 as a PPS observer" not in conditions:
+        raise ValueError("current plant model does not prohibit D10 PPS use")
+    return {
+        "path": str(POLICY_PATH),
+        "sha256": _sha256_file(POLICY_PATH),
+        "policy_id": policy["policy_id"],
+        "bindings": policy["bindings"],
+    }
+
+
 def _atomic_new(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -140,49 +286,143 @@ def _atomic_new(path: Path, value: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _validate_q1_q3_sequence(
+    *, frozen_bundle: dict[str, Any], programme_status: dict[str, Any]
+) -> dict[str, Any]:
+    prerequisites = frozen_bundle.get("q3_prerequisites")
+    if not isinstance(prerequisites, dict):
+        raise ValueError("Q4 requires Q3 bindings to the passing Q1/Q2 sequence")
+    frozen_q1 = prerequisites.get("q1")
+    frozen_q2 = prerequisites.get("q2")
+    if not isinstance(frozen_q1, dict) or not isinstance(frozen_q2, dict):
+        raise ValueError("Q4 requires complete frozen Q1/Q2 prerequisite bindings")
+
+    observed = _q3_prerequisites(
+        q1_run_dir=Path(str(frozen_q1.get("complete", {}).get("path", ""))).parent,
+        q2_run_dir=Path(str(frozen_q2.get("complete", {}).get("path", ""))).parent,
+        firmware=frozen_bundle["firmware"],
+    )
+    if (
+        observed["q1"] != frozen_q1
+        or observed["q2"] != frozen_q2
+        or prerequisites.get("physical_topology_confirmation_required_at_execution")
+        != observed["physical_topology_confirmation_required_at_execution"]
+    ):
+        raise ValueError("retained Q1/Q2 evidence differs from the frozen Q3 bindings")
+
+    q1_content = package_identity(
+        Path(str(frozen_q1["complete"]["path"])).parent
+    )["content_sha256"]
+    q2_content = package_identity(
+        Path(str(frozen_q2["complete"]["path"])).parent
+    )["content_sha256"]
+    q1_status = programme_status.get("q1_sequence_result", {})
+    q2_status = programme_status.get("q2_sequence_result", {})
+    if (
+        q1_status.get("run_id") != frozen_q1["run_id"]
+        or q1_status.get("seal_sha256") != frozen_q1["seal_sha256"]
+        or q1_status.get("evidence_content_sha256") != q1_content
+        or q1_status.get("uf2_sha256") != frozen_q1["uf2_sha256"]
+        or q2_status.get("run_id") != frozen_q2["run_id"]
+        or q2_status.get("seal_sha256") != frozen_q2["seal_sha256"]
+        or q2_status.get("evidence_content_sha256") != q2_content
+        or q2_status.get("physical_setup_writes") != 1
+        or q2_status.get("physical_automatic_writes") != 0
+        or q2_status.get("physical_oscillator_movement_possible") is not False
+    ):
+        raise ValueError("Q1/Q2 programme status or retained content binding differs")
+    return {
+        "q1": {
+            "run_id": frozen_q1["run_id"],
+            "seal_sha256": frozen_q1["seal_sha256"],
+            "evidence_content_sha256": q1_content,
+            "uf2_sha256": frozen_q1["uf2_sha256"],
+        },
+        "q2": {
+            "run_id": frozen_q2["run_id"],
+            "seal_sha256": frozen_q2["seal_sha256"],
+            "evidence_content_sha256": q2_content,
+            "physical_setup_writes": 1,
+            "physical_automatic_writes": 0,
+            "physical_oscillator_movement_possible": False,
+        },
+    }
+
+
 def validate_no_write_qualification_pass(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     manifest = validate_run_manifest(run_dir / "run_manifest.json")
     if manifest.get("cx319", {}).get("leg") != "A":
-        raise ValueError("G2 requires a passed G1 Leg A source")
+        raise ValueError("Q4 requires a passed lower-side Leg A source")
+    if (
+        manifest.get("cx319", {}).get("qualification_sequence_gate") != "Q3"
+        or manifest.get("qualification_evidence") is not True
+    ):
+        raise ValueError("Q4 requires Q3 physical no-write qualification evidence")
     if (
         manifest.get("cx319", {}).get("runtime_contract", {}).get("id")
         != NO_WRITE_RUNTIME_CONTRACT_ID
     ):
-        raise ValueError("G2 requires the current GNSS-bearing G1 contract")
+        raise ValueError("Q4 requires the current GNSS-bearing no-write contract")
     analysis_path = run_dir / NO_WRITE_ANALYSIS
     seal_path = run_dir / NO_WRITE_SEAL
     analysis = _read(analysis_path, "G1 analysis")
     seal = _read(seal_path, "G1 seal")
+    unsigned_analysis = {
+        key: value for key, value in analysis.items() if key != "analysis_sha256"
+    }
     unsigned_seal = {key: value for key, value in seal.items() if key != "seal_sha256"}
     if (
         analysis.get("status") != "pass"
         or not isinstance(analysis.get("checks"), dict)
         or not analysis["checks"]
         or not all(value is True for value in analysis["checks"].values())
+        or analysis.get("analysis_sha256") != _canonical_sha256(unsigned_analysis)
         or seal.get("status") != "pass"
         or seal.get("leg") != "A"
         or seal.get("profile_id") != "cx319_tight_lower"
+        or analysis.get("qualification_sequence_gate") != "Q3"
+        or seal.get("qualification_sequence_gate") != "Q3"
+        or seal.get("seal_type")
+        != "cx319_q3_physical_no_write_qualification_seal_v1"
+        or seal.get("qualification_evidence") is not True
         or seal.get("bundle_sha256") != manifest["bundle"]["bundle_sha256"]
         or seal.get("seal_sha256") != _canonical_sha256(unsigned_seal)
         or seal.get("analysis", {}).get("sha256") != _sha256_file(analysis_path)
+        or seal.get("analysis", {}).get("analysis_sha256")
+        != analysis.get("analysis_sha256")
+        or seal.get("setup_writes") != 0
         or seal.get("dac_value_writes") != 0
+        or seal.get("automatic_writes") != 0
         or seal.get("control_arms") != 0
     ):
-        raise ValueError("G1 source is not a canonical no-write pass")
+        raise ValueError("Q3 source is not a canonical physical no-write pass")
+    frozen_bundle_path = Path(manifest["bundle"]["path"])
+    frozen_bundle = validate_frozen_bundle(frozen_bundle_path)
     status = load_programme_status()["programmes"][PROGRAMME_ID]
-    completed = status.get("completed_g1_evidence", {})
+    completed = status.get("q3_sequence_result", {})
     content = package_identity(run_dir)["content_sha256"]
     if (
         completed.get("run_id") != run_dir.name
+        or completed.get("host_source_revision")
+        != frozen_bundle.get("host_source_revision")
+        or completed.get("firmware_source_revision")
+        != manifest["firmware"].get("git_commit")
         or completed.get("bundle_sha256") != seal["bundle_sha256"]
         or completed.get("seal_sha256") != seal["seal_sha256"]
         or completed.get("evidence_content_sha256") != content
+        or completed.get("uf2_sha256") != seal.get("uf2_sha256")
+        or completed.get("dac_value_writes") != 0
+        or completed.get("setup_stimuli") != 0
+        or completed.get("control_arms") != 0
+        or completed.get("automatic_corrections") != 0
     ):
-        raise ValueError("G1 programme status or registered content binding differs")
-    frozen_bundle_path = Path(manifest["bundle"]["path"])
-    frozen_bundle = validate_frozen_bundle(frozen_bundle_path)
+        raise ValueError("Q3 programme status or registered content binding differs")
+    sequence = _validate_q1_q3_sequence(
+        frozen_bundle=frozen_bundle, programme_status=status
+    )
     return {
+        "qualification_sequence_gate": "Q3",
         "run_id": run_dir.name,
         "run_dir": str(run_dir),
         "run_manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
@@ -192,24 +432,282 @@ def validate_no_write_qualification_pass(run_dir: Path) -> dict[str, Any]:
         "seal_file_sha256": _sha256_file(seal_path),
         "evidence_content_sha256": content,
         "bundle_sha256": seal["bundle_sha256"],
+        "sequence_prerequisites": sequence,
         "firmware": frozen_bundle["firmware"],
         "policy": frozen_bundle["policy"],
     }
 
 
+def validate_current_firmware_qualification_pass(
+    *, run_dir: Path, retained_q3_run_dir: Path
+) -> dict[str, Any]:
+    """Bind a focused current-firmware pass to retained canonical Q1-Q3.
+
+    The focused qualification does not claim to be another Q3 run. It proves
+    only the firmware delta that invalidated the prior Q4 entry: exact-image
+    reset/session handling. The unchanged Q1/Q2/Q3 scientific, topology and
+    operational evidence remains canonical and is validated independently.
+    """
+
+    run_dir = run_dir.resolve()
+    retained_q3 = validate_no_write_qualification_pass(retained_q3_run_dir)
+    manifest = load_manifest(run_dir)
+    manifest_value = manifest.data
+    result_path = run_dir / CURRENT_FIRMWARE_QUALIFICATION_RESULT
+    result = _read(result_path, "current-firmware qualification result")
+    evidence_path = run_dir / "evidence_manifest.json"
+    evidence = _read(evidence_path, "current-firmware evidence manifest")
+    failures, _warnings = validate_evidence_snapshot(run_dir, manifest)
+    frozen_bundle = validate_frozen_bundle(
+        Path(str(manifest_value.get("bundle", {}).get("path", "")))
+    )
+    status = load_programme_status()["programmes"][PROGRAMME_ID]
+    completed = status.get(
+        "current_session_absence_exact_flash_qualification_pass", {}
+    )
+    content = package_identity(run_dir)["content_sha256"]
+    snapshots = result.get("snapshots", [])
+    expected_build = (
+        frozen_bundle["firmware"]["source_sha256"]
+        + ":"
+        + frozen_bundle["firmware"]["configuration_sha256"]
+    )
+    snapshot_pass = (
+        isinstance(snapshots, list)
+        and len(snapshots) == 3
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("active"), dict)
+            and item["active"].get("build_identity") == expected_build
+            and item["active"].get("profile_identity")
+            == frozen_bundle["firmware"]["profile_id"]
+            and item["active"].get("run_identity")
+            == "cx319_tight_lower:3195001"
+            and item["active"].get("state") == "DISARMED"
+            and item["active"].get("fail_static") == "false"
+            and item["active"].get("manual_start_confirmed") == "false"
+            and int(item["active"].get("session_id", "0")) > 0
+            and item["active"].get("correction_count") == "0"
+            and item["active"].get("cumulative_movement_codes") == "0"
+            and item["active"].get("dac_epoch") == "0"
+            for item in snapshots
+        )
+    )
+    hardware = result.get("hardware_actions", {})
+    checks = result.get("checks", {})
+    if (
+        failures
+        or not (run_dir / "COMPLETE").is_file()
+        or manifest_value.get("stage")
+        != "CX319_Q4_CURRENT_SESSION_ABSENCE_EXACT_FLASH_LOW_CADENCE"
+        or manifest_value.get("qualification_evidence") is not True
+        or manifest_value.get("firmware") != frozen_bundle["firmware"]
+        or result.get("status") != "passed"
+        or result.get("run_id") != run_dir.name
+        or result.get("bundle_sha256") != frozen_bundle["bundle_sha256"]
+        or result.get("uf2_sha256")
+        != frozen_bundle["firmware"]["uf2"]["sha256"]
+        or not isinstance(checks, dict)
+        or not checks
+        or not all(value is True for value in checks.values())
+        or not snapshot_pass
+        or hardware
+        != {
+            "automatic_corrections": 0,
+            "control_arms": 0,
+            "dac_value_writes": 0,
+            "firmware_flashes": 1,
+            "manual_resets": 0,
+            "setup_stimuli": 0,
+        }
+        or result.get("row_counts")
+        != {"active_transactions_v1": 0, "dac_steps_v1": 0}
+        or evidence.get("run_state") != "complete"
+        or completed.get("run_id") != run_dir.name
+        or completed.get("status") != "passed"
+        or completed.get("firmware_entry_bundle_sha256")
+        != frozen_bundle["bundle_sha256"]
+        or completed.get("uf2_sha256")
+        != frozen_bundle["firmware"]["uf2"]["sha256"]
+        or completed.get("result_file_sha256") != _sha256_file(result_path)
+        or completed.get("evidence_manifest_file_sha256")
+        != _sha256_file(evidence_path)
+        or completed.get("evidence_snapshot_sha256")
+        != evidence.get("snapshot_digest")
+        or completed.get("evidence_content_sha256") != content
+        or completed.get("q2_q3_reused") is not True
+    ):
+        raise ValueError(
+            "current firmware qualification or retained programme binding differs"
+        )
+    if frozen_bundle["policy"] != retained_q3["policy"]:
+        raise ValueError("current firmware qualification policy differs from Q3")
+    return {
+        "qualification_sequence_gate": "Q3",
+        "run_id": run_dir.name,
+        "run_dir": str(run_dir),
+        "run_manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
+        "analysis_sha256": evidence["snapshot_digest"],
+        "analysis_file_sha256": _sha256_file(result_path),
+        "seal_sha256": evidence["snapshot_digest"],
+        "seal_file_sha256": _sha256_file(evidence_path),
+        "evidence_content_sha256": content,
+        "bundle_sha256": frozen_bundle["bundle_sha256"],
+        "sequence_prerequisites": retained_q3["sequence_prerequisites"],
+        "firmware": frozen_bundle["firmware"],
+        "policy": frozen_bundle["policy"],
+        "current_firmware_qualification": {
+            "type": "exact_flash_session_absence_low_cadence",
+            "result_file_sha256": _sha256_file(result_path),
+            "evidence_snapshot_sha256": evidence["snapshot_digest"],
+            "firmware_flashes": 1,
+            "snapshot_queries": 3,
+            "q2_q3_repeated": False,
+        },
+        "retained_q3_pass": {
+            "run_id": retained_q3["run_id"],
+            "seal_sha256": retained_q3["seal_sha256"],
+            "evidence_content_sha256": retained_q3[
+                "evidence_content_sha256"
+            ],
+            "uf2_sha256": retained_q3["firmware"]["uf2"]["sha256"],
+        },
+    }
+
+
+def apply_deterministic_narrow_repair(
+    *,
+    qualification: dict[str, Any],
+    build_manifest_path: Path,
+    uf2_path: Path,
+    repair_scope: str,
+) -> dict[str, Any]:
+    """Rebind a qualified image after a deterministic narrow repair."""
+
+    if not re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", repair_scope):
+        raise ValueError("narrow repair scope must be a stable snake-case id")
+
+    firmware = validate_build(
+        leg="A",
+        build_manifest_path=build_manifest_path,
+        uf2_path=uf2_path,
+        allow_clean_ancestor_source=True,
+        allow_qualified_ancestor_image=False,
+    )
+    prior_firmware = qualification["firmware"]
+    for key in ("profile_id", "fqbn"):
+        if firmware.get(key) != prior_firmware.get(key):
+            raise ValueError(
+                f"narrow repair changed qualified firmware {key}"
+            )
+    policy = qualification["policy"]
+    policy_rebinding = None
+    if repair_scope == TIMING_TOPOLOGY_REPAIR_SCOPE:
+        prior_defines = _build_defines(prior_firmware)
+        current_defines = _build_defines(firmware)
+        if prior_defines.pop("OTIS_ENABLE_PPS_DUAL_OBSERVER", None) != "1":
+            raise ValueError("physical basis did not enable the retired D10 observer")
+        if (
+            "OTIS_ENABLE_PPS_DUAL_OBSERVER" in current_defines
+            or prior_defines != current_defines
+        ):
+            raise ValueError(
+                "timing-topology repair changed firmware definitions beyond "
+                "retiring the D10 observer"
+            )
+        current_policy = _validated_current_topology_policy_binding()
+        if policy.get("policy_id") != current_policy["policy_id"]:
+            raise ValueError("timing-topology repair changed policy identity")
+        policy_rebinding = {
+            "previous_sha256": policy.get("sha256"),
+            "current_sha256": current_policy["sha256"],
+            "controller_parameters_changed": False,
+            "profile_definition_change": "remove_OTIS_ENABLE_PPS_DUAL_OBSERVER",
+        }
+        policy = current_policy
+    elif firmware.get("configuration_sha256") != prior_firmware.get(
+        "configuration_sha256"
+    ):
+        raise ValueError(
+            "narrow repair changed qualified firmware configuration_sha256"
+        )
+    prior_delta = qualification.get("current_firmware_qualification")
+    if not isinstance(prior_delta, dict):
+        raise ValueError("narrow repair requires a current-firmware basis")
+    return {
+        **qualification,
+        "firmware": firmware,
+        "policy": policy,
+        "current_firmware_qualification": {
+            "type": "deterministic_narrow_repair_overlay",
+            "physical_basis": prior_delta,
+            "physical_basis_uf2_sha256": prior_firmware["uf2"]["sha256"],
+            "repair_scope": repair_scope,
+            "build_manifest": _binding(build_manifest_path),
+            "uf2": _binding(uf2_path),
+            "physical_requalification_repeated": False,
+            "q2_q3_repeated": False,
+            **(
+                {"policy_rebinding": policy_rebinding}
+                if policy_rebinding is not None
+                else {}
+            ),
+        },
+    }
+
+
 def create_proposal(
-    *, no_write_run_dir: Path, output_path: Path
+    *,
+    no_write_run_dir: Path,
+    output_path: Path,
+    current_firmware_qualification_run_dir: Path | None = None,
+    narrow_repair_build_manifest: Path | None = None,
+    narrow_repair_uf2: Path | None = None,
+    narrow_repair_scope: str | None = None,
 ) -> dict[str, Any]:
     require_programme_operation_allowed(PROGRAMME_ID, OFFLINE_PREPARATION)
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("G2 proposal bundle requires a clean repository")
-    g1 = validate_no_write_qualification_pass(no_write_run_dir)
-    if g1["policy"]["sha256"] != _sha256_file(POLICY_PATH):
-        raise ValueError("G1 policy differs from the current G2 policy")
+    narrow_values = (
+        narrow_repair_build_manifest,
+        narrow_repair_uf2,
+        narrow_repair_scope,
+    )
+    if any(value is not None for value in narrow_values) and not all(
+        value is not None for value in narrow_values
+    ):
+        raise ValueError(
+            "narrow repair requires build manifest, UF2 and repair scope"
+        )
+    if narrow_repair_build_manifest is not None and (
+        current_firmware_qualification_run_dir is None
+    ):
+        raise ValueError(
+            "narrow repair requires a current-firmware physical basis"
+        )
+    qualification = (
+        validate_no_write_qualification_pass(no_write_run_dir)
+        if current_firmware_qualification_run_dir is None
+        else validate_current_firmware_qualification_pass(
+            run_dir=current_firmware_qualification_run_dir,
+            retained_q3_run_dir=no_write_run_dir,
+        )
+    )
+    if narrow_repair_build_manifest is not None:
+        qualification = apply_deterministic_narrow_repair(
+            qualification=qualification,
+            build_manifest_path=narrow_repair_build_manifest,
+            uf2_path=narrow_repair_uf2,
+            repair_scope=narrow_repair_scope,
+        )
+    if qualification["policy"]["sha256"] != _sha256_file(POLICY_PATH):
+        raise ValueError("Q3 policy differs from the current G2 policy")
+    build_provenance = _firmware_build_provenance(qualification["firmware"])
     host_tools = {name: _binding(path) for name, path in HOST_TOOL_PATHS.items()}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
+        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
         "tool": TOOL_ID,
         "bundle_id": BUNDLE_ID,
         "created_utc": _utc_now(),
@@ -232,10 +730,77 @@ def create_proposal(
             "required_future_operation": "g2_live_leg",
             "explicit_operator_transition_required": True,
         },
-        "g1_pass": g1,
-        "firmware": g1["firmware"],
-        "policy": g1["policy"],
+        "g1_pass": qualification,
+        "firmware": qualification["firmware"],
+        "firmware_build_provenance": build_provenance,
+        "firmware_entry": {
+            "mode": (
+                "verify_installed_exact_q3_image_no_flash"
+                if current_firmware_qualification_run_dir is None
+                else "verify_installed_exact_current_qualified_image_no_flash"
+            ),
+            "required_uf2_sha256": qualification["firmware"]["uf2"]["sha256"],
+            "firmware_flash_allowed": False,
+            "unknown_or_mismatched_installed_image": (
+                "stop_and_require_shortest_affected_physical_no_write_requalification"
+            ),
+        },
+        "policy": qualification["policy"],
         "host_tools": host_tools,
+        "expected_device": {
+            "last_qualified_serial_path": "/dev/cu.usbmodem14601",
+            "expected_board_serial": "503533748A919118",
+            "baud": 115200,
+            "single_continuously_draining_owner": True,
+            "serial_path_may_reenumerate_but_board_identity_may_not": True,
+        },
+        "expected_entry_transcript": {
+            "queries_before_setup": [
+                "CONFIG?",
+                "DAC?",
+                "FC0?",
+                "ACTIVE LEASE <nonzero_uint32>",
+                "ACTIVE SNAPSHOT <post_attach_nonce>",
+            ],
+            "boot": {
+                "fresh_host_attach_maximum_uptime_s": (
+                    FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S
+                ),
+                "automatic_reboot_recovery": False,
+            },
+            "build": {
+                "profile_id": qualification["firmware"]["profile_id"],
+                "source_sha256": qualification["firmware"]["source_sha256"],
+                "configuration_sha256": qualification["firmware"][
+                    "configuration_sha256"
+                ],
+                "uf2_sha256": qualification["firmware"]["uf2"]["sha256"],
+            },
+            "dac": {
+                "physical_applied_code_before_setup": "unknown",
+                "planned_setup_code": SETUP_CODE,
+                "setup_opens_new_dac_epoch": True,
+            },
+            "timing": {
+                "status_clock_domain": "rp2040_timer0",
+                "measurement_reference": "gnss_raw_pps",
+            },
+            "gnss_pps": {
+                "identity_epoch": 1,
+                "identity_stable": True,
+                "metadata_control_eligible": True,
+                "raw_pps_control_eligible": True,
+                "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            },
+            "active_snapshot": {
+                "complete_single_generation": True,
+                "post_attach_nonce_exact": True,
+                "session_nonzero": True,
+                "state_before_setup": "DISARMED",
+                "fail_static": False,
+                "setup_partition_healthy": True,
+            },
+        },
         "leg_spec": {
             "profile_id": "cx319_tight_lower",
             "run_binding_tag": 3195001,
@@ -330,13 +895,37 @@ def validate_proposal(path: Path) -> dict[str, Any]:
         name: _binding(tool_path) for name, tool_path in HOST_TOOL_PATHS.items()
     }:
         raise ValueError("G2 proposal host tool binding is stale")
-    observed_g1 = validate_no_write_qualification_pass(Path(value["g1_pass"]["run_dir"]))
-    if value.get("g1_pass") != observed_g1:
-        raise ValueError("G2 proposal G1 binding is stale")
-    if value.get("firmware") != observed_g1["firmware"]:
-        raise ValueError("G2 proposal firmware differs from G1")
-    if value.get("policy") != observed_g1["policy"]:
-        raise ValueError("G2 proposal policy differs from G1")
+    if "current_firmware_qualification" in value["g1_pass"]:
+        retained_q3 = value["g1_pass"].get("retained_q3_pass", {})
+        retained_q3_run_id = retained_q3.get("run_id")
+        if not isinstance(retained_q3_run_id, str) or not retained_q3_run_id:
+            raise ValueError("current-firmware proposal has no retained Q3 run")
+        observed_qualification = validate_current_firmware_qualification_pass(
+            run_dir=Path(value["g1_pass"]["run_dir"]),
+            retained_q3_run_dir=(
+                REPO_ROOT
+                / "runs/cx319_stabilized_tight_deadband/q3"
+                / retained_q3_run_id
+            ),
+        )
+        repair = value["g1_pass"]["current_firmware_qualification"]
+        if repair.get("type") == "deterministic_narrow_repair_overlay":
+            observed_qualification = apply_deterministic_narrow_repair(
+                qualification=observed_qualification,
+                build_manifest_path=Path(repair["build_manifest"]["path"]),
+                uf2_path=Path(repair["uf2"]["path"]),
+                repair_scope=str(repair["repair_scope"]),
+            )
+    else:
+        observed_qualification = validate_no_write_qualification_pass(
+            Path(value["g1_pass"]["run_dir"])
+        )
+    if value.get("g1_pass") != observed_qualification:
+        raise ValueError("G2 proposal Q1-Q3 qualification binding is stale")
+    if value.get("firmware") != observed_qualification["firmware"]:
+        raise ValueError("G2 proposal firmware differs from Q3")
+    if value.get("policy") != observed_qualification["policy"]:
+        raise ValueError("G2 proposal policy differs from Q3")
     return value
 
 
@@ -345,13 +934,26 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create")
     create.add_argument("--no-write-run-dir", type=Path, required=True)
+    create.add_argument(
+        "--current-firmware-qualification-run-dir", type=Path
+    )
+    create.add_argument("--narrow-repair-build-manifest", type=Path)
+    create.add_argument("--narrow-repair-uf2", type=Path)
+    create.add_argument("--narrow-repair-scope")
     create.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("proposal", type=Path)
     args = parser.parse_args(argv)
     if args.command == "create":
         result = create_proposal(
-            no_write_run_dir=args.no_write_run_dir, output_path=args.output
+            no_write_run_dir=args.no_write_run_dir,
+            output_path=args.output,
+            current_firmware_qualification_run_dir=(
+                args.current_firmware_qualification_run_dir
+            ),
+            narrow_repair_build_manifest=args.narrow_repair_build_manifest,
+            narrow_repair_uf2=args.narrow_repair_uf2,
+            narrow_repair_scope=args.narrow_repair_scope,
         )
     else:
         result = validate_proposal(args.proposal)

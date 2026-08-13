@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 from host.otis_tools.no_write_qualification_operational_rehearsal import (
     _exercise_timing_contract,
     _ignore_nonregular_entries,
+    _prepare_replay_transition,
+    _replayed_entry_semantics,
     _replace_capture_stop_target,
     _replace_build_identity,
     _source_exercised_q1_detach,
 )
+from host.otis_tools.run_loader import load_manifest
 
 
 def test_accelerated_rehearsal_crosses_both_startup_clocks(
@@ -82,3 +86,44 @@ def test_transition_replay_allows_no_complete_build_snapshot(
     assert _replace_build_identity(
         health, "a" * 64 + ":" + "b" * 64, required=False
     ) is False
+
+
+def test_transition_replay_retains_canonical_owner_handoff_identity(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source_manifest.json"
+    source.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": {
+                    "serial_device": "/dev/cu.usbmodem14601",
+                    "baud": 115200,
+                },
+                "contracts": {"health_v1": 1},
+                "files": [
+                    {
+                        "contract": "health_v1",
+                        "path": "csv/health.csv",
+                        "optional": True,
+                    }
+                ],
+                "domains": [],
+                "channels": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    transition = tmp_path / "g1_owner_handoff_transition"
+    transition.mkdir()
+
+    _prepare_replay_transition(source, transition)
+
+    assert load_manifest(transition).data["run_id"] == transition.name
+
+
+def test_no_flash_replay_uses_physical_running_attach_semantics() -> None:
+    assert _replayed_entry_semantics("reuse_confirmed_installed_firmware") == {
+        "operation": "confirmed_installed_cx319_g1_running_attach",
+        "attachment_mode": "running_instrument",
+    }

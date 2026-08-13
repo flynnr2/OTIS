@@ -91,7 +91,7 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
 
     assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 33u" in header
     assert "OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u" in header
-    assert "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 70u" in header
+    assert "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 67u" in header
     assert (
         "OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
@@ -100,7 +100,7 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         "OTIS_TIMING_HEALTH_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
-    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 142u" in header
+    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 139u" in header
     assert "OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
@@ -179,7 +179,6 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
     assert "otis_dual_core_set_timing_owner_active(true)" in setup1
     for call in (
         "service_dual_core_timing_inputs();",
-        "otis_pps_dual_observer_service();",
         "otis_capture_backend_service();",
         "drain_pps_count_boundary_ring();",
         "drain_capture_ring();",
@@ -189,6 +188,16 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
     assert loop1.index("otis_capture_backend_service();") < loop1.index(
         "service_tcxo_gate();"
     )
+    carrier_gate = loop1.index("if (!dual_core_serial_carrier_seen)")
+    for call in (
+        "service_dual_core_timing_inputs();",
+        "otis_capture_backend_service();",
+        "drain_pps_count_boundary_ring();",
+        "drain_capture_ring();",
+        "service_tcxo_gate();",
+        "publish_dual_core_timing_health(now_ms);",
+    ):
+        assert loop1.index(call) < carrier_gate
 
     dual_core0 = loop0[
         loop0.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :

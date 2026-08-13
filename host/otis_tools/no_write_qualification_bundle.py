@@ -606,9 +606,10 @@ def create_bundle(
         leg=leg,
         build_manifest_path=build_manifest_path,
         uf2_path=uf2_path,
-        allow_clean_ancestor_source=(
-            confirmed_flash_record_path is not None or sequence_gate == "Q3"
-        ),
+        # A later host-only commit does not invalidate an exact clean firmware
+        # build when its complete firmware-source and configuration hashes are
+        # still current. Preserve the original build revision as provenance.
+        allow_clean_ancestor_source=True,
         allow_qualified_ancestor_image=sequence_gate == "Q3",
     )
     host_source_revision, host_source_state = _git_identity()
@@ -937,11 +938,7 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         leg=leg,
         build_manifest_path=Path(firmware["build_manifest"]["path"]),
         uf2_path=Path(firmware["uf2"]["path"]),
-        allow_clean_ancestor_source=(
-            firmware_entry.get("mode")
-            == "reuse_confirmed_installed_firmware"
-            or bundle.get("qualification_sequence_gate", "Q1") == "Q3"
-        ),
+        allow_clean_ancestor_source=True,
         allow_qualified_ancestor_image=(
             bundle.get("qualification_sequence_gate", "Q1") == "Q3"
         ),
@@ -951,7 +948,13 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     current_host_revision, current_host_state = _git_identity()
     if (
         current_host_state != "clean"
-        or bundle.get("host_source_revision") != current_host_revision
+        or not isinstance(bundle.get("host_source_revision"), str)
+        or not (
+            bundle["host_source_revision"] == current_host_revision
+            or _git_is_ancestor(
+                bundle["host_source_revision"], current_host_revision
+            )
+        )
     ):
         raise ValueError("CX319 G1 bundle host source binding is stale")
     if firmware_entry.get("mode") == "reuse_confirmed_installed_firmware":

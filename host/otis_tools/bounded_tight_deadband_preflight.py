@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
-from .bounded_tight_deadband_bundle import validate_proposal
+from .bounded_tight_deadband_proposal import validate_proposal
+from .bounded_tight_deadband_leg import leg_for_proposal
 from .bounded_tight_deadband_outcome_contract import normal_command_allowed
 from .bounded_tight_deadband_prewrite_contract import (
     FRESH_HOST_ATTACH_MAXIMUM_UPTIME_S,
@@ -26,8 +27,9 @@ TOOL_ID = "cx319_g2_offline_preflight_v1"
 
 def evaluate(proposal_path: Path) -> dict[str, Any]:
     proposal = validate_proposal(proposal_path)
+    selected = leg_for_proposal(proposal)
     status = load_programme_status()["programmes"][proposal["programme_id"]]
-    spec, identities, leg = load_no_write_qualification_spec("A")
+    spec, identities, leg = load_no_write_qualification_spec(selected.leg)
     build_identity = (
         proposal["firmware"]["source_sha256"]
         + ":"
@@ -57,14 +59,14 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
         "ACTIVE?",
         "ACTIVE LEASE 1",
         "ACTIVE SNAPSHOT 99",
-        "ACTIVE SETUP 1 7 99 650 4 0xA808 1 " + "b" * 64,
+        f"ACTIVE SETUP 1 7 99 650 4 {selected.setup_code_hex} 1 " + "b" * 64,
         "ACTIVE ARM 1 2 3000",
         "ACTIVE EVIDENCE 1 1",
         "ACTIVE EVIDENCE 1 4",
     ]
     rejected = [
         "DAC SET 0xA809",
-        "DAC SET 0xA808",
+        f"DAC SET {selected.setup_code_hex}",
         "DAC MID",
         "DAC ZERO",
         "ACTIVE ABORT",
@@ -79,17 +81,102 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
             proposal["status"] == "proposed_not_authorized"
             and proposal["authority"]["effective"] is False
             and OFFLINE_PREPARATION in status["allowed_operations"]
-            and "g2_live_leg" not in status["allowed_operations"]
+            and proposal["authority"]["required_future_operation"]
+            == selected.operation
         ),
-        "passed_g1_same_firmware_and_policy_bound": (
-            proposal["g1_pass"]["firmware"] == proposal["firmware"]
-            and proposal["g1_pass"]["policy"] == proposal["policy"]
+        "required_prior_gate_pass_bound": (
+            (
+                selected.gate == "G2"
+                and proposal["g1_pass"]["qualification_sequence_gate"] == "Q3"
+                and set(proposal["g1_pass"]["sequence_prerequisites"])
+                == {"q1", "q2"}
+                and proposal["g1_pass"]["firmware"] == proposal["firmware"]
+                and proposal["g1_pass"]["policy"] == proposal["policy"]
+            )
+            or (
+                selected.gate == "G3"
+                and proposal["g2_pass"]["profile_id"] == "cx319_tight_lower"
+                and proposal["g2_pass"]["setup_code"] == 0xA808
+                and proposal["g2_pass"]["automatic_direction"] == "positive"
+                and proposal["g2_pass"]["terminal"]["reason"]
+                == "required_direction_and_two_estimate_tight_entry"
+            )
         ),
-        "leg_a_identity_setup_and_direction_exact": (
-            spec.profile == "cx319_tight_lower"
-            and spec.run_identity == "cx319_tight_lower:3195001"
-            and spec.start_code == 0xA808
-            and leg.required_direction == 1
+        "evidence_epoch_build_and_firmware_entry_exact": (
+            proposal["compatibility_floor"] == "CX319_EVIDENCE_EPOCH_1"
+            and (
+                (
+                    selected.gate == "G2"
+                    and proposal["firmware_entry"].get("mode")
+                    in {
+                        "verify_installed_exact_q3_image_no_flash",
+                        "verify_installed_exact_current_qualified_image_no_flash",
+                    }
+                    and proposal["firmware_entry"].get("firmware_flash_allowed")
+                    is False
+                )
+                or (
+                    selected.gate == "G3"
+                    and proposal["firmware_entry"]
+                    == {
+                        "mode": "flash_exact_upper_profile_once",
+                        "required_uf2_sha256": proposal["firmware"]["uf2"]["sha256"],
+                        "firmware_flash_allowed_in_effective_g3": True,
+                        "maximum_firmware_flashes": 1,
+                        "upload_failure": "stop_without_retry_and_request_operator_assistance",
+                    }
+                )
+            )
+            and proposal["firmware_build_provenance"]["configuration"]["sha256"]
+            == proposal["firmware"]["configuration_sha256"]
+            and proposal["firmware_build_provenance"]["target"]["fqbn"]
+            == proposal["firmware"]["fqbn"]
+            and proposal["expected_device"]["expected_board_serial"]
+            == "503533748A919118"
+            and proposal["expected_device"]["single_continuously_draining_owner"]
+            is True
+        ),
+        "expected_entry_transcript_is_fail_closed": (
+            proposal["expected_entry_transcript"]["build"]
+            == {
+                "profile_id": proposal["firmware"]["profile_id"],
+                "source_sha256": proposal["firmware"]["source_sha256"],
+                "configuration_sha256": proposal["firmware"][
+                    "configuration_sha256"
+                ],
+                "uf2_sha256": proposal["firmware"]["uf2"]["sha256"],
+            }
+            and proposal["expected_entry_transcript"]["dac"]
+            == {
+                "physical_applied_code_before_setup": (
+                    "unknown" if selected.gate == "G2" else "unknown_after_flash"
+                ),
+                "planned_setup_code": selected.setup_code,
+                "setup_opens_new_dac_epoch": True,
+            }
+            and proposal["expected_entry_transcript"]["gnss_pps"]
+            == {
+                "identity_epoch": 1,
+                "identity_stable": True,
+                "metadata_control_eligible": True,
+                "raw_pps_control_eligible": True,
+                "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+            }
+            and proposal["expected_entry_transcript"]["active_snapshot"]
+            == {
+                "complete_single_generation": True,
+                "post_attach_nonce_exact": True,
+                "session_nonzero": True,
+                "state_before_setup": "DISARMED",
+                "fail_static": False,
+                "setup_partition_healthy": True,
+            }
+        ),
+        "selected_leg_identity_setup_and_direction_exact": (
+            spec.profile == selected.profile_id
+            and spec.run_identity == selected.run_identity
+            and spec.start_code == selected.setup_code
+            and leg.required_direction == selected.required_sign
         ),
         "live_command_allowlist_exact": (
             all(normal_command_allowed(command) for command in accepted)
@@ -163,7 +250,9 @@ def evaluate(proposal_path: Path) -> dict[str, Any]:
     }
     return {
         "schema_version": 1,
-        "tool": TOOL_ID,
+        "tool": (
+            TOOL_ID if selected.gate == "G2" else "cx319_g3_offline_preflight_v1"
+        ),
         "mode": "offline_no_io",
         "status": "passed" if all(checks.values()) else "failed",
         "proposal_bundle_sha256": proposal["bundle_sha256"],

@@ -163,7 +163,7 @@
         "Interior bidirectional hysteresis was 7.3493 and 2.4500 equivalent codes; endpoint bidirectional hysteresis and population bounds are unavailable.",
         "Counter-aperture, GPS reference, calibration and combined uncertainty remain unavailable; no calibrated absolute accuracy or isolated firmware-jitter claim is made.",
         "D8 duty, rise/fall, physical phase/duty margin, supply ripple/transient and installed ferrite identity remain untested or unavailable.",
-        "D10 is a general auxiliary edge input; same-PPS agreement applies only when the run manifest declares that connection.",
+        "D10 is the independent external-event edge input and is outside the D14 PPS authority and D8 oscillator measurement path.",
         "The model is invalid for holdover, thermal compensation, phase discipline, adaptive control or active steering."
       ],
       "estimator_method_contract": {
@@ -230,7 +230,7 @@
     "Any code outside 0xA800..0xAB00. SHT41 temperature is a labelled nearby-air covariate and is not a code-domain model invalidation condition.",
     "Any span crossing a DAC epoch, settling exclusion, invalid interval, session boundary, sequence discontinuity, reference-association failure, snapshot/counter/FIFO/DMA/ring fault, parser/transport loss or reset evidence.",
     "Any use before 900 s exclusion plus 600 s fresh contiguous estimator history after a DAC change.",
-    "Any same-PPS run declaring D10 comparison that observes D14/D10 disagreement; another D10 source requires its own declared health policy.",
+    "Any use of D10 as a PPS observer, reference witness, control input, or health veto; D10 is reserved for independent external-event measurement against the disciplined D8 oscillator.",
     "Any use of the nominal AD5693R transfer as a fresh connected-voltage measurement or calibrated voltage model.",
     "Any use for active steering while status.control_ready or status.actuation_enabled is false."
   ],

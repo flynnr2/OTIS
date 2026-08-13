@@ -193,6 +193,117 @@ def test_measurement_model_control_and_arm_gates_are_separate() -> None:
     assert "latest_health.applied_code == transaction.applied_code" in live
 
 
+def test_current_firmware_has_no_d10_pps_observer_or_authority_path() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
+    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+    resources = (FIRMWARE / "otis_resource_registry.cpp").read_text(
+        encoding="utf-8"
+    )
+    matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
+    health = sketch[
+        sketch.index("void service_cx317_active_health(void)") :
+        sketch.index("void service_cx317_active_application_outcome(void)")
+    ]
+
+    assert "d14.d14_accepted_pps_count > 0u" in health
+    assert "otis_pps_snapshot_backend_get_stats(&snapshot)" in health
+    assert "OTIS_PIN_GENERIC_EVENT = D10" in board
+    assert "OTIS_PIN_PPS_REFERENCE = D14" in board
+    assert "OTIS_PIN_OSC_OBSERVATION = D8" in board
+    assert "OTIS_PIN_GENERIC_EVENT, INPUT_PULLDOWN" in sketch
+    assert "OTIS_PIN_GENERIC_EVENT, OUTPUT" not in sketch
+    assert "digitalWrite(OTIS_PIN_GENERIC_EVENT" not in sketch
+    assert "gpio_put(OTIS_PIN_GENERIC_EVENT" not in sketch
+    assert resources.count("OTIS_PIN_GENERIC_EVENT") == 1
+    assert "OTIS_PIN_GENERIC_EVENT" not in health
+    assert "OTIS_ENABLE_PPS_DUAL_OBSERVER" not in config
+    for profile in matrix["profiles"]:
+        assert "OTIS_ENABLE_PPS_DUAL_OBSERVER" not in profile["defines"]
+    for forbidden in (
+        "otis_pps_dual_observer",
+        "pps_dual_observer",
+        "pps_d10",
+        "d10_pps_witness",
+        "d14_raw_minus_d10_raw",
+    ):
+        assert forbidden not in sketch
+
+    for host_path in (
+        ROOT / "host/otis_tools/bounded_tight_deadband_prewrite_contract.py",
+        ROOT / "host/otis_tools/pps_cumulative_span_estimator.py",
+        ROOT / "host/otis_tools/service_plane_probe.py",
+    ):
+        host_source = host_path.read_text(encoding="utf-8")
+        assert "pps_dual_observer" not in host_source
+        assert "pps_d10" not in host_source
+        assert "d14_raw_minus_d10_raw" not in host_source
+
+    model = json.loads(
+        (ROOT / "profiles/plant_models/cx317_pps_gated_v2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    invalidation = " ".join(model["invalidation_conditions"])
+    assert "Any use of D10 as a PPS observer" in invalidation
+
+
+def test_setup_ack_survives_one_in_flight_pre_setup_health_sample() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    health_update = live[
+        live.index("void otis_cx317_active_live_update_health") :
+        live.index("void otis_cx317_active_live_service")
+    ]
+    manual_start = live[
+        live.index("void otis_cx317_active_live_note_manual_start") :
+        live.index("void otis_cx317_active_live_on_decision")
+    ]
+
+    assert "periodic_applied_code_confirmation_seen = false;" in manual_start
+    assert (
+        "health->applied_code == transaction.applied_code" in health_update
+    )
+    confirmation = health_update.index(
+        "periodic_applied_code_confirmation_seen = true;"
+    )
+    loss_gate = health_update.index(
+        "periodic_applied_code_confirmation_seen &&"
+    )
+    fault = health_update.index('"confirmed_applied_code_lost"')
+    assert confirmation < loss_gate < fault
+
+
+def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    setup_ack = sketch[
+        sketch.index(
+            "OtisServiceMessageKind::SetupApplicationAcknowledgement"
+        ) : sketch.index(
+            "if (message.kind == OtisServiceMessageKind::RunControl)"
+        )
+    ]
+    helper = sketch[
+        sketch.index("void propagate_cx317_applied_epoch_to_previews") :
+        sketch.index("void service_dual_core_timing_inputs")
+    ]
+
+    manual_start = setup_ack.index("otis_cx317_active_live_note_manual_start")
+    propagation = setup_ack.index(
+        "propagate_cx317_applied_epoch_to_previews", manual_start
+    )
+    assert manual_start < propagation
+    assert "active_status.manual_start_confirmed" in setup_ack
+    assert "active_status.dac_epoch != 0u" in setup_ack
+    assert "otis_cx317_preview_live_on_dac_applied_epoch" in helper
+    assert "otis_phase_preview_live_update_applied_code" in helper
+
+
 def test_completed_response_is_not_gated_by_preview_actionability() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"

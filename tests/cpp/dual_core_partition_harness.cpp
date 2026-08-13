@@ -305,11 +305,11 @@ void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
                 "ACTIVE status must carry a complete-generation envelope");
   static_assert(OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST == 36u,
                 "ACTIVE status burst must include fields and envelope");
-  static_assert(OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 70u,
+  static_assert(OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST == 67u,
                 "fixture must bind the measured non-active health burst");
-  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 106u,
+  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 103u,
                 "health burst must include one complete ACTIVE status");
-  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 142u,
+  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 139u,
                 "fixture must bind health plus one ACTIVE? response");
   static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                     OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,

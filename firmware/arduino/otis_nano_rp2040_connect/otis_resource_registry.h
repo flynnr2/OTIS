@@ -9,7 +9,6 @@
 #define OTIS_OWNER_DIAGNOSTIC_CLOCK "diagnostic_clock"
 #define OTIS_OWNER_STATUS_LED "status_led"
 #define OTIS_OWNER_EDGE_CAPTURE "edge_capture"
-#define OTIS_OWNER_PPS_WITNESS "pps_witness"
 #define OTIS_OWNER_LOOPBACK_OUTPUT "loopback_output"
 #define OTIS_OWNER_COUNT_OBSERVATION "count_observation"
 #define OTIS_OWNER_PSEUDO_PPS "pseudo_pps_generator"

@@ -11,7 +11,6 @@ enum class OtisBootCapability : uint8_t {
   RingBuffers,
   SparseCapture,
   PpsCapture,
-  PpsWitness,
   CountBackend,
   PseudoPpsGenerator,
   Dac,

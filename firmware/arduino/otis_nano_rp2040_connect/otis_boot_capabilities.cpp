@@ -233,8 +233,6 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "sparse_capture";
     case OtisBootCapability::PpsCapture:
       return "pps_capture";
-    case OtisBootCapability::PpsWitness:
-      return "pps_witness";
     case OtisBootCapability::CountBackend:
       return "count_backend";
     case OtisBootCapability::PseudoPpsGenerator:

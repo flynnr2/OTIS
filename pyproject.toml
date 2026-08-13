@@ -18,6 +18,9 @@ dev = ["pytest"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+  "historical: requires the exact recorded repository revision rather than current HEAD",
+]
 
 [tool.setuptools.packages.find]
 include = ["host", "host.*"]

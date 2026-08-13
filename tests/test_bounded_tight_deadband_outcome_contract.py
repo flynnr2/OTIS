@@ -6,6 +6,7 @@ import pytest
 
 from host.otis_tools.bounded_tight_deadband_outcome_contract import (
     CONTRACT_ID,
+    UPPER_CONTRACT_ID,
     evaluate,
     normal_command_allowed,
 )
@@ -198,7 +199,33 @@ def test_g2_outcome_contract_rejects_wrong_direction() -> None:
     result = evaluate(transcript)
 
     assert result["status"] == "failed"
-    assert result["checks"]["healthy_positive_automatic_transaction"] is False
+    assert (
+        result["checks"]["healthy_required_direction_automatic_transaction"]
+        is False
+    )
+
+
+def test_g3_outcome_contract_accepts_matched_upper_negative_path() -> None:
+    transcript = deepcopy(_transcript())
+    transcript.update(contract_id=UPPER_CONTRACT_ID, gate="G3", leg="B")
+    transcript["commands"][2]["command"] = (  # type: ignore[index]
+        "ACTIVE SETUP 1 7 99 650 4 0xA848 1 " + "b" * 64
+    )
+    transcript["setup"] = {  # type: ignore[assignment]
+        "requested_code": 0xA848,
+        "applied_code": 0xA848,
+        "dac_epoch": 1,
+        "acknowledged": True,
+    }
+    transcript["automatic_transactions"][0].update(  # type: ignore[index]
+        delta_codes=-21,
+        applied_code=0xA833,
+    )
+
+    result = evaluate(transcript)
+
+    assert result["status"] == "passed"
+    assert result["observed"]["required_direction"] == "negative"
 
 
 def test_g2_outcome_contract_rejects_phase_authority() -> None:

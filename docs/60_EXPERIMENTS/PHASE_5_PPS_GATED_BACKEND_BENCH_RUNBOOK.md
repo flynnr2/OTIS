@@ -86,15 +86,14 @@ Wire:
 
 ```text
 PPS source -> candidate D14/GPIO26 (authoritative REF)
-PPS source -> candidate D10/GPIO5  (diagnostic witness only)
 ECS TCXO conditioned output -> candidate D8/GPIO20
 ECS TCXO conditioned output -> independent counter input
 all instrument grounds -> common bench ground
 ```
 
-Use a buffer or specified fan-out when one source drives multiple inputs. Never
-tie two active PPS outputs together. The D10 witness does not become a second
-PPS authority.
+Never tie two active PPS outputs together. Leave D10 as the independent
+external-event edge input; it is not part of PPS qualification and must not be
+connected or interpreted as a PPS witness.
 
 ## Repository and compile preflight
 

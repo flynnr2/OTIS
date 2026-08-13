@@ -23,6 +23,15 @@ lasting preference changes.
 
 ## Timing, telemetry, and control semantics
 
+- Treat the bench topology as invariant unless the operator explicitly changes
+  it: D14 is the sole authoritative PPS/reference input, D8 is the sole
+  authoritative oscillator/count input, and D10 is the external event/edge
+  input to be measured against the disciplined oscillator. D10 must never be
+  configured, named, interpreted, or compared as a PPS witness, nor enter PPS
+  validity, setup authority, control eligibility, or actuation.
+- Treat GNSS serial metadata as qualification evidence from the same receiver
+  that supplies D14 PPS. It may qualify receiver state but must never replace
+  D14 as timing authority.
 - Hardware capture establishes timing truth. The CPU may observe timing events
   but interrupt latency, scheduling, logging, networking, UI, and storage must
   not define or contaminate their timestamps.
@@ -116,6 +125,12 @@ predicates from one frozen contract or manifest wherever practical. Runners,
 supervisors, analyzers, recovery tools, and test harnesses must not invent
 conflicting operational semantics.
 
+When a record declares its clock or counter domain, validators and replay
+tools must derive legal rollover behavior from that declared domain. Do not
+make canonical wrap handling depend on a caller remembering an optional
+Boolean. Reject an unknown or contradictory domain, and retain strict backward-
+movement rejection for domains whose contract does not permit wrapping.
+
 Validate historical artifacts against the manifest and matrix with which they
 were created. Do not require them to satisfy the current expanding product
 matrix unless the task explicitly concerns migration or current compatibility.
@@ -135,14 +150,51 @@ An evidence-bearing rehearsal must exercise the actual long-run path:
 Use accelerated time, replay, or fault injection for boundaries longer than a
 short bench rehearsal, while still testing the genuine real-time I/O path.
 
+For every decision-bearing handoff, define and verify an end-to-end propagation
+invariant. A producer acknowledgement proves acceptance only at that boundary;
+it does not prove that the applied code, DAC epoch, session, authority, or other
+state reached every estimator, preview, controller, recorder, and supervisor
+that consumes it. Before a live campaign, trace each critical transition from
+producer acknowledgement through all downstream consumers and assert exact
+identity and ordering at each boundary.
+
+State explicitly which real components a rehearsal exercises. A fixture-driven
+host rehearsal cannot establish a firmware cross-core, device-driver, or
+physical propagation claim merely because its synthetic records are coherent.
+Cover an unexercised boundary with the cheapest deterministic firmware or
+integration regression available, and retain the live pre-actuation gate for
+the remaining physical integration risk.
+
 ## Serial and process invariants
 
 - Maintain exactly one known serial owner and continuous bounded drainage when
   firmware queue health depends on host consumption.
+- Once capture producers are enabled, service their internal queues regardless
+  of whether an external serial carrier has attached. Bound and explicitly
+  discard pre-attachment output if necessary; host presence must not gate the
+  timing, capture, witness, boundary, estimator, or health service planes.
 - Make capture handoff atomic; analysis must not create an ownerless interval.
 - Bound serial reads, writes, flushes, process shutdown, and command waits.
 - Send console output to a continuously drained file or bounded logger.
 - Keep abort independent of normal-command backpressure.
+- For unattended finite runs, monitor the authoritative supervisor state and
+  retained evidence records at a cadence shorter than the smallest material
+  fault or milestone interval. Process existence and a silent runner terminal
+  prove only liveness; they do not establish capture freshness, scientific
+  progress, control transactions, or milestone completion.
+- Keep the controlling Codex turn active with bounded polling until an
+  unattended physical run reaches a terminal state. A background watcher that
+  Codex is no longer consuming is not active monitoring. Answer intervening
+  operator questions in commentary and continue the same control turn; do not
+  yield a final response while the run remains active unless an independent
+  recurring monitor has been explicitly requested and verified.
+- Make unattended monitors report state transitions, decision-bearing
+  milestones, terminal faults, and stale evidence rather than transient query
+  snapshots. If a monitor is too noisy or defective, replace it before stopping
+  it; never leave an active physical run with only process-liveness polling.
+- Derive expected milestone times from the component that owns each boundary
+  (for example, firmware decision cadence from the preceding firmware decision),
+  then confirm the actual evidence record at the boundary before reporting it.
 - Treat these as reusable platform invariants rather than rebuilding them for
   each experiment. A passive bridge is one possible implementation, not a
   required architecture.
@@ -168,6 +220,39 @@ Choose verification from the changed risk surface:
 Do not automatically run the full repository suite or complete firmware matrix
 after every narrow repair. Reuse build results only when source, configuration,
 toolchain, and all other relevant inputs have identical identities.
+
+## Recover narrow campaign defects without creating mini-campaigns
+
+- When a narrow defect stops an active campaign, preserve the stop evidence,
+  add the cheapest deterministic regression that directly covers the defect,
+  build the affected exact profile, run the already-required operational-path
+  rehearsal, and return to the finite live experiment. Add another physical
+  qualification only when it can change safety, scientific validity, or the
+  next decision.
+- When the defect is a missed handoff, the regression must cover both sides of
+  the boundary and the first decision-bearing downstream consumer. Checking
+  only that the producer emitted or acknowledged the transition is
+  insufficient.
+- Do not make qualification depend on the spontaneous occurrence of a rare or
+  nondeterministic diagnostic. Absence of such an event is a non-result. Test
+  serialization, framing, parsing, and verdict logic with a deterministic
+  source check, fixture, or replay; retain the live pre-actuation stop as the
+  integration guard.
+- A new firmware or artifact hash requires exact identity binding, but does not
+  by itself invalidate unrelated physical, topology, or scientific evidence.
+  State the semantic change and repeat only the shortest gate whose relevant
+  inputs changed.
+- Prefer the frozen campaign runner and rehearsal path over a bespoke bench
+  runner. If a one-off helper is unavoidable, verify its imports, CLI,
+  configuration, and no-I/O path before flashing, resetting, or acquiring.
+- Complete the minimum authority, identity, and provenance bindings required
+  to execute safely. Defer narrative reporting and non-executable bookkeeping
+  until after the decision-bearing gate when raw evidence and exact identities
+  can be preserved without it.
+- Once the direct regression, affected build, and required rehearsal pass, stop
+  expanding repair validation and resume the campaign. Verification
+  completeness is not the unit of progress; the next safe, decision-bearing
+  result is.
 
 ## Distinguish preflight, rehearsal, and qualification
 

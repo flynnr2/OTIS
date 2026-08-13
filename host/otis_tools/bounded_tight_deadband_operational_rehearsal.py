@@ -22,9 +22,10 @@ from typing import Any
 from .contracts import CONTRACT_FIELDS
 from .no_write_qualification_bundle import POLICY_PATH
 from .bounded_tight_deadband_rehearsal_analyze import analyze
-from .bounded_tight_deadband_bundle import _sha256_file, validate_proposal
+from .bounded_tight_deadband_bundle import _sha256_file
+from .bounded_tight_deadband_proposal import validate_proposal
+from .bounded_tight_deadband_leg import BoundedTightDeadbandLeg, LOWER, leg_for_proposal
 from .bounded_tight_deadband_outcome_contract import (
-    CONTRACT_ID,
     canonical_sha256,
     normal_command_allowed,
 )
@@ -113,7 +114,7 @@ def _tdb_row(
     }
 
 
-def _write_arm_fixture(run_dir: Path) -> None:
+def _write_arm_fixture(run_dir: Path, selected: BoundedTightDeadbandLeg) -> None:
     _write_csv(
         run_dir / "csv/tight_deadband_decisions_v1.csv",
         CONTRACT_FIELDS["tight_deadband_decisions_v1"],
@@ -122,7 +123,7 @@ def _write_arm_fixture(run_dir: Path) -> None:
                 sequence=0,
                 estimate=3,
                 epoch=1,
-                error=-4,
+                error=-4 * selected.required_sign,
                 state_before="REQUALIFY_OUTSIDE",
                 state_after="OUTSIDE",
                 entry_counter=0,
@@ -135,7 +136,7 @@ def _write_arm_fixture(run_dir: Path) -> None:
         "decision_timestamp_ticks,preview_available,decision_reason_code,"
         "est_input_ref,decision_id,limited_delta_codes,control_state\n"
         "38427843600,true,preview_available_observe_only,"
-        "est:cx317:selected600:000001,ctl:1,21,LOCKED_PREVIEW\n"
+        f"est:cx317:selected600:000001,ctl:1,{21 * selected.required_sign},LOCKED_PREVIEW\n"
         "48027796864,false,decision_cadence_hold,"
         "est:cx317:selected600:000002,ctl:2,,LOCKED_PREVIEW\n"
         "57627748416,false,decision_cadence_hold,"
@@ -144,7 +145,12 @@ def _write_arm_fixture(run_dir: Path) -> None:
     )
 
 
-def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]:  # type: ignore[no-untyped-def]
+def _transaction_rows(  # type: ignore[no-untyped-def]
+    supervisor, build_identity: str, selected: BoundedTightDeadbandLeg
+) -> list[dict[str, str]]:
+    setup_code = selected.setup_code
+    delta = 21 * selected.required_sign
+    applied_code = setup_code + delta
     common_identity = {
         "record_type": "ACT",
         "schema_version": "1",
@@ -166,15 +172,15 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
         "source_first_sequence": "0",
         "source_last_sequence": "0",
         "decision_timestamp_s": "100",
-        "current_applied_code": str(0xA808),
+        "current_applied_code": str(setup_code),
         "requested_delta_codes": "0",
-        "requested_code": str(0xA808),
+        "requested_code": str(setup_code),
         "correction_ordinal": "0",
         "cumulative_after_codes": "0",
         "pre_error_hz": "0.000000000",
-        "accepted_code": str(0xA808),
+        "accepted_code": str(setup_code),
         "accepted_timestamp_s": "100",
-        "applied_code": str(0xA808),
+        "applied_code": str(setup_code),
         "application_sequence": "0",
         "application_timestamp_s": "100",
         "i2c_ok": "true",
@@ -202,12 +208,12 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
         "source_first_sequence": "3601",
         "source_last_sequence": "4200",
         "decision_timestamp_s": "4200",
-        "current_applied_code": str(0xA808),
-        "requested_delta_codes": "21",
-        "requested_code": str(0xA81D),
+        "current_applied_code": str(setup_code),
+        "requested_delta_codes": str(delta),
+        "requested_code": str(applied_code),
         "correction_ordinal": "1",
         "cumulative_after_codes": "21",
-        "pre_error_hz": "-0.007245000",
+        "pre_error_hz": f"{-0.007245 * selected.required_sign:.9f}",
         "dac_epoch": "1",
     }
     phases = [
@@ -235,7 +241,7 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
         },
         {
             "event": "core0_accepted",
-            "accepted_code": str(0xA81D),
+            "accepted_code": str(applied_code),
             "accepted_timestamp_s": "4201",
             "applied_code": "0",
             "application_sequence": "0",
@@ -257,9 +263,9 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
         },
         {
             "event": "application",
-            "accepted_code": str(0xA81D),
+            "accepted_code": str(applied_code),
             "accepted_timestamp_s": "4201",
-            "applied_code": str(0xA81D),
+            "applied_code": str(applied_code),
             "application_sequence": "1",
             "application_timestamp_s": "4202",
             "i2c_ok": "true",
@@ -280,9 +286,9 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
         },
         {
             "event": "response",
-            "accepted_code": str(0xA81D),
+            "accepted_code": str(applied_code),
             "accepted_timestamp_s": "4201",
-            "applied_code": str(0xA81D),
+            "applied_code": str(applied_code),
             "application_sequence": "1",
             "application_timestamp_s": "4202",
             "i2c_ok": "true",
@@ -292,9 +298,9 @@ def _transaction_rows(supervisor, build_identity: str) -> list[dict[str, str]]: 
             "estimator_history_reset": "true",
             "correction_count": "1",
             "cumulative_movement_codes": "21",
-            "post_error_hz": "-0.002000000",
-            "observed_response_hz": "0.005245000",
-            "cumulative_response_hz": "0.005245000",
+            "post_error_hz": f"{-0.002 * selected.required_sign:.9f}",
+            "observed_response_hz": f"{0.005245 * selected.required_sign:.9f}",
+            "cumulative_response_hz": f"{0.005245 * selected.required_sign:.9f}",
             "consecutive_indeterminate": "0",
             "active_state": "DISARMED",
             "response_class": "healthy_detected",
@@ -348,9 +354,10 @@ def _write_tight_entry(run_dir: Path) -> None:
 
 def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     proposal = validate_proposal(proposal_path)
+    selected = leg_for_proposal(proposal)
     output_dir = output_dir.resolve()
     if output_dir.exists() and any(output_dir.iterdir()):
-        raise FileExistsError(f"G2 rehearsal output must be empty: {output_dir}")
+        raise FileExistsError(f"{selected.gate} rehearsal output must be empty: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
     artifacts = output_dir / "artifacts"
     artifacts.mkdir()
@@ -360,7 +367,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         + ":"
         + proposal["firmware"]["configuration_sha256"]
     )
-    with tempfile.TemporaryDirectory(prefix="cx319-g2-rehearsal-") as raw_temp:
+    with tempfile.TemporaryDirectory(prefix=f"{selected.prefix}-rehearsal-") as raw_temp:
         run_dir = Path(raw_temp) / "run"
         (run_dir / "csv").mkdir(parents=True)
         supervisor = create_supervisor(
@@ -369,6 +376,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             emergency_command_fifo=run_dir / "emergency.fifo",
             abort_fifo=run_dir / "abort.fifo",
             expected_build_identity=build_identity,
+            leg_name=selected.leg,
         )
         commands: list[dict[str, Any]] = []
 
@@ -484,13 +492,13 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         supervisor._check_fail_static_health(health)
         supervisor._check_prewrite_contract(health, 612.0)
         supervisor._maybe_start_or_arm(health)
-        _write_arm_fixture(run_dir)
+        _write_arm_fixture(run_dir, selected)
         health.update(
             {
                 ("cx317_active", "manual_start_confirmed"): "true",
                 ("cx317_active", "arm_eligible"): "true",
                 ("cx317_active", "confirmed_applied_code_known"): "true",
-                ("cx317_active", "confirmed_applied_code"): "0xA808",
+                ("cx317_active", "confirmed_applied_code"): selected.setup_code_hex,
                 ("cx317_active", "dac_epoch"): "1",
                 ("cx317_active", "selected_interval_count"): "0",
                 ("cx317_active", "uptime_s"): "3600",
@@ -501,7 +509,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         health[("cx317_active", "uptime_s")] = "4120"
         supervisor._maybe_start_or_arm(health)
 
-        transaction_rows = _transaction_rows(supervisor, build_identity)
+        transaction_rows = _transaction_rows(supervisor, build_identity, selected)
         _write_csv(
             run_dir / "csv/active_transactions_v1.csv",
             CONTRACT_FIELDS["active_transactions_v1"],
@@ -553,6 +561,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             emergency_command_fifo=deadline_dir / "emergency.fifo",
             abort_fifo=deadline_dir / "abort.fifo",
             expected_build_identity=build_identity,
+            leg_name=selected.leg,
         )
         deadline_supervisor.state.update(
             telemetry_drop_baseline=3,
@@ -583,6 +592,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             emergency_command_fifo=late_dir / "emergency.fifo",
             abort_fifo=late_dir / "abort.fifo",
             expected_build_identity=build_identity,
+            leg_name=selected.leg,
         )
         stale_backlog_health = dict(health)
         stale_backlog_health[("cx317_active", "query_nonce")] = "123"
@@ -595,10 +605,10 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     )
     transcript = {
         "schema_version": 1,
-        "contract_id": CONTRACT_ID,
+        "contract_id": selected.outcome_contract_id,
         "programme_id": "cx319_stabilized_tight_deadband",
-        "gate": "G2",
-        "leg": "A",
+        "gate": selected.gate,
+        "leg": selected.leg,
         "mode": "accelerated_offline_no_io",
         "proposal_bundle_sha256": proposal["bundle_sha256"],
         "authority": {"effective": False},
@@ -610,8 +620,8 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         },
         "commands": commands,
         "setup": {
-            "requested_code": 0xA808,
-            "applied_code": 0xA808,
+            "requested_code": selected.setup_code,
+            "applied_code": selected.setup_code,
             "dac_epoch": 1,
             "acknowledged": True,
         },
@@ -624,8 +634,8 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
                     "application",
                     "response",
                 ],
-                "delta_codes": 21,
-                "applied_code": 0xA81D,
+                "delta_codes": 21 * selected.required_sign,
+                "applied_code": selected.setup_code + 21 * selected.required_sign,
                 "application_timestamp_s": 4202,
                 "response_class": "healthy_detected",
                 "result": "healthy_completed",
@@ -707,9 +717,9 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         "qualification_deadline_s": envelope["qualification_deadline_s"],
         "maximum_qualified_duration_s": envelope["maximum_qualified_duration_s"],
     }
-    transcript_path = artifacts / "cx319_g2_operational_transcript_v1.json"
+    transcript_path = artifacts / f"{selected.prefix}_operational_transcript_v1.json"
     _atomic_new(transcript_path, transcript)
-    analysis_path = artifacts / "cx319_g2_analysis_v1.json"
+    analysis_path = artifacts / f"{selected.prefix}_analysis_v1.json"
     analysis = analyze(
         proposal_path=proposal_path,
         transcript_path=transcript_path,
@@ -717,8 +727,8 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     )
     seal_unsigned = {
         "schema_version": 1,
-        "seal_type": "cx319_g2_accelerated_operational_rehearsal_seal_v1",
-        "tool": TOOL_ID,
+        "seal_type": selected.rehearsal_seal_type,
+        "tool": selected.rehearsal_tool,
         "status": analysis["status"],
         "proposal_bundle_sha256": proposal["bundle_sha256"],
         "transcript_sha256": _sha256_file(transcript_path),
@@ -728,11 +738,11 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         "claims_boundary": analysis["claims_boundary"],
     }
     seal = {**seal_unsigned, "seal_sha256": canonical_sha256(seal_unsigned)}
-    seal_path = artifacts / "cx319_g2_operational_rehearsal_seal_v1.json"
+    seal_path = artifacts / f"{selected.prefix}_operational_rehearsal_seal_v1.json"
     _atomic_new(seal_path, seal)
     package = package_identity(artifacts)
     with tempfile.TemporaryDirectory(
-        prefix="cx319-g2-registration-rehearsal-"
+        prefix=f"{selected.prefix}-registration-rehearsal-"
     ) as registration_temp:
         registration_root = Path(registration_temp)
         temporary_index = registration_root / "evidence_index_v1.json"
@@ -751,7 +761,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
                 profile_identity=proposal["leg_spec"]["profile_id"],
                 attempt_classification=classification,
                 result_or_failure_reason=(
-                    "CX319 G2 accelerated registration-path rehearsal"
+                    f"CX319 {selected.gate} accelerated registration-path rehearsal"
                 ),
                 analyzer_identity=_sha256_file(Path(__file__)),
             )
@@ -778,22 +788,23 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         "temporary_index_validation": registration_validation,
         "persistent_external_index_mutated": False,
     }
-    _atomic_new(output_dir / "cx319_g2_registration_rehearsal_v1.json", registration)
+    registration_path = output_dir / f"{selected.prefix}_registration_rehearsal_v1.json"
+    _atomic_new(registration_path, registration)
     result = {
         "schema_version": 1,
-        "tool": TOOL_ID,
+        "tool": selected.rehearsal_tool,
         "status": registration["status"],
         "proposal_bundle_sha256": proposal["bundle_sha256"],
         "analysis": str(analysis_path),
         "seal": str(seal_path),
         "registration": str(
-            output_dir / "cx319_g2_registration_rehearsal_v1.json"
+            registration_path
         ),
         "artifact_content_sha256": package["content_sha256"],
         "hardware_operations": transcript["hardware_operations"],
         "claims_boundary": analysis["claims_boundary"],
     }
-    _atomic_new(output_dir / "cx319_g2_operational_rehearsal_v1.json", result)
+    _atomic_new(output_dir / f"{selected.prefix}_operational_rehearsal_v1.json", result)
     return result
 
 

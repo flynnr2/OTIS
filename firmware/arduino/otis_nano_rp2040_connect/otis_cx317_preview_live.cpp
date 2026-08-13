@@ -36,7 +36,7 @@ constexpr char kSelectedEstimatorHash[] =
 constexpr char kPolicyId[] =
     "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698";
+    "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
@@ -45,7 +45,7 @@ constexpr char kSelectedEstimatorHash[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "434d6ad25d20d5b1bb93c5657782c24d7280772bd906241cfc34af69e1ddd563";
+    "a0dbe59f1b22fda35c1b760b21a03ab906ef683955368db2eeccba092d0cbbfd";
 #else
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
@@ -58,7 +58,7 @@ constexpr char kPolicyHash[] =
 #endif
 constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
 constexpr char kPlantModelHash[] =
-    "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1";
+    "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2";
 constexpr char kTimeDomain[] = "rp2040_timer0";
 constexpr double kNominalFrequencyHz = 10000000.0;
 constexpr double kNominalGainHzPerCode = 0.00017072602587382669;

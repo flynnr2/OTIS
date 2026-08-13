@@ -1,8 +1,8 @@
 """Execute, close, analyze, seal and register one bounded-control leg.
 
-This is the sole G2 physical entry point.  It deliberately does not flash
-firmware: the activation binds the exact G1-qualified firmware, and the
-pre-write runtime identity must match before the one setup stimulus is sent.
+The lower leg reuses its qualified image without flashing.  The matched upper
+leg performs exactly one manifest-bound upload before capture and records the
+resulting board re-enumeration as evidence.
 """
 
 from __future__ import annotations
@@ -27,13 +27,12 @@ from .bounded_tight_deadband_outcome_contract import (
     QUALIFICATION_DEADLINE_S,
 )
 from .bounded_tight_deadband_activation import (
-    LIVE_SEAL_PATH,
-    RUN_ACTIVATION_PATH,
-    RUN_PROPOSAL_PATH,
     create_run_manifest,
     validate_activation,
     validate_run_manifest,
 )
+from .bounded_tight_deadband_leg import BoundedTightDeadbandLeg, LOWER, leg_for
+from .bounded_tight_deadband_outcome_contract import canonical_sha256
 from .bounded_tight_deadband_live_analyze import analyze
 from .evidence import (
     EVIDENCE_MANIFEST,
@@ -49,10 +48,6 @@ from .evidence_finalization import (
     set_registration_intent,
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
-from .programme_status import (
-    BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    require_programme_operation_allowed,
-)
 from .no_write_qualification_bundle import PROGRAMME_ID
 from .run_loader import load_manifest
 from .serial_commands import send_timestamped_command_to_fifo
@@ -65,6 +60,18 @@ ORCHESTRATION_FAILURE = Path("reports/cx319_g2_orchestration_failure_v1.json")
 MAXIMUM_WALL_S = QUALIFICATION_DEADLINE_S + MAXIMUM_QUALIFIED_DURATION_S
 COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
 INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
+
+
+def _capture_log(selected: BoundedTightDeadbandLeg) -> Path:
+    return Path(f"reports/{selected.prefix}_capture_launcher.log")
+
+
+def _supervisor_log(selected: BoundedTightDeadbandLeg) -> Path:
+    return Path(f"reports/{selected.prefix}_supervisor.log")
+
+
+def _orchestration_failure(selected: BoundedTightDeadbandLeg) -> Path:
+    return Path(f"reports/{selected.prefix}_orchestration_failure_v1.json")
 
 
 def _utc_now() -> str:
@@ -108,6 +115,120 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _locate_board_by_serial(
+    expected_serial: str, *, arduino_cli: str
+) -> tuple[str, dict[str, str]]:
+    listing = json.loads(
+        subprocess.run(
+            [arduino_cli, "board", "list", "--format", "json"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    addresses = [
+        str(item.get("port", {}).get("address", ""))
+        for item in listing.get("detected_ports", [])
+        if item.get("port", {}).get("properties", {}).get("serialNumber")
+        == expected_serial
+    ]
+    if len(addresses) != 1:
+        raise ValueError(
+            f"expected exactly one board with serial {expected_serial}, got {len(addresses)}"
+        )
+    return addresses[0], read_board_identity(addresses[0], arduino_cli=arduino_cli)
+
+
+def _flash_exact_upper(
+    *,
+    run_dir: Path,
+    selected: BoundedTightDeadbandLeg,
+    proposal: dict[str, Any],
+    activation: dict[str, Any],
+    device: str,
+    board_before: dict[str, str],
+    arduino_cli: str,
+) -> tuple[str, dict[str, str], dict[str, Any]]:
+    if not selected.firmware_flash or selected.flash_record_filename is None:
+        return device, board_before, {}
+    firmware = proposal["firmware"]
+    command = [
+        arduino_cli,
+        "upload",
+        "--port",
+        device,
+        "--fqbn",
+        str(firmware["fqbn"]),
+        "--input-file",
+        str(firmware["uf2"]["path"]),
+    ]
+    started_utc = _utc_now()
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    board_after: dict[str, str] | None = None
+    device_after: str | None = None
+    reappearance_error = ""
+    if completed.returncode == 0:
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            try:
+                device_after, board_after = _locate_board_by_serial(
+                    activation["device"]["expected_board_serial"],
+                    arduino_cli=arduino_cli,
+                )
+                break
+            except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+                reappearance_error = str(exc)
+                time.sleep(0.5)
+    passed = (
+        completed.returncode == 0
+        and board_after is not None
+        and device_after is not None
+        and board_before.get("serial_number")
+        == board_after.get("serial_number")
+        == activation["device"]["expected_board_serial"]
+    )
+    unsigned = {
+        "schema_version": 1,
+        "tool": f"{selected.prefix}_run_v1",
+        "operation": "exact_cx319_g3_upper_firmware_flash",
+        "status": "passed" if passed else "failed",
+        "gate": selected.gate,
+        "leg": selected.leg,
+        "started_utc": started_utc,
+        "completed_utc": _utc_now(),
+        "firmware_flash_count": 1,
+        "command": command,
+        "exit_code": completed.returncode,
+        "stdout_sha256": sha256(completed.stdout.encode()).hexdigest(),
+        "stderr_sha256": sha256(completed.stderr.encode()).hexdigest(),
+        "stdout_tail": completed.stdout[-4000:],
+        "stderr_tail": completed.stderr[-4000:],
+        "expected_board_serial": activation["device"]["expected_board_serial"],
+        "board_identity_confirmed_before": True,
+        "board_identity_confirmed_after": passed,
+        "usb_reenumerated": board_after is not None,
+        "device_before": device,
+        "device_after": device_after,
+        "serial_path_changed": device_after not in {None, device},
+        "board_before": board_before,
+        "board_after": board_after,
+        "board_reappearance_error": reappearance_error,
+        "proposal_bundle_sha256": proposal["bundle_sha256"],
+        "build_manifest_sha256": firmware["build_manifest"]["sha256"],
+        "uf2_sha256": firmware["uf2"]["sha256"],
+        "profile_id": firmware["profile_id"],
+        "dac_boot_operation": "i2c_address_probe_only",
+        "dac_value_write_attempts": 0,
+    }
+    record = {**unsigned, "record_sha256": canonical_sha256(unsigned)}
+    _atomic_new_json(run_dir / selected.flash_record_filename, record)
+    if not passed:
+        raise RuntimeError(
+            "exact G3 upper upload or board re-enumeration failed; no retry is authorized"
+        )
+    return device_after, board_after, record
+
+
 def _terminal(run_dir: Path) -> dict[str, Any] | None:
     state = _read_json(run_dir / "reports/cx317_active_supervisor_state.json")
     terminal = state.get("terminal") if state else None
@@ -131,12 +252,14 @@ def _terminal_expected(terminal: dict[str, Any] | None) -> bool:
     )
 
 
-def _write_complete(run_dir: Path, terminal: dict[str, Any]) -> None:
+def _write_complete(
+    run_dir: Path, terminal: dict[str, Any], selected: BoundedTightDeadbandLeg
+) -> None:
     payload = (
         json.dumps(
             {
                 "completed_utc": _utc_now(),
-                "completion": "cx319_g2_finite_physical_leg",
+                "completion": f"{selected.prefix}_finite_physical_leg",
                 "terminal": terminal,
             },
             sort_keys=True,
@@ -167,6 +290,20 @@ def _graceful_capture_stop(capture: subprocess.Popen[str]) -> int:
             return capture.wait(timeout=5.0)
 
 
+def _best_effort_emergency_abort(
+    emergency_fifo: Path, capture: subprocess.Popen[str]
+) -> None:
+    """Try the independent abort without masking the primary live-run failure."""
+
+    if not emergency_fifo.exists() or capture.poll() is not None:
+        return
+    try:
+        send_timestamped_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
+        time.sleep(0.5)
+    except (OSError, SystemExit, TimeoutError, ValueError):
+        pass
+
+
 def _retain_failure(
     *,
     run_dir: Path,
@@ -174,13 +311,14 @@ def _retain_failure(
     evidence_index_path: Path,
     error: Exception,
 ) -> dict[str, Any]:
+    selected = leg_for(activation.get("gate"), activation.get("leg"))
     failure = {
         "schema_version": 1,
-        "report_type": "cx319_g2_orchestration_failure_v1",
-        "tool": TOOL_ID,
+        "report_type": f"{selected.prefix}_orchestration_failure_v1",
+        "tool": f"{selected.prefix}_run_v1",
         "programme_id": PROGRAMME_ID,
-        "gate": "G2",
-        "leg": "A",
+        "gate": selected.gate,
+        "leg": selected.leg,
         "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
         "failure_class": "platform_or_live_stop_rule_failure",
         "recorded_utc": _utc_now(),
@@ -189,19 +327,19 @@ def _retain_failure(
         "terminal": _terminal(run_dir),
         "activation_sha256": activation["activation_sha256"],
         "claims_boundary": (
-            "Retained failed G2 evidence only; this grants no retry, G3, "
+            f"Retained failed {selected.gate} evidence only; this grants no retry, "
             "phase, hybrid, or later-programme authority."
         ),
     }
-    _atomic_new_json(run_dir / ORCHESTRATION_FAILURE, failure)
+    _atomic_new_json(run_dir / _orchestration_failure(selected), failure)
     return register_package(
         index_path=evidence_index_path,
         package_path=run_dir,
-        source_revision="g2-activation:" + activation["activation_sha256"],
+        source_revision=selected.prefix + "-activation:" + activation["activation_sha256"],
         build_identity=activation["proposal"]["bundle_sha256"],
-        profile_identity="cx319_tight_lower",
+        profile_identity=selected.profile_id,
         attempt_classification=INTERRUPTED_INDEX_CLASSIFICATION,
-        result_or_failure_reason=f"CX319 G2 orchestration failed: {error}",
+        result_or_failure_reason=f"CX319 {selected.gate} orchestration failed: {error}",
         analyzer_identity=_sha256_file(Path(__file__)),
     )
 
@@ -228,6 +366,7 @@ def _retain_finalization_failure(
             evidence_index_path=evidence_index_path,
             error=error,
         )
+    selected = leg_for(activation.get("gate"), activation.get("leg"))
     return register_package(
         index_path=evidence_index_path,
         package_path=run_dir,
@@ -235,7 +374,7 @@ def _retain_finalization_failure(
         build_identity=proposal["firmware"]["build_manifest"]["sha256"],
         profile_identity=proposal["leg_spec"]["profile_id"],
         attempt_classification=INTERRUPTED_INDEX_CLASSIFICATION,
-        result_or_failure_reason=f"CX319 G2 finalization failed: {error}",
+        result_or_failure_reason=f"CX319 {selected.gate} finalization failed: {error}",
         analyzer_identity=_sha256_file(Path(__file__)),
     )
 
@@ -247,12 +386,12 @@ def run_bounded_tight_deadband_qualification(
     evidence_index_path: Path,
     arduino_cli: str,
 ) -> dict[str, Any]:
-    require_programme_operation_allowed(PROGRAMME_ID, BOUNDED_TIGHT_DEADBAND_LIVE_LEG)
     activation_path = activation_path.resolve()
     activation, proposal = validate_activation(activation_path)
+    selected = leg_for(activation.get("gate"), activation.get("leg"))
     run_dir = run_dir.resolve()
     if run_dir.exists():
-        raise FileExistsError(f"CX319 G2 run already exists: {run_dir}")
+        raise FileExistsError(f"CX319 {selected.gate} run already exists: {run_dir}")
     device = str(activation["device"]["path"])
     owners = _serial_owner_pids(device)
     if owners:
@@ -262,32 +401,60 @@ def run_bounded_tight_deadband_qualification(
         board.get("serial_number")
         != activation["device"]["expected_board_serial"]
     ):
-        raise ValueError("connected board serial differs from G2 activation")
+        raise ValueError(f"connected board serial differs from {selected.gate} activation")
 
     run_dir.mkdir(parents=True)
     (run_dir / "reports").mkdir()
-    run_activation = run_dir / RUN_ACTIVATION_PATH
-    run_proposal = run_dir / RUN_PROPOSAL_PATH
+    run_activation = run_dir / selected.activation_filename
+    run_proposal = run_dir / selected.proposal_filename
     _copy_immutable(activation_path, run_activation)
     _copy_immutable(Path(activation["proposal"]["path"]), run_proposal)
+    try:
+        device, board, _ = _flash_exact_upper(
+            run_dir=run_dir,
+            selected=selected,
+            proposal=proposal,
+            activation=activation,
+            device=device,
+            board_before=board,
+            arduino_cli=arduino_cli,
+        )
+    except Exception as exc:
+        try:
+            indexed = _retain_failure(
+                run_dir=run_dir,
+                activation=activation,
+                evidence_index_path=evidence_index_path,
+                error=exc,
+            )
+        except Exception as registration_error:
+            raise RuntimeError(
+                f"CX319 {selected.gate} firmware entry failed; retained unregistered evidence "
+                f"at {run_dir}: {exc}; registration also failed: {registration_error}"
+            ) from exc
+        raise RuntimeError(
+            f"CX319 {selected.gate} firmware entry failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
     manifest_path = run_dir / "run_manifest.json"
     create_run_manifest(
         activation_path=run_activation,
         proposal_path=run_proposal,
         run_dir=run_dir,
         output_path=manifest_path,
+        serial_device=device,
     )
     validate_run_manifest(manifest_path)
     finalization_journal = begin_finalization(
         run_dir=run_dir,
         index_path=evidence_index_path,
-        required_seal=LIVE_SEAL_PATH,
+        required_seal=selected.live_seal_filename,
         registration={
             "source_revision": proposal["source_revision"],
             "build_identity": proposal["firmware"]["build_manifest"]["sha256"],
             "profile_identity": proposal["leg_spec"]["profile_id"],
             "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
-            "result_or_failure_reason": "pending CX319 G2 finalization",
+            "result_or_failure_reason": f"pending CX319 {selected.gate} finalization",
             "analyzer_identity": _sha256_file(Path(__file__)),
         },
     )
@@ -295,8 +462,8 @@ def run_bounded_tight_deadband_qualification(
     normal_fifo = run_dir / "control/normal_commands.fifo"
     emergency_fifo = run_dir / "control/emergency_abort.fifo"
     host_abort_fifo = run_dir / "control/host_abort.fifo"
-    capture_log = (run_dir / CAPTURE_LOG).open("x", encoding="utf-8")
-    supervisor_log = (run_dir / SUPERVISOR_LOG).open("x", encoding="utf-8")
+    capture_log = (run_dir / _capture_log(selected)).open("x", encoding="utf-8")
+    supervisor_log = (run_dir / _supervisor_log(selected)).open("x", encoding="utf-8")
     capture_args = [
         sys.executable,
         "-m",
@@ -338,7 +505,7 @@ def run_bounded_tight_deadband_qualification(
                 and _capture_state_ready(run_dir, capture.pid)
             ),
             20.0,
-            "G2 sole capture ownership and bounded command paths",
+            f"{selected.gate} sole capture ownership and bounded command paths",
         )
         expected_build = (
             proposal["firmware"]["source_sha256"]
@@ -374,31 +541,31 @@ def run_bounded_tight_deadband_qualification(
         _wait_until(
             lambda: supervisor.poll() is None and host_abort_fifo.exists(),
             15.0,
-            "G2 supervisor and independent host abort",
+            f"{selected.gate} supervisor and independent host abort",
         )
         _wait_until(
             lambda: _terminal(run_dir) is not None or supervisor.poll() is not None,
             MAXIMUM_WALL_S + 120.0,
-            "finite G2 supervisor terminal",
+            f"finite {selected.gate} supervisor terminal",
         )
         terminal = _terminal(run_dir)
         if not _terminal_expected(terminal):
             raise RuntimeError(
-                "G2 supervisor reached a non-canonical terminal: "
+                f"{selected.gate} supervisor reached a non-canonical terminal: "
                 + json.dumps(terminal, sort_keys=True)
             )
         expected_exit = 0 if terminal["result"] == "healthy_stop" else 2
         try:
             supervisor_exit = supervisor.wait(timeout=15.0)
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("G2 supervisor did not exit at its finite terminal") from exc
+            raise RuntimeError(f"{selected.gate} supervisor did not exit at its finite terminal") from exc
         if supervisor_exit != expected_exit:
             raise RuntimeError(
-                f"G2 supervisor exited {supervisor_exit}, expected {expected_exit}"
+                f"{selected.gate} supervisor exited {supervisor_exit}, expected {expected_exit}"
             )
         capture_exit = _graceful_capture_stop(capture)
         if capture_exit != 0:
-            raise RuntimeError(f"G2 capture exited with status {capture_exit}")
+            raise RuntimeError(f"{selected.gate} capture exited with status {capture_exit}")
         advance_phase(
             finalization_journal,
             "capture_closed",
@@ -406,12 +573,7 @@ def run_bounded_tight_deadband_qualification(
         )
     except Exception as exc:
         orchestration_error = exc
-        if emergency_fifo.exists() and capture.poll() is None:
-            try:
-                send_timestamped_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
-                time.sleep(0.5)
-            except (OSError, TimeoutError, ValueError):
-                pass
+        _best_effort_emergency_abort(emergency_fifo, capture)
         _graceful_capture_stop(capture)
     finally:
         capture_log.close()
@@ -442,26 +604,26 @@ def run_bounded_tight_deadband_qualification(
             )
         except Exception as registration_error:
             raise RuntimeError(
-                "CX319 G2 orchestration failed; retained unregistered evidence "
+                f"CX319 {selected.gate} orchestration failed; retained unregistered evidence "
                 f"at {run_dir}: {orchestration_error}; evidence registration "
                 f"also failed: {registration_error}"
             ) from orchestration_error
         raise RuntimeError(
-            "CX319 G2 orchestration failed; retained evidence "
+            f"CX319 {selected.gate} orchestration failed; retained evidence "
             f"{indexed['content_sha256']}: {orchestration_error}"
         ) from orchestration_error
 
     try:
         terminal = _terminal(run_dir)
         assert terminal is not None
-        _write_complete(run_dir, terminal)
+        _write_complete(run_dir, terminal, selected)
         advance_phase(finalization_journal, "completion", {"terminal": terminal})
         snapshot_path = create_evidence_snapshot(run_dir)
         loaded = load_manifest(run_dir)
         failures, warnings = validate_evidence_snapshot(run_dir, loaded)
         if failures or warnings:
             raise RuntimeError(
-                "CX319 G2 evidence snapshot validation failed: "
+                f"CX319 {selected.gate} evidence snapshot validation failed: "
                 + json.dumps({"failures": failures, "warnings": warnings})
             )
         advance_phase(
@@ -506,12 +668,12 @@ def run_bounded_tight_deadband_qualification(
             )
         except Exception as registration_error:
             raise RuntimeError(
-                "CX319 G2 finalization failed; retained unregistered evidence "
+                f"CX319 {selected.gate} finalization failed; retained unregistered evidence "
                 f"at {run_dir}: {exc}; evidence registration also failed: "
                 f"{registration_error}"
             ) from exc
         raise RuntimeError(
-            "CX319 G2 finalization failed; retained evidence "
+            f"CX319 {selected.gate} finalization failed; retained evidence "
             f"{indexed['content_sha256']}: {exc}"
         ) from exc
     classification = (
@@ -524,7 +686,7 @@ def run_bounded_tight_deadband_qualification(
         "build_identity": proposal["firmware"]["build_manifest"]["sha256"],
         "profile_identity": proposal["leg_spec"]["profile_id"],
         "attempt_classification": classification,
-        "result_or_failure_reason": f"CX319 G2 {seal['status']}",
+        "result_or_failure_reason": f"CX319 {selected.gate} {seal['status']}",
         "analyzer_identity": seal["tool_sha256"],
     }
     set_registration_intent(
@@ -537,12 +699,12 @@ def run_bounded_tight_deadband_qualification(
     except Exception as exc:
         record_failure(finalization_journal, phase="registration", error=exc)
         raise RuntimeError(
-            "CX319 G2 sealed package is valid but registration failed; "
+            f"CX319 {selected.gate} sealed package is valid but registration failed; "
             f"recover with evidence_finalization {finalization_journal}: {exc}"
         ) from exc
     if seal["status"] == "failed":
         raise RuntimeError(
-            "CX319 G2 integrity analysis failed; retained evidence "
+            f"CX319 {selected.gate} integrity analysis failed; retained evidence "
             f"{indexed['content_sha256']}"
         )
     return {
@@ -550,7 +712,7 @@ def run_bounded_tight_deadband_qualification(
         "run_dir": str(run_dir),
         "activation_sha256": activation["activation_sha256"],
         "proposal_bundle_sha256": proposal["bundle_sha256"],
-        "firmware_flashes": 0,
+        "firmware_flashes": int(selected.firmware_flash),
         "analysis_and_seal": str(seal_path),
         "seal_sha256": seal["seal_sha256"],
         "evidence_snapshot": str(snapshot_path),

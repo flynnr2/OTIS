@@ -70,7 +70,6 @@ def test_phase5_ide_configuration_and_dormant_run_020_profile_are_exact() -> Non
         "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
         "OTIS_TCXO_COUNTER_BACKEND":
             "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
-        "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
         "OTIS_H1_LONG_GATE_PERIOD_US": "300000000u",
         "OTIS_FC0_STARTUP_INHIBIT_MS": "600000u",
         "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS": "3u",

@@ -6,6 +6,17 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
+Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and the
+Q4/G2 lower-side physical qualification passed. The successful run made one
+bounded positive correction from `0xA808` to `0xA81D`, demonstrated a healthy
+response, and established two consecutive tight `-2` count estimates. Its
+immutable acquisition is sealed by a provenance-linked passing offline
+reanalysis after three deterministic finalizer defects were corrected; no
+physical rerun was required. The conditional G3 upper-side authority may now
+advance through its required fresh exact upper bundle, structural preflight and
+complete accelerated operational-path rehearsal. G4 and phase/hybrid
+actuation remain unauthorized.
+
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
 live envelope and conditionally authorized G3 if G2 passes and a fresh upper
@@ -108,7 +119,7 @@ The successful exact flash, retained zero-write timing stop and corrected
 recovery boundary are recorded in
 [`15_G1_RECOVERY_HOST_TIMING_STOP.md`](15_G1_RECOVERY_HOST_TIMING_STOP.md).
 
-The operator's current sequential authority for the adversarial-review Q1,
+The operator's consumed sequential authority for the adversarial-review Q1,
 electrically inhibited or stubbed Q2, and no-write Q3 gates is recorded in
 [`16_Q1_Q3_SEQUENCE_AUTHORITY.md`](16_Q1_Q3_SEQUENCE_AUTHORITY.md). Q4 and all
 live actuation remain blocked.
@@ -118,3 +129,88 @@ which maps to the CX319 G2 lower-side finite frequency-only leg, is
 [`17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md`](17_Q4_LOWER_SIDE_FINITE_LIVE_QUALIFICATION_PREPARATION_PROMPT.md).
 It stops after offline verification and an optional non-effective authority
 proposal; it grants no hardware or live-control authority.
+
+The passing Q4 offline result, exact candidate identities and Q3-to-Q4
+transfer audit are recorded in
+[`18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md`](18_Q4_LOWER_SIDE_OFFLINE_READINESS_REPORT.md).
+
+The proposed finite live envelope is recorded for review in
+[`19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md`](19_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY_DRAFT.md).
+That draft is not effective and cannot be executed.
+
+The operator's subsequent exact one-run authority is recorded in
+[`20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md`](20_Q4_LOWER_SIDE_FINITE_LIVE_AUTHORITY.md).
+It binds the passing candidate and rehearsal, permits no firmware flash or
+reset, and is consumed by the first terminal live attempt.
+
+The retained zero-write transport stop, evidence identities, authority
+retirement, and narrow recovery gate are recorded in
+[`21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md`](21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md).
+
+The fresh repaired-runner candidate, reused Q1--Q3 bindings, passing focused
+verification and non-effective restart-plus-retry proposal are recorded in
+[`22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md`](22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md).
+
+The operator's exact one-restart, one-run retry authority is recorded in
+[`23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md`](23_Q4_LOWER_SIDE_RETRY_LIVE_AUTHORITY.md).
+
+The zero-effect software restart stop and non-effective manual-button-only
+replacement proposal are recorded in
+[`24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md`](24_Q4_LOWER_SIDE_RESTART_PATH_STOP.md).
+
+The effective manual-reset-button-only live authority is recorded in
+[`25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md`](25_Q4_LOWER_SIDE_MANUAL_RESTART_LIVE_AUTHORITY.md).
+
+The retained pre-write result, relaxed diagnostic deadline and firmware entry
+decision are recorded in
+[`26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md`](26_Q4_LOWER_SIDE_MANUAL_RESTART_PREWRITE_STOP.md).
+
+The operator's one-flash, maximum-120-second, zero-write authority for the
+exact current firmware's session-rebinding check is recorded in
+[`27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md`](27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md).
+It deliberately does not repeat Q2, Q3 or unchanged transport/scientific gates
+and grants no Q4 live authority. The resulting exact flash, frozen-criterion
+non-pass, zero-actuation evidence and excessive snapshot-cadence process escape
+are recorded in
+[`28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md`](28_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_NONPASS.md).
+
+The corrected non-effective no-flash proposal freezes one manual reset, three
+snapshots at a minimum five-second cadence and a 30-second deadline in
+[`29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md`](29_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_PROPOSAL.md).
+Its structural preflight and actual analyzer/seal replay pass, but it requires
+a separate operator decision before any physical action. The operator's
+effective one-reset, no-flash, three-snapshot authority is recorded in
+[`30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md`](30_CURRENT_SESSION_ABSENCE_NO_FLASH_LOW_CADENCE_AUTHORITY.md).
+It repeats neither Q2/Q3 nor any live actuation.
+
+The first reset occurred after an arbitrary five-minute observer wait expired,
+before capture or any command. The zero-I/O platform stop and effective
+one-reset recovery authority are recorded in
+[`31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md`](31_CURRENT_SESSION_ABSENCE_OPERATOR_WAIT_TIMEOUT_AND_RETRY_AUTHORITY.md).
+
+The operator subsequently made the remaining Q4 phase fully authorized for
+unattended execution, including exact flashing and reset recovery, so progress
+does not depend on timely replies. The effective scope and unchanged safety,
+scientific and evidence boundaries are recorded in
+[`32_Q4_UNATTENDED_PHASE_AUTHORITY.md`](32_Q4_UNATTENDED_PHASE_AUTHORITY.md).
+
+The unattended exact-current-image reset/session-absence qualification passed
+all frozen checks with stable zero telemetry drops and zero actuation. The
+decision and exact registered evidence are recorded in
+[`33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md`](33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md).
+
+The first current-image live entry subsequently exposed a malformed `ASL`
+evidence frame before any actuation. The exact root cause, firmware repair,
+reproducible image, focused physical requalification and Q2/Q3 reuse decision
+are recorded in
+[`34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md`](34_CURRENT_IMAGE_ASL_FORMATTER_STOP_FIX_AND_QUALIFICATION.md).
+
+The successful lower-side physical result, immutable evidence identities,
+offline analyzer supersession and exact G3 next gate are recorded in
+[`35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md`](35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md).
+
+The non-authorizing preparation prompt for a fine boundary map, deliberately
+excited bidirectional frequency-control trajectory, evidence-based cadence
+acceleration, automatic domain-aware rollover semantics, and continuous
+zero-authority hybrid preview is
+[`36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md`](36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md).

@@ -92,8 +92,8 @@ void otis_capture_irq_process_reference_foreground(
                                    record.timestamp_ticks);
     d14_last_raw_interval = interval;
     switch (otis_classify_pps_interval_ticks(
-        interval, OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
-        OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS)) {
+        interval, OTIS_PPS_REFERENCE_SHORT_INTERVAL_TICKS,
+        OTIS_PPS_REFERENCE_LONG_INTERVAL_TICKS)) {
       case OTIS_PPS_INTERVAL_SHORT:
         if (d14_rejected_short_count != UINT32_MAX) {
           d14_rejected_short_count++;

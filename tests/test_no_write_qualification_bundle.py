@@ -11,6 +11,12 @@ from host.otis_tools import no_write_qualification_preflight
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
 
+# This creator is bound to the consumed Q1--Q3 authority overlay and its exact
+# historical policy identity. Current release verification must not rewrite or
+# migrate that authority merely because the active CX319 policy has advanced.
+pytestmark = pytest.mark.historical
+
+
 def _fake_build(tmp_path: Path, leg: str = "A") -> tuple[Path, Path]:
     matrix = load_matrix(bundle_tool.MATRIX_PATH)
     profile_id = bundle_tool.leg_spec(leg)["profile_id"]
@@ -208,6 +214,37 @@ def test_q3_bundle_binds_passing_q1_q2_and_requires_fresh_exact_flash(
     )
     assert run_manifest["qualification_evidence"] is True
     assert run_manifest["cx319"]["qualification_sequence_gate"] == "Q3"
+
+
+def test_q1_bundle_reuses_clean_ancestor_build_with_identical_firmware_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, uf2 = _fake_build(tmp_path)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+    output = tmp_path / "q1-bundle.json"
+
+    value = bundle_tool.create_bundle(
+        leg="A",
+        build_manifest_path=manifest,
+        uf2_path=uf2,
+        serial_device="/dev/cu.test-otis",
+        output_path=output,
+    )
+
+    assert bundle_tool.validate_bundle(output) == value
+    assert value["firmware"]["git_commit"] == "1" * 40
+    assert value["host_source_revision"] == "2" * 40
+
+
+def test_bundle_survives_later_docs_only_revision_when_host_tools_are_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, value = _create_bundle(tmp_path, monkeypatch)
+    monkeypatch.setattr(bundle_tool, "_git_identity", lambda: ("2" * 40, "clean"))
+    monkeypatch.setattr(bundle_tool, "_git_is_ancestor", lambda *_args: True)
+
+    assert bundle_tool.validate_bundle(output) == value
 
 
 def test_bundle_rejects_write_authority_even_with_recomputed_digest(

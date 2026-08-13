@@ -11,7 +11,7 @@
     },
     "inherited_active_policy_root": {
       "path": "profiles/discipline/cx317_bounded_active_v2.json",
-      "sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42"
+      "sha256": "9fb037a5f435361928d36a2a6bc7a010b74100588cd83692051d6a093da9f27f"
     },
     "current_contract_authority": {
       "path": "docs/50_SOFTWARE/CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md",
@@ -27,11 +27,11 @@
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "5d5d01f794294f9d066670f0547962df6752c2abfdb7261d3d21dbe36ee6a6e1"
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "f3c30171af6d7a7bb4c560385f7253ddbe61ad29f9e1111f46263bbfb61324ec"
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
     },
     "selected_relative_phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
@@ -39,7 +39,7 @@
     },
     "selected_hybrid_preview": {
       "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
-      "sha256": "08f1897bfaefc5f248d5a3ed4bb160acb447cc010ec744917ab36a573ca45c33"
+      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76"
     }
   },
   "authority": {

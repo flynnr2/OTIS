@@ -60,10 +60,10 @@ from .bounded_tight_deadband_outcome_contract import (
     MAXIMUM_CUMULATIVE_CODES,
     MAXIMUM_STEP_CODES,
     MINIMUM_CADENCE_S,
-    SETUP_CODE,
     canonical_sha256,
 )
-from .bounded_tight_deadband_activation import LIVE_SEAL_PATH, LIVE_STAGE, validate_frozen_run_manifest
+from .bounded_tight_deadband_activation import validate_frozen_run_manifest
+from .bounded_tight_deadband_leg import LOWER, leg_for_manifest
 from .bounded_tight_deadband_prewrite_contract import (
     RUNTIME_CONTRACT_ID,
     evaluate_health_integrity,
@@ -92,7 +92,7 @@ def _sha256_file(path: Path) -> str:
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        raise FileExistsError(f"refusing to overwrite G2 live seal: {path}")
+        raise FileExistsError(f"refusing to overwrite CX319 live seal: {path}")
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -189,17 +189,23 @@ def _setup_phase_history(
     }
 
 
-def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
+def analyze(
+    run_dir: Path,
+    *,
+    output_path: Path | None = None,
+    supersedes_seal: Path | None = None,
+) -> tuple[Path, dict[str, Any]]:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
-        raise ValueError("G2 live capture is still active")
+        raise ValueError("CX319 live capture is still active")
     if not (run_dir / COMPLETE_MARKER).is_file():
-        raise ValueError("G2 live run is not marked complete")
+        raise ValueError("CX319 live run is not marked complete")
     manifest_value = validate_frozen_run_manifest(run_dir / "run_manifest.json")
-    if manifest_value.get("stage") != LIVE_STAGE:
-        raise ValueError("run is not a G2 live manifest")
+    selected = leg_for_manifest(manifest_value)
+    if manifest_value.get("stage") != selected.stage:
+        raise ValueError(f"run is not a {selected.gate} live manifest")
     manifest = load_manifest(run_dir)
-    spec, identities, leg = load_no_write_qualification_spec("A")
+    spec, identities, leg = load_no_write_qualification_spec(selected.leg)
     build_identity = (
         manifest_value["firmware"]["source_sha256"]
         + ":"
@@ -221,6 +227,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
                 known_channels=manifest.known_channels,
                 known_domains=manifest.known_domains,
                 allow_rp2040_timer0_wrap=True,
+                tight_deadband_policy_sha256=manifest_value["policy"]["sha256"],
             ),
         )
         validations[contract] = {
@@ -280,7 +287,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         if row.get("transition") == "true"
         and row.get("state_after") == "TIGHT_INSIDE"
     ]
-    healthy_positive = healthy_required_direction_applications(
+    healthy_required = healthy_required_direction_applications(
         active_rows, leg.required_direction
     )
     movements = [abs(int(row["requested_delta_codes"])) for row in applications]
@@ -304,8 +311,8 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         len(dac_rows) == len(applications) + 1
         and bool(dac_rows)
         and dac_rows[0].get("event") == "manual_apply"
-        and int(dac_rows[0]["dac_code_requested"]) == SETUP_CODE
-        and int(dac_rows[0]["dac_code_applied"]) == SETUP_CODE
+        and int(dac_rows[0]["dac_code_requested"]) == selected.setup_code
+        and int(dac_rows[0]["dac_code_applied"]) == selected.setup_code
         and int(dac_rows[0]["dac_code_clamped"]) == 0
         and int(dac_rows[0]["flags"]) == 0
         and all(
@@ -384,7 +391,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         setup_authority = replay_setup_authority_input(
             setup_authority_path,
             expected_identity=expected_identity,
-            planned_live_stimulus_code=SETUP_CODE,
+            planned_live_stimulus_code=selected.setup_code,
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         setup_authority = None
@@ -424,13 +431,43 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         markers,
         allowed_emergency_aborts=allowed_emergency_aborts,
     )
+    flash_record: dict[str, Any] | None = None
+    flash_exact = not selected.firmware_flash
+    if selected.flash_record_filename is not None:
+        flash_path = run_dir / selected.flash_record_filename
+        try:
+            flash_record = json.loads(flash_path.read_text(encoding="utf-8"))
+            flash_unsigned = {
+                key: value
+                for key, value in flash_record.items()
+                if key != "record_sha256"
+            }
+            flash_exact = (
+                flash_record.get("status") == "passed"
+                and flash_record.get("gate") == selected.gate
+                and flash_record.get("leg") == selected.leg
+                and flash_record.get("firmware_flash_count") == 1
+                and flash_record.get("expected_board_serial") == "503533748A919118"
+                and flash_record.get("board_identity_confirmed_before") is True
+                and flash_record.get("board_identity_confirmed_after") is True
+                and flash_record.get("usb_reenumerated") is True
+                and flash_record.get("uf2_sha256")
+                == manifest_value["firmware"]["uf2"]["sha256"]
+                and flash_record.get("build_manifest_sha256")
+                == manifest_value["firmware"]["build_manifest"]["sha256"]
+                and flash_record.get("record_sha256")
+                == canonical_sha256(flash_unsigned)
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            flash_exact = False
 
     common_checks = {
-        "manifest_exact_g2_leg_a_activation_g1_firmware_and_policy": True,
+        "manifest_exact_leg_activation_prerequisite_firmware_and_policy": True,
         "passing_accelerated_operational_rehearsal_bound": bool(
             manifest_value["activation"]["activation_sha256"]
             and manifest_value["proposal"]["bundle_sha256"]
         ),
+        "firmware_entry_matches_exact_leg_authority": flash_exact,
         "prewrite_runtime_contract_exact_before_setup": (
             supervisor_state.get("prewrite_contract_ready_utc") is not None
             and supervisor_state.get("setup_confirmed_utc") is not None
@@ -453,7 +490,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             markers,
             supervisor_events,
             capture_state,
-            setup_code=SETUP_CODE,
+            setup_code=selected.setup_code,
             allowed_emergency_aborts=allowed_emergency_aborts,
         ),
         "transaction_history_exact": transaction_history_exact,
@@ -490,8 +527,8 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     }
     pass_checks = {
         "terminal_reason_is_exact_pass": terminal_pass,
-        "healthy_positive_automatic_transaction_demonstrated": bool(
-            healthy_positive
+        "healthy_required_direction_automatic_transaction_demonstrated": bool(
+            healthy_required
         ),
         "two_estimate_tight_entry_transition_demonstrated": (
             bool(tight_entries) and current_tight
@@ -536,21 +573,23 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     }
     unsigned: dict[str, Any] = {
         "schema_version": 1,
-        "seal_type": SEAL_TYPE,
-        "tool": TOOL_ID,
+        "seal_type": f"{selected.prefix}_live_leg_seal_v1",
+        "tool": f"{selected.prefix}_live_analyze_v1",
         "tool_sha256": _sha256_file(Path(__file__)),
         "programme_id": "cx319_stabilized_tight_deadband",
-        "gate": "G2",
-        "leg": "A",
+        "gate": selected.gate,
+        "leg": selected.leg,
         "status": status,
         "failure_class": failure_class,
         "profile_id": spec.profile,
-        "required_direction": "positive",
+        "required_direction": selected.required_direction,
         "proposal_bundle_sha256": manifest_value["proposal"]["bundle_sha256"],
         "activation_sha256": manifest_value["activation"]["activation_sha256"],
-        "g1_evidence_content_sha256": manifest_value["g1_pass"][
-            "evidence_content_sha256"
-        ],
+        "prerequisite_evidence_sha256": (
+            manifest_value["g1_pass"]["evidence_content_sha256"]
+            if selected.prerequisite_key == "g1_pass"
+            else manifest_value["g2_pass"]["acquisition_content_sha256"]
+        ),
         "policy_sha256": manifest_value["policy"]["sha256"],
         "build_manifest_sha256": manifest_value["firmware"]["build_manifest"][
             "sha256"
@@ -561,6 +600,7 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "manifest_sha256": _sha256_file(run_dir / "run_manifest.json"),
         },
         "capture_closure": capture_closure,
+        "firmware_flash_record": flash_record,
         "evidence_snapshot": {
             "path": str(evidence_path),
             "sha256": _sha256_file(evidence_path),
@@ -590,14 +630,14 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
             "application_count": len(applications),
             "response_count": len(responses),
             "path_codes": sum(movements),
-            "healthy_positive_count": len(healthy_positive),
+            "healthy_required_direction_count": len(healthy_required),
             "dac_epochs": [int(row["dac_epoch"]) for row in applications],
             "capsules_sha256": capsule_hashes,
             "response_replay": response_replay,
         },
         "hardware_operations": {
             "serial_opens": 1,
-            "firmware_flashes": 0,
+            "firmware_flashes": int(selected.firmware_flash),
             "dac_writes": len(dac_rows),
             "control_arms": len(
                 [
@@ -614,12 +654,30 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
         "tight_entry_transition_count": len(tight_entries),
         "source_artifacts_sha256": source_hashes,
         "claims_boundary": (
-            "One finite bounded G2 lower-side frequency-only leg; phase and "
-            "hybrid preview remained zero-authority."
+            f"One finite bounded {selected.gate} "
+            f"{'lower' if selected.leg == 'A' else 'upper'}-side frequency-only leg; "
+            "phase and hybrid preview remained zero-authority."
         ),
     }
+    if supersedes_seal is not None:
+        superseded = supersedes_seal.resolve()
+        superseded_value = json.loads(superseded.read_text(encoding="utf-8"))
+        unsigned["analysis_supersession"] = {
+            "reason": "deterministic_offline_analyzer_repair",
+            "superseded_seal_path": str(superseded),
+            "superseded_seal_file_sha256": _sha256_file(superseded),
+            "superseded_seal_sha256": superseded_value.get("seal_sha256"),
+            "superseded_status": superseded_value.get("status"),
+            "superseded_tool_sha256": superseded_value.get("tool_sha256"),
+            "raw_acquisition_unchanged": True,
+            "physical_rerun": False,
+        }
     result = {**unsigned, "seal_sha256": canonical_sha256(unsigned)}
-    output = run_dir / LIVE_SEAL_PATH
+    output = (
+        output_path.resolve()
+        if output_path is not None
+        else run_dir / selected.live_seal_filename
+    )
     _atomic_new_json(output, result)
     return output, result
 
@@ -627,9 +685,15 @@ def analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--supersedes-seal", type=Path)
     args = parser.parse_args(argv)
     try:
-        output, result = analyze(args.run_dir)
+        output, result = analyze(
+            args.run_dir,
+            output_path=args.output,
+            supersedes_seal=args.supersedes_seal,
+        )
     except (
         FileExistsError,
         FileNotFoundError,

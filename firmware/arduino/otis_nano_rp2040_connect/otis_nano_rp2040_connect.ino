@@ -32,7 +32,6 @@
 #include "otis_modes.h"
 #include "otis_observe_only_discipline_live.h"
 #include "otis_pps_count_boundary_ring.h"
-#include "otis_pps_dual_observer.h"
 #include "otis_pps_snapshot_backend.h"
 #include "otis_pseudo_pps.h"
 #include "otis_protocol.h"
@@ -52,16 +51,6 @@
 // timing/estimator path has bounded local formatting buffers, so give Core 1
 // its own full 8 KiB stack as supported by the pinned core.
 bool core1_separate_stack = true;
-#endif
-
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER && \
-    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
-#error "OTIS_ENABLE_PPS_DUAL_OBSERVER requires D10 as a PPS input; GPIO loopback drives/uses D10 incompatibly."
-#endif
-
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER && \
-    OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ
-#error "OTIS_ENABLE_PPS_DUAL_OBSERVER currently compares against D14 IRQ diagnostics; keep OTIS_CAPTURE_BACKEND_IRQ for this H1 witness run."
 #endif
 
 namespace {
@@ -278,11 +267,6 @@ void configure_selected_capabilities(void) {
   otis_boot_capability_select(&boot_capabilities,
                               OtisBootCapability::PpsCapture,
                               OtisBootCapabilityRequirement::Required);
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  otis_boot_capability_select(&boot_capabilities,
-                              OtisBootCapability::PpsWitness,
-                              OtisBootCapabilityRequirement::Optional);
-#endif
 #endif
 
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
@@ -691,22 +675,6 @@ void publish_dual_core_timing_health(uint32_t now_ms) {
       d14.d14_rejected_long_count ? OTIS_FLAG_PULSE_TOO_WIDE
                                   : OTIS_FLAG_NONE);
 
-  OtisPpsDualObserverStats d10;
-  otis_pps_dual_observer_get_stats(&d10);
-  publish_dual_core_timing_status_u32(
-      "pps_d10", "raw_edge_count", d10.d10_raw_edge_count,
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "pps_d10", "short_interval_count", d10.d10_short_interval_count,
-      d10.d10_short_interval_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
-      d10.d10_short_interval_count ? OTIS_FLAG_PULSE_TOO_NARROW
-                                   : OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "pps_d10", "buffer_overflow_count", d10.d10_buffer_overflow_count,
-      d10.d10_buffer_overflow_count ? OTIS_SEVERITY_WARN
-                                    : OTIS_SEVERITY_INFO,
-      d10.d10_buffer_overflow_count ? OTIS_FLAG_CAPTURE_RING_OVERRUN
-                                    : OTIS_FLAG_NONE);
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   publish_dual_core_active_status(now_ms);
 #endif
@@ -764,6 +732,21 @@ void publish_dual_core_service_metadata(uint32_t now_ms) {
       dac.applied_code_known && dac.last_write_ok &&
       dac.last_requested_code == dac.last_applied_code;
   otis_dual_core_publish_service(&applied);
+}
+
+void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
+                                               uint32_t dac_epoch,
+                                               uint32_t now_s) {
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+  otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
+                                               now_s);
+  if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
+    otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
+#else
+  (void)applied_code;
+  (void)dac_epoch;
+  (void)now_s;
+#endif
 }
 
 void service_dual_core_timing_inputs(void) {
@@ -872,6 +855,12 @@ void service_dual_core_timing_inputs(void) {
             OTIS_SEVERITY_INFO);
         otis_cx317_active_live_note_manual_start(
             ack.applied_code, true, millis() / 1000u);
+        OtisCx317ActiveLiveStatus active_status = {};
+        otis_cx317_active_live_get_status(&active_status, millis() / 1000u);
+        if (active_status.manual_start_confirmed &&
+            active_status.dac_epoch != 0u)
+          propagate_cx317_applied_epoch_to_previews(
+              ack.applied_code, active_status.dac_epoch, millis() / 1000u);
       } else {
         publish_dual_core_setup_phase(
             ack.kind == OtisSetupApplicationAck::Kind::Failed
@@ -1438,7 +1427,7 @@ void publish_dual_core_association_loss_decision(
   const int used = snprintf(
       dual_core_association_loss_scratch.data,
       sizeof(dual_core_association_loss_scratch.data),
-      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
+      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
       static_cast<unsigned long>(dual_core_association_loss_scratch.sequence),
       reason == nullptr ? "association_loss_unspecified" : reason,
       classification, static_cast<unsigned long long>(decision_ticks),
@@ -1577,19 +1566,14 @@ void service_cx317_active_health(void) {
   otis_pps_snapshot_backend_get_stats(&snapshot);
   OtisCaptureIrqReferenceStats d14;
   otis_capture_irq_get_reference_stats(&d14);
-  OtisPpsDualObserverStats d10;
-  otis_pps_dual_observer_get_stats(&d10);
-  const uint32_t edge_difference =
-      d14.d14_raw_edge_count > d10.d10_raw_edge_count
-          ? d14.d14_raw_edge_count - d10.d10_raw_edge_count
-          : d10.d10_raw_edge_count - d14.d14_raw_edge_count;
+  // D14 is the sole PPS/reference authority and the PIO snapshot backend
+  // counts only D8 oscillator edges at D14 boundaries. D10 is the independent
+  // external-event input; this profile does not claim it and no D10 observation
+  // may validate or veto this control-health predicate.
   const bool raw_pps_valid =
       d14.d14_accepted_pps_count > 0u &&
       d14.d14_rejected_short_count == 0u &&
-      d14.d14_rejected_long_count == 0u && d10.d10_raw_edge_count > 0u &&
-      d10.d10_short_interval_count == 0u &&
-      d10.d10_long_interval_count == 0u &&
-      d10.d10_buffer_overflow_count == 0u && edge_difference <= 1u &&
+      d14.d14_rejected_long_count == 0u &&
       otis_capture_ring_dropped_count() == 0u &&
       otis_pps_count_boundary_ring_dropped_count() == 0u &&
       !snapshot.fault_latched && snapshot.continuity_loss_count == 0u;
@@ -1645,12 +1629,9 @@ void service_cx317_active_health(void) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
-    otis_cx317_preview_live_on_dac_applied_epoch(
+    propagate_cx317_applied_epoch_to_previews(
         dual_core_static_code.applied_code, active_status.dac_epoch,
         now_ms / 1000u);
-    if (!otis_phase_preview_live_update_applied_code(
-            dual_core_static_code.applied_code, active_status.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #endif
   }
 #endif
@@ -1786,12 +1767,9 @@ void service_cx317_active_application_outcome(void) {
 #endif
   if (active_outcome.applied) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-    otis_cx317_preview_live_on_dac_applied_epoch(
+    propagate_cx317_applied_epoch_to_previews(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u);
-    if (!otis_phase_preview_live_update_applied_code(
-            active_outcome.applied_code, active_outcome.dac_epoch))
-      otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
 #else
     otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
                                            millis() / 1000u);
@@ -2025,9 +2003,6 @@ void emit_common_boot_status(void) {
   emit_status_u32("build", "enable_rp2040_boot_diag",
                   OTIS_ENABLE_RP2040_BOOT_DIAG, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u32("build", "enable_pps_dual_observer",
-                  OTIS_ENABLE_PPS_DUAL_OBSERVER, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_status_led", OTIS_ENABLE_STATUS_LED,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("build", "capture_backend", otis_capture_backend_name(),
@@ -2133,33 +2108,6 @@ void emit_common_boot_status(void) {
                       OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u16_hex("dac", "max_code", OTIS_DAC_MAX_CODE,
                       OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  emit_status("pps_dual_observer", "feature", "temporary_h1_diagnostic",
-              OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "d14_pps_pin", "D14",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "d10_witness_pin", "D10",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "d14_capture_backend",
-              otis_capture_backend_name(), OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "d10_observer_mechanism",
-              "plain_gpio_irq_rising_dedicated_buffer", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "d10_input_mode", "INPUT_no_pull",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("pps_dual_observer", "requested_edge", "R",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u64_decimal("pps_dual_observer", "short_interval_ticks",
-                          OTIS_PPS_DUAL_OBSERVER_SHORT_INTERVAL_TICKS,
-                          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u64_decimal("pps_dual_observer", "long_interval_ticks",
-                          OTIS_PPS_DUAL_OBSERVER_LONG_INTERVAL_TICKS,
-                          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u32("pps_dual_observer", "burst_short_threshold",
-                  OTIS_PPS_DUAL_OBSERVER_BURST_SHORT_THRESHOLD,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-#endif
 }
 
 void emit_env_sensor_status(void) {
@@ -2354,10 +2302,6 @@ void emit_h0_pin_status(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("pins", "ch2_osc_observation", "D8_GPIO20_GPIN0",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  emit_status("pins", "d10_pps_witness", "D10_input_rising_no_pull",
-              OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
-#endif
 }
 
 void emit_selected_capability_status(void) {
@@ -2852,67 +2796,6 @@ void emit_periodic_status(void) {
                   d14_stats.d14_sampled_low_count, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
 #endif
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  OtisPpsDualObserverStats d10_stats;
-  otis_pps_dual_observer_get_stats(&d10_stats);
-  int32_t raw_delta = (int32_t)d14_stats.d14_raw_edge_count -
-                      (int32_t)d10_stats.d10_raw_edge_count;
-  const char *agreement = "MATCHING";
-  if (d14_stats.d14_raw_edge_count == 0u || d10_stats.d10_raw_edge_count == 0u) {
-    agreement = "INSUFFICIENT_DATA";
-  } else if (raw_delta > 1) {
-    agreement = "D14_EXCESS";
-  } else if (raw_delta < -1) {
-    agreement = "D10_EXCESS";
-  } else if (d14_stats.d14_rejected_short_count && d10_stats.d10_short_interval_count) {
-    agreement = "BOTH_BURSTING";
-  }
-  emit_status_u32("pps_d10", "raw_edge_count", d10_stats.d10_raw_edge_count,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  emit_status_u64_decimal("pps_d10", "last_edge_timestamp",
-                          d10_stats.d10_last_edge_timestamp, OTIS_SEVERITY_INFO,
-                          OTIS_FLAG_NONE);
-  emit_status_u64_decimal("pps_d10", "last_interval",
-                          d10_stats.d10_last_interval, OTIS_SEVERITY_INFO,
-                          OTIS_FLAG_NONE);
-  emit_status_u32("pps_d10", "short_interval_count",
-                  d10_stats.d10_short_interval_count,
-                  d10_stats.d10_short_interval_count ? OTIS_SEVERITY_WARN
-                                                     : OTIS_SEVERITY_INFO,
-                  d10_stats.d10_short_interval_count ? OTIS_FLAG_PULSE_TOO_NARROW
-                                                     : OTIS_FLAG_NONE);
-  emit_status_u32("pps_d10", "sampled_high_count",
-                  d10_stats.d10_sampled_high_count, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_NONE);
-  emit_status_u32("pps_d10", "sampled_low_count",
-                  d10_stats.d10_sampled_low_count, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_NONE);
-  emit_status_u32("pps_d10", "buffer_overflow_count",
-                  d10_stats.d10_buffer_overflow_count,
-                  d10_stats.d10_buffer_overflow_count ? OTIS_SEVERITY_WARN
-                                                      : OTIS_SEVERITY_INFO,
-                  d10_stats.d10_buffer_overflow_count ? OTIS_FLAG_CAPTURE_RING_OVERRUN
-                                                      : OTIS_FLAG_NONE);
-  emit_status_i32("pps_dual_observer", "d14_raw_minus_d10_raw",
-                  raw_delta, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  emit_status("pps_dual_observer", "agreement_state", agreement,
-              strcmp(agreement, "MATCHING") == 0 ? OTIS_SEVERITY_INFO
-                                                 : OTIS_SEVERITY_WARN,
-              strcmp(agreement, "MATCHING") == 0 ? OTIS_FLAG_NONE
-                                                 : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
-  emit_status("pps_dual_observer", "burst_active",
-              d10_stats.pps_burst_active ? "true" : "false",
-              d10_stats.pps_burst_active ? OTIS_SEVERITY_WARN
-                                         : OTIS_SEVERITY_INFO,
-              d10_stats.pps_burst_active ? OTIS_FLAG_RATE_TOO_HIGH
-                                         : OTIS_FLAG_NONE);
-  emit_status_u32("pps_dual_observer", "burst_count",
-                  d10_stats.pps_burst_count,
-                  d10_stats.pps_burst_count ? OTIS_SEVERITY_WARN
-                                            : OTIS_SEVERITY_INFO,
-                  d10_stats.pps_burst_count ? OTIS_FLAG_RATE_TOO_HIGH
-                                            : OTIS_FLAG_NONE);
-#endif
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_PIO_FIFO
   OtisCaptureBackendStats backend_stats;
   otis_capture_backend_get_stats(&backend_stats);
@@ -2949,18 +2832,6 @@ bool begin_edge_capture_backend(uint32_t gpio, uint32_t channel_id,
                                     config);
 #else
   return otis_capture_backend_begin(OtisCaptureBackendKind::GpioIrq, config);
-#endif
-}
-
-bool begin_pps_dual_observer_if_enabled(void) {
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  bool ok = otis_pps_dual_observer_begin(OTIS_PIN_GENERIC_EVENT);
-  emit_status("pps_dual_observer", "init", ok ? "ok" : "failed",
-              ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
-              ok ? OTIS_FLAG_PROFILE_ASSUMPTION : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
-  return ok;
-#else
-  return true;
 #endif
 }
 
@@ -3682,6 +3553,9 @@ void boot_phase_clocks_init(void) {
 void boot_phase_gpio_init(void) {
   begin_boot_phase(BootPhase::GpioInit);
   otis_status_led_begin();
+  // D10 is always an input. Only the explicit external-event/loopback profile
+  // may additionally claim and capture it.
+  pinMode(OTIS_PIN_GENERIC_EVENT, INPUT);
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
   pinMode(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, OUTPUT);
   digitalWrite(OTIS_PIN_GPIO_LOOPBACK_OUTPUT, LOW);
@@ -3743,10 +3617,6 @@ void boot_phase_pps_input_init(void) {
                                  OTIS_CHANNEL_PPS_REFERENCE, true, RISING);
   record_capability_result(OtisBootCapability::SparseCapture, pps_ready);
   record_capability_result(OtisBootCapability::PpsCapture, pps_ready);
-#if OTIS_ENABLE_PPS_DUAL_OBSERVER
-  const bool witness_ready = begin_pps_dual_observer_if_enabled();
-  record_capability_result(OtisBootCapability::PpsWitness, witness_ready);
-#endif
 #endif
   complete_boot_phase(BootPhase::PpsInputInit);
 }
@@ -4112,9 +3982,6 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
 #endif
     emit_status_u32("capture", "counter_gate_period_us", kTcxoGatePeriodUs,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-    emit_status_u32("build", "enable_pps_dual_observer",
-                    OTIS_ENABLE_PPS_DUAL_OBSERVER, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
     emit_status_u32("build", "enable_pseudo_pps_generator",
                     OTIS_ENABLE_PSEUDO_PPS_GENERATOR, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -4841,14 +4708,10 @@ void loop1() {
                    __ATOMIC_RELEASE);
   const uint32_t now_ms = millis();
   if (otis_transport_ready()) dual_core_serial_carrier_seen = true;
-  if (!dual_core_serial_carrier_seen) {
-    discard_dual_core_outputs_before_first_carrier();
-    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
-                                  otis_transport_written_bytes());
-    otis_gnss_receiver_service(now_ms);
-    otis_status_led_poll(now_ms);
-    return;
-  }
+  // Host attachment controls only delivery of the timing plane's outbound
+  // records. It must never gate capture, witness, boundary, estimator, or
+  // health service: those producers are already live and their finite queues
+  // must remain continuously drained even when USB attaches late.
   // Progress instrumentation is deliberately bounded to four complete trace
   // samples per second.  The empty service-queue poll carries no diagnostic
   // atomic accounting, so the protected timing core's hot path stays lean.
@@ -4860,10 +4723,6 @@ void loop1() {
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::ServiceInput,
                                         otis_capture_ticks_now());
   service_dual_core_timing_inputs();
-  if (trace_timing_loop)
-    otis_dual_core_note_timing_progress(OtisTimingProgressPhase::PpsObserver,
-                                        otis_capture_ticks_now());
-  otis_pps_dual_observer_service();
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(
         OtisTimingProgressPhase::CaptureBackend, otis_capture_ticks_now());
@@ -4891,6 +4750,13 @@ void loop1() {
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
                                         otis_capture_ticks_now());
+  if (!dual_core_serial_carrier_seen) {
+    discard_dual_core_outputs_before_first_carrier();
+    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
+                                  otis_transport_written_bytes());
+    otis_gnss_receiver_service(now_ms);
+    otis_status_led_poll(now_ms);
+  }
 }
 #endif
 
@@ -4961,7 +4827,6 @@ void loop() {
   // Capture service always runs first. While a queued EST/CTL pair is being
   // transmitted in bounded chunks, no other record producer may interleave
   // bytes into that CSV frame; IRQ/PIO capture continues into its own ring.
-  otis_pps_dual_observer_service();
   otis_capture_backend_service();
   if (otis_cx317_active_live_transport_busy()) {
     otis_cx317_active_live_service_transport();

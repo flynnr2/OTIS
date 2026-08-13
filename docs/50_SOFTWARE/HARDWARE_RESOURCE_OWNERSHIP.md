@@ -80,9 +80,9 @@ reconstructed OTIS timestamp domain and is not changed by this ownership work.
 | `SW1_TCXO_OBSERVE` | `D14` / GPIO26 → `edge_capture`; `D8` / GPIO20 → `count_observation` | selected capture and count backend claims below |
 | `H1_OCXO_OBSERVE_OPEN_LOOP` | same timing GPIO ownership as TCXO observe | selected capture and count backend claims below |
 
-With the temporary dual PPS observer enabled, `D10` / GPIO5 and its IRQ source
-are owned by `pps_witness`. Existing compile guards prohibit enabling that owner
-in GPIO-loopback mode or with the PIO edge backend.
+D10 / GPIO5 is not claimed in PPS/oscillator observation profiles. It remains
+the external event/edge input and is claimed as `edge_capture` only by an
+explicit external-event or loopback capture profile.
 
 For TCXO/OCXO observation, the count backend adds:
 
@@ -205,8 +205,8 @@ PPS ownership work is complete for the qualified snapshot backend:
 state machine, which both counts oscillator edges and snapshots cumulative
 state on the D14 PPS input. DMA transports already captured snapshot words.
 `edge_capture` owns the D14 GPIO IRQ only as an independent reconstructed `REF`
-observer; neither the IRQ nor foreground service owns the count boundary. The
-optional D10 input remains an independent witness.
+observer; neither the IRQ nor foreground service owns the count boundary. D10
+remains outside this fabric as the external event/edge input.
 
 Future work must preserve these assignments, verify atomic boundary
 traceability and fault behavior, and keep IRQ/restart quantisation out of the

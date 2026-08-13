@@ -17,7 +17,7 @@ constexpr char kFrequencyConfigurationSha256[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
 constexpr char kCandidateId[] = "p21600_cap1_v2";
 constexpr char kHybridConfigurationSha256[] =
-    "08f1897bfaefc5f248d5a3ed4bb160acb447cc010ec744917ab36a573ca45c33";
+    "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76";
 constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_dma_v1";
 constexpr char kRawMethodId[] = "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1";
 constexpr char kTimeDomain[] = "rp2040_timer0";
