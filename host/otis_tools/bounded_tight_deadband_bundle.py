@@ -17,6 +17,7 @@ from .no_write_qualification_bundle import (
     POLICY_PATH,
     PROGRAMME_ID,
     _git_identity,
+    _load_policy,
     _q3_prerequisites,
     validate_build,
     validate_frozen_bundle,
@@ -85,6 +86,9 @@ HOST_TOOL_PATHS = {
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "evidence_index": Path(__file__).with_name("evidence_index.py"),
 }
+TIMING_TOPOLOGY_REPAIR_SCOPE = (
+    "current_prewrite_authoritative_timing_topology"
+)
 
 
 def _utc_now() -> str:
@@ -155,6 +159,104 @@ def _firmware_build_provenance(firmware: dict[str, Any]) -> dict[str, Any]:
         "target": target,
         "invocation": invocation,
         "toolchain": toolchain,
+    }
+
+
+def _build_defines(firmware: dict[str, Any]) -> dict[str, str]:
+    binding = firmware.get("build_manifest", {})
+    path = Path(str(binding.get("path", "")))
+    if (
+        not path.is_file()
+        or binding.get("sha256") != _sha256_file(path)
+    ):
+        raise ValueError("firmware build-manifest binding differs")
+    manifest = _read(path, "firmware build manifest")
+    defines = (
+        manifest.get("provenance", {})
+        .get("configuration", {})
+        .get("defines")
+    )
+    if not isinstance(defines, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in defines.items()
+    ):
+        raise ValueError("firmware build defines are unavailable")
+    return dict(defines)
+
+
+def _validated_current_topology_policy_binding() -> dict[str, Any]:
+    policy = _load_policy()
+    if policy.get("frequency_controller") != {
+        "type": "incremental_I_only_frequency_control",
+        "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+        "rounding_rule": "round_half_away_from_zero_after_step_limit",
+        "maximum_automatic_step_codes": 21,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "minimum_applied_correction_cadence_s": 1800,
+        "settling_exclusion_s": 900,
+        "fresh_support_after_settling_s": 600,
+        "full_history_reset_s": 1500,
+        "startup_warmup_s": 1800,
+        "maximum_outstanding_requests": 1,
+        "automatic_retry": False,
+        "automatic_restore": False,
+        "reboot_recovery": False,
+    }:
+        raise ValueError("timing-topology repair changed frequency control")
+    if policy.get("tight_hysteretic_band") != {
+        "initial_and_rearm_state": "REQUALIFY_OUTSIDE",
+        "outside_state": "OUTSIDE",
+        "inside_state": "TIGHT_INSIDE",
+        "entry_absolute_counts_lte": 2,
+        "entry_consecutive_fresh_estimates": 2,
+        "release_absolute_counts_gte": 4,
+        "release_consecutive_fresh_estimates": 2,
+        "three_count_rule": "retain_previous_band_state",
+        "pending_counter_reset_on": [
+            "opposite_evidence",
+            "invalidity",
+            "dac_epoch_transition",
+            "capture_session_transition",
+        ],
+    }:
+        raise ValueError("timing-topology repair changed tight deadband")
+    leg = policy.get("legs", {}).get("A", {})
+    if leg != {
+        "description": "below_operating_point_positive_correction",
+        "firmware_profile": "cx319_tight_lower",
+        "run_binding_tag": 3195001,
+        "exact_setup_code": 43016,
+        "exact_setup_code_hex": "0xA808",
+        "required_automatic_direction": "positive",
+        "maximum_automatic_corrections": 4,
+        "maximum_cumulative_automatic_movement_codes": 84,
+    }:
+        raise ValueError("timing-topology repair changed lower-leg envelope")
+    phase = policy.get("phase_and_hybrid_authority", {})
+    if phase.get("continuous_preview_required") is not True or any(
+        phase.get(key) is not False
+        for key in (
+            "actionable",
+            "actuation_authorized",
+            "authorization_consumed",
+            "may_influence_frequency_controller_delta",
+            "may_influence_frequency_controller_eligibility",
+            "may_mutate_frequency_controller_response_or_budget_state",
+            "may_issue_command_or_write_dac",
+        )
+    ):
+        raise ValueError("timing-topology repair changed phase authority")
+    model_binding = policy["bindings"]["plant_model"]
+    model = _read(REPO_ROOT / model_binding["path"], "current plant model")
+    conditions = " ".join(model.get("invalidation_conditions", []))
+    if "Any use of D10 as a PPS observer" not in conditions:
+        raise ValueError("current plant model does not prohibit D10 PPS use")
+    return {
+        "path": str(POLICY_PATH),
+        "sha256": _sha256_file(POLICY_PATH),
+        "policy_id": policy["policy_id"],
+        "bindings": policy["bindings"],
     }
 
 
@@ -490,17 +592,49 @@ def apply_deterministic_narrow_repair(
         allow_qualified_ancestor_image=False,
     )
     prior_firmware = qualification["firmware"]
-    for key in ("profile_id", "configuration_sha256", "fqbn"):
+    for key in ("profile_id", "fqbn"):
         if firmware.get(key) != prior_firmware.get(key):
             raise ValueError(
                 f"narrow repair changed qualified firmware {key}"
             )
+    policy = qualification["policy"]
+    policy_rebinding = None
+    if repair_scope == TIMING_TOPOLOGY_REPAIR_SCOPE:
+        prior_defines = _build_defines(prior_firmware)
+        current_defines = _build_defines(firmware)
+        if prior_defines.pop("OTIS_ENABLE_PPS_DUAL_OBSERVER", None) != "1":
+            raise ValueError("physical basis did not enable the retired D10 observer")
+        if (
+            "OTIS_ENABLE_PPS_DUAL_OBSERVER" in current_defines
+            or prior_defines != current_defines
+        ):
+            raise ValueError(
+                "timing-topology repair changed firmware definitions beyond "
+                "retiring the D10 observer"
+            )
+        current_policy = _validated_current_topology_policy_binding()
+        if policy.get("policy_id") != current_policy["policy_id"]:
+            raise ValueError("timing-topology repair changed policy identity")
+        policy_rebinding = {
+            "previous_sha256": policy.get("sha256"),
+            "current_sha256": current_policy["sha256"],
+            "controller_parameters_changed": False,
+            "profile_definition_change": "remove_OTIS_ENABLE_PPS_DUAL_OBSERVER",
+        }
+        policy = current_policy
+    elif firmware.get("configuration_sha256") != prior_firmware.get(
+        "configuration_sha256"
+    ):
+        raise ValueError(
+            "narrow repair changed qualified firmware configuration_sha256"
+        )
     prior_delta = qualification.get("current_firmware_qualification")
     if not isinstance(prior_delta, dict):
         raise ValueError("narrow repair requires a current-firmware basis")
     return {
         **qualification,
         "firmware": firmware,
+        "policy": policy,
         "current_firmware_qualification": {
             "type": "deterministic_narrow_repair_overlay",
             "physical_basis": prior_delta,
@@ -510,6 +644,11 @@ def apply_deterministic_narrow_repair(
             "uf2": _binding(uf2_path),
             "physical_requalification_repeated": False,
             "q2_q3_repeated": False,
+            **(
+                {"policy_rebinding": policy_rebinding}
+                if policy_rebinding is not None
+                else {}
+            ),
         },
     }
 

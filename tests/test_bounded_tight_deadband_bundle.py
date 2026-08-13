@@ -200,6 +200,91 @@ def test_deterministic_narrow_repair_rebinds_same_firmware_profile(
     assert delta["q2_q3_repeated"] is False
 
 
+def test_timing_topology_repair_allows_only_d10_observer_definition_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_manifest = tmp_path / "old-manifest.json"
+    new_manifest = tmp_path / "new-manifest.json"
+    uf2 = tmp_path / "image.uf2"
+    uf2.write_bytes(b"uf2")
+    base_defines = {
+        "OTIS_ENABLE_GNSS_RECEIVER": "1",
+        "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
+    }
+    old_manifest.write_text(
+        json.dumps(
+            {
+                "provenance": {
+                    "configuration": {
+                        "defines": {
+                            **base_defines,
+                            "OTIS_ENABLE_PPS_DUAL_OBSERVER": "1",
+                        }
+                    }
+                }
+            }
+        )
+    )
+    new_manifest.write_text(
+        json.dumps(
+            {"provenance": {"configuration": {"defines": base_defines}}}
+        )
+    )
+    qualification = {
+        **_fake_g1(),
+        "current_firmware_qualification": {"type": "physical_basis"},
+    }
+    qualification["firmware"]["build_manifest"] = {
+        "path": str(old_manifest),
+        "sha256": sha256(old_manifest.read_bytes()).hexdigest(),
+    }
+    repaired = {
+        **qualification["firmware"],
+        "configuration_sha256": "d" * 64,
+        "build_manifest": {
+            "path": str(new_manifest),
+            "sha256": sha256(new_manifest.read_bytes()).hexdigest(),
+        },
+        "uf2": {
+            "path": str(uf2),
+            "sha256": sha256(uf2.read_bytes()).hexdigest(),
+            "size_bytes": uf2.stat().st_size,
+        },
+    }
+    current_policy = {
+        **qualification["policy"],
+        "sha256": "e" * 64,
+        "bindings": {},
+    }
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "validate_build",
+        lambda **kwargs: repaired,
+    )
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "_validated_current_topology_policy_binding",
+        lambda: current_policy,
+    )
+
+    result = bounded_tight_deadband_bundle.apply_deterministic_narrow_repair(
+        qualification=qualification,
+        build_manifest_path=new_manifest,
+        uf2_path=uf2,
+        repair_scope=(
+            bounded_tight_deadband_bundle.TIMING_TOPOLOGY_REPAIR_SCOPE
+        ),
+    )
+
+    assert result["firmware"] == repaired
+    assert result["policy"] == current_policy
+    rebinding = result["current_firmware_qualification"]["policy_rebinding"]
+    assert rebinding["controller_parameters_changed"] is False
+    assert rebinding["profile_definition_change"] == (
+        "remove_OTIS_ENABLE_PPS_DUAL_OBSERVER"
+    )
+
+
 def test_g2_rejects_pre_q3_no_write_evidence_before_reading_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
