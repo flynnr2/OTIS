@@ -11,7 +11,9 @@ lower-side offline preparation passed. The one authorized Q4/G2 attempt then
 stopped before setup because the serial path received no firmware records and
 ended on a write timeout. No DAC value write, control arm, or automatic
 correction occurred. The attempt is a platform escape, not a scientific Q4
-result. Its authority is consumed; only offline preparation is now permitted.
+result. Its authority is consumed. The narrow runner repair, fresh candidate,
+and accelerated rehearsal now pass, but only offline preparation is permitted
+until a separate retry decision.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -142,3 +144,7 @@ reset, and is consumed by the first terminal live attempt.
 The retained zero-write transport stop, evidence identities, authority
 retirement, and narrow recovery gate are recorded in
 [`21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md`](21_Q4_LOWER_SIDE_PREWRITE_TRANSPORT_STOP.md).
+
+The fresh repaired-runner candidate, reused Q1--Q3 bindings, passing focused
+verification and non-effective restart-plus-retry proposal are recorded in
+[`22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md`](22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md).

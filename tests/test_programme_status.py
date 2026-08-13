@@ -27,14 +27,14 @@ def test_tracked_status_retires_consumed_q4_live_authority() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "q4_lower_live_prewrite_transport_stop_authority_retired"
+        "q4_lower_retry_offline_ready_for_separate_authority"
     )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "q4_lower_live_authority_consumed_prewrite_platform_escape"
+        "no_effective_live_authority_after_consumed_q4_attempt"
     )
     assert successor["next_gate"] == (
-        "repair_and_rehearse_transport_stop_then_separate_retry_authority"
+        "separate_authority_for_one_board_restart_and_exact_retry_candidate"
     )
     assert successor["q4_lower_live_authority"] == {
         "record": (
@@ -112,6 +112,49 @@ def test_tracked_status_retires_consumed_q4_live_authority() -> None:
         "automatic_corrections": 0,
         "failure_class": "platform_escape_into_campaign",
         "scientific_result": False,
+    }
+    assert successor["q4_lower_retry_offline_readiness"] == {
+        "record": (
+            "docs/60_EXPERIMENTS/"
+            "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
+            "22_Q4_LOWER_SIDE_RETRY_OFFLINE_READINESS.md"
+        ),
+        "authority_proposal": (
+            "profiles/qualification/"
+            "cx319_q4_lower_live_retry_authority_proposal_v1.json"
+        ),
+        "outcome": "q4_lower_retry_offline_ready_for_separate_authority",
+        "source_revision": "421501dc49d29eb91f6160a0b7965475c12c706b",
+        "proposal_bundle_sha256": (
+            "9697652d963c0bcfe44800c1f3ff7c6c"
+            "f032ca382c5479c8cec0edb1ddccbd56"
+        ),
+        "proposal_file_sha256": (
+            "1c9e64cab6ca10d7d114927dcb378d75"
+            "f350150633c188f73642f874c8b94a8d"
+        ),
+        "preflight_file_sha256": (
+            "07df6e2d08f1fbfa38978091d0174d2b"
+            "bd020a6f55ee743fd9a4cbfe3ecab7a1"
+        ),
+        "operational_rehearsal_file_sha256": (
+            "413e64508bc1ae7dadffac816e157335f"
+            "f4db899ec7bc01aadfb50018c232e6b"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "89f8df3952218cb729f22d62acc5969e"
+            "c2b30d447f21fedb8a4d178f2b755877"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "c56d402abd3ac208ca10b73f78863372"
+            "ca4abb176c10c8d56c3c3d2845c84c6d"
+        ),
+        "live_runner_sha256": (
+            "833bc0f3c07a2bb678cd7a863f8a1f44"
+            "e947a5e5ae9772114cf54ac192d657c5"
+        ),
+        "reused_q1_q3_and_firmware_evidence": True,
+        "live_authority_effective": False,
     }
     assert successor["q4_offline_readiness"] == {
         "record": (
@@ -557,6 +600,33 @@ def test_q4_lower_live_authority_proposal_is_machine_readable_and_non_effective(
     assert proposal["proposed_future_entry"]["firmware_entry"] == (
         "verify_installed_exact_q3_image_no_flash"
     )
+
+
+def test_q4_lower_retry_authority_proposal_is_non_effective_and_reset_bounded() -> None:
+    root = Path(__file__).resolve().parents[1]
+    proposal = json.loads(
+        (
+            root
+            / "profiles/qualification/"
+            "cx319_q4_lower_live_retry_authority_proposal_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert proposal["authority_id"] == (
+        "CX319_Q4_LOWER_FINITE_LIVE_RETRY_AUTHORITY_PROPOSAL_V1"
+    )
+    assert proposal["status"] == "draft_non_effective"
+    assert proposal["effective"] is False
+    assert set(proposal["current_permissions"].values()) == {False}
+    assert proposal["required_separate_transition"] == {
+        "programme_operation": BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
+        "explicit_operator_decision": True,
+        "effective_authority_record": True,
+        "exact_candidate_and_rehearsal_binding": True,
+    }
+    assert proposal["proposed_future_entry"]["board_restart_limit"] == 1
+    assert proposal["proposed_future_entry"]["firmware_flash_limit"] == 0
+    assert proposal["proposed_future_entry"]["physical_live_run_limit"] == 1
     assert proposal["proposed_future_live_envelope"][
         "phase_or_hybrid_actionable"
     ] is False
