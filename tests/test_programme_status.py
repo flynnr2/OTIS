@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
+def test_tracked_status_records_exact_upper_live_readiness() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,7 +27,7 @@ def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "q4_lower_passed_g3_upper_preparation"
+    assert successor["state"] == "g3_upper_ready_for_exact_live_execution"
     assert successor["allowed_operations"] == [
         OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,
@@ -35,10 +35,10 @@ def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
         BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
     ]
     assert successor["authority"] == (
-        "g2_lower_passed_conditional_g3_upper_prerequisites_pending"
+        "conditional_g3_upper_authority_effective_exact_bundle"
     )
     assert successor["next_gate"] == (
-        "build_preflight_and_rehearse_exact_g3_upper_candidate_then_execute"
+        "execute_exact_g3_upper_flash_and_finite_live_leg"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -729,7 +729,7 @@ def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md"
         ),
-        "currently_executable": False,
+        "currently_executable": True,
         "requires_passing_g2_analysis_and_seal": True,
         "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": True,
         "firmware_profile": "cx319_tight_upper",
@@ -738,6 +738,34 @@ def test_tracked_status_records_lower_pass_and_upper_preparation() -> None:
         "existing_bounded_envelope": True,
         "manual_reset_expected_after_successful_upload": False,
         "operator_assistance_required_if_upload_or_reenumeration_fails": True,
+        "proposal_bundle_sha256": (
+            "1db8416d1d2577b07c954a9bfb339fa6"
+            "eda48559ff14d32f4dd540656e919b02"
+        ),
+        "proposal_file_sha256": (
+            "c24c53931803898b8fca09831c7578d7"
+            "fd5f815e12008a3da3064d8b4f94e40e"
+        ),
+        "preflight_file_sha256": (
+            "89103a7ee8c78918c8789e23c3171589"
+            "9d245d0606483d3aaf07f598f187465c"
+        ),
+        "operational_rehearsal_content_sha256": (
+            "a39b2d8e4d9505613d6cd376babc9d81"
+            "cb2ceb90c57d2d259da44dda1c84c3ad"
+        ),
+        "operational_rehearsal_seal_sha256": (
+            "ae3c15131169ab27db31611d3f5d5f36"
+            "1682a43cd1005fd94c6ea12048790461"
+        ),
+        "upper_build_manifest_sha256": (
+            "307f321da6b5ad5f5fef9f4e2ce31bc5"
+            "1948fbc5db41d2eb0c0fea6b925acb27"
+        ),
+        "upper_uf2_sha256": (
+            "0fb15bc7b5b4f63d174aabaffcefc27b"
+            "d096d4cdc76723863b1f712d7628edb4"
+        ),
     }
     assert successor["g2_v7_qualification_deadline_nonpass"] == {
         "run_id": "live_leg_a_v7_20260811T170842Z",

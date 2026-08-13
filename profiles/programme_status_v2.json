@@ -10,7 +10,7 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "q4_lower_passed_g3_upper_preparation",
+      "state": "g3_upper_ready_for_exact_live_execution",
       "allowed_operations": [
         "offline_preparation",
         "g1_no_write_bench_rehearsal",
@@ -18,7 +18,7 @@
         "g3_live_leg"
       ],
       "effective_date": "2026-08-13",
-      "authority": "g2_lower_passed_conditional_g3_upper_prerequisites_pending",
+      "authority": "conditional_g3_upper_authority_effective_exact_bundle",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -48,7 +48,7 @@
       },
       "g3_conditional_upper_flash_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md",
-        "currently_executable": false,
+        "currently_executable": true,
         "requires_passing_g2_analysis_and_seal": true,
         "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": true,
         "firmware_profile": "cx319_tight_upper",
@@ -56,7 +56,14 @@
         "g3_live_execution": true,
         "existing_bounded_envelope": true,
         "manual_reset_expected_after_successful_upload": false,
-        "operator_assistance_required_if_upload_or_reenumeration_fails": true
+        "operator_assistance_required_if_upload_or_reenumeration_fails": true,
+        "proposal_bundle_sha256": "1db8416d1d2577b07c954a9bfb339fa6eda48559ff14d32f4dd540656e919b02",
+        "proposal_file_sha256": "c24c53931803898b8fca09831c7578d7fd5f815e12008a3da3064d8b4f94e40e",
+        "preflight_file_sha256": "89103a7ee8c78918c8789e23c31715899d245d0606483d3aaf07f598f187465c",
+        "operational_rehearsal_content_sha256": "a39b2d8e4d9505613d6cd376babc9d81cb2ceb90c57d2d259da44dda1c84c3ad",
+        "operational_rehearsal_seal_sha256": "ae3c15131169ab27db31611d3f5d5f361682a43cd1005fd94c6ea12048790461",
+        "upper_build_manifest_sha256": "307f321da6b5ad5f5fef9f4e2ce31bc51948fbc5db41d2eb0c0fea6b925acb27",
+        "upper_uf2_sha256": "0fb15bc7b5b4f63d174aabaffcefc27bd096d4cdc76723863b1f712d7628edb4"
       },
       "q4_g2_lower_physical_qualification_result": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md",
@@ -104,7 +111,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "build_preflight_and_rehearse_exact_g3_upper_candidate_then_execute",
+      "next_gate": "execute_exact_g3_upper_flash_and_finite_live_leg",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
