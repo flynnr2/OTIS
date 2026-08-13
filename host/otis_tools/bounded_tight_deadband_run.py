@@ -58,6 +58,7 @@ CAPTURE_LOG = Path("reports/cx319_g2_capture_launcher.log")
 SUPERVISOR_LOG = Path("reports/cx319_g2_supervisor.log")
 ORCHESTRATION_FAILURE = Path("reports/cx319_g2_orchestration_failure_v1.json")
 MAXIMUM_WALL_S = QUALIFICATION_DEADLINE_S + MAXIMUM_QUALIFIED_DURATION_S
+TERMINAL_ABORT_DELIVERY_TIMEOUT_S = 15.0
 COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
 INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
 
@@ -249,6 +250,31 @@ def _terminal_expected(terminal: dict[str, Any] | None) -> bool:
             "stage5_qualification_deadline_expired",
             "stage5_finite_qualified_endpoint_nonpass",
         }
+    )
+
+
+def _wait_for_terminal_abort_delivery(
+    run_dir: Path, terminal: dict[str, Any]
+) -> None:
+    """Keep capture alive until a terminal abort has reached the device path."""
+
+    if terminal.get("result") != "aborted":
+        return
+
+    def delivered() -> bool:
+        state = _read_json(run_dir / "reports/capture_device_state.json")
+        if state is None:
+            return False
+        return (
+            state.get("capture_active") is True
+            and state.get("emergency_abort_latched") is True
+            and int(state.get("emergency_aborts_sent", 0)) == 1
+        )
+
+    _wait_until(
+        delivered,
+        TERMINAL_ABORT_DELIVERY_TIMEOUT_S,
+        "terminal independent abort delivery before capture close",
     )
 
 
@@ -563,6 +589,7 @@ def run_bounded_tight_deadband_qualification(
             raise RuntimeError(
                 f"{selected.gate} supervisor exited {supervisor_exit}, expected {expected_exit}"
             )
+        _wait_for_terminal_abort_delivery(run_dir, terminal)
         capture_exit = _graceful_capture_stop(capture)
         if capture_exit != 0:
             raise RuntimeError(f"{selected.gate} capture exited with status {capture_exit}")

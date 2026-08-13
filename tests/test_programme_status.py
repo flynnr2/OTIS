@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_exact_upper_live_readiness() -> None:
+def test_tracked_status_records_upper_nonpass_and_offline_followup() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -27,18 +27,15 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == "g3_upper_ready_for_exact_live_execution"
-    assert successor["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        NO_WRITE_BENCH_REHEARSAL,
-        BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-        BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
-    ]
+    assert successor["state"] == (
+        "g3_upper_nonactionable_followup_offline_preparation"
+    )
+    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "conditional_g3_upper_authority_effective_exact_bundle"
+        "range_spanning_followup_offline_preparation_only"
     )
     assert successor["next_gate"] == (
-        "execute_exact_g3_upper_flash_and_finite_live_leg"
+        "prepare_range_spanning_bidirectional_and_hybrid_preview_candidate"
     )
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
@@ -146,7 +143,11 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
         retry["automatic_corrections"],
     } == {0}
     unattended = successor["q4_unattended_phase_authority"]
-    assert unattended["effective"] is True
+    assert unattended["effective"] is False
+    assert unattended["completed"] is True
+    assert unattended["completed_by_run_id"] == (
+        "g3_upper_live_20260813T173645Z/live_leg_b"
+    )
     assert unattended["unattended"] is True
     assert unattended["physical_presence_or_timely_reply_required"] is False
     assert unattended["q4_phase_fully_authorized"] is True
@@ -554,6 +555,8 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
         "g2_v5_effective": False,
         "g2_v5_activation_retired_after_prewrite_entry": True,
         "g3_conditional_on_passing_g2_and_fresh_upper_rehearsal": True,
+        "g3_authority_consumed": True,
+        "g3_consumed_by_run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
         "g4_authorized": False,
     }
     assert successor["completed_g1_evidence"] == {
@@ -729,12 +732,14 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
             "CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/"
             "12_CONDITIONAL_G3_UPPER_FLASH_AND_LIVE_AUTHORITY.md"
         ),
-        "currently_executable": True,
+        "currently_executable": False,
         "requires_passing_g2_analysis_and_seal": True,
         "requires_fresh_exact_upper_bundle_preflight_and_operational_rehearsal": True,
         "firmware_profile": "cx319_tight_upper",
         "exact_firmware_flash_limit": 1,
-        "g3_live_execution": True,
+        "g3_live_execution": False,
+        "consumed": True,
+        "consumed_by_run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
         "existing_bounded_envelope": True,
         "manual_reset_expected_after_successful_upload": False,
         "operator_assistance_required_if_upload_or_reenumeration_fails": True,
@@ -767,6 +772,21 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
             "d096d4cdc76723863b1f712d7628edb4"
         ),
     }
+    upper = successor["q4_g3_upper_physical_qualification_result"]
+    assert upper["status"] == (
+        "scientific_bounded_nonpass_with_terminal_platform_escape"
+    )
+    assert upper["selected_estimate_count"] == 25
+    assert upper["selected_error_counts_minimum"] == 1
+    assert upper["selected_error_counts_maximum"] == 3
+    assert upper["selected_error_counts_mean"] == 1.96
+    assert upper["automatic_corrections"] == 0
+    assert upper["scientific_outcome"] == (
+        "stimulus_nonactionable_stable_tight_hold"
+    )
+    assert upper["platform_failure_class"] == (
+        "terminal_abort_delivery_race_after_scientific_bounded_nonpass"
+    )
     assert successor["g2_v7_qualification_deadline_nonpass"] == {
         "run_id": "live_leg_a_v7_20260811T170842Z",
         "activation_sha256": (
@@ -924,7 +944,8 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
         "unbounded_or_unrecorded_retry",
         "automatic_restore",
         "duration_extension",
-        "g3_live_leg_before_passing_g2_and_fresh_upper_rehearsal",
+        "consumed_g3_live_authority_reuse",
+        "range_spanning_physical_execution_without_new_exact_authority",
         "phase_or_hybrid_actuation",
         "g4_progression",
     ]
@@ -934,14 +955,16 @@ def test_tracked_status_records_exact_upper_live_readiness() -> None:
     assert require_programme_operation_allowed(
         "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
     ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
+    for blocked_operation in (
         NO_WRITE_BENCH_REHEARSAL,
-    ) == successor
-    assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband",
         BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
-    ) == successor
+        BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,
+    ):
+        with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+            require_programme_operation_allowed(
+                "cx319_stabilized_tight_deadband",
+                blocked_operation,
+            )
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("cx319_stabilized_tight_deadband")
 

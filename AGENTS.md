@@ -177,6 +177,10 @@ the remaining physical integration risk.
 - Bound serial reads, writes, flushes, process shutdown, and command waits.
 - Send console output to a continuously drained file or bounded logger.
 - Keep abort independent of normal-command backpressure.
+- Treat abort submission and abort delivery as distinct events. On an aborting
+  terminal, keep the sole serial owner alive until capture records the priority
+  abort as sent (or records a bounded delivery failure); never race capture
+  shutdown against the abort FIFO.
 - For unattended finite runs, monitor the authoritative supervisor state and
   retained evidence records at a cadence shorter than the smallest material
   fault or milestone interval. Process existence and a silent runner terminal
