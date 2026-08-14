@@ -46,10 +46,10 @@ Current anchor evidence:
 - `runs/h1_open_loop/dac_manual_sweep/run_019/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_019/csv/h1_count_frequency_estimates.csv`
-- `docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md`
+- `docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/RUN_019_PLANT_MODEL_RESULTS.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/evidence_manifest.json`
-- `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`
+- `docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/RUN_020_PLANT_MODEL_RESULTS.md`
 - `profiles/plant_models/cx317_h1_bench_v2.json`
 - `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `docs/90_ROADMAP/STAGED_BUILD_PLAN.md`
@@ -198,7 +198,7 @@ Read:
 - updated `docs/90_ROADMAP/SW2_GPSDO_CONTROL_LOOP_READINESS.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_010/reports/anomaly_classification.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_010/reports/h1_characterization_summary.md`
-- `docs/60_EXPERIMENTS/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md`
+- `docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/H1_OCXO_DAC_CHARACTERIZATION_RUNBOOK.md`
 - `host/otis_tools/h1_endpoint_repeat.py`
 - firmware sweep command docs in
   `firmware/arduino/otis_nano_rp2040_connect/README.md`

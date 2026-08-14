@@ -64,7 +64,7 @@ An unexplained number is class 5, not class 1 through 4.
 
 The installed part is recorded as `ECS-TXO-5032-160-TR`. The blank stability
 suffix is the standard grade in the ECS ordering guide. The
-[ECS-TXO-5032 datasheet](../datasheets/ECS-TXO-5032.pdf), page 1, specifies:
+[ECS-TXO-5032 datasheet](../../datasheets/ECS-TXO-5032.pdf), page 1, specifies:
 
 | Published parameter | Datasheet value | Equivalent at 16 MHz |
 |---|---:|---:|
@@ -85,7 +85,7 @@ a 0.05 Hz (0.003125 ppm, or 3.125 ppb) acceptance limit for this assembly.
 
 ### Later 10 MHz CX317 OCXO
 
-The [CX317 datasheet](../datasheets/cx317.pdf), pages 2 and 3, describes the
+The [CX317 datasheet](../../datasheets/cx317.pdf), pages 2 and 3, describes the
 10 MHz `OH020-61003CV-010.0M`, not the ECS part used in the current run. It
 specifies +/-10 ppb temperature stability, +/-0.5 ppb for a +/-5% supply or
 load change, and ADEV at one second no greater than `1e-11`. It also states the
@@ -101,7 +101,7 @@ from the ECS datasheet or a completed 16 MHz uncertainty budget.
 
 ### GPS PPS reference
 
-The [CD-PA1616S datasheet](../datasheets/CD+PA1616S+Datasheet.v03.pdf), pages 5
+The [CD-PA1616S datasheet](../../datasheets/CD+PA1616S+Datasheet.v03.pdf), pages 5
 and 12, specifies PPS timing accuracy as +/-20 ns RMS and a 2.8 V CMOS output.
 Twenty nanoseconds corresponds to 0.32 of a 16 MHz oscillator period. RMS is a
 statistical measure, not a maximum bound; it must not be used as though every
@@ -115,7 +115,7 @@ architecture screen, discussed below.
 
 ### RP2040 capture input and interface buffer
 
-The [RP2040 datasheet](../datasheets/RP2040.datasheet.A700000007747462.pdf),
+The [RP2040 datasheet](../../datasheets/RP2040.datasheet.A700000007747462.pdf),
 section 3.5.6.3 on printed page 340, states that every PIO GPIO input uses a
 standard two-flip-flop synchronizer by default, adding two PIO cycles of
 latency to protect against metastability. It warns that bypassing the
@@ -217,7 +217,7 @@ cumulative endpoint span or multi-rate spans considered where they improve
 resolution. Any such estimator must reset at the same malformed-reference,
 snapshot-gap, and session boundaries enforced by the one-second capture path.
 
-The [SN74LVC1G17 datasheet](../datasheets/sn74lvc1g17.pdf), pages 6 and 7,
+The [SN74LVC1G17 datasheet](../../datasheets/sn74lvc1g17.pdf), pages 6 and 7,
 specifies Schmitt thresholds and propagation-delay limits. At 3.3 V and 15 pF,
 the propagation delay is 1.5 ns minimum to 4.6 ns maximum over -40 to +85 degC.
 A constant propagation delay cancels from a frequency interval; delay
@@ -226,7 +226,7 @@ complete assembly-level jitter budget.
 
 ### Power and environmental observation
 
-The [Nano RP2040 Connect datasheet](../datasheets/ABX00053-datasheet.pdf), page
+The [Nano RP2040 Connect datasheet](../../datasheets/ABX00053-datasheet.pdf), page
 7, allows 3.25 V to 3.35 V on its user 3.3 V output and up to 800 mA including
 on-board loads. It does not specify the fast rail transient or local
 temperature change produced by repeated USB command handling.
@@ -239,7 +239,7 @@ impedance, current, and DC resistance for a family of parts; the exact fitted
 suffix and the board-level impedance network must be known before using those
 figures quantitatively.
 
-The [SHT4x datasheet](../datasheets/Adafruit.Datasheet_SHT4x.pdf), page 6,
+The [SHT4x datasheet](../../datasheets/Adafruit.Datasheet_SHT4x.pdf), page 6,
 specifies typical SHT40 temperature accuracy of +/-0.2 degC, high-repeatability
 noise of 0.04 degC, and a two-second 63% response time. It can support thermal
 correlation when enabled and physically placed appropriately, but it cannot

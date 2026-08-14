@@ -14,7 +14,7 @@ retrospectively, create a completion seal, reuse its promotion ledger, or infer
 authority from the fact that an old profile still compiles.
 
 Platform stabilization now proceeds under
-[`../OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`](../OTIS_PLATFORM_STABILIZATION_PROGRAMME.md).
+[`../COMPLETED_AND_HISTORICAL/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`](../COMPLETED_AND_HISTORICAL/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md).
 Any future CX318 restart must follow that programme's completion gate and use a
 new programme identity, new profiles, a newly frozen bundle, and a fresh exact
 no-write rehearsal.

@@ -183,12 +183,12 @@ Primary artifacts:
 - `runs/h1_open_loop/dac_manual_sweep/run_019/reports/summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_019/reports/anomalies.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_019/csv/h1_count_frequency_estimates.csv`
-- `docs/60_EXPERIMENTS/RUN_019_PLANT_MODEL_RESULTS.md`
+- `docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/RUN_019_PLANT_MODEL_RESULTS.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/evidence_manifest.json`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/reports/run_020_analysis_precis.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/reports/h1_characterization_summary.md`
 - `runs/h1_open_loop/dac_manual_sweep/run_020/csv/h1_center_bracketed_slopes.csv`
-- `docs/60_EXPERIMENTS/RUN_020_PLANT_MODEL_RESULTS.md`
+- `docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/RUN_020_PLANT_MODEL_RESULTS.md`
 - `profiles/plant_models/cx317_h1_bench_v3.json` (current model version 4;
   `cx317_h1_bench_v2.json` remains historical)
 - `runs/h1_open_loop/ocxo_free_run/run_004/reports/anomalies.md`
