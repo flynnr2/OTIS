@@ -16,6 +16,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .time_domains import forward_progress, time_domain
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = (
@@ -108,10 +110,10 @@ class RelativePhaseAccumulator:
         timer_ticks_per_second: int,
         period_ns_per_cycle: float,
         configuration_sha256: str,
+        reference_timestamp_domain: str,
         counter_width_bits: int = 32,
         reference_interval_minimum_s: float = 0.8,
         reference_interval_maximum_s: float = 1.2,
-        reference_timestamp_modulus_ticks: int | None = None,
         expected_backend: str = "pio_wait_cumulative_snapshot_dma_v1",
     ) -> None:
         if nominal_edges <= 0 or timer_ticks_per_second <= 0:
@@ -120,15 +122,20 @@ class RelativePhaseAccumulator:
         self.timer_ticks_per_second = timer_ticks_per_second
         self.period_ns_per_cycle = period_ns_per_cycle
         self.configuration_sha256 = configuration_sha256
+        self.reference_timestamp_domain = reference_timestamp_domain
+        timestamp_semantics = time_domain(reference_timestamp_domain)
+        if timer_ticks_per_second != timestamp_semantics.nominal_hz:
+            raise ValueError(
+                f"timer_ticks_per_second={timer_ticks_per_second} contradicts "
+                f"{reference_timestamp_domain} nominal_hz="
+                f"{timestamp_semantics.nominal_hz}"
+            )
         self.modulus = 1 << counter_width_bits
         self.minimum_reference_ticks = round(
             reference_interval_minimum_s * timer_ticks_per_second
         )
         self.maximum_reference_ticks = round(
             reference_interval_maximum_s * timer_ticks_per_second
-        )
-        self.reference_timestamp_modulus_ticks = (
-            reference_timestamp_modulus_ticks
         )
         self.expected_backend = expected_backend
         self.phase_epoch = 0
@@ -308,36 +315,21 @@ class RelativePhaseAccumulator:
                 observation_age_s=observation_age_s,
                 reason="snapshot_or_reference_sequence_gap",
             )
-        reference_ticks = (
-            current.reference_timestamp_ticks
-            - previous.reference_timestamp_ticks
+        progress = forward_progress(
+            previous.reference_timestamp_ticks,
+            current.reference_timestamp_ticks,
+            domain=self.reference_timestamp_domain,
+            allow_equal=False,
         )
-        if reference_ticks <= 0:
-            if self.reference_timestamp_modulus_ticks is not None:
-                wrapped_ticks = (
-                    reference_ticks % self.reference_timestamp_modulus_ticks
-                )
-                if 0 < wrapped_ticks <= self.maximum_reference_ticks:
-                    reference_ticks = wrapped_ticks
-            if reference_ticks > 0:
-                pass
-            else:
-                return self._invalidate(
-                    current,
-                    dac_epoch=dac_epoch,
-                    observation_age_s=observation_age_s,
-                    reason="reference_timestamp_reordered",
-                )
+        if not progress.valid or progress.distance_ticks is None:
+            return self._invalidate(
+                current,
+                dac_epoch=dac_epoch,
+                observation_age_s=observation_age_s,
+                reason="reference_timestamp_reordered",
+            )
+        reference_ticks = progress.distance_ticks
         if reference_ticks > self.maximum_reference_ticks:
-            # A backwards timestamp that does not reconstruct to a plausible
-            # interval is reordered input, not a long reference outage.
-            if current.reference_timestamp_ticks < previous.reference_timestamp_ticks:
-                return self._invalidate(
-                    current,
-                    dac_epoch=dac_epoch,
-                    observation_age_s=observation_age_s,
-                    reason="reference_timestamp_reordered",
-                )
             return self._open_epoch(
                 current,
                 dac_epoch=dac_epoch,

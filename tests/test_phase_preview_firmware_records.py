@@ -129,7 +129,7 @@ def test_stage4_sketch_compiles_out_dac_write_dispatch() -> None:
     ]
     guarded = dispatch[
         dispatch.index("#if OTIS_ENABLE_CX318_STAGE4_PREVIEW") :
-        dispatch.index("#elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP")
+        dispatch.index("#elif OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW")
     ]
 
     for command_kind in ("DacMid", "DacZero", "DacSet"):

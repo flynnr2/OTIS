@@ -7,20 +7,21 @@ plan and grants no hardware authority.
 
 ## Fast
 
-Run current contract, authority, source-guard, replay-policy tests and one lower
-profile firmware smoke build.
+Run current contract, authority, source-guard, replay-policy, time-domain, and
+range-programme tests. Smoke-build the lower and range-map profiles.
 
 ## Campaign
 
 Run the current capture and serial-owner topology, bounded command and timeout
 behavior, independent abort under obstruction, owner-preserving rotation,
 transaction acknowledgement, deterministic replay/native parity, CX319
-analyzers, evidence snapshot, crash-recoverable finalization, sealing, and
-registration simulations. Build both supported profiles.
+analyzers, range-spanning operational path, domain-aware rollover consumers,
+evidence snapshot, crash-recoverable finalization, sealing, and registration
+simulations. Build all three supported profiles.
 
 ## Release
 
-Run the complete current Python/native suite. Build both supported profiles and
+Run the complete current Python/native suite. Build all three supported profiles and
 all current expected-failure guards. Confirm the firmware resource budget,
 deployed wire-row contracts, authority boundaries, current programme status,
 and fail-static paths.

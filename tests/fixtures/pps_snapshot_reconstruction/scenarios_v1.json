@@ -3,7 +3,7 @@
   "policy": {
     "max_oscillator_hz": 10000000.0,
     "timestamp_ticks_per_second": 16000000.0,
-    "timestamp_modulus": 68719476736
+    "timestamp_domain": "rp2040_timer0"
   },
   "cases": [
     {

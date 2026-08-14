@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_upper_nonpass_and_offline_followup() -> None:
+def test_tracked_status_records_range_spanning_survey_prefix() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -28,15 +28,35 @@ def test_tracked_status_records_upper_nonpass_and_offline_followup() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "g3_upper_nonactionable_followup_offline_preparation"
+        "range_spanning_part_a_survey_prefix_complete"
     )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
     assert successor["authority"] == (
-        "range_spanning_followup_offline_preparation_only"
+        "state_preserving_part_a_continuation_bundle_pending"
     )
     assert successor["next_gate"] == (
-        "prepare_range_spanning_bidirectional_and_hybrid_preview_candidate"
+        "freeze_and_rehearse_state_preserving_part_a_continuation_from_0xA844"
     )
+    range_authority = successor["range_spanning_operator_authority"]
+    assert range_authority["requires_exact_bundle_before_physical_action"] is True
+    assert range_authority[
+        "further_interactive_approval_required_after_exact_bundle"
+    ] is False
+    assert range_authority["phase_or_hybrid_actuation"] is False
+    assert range_authority["part_b_requires_complete_part_a_result"] is True
+    range_result = successor["range_spanning_part_a_survey_prefix_result"]
+    assert range_result["status"] == "passed_survey_prefix"
+    assert range_result["completed_point_count"] == 8
+    assert range_result["last_confirmed_applied_code"] == 0xA844
+    assert range_result["last_confirmed_band_state"] == "TIGHT_INSIDE"
+    assert range_result["lower_increasing_entry_coarse_bracket"] == [
+        0xA800,
+        0xA820,
+    ]
+    assert range_result["automatic_transactions"] == 0
+    assert range_result["phase_or_hybrid_actuation"] is False
+    assert range_result["part_a_complete"] is False
+    assert range_result["part_b_executable"] is False
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
     assert focused["effective"] is False
@@ -945,7 +965,7 @@ def test_tracked_status_records_upper_nonpass_and_offline_followup() -> None:
         "automatic_restore",
         "duration_extension",
         "consumed_g3_live_authority_reuse",
-        "range_spanning_physical_execution_without_new_exact_authority",
+        "range_spanning_continuation_without_exact_state_preserving_bundle_and_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression",
     ]

@@ -1,14 +1,15 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Lifecycle note (2026-08-11):** this is a historical roadmap through the
+**Lifecycle note (updated 2026-08-14):** this is a historical roadmap through the
 sealed CX317 result. The subsequent CX318 Stage 5 programme remains suspended,
 incomplete, and unsealed. The platform-stabilization programme in
 `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md` passed its
 completion gate. Historical “next” actions below are not current execution
-authority. The new `CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME` is authorized
-for offline preparation only and preserves the remaining scientific sequence
-under new stabilized-platform identities. It does not reactivate CX318 or
-authorize hardware interaction.
+authority. The `CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME` subsequently passed
+lower-side acquisition, recorded a non-actionable upper stimulus, and completed
+a passing eight-point prefix of its separately authorized range-spanning Part A
+survey. Part A, Part B, and active-hybrid qualification are not complete. See
+`../60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision

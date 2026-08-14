@@ -31,12 +31,13 @@ available through an explicit generated profile for interactive bench work.
 Because the IDE does not produce the builder's artifact manifest or perform its
 post-compile checks, use the matrix-built artifact for qualification evidence.
 
-The current matrix includes `cx319_tight_lower` and `cx319_tight_upper` as
-stabilized-platform candidate profiles. They are compiled in current Campaign,
-Release and Bench verification because their firmware/contract boundary is an
-active development surface. Programme authority remains offline-only: a
-successful build is not permission to flash, open serial, arm control or issue
-a DAC command.
+The current matrix includes `cx319_tight_lower`, `cx319_tight_upper`, and
+`cx319_range_map_part_a` as stabilized-platform profiles. They are compiled in
+current Campaign, Release and Bench verification because their
+firmware/contract boundaries are active development surfaces. The range-map
+profile permits only externally commanded, bounded manual setup applications;
+automatic frequency control is compiled out and phase/hybrid output remains
+non-actionable. A successful build alone is never hardware authority.
 
 GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
 enforced by `otis_resource_registry.*`. The normative ownership ledger,

@@ -119,9 +119,9 @@ def _run_host(inputs: list[Input]):
         timer_ticks_per_second=TICKS_PER_SECOND,
         period_ns_per_cycle=100,
         configuration_sha256=phase_hash,
+        reference_timestamp_domain="rp2040_timer0",
         reference_interval_minimum_s=float(phase_profile["validity"]["reference_interval_minimum_s"]),
         reference_interval_maximum_s=float(phase_profile["validity"]["reference_interval_maximum_s"]),
-        reference_timestamp_modulus_ticks=TICK_MODULUS,
     )
     estimates = CandidateSuite(phase_profile)
     hybrid = HybridCandidateEngine(hybrid_profile, candidate, start_code=START_CODE)

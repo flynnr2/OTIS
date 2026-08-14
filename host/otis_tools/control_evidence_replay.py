@@ -209,7 +209,8 @@ def _controller_replay(
     policy = load_current_replay_policy()
     engine = IOnlyPreviewEngine(policy)
     decision_ticks, wrap_count = unwrap_ticks(
-        [int(row["decision_timestamp_ticks"]) for row in controls]
+        [int(row["decision_timestamp_ticks"]) for row in controls],
+        domain="rp2040_timer0",
     )
     # The exact setup establishes the controller's initial operating point; it
     # is not an automatic correction epoch.  Replaying it through

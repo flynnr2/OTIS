@@ -10,7 +10,12 @@ CAPTURE_IN_PROGRESS_FLAG = "capture_in_progress.flag"
 COMPLETE_MARKER = "COMPLETE"
 CURRENT_EVIDENCE_EPOCH = "CX319_EVIDENCE_EPOCH_1"
 CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
-    {"cx319_tight_lower", "cx319_tight_upper", "cx319_q2_inhibited_transaction"}
+    {
+        "cx319_tight_lower",
+        "cx319_tight_upper",
+        "cx319_q2_inhibited_transaction",
+        "cx319_range_map_part_a",
+    }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (
     "unsupported historical OTIS package; use its recorded Git revision or "

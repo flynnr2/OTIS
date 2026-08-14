@@ -115,7 +115,6 @@ def replay_tight_deadband_chain(
                 contract=CONTRACT,
                 known_channels=frozenset(),
                 known_domains=frozenset(),
-                allow_rp2040_timer0_wrap=True,
                 tight_deadband_policy_sha256=policy_sha256,
             ),
         )

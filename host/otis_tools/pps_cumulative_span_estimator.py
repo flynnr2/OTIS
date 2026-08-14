@@ -27,7 +27,7 @@ from .pps_snapshot_reconstruction import (
     reconstruct_snapshots,
 )
 from .run_loader import load_manifest
-from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .time_domains import forward_progress, time_domain
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -149,6 +149,12 @@ class SpanEstimatorConfig:
             raise ValueError("nominal interval, timer rate, and captured edge rate must be positive")
         if max_rate * nominal >= 1 << 32:
             raise ValueError("adjacent interval can contain an ambiguous full counter wrap")
+        domain = time_domain(str(value["timer_domain"]))
+        if timer_hz != domain.nominal_hz:
+            raise ValueError(
+                f"timer_nominal_hz={timer_hz} contradicts "
+                f"{domain.name} nominal_hz={domain.nominal_hz}"
+            )
         spans = tuple(int(item) for item in value["candidate_spans_s"])
         if not spans or len(set(spans)) != len(spans) or any(item <= 0 for item in spans):
             raise ValueError("candidate_spans_s must be unique positive integers")
@@ -307,6 +313,7 @@ def estimate_spans(
                         _timer_interval_ticks(
                             item.opening_reference_timestamp_ticks,
                             item.closing_reference_timestamp_ticks,
+                            domain=config.timer_domain,
                         )
                         for item in selected
                     )
@@ -347,13 +354,9 @@ def estimate_spans(
     return tuple(estimates)
 
 
-def _timer_interval_ticks(opening: int, closing: int) -> int:
-    difference = closing - opening
-    if difference > 0:
-        return difference
-    if difference < 0 and opening - closing > RP2040_TIMER0_MICROS_WRAP_TICKS // 2:
-        return difference + RP2040_TIMER0_MICROS_WRAP_TICKS
-    return 0
+def _timer_interval_ticks(opening: int, closing: int, *, domain: str) -> int:
+    progress = forward_progress(opening, closing, domain=domain, allow_equal=False)
+    return int(progress.distance_ticks or 0) if progress.valid else 0
 
 
 def _read_rows(path: Path) -> list[dict[str, str]]:
@@ -382,7 +385,6 @@ def _validate_source(path: Path, contract: str, manifest: Any) -> None:
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
-            allow_rp2040_timer0_wrap=True,
         ),
     )
     if result.errors:
@@ -536,7 +538,7 @@ def load_run_inputs(
         ReconstructionPolicy(
             max_oscillator_hz=config.maximum_captured_edge_rate_hz,
             timestamp_ticks_per_second=config.timer_nominal_hz,
-            timestamp_modulus=RP2040_TIMER0_MICROS_WRAP_TICKS,
+            timestamp_domain=config.timer_domain,
         ),
     )
 

@@ -210,7 +210,6 @@ def analyze(run_dir: Path) -> dict[str, Any]:
                     contract=contract,
                     known_channels=segment_manifest.known_channels,
                     known_domains=segment_manifest.known_domains,
-                    allow_rp2040_timer0_wrap=True,
                     tight_deadband_policy_sha256=manifest_value["policy"][
                         "sha256"
                     ],

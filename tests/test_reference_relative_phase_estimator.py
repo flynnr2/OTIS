@@ -50,6 +50,7 @@ def _engine(*, nominal_edges: int = NOMINAL_EDGES) -> RelativePhaseAccumulator:
         timer_ticks_per_second=TIMER_HZ,
         period_ns_per_cycle=100,
         configuration_sha256=CONFIG_SHA256,
+        reference_timestamp_domain="fixture_100hz",
     )
 
 
@@ -118,13 +119,20 @@ def test_counter_wrap_is_exact() -> None:
 def test_rp2040_reference_timestamp_wrap_is_not_a_phase_discontinuity() -> None:
     engine = RelativePhaseAccumulator(
         nominal_edges=NOMINAL_EDGES,
-        timer_ticks_per_second=TIMER_HZ,
+        timer_ticks_per_second=16_000_000,
         period_ns_per_cycle=100,
         configuration_sha256=CONFIG_SHA256,
-        reference_timestamp_modulus_ticks=1000,
+        reference_timestamp_domain="rp2040_timer0",
     )
-    engine.process(_snapshot(1, 1000, ticks=950), counted_edges=None)
-    record = engine.process(_snapshot(2, 990, ticks=50), counted_edges=10)
+    timer_hz = 16_000_000
+    timer_modulus = (1 << 32) * 16
+    engine.process(
+        _snapshot(1, 1000, ticks=timer_modulus - timer_hz // 2),
+        counted_edges=None,
+    )
+    record = engine.process(
+        _snapshot(2, 990, ticks=timer_hz // 2), counted_edges=10
+    )
 
     assert record.accepted is True
     assert record.phase_epoch == 1

@@ -45,6 +45,11 @@ gate. Frequency, ratio, ppm error, stability, and control eligibility are
 derived by host tooling from `CNT`, `REF`, `STS`, manifest domains, and run
 metadata.
 
+Timestamp progression, including legal rollover, is derived automatically
+from `gate_domain`. A caller cannot opt into modular handling independently of
+the record. Unknown or contradictory domains, illegal backward movement, and
+ambiguous half-modulus gaps fail closed; raw boundary values are not rewritten.
+
 Invalid or startup-suspect windows are preserved when a bounded gate exists.
 Firmware marks the `CNT` row with `capture_flags_v1` bits and emits diagnostic
 `STS` rows. Host analysis may exclude flagged rows from derived frequency or

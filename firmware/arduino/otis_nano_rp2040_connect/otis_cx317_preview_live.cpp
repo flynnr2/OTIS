@@ -27,7 +27,8 @@ constexpr char kSelectedEstimatorHash[] =
 constexpr char kPolicyId[] = "CX317_STAGE7_HIL_REHEARSAL_V1";
 constexpr char kPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
-#elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
+#elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW || \
+    OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kSelectedEstimatorReference[] = "selected600";
@@ -112,7 +113,7 @@ bool recovery_requested = false;
 
 bool enqueue(const char *data, size_t length);
 
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
 bool emit_tight_deadband(const OtisCx317PreviewDecision &decision,
                          uint32_t source_estimate_seq,
                          uint64_t timestamp_ticks, uint64_t capture_session,
@@ -427,7 +428,7 @@ void otis_cx317_preview_live_emit_headers(void) {
       "record_type,schema_version,estimate_seq,estimate_id,estimator_timestamp_ticks,time_domain,source_count_seq,source_count_ref,source_reference_first_seq,source_reference_last_seq,source_status_refs,source_dac_ref,manifest_ref,estimator_version,config_hash,observation_validity,observation_reason_codes,reference_validity,reference_age_s,reference_continuity,count_validity,count_age_s,count_continuity,diagnostic_health,diagnostic_reason_codes,frequency_observation_hz,accepted_sample_count,estimator_confidence,frequency_estimate_hz,frequency_error_hz,dispersion_hz,uncertainty_status,uncertainty_reason_codes,count_quantization_standard_uncertainty_hz,counter_aperture_standard_uncertainty_hz,reference_standard_uncertainty_hz,calibration_standard_uncertainty_hz,model_standard_uncertainty_hz,combined_standard_uncertainty_hz,coverage_factor,expanded_uncertainty_hz,correlation_policy,uncertainty_model_ref,drift_enabled,drift_hz_per_s,preview_eligibility,eligibility_reason_codes\r\n");
   otis_transport_write_cstr(
       "record_type,schema_version,control_seq,decision_id,decision_timestamp_ticks,time_domain,est_input_ref,plant_model_ref,plant_model_id,plant_model_version,plant_model_hash,policy_version,config_hash,control_state,previous_control_state,state_transition,transition_reason_code,preview_eligibility,eligibility_reason_codes,diagnostic_health,model_applicability,model_reason_codes,current_dac_code,frequency_error_hz,hz_per_code,raw_delta_codes,limited_delta_codes,proposed_dac_code,step_limited,range_clamped,preview_available,preview_only,actuation_authorized,actionable,decision_reason_code\r\n");
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
   otis_transport_write_cstr(
       "record_type,schema_version,decision_sequence,estimate_id,decision_timestamp_ticks,time_domain,capture_session,dac_epoch,integer_edge_error_counts,absolute_edge_error_counts,state_before,state_after,entry_counter,release_counter,transition,frequency_controller_eligible,requalified,requalification_reason,historical_v2_inside,symmetric_two_count_inside,policy_id,policy_sha256,actionable,actuation_authorized,authorization_consumed,reason_codes\r\n");
 #endif
@@ -545,7 +546,7 @@ void otis_cx317_preview_live_on_boundary(
         uptime_s, span.selected_frequency_hz - kNominalFrequencyHz, true,
         true, true, true, static_code);
     input.model_applicable = applicable;
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
     input.accumulated_edge_error_counts =
         span.selected_accumulated_edge_error_counts;
     input.capture_session = observation->session;
@@ -556,13 +557,13 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
     selected_estimator_valid = true;
     selected_model_applicable = applicable;
-#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
     const bool tight_evidence_queued = emit_tight_deadband(
         decision, selected_estimate_seq, observation->pps_timestamp_ticks,
         observation->session, current_dac_epoch,
         span.selected_accumulated_edge_error_counts);
 #endif
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
     OtisCx317ActiveLiveDecision active_decision = {
         control_seq,
         span.selected_first_sequence,
@@ -574,7 +575,7 @@ void otis_cx317_preview_live_on_boundary(
         decision.frequency_error_hz,
         true,
         applicable,
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
         decision.preview_available && tight_evidence_queued &&
             decision.tight_deadband_decision_available &&
             decision.tight_deadband.frequency_controller_eligible,

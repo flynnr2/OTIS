@@ -13,6 +13,7 @@ from .pps_diagnostics import classify_pps_interval
 from .run_loader import inspect_run_state, load_manifest
 from .sessions import detect_run_sessions
 from .timebase import unwrap_ticks
+from .time_domains import validate_domain_declarations
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
     if not path.exists():
@@ -92,7 +93,9 @@ def _optional_int(value: object) -> int | None:
 
 
 def _validate_manifest(run_dir: Path, manifest) -> list[str]:
-    failures: list[str] = []
+    failures: list[str] = list(
+        validate_domain_declarations(manifest.data.get("domains"))
+    )
     for channel in manifest.data.get("channels", []):
         try:
             channel_id = int(channel["channel_id"])
@@ -199,7 +202,11 @@ def _validate_pps_cadence(
             continue
         expected = nominal_hz
         ticks = [ticks for _seq, ticks in refs]
-        cadence_ticks, _wrap_count = unwrap_ticks(ticks) if domain == "rp2040_timer0" else (ticks, 0)
+        try:
+            cadence_ticks, _wrap_count = unwrap_ticks(ticks, domain=domain)
+        except ValueError as exc:
+            failures.append(f"raw_events.csv: {exc}")
+            continue
         declared_gap_indexes: set[int] = set()
         gap_candidates: list[tuple[int, int]] = []
         for index, ((previous_seq, _), (current_seq, _), start, end) in enumerate(
@@ -329,12 +336,12 @@ def validate_run(run_dir: Path) -> int:
             known_channels=manifest.known_channels,
             known_domains=manifest.known_domains,
             template=manifest.is_template,
-            allow_rp2040_timer0_wrap="rp2040_timer0" in manifest.known_domains,
             tight_deadband_policy_sha256=(
                 manifest.data.get("policy", {}).get("sha256")
                 if isinstance(manifest.data.get("policy"), dict)
                 else None
             ),
+            segmented_capture=session_summary.session_count > 1,
         )
         result = validate_csv(path, context)
         files_by_contract[contract] = path

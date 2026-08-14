@@ -65,7 +65,8 @@ def _next_selected_interval_is_cadence_eligible(
         return True
     try:
         ticks, _ = unwrap_ticks(
-            [int(row["decision_timestamp_ticks"]) for row in rows]
+            [int(row["decision_timestamp_ticks"]) for row in rows],
+            domain="rp2040_timer0",
         )
         eligible_index = max(
             index

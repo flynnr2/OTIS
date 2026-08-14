@@ -7,6 +7,17 @@ Decision: whether the present OTIS architecture is robust across its supported
 lifecycle, or is safe and successful only inside a narrowly frozen,
 continuously supervised campaign
 
+Post-review status (2026-08-14): this report remains the immutable assessment
+of reviewed state `27d8c0d`; its source observations and finding numbers are
+not rewritten as if later evidence existed at review time. Subsequent CX319
+work added canonical domain-aware rollover semantics, a same-code DAC-epoch
+handoff, exact range-map firmware/host paths, and deterministic regressions for
+three campaign escapes. An exact physical Part A segment then completed eight
+points, stopped healthy, validated, sealed, and registered. This closes the
+specific “no subsequent physical pass” evidence gap for that exact bundle, but
+does not overturn the broader host-dependency or lifecycle verdict. See
+`docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
+
 ## Review method and evidence language
 
 This review treated architecture documents and comments as claims until source,

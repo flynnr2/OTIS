@@ -94,6 +94,7 @@ uint32_t service_sequence(const OtisServiceMessage &message) {
     case OtisServiceMessageKind::Environment:
       return message.environment.sequence;
     case OtisServiceMessageKind::AppliedDacState:
+    case OtisServiceMessageKind::ManualDacApplication:
       return message.dac.sequence;
     case OtisServiceMessageKind::RunControl:
       return message.run_control.sequence;
@@ -112,6 +113,7 @@ uint64_t service_ticks(const OtisServiceMessage &message) {
     case OtisServiceMessageKind::Environment:
       return message.environment.timestamp_ticks;
     case OtisServiceMessageKind::AppliedDacState:
+    case OtisServiceMessageKind::ManualDacApplication:
       return message.dac.published_ticks;
     case OtisServiceMessageKind::RunControl:
       return message.run_control.published_ticks;
@@ -594,6 +596,8 @@ const char *otis_service_message_kind_name(OtisServiceMessageKind kind) {
       return "environment";
     case OtisServiceMessageKind::AppliedDacState:
       return "applied_dac_state";
+    case OtisServiceMessageKind::ManualDacApplication:
+      return "manual_dac_application";
     case OtisServiceMessageKind::RunControl:
       return "run_control";
     case OtisServiceMessageKind::ActuatorAcknowledgement:

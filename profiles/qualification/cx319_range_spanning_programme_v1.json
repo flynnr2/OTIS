@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "programme_id": "CX319_RANGE_SPANNING_BIDIRECTIONAL_HYBRID_PREVIEW_V1",
+  "status": "part_a_survey_candidate_operator_authorized_pending_exact_build_and_rehearsal",
+  "operator_authority": {
+    "instruction_date": "2026-08-13",
+    "scope": [
+      "offline_preparation",
+      "firmware_flash",
+      "serial_access",
+      "board_reset",
+      "dac_setup_stimuli",
+      "physical_rehearsal",
+      "part_a_boundary_map",
+      "part_b_frequency_only_traversal"
+    ],
+    "phase_or_hybrid_actuation": false,
+    "requires_exact_bundle_before_first_physical_action": true,
+    "further_interactive_approval_required_after_exact_bundle": false
+  },
+  "frozen_inputs": {
+    "preparation_prompt": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md",
+      "sha256": "9a9721bac7aaaee18256383c1f6c5dcf8481628fe053d39660bd4f84915e98a5"
+    },
+    "lower_result": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/35_Q4_LOWER_SIDE_PHYSICAL_QUALIFICATION_PASS.md",
+      "sha256": "0f3ed28e14886de662be28fb4ebbace16636a01f2e32f8796749424344b7afdb",
+      "run_id": "timer_rollover_recovery_live_20260813T160000Z/live_leg_a",
+      "setup_code": 43016,
+      "automatic_code": 43037,
+      "pre_counts": [-4, -5, -5, -4],
+      "post_counts": [-3, -2, -2],
+      "observed_response_hz": 0.003333332
+    },
+    "upper_result": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md",
+      "sha256": "c1bfc52986355bb143f0df92f0ad2bb973720217bd9ae2713310b6eb7c944feb",
+      "run_id": "g3_upper_live_20260813T173645Z/live_leg_b",
+      "setup_code": 43080,
+      "counts_histogram": {"1": 3, "2": 20, "3": 2},
+      "mean_counts": 1.96
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
+      "nominal_crossing_code": 43069.627035,
+      "conservative_crossing_code_min": 43031,
+      "conservative_crossing_code_max": 43108,
+      "local_slope_hz_per_code": 0.00017008467693813145,
+      "characterized_code_min": 43008,
+      "characterized_code_max": 43776
+    },
+    "selected_frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "selected_relative_phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "selected_hybrid_preview": {
+      "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
+      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76"
+    }
+  },
+  "part_a": {
+    "state": "survey_frozen_fine_pass_requires_survey_derived_separate_freeze",
+    "firmware_profile": "cx319_range_map_part_a",
+    "frequency_control_authority": false,
+    "phase_hybrid_authority": false,
+    "selected_estimator_span_s": 600,
+    "settling_exclusion_s": 900,
+    "survey_fresh_observations_per_point": 2,
+    "survey_role": "two_consecutive_fresh_policy_observations_for_classification_and_transition_bracketing_only_not_final_boundary_claim",
+    "operational_point_timing": {
+      "settling_exclusion_s": 900,
+      "full_history_reset_s": 1500,
+      "selected_estimator_span_s": 600,
+      "fresh_policy_observations_required": 2,
+      "ideal_minimum_point_duration_s": 2100,
+      "worst_case_policy_bearing_duration_s": 2700,
+      "host_wait_margin_s": 120,
+      "host_wait_timeout_s": 2820,
+      "minimum_remaining_wall_before_new_point_s": 3000,
+      "basis": "a_selected_estimate_just_before_full_history_reset_is_preserved_but_not_policy_bearing"
+    },
+    "survey_point_order": [
+      43008,
+      43040, 43044, 43048, 43052, 43056, 43060,
+      43076, 43080, 43084, 43088, 43092, 43096,
+      43152,
+      43096, 43092, 43088, 43084, 43080, 43076, 43072,
+      43040, 43036, 43032, 43028, 43024, 43020, 43016, 43012,
+      43008
+    ],
+    "survey_regions": {
+      "lower_outside_to_inside_increasing": [43040, 43044, 43048, 43052, 43056, 43060],
+      "inside_to_upper_outside_increasing": [43076, 43080, 43084, 43088, 43092, 43096],
+      "upper_outside_to_inside_decreasing": [43096, 43092, 43088, 43084, 43080, 43076, 43072],
+      "inside_to_lower_outside_decreasing": [43040, 43036, 43032, 43028, 43024, 43020, 43016, 43012]
+    },
+    "bridge_writes_open_epochs_without_observation_claim": [43152, 43040],
+    "fine_pass": {
+      "step_codes": 1,
+      "minimum_region_radius_codes": 4,
+      "fresh_observations_per_point_minimum": 2,
+      "fresh_observations_per_point_maximum": 6,
+      "boundary_adjacent_observations_minimum": 4,
+      "target_bracket_width_codes": 2,
+      "mixed_results_reported_as_interval": true,
+      "monotonic_complete_outbound_and_return_required": true,
+      "survey_derived_plan_must_be_frozen_before_fine_physical_entry": true
+    }
+  },
+  "part_b": {
+    "state": "prospective_requires_part_a_boundary_result_and_separate_exact_transition",
+    "trajectory": [
+      "lower_outside",
+      "automatic_positive_acquisition",
+      "qualified_deadband_dwell",
+      "upper_outside",
+      "automatic_negative_acquisition",
+      "qualified_deadband_dwell",
+      "lower_outside",
+      "automatic_positive_reacquisition",
+      "final_qualified_deadband_dwell"
+    ],
+    "lower_endpoint_code": 43008,
+    "upper_endpoint_code": 43152,
+    "endpoint_projection": {
+      "basis_crossing_code": 43069.627035,
+      "basis_slope_hz_per_code": 0.00017008467693813145,
+      "lower_accumulated_counts": -6.289088603177718,
+      "upper_accumulated_counts": 8.40622748427684,
+      "lower_hard_range_limits_additional_margin": true
+    },
+    "prospective_automatic_budget": {
+      "maximum_step_codes": 21,
+      "maximum_corrections": 9,
+      "maximum_cumulative_movement_codes": 189,
+      "one_request_outstanding": true,
+      "automatic_retry": false,
+      "automatic_restore": false,
+      "minimum_code": 43008,
+      "maximum_code": 43776
+    },
+    "timing": {
+      "selected_estimator_span_s": 600,
+      "settling_exclusion_s": 900,
+      "full_history_reset_s": 1500,
+      "activation_and_correction_cadence_s": 1800,
+      "status": "inherited_conservative_until_part_a_and_matched_direction_response_support_shorter_freeze"
+    }
+  },
+  "domain_contract": {
+    "timestamp_domain": "rp2040_timer0",
+    "nominal_hz": 16000000,
+    "counter_width_bits": 36,
+    "modulus_ticks": 68719476736,
+    "rollover": "modular_forward",
+    "maximum_unambiguous_forward_ticks": 34359738368,
+    "caller_controlled_rollover_switch": false
+  },
+  "zero_authority_invariants": {
+    "hybrid_derived_dac_request": false,
+    "hybrid_frequency_delta_influence": false,
+    "hybrid_frequency_eligibility_influence": false,
+    "hybrid_budget_state_mutation": false,
+    "phase_hybrid_actuation": false,
+    "raw_observations_preserved": true
+  },
+  "terminal_outcomes": [
+    "part_a_survey_complete",
+    "transition_region_not_bracketed",
+    "endpoint_excitation_insufficient",
+    "deadband_or_plant_model_requires_revision",
+    "hybrid_preview_requires_revision",
+    "counter_timestamp_domain_fault",
+    "measurement_transaction_authority_or_platform_fault",
+    "operator_abort"
+  ],
+  "physical_stop_rules": {
+    "code_outside_characterized_range": "abort_before_write",
+    "point_order_or_direction_differs": "abort_before_write",
+    "missing_exact_application_acknowledgement": "abort_fail_static",
+    "reference_capture_queue_transport_or_partition_fault": "abort_fail_static",
+    "hybrid_authority_contamination": "abort_fail_static",
+    "stale_or_cross_epoch_estimator_support": "abort_fail_static",
+    "independent_abort_delivery_failure": "terminal_platform_fault",
+    "automatic_restore": false
+  }
+}

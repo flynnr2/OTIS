@@ -21,11 +21,15 @@ and Git history. Reproduce a historical package from the exact revision named
 by its manifest, bundle, index record, or report; do not treat a successful
 historical reproduction as current validation or authority.
 
-The current CX319 Q4 phase is authorized for unattended execution, as recorded
-in `profiles/programme_status_v2.json`. Exact-image flashing and reset recovery
-may be used without timely operator replies. Existing electrical limits,
-candidate gates, finite-live bounds, fail-static behavior and evidence
-requirements remain mandatory; unchanged Q2/Q3 results are not repeated.
+The current CX319 range-spanning programme has completed a passing eight-point
+Part A survey prefix. The last confirmed code is `0xA844`; the observed lower
+increasing-direction entry is coarsely bracketed by `0xA800..0xA820`. The
+reviewed result and exact evidence identities are in
+[`38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`](docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md).
+Continuation requires an exact state-preserving bundle and rehearsal. Part B
+remains gated on completed Part A evidence, and phase/hybrid actuation remains
+unauthorized. Current programme state is recorded in
+`profiles/programme_status_v2.json`.
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute

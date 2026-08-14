@@ -36,3 +36,8 @@ Snapshot and reference sequences must both be adjacent modulo 2^32.  Any
 status bit, gap, duplicate, ambiguous full counter wrap, association loss,
 FIFO/DMA/ring fault, or session transition fails closed.  Reacquisition needs
 two new clean snapshots; late records are never paired retroactively.
+
+`reference_timestamp_ticks` inherits the canonical `rp2040_timer0` domain from
+this contract. Legal modular progression is automatic; a session transition
+resets temporal reconstruction and is never treated as a timer rollover. See
+`docs/50_SOFTWARE/TIME_DOMAIN_AND_ROLLOVER_CONTRACT.md`.
