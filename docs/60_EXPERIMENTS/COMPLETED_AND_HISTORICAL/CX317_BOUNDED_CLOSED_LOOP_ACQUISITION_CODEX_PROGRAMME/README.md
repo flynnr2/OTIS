@@ -7,7 +7,7 @@ PPS-gated estimator and observe-only controller campaign.
 
 The programme completed on 2026-08-08 with the evidence-gated decision
 `dual_core_frequency_control_endurance_passed`. The authoritative report is
-[`../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md`](../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md).
+[`../../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md`](../../CX317_BOUNDED_CLOSED_LOOP_ACQUISITION_FINAL_REPORT.md).
 
 The final 24-hour dual-core endurance run applied one exact `+19`-code
 correction from `0xA815` to `0xA828`, then retained `0xA828` inside the frozen
