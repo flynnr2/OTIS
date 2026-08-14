@@ -42,6 +42,18 @@ phase-aligned time scale.
   GPIO21/CLOCK GPOUT0.
 - The RP2040 GPOUT auxiliary-source mux supports `clksrc_gpin0` directly and
   the output divider supports divide by one.
+- RP2040 GPIO function selection does not make PIO input observation exclusive.
+  The RP2040 datasheet states that the PIO inputs remain connected and can see
+  every GPIO regardless of the selected GPIO function. Selecting
+  `CLOCK GPIN0` on GPIO20 therefore permits the clock block and the existing
+  D8 PIO counter to consume the same conditioned pad-level signal
+  simultaneously.
+- This silicon guarantee predicts no change in D8 PIO edge counting merely
+  because GPIN0 also feeds GPOUT0. The required before/after count comparison
+  is consequently a focused regression for initialization-order mistakes,
+  unintended reconfiguration and physical switching or loading effects; it is
+  not an unresolved architectural question about whether PIO and GPIN0 may
+  observe GPIO20 concurrently.
 - Current OTIS firmware reserves D9/GPOUT0 for `clock_visibility` and documents
   it as an internal-clock diagnostic output. Repurposing it is an explicit
   ownership and semantic change.
@@ -52,6 +64,13 @@ phase-aligned time scale.
   laboratory output driver.
 - GPOUT source switching can glitch. Normal operation must therefore configure
   one frozen source during boot and avoid runtime source switching.
+- The installed Pico SDK's `clock_configure_gpin()` selects `CLOCK GPIN0` as
+  GPIO20's final function while configuring the requested clock generator.
+  Conversely, `pio_gpio_init(..., GPIO20)` selects a PIO function. PIO input
+  observation survives the former change, but GPIN0 forwarding does not
+  survive a later function-selection write back to PIO. Initialization order
+  and the absence of later GPIO20 function reconfiguration are therefore
+  decision-bearing invariants.
 
 Use the local sources in:
 
@@ -121,6 +140,17 @@ Required properties:
 - no rerouting of `clk_sys`, `clk_ref`, USB, PIO or the timing fabric;
 - no software edge generation, interrupt forwarding or CPU-defined timestamps;
 - no change to D8, D14 or D10 authority;
+- an explicit initialization sequence in which the D8 PIO count backend is
+  initialized first, GPOUT0 is then configured from GPIO20/GPIN0 at 10 MHz
+  divide by one, and GPIO21 is finally exposed as `CLOCK GPOUT0` only after the
+  clock-generator configuration succeeds;
+- GPIO20's final function selection is `CLOCK GPIN0`; PIO continues to observe
+  D8 through its always-connected input path, and no later
+  `pio_gpio_init()`, `gpio_set_function()` or equivalent operation may change
+  GPIO20's function selection while the output is declared configured;
+- D9 remains disabled or high-impedance until the GPIN0 source, integer-one
+  divider and output validity boundary have been configured; no live AUXSRC
+  change is permitted;
 - boot telemetry for source, destination, divider, inversion, drive setting,
   configured state, output contract identity and validity semantics;
 - explicit behavior when D8 stops, D14/reference qualification is lost, control
@@ -140,6 +170,13 @@ Add focused checks for:
 - exact D8/D9/GPOUT0 resource ownership;
 - expected source and divider constants in every enabled profile;
 - exclusion of alternate GPOUT sources and runtime switching;
+- the required initialization ordering and final GPIO20/GPIO21 function
+  selections, including a source guard against any later GPIO20 function-mux
+  write that would silently stop GPIN0 forwarding while leaving PIO counting
+  operational;
+- readback or equivalent exact evidence that GPOUT0 is enabled from
+  `clksrc_gpin0` with integer divider one and zero fractional divider before D9
+  is declared valid;
 - output disabled or high-impedance in profiles that do not select it;
 - unchanged system/reference/peripheral clock configuration;
 - unchanged D8 PPS-gated count and D14 reference ownership;
@@ -185,6 +222,17 @@ Determine:
 - effect on D8/D14 snapshot association, selected estimates, queue health,
   transport and control decisions; and
 - whether direct D9 remains suitable or an external output buffer is required.
+
+Interpret the enabled-versus-disabled D8 comparison narrowly. The documented
+RP2040 input topology predicts unchanged PIO counts because enabling the
+GPIN0-to-GPOUT0 branch does not remove or replace the PIO input branch. A
+change in D8 count continuity, validity or distribution is therefore evidence
+of an implementation-order defect, unintended register/resource interaction,
+or a physical electrical effect such as supply, ground, edge or loading
+coupling. It must not be normalized as an expected consequence of shared
+observation. Reject the activation-boundary window from steady-state
+comparison, preserve it as transition evidence, and compare clean bounded
+segments before and after output activation.
 
 Use the cheapest test capable of supporting each claim. A frequency counter
 alone cannot establish edge integrity, delay or duty cycle; an ordinary scope
