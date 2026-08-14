@@ -19,6 +19,7 @@
 #include "otis_cx317_active_actuator.h"
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_dual_core_state.h"
+#include "otis_cx319_range_map_epoch.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_phase_preview_live.h"
 #include "otis_phase_preview_transport.h"
@@ -109,6 +110,9 @@ bool dual_core_timing_trace_started = false;
 uint32_t dual_core_last_timing_trace_ms = 0u;
 uint32_t dual_core_association_loss_decision_sequence = 0u;
 OtisCx317StaticCodeState dual_core_static_code = {};
+#if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
+uint32_t dual_core_range_map_dac_epoch = 0u;
+#endif
 OtisReceiverQualificationMessage dual_core_receiver = {};
 // Association-loss publication runs on the bounded timing-core stack. Keep
 // its full evidence-frame formatter in static storage; Core 1 is the only
@@ -737,7 +741,8 @@ void publish_dual_core_service_metadata(uint32_t now_ms) {
 void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
                                                uint32_t dac_epoch,
                                                uint32_t now_s) {
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW || \
+    OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
   otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
                                                now_s);
   if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
@@ -789,11 +794,33 @@ void service_dual_core_timing_inputs(void) {
           otis_cx317_dual_core_static_state_on_periodic(
               &dual_core_static_code, &message.dac);
       if (changed) {
-#if !OTIS_ENABLE_CX317_BOUNDED_ACTIVE
+#if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
+        dual_core_range_map_dac_epoch++;
+        propagate_cx317_applied_epoch_to_previews(
+            dual_core_static_code.applied_code,
+            dual_core_range_map_dac_epoch, millis() / 1000u);
+#elif !OTIS_ENABLE_CX317_BOUNDED_ACTIVE
         otis_cx317_preview_live_on_dac_applied(
             dual_core_static_code.applied_code, millis() / 1000u);
 #endif
       }
+      continue;
+    }
+    if (message.kind == OtisServiceMessageKind::ManualDacApplication) {
+#if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
+      uint16_t applied_code = 0u;
+      uint32_t applied_epoch = 0u;
+      if (!otis_cx319_range_map_accept_manual_application(
+              &dual_core_static_code, &message.dac,
+              &dual_core_range_map_dac_epoch, &applied_code,
+              &applied_epoch)) {
+        otis_dual_core_latch_fault(
+            OtisPartitionFault::ActuatorAcknowledgementMismatch);
+      } else {
+        propagate_cx317_applied_epoch_to_previews(applied_code, applied_epoch,
+                                                 millis() / 1000u);
+      }
+#endif
       continue;
     }
     if (message.kind ==
@@ -1533,7 +1560,7 @@ void emit_captured_edge(const OtisCapturedEdge &record) {
 
 OtisCx317StaticCodeState cx317_static_code_state(void) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
   // The no-write rehearsal consumes the Stage 4-sealed A828 premise as a
   // build-bound observation context only.  Active health remains unconfirmed
   // until the exact Stage 5 setup write creates real Core 0 DAC evidence.
@@ -2025,6 +2052,9 @@ void emit_common_boot_status(void) {
                   OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW,
                   OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("build", "enable_cx319_range_map_preview",
+                  OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("build", "enable_cx318_stage4_premise_setup",
                   OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -2050,6 +2080,14 @@ void emit_common_boot_status(void) {
   emit_status_u32("cx318_preview", "dac_epoch",
                   OTIS_CX318_STAGE4_DAC_EPOCH, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+#elif OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
+  emit_status_u16_hex("cx319_range_map", "initial_code",
+                      OTIS_CX319_RANGE_MAP_INITIAL_CODE,
+                      OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx319_range_map", "frequency_control_authority", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("cx319_range_map", "phase_hybrid_authority", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 #else
   emit_status_u16_hex("cx318_preview", "confirmed_initial_code",
                       OTIS_TIGHT_DEADBAND_INITIAL_CODE, OTIS_SEVERITY_INFO,
@@ -3681,7 +3719,7 @@ void boot_phase_preview_init(void) {
       otis_cx317_preview_live_begin(millis() / 1000u) &&
       otis_cx317_active_live_begin();
   record_capability_result(OtisBootCapability::Phase4Preview, preview_ready);
-#if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
   const bool phase_preview_ready = otis_phase_preview_live_begin(
       OTIS_TIGHT_DEADBAND_INITIAL_CODE,
       OTIS_TIGHT_DEADBAND_INITIAL_DAC_EPOCH);
@@ -3847,6 +3885,19 @@ void handle_dac_set(uint16_t requested_code) {
   dual_core_manual_start_consumed = true;
 #endif
   bool ok = otis_dac_ad5693r_set_raw(requested_code);
+#if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW && OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisServiceMessage range_map_application = {};
+  range_map_application.kind = OtisServiceMessageKind::ManualDacApplication;
+  range_map_application.dac.sequence = dual_core_service_sequence++;
+  range_map_application.dac.published_ticks = otis_capture_ticks_now();
+  range_map_application.dac.requested_code = requested_code;
+  range_map_application.dac.applied_code = clamped;
+  range_map_application.dac.initialized = true;
+  range_map_application.dac.i2c_ok = ok;
+  range_map_application.dac.requested_applied_match = ok;
+  if (!otis_dual_core_publish_service(&range_map_application))
+    otis_dual_core_latch_fault(OtisPartitionFault::ServiceToTimingExhausted);
+#endif
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #if !OTIS_ENABLE_DUAL_CORE_PARTITION
   otis_cx317_active_live_note_manual_start(requested_code, ok,
@@ -4136,6 +4187,19 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status("cx318_preview", "dac_command_attempt",
                 "rejected_write_surface_compiled_out", OTIS_SEVERITY_ERROR,
                 OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#elif OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW
+  } else if (command.kind == OtisSerialCommandKind::DacMid ||
+             command.kind == OtisSerialCommandKind::DacZero) {
+    emit_status("cx319_range_map", "alternate_write_surface",
+                "rejected_exact_dac_set_required", OTIS_SEVERITY_ERROR,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+  } else if (command.kind == OtisSerialCommandKind::DacSet) {
+    if (command.arguments_valid) {
+      handle_dac_set(command.code);
+    } else {
+      emit_status("dac", "set", "rejected_parse_error", OTIS_SEVERITY_WARN,
+                  OTIS_FLAG_NONE);
+    }
 #elif OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
   } else if (command.kind == OtisSerialCommandKind::DacMid ||
              command.kind == OtisSerialCommandKind::DacZero) {

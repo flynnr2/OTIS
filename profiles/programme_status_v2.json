@@ -10,12 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "g3_upper_nonactionable_followup_offline_preparation",
+      "state": "range_spanning_part_a_survey_prefix_complete",
       "allowed_operations": [
         "offline_preparation"
       ],
-      "effective_date": "2026-08-13",
-      "authority": "range_spanning_followup_offline_preparation_only",
+      "effective_date": "2026-08-14",
+      "authority": "state_preserving_part_a_continuation_bundle_pending",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -105,6 +105,47 @@
         "superseding_registered_content_sha256": "df25581561d80f2c69880f04502a386c87f5c6b6febf67dd37c9eeba764b0d9b",
         "physical_rerun_for_reanalysis": false
       },
+      "range_spanning_operator_authority": {
+        "record": "profiles/qualification/cx319_range_spanning_programme_v1.json",
+        "operator_instruction_date": "2026-08-13",
+        "scope": [
+          "firmware_flash",
+          "serial_access",
+          "board_reset",
+          "dac_setup_stimuli",
+          "physical_rehearsal",
+          "part_a_boundary_map",
+          "part_b_frequency_only_traversal"
+        ],
+        "further_interactive_approval_required_after_exact_bundle": false,
+        "requires_exact_bundle_before_physical_action": true,
+        "phase_or_hybrid_actuation": false,
+        "part_b_requires_complete_part_a_result": true
+      },
+      "range_spanning_part_a_survey_prefix_result": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md",
+        "status": "passed_survey_prefix",
+        "run_id": "part_a_segment_v4_20260814T030300BST",
+        "terminal_utc": "2026-08-14T08:08:37Z",
+        "terminal_reason": "finite_wall_deadline_before_next_point",
+        "profile_id": "cx319_range_map_part_a",
+        "completed_point_count": 8,
+        "completed_codes": [43008, 43040, 43044, 43048, 43052, 43056, 43060, 43076],
+        "completed_error_counts": [[-5, -6], [-2, -2], [-2, -2], [-2, -1], [-1, -1], [0, -1], [0, 0], [2, 2]],
+        "last_confirmed_applied_code": 43076,
+        "last_confirmed_band_state": "TIGHT_INSIDE",
+        "lower_increasing_entry_coarse_bracket": [43008, 43040],
+        "automatic_transactions": 0,
+        "phase_or_hybrid_actuation": false,
+        "bundle_sha256": "de32dcd4befff3f2e86874d942cfd668e73ff13d47588e74909ef951ec022969",
+        "firmware_uf2_sha256": "fe42354162615ac9719684d06bfb4e1b52d7b62ab340aae12b94fd8264b13af2",
+        "operational_rehearsal_result_sha256": "c291b71a97b0ac087f70d250f49706a63031accebaea354e1f3a9b8408732113",
+        "analysis_sha256": "991a146447ca603fa18321baad309eb728ddcd6965078b92175db6e93db9f3d2",
+        "seal_sha256": "6e5262e778e92385a55ffa72505296995cd4dad7ad5c903cc4fb9a4d09b80715",
+        "registered_content_sha256": "ebc0b396c42804ceb6aec51b13c8f6fd26328cdd48e16ca21d93ce3771153153",
+        "part_a_complete": false,
+        "part_b_executable": false
+      },
       "g1_recovery_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/14_G1_RECOVERY_NO_WRITE_AUTHORITY.md",
         "effective": false,
@@ -132,7 +173,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "prepare_range_spanning_bidirectional_and_hybrid_preview_candidate",
+      "next_gate": "freeze_and_rehearse_state_preserving_part_a_continuation_from_0xA844",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",
@@ -710,7 +751,7 @@
         "automatic_restore",
         "duration_extension",
         "consumed_g3_live_authority_reuse",
-        "range_spanning_physical_execution_without_new_exact_authority",
+        "range_spanning_continuation_without_exact_state_preserving_bundle_and_rehearsal",
         "phase_or_hybrid_actuation",
         "g4_progression"
       ]

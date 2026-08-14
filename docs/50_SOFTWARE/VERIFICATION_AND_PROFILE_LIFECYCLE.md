@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative for `CX319_EVIDENCE_EPOCH_1`. Current HEAD has two supported firmware
+Normative for `CX319_EVIDENCE_EPOCH_1`. Current HEAD has three supported firmware
 profiles and five expected-failure guards in
 `firmware/arduino/firmware_matrix.json`.
 
@@ -21,8 +21,8 @@ All commands below are no-hardware checks.
 
 ### Fast
 
-Current unit, contract, source-guard tests and the `cx319_tight_lower` firmware
-smoke build:
+Current unit, contract, source-guard tests and the `cx319_tight_lower` plus
+`cx319_range_map_part_a` firmware smoke builds:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
@@ -31,8 +31,9 @@ smoke build:
 ### Campaign
 
 Current CX319 capture, serial ownership, abort, rotation, transaction,
-supervisor, replay, analyzer, evidence, sealing, registration, and accelerated
-operational-path tests, plus both supported firmware profiles:
+supervisor, replay, analyzer, evidence, sealing, registration, range-spanning,
+domain-rollover, and accelerated operational-path tests, plus all three
+supported firmware profiles:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier campaign
@@ -40,7 +41,7 @@ operational-path tests, plus both supported firmware profiles:
 
 ### Release
 
-The complete current Python/native suite and both profiles plus all five
+The complete current Python/native suite and all three profiles plus all five
 expected-failure guards:
 
 ```bash
@@ -65,9 +66,10 @@ at the compatibility reset, so the recorded commit is the authority.
 ## Bench
 
 Bench work is outside these commands and still requires an exact frozen bundle,
-the applicable programme operation in `profiles/programme_status_v2.json`, and
-explicit operator authority. This repository reset authorizes no serial access,
-flash, arm, or DAC write.
+the applicable operation-specific authority, and explicit operator authority.
+The range-spanning programme carries its frozen operator transition in
+`profiles/qualification/cx319_range_spanning_programme_v1.json`; it does not
+authorize phase/hybrid actuation or bypass Part A-to-Part B prerequisites.
 
 ## Change rule
 

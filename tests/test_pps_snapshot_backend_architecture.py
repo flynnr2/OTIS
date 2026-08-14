@@ -158,7 +158,11 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         for profile in candidate_profiles
         if profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "1"
     ]
-    assert qualified == ["cx319_tight_lower", "cx319_tight_upper"]
+    assert qualified == [
+        "cx319_tight_lower",
+        "cx319_tight_upper",
+        "cx319_range_map_part_a",
+    ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
         for profile in candidate_profiles

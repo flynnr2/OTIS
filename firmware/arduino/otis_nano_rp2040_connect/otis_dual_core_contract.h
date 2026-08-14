@@ -13,6 +13,7 @@ enum class OtisServiceMessageKind : uint8_t {
   ReceiverQualification,
   Environment,
   AppliedDacState,
+  ManualDacApplication,
   RunControl,
   ActuatorAcknowledgement,
   SetupApplicationAcknowledgement,

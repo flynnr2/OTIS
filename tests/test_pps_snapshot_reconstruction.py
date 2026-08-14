@@ -83,7 +83,7 @@ def test_down_counter_delta_and_sequence_wrap_are_central_and_explicit() -> None
 
 def test_first_boundary_is_anchor_only_and_sequence_wrap_emits_next_interval() -> None:
     reconstructor = SnapshotReconstructor(
-        ReconstructionPolicy(10_000_000.0, 16_000_000.0)
+        ReconstructionPolicy(10_000_000.0, 16_000_000.0, "rp2040_timer0")
     )
     first = reconstructor.observe(
         SnapshotObservation(0xFFFFFFFF, "s1", 5, 16_000_000)
@@ -102,7 +102,7 @@ def test_first_boundary_is_anchor_only_and_sequence_wrap_emits_next_interval() -
 
 def test_capture_fault_clears_anchor_and_requires_two_clean_snapshots() -> None:
     reconstructor = SnapshotReconstructor(
-        ReconstructionPolicy(10_000_000.0, 16_000_000.0)
+        ReconstructionPolicy(10_000_000.0, 16_000_000.0, "rp2040_timer0")
     )
     results = [
         reconstructor.observe(SnapshotObservation(1, "s1", 1000, 16_000_000)),
@@ -133,7 +133,7 @@ def test_capture_fault_clears_anchor_and_requires_two_clean_snapshots() -> None:
 
 def test_sequence_loss_invalidates_pair_but_current_clean_snapshot_reanchors() -> None:
     reconstructor = SnapshotReconstructor(
-        ReconstructionPolicy(10_000_000.0, 16_000_000.0)
+        ReconstructionPolicy(10_000_000.0, 16_000_000.0, "rp2040_timer0")
     )
     first = reconstructor.observe(
         SnapshotObservation(10, "s1", 1000, 16_000_000)
@@ -174,7 +174,7 @@ def test_reference_sequence_must_be_adjacent_to_snapshot_association(
                 closing_reference_sequence,
             ),
         ),
-        ReconstructionPolicy(16_000_000.0, 16_000_000.0),
+        ReconstructionPolicy(16_000_000.0, 16_000_000.0, "rp2040_timer0"),
     )
 
     assert results[0].anchor_only
@@ -190,7 +190,7 @@ def test_session_change_never_bridges_old_and_new_counters() -> None:
             SnapshotObservation(0, "new", 0xFFFFFFFF, 48_000_000),
             SnapshotObservation(1, "new", 0xFFFFFF9B, 64_000_000),
         ),
-        ReconstructionPolicy(10_000_000.0, 16_000_000.0),
+        ReconstructionPolicy(10_000_000.0, 16_000_000.0, "rp2040_timer0"),
     )
 
     assert [result.state for result in results] == [
@@ -207,7 +207,7 @@ def test_full_wrap_envelope_is_rejected_at_the_policy_boundary() -> None:
     ticks_per_second = 16_000_000.0
     max_hz = 10_000_000.0
     threshold_ticks = math.ceil((1 << 32) * ticks_per_second / max_hz)
-    policy = ReconstructionPolicy(max_hz, ticks_per_second)
+    policy = ReconstructionPolicy(max_hz, ticks_per_second, "rp2040_timer0")
 
     result = reconstruct_snapshots(
         (
@@ -222,16 +222,14 @@ def test_full_wrap_envelope_is_rejected_at_the_policy_boundary() -> None:
     assert result.reasons == ("counter_full_wrap_cannot_be_excluded",)
 
 
-def test_reference_timer_wrap_is_handled_only_with_an_explicit_modulus() -> None:
+def test_reference_timer_wrap_is_automatic_from_declared_domain() -> None:
     modulus = (1 << 32) * 16
     results = reconstruct_snapshots(
         (
             SnapshotObservation(1, "s1", 1000, modulus - 8_000_000),
             SnapshotObservation(2, "s1", 900, 8_000_000),
         ),
-        ReconstructionPolicy(
-            10_000_000.0, 16_000_000.0, timestamp_modulus=modulus
-        ),
+        ReconstructionPolicy(10_000_000.0, 16_000_000.0, "rp2040_timer0"),
     )
 
     assert results[-1].valid
@@ -240,7 +238,9 @@ def test_reference_timer_wrap_is_handled_only_with_an_explicit_modulus() -> None
 
 
 def test_foreground_delay_does_not_change_snapshot_counts_or_validity() -> None:
-    policy = ReconstructionPolicy(10_000_000.0, 16_000_000.0)
+    policy = ReconstructionPolicy(
+        10_000_000.0, 16_000_000.0, "rp2040_timer0"
+    )
     immediate = (
         SnapshotObservation(1, "s1", 1000, 16_000_000, foreground_arrival_ticks=16_000_010),
         SnapshotObservation(2, "s1", 900, 32_000_000, foreground_arrival_ticks=32_000_010),

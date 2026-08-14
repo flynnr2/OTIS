@@ -12,11 +12,22 @@
 - Offline hostile-input tests establish bounded loop work and queue failure
   semantics, not a measured physical maximum service interval. That interval
   remains a Q1 measurement.
-- No offline result physically requalifies the integrated firmware, USB path,
-  I2C transaction, oscillator, or measurement chain. Q1 real-I/O rehearsal,
-  Q2 electrically inhibited/stubbed actuator rehearsal, and Q3 physical
-  no-write qualification remain required.
+- Q1 real-I/O, Q2 inhibited-actuator, Q3 physical no-write, bounded lower-side
+  frequency acquisition, and the first eight points of the range-spanning Part
+  A survey have physical evidence. Those results qualify only their exact
+  bundles and claims; they do not make future firmware or host changes
+  physically qualified.
 - The exact stale-uptime attachment event described historically was not
   observed. The source-level causal defect was the absence of a post-attach
   boundary; current authority uses a solicited nonce and generation instead of
   an uptime threshold.
+- The current range survey has only a 32-code lower increasing-direction entry
+  bracket, `0xA800..0xA820`. It has not yet mapped the other three hysteretic
+  transitions or produced the required at-most-two-code fine brackets.
+- The last confirmed range-survey state is `TIGHT_INSIDE` at `0xA844`.
+  Continuing the same hysteretic visit requires a no-reset, no-flash exact
+  continuation that re-establishes this state; otherwise the survey must
+  restart under a new identity.
+- Matched bidirectional plant response, cadence acceleration, Part B automatic
+  traversal, and active-hybrid behavior remain unqualified. Hybrid output is
+  currently preview-only and non-actionable.

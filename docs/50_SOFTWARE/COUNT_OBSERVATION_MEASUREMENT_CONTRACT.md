@@ -148,7 +148,9 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   bounded row with `COUNT_SATURATED`.
 - Across `rp2040_timer0` rollover, emitted gate boundaries retain the exact raw
   authoritative `REF` timestamp values; interval consumers apply the declared
-  modular timebase arithmetic.
+  modular timebase arithmetic automatically from the domain contract. They do
+  not depend on a caller-controlled rollover switch. See
+  `TIME_DOMAIN_AND_ROLLOVER_CONTRACT.md`.
 - After a rejected boundary, one explicit
   `reference_previous_boundary_invalid` re-anchoring window prevents the
   rejected edge from silently producing a clean ratio observation.

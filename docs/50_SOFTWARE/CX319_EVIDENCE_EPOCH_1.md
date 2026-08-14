@@ -9,8 +9,10 @@ A current run package uses `run_manifest.json`, `raw/serial.log`, the canonical
 `csv/` and `reports/` directories, and an immutable `evidence_manifest.json`
 for every non-template package. It carries complete firmware/build provenance
 and current CX319 profile, policy, authority, analyzer, plant-model, and
-evidence identities. `cx319_tight_lower` and `cx319_tight_upper` are the only
-supported build profiles.
+evidence identities. `cx319_tight_lower`, `cx319_tight_upper`, and
+`cx319_range_map_part_a` are the only supported build profiles. The package
+loader also retains `cx319_q2_inhibited_transaction` solely for its current
+CX319 inhibited-transaction evidence identity; it is not a build profile.
 
 The exact deployed firmware wire vocabulary still contains `cx317_*` and one
 owner-handoff transition contains the deployed
@@ -35,6 +37,14 @@ Current readers reject:
 The error directs the operator to the recorded Git revision or archival
 checkout. Current code never silently migrates or grants authority to a
 historical package.
+
+Current timestamp rollover behavior is automatic from the declared or
+contract-inherited domain. There is no caller-controlled wrap switch. Unknown,
+absent, or contradictory domain semantics fail closed as specified in
+[`TIME_DOMAIN_AND_ROLLOVER_CONTRACT.md`](TIME_DOMAIN_AND_ROLLOVER_CONTRACT.md).
+The range-map profile, same-code DAC-epoch handoff, and post-G0 authority are
+specified without changing the hash-bound G0 documents in
+[`CX319_RANGE_SPANNING_CONTRACT_AND_AUTHORITY.md`](CX319_RANGE_SPANNING_CONTRACT_AND_AUTHORITY.md).
 
 ## Historical reproduction
 

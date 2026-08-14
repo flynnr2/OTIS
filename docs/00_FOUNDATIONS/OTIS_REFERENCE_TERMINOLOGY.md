@@ -168,6 +168,12 @@ A domain is defined by some combination of:
 - reconstruction rules;
 - discipline state.
 
+Rollover is part of the domain, not a property selected ad hoc by a consumer.
+Current validators derive counter width, modulus, legal forward distance, and
+ambiguity limits from the declared or contract-inherited domain. A lower raw
+value is not automatically a wrap; it may instead be reordered, stale,
+cross-session, corrupt, or too ambiguous to reconstruct.
+
 Examples:
 
 - local MCU counter domain;

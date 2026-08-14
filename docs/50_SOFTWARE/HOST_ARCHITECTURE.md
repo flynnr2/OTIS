@@ -7,8 +7,10 @@ or modify timestamps.
 ## Current boundary
 
 Current HEAD implements only `CX319_EVIDENCE_EPOCH_1`; see
-`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. Reusable code is organized by
-responsibility:
+`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. The range-spanning additions are
+summarized in
+`docs/50_SOFTWARE/CX319_RANGE_SPANNING_CONTRACT_AND_AUTHORITY.md`. Reusable code
+is organized by responsibility:
 
 - `capture_device`, `capture_segment_rotation`, and `capture_owner_handoff`
   preserve one known serial owner and complete-record boundaries;
@@ -20,6 +22,12 @@ responsibility:
 - `measurement_replay`, `frequency_control_replay`,
   `control_evidence_replay`, and `tight_deadband_policy` provide deterministic
   current replay;
+- `time_domains` provides the canonical domain-selected rollover and
+  progression semantics used by validation, estimation, supervision, replay,
+  and analysis;
+- `range_spanning_programme`, `range_spanning_bundle`,
+  `range_spanning_rehearsal`, `range_spanning_run`, and
+  `range_spanning_analyze` provide the exact non-automatic CX319 Part A path;
 - `campaign_finalization`, `evidence`, `evidence_finalization`, and
   `evidence_index` preserve acquisition, sealing, recovery, and registration.
 
@@ -82,7 +90,8 @@ historical package current or grant operational authority.
 ## Authority
 
 Repository code and offline verification do not authorize hardware work.
-Operational tools must request their exact operation from
-`profiles/programme_status_v2.json`, validate the exact frozen bundle, keep the
-serial and abort invariants, and fail static on an identity, health, timeout, or
-evidence discontinuity.
+Operational tools must bind an exact operation-specific authority and frozen
+bundle, keep the serial and abort invariants, and fail static on an identity,
+health, timeout, or evidence discontinuity. Legacy CX319 operations use
+`profiles/programme_status_v2.json`; the range-spanning successor additionally
+binds `profiles/qualification/cx319_range_spanning_programme_v1.json`.

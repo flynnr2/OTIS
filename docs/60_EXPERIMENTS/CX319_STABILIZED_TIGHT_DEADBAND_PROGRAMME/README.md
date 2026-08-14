@@ -6,18 +6,16 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-13: the adversarial-review Q1--Q3 sequence and the
-Q4/G2 lower-side physical qualification passed. The matched Q4/G3 upper run
-completed its four-hour qualified interval, but `0xA848` produced 25 selected
-estimates confined to `+1..+3` counts and therefore never elicited the required
-negative automatic transaction. This is useful evidence of an insufficiently
-margined upper stimulus, not controller rejection or a G3 pass. A separate
-terminal shutdown race prevented the submitted priority abort from being sent
-before capture closed; the acquisition remained complete and replay-exact, and
-the runner now waits for delivery before closure. The consumed G3 authority is
-retired. Only offline preparation of the range-spanning bidirectional and
-zero-authority hybrid-preview follow-up is permitted. G4 and phase/hybrid
-actuation remain unauthorized.
+Current status as of 2026-08-14: the adversarial-review Q1--Q3 sequence and the
+Q4/G2 lower-side physical qualification passed. The Q4/G3 upper run was a
+non-actionable stable tight hold, not a G3 pass. The operator then authorized
+the separately identified range-spanning programme. Its first exact Part A
+segment passed with eight points from `0xA800` through `0xA844`, coarsely
+bracketing the lower increasing-direction entry by `0xA800..0xA820`. The final
+package is sealed and registered. Part A is not complete: the other three
+state-dependent transitions, the fine pass, matched bidirectional response,
+and cadence acceleration remain open. Part B remains prospectively gated on a
+complete Part A result. G4 and phase/hybrid actuation remain unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -56,8 +54,12 @@ attachment gate from a bounded 660-second GNSS/PPS qualification deadline and
 must pass a complete operational-path rehearsal before proposing a fresh
 no-flash G1 requalification. G2 and G3 remain blocked.
 
-The normative programme definition is
-[`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md).
+The original programme definition is the hash-bound, immutable
+[`00_MASTER_PROGRAMME.md`](00_MASTER_PROGRAMME.md). Its pre-execution
+"present authority" paragraph is retained for the frozen G0 policy identity;
+it is not current execution status. The later range-spanning successor is
+governed by document 36, its exact machine-readable programme, document 38,
+and `profiles/programme_status_v2.json`.
 
 G0 offline migration passed on 2026-08-11. Its reviewed result and next gate
 are recorded in
@@ -221,3 +223,8 @@ The upper-side physical bounded non-pass, immutable evidence identities,
 terminal abort-delivery race, deterministic repair and exact next gate are
 recorded in
 [`37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md`](37_Q4_UPPER_SIDE_NONACTIONABLE_PHYSICAL_RESULT.md).
+
+The range-spanning implementation, three retained fail-static platform stops,
+passing eight-point Part A survey prefix, immutable evidence identities, and
+state-preserving continuation gate are recorded in
+[`38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`](38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md).

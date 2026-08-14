@@ -13,6 +13,8 @@ from enum import Enum
 import math
 from typing import Iterable
 
+from .time_domains import forward_progress, time_domain
+
 
 UINT32_MODULUS = 1 << 32
 UINT32_MASK = UINT32_MODULUS - 1
@@ -60,7 +62,7 @@ class SnapshotObservation:
 class ReconstructionPolicy:
     max_oscillator_hz: float
     timestamp_ticks_per_second: float
-    timestamp_modulus: int | None = None
+    timestamp_domain: str
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -69,8 +71,12 @@ class ReconstructionPolicy:
         ):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
-        if self.timestamp_modulus is not None and self.timestamp_modulus <= 1:
-            raise ValueError("timestamp_modulus must be greater than one")
+        semantics = time_domain(self.timestamp_domain)
+        if self.timestamp_ticks_per_second != semantics.nominal_hz:
+            raise ValueError(
+                f"timestamp_ticks_per_second={self.timestamp_ticks_per_second} "
+                f"contradicts {self.timestamp_domain} nominal_hz={semantics.nominal_hz}"
+            )
 
 
 @dataclass(frozen=True)
@@ -132,16 +138,16 @@ def snapshot_sequence_relation_u32(
 
 
 def _elapsed_ticks(
-    opening: int, closing: int, modulus: int | None
-) -> tuple[int | None, bool]:
-    if closing > opening:
-        return closing - opening, False
-    if closing == opening:
-        return None, False
-    if modulus is None or opening >= modulus or closing >= modulus:
-        return None, False
-    elapsed = (closing - opening) % modulus
-    return (elapsed, True) if elapsed > 0 else (None, False)
+    opening: int, closing: int, domain: str
+) -> tuple[int | None, bool, str]:
+    progress = forward_progress(
+        opening, closing, domain=domain, allow_equal=False
+    )
+    return (
+        progress.distance_ticks if progress.valid else None,
+        progress.rollover_count == 1,
+        progress.reason,
+    )
 
 
 class SnapshotReconstructor:
@@ -265,17 +271,20 @@ class SnapshotReconstructor:
                     retain_current_as_anchor=True,
                 )
 
-        elapsed_ticks, timestamp_wrap = _elapsed_ticks(
+        elapsed_ticks, timestamp_wrap, timestamp_reason = _elapsed_ticks(
             previous.reference_timestamp_ticks,
             observation.reference_timestamp_ticks,
-            self.policy.timestamp_modulus,
+            self.policy.timestamp_domain,
         )
         if elapsed_ticks is None:
             return self._invalid_result(
                 observation,
                 previous=previous,
                 relation=relation,
-                reasons=("reference_interval_non_positive_or_ambiguous",),
+                reasons=(
+                    "reference_interval_non_positive_or_ambiguous",
+                    timestamp_reason,
+                ),
                 retain_current_as_anchor=True,
             )
 

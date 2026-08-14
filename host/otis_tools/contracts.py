@@ -5,7 +5,7 @@ import csv
 import math
 import re
 
-from .timebase import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .time_domains import forward_progress, time_domain
 
 
 RAW_EVENT_FIELDS = [
@@ -599,6 +599,17 @@ DOMAIN_FIELDS = {
     "tight_deadband_decisions_v1": ("time_domain",),
 }
 
+CONTRACT_IMPLICIT_TIME_DOMAINS = {
+    "pps_snapshots_v1": "rp2040_timer0",
+    "association_loss_decisions_v1": "rp2040_timer0",
+    "dac_steps_v1": "host_elapsed_ms",
+}
+
+SESSION_FIELDS = {
+    "pps_snapshots_v1": "session",
+    "tight_deadband_decisions_v1": "capture_session",
+}
+
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}
 VALID_SEVERITIES = {"INFO", "WARN", "ERROR", "FATAL"}
@@ -776,8 +787,11 @@ class CsvValidationContext:
     known_channels: frozenset[int]
     known_domains: frozenset[str]
     template: bool = False
-    allow_rp2040_timer0_wrap: bool = False
     tight_deadband_policy_sha256: str | None = None
+    # True only when run-level evidence independently establishes multiple
+    # capture sessions in this CSV. Sequence resets remain reportable, while
+    # domain progression restarts at that same boundary.
+    segmented_capture: bool = False
 
 
 @dataclass(frozen=True)
@@ -849,7 +863,7 @@ def _check_timestamps(
     row_number: int,
     errors: list[str],
     *,
-    allow_rp2040_timer0_wrap: bool,
+    domain: str,
 ) -> None:
     parsed: dict[str, int] = {}
     for field_name in TIMESTAMP_FIELDS[contract]:
@@ -857,16 +871,21 @@ def _check_timestamps(
         if value is not None:
             parsed[field_name] = value
     if contract == "count_observations_v1" and {"gate_open_ticks", "gate_close_ticks"} <= parsed.keys():
-        if parsed["gate_close_ticks"] <= parsed["gate_open_ticks"]:
-            crosses_wrap = (
-                allow_rp2040_timer0_wrap
-                and parsed["gate_open_ticks"] - parsed["gate_close_ticks"]
-                > RP2040_TIMER0_MICROS_WRAP_TICKS // 2
+        try:
+            progress = forward_progress(
+                parsed["gate_open_ticks"],
+                parsed["gate_close_ticks"],
+                domain=domain,
+                allow_equal=False,
             )
-            if not crosses_wrap:
+        except ValueError as exc:
+            errors.append(f"row {row_number}: {exc}")
+        else:
+            if not progress.valid:
                 errors.append(
-                    f"row {row_number}: gate_close_ticks must be greater than gate_open_ticks; "
-                    f"open={parsed['gate_open_ticks']}, close={parsed['gate_close_ticks']}"
+                    f"row {row_number}: invalid {domain} gate progression "
+                    f"{parsed['gate_open_ticks']}->{parsed['gate_close_ticks']}: "
+                    f"{progress.reason}"
                 )
 
 
@@ -874,22 +893,29 @@ def _check_timestamp_monotonicity(
     contract: str,
     parsed_timestamps: dict[str, int],
     row_number: int,
-    previous_timestamps: dict[str, int],
+    previous_timestamps: dict[tuple[str, str], int],
     errors: list[str],
     *,
-    allow_rp2040_timer0_wrap: bool,
+    domain: str,
 ) -> None:
     for field_name in TIMESTAMP_FIELDS[contract]:
         if field_name not in parsed_timestamps:
             continue
-        previous = previous_timestamps.get(field_name)
+        key = (domain, field_name)
+        previous = previous_timestamps.get(key)
         current = parsed_timestamps[field_name]
-        if previous is not None and current < previous:
-            if allow_rp2040_timer0_wrap and previous - current > RP2040_TIMER0_MICROS_WRAP_TICKS // 2:
-                previous_timestamps[field_name] = current
-                continue
-            errors.append(f"row {row_number}: {field_name} must be monotonic; previous={previous}, current={current}")
-        previous_timestamps[field_name] = current
+        if previous is not None:
+            try:
+                progress = forward_progress(previous, current, domain=domain)
+            except ValueError as exc:
+                errors.append(f"row {row_number}: {exc}")
+            else:
+                if not progress.valid:
+                    errors.append(
+                        f"row {row_number}: {field_name} violates {domain} progression; "
+                        f"previous={previous}, current={current}, reason={progress.reason}"
+                    )
+        previous_timestamps[key] = current
 
 
 def _check_channel(context: CsvValidationContext, row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -904,8 +930,22 @@ def _check_channel(context: CsvValidationContext, row: dict[str, str], row_numbe
 def _check_domains(context: CsvValidationContext, row: dict[str, str], row_number: int, errors: list[str]) -> None:
     for field_name in DOMAIN_FIELDS[context.contract]:
         domain = row.get(field_name, "")
+        if not domain:
+            errors.append(f"row {row_number}: {field_name} is absent")
+            continue
+        try:
+            time_domain(domain)
+        except ValueError as exc:
+            errors.append(f"row {row_number}: {exc}")
         if context.known_domains and domain not in context.known_domains:
             errors.append(f"row {row_number}: {field_name} {domain!r} is not declared in manifest domains")
+
+
+def _timestamp_domain(contract: str, row: dict[str, str]) -> str:
+    fields = DOMAIN_FIELDS[contract]
+    if fields:
+        return row.get(fields[0], "")
+    return CONTRACT_IMPLICIT_TIME_DOMAINS.get(contract, "")
 
 
 def _check_flags(row: dict[str, str], row_number: int, errors: list[str]) -> None:
@@ -2187,7 +2227,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
     warnings: list[str] = []
     row_count = 0
     previous_seq: int | None = None
-    previous_timestamps: dict[str, int] = {}
+    previous_timestamps: dict[tuple[str, str], int] = {}
+    previous_session: str | None = None
 
     if context.contract not in CONTRACT_FIELDS:
         return CsvValidationResult(path=path, row_count=0, errors=(f"unsupported contract {context.contract!r}",))
@@ -2209,13 +2250,39 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                     errors.append(f"row {row_count}: malformed row missing field {field_name}")
             _check_schema_version(context.contract, row, row_count, errors)
             _check_record_type(context.contract, row, row_count, errors)
+            sequence_value: int | None = None
+            try:
+                sequence_value = int(
+                    row.get(SEQUENCE_FIELDS[context.contract], ""), 10
+                )
+            except (TypeError, ValueError):
+                pass
+            if (
+                context.segmented_capture
+                and previous_seq is not None
+                and sequence_value is not None
+                and sequence_value <= previous_seq
+            ):
+                previous_timestamps.clear()
             previous_seq = _check_sequence(context.contract, row, row_count, previous_seq, errors)
+            _check_domains(context, row, row_count, errors)
+            session_field = SESSION_FIELDS.get(context.contract)
+            current_session = row.get(session_field, "") if session_field else None
+            if (
+                session_field
+                and previous_session is not None
+                and current_session != previous_session
+            ):
+                previous_timestamps.clear()
+            if session_field:
+                previous_session = current_session
+            domain = _timestamp_domain(context.contract, row)
             _check_timestamps(
                 context.contract,
                 row,
                 row_count,
                 errors,
-                allow_rp2040_timer0_wrap=context.allow_rp2040_timer0_wrap,
+                domain=domain,
             )
             parsed_timestamps: dict[str, int] = {}
             for field_name in TIMESTAMP_FIELDS[context.contract]:
@@ -2229,10 +2296,9 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 row_count,
                 previous_timestamps,
                 errors,
-                allow_rp2040_timer0_wrap=context.allow_rp2040_timer0_wrap,
+                domain=domain,
             )
             _check_channel(context, row, row_count, errors)
-            _check_domains(context, row, row_count, errors)
             if "flags" in expected_fields:
                 _check_flags(row, row_count, errors)
             _check_edges(context.contract, row, row_count, errors)

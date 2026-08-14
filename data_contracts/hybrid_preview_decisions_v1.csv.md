@@ -36,3 +36,8 @@ row that sets an authority field true. When present, `counterfactual_code`
 equals `shadow_code_after`, and `counterfactual_delta_codes` equals
 `shadow_code_after-shadow_code_before`; raw and bounded deltas are empty when
 `counterfactual_decision=false`.
+
+An externally commanded same-code setup application still creates a new
+`dac_epoch`. A decision-bearing consumer must observe the strictly newer epoch;
+matching only `actual_applied_code` is insufficient and may select stale
+pre-application evidence.

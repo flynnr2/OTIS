@@ -307,9 +307,9 @@ def _host_outputs(
         timer_ticks_per_second=timer_hz,
         period_ns_per_cycle=period_ns,
         configuration_sha256=phase_configuration_sha256,
+        reference_timestamp_domain="rp2040_timer0",
         reference_interval_minimum_s=float(phase_profile["validity"]["reference_interval_minimum_s"]),
         reference_interval_maximum_s=float(phase_profile["validity"]["reference_interval_maximum_s"]),
-        reference_timestamp_modulus_ticks=timer_hz * (1 << 32) // 1_000_000,
     )
     from .reference_relative_phase_estimator import CandidateSuite
 

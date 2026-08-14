@@ -22,6 +22,8 @@ FAST_TESTS = (
     "tests/test_programme_status.py",
     "tests/test_frequency_control_replay.py",
     "tests/test_tight_deadband_policy.py",
+    "tests/test_time_domains.py",
+    "tests/test_range_spanning_programme.py",
 )
 
 CAMPAIGN_TESTS = (
@@ -38,6 +40,12 @@ CAMPAIGN_TESTS = (
     "tests/test_active_transactions.py",
     "tests/test_frequency_control_supervisor.py",
     "tests/test_control_evidence_replay.py",
+    "tests/test_pps_snapshot_reconstruction.py",
+    "tests/test_pps_cumulative_span_estimator.py",
+    "tests/test_reference_relative_phase_estimator.py",
+    "tests/test_time_domains.py",
+    "tests/test_range_spanning_programme.py",
+    "tests/test_range_spanning_operational_path.py",
     "tests/test_evidence.py",
     "tests/test_evidence_finalization.py",
     "tests/test_evidence_index.py",
