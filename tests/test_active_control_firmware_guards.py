@@ -304,6 +304,27 @@ def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> Non
     assert "otis_phase_preview_live_update_applied_code" in helper
 
 
+def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    service = sketch[
+        sketch.index("void service_cx317_active_application_outcome") : sketch.index(
+            "void drain_pps_count_boundary_ring"
+        )
+    ]
+
+    applied = service.index("if (active_outcome.applied)")
+    propagation = service.index(
+        "propagate_cx317_applied_epoch_to_previews", applied
+    )
+    completion = service.index(
+        "otis_cx317_active_live_complete_application_evidence", propagation
+    )
+    assert applied < propagation < completion
+    assert "active_outcome.applied_code, active_outcome.dac_epoch" in service
+
+
 def test_completed_response_is_not_gated_by_preview_actionability() -> None:
     live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
