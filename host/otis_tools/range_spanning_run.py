@@ -561,6 +561,7 @@ def _wait(
     run_dir: Path,
     wall_deadline: datetime,
     require_qualified_health: bool = False,
+    runtime_monitoring_active: bool = True,
 ) -> Any:
     deadline = min(
         time.monotonic() + timeout_s,
@@ -568,11 +569,12 @@ def _wait(
     )
     next_update = time.monotonic()
     while time.monotonic() < deadline:
-        fault = _runtime_fault(
-            run_dir, require_qualified_health=require_qualified_health
-        )
-        if fault is not None:
-            raise RuntimeError(f"runtime stop rule: {fault}")
+        if runtime_monitoring_active:
+            fault = _runtime_fault(
+                run_dir, require_qualified_health=require_qualified_health
+            )
+            if fault is not None:
+                raise RuntimeError(f"runtime stop rule: {fault}")
         value = predicate()
         if value:
             return value
@@ -841,6 +843,7 @@ def run(
             description="sole-owner capture start",
             run_dir=run_dir,
             wall_deadline=deadline,
+            runtime_monitoring_active=False,
         )
         if _serial_owner_pids(device) != {capture.pid}:
             raise RuntimeError("capture is not the sole serial owner")

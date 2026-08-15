@@ -19,6 +19,7 @@ from host.otis_tools.range_spanning_run import (
     _find_epoch_propagation,
     _prewrite_ready,
     _runtime_fault,
+    _wait,
 )
 
 
@@ -294,6 +295,26 @@ def test_live_runtime_monitor_fails_on_stale_state_or_post_gate_health_fault(
     assert (_runtime_fault(tmp_path, require_qualified_health=True) or "").startswith(
         "capture_state_stale_age_"
     )
+
+
+def test_capture_start_wait_does_not_apply_post_open_runtime_guards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def premature_runtime_guard(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("post-open guard ran before capture-open predicate")
+
+    monkeypatch.setattr(
+        "host.otis_tools.range_spanning_run._runtime_fault",
+        premature_runtime_guard,
+    )
+    assert _wait(
+        lambda: {"serial_open": True},
+        timeout_s=1,
+        description="capture startup regression",
+        run_dir=tmp_path,
+        wall_deadline=datetime.now(timezone.utc) + timedelta(seconds=5),
+        runtime_monitoring_active=False,
+    ) == {"serial_open": True}
 
 
 def test_same_code_consumer_handoff_requires_a_strictly_new_dac_epoch(
