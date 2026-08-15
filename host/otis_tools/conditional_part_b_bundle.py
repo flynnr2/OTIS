@@ -24,7 +24,7 @@ from .range_spanning_bundle import canonical_sha256, sha256_file
 
 SCHEMA_VERSION = 1
 TOOL_ID = "cx319_conditional_part_b_proposal_v1"
-PROGRAMME_ID = "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2"
+PROGRAMME_ID = "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3"
 EXPECTED_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
 PART_B_HYBRID_PREVIEW = (
     Path(__file__).resolve().parents[2]
@@ -139,7 +139,7 @@ def _validate_part_a_promotion(
     if bundle.get("bundle_type") != PART_A_BUNDLE_TYPE:
         raise ValueError("Part B requires the focused conditional Part A bundle")
     if (
-        promotion.get("schema_version") != 2
+        promotion.get("schema_version") != 3
         or promotion.get("promotion_type") != PROMOTION_TYPE
         or promotion.get("status") != "promoted"
         or promotion.get("part_b_frequency_only_authorized") is not True

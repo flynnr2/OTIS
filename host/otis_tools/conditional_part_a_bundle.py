@@ -19,8 +19,8 @@ from .range_spanning_bundle import (
 )
 
 
-TOOL_ID = "cx319_conditional_part_a_bundle_v2"
-BUNDLE_TYPE = "cx319_conditional_fine_map_part_a_bundle_v2"
+TOOL_ID = "cx319_conditional_part_a_bundle_v3"
+BUNDLE_TYPE = "cx319_conditional_fine_map_part_a_bundle_v3"
 
 HOST_TOOL_PATHS = {
     "bundle": Path(__file__),
@@ -61,7 +61,7 @@ def create_bundle(*, build_manifest_path: Path, output_path: Path) -> dict[str, 
         + timing["host_margin_s"]
     )
     unsigned: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "bundle_type": BUNDLE_TYPE,
         "tool": TOOL_ID,
         "created_utc": _utc_now(),
@@ -114,6 +114,9 @@ def create_bundle(*, build_manifest_path: Path, output_path: Path) -> dict[str, 
             "gnss_identity_stable": True,
             "gnss_metadata_control_eligible": True,
             "d14_raw_pps_control_eligible": True,
+            "d14_rejected_short_count": 0,
+            "d14_rejected_long_count": 0,
+            "pps_interval_anomaly_count": 0,
             "dual_core_partition_fault": "none",
             "dual_core_fail_static": False,
             "d10_has_no_pps_or_control_role": True,
@@ -153,7 +156,7 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     declared_hash = value.get("bundle_sha256")
     unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
     if (
-        value.get("schema_version") != 2
+        value.get("schema_version") != 3
         or value.get("bundle_type") != BUNDLE_TYPE
         or declared_hash != canonical_sha256(unsigned)
     ):

@@ -194,10 +194,10 @@ def _create_manifest(
         "COMPLETE",
     ]
     focused_campaign = (
-        bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2"
+        bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v3"
     )
     if focused_campaign:
-        evidence_artifacts.append("reports/conditional_part_a_promotion_v2.json")
+        evidence_artifacts.append("reports/conditional_part_a_promotion_v3.json")
     manifest = {
         "schema_version": 1,
         "template": False,
@@ -430,6 +430,9 @@ def _prewrite_ready(run_dir: Path, bundle: dict[str, Any]) -> tuple[bool, list[s
         ("gnss_receiver", "identity_stable"): "true",
         ("gnss_receiver", "metadata_control_eligible"): "true",
         ("gnss_receiver", "raw_pps_control_eligible"): "true",
+        ("pps_d14", "rejected_short_count"): "0",
+        ("pps_d14", "rejected_long_count"): "0",
+        ("pps_gate", "pps_interval_anomaly_count"): "0",
         ("dual_core", "partition_fault"): "none",
         ("dual_core", "fail_static"): "false",
         ("dual_core", "service_publish_failures"): "0",
@@ -1098,13 +1101,13 @@ def run(
         seal_path=run_dir / SEAL,
     )
     promotion: dict[str, Any] | None = None
-    if bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+    if bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v3":
         from .conditional_part_a_promotion import create_promotion
 
         promotion = create_promotion(
             bundle_path=bundle_path,
             run_dir=run_dir,
-            output_path=run_dir / "reports/conditional_part_a_promotion_v2.json",
+            output_path=run_dir / "reports/conditional_part_a_promotion_v3.json",
         )
         print(
             f"MILESTONE Part A promotion decision={promotion['status']} "

@@ -8,10 +8,10 @@ legs: lower acquisition, upper acquisition and lower reacquisition. Phase and
 hybrid actuation remain outside the authority envelope throughout.
 
 The executable contract is
-`profiles/qualification/cx319_conditional_range_campaign_v2.json`. It binds the
-complete survey result, plant model, estimators and policy by SHA-256. Exact
-firmware builds, host tools, command bounds and stop rules are subsequently
-frozen in the physical bundles.
+`profiles/qualification/cx319_conditional_range_campaign_v3.json`. It binds the
+complete survey result, the V2 abort/recovery basis, plant model, estimators
+and policy by SHA-256. Exact firmware builds, host tools, command bounds and
+stop rules are subsequently frozen in the physical bundles.
 
 ## Survey-informed focusing
 
@@ -21,20 +21,27 @@ The completed 30-point survey is locally linear over the transition region:
 - equivalent response: `0.000179672 Hz/code`;
 - RMS residual: `0.264` count;
 - maximum residual: `0.517` count;
-- predicted lower count-boundary crossing: approximately `0xA81B`;
+- model-predicted lower count-boundary crossing: approximately `0xA820`;
 - predicted upper count-boundary crossing: approximately `0xA84A..0xA84B`.
 
-Accordingly, the fine map does not repeat the established plant curve. It uses
-three two-code-spaced samples around each predicted crossing in both
-directions:
+The V2 physical prefix then observed `0xA819` as an honest mixed code and two
+partial `0xA81B` counts outside before an unrelated D14 edge anomaly stopped
+the run. V3 does not reuse those observations as qualification evidence; it
+uses them to correct the point roles and focus the fresh run. The fine map does
+not repeat the established plant curve. It uses two-code-spaced samples around
+each crossing in both directions:
 
-- lower: `0xA819`, `0xA81B`, `0xA81D`;
-- upper: `0xA849`, `0xA84B`, `0xA84D`.
+- lower: `0xA817..0xA821` on odd codes, with `0xA817` and `0xA821`
+  as the outside/inside guards;
+- upper: `0xA845..0xA84D` on odd codes, with `0xA845` and `0xA84D`
+  as the inside/outside guards.
 
 The turnaround code is reapplied to open a distinct DAC epoch before each
 return traversal. Three `0xA830` references distinguish boundary movement from
 run-level drift, and opening/final `0xA800` observations provide closure. This
-is a 17-point programme rather than the initial 35-point exhaustive proposal.
+is a 27-point programme rather than the initial 35-point exhaustive proposal.
+It spends the additional points only where the new lower evidence and the
+survey's upper directional displacement can affect promotion.
 
 ## Adaptive observations
 
@@ -45,9 +52,9 @@ first four include both tight-entry evidence (`abs(count) <= 2`) and outside
 evidence (`abs(count) >= 3`). The analyzer independently recomputes this rule
 from retained TDB records; it does not trust the runner's declared decision.
 
-At the frozen worst-case timing, Part A takes 63,900 seconds with no adaptive
-extensions and 78,300 seconds if every boundary point extends. These are
-17 hours 45 minutes and 21 hours 45 minutes respectively, before small
+At the frozen worst-case timing, Part A takes 102,900 seconds with no adaptive
+extensions and 129,300 seconds if every boundary point extends. These are
+28 hours 35 minutes and 35 hours 55 minutes respectively, before small
 flash/prewrite/finalization allowances.
 
 ## End-to-end propagation and promotion
@@ -67,8 +74,9 @@ Every point must preserve this exact chain:
    one content-addressed pass/nonpass record.
 
 Promotion requires complete and healthy capture, no active transactions,
-correct inside/outside guards, a single contiguous transition or honest mixed
-code in every direction, clear brackets no wider than two codes, directional
+correct inside/outside guards, a single contiguous transition or honest
+contiguous mixed interval in every direction, transition intervals no wider
+than two codes, directional
 displacement no greater than four codes, stable centre references, endpoint
 closure and a Part B movement budget that covers the observed transitions.
 Failure seals Part A and stops before any active firmware flash.

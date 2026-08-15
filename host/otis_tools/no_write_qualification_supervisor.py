@@ -70,7 +70,7 @@ def load_no_write_qualification_spec(
     if leg in {"L", "U"}:
         campaign_path = (
             Path(__file__).resolve().parents[2]
-            / "profiles/qualification/cx319_conditional_range_campaign_v2.json"
+            / "profiles/qualification/cx319_conditional_range_campaign_v3.json"
         )
         campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
         part_b = campaign["part_b"]

@@ -13,26 +13,36 @@ DEFAULT_PROFILE = (
     REPO_ROOT
     / "profiles"
     / "qualification"
-    / "cx319_conditional_range_campaign_v2.json"
+    / "cx319_conditional_range_campaign_v3.json"
 )
-PROGRAMME_ID = "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2"
+PROGRAMME_ID = "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3"
 
 EXPECTED_POINT_PLAN = [
     (0xA800, "opening_outside_closure", 2, 2),
     (0xA830, "central_reference_before_lower", 4, 4),
-    (0xA819, "lower_outbound_outside_guard", 4, 6),
-    (0xA81B, "lower_outbound_candidate", 4, 6),
-    (0xA81D, "lower_outbound_inside_guard", 4, 6),
-    (0xA81D, "lower_return_inside_guard_new_epoch", 4, 6),
-    (0xA81B, "lower_return_candidate", 4, 6),
-    (0xA819, "lower_return_outside_guard", 4, 6),
+    (0xA817, "lower_outbound_outside_guard", 4, 6),
+    (0xA819, "lower_outbound_candidate_0", 4, 6),
+    (0xA81B, "lower_outbound_candidate_1", 4, 6),
+    (0xA81D, "lower_outbound_candidate_2", 4, 6),
+    (0xA81F, "lower_outbound_candidate_3", 4, 6),
+    (0xA821, "lower_outbound_inside_guard", 4, 6),
+    (0xA821, "lower_return_inside_guard_new_epoch", 4, 6),
+    (0xA81F, "lower_return_candidate_3", 4, 6),
+    (0xA81D, "lower_return_candidate_2", 4, 6),
+    (0xA81B, "lower_return_candidate_1", 4, 6),
+    (0xA819, "lower_return_candidate_0", 4, 6),
+    (0xA817, "lower_return_outside_guard", 4, 6),
     (0xA830, "central_reference_between_regions", 4, 4),
-    (0xA849, "upper_outbound_inside_guard", 4, 6),
-    (0xA84B, "upper_outbound_candidate", 4, 6),
+    (0xA845, "upper_outbound_inside_guard", 4, 6),
+    (0xA847, "upper_outbound_candidate_low", 4, 6),
+    (0xA849, "upper_outbound_candidate_mid", 4, 6),
+    (0xA84B, "upper_outbound_candidate_high", 4, 6),
     (0xA84D, "upper_outbound_outside_guard", 4, 6),
     (0xA84D, "upper_return_outside_guard_new_epoch", 4, 6),
-    (0xA84B, "upper_return_candidate", 4, 6),
-    (0xA849, "upper_return_inside_guard", 4, 6),
+    (0xA84B, "upper_return_candidate_high", 4, 6),
+    (0xA849, "upper_return_candidate_mid", 4, 6),
+    (0xA847, "upper_return_candidate_low", 4, 6),
+    (0xA845, "upper_return_inside_guard", 4, 6),
     (0xA830, "central_reference_after_upper", 4, 4),
     (0xA800, "final_outside_closure", 2, 2),
 ]
@@ -74,7 +84,7 @@ def _point_tuple(value: object) -> tuple[int, str, int, int]:
 
 def load_campaign(path: Path = DEFAULT_PROFILE) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    if value.get("schema_version") != 2 or value.get("programme_id") != PROGRAMME_ID:
+    if value.get("schema_version") != 3 or value.get("programme_id") != PROGRAMME_ID:
         raise ValueError("unsupported conditional range campaign identity")
 
     authority = _required(value, "operator_authority")
@@ -104,6 +114,7 @@ def load_campaign(path: Path = DEFAULT_PROFILE) -> dict[str, Any]:
     for label in (
         "preparation_prompt",
         "complete_survey_result",
+        "v2_abort_and_recovery_basis",
         "plant_model",
         "selected_frequency_estimator",
         "selected_relative_phase_estimator",
@@ -130,6 +141,13 @@ def load_campaign(path: Path = DEFAULT_PROFILE) -> dict[str, Any]:
         or part_a.get("settling_exclusion_s") != 900
     ):
         raise ValueError("Part A identity, timing, or zero-authority contract differs")
+    if part_a.get("fresh_prewrite_reference_requirements") != {
+        "d14_rejected_short_count": 0,
+        "d14_rejected_long_count": 0,
+        "pps_interval_anomaly_count": 0,
+        "raw_pps_control_eligible": True,
+    }:
+        raise ValueError("Part A fresh D14 prewrite requirements differ")
     points = part_a.get("point_plan")
     if not isinstance(points, list) or [_point_tuple(item) for item in points] != EXPECTED_POINT_PLAN:
         raise ValueError("Part A focused point plan differs")

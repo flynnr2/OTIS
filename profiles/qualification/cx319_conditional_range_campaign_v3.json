@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "programme_id": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2",
+  "schema_version": 3,
+  "programme_id": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3",
   "status": "operator_authorized_pending_exact_build_rehearsal_and_bundle",
   "operator_authority": {
     "instruction_date": "2026-08-15",
@@ -33,6 +33,13 @@
       "sha256": "be591c6e05dd4b53d681cff47b6f59807f0139920bf95c57ed3108ce1888acef",
       "run_id": "part_a_fresh_restart_v1_20260814T113000BST",
       "evidence_content_sha256": "802c37e01129e11a31dae027cfdace263feed3d111809dba0b8c1048ed9f36b6"
+    },
+    "v2_abort_and_recovery_basis": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/41_CONDITIONAL_PART_A_V2_ABORT_AND_RECOVERY_BASIS.md",
+      "sha256": "bba508a8c3c807497f6e5c005eb099e41d94c3a48b4d0e63d376e65bd722e838",
+      "aborted_run_id": "live_part_a_recovery_1_20260815T102400Z",
+      "evidence_content_sha256": "631fb6204bd8b91468970959153c0bfeb87cd455c57acabfa50493b82b0c17d9",
+      "promotion_status": "not_promoted"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
@@ -74,6 +81,12 @@
     "firmware_profile": "cx319_range_map_part_a",
     "frequency_control_authority": false,
     "phase_hybrid_authority": false,
+    "fresh_prewrite_reference_requirements": {
+      "d14_rejected_short_count": 0,
+      "d14_rejected_long_count": 0,
+      "pps_interval_anomaly_count": 0,
+      "raw_pps_control_eligible": true
+    },
     "selected_estimator_span_s": 600,
     "settling_exclusion_s": 900,
     "point_timing": {
@@ -91,19 +104,29 @@
     "point_plan": [
       {"code": 43008, "role": "opening_outside_closure", "minimum_observations": 2, "maximum_observations": 2},
       {"code": 43056, "role": "central_reference_before_lower", "minimum_observations": 4, "maximum_observations": 4},
-      {"code": 43033, "role": "lower_outbound_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43035, "role": "lower_outbound_candidate", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43037, "role": "lower_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43037, "role": "lower_return_inside_guard_new_epoch", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43035, "role": "lower_return_candidate", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43033, "role": "lower_return_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43031, "role": "lower_outbound_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43033, "role": "lower_outbound_candidate_0", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43035, "role": "lower_outbound_candidate_1", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43037, "role": "lower_outbound_candidate_2", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43039, "role": "lower_outbound_candidate_3", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43041, "role": "lower_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43041, "role": "lower_return_inside_guard_new_epoch", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43039, "role": "lower_return_candidate_3", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43037, "role": "lower_return_candidate_2", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43035, "role": "lower_return_candidate_1", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43033, "role": "lower_return_candidate_0", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43031, "role": "lower_return_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
       {"code": 43056, "role": "central_reference_between_regions", "minimum_observations": 4, "maximum_observations": 4},
-      {"code": 43081, "role": "upper_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43083, "role": "upper_outbound_candidate", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43077, "role": "upper_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43079, "role": "upper_outbound_candidate_low", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43081, "role": "upper_outbound_candidate_mid", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43083, "role": "upper_outbound_candidate_high", "minimum_observations": 4, "maximum_observations": 6},
       {"code": 43085, "role": "upper_outbound_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
       {"code": 43085, "role": "upper_return_outside_guard_new_epoch", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43083, "role": "upper_return_candidate", "minimum_observations": 4, "maximum_observations": 6},
-      {"code": 43081, "role": "upper_return_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43083, "role": "upper_return_candidate_high", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43081, "role": "upper_return_candidate_mid", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43079, "role": "upper_return_candidate_low", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43077, "role": "upper_return_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
       {"code": 43056, "role": "central_reference_after_upper", "minimum_observations": 4, "maximum_observations": 4},
       {"code": 43008, "role": "final_outside_closure", "minimum_observations": 2, "maximum_observations": 2}
     ],

@@ -12,12 +12,13 @@ non-actionable stable tight hold, not a G3 pass. The operator then authorized
 the separately identified range-spanning programme. Its complete 30-point
 Part A survey passed, returned to `0xA800`, and bracketed all four
 state-dependent transitions. The exact raw package and a separate corrected
-offline reanalysis are sealed and registered. Part A is not complete: the
-one-code fine pass, repeated boundary observations, matched response result,
-and cadence decision remain open. The selected zero-authority hybrid preview
-also reached its prospective low-net-path guard and requires revision. Part B
-remains gated on the final Part A result. G4 and phase/hybrid actuation remain
-unauthorized.
+offline reanalysis are sealed and registered. The first focused V2 Part A run
+then stopped fail-closed on a D14 electrical edge anomaly after producing a
+decision-bearing mixed result at `0xA819`; it did not promote and no Part B
+image was flashed. The D14 signal and ground were reseated and passed a
+180-second no-write interval check. Part A remains open under the revised V3
+fine map. Part B remains gated on its content-addressed result. G4 and
+phase/hybrid actuation remain unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -235,3 +236,10 @@ The fresh-restart 30-point complete survey, all four survey-resolution
 transition brackets, hybrid-preview candidate rejection, immutable source
 package, offline analyzer supersession and fine-pass next gate are recorded in
 [`39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md`](39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md).
+
+The focused conditional Part A and frequency-only Part B methodology is
+recorded in
+[`40_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_PLAN.md`](40_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_PLAN.md).
+The V2 physical stop, D14 diagnosis, no-write reseat check and evidence-led V3
+focusing decision are recorded in
+[`41_CONDITIONAL_PART_A_V2_ABORT_AND_RECOVERY_BASIS.md`](41_CONDITIONAL_PART_A_V2_ABORT_AND_RECOVERY_BASIS.md).

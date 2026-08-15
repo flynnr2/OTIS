@@ -66,12 +66,12 @@ def _rows(counts: list[int]) -> list[dict[str, str]]:
 def test_campaign_is_a_focused_zero_authority_conditional_sequence() -> None:
     campaign = load_campaign()
     assert campaign_summary() == {
-        "programme_id": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2",
-        "part_a_point_count": 17,
-        "part_a_minimum_observations": 64,
-        "part_a_maximum_observations": 88,
-        "part_a_operational_minimum_s": 63_900,
-        "part_a_operational_maximum_s": 78_300,
+        "programme_id": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3",
+        "part_a_point_count": 27,
+        "part_a_minimum_observations": 104,
+        "part_a_maximum_observations": 148,
+        "part_a_operational_minimum_s": 102_900,
+        "part_a_operational_maximum_s": 129_300,
         "part_b_leg_count": 3,
         "part_b_maximum_per_leg_s": 14_400,
         "phase_hybrid_authority": False,
@@ -79,19 +79,29 @@ def test_campaign_is_a_focused_zero_authority_conditional_sequence() -> None:
     assert [item["code"] for item in campaign["part_a"]["point_plan"]] == [
         0xA800,
         0xA830,
+        0xA817,
         0xA819,
         0xA81B,
         0xA81D,
+        0xA81F,
+        0xA821,
+        0xA821,
+        0xA81F,
         0xA81D,
         0xA81B,
         0xA819,
+        0xA817,
         0xA830,
+        0xA845,
+        0xA847,
         0xA849,
         0xA84B,
         0xA84D,
         0xA84D,
         0xA84B,
         0xA849,
+        0xA847,
+        0xA845,
         0xA830,
         0xA800,
     ]
@@ -278,6 +288,21 @@ def test_promotion_transition_accepts_clear_or_honest_mixed_two_code_result() ->
     assert mixed["transition_interval_codes"] == [0xA81B, 0xA81B]
     assert mixed["basis"] == "honest_mixed_code"
 
+    mixed_interval, failures = _transition(
+        [
+            {"code": 0xA817, "integer_edge_error_counts": [-3, -3, -3, -3]},
+            {"code": 0xA819, "integer_edge_error_counts": [-3, -2, -3, -2, -3, -2]},
+            {"code": 0xA81B, "integer_edge_error_counts": [-2, -3, -2, -3, -2, -3]},
+            {"code": 0xA81D, "integer_edge_error_counts": [-2, -2, -2, -2]},
+        ],
+        start="outside",
+        end="inside",
+    )
+    assert failures == []
+    assert mixed_interval["transition_interval_codes"] == [0xA819, 0xA81B]
+    assert mixed_interval["transition_width_codes"] == 2
+    assert mixed_interval["basis"] == "honest_contiguous_mixed_interval"
+
 
 def test_focused_bundle_binds_exact_plan_and_six_observation_timeout(
     tmp_path: Path,
@@ -289,7 +314,7 @@ def test_focused_bundle_binds_exact_plan_and_six_observation_timeout(
     bundle = validate_bundle(bundle_path)
     segment = bundle["part_a_segment"]
     assert segment["mode"] == "focused_boundary_map"
-    assert len(segment["point_plans"]) == 17
+    assert len(segment["point_plans"]) == 27
     assert segment["point_wait_timeout_s"] == 5220
     assert segment["minimum_remaining_wall_before_new_point_s"] == 5400
     assert segment["frequency_control_authority"] is False

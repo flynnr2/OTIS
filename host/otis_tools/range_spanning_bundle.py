@@ -434,7 +434,7 @@ def create_bundle(
 
 def validate_bundle(path: Path) -> dict[str, Any]:
     value = _read(path.resolve(), "range-spanning bundle")
-    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v3":
         from .conditional_part_a_bundle import validate_bundle as validate_conditional
 
         return validate_conditional(path)
@@ -489,7 +489,7 @@ def validate_bundle_for_offline_reanalysis(path: Path) -> dict[str, Any]:
     """
 
     value = _read(path.resolve(), "range-spanning bundle")
-    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v3":
         from .conditional_part_a_bundle import validate_bundle as validate_conditional
 
         return validate_conditional(path)

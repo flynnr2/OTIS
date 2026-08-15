@@ -17,8 +17,8 @@ from .range_spanning_bundle import (
 )
 
 
-TOOL_ID = "cx319_conditional_part_a_promotion_v2"
-PROMOTION_TYPE = "cx319_conditional_part_a_frequency_only_promotion_v2"
+TOOL_ID = "cx319_conditional_part_a_promotion_v3"
+PROMOTION_TYPE = "cx319_conditional_part_a_frequency_only_promotion_v3"
 
 
 def _utc_now() -> str:
@@ -61,11 +61,13 @@ def _transition(
     ):
         failures.append("noncontiguous_or_reversing_classification")
     mixed_codes = [code for code, value in zip(codes, classes) if value == "mixed"]
-    if len(mixed_codes) > 1:
-        failures.append("multiple_mixed_codes")
     if mixed_codes:
-        interval = [mixed_codes[0], mixed_codes[0]]
-        basis = "honest_mixed_code"
+        interval = [min(mixed_codes), max(mixed_codes)]
+        basis = (
+            "honest_mixed_code"
+            if len(mixed_codes) == 1
+            else "honest_contiguous_mixed_interval"
+        )
     else:
         transitions = [
             (codes[index], codes[index + 1])
@@ -143,7 +145,10 @@ def create_promotion(
         "lower_outbound": (
             [
                 "lower_outbound_outside_guard",
-                "lower_outbound_candidate",
+                "lower_outbound_candidate_0",
+                "lower_outbound_candidate_1",
+                "lower_outbound_candidate_2",
+                "lower_outbound_candidate_3",
                 "lower_outbound_inside_guard",
             ],
             "outside",
@@ -152,7 +157,10 @@ def create_promotion(
         "lower_return": (
             [
                 "lower_return_inside_guard_new_epoch",
-                "lower_return_candidate",
+                "lower_return_candidate_3",
+                "lower_return_candidate_2",
+                "lower_return_candidate_1",
+                "lower_return_candidate_0",
                 "lower_return_outside_guard",
             ],
             "inside",
@@ -161,7 +169,9 @@ def create_promotion(
         "upper_outbound": (
             [
                 "upper_outbound_inside_guard",
-                "upper_outbound_candidate",
+                "upper_outbound_candidate_low",
+                "upper_outbound_candidate_mid",
+                "upper_outbound_candidate_high",
                 "upper_outbound_outside_guard",
             ],
             "inside",
@@ -170,7 +180,9 @@ def create_promotion(
         "upper_return": (
             [
                 "upper_return_outside_guard_new_epoch",
-                "upper_return_candidate",
+                "upper_return_candidate_high",
+                "upper_return_candidate_mid",
+                "upper_return_candidate_low",
                 "upper_return_inside_guard",
             ],
             "outside",
@@ -253,7 +265,7 @@ def create_promotion(
 
     status = "promoted" if not failures else "not_promoted"
     unsigned = {
-        "schema_version": 2,
+        "schema_version": 3,
         "promotion_type": PROMOTION_TYPE,
         "tool": TOOL_ID,
         "created_utc": _utc_now(),
