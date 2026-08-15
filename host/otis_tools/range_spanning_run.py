@@ -36,9 +36,10 @@ LIVE_STAGE = "CX319_RANGE_SPANNING_PART_A_SEGMENT"
 CAPTURE_LOG = Path("reports/range_spanning_capture.log")
 EVENTS = Path("reports/range_spanning_supervisor_events.jsonl")
 STATE = Path("reports/range_spanning_supervisor_state.json")
-FLASH_RECORD = Path("reports/range_spanning_firmware_flash_v1.json")
+ENTRY_RECORD = Path("reports/range_spanning_firmware_entry_v2.json")
 ANALYSIS = Path("reports/range_spanning_analysis_v1.json")
 SEAL = Path("reports/range_spanning_seal_v1.json")
+FINALIZATION_FAILURE = Path("reports/range_spanning_finalization_failure_v1.json")
 ACTIVATION = Path("range_spanning_live_activation_v1.json")
 POLICY_PATH = Path("profiles/discipline/cx319_stabilized_tight_deadband_v1.json")
 TERMINAL_ABORT_DELIVERY_TIMEOUT_S = 15.0
@@ -78,6 +79,24 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
             return list(csv.DictReader(handle))
     except (OSError, csv.Error):
         return []
+
+
+def _create_validated_evidence_snapshot(run_dir: Path) -> dict[str, str]:
+    snapshot_path = create_evidence_snapshot(run_dir)
+    manifest = load_manifest(run_dir)
+    evidence_failures, _warnings = validate_evidence_snapshot(run_dir, manifest)
+    if evidence_failures:
+        raise RuntimeError(
+            "evidence snapshot validation failed: "
+            + "; ".join(evidence_failures)
+        )
+    snapshot = _read_json(snapshot_path)
+    if snapshot is None or not isinstance(snapshot.get("snapshot_digest"), str):
+        raise RuntimeError("evidence snapshot digest is absent or invalid")
+    return {
+        "path": str(snapshot_path),
+        "snapshot_digest": str(snapshot["snapshot_digest"]),
+    }
 
 
 def _append_event(path: Path, value: dict[str, Any]) -> None:
@@ -145,6 +164,9 @@ def _create_activation(
         },
         "run_dir": str(run_dir),
         "wall_deadline_utc": deadline.isoformat().replace("+00:00", "Z"),
+        "firmware_entry_mode": bundle["entry"]["mode"],
+        "firmware_flashes_allowed": bundle["entry"]["firmware_flashes_allowed"],
+        "board_resets_allowed": bundle["entry"]["board_resets_allowed"],
         "phase_or_hybrid_actuation": False,
         "automatic_restore": False,
     }
@@ -164,7 +186,7 @@ def _create_manifest(
         str(CAPTURE_LOG),
         str(EVENTS),
         str(STATE),
-        str(FLASH_RECORD),
+        str(ENTRY_RECORD),
         str(ANALYSIS),
         str(SEAL),
         str(ACTIVATION),
@@ -190,7 +212,8 @@ def _create_manifest(
             "authority": {
                 "effective": True,
                 "physical_execution": True,
-                "firmware_flash": True,
+                "firmware_flash": bundle["entry"]["firmware_flashes_allowed"] == 1,
+                "board_reset": bundle["entry"]["board_resets_allowed"] == 1,
                 "serial_open": True,
                 "dac_setup_stimuli": True,
                 "automatic_frequency_control": False,
@@ -221,6 +244,7 @@ def _create_manifest(
             "sha256": sha256_file(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
         },
+        "entry": bundle["entry"],
         "policy": {
             "path": str((Path(__file__).resolve().parents[2] / POLICY_PATH).resolve()),
             "sha256": sha256_file(Path(__file__).resolve().parents[2] / POLICY_PATH),
@@ -325,12 +349,51 @@ def _flash(
         "dac_value_write_attempts": 0,
     }
     _atomic_new_json(
-        run_dir / FLASH_RECORD,
+        run_dir / ENTRY_RECORD,
         {**unsigned, "record_sha256": canonical_sha256(unsigned)},
     )
     if not passed:
         raise RuntimeError("exact firmware upload or board re-enumeration failed")
     return device_after, board_after
+
+
+def _confirm_running_attachment(
+    *, run_dir: Path, bundle: dict[str, Any], device: str, board: dict[str, str]
+) -> tuple[str, dict[str, str]]:
+    entry = bundle["entry"]
+    passed = (
+        entry.get("mode") == "state_preserving_running_attach"
+        and int(entry.get("firmware_flashes_allowed", -1)) == 0
+        and int(entry.get("board_resets_allowed", -1)) == 0
+        and board.get("serial_number") == bundle["device"]["expected_board_serial"]
+        and board.get("address") == device
+    )
+    unsigned = {
+        "schema_version": 2,
+        "tool": TOOL_ID,
+        "operation": "confirmed_installed_firmware_running_attachment",
+        "status": "passed" if passed else "failed",
+        "recorded_utc": _utc_now(),
+        "device": device,
+        "board": board,
+        "profile_id": bundle["firmware"]["profile_id"],
+        "uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
+        "predecessor_run_id": entry.get("predecessor_run_id"),
+        "predecessor_snapshot_digest": entry.get("predecessor_snapshot_digest"),
+        "attachment_mode": "running_instrument",
+        "firmware_flash_count": 0,
+        "board_reset_count": 0,
+        "ordinary_restart_count": 0,
+        "serial_open_count": 0,
+        "dac_value_write_attempts": 0,
+    }
+    _atomic_new_json(
+        run_dir / ENTRY_RECORD,
+        {**unsigned, "record_sha256": canonical_sha256(unsigned)},
+    )
+    if not passed:
+        raise RuntimeError("running attachment identity confirmation failed")
+    return device, board
 
 
 def _latest_health(run_dir: Path) -> dict[tuple[str, str], str]:
@@ -377,6 +440,41 @@ def _prewrite_ready(run_dir: Path, bundle: dict[str, Any]) -> tuple[bool, list[s
         for field in ("actionable", "actuation_authorized", "authorization_consumed")
     ):
         missing.append("hybrid_preview_prewrite_authority_contamination")
+    entry = bundle.get("entry", {})
+    if entry.get("mode") == "state_preserving_running_attach":
+        live = entry["expected_live_state"]
+        expected_continuation_health = {
+            ("dac", "initialized"): "true",
+            ("dac", "applied_code_known"): "true",
+            ("dac", "last_write_ok"): "true",
+            ("dac", "last_requested_code"): live["applied_code_hex"],
+            ("dac", "last_applied_code"): live["applied_code_hex"],
+            ("cx318_preview", "applied_code"): live["applied_code_hex"],
+            ("cx318_preview", "dac_epoch"): str(live["dac_epoch"]),
+        }
+        missing.extend(
+            f"{component}.{key}={health.get((component, key))!r} expected {value!r}"
+            for (component, key), value in expected_continuation_health.items()
+            if health.get((component, key)) != value
+        )
+        latest_hybrid = hybrid_rows[-1] if hybrid_rows else {}
+        if not (
+            latest_hybrid.get("actual_applied_code") == str(live["applied_code"])
+            and latest_hybrid.get("dac_epoch") == str(live["dac_epoch"])
+            and latest_hybrid.get("band_state_after")
+            == live["hybrid_band_state"]
+        ):
+            missing.append("hybrid_preview_predecessor_state_not_observed")
+        tdb_rows = _read_csv(run_dir / "csv/tight_deadband_decisions_v1.csv")
+        latest_tdb = tdb_rows[-1] if tdb_rows else {}
+        if not (
+            latest_tdb.get("dac_epoch") == str(live["dac_epoch"])
+            and latest_tdb.get("state_after") == live["band_state"]
+            and latest_tdb.get("actionable") == "false"
+            and latest_tdb.get("actuation_authorized") == "false"
+            and latest_tdb.get("authorization_consumed") == "false"
+        ):
+            missing.append("tight_deadband_predecessor_state_not_observed")
     return not missing, missing
 
 
@@ -636,18 +734,29 @@ def run(
     owners = _serial_owner_pids(device)
     if owners:
         raise ValueError(f"serial device already has owners: {sorted(owners)}")
-    device, board = _flash(
-        run_dir=run_dir,
-        bundle=bundle,
-        device=device,
-        board=board,
-        arduino_cli=arduino_cli,
-    )
-    print(
-        f"MILESTONE firmware flashed profile={bundle['firmware']['profile_id']} "
-        f"uf2={bundle['firmware']['uf2']['sha256']}",
-        flush=True,
-    )
+    if bundle["entry"]["mode"] == "fresh_exact_firmware_flash":
+        device, board = _flash(
+            run_dir=run_dir,
+            bundle=bundle,
+            device=device,
+            board=board,
+            arduino_cli=arduino_cli,
+        )
+        print(
+            f"MILESTONE firmware flashed profile={bundle['firmware']['profile_id']} "
+            f"uf2={bundle['firmware']['uf2']['sha256']}",
+            flush=True,
+        )
+    elif bundle["entry"]["mode"] == "state_preserving_running_attach":
+        device, board = _confirm_running_attachment(
+            run_dir=run_dir, bundle=bundle, device=device, board=board
+        )
+        print(
+            "MILESTONE exact installed firmware confirmed; no flash or reset performed",
+            flush=True,
+        )
+    else:
+        raise ValueError(f"unsupported firmware entry mode: {bundle['entry']['mode']}")
     _create_manifest(
         run_dir=run_dir, bundle_path=bundle_path, bundle=bundle, device=device
     )
@@ -713,11 +822,35 @@ def run(
         if not ready:
             raise RuntimeError("prewrite gate regressed: " + "; ".join(reasons))
         _append_event(run_dir / EVENTS, {"event": "prewrite_gate_passed"})
+        if bundle["entry"]["mode"] == "state_preserving_running_attach":
+            live = bundle["entry"]["expected_live_state"]
+            _append_event(
+                run_dir / EVENTS,
+                {
+                    "event": "state_preserving_attachment_passed",
+                    "predecessor_run_id": bundle["entry"]["predecessor_run_id"],
+                    "applied_code": live["applied_code"],
+                    "dac_epoch": live["dac_epoch"],
+                    "band_state": live["band_state"],
+                    "next_code": live["next_code"],
+                    "firmware_flash_count": 0,
+                    "board_reset_count": 0,
+                },
+            )
+            print(
+                f"MILESTONE preserved state confirmed code={live['applied_code_hex']} "
+                f"epoch={live['dac_epoch']} state={live['band_state']}",
+                flush=True,
+            )
         print("MILESTONE live prewrite gate passed", flush=True)
         state["phase"] = "survey"
         _replace_json(run_dir / STATE, state)
 
         for point_index, code in enumerate(bundle["part_a_segment"]["survey_prefix"]):
+            global_point_index = (
+                int(bundle["part_a_segment"].get("global_point_offset", 0))
+                + point_index
+            )
             remaining = (deadline - datetime.now(timezone.utc)).total_seconds()
             if remaining < bundle["part_a_segment"]["minimum_remaining_wall_before_new_point_s"]:
                 terminal = {
@@ -744,7 +877,13 @@ def run(
             send_timestamped_command_to_fifo(normal_fifo, command)
             _append_event(
                 run_dir / EVENTS,
-                {"event": "point_command_sent", "point_index": point_index, "code": code, "command": command},
+                {
+                    "event": "point_command_sent",
+                    "point_index": point_index,
+                    "global_point_index": global_point_index,
+                    "code": code,
+                    "command": command,
+                },
             )
             print(
                 f"MILESTONE point {point_index + 1} command sent code=0x{code:04X}",
@@ -777,6 +916,7 @@ def run(
                 {
                     "event": "point_application_acknowledged",
                     "point_index": point_index,
+                    "global_point_index": global_point_index,
                     "code": code,
                     "dac_sequence": int(dac["seq"]),
                     "dac_epoch": epoch,
@@ -808,6 +948,7 @@ def run(
                 raise RuntimeError("selected estimate identity did not reach TDB consumer")
             result = {
                 "point_index": point_index,
+                "global_point_index": global_point_index,
                 "code": code,
                 "code_hex": f"0x{code:04X}",
                 "dac_sequence": int(dac["seq"]),
@@ -878,11 +1019,32 @@ def run(
         output_path=run_dir / ANALYSIS,
         seal_path=run_dir / SEAL,
     )
-    create_evidence_snapshot(run_dir)
-    manifest = load_manifest(run_dir)
-    evidence_failures, _warnings = validate_evidence_snapshot(run_dir, manifest)
-    if evidence_failures:
-        raise RuntimeError("evidence snapshot validation failed: " + "; ".join(evidence_failures))
+    evidence_finalization: dict[str, Any]
+    try:
+        snapshot = _create_validated_evidence_snapshot(run_dir)
+        evidence_finalization = {
+            "status": "passed",
+            "snapshot_digest": snapshot["snapshot_digest"],
+        }
+    except Exception as exc:
+        failure_unsigned = {
+            "schema_version": 1,
+            "tool": TOOL_ID,
+            "status": "failed",
+            "recorded_utc": _utc_now(),
+            "run_id": run_dir.name,
+            "error_type": type(exc).__name__,
+            "reason": str(exc),
+            "raw_capture_preserved": (run_dir / "raw/serial.log").is_file(),
+            "analysis_status": analysis["status"],
+            "terminal_result": terminal["result"],
+            "terminal_reason": terminal["reason"],
+        }
+        evidence_finalization = {
+            **failure_unsigned,
+            "record_sha256": canonical_sha256(failure_unsigned),
+        }
+        _atomic_new_json(run_dir / FINALIZATION_FAILURE, evidence_finalization)
     record = register_package(
         index_path=evidence_index_path.resolve(),
         package_path=run_dir,
@@ -899,12 +1061,14 @@ def run(
     )
     print(
         f"MILESTONE run terminal result={terminal['result']} reason={terminal['reason']} "
-        f"points={len(state['completed_points'])} evidence={record['content_sha256']}",
+        f"points={len(state['completed_points'])} evidence={record['content_sha256']} "
+        f"finalization={evidence_finalization['status']}",
         flush=True,
     )
     return {
         "terminal": terminal,
         "analysis": analysis,
+        "evidence_finalization": evidence_finalization,
         "evidence_index_record": record,
     }
 
@@ -929,6 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
         0
         if result["terminal"]["result"] == "healthy_stop"
         and result["analysis"]["status"] == "passed"
+        and result["evidence_finalization"]["status"] == "passed"
         else 1
     )
 

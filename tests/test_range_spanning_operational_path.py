@@ -11,9 +11,15 @@ from host.otis_tools.range_spanning_bundle import (
     canonical_sha256,
     create_bundle,
     validate_bundle,
+    validate_bundle_for_offline_reanalysis,
 )
 from host.otis_tools.range_spanning_rehearsal import run as run_rehearsal
-from host.otis_tools.range_spanning_run import _find_epoch_propagation, _runtime_fault
+from host.otis_tools.range_spanning_run import (
+    _create_validated_evidence_snapshot,
+    _find_epoch_propagation,
+    _prewrite_ready,
+    _runtime_fault,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,6 +111,34 @@ def test_bundle_is_immutable_and_rejects_a_rehashed_binding_tamper(
         validate_bundle(tampered_path)
 
 
+def test_offline_reanalysis_keeps_acquisition_bindings_but_not_old_host_tools(
+    tmp_path: Path,
+) -> None:
+    bundle_path = tmp_path / "bundle.json"
+    create_bundle(
+        build_manifest_path=_synthetic_build(tmp_path),
+        output_path=bundle_path,
+        maximum_points=10,
+    )
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["host_tools"]["contracts"] = {
+        "path": str(tmp_path / "retired-contracts.py"),
+        "sha256": "f" * 64,
+        "size_bytes": 1,
+    }
+    unsigned = {key: value for key, value in bundle.items() if key != "bundle_sha256"}
+    bundle["bundle_sha256"] = canonical_sha256(unsigned)
+    bundle_path.write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="bundle binding differs"):
+        validate_bundle(bundle_path)
+    assert validate_bundle_for_offline_reanalysis(bundle_path)["bundle_sha256"] == (
+        bundle["bundle_sha256"]
+    )
+
+
 def test_complete_operational_rehearsal_exercises_abort_rotation_and_analysis(
     tmp_path: Path,
 ) -> None:
@@ -145,6 +179,43 @@ def test_live_runner_preserves_exact_application_and_zero_authority_guards() -> 
     assert "priority_abort_delivery" in source
     assert 'send_command_to_fifo(emergency_fifo, "ACTIVE ABORT")' in source
     assert "actuation_authorized" in source
+    assert "range_spanning_finalization_failure_v1.json" in source
+    assert 'result["evidence_finalization"]["status"] == "passed"' in source
+
+    recovery = (ROOT / "host/otis_tools/range_spanning_reanalyze.py").read_text(
+        encoding="utf-8"
+    )
+    assert "source package content identity differs" in recovery
+    assert '"criterion_changed": False' in recovery
+    assert '"raw_evidence_unchanged": True' in recovery
+    assert '"hardware_interaction": False' in recovery
+    assert '"actuation_authorized": False' in recovery
+
+
+def test_live_runner_reads_the_snapshot_digest_from_the_created_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_path = tmp_path / "evidence_manifest.json"
+    snapshot_path.write_text(
+        json.dumps({"snapshot_digest": "a" * 64}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.range_spanning_run.create_evidence_snapshot",
+        lambda run_dir: snapshot_path,
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.range_spanning_run.load_manifest",
+        lambda run_dir: object(),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.range_spanning_run.validate_evidence_snapshot",
+        lambda run_dir, manifest: ([], []),
+    )
+
+    assert _create_validated_evidence_snapshot(tmp_path) == {
+        "path": str(snapshot_path),
+        "snapshot_digest": "a" * 64,
+    }
 
 
 def test_live_runtime_monitor_fails_on_stale_state_or_post_gate_health_fault(
@@ -253,3 +324,96 @@ def test_same_code_consumer_handoff_requires_a_strictly_new_dac_epoch(
     assert propagated is not None
     assert propagated["preview_sequence"] == "103"
     assert propagated["dac_epoch"] == "8"
+
+
+def test_continuation_prewrite_requires_both_preserved_state_consumers(
+    tmp_path: Path,
+) -> None:
+    reports = tmp_path / "reports"
+    csv_dir = tmp_path / "csv"
+    reports.mkdir()
+    csv_dir.mkdir()
+    (reports / "capture_device_state.json").write_text(
+        json.dumps(
+            {"parser_errors": 0, "reconnect_count": 0, "commands_rejected": 0}
+        ),
+        encoding="utf-8",
+    )
+    bundle = {
+        "firmware": {
+            "git_commit": "a" * 40,
+            "source_sha256": "b" * 64,
+            "configuration_sha256": "c" * 64,
+            "build_invocation_id": "d" * 64,
+        },
+        "entry": {
+            "mode": "state_preserving_running_attach",
+            "expected_live_state": {
+                "applied_code": 0xA844,
+                "applied_code_hex": "0xA844",
+                "dac_epoch": 8,
+                "band_state": "TIGHT_INSIDE",
+                "hybrid_band_state": "INSIDE",
+            },
+        },
+    }
+    health_values = [
+        ("build", "profile_id", "cx319_range_map_part_a"),
+        ("firmware", "git_commit", "a" * 40),
+        ("firmware", "source_hash", "b" * 64),
+        ("firmware", "config_hash", "c" * 64),
+        ("build", "invocation_id", "d" * 64),
+        ("gnss_receiver", "identity_stable", "true"),
+        ("gnss_receiver", "metadata_control_eligible", "true"),
+        ("gnss_receiver", "raw_pps_control_eligible", "true"),
+        ("dual_core", "partition_fault", "none"),
+        ("dual_core", "fail_static", "false"),
+        ("dual_core", "service_publish_failures", "0"),
+        ("dual_core", "telemetry_dropped", "0"),
+        ("dac", "initialized", "true"),
+        ("dac", "applied_code_known", "true"),
+        ("dac", "last_write_ok", "true"),
+        ("dac", "last_requested_code", "0xA844"),
+        ("dac", "last_applied_code", "0xA844"),
+        ("cx318_preview", "applied_code", "0xA844"),
+        ("cx318_preview", "dac_epoch", "8"),
+    ]
+    health_header = (
+        "record_type,schema_version,status_seq,timestamp_ticks,status_domain,"
+        "component,status_key,status_value,severity,flags\n"
+    )
+    (csv_dir / "health.csv").write_text(
+        health_header
+        + "".join(
+            f"STS,1,{index},{index},rp2040_timer0,{component},{key},{value},INFO,0\n"
+            for index, (component, key, value) in enumerate(health_values, start=1)
+        ),
+        encoding="utf-8",
+    )
+    (csv_dir / "count_observations.csv").write_text(
+        "count_seq\n1\n2\n3\n4\n5\n", encoding="utf-8"
+    )
+    hybrid_path = csv_dir / "hybrid_preview_decisions_v1.csv"
+    hybrid_path.write_text(
+        "actual_applied_code,dac_epoch,band_state_after,actionable,"
+        "actuation_authorized,authorization_consumed\n"
+        "43076,8,INSIDE,false,false,false\n",
+        encoding="utf-8",
+    )
+    (csv_dir / "tight_deadband_decisions_v1.csv").write_text(
+        "dac_epoch,state_after,actionable,actuation_authorized,authorization_consumed\n"
+        "8,TIGHT_INSIDE,false,false,false\n",
+        encoding="utf-8",
+    )
+
+    assert _prewrite_ready(tmp_path, bundle) == (True, [])
+
+    hybrid_path.write_text(
+        "actual_applied_code,dac_epoch,band_state_after,actionable,"
+        "actuation_authorized,authorization_consumed\n"
+        "43080,9,INSIDE,false,false,false\n",
+        encoding="utf-8",
+    )
+    ready, reasons = _prewrite_ready(tmp_path, bundle)
+    assert ready is False
+    assert "hybrid_preview_predecessor_state_not_observed" in reasons

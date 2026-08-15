@@ -64,6 +64,20 @@ bool otis_phase_preview_transport_frame_active(void) {
 #endif
 }
 
+bool otis_phase_preview_transport_abandon_active_frame(void) {
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
+  const bool abandoned = message_active;
+  active_message = {};
+  frame_length = 0u;
+  frame_sent = 0u;
+  record_phase = 0u;
+  message_active = false;
+  return abandoned;
+#else
+  return false;
+#endif
+}
+
 void otis_phase_preview_transport_service(void) {
 #if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   if (!message_active) {

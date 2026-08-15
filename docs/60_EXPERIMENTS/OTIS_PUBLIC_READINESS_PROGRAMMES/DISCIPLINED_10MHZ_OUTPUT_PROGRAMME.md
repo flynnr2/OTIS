@@ -9,10 +9,11 @@ rewire the bench, enable an output, or run a physical qualification. A later
 operator decision must bind an exact bundle, installed-board identity, wiring
 and load envelope, stop conditions, tools and evidence destinations.
 
-Do not begin any physical step until the current state-preserving range survey
-and its dependent frequency-control programme have reached their declared
-terminal results. In particular, do not sacrifice the currently confirmed
-`0xA844` hysteretic state to develop this output.
+Do not begin any physical step until the range programme's survey-derived fine
+map and dependent frequency-only traversal have reached their declared
+terminal results. The complete survey has already returned the board to
+`0xA800`, so no earlier `0xA844` continuation state remains to preserve; this
+does not release the output programme's physical gate.
 
 ## Decision-bearing objective
 

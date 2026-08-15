@@ -10,12 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx319_stabilized_tight_deadband": {
-      "state": "range_spanning_part_a_survey_prefix_complete",
+      "state": "range_spanning_part_a_complete_survey_fine_pass_pending",
       "allowed_operations": [
         "offline_preparation"
       ],
-      "effective_date": "2026-08-14",
-      "authority": "state_preserving_part_a_continuation_bundle_pending",
+      "effective_date": "2026-08-15",
+      "authority": "survey_derived_part_a_fine_pass_bundle_pending",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -146,6 +146,47 @@
         "part_a_complete": false,
         "part_b_executable": false
       },
+      "range_spanning_part_a_complete_survey_result": {
+        "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md",
+        "status": "passed_complete_survey_requires_fine_pass",
+        "run_id": "part_a_fresh_restart_v1_20260814T113000BST",
+        "terminal_utc": "2026-08-15T09:00:33Z",
+        "terminal_reason": "survey_prefix_complete",
+        "profile_id": "cx319_range_map_part_a",
+        "completed_point_count": 30,
+        "final_applied_code": 43008,
+        "final_band_state": "OUTSIDE",
+        "lower_increasing_entry_coarse_bracket": [43008, 43040],
+        "upper_increasing_release_bracket": [43080, 43084],
+        "upper_decreasing_entry_bracket": [43076, 43080],
+        "lower_decreasing_release_bracket": [43032, 43036],
+        "hybrid_preview": {
+          "status": "candidate_requires_revision",
+          "candidate_id": "p21600_cap1_v2",
+          "terminal_reason": "prospective_low_net_excess_path",
+          "first_fault_preview_sequence": 40519,
+          "first_fault_dac_epoch": 15,
+          "modeled_corrections": 20,
+          "cumulative_movement_codes": 236,
+          "rejected_proposed_delta_codes": -15,
+          "actionable": false,
+          "actuation_authorized": false
+        },
+        "automatic_transactions": 0,
+        "phase_or_hybrid_actuation": false,
+        "bundle_sha256": "33242bc591fbc0390fa3d716fc7f8cc7d9b01da57c13573617efe4292b420df2",
+        "firmware_uf2_sha256": "f75c687150d500396d4766b268054e597ec56d4f61048fd12464357888d490f0",
+        "source_evidence_snapshot_digest": "b23eed327b87efa9afa6e9bc84d89b971c42c4cec79b2ac4249667a0cdead7e1",
+        "source_registered_content_sha256": "802c37e01129e11a31dae027cfdace263feed3d111809dba0b8c1048ed9f36b6",
+        "reanalysis_sha256": "953fbf5246d48ac8d0dae5ac68c76c81f6ed8753da749d8daf1fa750966fde54",
+        "supersession_sha256": "54598566746c32486f2af4bd9e4ec957b6ce871b9cf6126c4b26cb6ded029e4b",
+        "superseding_seal_sha256": "6104ba054ebbb928e5a6921eb65e1a7aecd2a8b031689fdde9f5ab378d518264",
+        "superseding_registered_content_sha256": "528087470b2dc06b0b7599a9ba6dfea4f4e8a00f605979d2e5c5c41e54990a7e",
+        "physical_rerun_for_reanalysis": false,
+        "survey_complete": true,
+        "part_a_complete": false,
+        "part_b_executable": false
+      },
       "g1_recovery_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/14_G1_RECOVERY_NO_WRITE_AUTHORITY.md",
         "effective": false,
@@ -173,7 +214,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "freeze_and_rehearse_state_preserving_part_a_continuation_from_0xA844",
+      "next_gate": "freeze_and_rehearse_survey_derived_part_a_one_code_fine_pass_and_revised_zero_authority_hybrid_preview",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",

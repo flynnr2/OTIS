@@ -11,8 +11,9 @@ that gate and is not the current lifecycle state.
 Current lifecycle state is in `profiles/programme_status_v2.json`. The frozen
 range-spanning experimental contract and operator transition are in
 `profiles/qualification/cx319_range_spanning_programme_v1.json`. The first live
-result is reviewed in
-`docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
+prefix is reviewed in document 38. The subsequent complete 30-point survey,
+offline analyzer supersession and current fine-pass gate are reviewed in
+`docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md`.
 
 ## Part A firmware boundary
 
@@ -49,11 +50,36 @@ The normative rules are in
 The operator authorized exact-bundle flash, serial access, reset, bounded setup
 stimuli, rehearsal, Part A mapping, and the Part-A-gated Part B frequency-only
 traversal. Further interactive approval is not required once the next exact
-bundle satisfies the frozen authority and prerequisites. This does not remove
-these gates:
+bundle satisfies the frozen authority and prerequisites. Phase or hybrid
+actuation remains unauthorized.
 
-- continuation of the current hysteretic visit requires an exact no-reset,
-  no-flash state-preserving bundle from the last confirmed `0xA844` state;
-- Part B requires a complete Part A boundary result and a separate exact
-  transition; and
-- phase or hybrid actuation remains unauthorized.
+The earlier `0xA844` state-preserving continuation gate is retired. Its first
+attempt exposed a carrier-loss output-service defect and stopped before a new
+point. The repaired programme deliberately restarted under a fresh firmware
+and run identity and completed all 30 frozen survey points, ending at
+`0xA800`, `OUTSIDE`. No later result may splice onto the old `0xA844` visit.
+
+The current gate is an exact fresh-entry, survey-derived one-code fine pass.
+Its bundle must freeze monotonic scans around the measured lower and upper
+transition regions, an adaptive two-to-six-observation stopping rule, and at
+least four fresh selected observations at each candidate boundary. It must
+also bind a revised zero-authority hybrid candidate or explicitly retain the
+current candidate as a known rejected baseline. The candidate's
+`prospective_low_net_excess_path` result must not be reset, waived or hidden
+merely to obtain a passing preview.
+
+Part B remains non-executable until the fine pass closes Part A with honest
+mixed intervals or tested transition brackets no wider than two codes and a
+reviewed matched-direction timing and budget decision. A separate exact Part B
+transition is still required.
+
+An ordinary USB carrier absence is a segment-handoff condition, not a present
+carrier obstruction. Firmware continues capture, estimation, diagnostics, and
+state service while discarding bounded outbound-only records. It abandons any
+partially transmitted frame, resets the frame arbiter and the per-carrier
+`CONFIG?` provenance emission, and starts the next carrier on a complete
+record boundary. This recovery is available only before the two-second
+present-carrier obstruction deadline; a transport already latched faulted
+remains fail-static until reset. Thus reconnecting cannot erase a genuine
+obstruction fault, and a new evidence segment cannot inherit the tail of an
+old serial frame or omit its build-provenance sentinel.

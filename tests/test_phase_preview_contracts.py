@@ -184,6 +184,14 @@ def test_phase_preview_contracts_validate_and_remain_non_actionable(
     assert not result.ok
     assert "counterfactual_delta_codes must equal" in " ".join(result.errors)
 
+    rows[0]["counterfactual_correction"] = "false"
+    rows[0]["shadow_code_after"] = rows[0]["shadow_code_before"]
+    rows[0]["counterfactual_code"] = rows[0]["shadow_code_after"]
+    rows[0]["decision_reason"] = "prospective_low_net_excess_path"
+    rows[0]["modeled_not_observed_after_divergence"] = "false"
+    _write_contract(hpr_path, "hybrid_preview_decisions_v1", rows[0])
+    assert validate_csv(hpr_path, context).ok
+
     rows[0]["counterfactual_decision"] = "false"
     _write_contract(hpr_path, "hybrid_preview_decisions_v1", rows[0])
     result = validate_csv(hpr_path, context)

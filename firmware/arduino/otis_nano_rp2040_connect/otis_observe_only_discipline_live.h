@@ -32,6 +32,7 @@ void otis_observe_only_discipline_live_poll(uint64_t now_ticks,
 void otis_observe_only_discipline_live_service_transport(void);
 bool otis_observe_only_discipline_live_transport_busy(void);
 bool otis_observe_only_discipline_live_transport_pending(void);
+uint8_t otis_observe_only_discipline_live_abandon_transport(void);
 void otis_observe_only_discipline_live_emit_status(
     OtisStatusEmitContext *status_context);
 uint32_t otis_observe_only_discipline_live_dropped_pair_count(void);

@@ -25,7 +25,7 @@ DAC request and cannot grant authority.
 | `band_state_before`, `band_state_after` | Candidate band states: `INSIDE` or `OUTSIDE`. |
 | `preview_state`, `decision_reason` | Frozen Stage 1/3 state and stable reason. No state claims actual lock. |
 | `frequency_observation_event`, `counterfactual_decision`, `counterfactual_correction` | Whether fresh frequency evidence arrived and a model-only decision/correction was evaluated. |
-| `raw_counterfactual_delta_codes`, `counterfactual_delta_codes`, `counterfactual_code` | Raw and bounded model-only code deltas and resulting shadow code, when a decision is made. |
+| `raw_counterfactual_delta_codes`, `counterfactual_delta_codes`, `counterfactual_code` | Raw and bounded model-only proposed code deltas, plus the resulting retained or corrected shadow code, when a decision is made. A guard may reject a nonzero bounded proposal. |
 | `step_limited`, `range_clamped`, `correction_count`, `cumulative_movement_codes`, `alternating_correction_count` | Counterfactual bounds and candidate-only correction counters. |
 | `modeled_not_observed_after_divergence` | Must equal whether `shadow_code_after` differs from `actual_applied_code`. |
 | `uncertainty_status` | `available`, `incomplete`, or `unavailable`. |
@@ -33,8 +33,12 @@ DAC request and cannot grant authority.
 
 Every `*_sha256` field is a lowercase SHA-256. The validator rejects any HPR
 row that sets an authority field true. When present, `counterfactual_code`
-equals `shadow_code_after`, and `counterfactual_delta_codes` equals
-`shadow_code_after-shadow_code_before`; raw and bounded deltas are empty when
+equals `shadow_code_after`. When `counterfactual_correction=true`,
+`counterfactual_delta_codes` equals
+`shadow_code_after-shadow_code_before`. When a guard rejects the proposal,
+`counterfactual_decision=true` and `counterfactual_correction=false`; the raw
+and bounded proposed deltas remain evidence while `shadow_code_after` may equal
+`shadow_code_before`. Raw and bounded deltas are empty when
 `counterfactual_decision=false`.
 
 An externally commanded same-code setup application still creates a new

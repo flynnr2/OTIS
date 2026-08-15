@@ -75,6 +75,17 @@ DAC epochs, but manual setup transitions repeatedly reseeded the shadow code.
 Those modeled corrections are diagnostic evidence, not observed hybrid plant
 response.
 
+The subsequent complete 30-point survey retained 81,393 zero-authority hybrid
+records and exposed a decision-bearing candidate limitation. On the return
+visit to `0xA858`, `p21600_cap1_v2` reached
+`prospective_low_net_excess_path` after 20 modeled corrections and 236 codes of
+path; its proposed `-15`-code correction was rejected and `FAULT_PREVIEW`
+persisted through final closure. This was non-actionable and did not affect the
+physical survey. Treat the candidate as a rejected range-spanning baseline
+until a revised proposal explicitly defines DAC-epoch reseed, movement-budget
+and terminal-fault lifetime semantics and passes exact replay. Do not remove or
+reset the guard merely to turn the retained preview into a pass.
+
 Bind these facts from the current tracked profiles and final range-spanning
 evidence. Never copy an old result into a new profile without verifying its
 source identity and applicability.

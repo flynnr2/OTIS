@@ -23,18 +23,21 @@ artifacts or rewrite their provenance.
 
 ## Current boundary
 
-The immediate physical gate remains the state-preserving continuation of the
-current range-spanning survey from confirmed applied code `0xA844`, beginning at
-`0xA848` and `0xA84C`. Do not flash, reset, change the installed firmware,
-enable D9, initialize the onboard IMU, or otherwise disturb the current board
-state before that continuation reaches a declared terminal result.
+The complete 30-point range-spanning survey has reached a healthy terminal at
+`0xA800`, `OUTSIDE`, and bracketed all four state-dependent transitions at
+survey resolution. The exact raw package and corrected host-only reanalysis
+are separately content-addressed. There is no longer a preserved `0xA844`
+continuation dependency.
 
-The current frequency programme must then complete its fine bidirectional Part
-A map and its prospectively gated Part B automatic frequency-only traversal, or
-reach an explicit terminal result that changes the plan. The passing survey
-prefix is useful evidence but does not establish the remaining three
-state-dependent transitions, fine hysteresis intervals, matched bidirectional
-response, accelerated cadence, Part B viability, or active-hybrid readiness.
+The immediate physical gate is now the survey-derived one-code Part A fine
+pass. Before bench entry, freeze its adaptive boundary-observation rule and
+monotonic outbound/return point order, and revise the zero-authority hybrid
+preview that reached its prospective low-net-path guard during the return leg.
+The frequency programme must then complete the fine map and its prospectively
+gated Part B automatic frequency-only traversal, or reach an explicit terminal
+result that changes the plan. The survey does not establish fine hysteresis
+intervals, matched controlled response, accelerated cadence, Part B viability,
+or active-hybrid readiness.
 
 Offline review, design, fixtures and source work for the new programmes may
 proceed while the board state is preserved, provided they do not access the
