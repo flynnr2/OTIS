@@ -193,6 +193,11 @@ def _create_manifest(
         "reports/capture_device_state.json",
         "COMPLETE",
     ]
+    focused_campaign = (
+        bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2"
+    )
+    if focused_campaign:
+        evidence_artifacts.append("reports/conditional_part_a_promotion_v2.json")
     manifest = {
         "schema_version": 1,
         "template": False,
@@ -208,7 +213,11 @@ def _create_manifest(
         "control_mode": "externally_precommitted_range_map_setup_stimuli",
         "cx319": {
             "profile_id": "cx319_range_map_part_a",
-            "mode": "part_a_boundary_map",
+            "mode": (
+                "focused_part_a_boundary_map"
+                if focused_campaign
+                else "part_a_boundary_map"
+            ),
             "authority": {
                 "effective": True,
                 "physical_execution": True,
@@ -281,7 +290,12 @@ def _create_manifest(
         ],
         "evidence_artifacts": evidence_artifacts,
         "known_limitations": [
-            "Finite survey prefix only; full Part A map and Part B remain incomplete.",
+            (
+                "Focused Part A decides only conditional frequency-only Part B promotion; "
+                "it never authorizes phase or hybrid actuation."
+                if focused_campaign
+                else "Finite survey prefix only; full Part A map and Part B remain incomplete."
+            ),
             "D10 remains an external event input and has no PPS or control role.",
         ],
     }
@@ -631,6 +645,35 @@ def _point_tdb_rows(
     return result
 
 
+def _adaptive_point_rows(
+    rows: list[dict[str, str]], *, minimum: int, maximum: int
+) -> tuple[list[dict[str, str]] | None, str]:
+    """Select the frozen 2/4/6 support without inspecting future records.
+
+    Boundary points stop at four observations when all absolute integer counts
+    lie on one side of the TDB entry/outside boundary.  A mix of <=2 and >=3
+    extends that same DAC epoch to six observations.  Fixed points have equal
+    minimum and maximum sizes.
+    """
+
+    if minimum < 2 or maximum < minimum or maximum > 6:
+        raise ValueError("invalid frozen point observation bounds")
+    if len(rows) < minimum:
+        return None, "awaiting_minimum"
+    selected = rows[:minimum]
+    if minimum == maximum:
+        return selected, "fixed_minimum"
+    absolute_counts = [abs(int(row["integer_edge_error_counts"])) for row in selected]
+    mixed = any(value <= 2 for value in absolute_counts) and any(
+        value >= 3 for value in absolute_counts
+    )
+    if not mixed:
+        return selected, "minimum_unmixed"
+    if len(rows) < maximum:
+        return None, "awaiting_mixed_extension"
+    return rows[:maximum], "maximum_mixed_extension"
+
+
 def _exact_estimates_present(run_dir: Path, rows: list[dict[str, str]]) -> bool:
     estimates = {
         row.get("estimate_id", ""): row
@@ -846,7 +889,25 @@ def run(
         state["phase"] = "survey"
         _replace_json(run_dir / STATE, state)
 
-        for point_index, code in enumerate(bundle["part_a_segment"]["survey_prefix"]):
+        point_plans = bundle["part_a_segment"].get("point_plans")
+        if point_plans is None:
+            point_plans = [
+                {
+                    "code": code,
+                    "role": "survey_point",
+                    "minimum_observations": bundle["part_a_segment"][
+                        "fresh_policy_observations_per_point"
+                    ],
+                    "maximum_observations": bundle["part_a_segment"][
+                        "fresh_policy_observations_per_point"
+                    ],
+                }
+                for code in bundle["part_a_segment"]["survey_prefix"]
+            ]
+        for point_index, point_plan in enumerate(point_plans):
+            code = int(point_plan["code"])
+            minimum_observations = int(point_plan["minimum_observations"])
+            maximum_observations = int(point_plan["maximum_observations"])
             global_point_index = (
                 int(bundle["part_a_segment"].get("global_point_offset", 0))
                 + point_index
@@ -882,6 +943,9 @@ def run(
                     "point_index": point_index,
                     "global_point_index": global_point_index,
                     "code": code,
+                    "role": point_plan["role"],
+                    "minimum_observations": minimum_observations,
+                    "maximum_observations": maximum_observations,
                     "command": command,
                 },
             )
@@ -927,23 +991,30 @@ def run(
                 flush=True,
             )
 
+            observation_decision = "awaiting_minimum"
+
+            def selected_rows() -> list[dict[str, str]] | None:
+                nonlocal observation_decision
+                selected, observation_decision = _adaptive_point_rows(
+                    _point_tdb_rows(
+                        run_dir, after_sequence=prior_tdb, epoch=epoch
+                    ),
+                    minimum=minimum_observations,
+                    maximum=maximum_observations,
+                )
+                return selected
+
             rows = _wait(
-                lambda: (
-                    selected
-                    if len(
-                        selected := _point_tdb_rows(
-                            run_dir, after_sequence=prior_tdb, epoch=epoch
-                        )
-                    )
-                    >= 2
-                    else None
-                ),
+                selected_rows,
                 timeout_s=bundle["part_a_segment"]["point_wait_timeout_s"],
-                description=f"point {point_index + 1} two fresh selected600 policy observations",
+                description=(
+                    f"point {point_index + 1} frozen {minimum_observations}"
+                    f"..{maximum_observations} fresh selected600 policy observations"
+                ),
                 run_dir=run_dir,
                 wall_deadline=deadline,
                 require_qualified_health=True,
-            )[:2]
+            )
             if not _exact_estimates_present(run_dir, rows):
                 raise RuntimeError("selected estimate identity did not reach TDB consumer")
             result = {
@@ -951,6 +1022,10 @@ def run(
                 "global_point_index": global_point_index,
                 "code": code,
                 "code_hex": f"0x{code:04X}",
+                "role": point_plan["role"],
+                "minimum_observations": minimum_observations,
+                "maximum_observations": maximum_observations,
+                "observation_rule_decision": observation_decision,
                 "dac_sequence": int(dac["seq"]),
                 "dac_epoch": epoch,
                 "tdb_sequences": [int(row["decision_sequence"]) for row in rows],
@@ -1019,6 +1094,20 @@ def run(
         output_path=run_dir / ANALYSIS,
         seal_path=run_dir / SEAL,
     )
+    promotion: dict[str, Any] | None = None
+    if bundle.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+        from .conditional_part_a_promotion import create_promotion
+
+        promotion = create_promotion(
+            bundle_path=bundle_path,
+            run_dir=run_dir,
+            output_path=run_dir / "reports/conditional_part_a_promotion_v2.json",
+        )
+        print(
+            f"MILESTONE Part A promotion decision={promotion['status']} "
+            f"identity={promotion['promotion_sha256']}",
+            flush=True,
+        )
     evidence_finalization: dict[str, Any]
     try:
         snapshot = _create_validated_evidence_snapshot(run_dir)
@@ -1068,6 +1157,7 @@ def run(
     return {
         "terminal": terminal,
         "analysis": analysis,
+        "promotion": promotion,
         "evidence_finalization": evidence_finalization,
         "evidence_index_record": record,
     }

@@ -434,6 +434,10 @@ def create_bundle(
 
 def validate_bundle(path: Path) -> dict[str, Any]:
     value = _read(path.resolve(), "range-spanning bundle")
+    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+        from .conditional_part_a_bundle import validate_bundle as validate_conditional
+
+        return validate_conditional(path)
     declared_hash = value.get("bundle_sha256")
     unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
     if (
@@ -485,6 +489,10 @@ def validate_bundle_for_offline_reanalysis(path: Path) -> dict[str, Any]:
     """
 
     value = _read(path.resolve(), "range-spanning bundle")
+    if value.get("bundle_type") == "cx319_conditional_fine_map_part_a_bundle_v2":
+        from .conditional_part_a_bundle import validate_bundle as validate_conditional
+
+        return validate_conditional(path)
     declared_hash = value.get("bundle_sha256")
     unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
     if (

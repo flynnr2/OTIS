@@ -1,0 +1,157 @@
+{
+  "schema_version": 2,
+  "programme_id": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2",
+  "status": "operator_authorized_pending_exact_build_rehearsal_and_bundle",
+  "operator_authority": {
+    "instruction_date": "2026-08-15",
+    "instruction_ref": "operator_thread_authority_for_unattended_flashing_testing_and_conditional_part_b",
+    "scope": [
+      "offline_preparation",
+      "firmware_build",
+      "firmware_flash",
+      "serial_access",
+      "board_reset",
+      "dac_setup_stimuli",
+      "physical_rehearsal",
+      "part_a_fine_boundary_map",
+      "conditional_part_b_frequency_only_traversal",
+      "evidence_analysis",
+      "evidence_sealing",
+      "evidence_registration"
+    ],
+    "unattended_execution": true,
+    "further_interactive_approval_required_after_exact_bundle": false,
+    "phase_or_hybrid_actuation": false
+  },
+  "frozen_inputs": {
+    "preparation_prompt": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md",
+      "sha256": "9a9721bac7aaaee18256383c1f6c5dcf8481628fe053d39660bd4f84915e98a5"
+    },
+    "complete_survey_result": {
+      "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md",
+      "sha256": "be591c6e05dd4b53d681cff47b6f59807f0139920bf95c57ed3108ce1888acef",
+      "run_id": "part_a_fresh_restart_v1_20260814T113000BST",
+      "evidence_content_sha256": "802c37e01129e11a31dae027cfdace263feed3d111809dba0b8c1048ed9f36b6"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "selected_frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "selected_relative_phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "tight_deadband_policy": {
+      "path": "profiles/discipline/cx319_stabilized_tight_deadband_v1.json",
+      "sha256": "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
+    },
+    "hybrid_preview_baseline": {
+      "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
+      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+      "candidate_id": "p21600_cap1_v2",
+      "survey_disposition": "rejected_prospective_low_net_excess_path"
+    }
+  },
+  "survey_derived_linear_model": {
+    "quantity": "signed_integer_accumulated_edge_error_counts_over_selected_600s",
+    "fit_scope": "complete_survey_points_at_or_below_0xA858_excluding_0xA890_peak",
+    "counts_per_code": 0.107803,
+    "hz_per_code": 0.00017967166666666667,
+    "residual_rms_counts": 0.264,
+    "maximum_absolute_residual_counts": 0.517,
+    "codes_per_count": 9.276,
+    "zero_crossing_code": 43058.54,
+    "predicted_lower_entry_crossing_codes": [43035, 43036],
+    "predicted_upper_entry_crossing_codes": [43082, 43083],
+    "model_role": "survey_derived_design_and_promotion_envelope_not_calibrated_uncertainty"
+  },
+  "part_a": {
+    "firmware_profile": "cx319_range_map_part_a",
+    "frequency_control_authority": false,
+    "phase_hybrid_authority": false,
+    "selected_estimator_span_s": 600,
+    "settling_exclusion_s": 900,
+    "point_timing": {
+      "two_observation_worst_case_s": 2700,
+      "additional_observation_s": 600,
+      "host_margin_s": 120
+    },
+    "adaptive_observation_rule": {
+      "minimum": 2,
+      "boundary_minimum": 4,
+      "maximum": 6,
+      "extend_to_maximum_when_absolute_counts_mix_two_and_three_or_include_both_entry_and_outside_evidence": true,
+      "same_code_application_opens_new_epoch": true
+    },
+    "point_plan": [
+      {"code": 43008, "role": "opening_outside_closure", "minimum_observations": 2, "maximum_observations": 2},
+      {"code": 43056, "role": "central_reference_before_lower", "minimum_observations": 4, "maximum_observations": 4},
+      {"code": 43033, "role": "lower_outbound_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43035, "role": "lower_outbound_candidate", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43037, "role": "lower_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43037, "role": "lower_return_inside_guard_new_epoch", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43035, "role": "lower_return_candidate", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43033, "role": "lower_return_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43056, "role": "central_reference_between_regions", "minimum_observations": 4, "maximum_observations": 4},
+      {"code": 43081, "role": "upper_outbound_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43083, "role": "upper_outbound_candidate", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43085, "role": "upper_outbound_outside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43085, "role": "upper_return_outside_guard_new_epoch", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43083, "role": "upper_return_candidate", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43081, "role": "upper_return_inside_guard", "minimum_observations": 4, "maximum_observations": 6},
+      {"code": 43056, "role": "central_reference_after_upper", "minimum_observations": 4, "maximum_observations": 4},
+      {"code": 43008, "role": "final_outside_closure", "minimum_observations": 2, "maximum_observations": 2}
+    ],
+    "promotion_gate": {
+      "requires_complete_plan": true,
+      "requires_zero_active_transactions": true,
+      "requires_zero_phase_hybrid_authority": true,
+      "requires_all_reference_capture_transport_partition_and_queue_health": true,
+      "requires_lower_guards_outside_inside": true,
+      "requires_upper_guards_inside_outside": true,
+      "requires_each_direction_single_contiguous_transition_or_honest_mixed_interval": true,
+      "maximum_unmixed_transition_bracket_codes": 2,
+      "maximum_directional_displacement_codes": 4,
+      "minimum_observations_at_boundary_adjacent_codes": 4,
+      "part_b_budget_must_cover_observed_envelope": true
+    }
+  },
+  "part_b": {
+    "execution": "three_fresh_bounded_frequency_only_legs_after_part_a_promotion",
+    "phase_hybrid_authority": false,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_step_codes": 21,
+    "maximum_corrections_per_leg": 9,
+    "maximum_cumulative_movement_codes_per_leg": 189,
+    "minimum_applied_cadence_s": 1800,
+    "legs": [
+      {"leg_id": "lower_acquisition", "profile_id": "cx319_range_part_b_lower", "setup_code": 43008, "required_direction": "positive"},
+      {"leg_id": "upper_acquisition", "profile_id": "cx319_range_part_b_upper", "setup_code": 43152, "required_direction": "negative"},
+      {"leg_id": "lower_reacquisition", "profile_id": "cx319_range_part_b_lower", "setup_code": 43008, "required_direction": "positive"}
+    ],
+    "promotion_failure_action": "seal_part_a_and_stop_without_part_b_flash_or_automatic_correction"
+  },
+  "monitoring": {
+    "authoritative_state_required": true,
+    "stable_poll_interval_s": 300,
+    "milestone_updates": [
+      "part_a_prewrite_pass",
+      "regional_boundary_complete",
+      "part_a_terminal",
+      "part_a_promotion_decision",
+      "part_b_leg_started",
+      "automatic_correction_applied",
+      "part_b_leg_terminal",
+      "campaign_terminal"
+    ],
+    "stale_evidence_timeout_s": 900
+  }
+}
