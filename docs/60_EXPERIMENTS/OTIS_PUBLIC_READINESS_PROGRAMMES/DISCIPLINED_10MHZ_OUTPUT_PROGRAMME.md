@@ -36,6 +36,21 @@ signal. It is not an RP2040-synthesized replacement oscillator, does not make
 the external oscillator the RP2040 system clock, and does not create UTC or a
 phase-aligned time scale.
 
+### Programme focus
+
+The scientific and engineering outcome is a robust, characterized disciplined
+output on D9. Firmware tests, internal loopback counting and diagnostic
+telemetry are supporting means of establishing that outcome; they are not a
+second product, an alternative timing authority or a primary objective. Do not
+delay the D9 waveform, load, continuity and non-interference decision in order
+to generalize a loopback framework or perfect optional diagnostics.
+
+The decision-bearing public configuration is the direct 10 MHz divide-by-one
+output. An optional divided-output facility may be retained for diagnostics or
+future use only if it remains a small bounded extension of the same source
+path. It must not weaken, replace or expand the qualification claim for the
+10 MHz output.
+
 ## Established factual basis
 
 - The Nano RP2040 Connect pinout maps D8 to GPIO20/CLOCK GPIN0 and D9 to
@@ -60,10 +75,21 @@ phase-aligned time scale.
 - D8 remains the authoritative oscillator/count input. D14 remains the sole
   authoritative PPS/reference input. D10 remains the independent external
   event input.
+- D6 maps directly to RP2040 GPIO18 and is selected by this programme as the
+  diagnostic forwarded-clock monitor input when the optional loopback monitor
+  is enabled. D4/GPIO16 and D5/GPIO17 remain unassigned alternatives rather
+  than runtime-selectable monitor pins.
 - The Nano header exposes a 3.3 V CMOS GPIO, not a presently qualified 50-ohm
   laboratory output driver.
 - GPOUT source switching can glitch. Normal operation must therefore configure
   one frozen source during boot and avoid runtime source switching.
+- The RP2040 divider supports divide by one and clean on-the-fly divisor
+  changes synchronized to an output-cycle boundary. Fractional division is
+  implemented by alternating between adjacent integer divisors and therefore
+  deliberately produces a jittery output. Fractional division is outside the
+  initial robust-output claim. A serial-settable divider, if implemented, must
+  initially accept only a frozen allowlist of integer divisors and must never
+  change the `clksrc_gpin0` source.
 - The installed Pico SDK's `clock_configure_gpin()` selects `CLOCK GPIN0` as
   GPIO20's final function while configuring the requested clock generator.
   Conversely, `pio_gpio_init(..., GPIO20)` selects a PIO function. PIO input
@@ -100,6 +126,24 @@ Freeze an output contract that states:
 - what constitutes a glitch, interruption or invalid output interval; and
 - every claim deliberately not made.
 
+The contract must distinguish these states rather than calling all of them
+"the 10 MHz output":
+
+- `qualified_10mhz_forwarded`, requiring `clksrc_gpin0`, integer divisor one,
+  zero fractional divisor and the qualified D9 load envelope;
+- `bounded_integer_divided_output`, optional and diagnostic unless each
+  selected output frequency receives an explicit claim; and
+- `invalid_or_transitioning`, covering configuration, divisor transition,
+  reset, source loss and any failed readback or acknowledgement.
+
+If serial divisor control is included, freeze the allowed integer divisors,
+resulting nominal frequencies, command envelope, acknowledgements, timeout,
+readback, transition validity semantics and reset/default behavior. Divisor one
+must be the boot and public-soak setting. A host disconnect must not change the
+applied divisor. Fractional divisors, runtime source selection, runtime output
+pin selection and arbitrary raw-register writes are prohibited in the initial
+programme.
+
 If the intended external load is unspecified, use a conservative high-impedance
 instrument-input qualification envelope. Do not silently assume that D9 can
 drive a terminated 50-ohm input or arbitrary cable. If the required public
@@ -133,10 +177,12 @@ contract.
 
 Required properties:
 
-- a compile-time profile selection; no hidden runtime mode switch;
+- a compile-time output-feature and output-pin profile selection; no hidden
+  runtime mode, source or pin switch;
 - D9/GPOUT0 ownership renamed from generic internal visibility to the exact
   selected output role;
-- GPOUT0 sourced directly from GPIN0 with the frozen divide-by-one setting;
+- GPOUT0 sourced directly from GPIN0 and initialized to the frozen
+  divide-by-one 10 MHz setting;
 - no rerouting of `clk_sys`, `clk_ref`, USB, PIO or the timing fabric;
 - no software edge generation, interrupt forwarding or CPU-defined timestamps;
 - no change to D8, D14 or D10 authority;
@@ -151,8 +197,15 @@ Required properties:
 - D9 remains disabled or high-impedance until the GPIN0 source, integer-one
   divider and output validity boundary have been configured; no live AUXSRC
   change is permitted;
-- boot telemetry for source, destination, divider, inversion, drive setting,
-  configured state, output contract identity and validity semantics;
+- boot telemetry for source, destination, requested and applied divider,
+  fractional-divider state, nominal output frequency, inversion, drive
+  setting, configured state, output contract identity and validity semantics;
+- if serial divisor control is included, one bounded command path accepting
+  only the frozen integer allowlist, with exact request identity, acceptance,
+  application, register readback and resulting validity transition recorded;
+- divisor commands have no authority to change AUXSRC, GPIO function, output
+  drive, D8/D14 ownership, control policy or any system/reference/peripheral
+  clock;
 - explicit behavior when D8 stops, D14/reference qualification is lost, control
   faults, the host disconnects, or the firmware resets;
 - no runtime source change after output activation; and
@@ -162,6 +215,48 @@ Required properties:
 If output enable is not atomic and glitch-free, configure it before the output
 is declared usable and record the exact validity boundary. Do not label D9
 valid merely because the mux register was written.
+
+### Optional forwarded-output monitor
+
+An internal loopback monitor may be implemented only as proportionate
+verification infrastructure. Do not use D10: it remains the independent
+external-event input and should be available during integrated output testing.
+This programme selects D6/GPIO18. Bind that exact pin and its
+`forwarded_clock_monitor` role in the build profile, manifest, resource
+registry, wiring record and boot telemetry. D4 and D5 remain unassigned. There
+is no runtime monitor-pin selection.
+
+The preferred loopback topology is:
+
+```text
+D8 / GPIO20 / GPIN0 -> GPOUT0 -> D9 / GPIO21
+                                  |
+                                  +-- series resistor -- D6 / GPIO18
+```
+
+If implemented, use a dedicated qualification counter rather than the D10
+IRQ or sparse-edge FIFO event path. It may reuse the proved cumulative PIO
+snapshot programme with a second state machine, D6/GPIO18 as
+`IN_BASE`, and D14 as the common snapshot condition. It must retain its own raw
+snapshots, session, continuity and resource identity and remain diagnostic
+only. It must not enter D8 validity, D14 authority, estimation, control
+eligibility or actuation.
+
+Keep the monitor reusable where that is cheap: preserve raw counts and place
+the expected nominal source/output frequency in the selected profile rather
+than hard-coding 10 MHz into the counter. Do not make general oscillator-test
+infrastructure, permanent resource consumption or loopback completeness a
+prerequisite for the D9 output decision. The monitor may be absent or disabled
+in normal profiles and the output can still be qualified by the required
+external measurements.
+
+A passing D6 monitor may support only bounded digital conclusions: D9 produced
+threshold-crossing edges received at D6; the cumulative D8-to-D6 count ratio
+matched the exact applied integer divisor within a separately proved boundary
+tolerance; no growing missing/extra-edge deficit was observed; and enabling the
+output, jumper and monitor did not degrade the authoritative D8/D14 path. That
+evidence corroborates forwarding and non-interference but does not itself
+qualify the D9 output.
 
 ## Stage 3: deterministic verification and operational rehearsal
 
@@ -177,6 +272,13 @@ Add focused checks for:
 - readback or equivalent exact evidence that GPOUT0 is enabled from
   `clksrc_gpin0` with integer divider one and zero fractional divider before D9
   is declared valid;
+- rejection of fractional, zero, out-of-range and non-allowlisted divisor
+  commands, plus exact requested/accepted/applied/read-back identity for every
+  permitted serial divisor transition if that optional facility is included;
+- proof that a divisor command cannot change AUXSRC, GPIO function, drive
+  configuration, timing authority or any non-GPOUT clock;
+- clean return to divisor one and `qualified_10mhz_forwarded` before any
+  decision-bearing 10 MHz qualification or public soak resumes;
 - output disabled or high-impedance in profiles that do not select it;
 - unchanged system/reference/peripheral clock configuration;
 - unchanged D8 PPS-gated count and D14 reference ownership;
@@ -192,6 +294,12 @@ The operational-path rehearsal must use the actual capture, supervisor,
 logging, stop, analyzer, sealing and registration path. It must inject output
 configuration failure and transport obstruction without pretending that a
 software fixture measures waveform quality.
+
+If the optional monitor is implemented, add only the focused deterministic
+checks needed to establish its bounded supporting role: exact selected pin and
+resource ownership, no D10 claim, no per-edge 10 MHz emission, independent raw
+snapshot/session continuity, and no estimator or controller consumer. Do not
+turn monitor verification into a separate campaign.
 
 ## Stage 4: physical waveform and non-interference qualification
 
@@ -210,6 +318,20 @@ instrument exports plus instrument identity and settings. Exercise at least:
 - a static DAC code and at least one bounded frequency-control movement; and
 - sustained output during representative USB, telemetry, environmental I2C and
   control-service load.
+
+The oscilloscope and an independently referenced frequency counter, not an
+internal loopback, are the primary evidence for the D9 output claim. Add a
+time-interval or phase-noise instrument only if the proposed jitter or spectral
+claim requires it. The internal monitor may corroborate digital edge
+continuity and expose a growing D8-to-delivered-output count deficit, but it
+cannot establish voltage levels, duty cycle, rise/fall behavior, overshoot,
+ringing, propagation delay, absolute frequency accuracy, additive jitter,
+phase noise or performance into the declared external cable/load.
+
+Where the D6 monitor is used, separate the baseline, D9-enabled, physical-load
+connected and monitor-enabled conditions so a D8 change can be attributed to
+clock routing/output switching, the jumper/load, or the additional PIO and
+transport work rather than conflating them in one comparison.
 
 Determine:
 
@@ -234,6 +356,15 @@ observation. Reject the activation-boundary window from steady-state
 comparison, preserve it as transition evidence, and compare clean bounded
 segments before and after output activation.
 
+If serial integer division is included, characterize each allowed transition
+only after the divide-by-one D9 waveform gate is complete. Confirm the
+datasheet-described clean cycle-boundary change, record the exact invalid or
+transition interval, and measure the resulting frequency and duty cycle. These
+diagnostic divided states do not become part of the qualified 10 MHz claim.
+Do not introduce or investigate fractional division during this programme
+unless a later decision explicitly makes a jitter-characterized divided
+output necessary.
+
 Use the cheapest test capable of supporting each claim. A frequency counter
 alone cannot establish edge integrity, delay or duty cycle; an ordinary scope
 without a stated floor cannot establish low phase-noise performance.
@@ -241,9 +372,10 @@ without a stated floor cannot establish low phase-noise performance.
 ## Stage 5: integrated public-configuration soak
 
 After the waveform gate passes, run a finite sustained observation with the
-output continuously enabled and externally loaded inside its qualified
-envelope while frequency-only control remains authoritative and all hybrid
-output remains non-actionable. This frequency-only output soak must complete
+output continuously enabled at integer divisor one and externally loaded
+inside its qualified envelope while frequency-only control remains
+authoritative and all hybrid output remains non-actionable. This frequency-only
+output soak must complete
 before hybrid candidate selection or physical hybrid work begins. Preserve it
 as the predeclared output and frequency-control baseline for later hybrid
 comparison; do not defer it into, or replace it with, the active-hybrid
@@ -257,7 +389,8 @@ retroactive part of this output qualification gate.
 The soak must retain:
 
 - continuous D8/D14 measurement and D9 output status;
-- exact firmware, output-contract and load identities;
+- exact firmware, output-contract, applied/read-back divisor and load
+  identities;
 - count/phase/control replay;
 - transport and queue evidence;
 - all output interruptions or invalid intervals; and
@@ -277,12 +410,19 @@ Choose exactly one:
 Do not call the output qualified merely because D9 toggles or a counter reports
 10 MHz.
 
+Do not make a loopback-monitor pass a terminal decision in its own right. A
+monitor failure is classified by its consequence: it either reveals a D9
+output defect, reveals a platform/monitor defect, or remains unavailable while
+external waveform evidence decides the output claim.
+
 ## Required deliverables
 
 - versioned output contract and profile;
 - firmware implementation and resource ledger;
 - host status parsing and validators;
 - deterministic focused tests and affected build results;
+- optional bounded serial integer-divider command and monitor evidence only if
+  those supporting facilities are selected without delaying the output gate;
 - operational rehearsal report and seal;
 - physical waveform evidence and analysis;
 - integrated soak package, seal and registration;
