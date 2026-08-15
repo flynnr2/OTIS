@@ -606,9 +606,10 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     transcript = {
         "schema_version": 1,
         "contract_id": selected.outcome_contract_id,
-        "programme_id": "cx319_stabilized_tight_deadband",
+        "programme_id": selected.programme_id,
         "gate": selected.gate,
         "leg": selected.leg,
+        "sequence_index": proposal.get("sequence_index"),
         "mode": "accelerated_offline_no_io",
         "proposal_bundle_sha256": proposal["bundle_sha256"],
         "authority": {"effective": False},
@@ -731,6 +732,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         "tool": selected.rehearsal_tool,
         "status": analysis["status"],
         "proposal_bundle_sha256": proposal["bundle_sha256"],
+        "sequence_index": proposal.get("sequence_index"),
         "transcript_sha256": _sha256_file(transcript_path),
         "analysis_sha256": analysis["analysis_sha256"],
         "analysis_file_sha256": _sha256_file(analysis_path),
@@ -795,6 +797,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
         "tool": selected.rehearsal_tool,
         "status": registration["status"],
         "proposal_bundle_sha256": proposal["bundle_sha256"],
+        "sequence_index": proposal.get("sequence_index"),
         "analysis": str(analysis_path),
         "seal": str(seal_path),
         "registration": str(

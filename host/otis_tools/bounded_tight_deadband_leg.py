@@ -37,6 +37,12 @@ class BoundedTightDeadbandLeg:
     prerequisite_key: str
     firmware_flash: bool
     flash_record_filename: Path | None
+    correction_limit: int = 4
+    cumulative_limit_codes: int = 84
+    maximum_step_codes: int = 21
+    minimum_cadence_s: int = 1800
+    maximum_qualified_duration_s: int = 14400
+    programme_id: str = "cx319_stabilized_tight_deadband"
 
     @property
     def run_identity(self) -> str:
@@ -105,12 +111,75 @@ UPPER = BoundedTightDeadbandLeg(
     flash_record_filename=Path("reports/cx319_g3_flash_record_v1.json"),
 )
 
+RANGE_LOWER = BoundedTightDeadbandLeg(
+    gate="PBL",
+    leg="L",
+    profile_id="cx319_range_part_b_lower",
+    run_binding_tag=3196001,
+    setup_code=0xA800,
+    required_sign=1,
+    required_direction="positive",
+    operation="conditional_part_b_frequency_only_leg",
+    outcome_contract_id="cx319_conditional_part_b_leg_outcome_v1",
+    stage="CX319_CONDITIONAL_PART_B_LOWER_FREQUENCY_ONLY_LIVE",
+    control_mode="cx319_conditional_part_b_lower_frequency_only_live",
+    proposal_tool="cx319_conditional_part_b_proposal_v1",
+    proposal_bundle_id="cx319_conditional_part_b_lower_proposal_v1",
+    proposal_filename=Path("cx319_conditional_part_b_lower_proposal_v1.json"),
+    activation_tool="cx319_conditional_part_b_activation_v1",
+    activation_id="cx319_conditional_part_b_lower_activation_v1",
+    activation_filename=Path("cx319_conditional_part_b_lower_activation_v1.json"),
+    live_seal_filename=Path("reports/cx319_conditional_part_b_lower_seal_v1.json"),
+    rehearsal_tool="cx319_conditional_part_b_operational_rehearsal_v1",
+    rehearsal_analyzer_tool="cx319_conditional_part_b_rehearsal_analyzer_v1",
+    rehearsal_seal_type="cx319_conditional_part_b_rehearsal_seal_v1",
+    prerequisite_key="part_a_promotion",
+    firmware_flash=True,
+    flash_record_filename=Path("reports/cx319_pbl_flash_record_v1.json"),
+    correction_limit=9,
+    cumulative_limit_codes=189,
+    programme_id="CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2",
+)
+
+RANGE_UPPER = BoundedTightDeadbandLeg(
+    gate="PBU",
+    leg="U",
+    profile_id="cx319_range_part_b_upper",
+    run_binding_tag=3196002,
+    setup_code=0xA890,
+    required_sign=-1,
+    required_direction="negative",
+    operation="conditional_part_b_frequency_only_leg",
+    outcome_contract_id="cx319_conditional_part_b_leg_outcome_v1",
+    stage="CX319_CONDITIONAL_PART_B_UPPER_FREQUENCY_ONLY_LIVE",
+    control_mode="cx319_conditional_part_b_upper_frequency_only_live",
+    proposal_tool="cx319_conditional_part_b_proposal_v1",
+    proposal_bundle_id="cx319_conditional_part_b_upper_proposal_v1",
+    proposal_filename=Path("cx319_conditional_part_b_upper_proposal_v1.json"),
+    activation_tool="cx319_conditional_part_b_activation_v1",
+    activation_id="cx319_conditional_part_b_upper_activation_v1",
+    activation_filename=Path("cx319_conditional_part_b_upper_activation_v1.json"),
+    live_seal_filename=Path("reports/cx319_conditional_part_b_upper_seal_v1.json"),
+    rehearsal_tool="cx319_conditional_part_b_operational_rehearsal_v1",
+    rehearsal_analyzer_tool="cx319_conditional_part_b_rehearsal_analyzer_v1",
+    rehearsal_seal_type="cx319_conditional_part_b_rehearsal_seal_v1",
+    prerequisite_key="part_a_promotion",
+    firmware_flash=True,
+    flash_record_filename=Path("reports/cx319_pbu_flash_record_v1.json"),
+    correction_limit=9,
+    cumulative_limit_codes=189,
+    programme_id="CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V2",
+)
+
 
 def leg_for(gate: object, leg: object) -> BoundedTightDeadbandLeg:
     try:
-        return {(LOWER.gate, LOWER.leg): LOWER, (UPPER.gate, UPPER.leg): UPPER}[
-            (gate, leg)
-        ]
+        return {
+            (LOWER.gate, LOWER.leg): LOWER,
+            (UPPER.gate, UPPER.leg): UPPER,
+            (RANGE_LOWER.gate, RANGE_LOWER.leg): RANGE_LOWER,
+            (RANGE_UPPER.gate, RANGE_UPPER.leg): RANGE_UPPER,
+        }[(gate, leg)]
     except KeyError as exc:
         raise ValueError(f"unsupported CX319 bounded live leg: gate={gate!r}, leg={leg!r}") from exc
 

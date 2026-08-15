@@ -65,27 +65,53 @@ def load_no_write_qualification_spec(
     leg: str,
 ) -> tuple[CampaignSpec, dict[str, str], TightDeadbandLeg]:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-    if (
-        policy.get("policy_id")
-        != "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1"
-        or leg not in {"A", "B"}
-    ):
+    if policy.get("policy_id") != "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1":
         raise ValueError("unexpected CX319 policy or leg identity")
-    selected = policy["legs"][leg]
-    expected = {
-        "A": ("cx319_tight_lower", 3195001, 0xA808, "positive", 1),
-        "B": ("cx319_tight_upper", 3195002, 0xA848, "negative", -1),
-    }[leg]
-    observed = (
-        selected.get("firmware_profile"),
-        selected.get("run_binding_tag"),
-        selected.get("exact_setup_code"),
-        selected.get("required_automatic_direction"),
-        selected.get("maximum_automatic_corrections"),
-        selected.get("maximum_cumulative_automatic_movement_codes"),
-    )
-    if observed != (*expected[:4], 4, 84):
-        raise ValueError(f"CX319 leg {leg} policy is not exact")
+    if leg in {"L", "U"}:
+        campaign_path = (
+            Path(__file__).resolve().parents[2]
+            / "profiles/qualification/cx319_conditional_range_campaign_v2.json"
+        )
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        part_b = campaign["part_b"]
+        leg_index = 0 if leg == "L" else 1
+        selected = part_b["legs"][leg_index]
+        expected = {
+            "L": ("cx319_range_part_b_lower", 3196001, 0xA800, "positive", 1),
+            "U": ("cx319_range_part_b_upper", 3196002, 0xA890, "negative", -1),
+        }[leg]
+        observed = (
+            selected.get("profile_id"),
+            expected[1],
+            selected.get("setup_code"),
+            selected.get("required_direction"),
+            part_b.get("maximum_corrections_per_leg"),
+            part_b.get("maximum_cumulative_movement_codes_per_leg"),
+        )
+        if observed != (*expected[:4], 9, 189):
+            raise ValueError(f"CX319 conditional Part B leg {leg} is not exact")
+        correction_limit = 9
+        cumulative_limit = 189
+    elif leg in {"A", "B"}:
+        selected = policy["legs"][leg]
+        expected = {
+            "A": ("cx319_tight_lower", 3195001, 0xA808, "positive", 1),
+            "B": ("cx319_tight_upper", 3195002, 0xA848, "negative", -1),
+        }[leg]
+        observed = (
+            selected.get("firmware_profile"),
+            selected.get("run_binding_tag"),
+            selected.get("exact_setup_code"),
+            selected.get("required_automatic_direction"),
+            selected.get("maximum_automatic_corrections"),
+            selected.get("maximum_cumulative_automatic_movement_codes"),
+        )
+        if observed != (*expected[:4], 4, 84):
+            raise ValueError(f"CX319 leg {leg} policy is not exact")
+        correction_limit = 4
+        cumulative_limit = 84
+    else:
+        raise ValueError("unexpected CX319 policy or leg identity")
     base_binding = policy["bindings"]["inherited_active_policy_root"]
     base_policy = json.loads(
         (Path(__file__).resolve().parents[2] / base_binding["path"]).read_text(
@@ -109,8 +135,8 @@ def load_no_write_qualification_spec(
         profile=profile,
         run_identity=f"{profile}:{tag}",
         start_code=setup_code,
-        correction_limit=4,
-        cumulative_limit=84,
+        correction_limit=correction_limit,
+        cumulative_limit=cumulative_limit,
         minimum_code=0xA800,
         maximum_code=0xAB00,
         maximum_step=21,

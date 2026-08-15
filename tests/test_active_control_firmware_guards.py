@@ -496,15 +496,21 @@ def test_stage7_part_b_prospective_dither_guards_are_prewrite() -> None:
     ) < make_request.index("transaction->request = *request")
 
 
-def test_all_supported_nonprogramme_profiles_compile_active_out() -> None:
+def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
     matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
+    active_profiles = {
+        "cx319_tight_lower",
+        "cx319_tight_upper",
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
+    }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":
             continue
         enabled = profile["defines"].get(
             "OTIS_ENABLE_CX317_BOUNDED_ACTIVE", "0"
         )
-        if profile["id"] in {"cx319_tight_lower", "cx319_tight_upper"}:
+        if profile["id"] in active_profiles:
             assert enabled == "1"
         else:
             assert enabled == "0"

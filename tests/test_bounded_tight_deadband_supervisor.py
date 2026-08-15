@@ -115,6 +115,40 @@ def test_g3_supervisor_is_exact_upper_negative_leg(tmp_path: Path) -> None:
     assert supervisor.state["cx319_leg"] == "B"
 
 
+@pytest.mark.parametrize(
+    ("leg_name", "profile", "start_code", "direction", "gate"),
+    [
+        ("L", "cx319_range_part_b_lower", 0xA800, 1, "PBL"),
+        ("U", "cx319_range_part_b_upper", 0xA890, -1, "PBU"),
+    ],
+)
+def test_conditional_part_b_supervisor_loads_exact_nine_correction_leg(
+    tmp_path: Path,
+    leg_name: str,
+    profile: str,
+    start_code: int,
+    direction: int,
+    gate: str,
+) -> None:
+    run = tmp_path / gate.lower()
+    (run / "csv").mkdir(parents=True)
+    supervisor = create_supervisor(
+        run_dir=run,
+        command_fifo=tmp_path / f"{gate}-normal.fifo",
+        emergency_command_fifo=tmp_path / f"{gate}-emergency.fifo",
+        abort_fifo=tmp_path / f"{gate}-abort.fifo",
+        expected_build_identity=BUILD_IDENTITY,
+        leg_name=leg_name,
+    )
+
+    assert supervisor.spec.profile == profile
+    assert supervisor.spec.start_code == start_code
+    assert supervisor.spec.correction_limit == 9
+    assert supervisor.spec.cumulative_limit == 189
+    assert supervisor.leg.required_direction == direction
+    assert supervisor.state["cx319_gate"] == gate
+
+
 def test_g2_prewrite_contract_has_live_leg_identity(tmp_path: Path) -> None:
     supervisor = _supervisor(tmp_path)
     expected = {

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx319_conditional_part_b_hybrid_observation_v1",
+  "status": "nonactionable_part_b_observation_candidate",
+  "candidate_id": "p21600_cap1_epoch_reseed_v3",
+  "inherits": {
+    "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
+    "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+    "candidate_id": "p21600_cap1_v2"
+  },
+  "parameters": {
+    "pull_in_time_s": 21600,
+    "absolute_phase_bias_cap_hz": 0.0016666666666666668,
+    "frequency_band_policy": "historical_v2"
+  },
+  "external_dac_epoch_semantics": {
+    "actual_applied_code_reseeds_shadow_code": true,
+    "actual_applied_code_reseeds_candidate_start_code": true,
+    "correction_count_resets_to_zero": true,
+    "cumulative_movement_codes_resets_to_zero": true,
+    "direction_history_resets_empty": true,
+    "terminal_fault_lifetime_ends": true,
+    "frequency_support_and_decision_cadence_reset": true,
+    "reason_code": "dac_epoch_candidate_reseed"
+  },
+  "part_b_observation_contract": {
+    "firmware_and_host_semantics_must_match": true,
+    "every_new_dac_epoch_must_emit_reset_state": true,
+    "analyzer_rederives_candidate_identity_and_epoch_reset": true,
+    "may_affect_frequency_controller_eligibility": false,
+    "may_affect_frequency_controller_delta": false,
+    "may_mutate_live_frequency_budget": false
+  },
+  "authority": {
+    "actionable": false,
+    "actuation_authorized": false,
+    "authorization_consumed": false,
+    "may_issue_command": false,
+    "may_write_dac": false,
+    "may_change_actual_applied_code": false,
+    "may_mutate_live_frequency_controller": false,
+    "may_mutate_response_classifier": false,
+    "may_mutate_live_budget": false
+  }
+}

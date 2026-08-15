@@ -243,6 +243,54 @@ def test_actual_dac_epoch_reseeds_counterfactual_but_preserves_raw_phase() -> No
     assert output.decision_reason == "dac_epoch_bumpless_reseed"
 
 
+def test_part_b_v3_external_dac_epoch_starts_a_fresh_candidate_lifetime() -> None:
+    profile, _ = load_profile()
+    inherited = next(
+        item for item in profile["candidates"] if item["candidate_id"] == "p21600_cap1_v2"
+    )
+    candidate = {**inherited, "candidate_id": "p21600_cap1_epoch_reseed_v3"}
+    engine = HybridCandidateEngine(
+        profile,
+        candidate,
+        start_code=0xA800,
+        phase_enabled=False,
+    )
+    opening = _record(0, 0, edge_error=None, dac_epoch=0)
+    engine.process(
+        opening,
+        _estimate(opening, None, qualified=False),
+        timestamp_s=0,
+        actual_applied_code=0xA800,
+    )
+    corrected_record = _record(600, 0, dac_epoch=0)
+    corrected = engine.process(
+        corrected_record,
+        _estimate(corrected_record, -0.01),
+        timestamp_s=600,
+        actual_applied_code=0xA800,
+    )
+    assert corrected.counterfactual_correction is True
+    assert engine.correction_count == 1
+    assert engine.path_codes == 21
+    engine.terminal_reason = "prospective_repeated_alternation"
+
+    transitioned = _record(601, 0, dac_epoch=1)
+    output = engine.process(
+        transitioned,
+        _estimate(transitioned, None, qualified=False),
+        timestamp_s=601,
+        actual_applied_code=0xA815,
+    )
+
+    assert output.decision_reason == "dac_epoch_candidate_reseed"
+    assert output.shadow_code_after == 0xA815
+    assert output.correction_count == 0
+    assert output.cumulative_movement_codes == 0
+    assert output.alternating_correction_count == 0
+    assert engine.start_code == 0xA815
+    assert engine.terminal_reason is None
+
+
 def test_post_divergence_frequency_and_phase_are_explicitly_modeled() -> None:
     engine = _engine("p3600_cap2_v2")
     opening = _record(0, -20, edge_error=None)

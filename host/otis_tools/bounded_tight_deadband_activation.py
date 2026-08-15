@@ -23,15 +23,18 @@ from .bounded_tight_deadband_bundle import (
     _binding,
 )
 from .bounded_tight_deadband_proposal import validate_frozen_proposal
-from .bounded_tight_deadband_leg import LOWER, leg_for, leg_for_manifest, leg_for_proposal
+from .bounded_tight_deadband_leg import (
+    LOWER,
+    RANGE_LOWER,
+    RANGE_UPPER,
+    UPPER,
+    leg_for,
+    leg_for_manifest,
+    leg_for_proposal,
+)
 from .bounded_tight_deadband_outcome_contract import (
     CONTRACT_ID,
     MAXIMUM_CODE,
-    MAXIMUM_CORRECTIONS,
-    MAXIMUM_CUMULATIVE_CODES,
-    MAXIMUM_QUALIFIED_DURATION_S,
-    MAXIMUM_STEP_CODES,
-    MINIMUM_CADENCE_S,
     MINIMUM_CODE,
     QUALIFICATION_DEADLINE_S,
     canonical_sha256,
@@ -121,6 +124,13 @@ def _git_clean() -> bool:
     return not result.stdout
 
 
+def _sequence_index_exact(value: dict[str, Any], selected) -> bool:  # type: ignore[no-untyped-def]
+    sequence_index = value.get("sequence_index")
+    if selected.programme_id == PROGRAMME_ID:
+        return sequence_index is None
+    return sequence_index in ({1, 3} if selected.leg == "L" else {2})
+
+
 def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict[str, Any]:
     selected = leg_for_proposal(proposal)
     path = path.resolve()
@@ -134,6 +144,7 @@ def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict
         not in {selected.rehearsal_tool, LEGACY_OPERATIONAL_REHEARSAL_TOOL}
         or result.get("status") != "passed"
         or result.get("proposal_bundle_sha256") != proposal["bundle_sha256"]
+        or result.get("sequence_index") != proposal.get("sequence_index")
         or any(result.get("hardware_operations", {}).get(key) != 0 for key in (
             "serial_opens",
             "firmware_flashes",
@@ -143,6 +154,7 @@ def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict
         or seal.get("seal_type") != selected.rehearsal_seal_type
         or seal.get("status") != "passed"
         or seal.get("proposal_bundle_sha256") != proposal["bundle_sha256"]
+        or seal.get("sequence_index") != proposal.get("sequence_index")
         or seal.get("seal_sha256") != canonical_sha256(unsigned_seal)
     ):
         raise ValueError(f"{selected.gate} operational rehearsal is not an exact no-I/O pass")
@@ -163,16 +175,21 @@ def validate_operational_rehearsal(path: Path, proposal: dict[str, Any]) -> dict
 
 
 def _validate_current_operational_inputs(proposal: dict[str, Any]) -> None:
+    host_tool_paths = HOST_TOOL_PATHS
+    if proposal.get("programme_id") != PROGRAMME_ID:
+        from .conditional_part_b_bundle import HOST_TOOL_PATHS as conditional_paths
+
+        host_tool_paths = conditional_paths
     if proposal.get("host_tools") != {
-        name: _binding(path) for name, path in HOST_TOOL_PATHS.items()
+        name: _binding(path) for name, path in host_tool_paths.items()
     }:
-        raise ValueError("G2 proposal host-tool bindings differ from current bytes")
+        raise ValueError("CX319 proposal host-tool bindings differ from current bytes")
     for section in ("firmware", "policy"):
         value = proposal.get(section, {})
         if not isinstance(value, dict):
             raise ValueError(f"G2 proposal {section} binding is malformed")
     if not _git_clean():
-        raise ValueError("G2 live activation requires a clean repository")
+        raise ValueError("CX319 live activation requires a clean repository")
 
 
 def create_activation(
@@ -184,8 +201,16 @@ def create_activation(
     output_path: Path,
     leg_name: str = "A",
 ) -> dict[str, Any]:
-    requested = leg_for("G2" if leg_name == "A" else "G3", leg_name)
-    require_programme_operation_allowed(PROGRAMME_ID, requested.operation)
+    requested = {
+        "A": LOWER,
+        "B": UPPER,
+        "L": RANGE_LOWER,
+        "U": RANGE_UPPER,
+    }.get(leg_name)
+    if requested is None:
+        raise ValueError(f"unsupported CX319 activation leg: {leg_name!r}")
+    if requested.programme_id == PROGRAMME_ID:
+        require_programme_operation_allowed(PROGRAMME_ID, requested.operation)
     if not serial_device.startswith("/dev/"):
         raise ValueError(f"{requested.gate} activation requires an explicit /dev serial path")
     if not operator_instruction_ref.strip():
@@ -204,10 +229,11 @@ def create_activation(
         "tool": selected.activation_tool,
         "activation_id": selected.activation_id,
         "created_utc": _utc_now(),
-        "programme_id": PROGRAMME_ID,
+        "programme_id": selected.programme_id,
         "operation": selected.operation,
         "gate": selected.gate,
         "leg": selected.leg,
+        "sequence_index": proposal.get("sequence_index"),
         "status": "effective_exact_leg_authority",
         "operator_instruction_ref": operator_instruction_ref.strip(),
         "proposal": {
@@ -242,10 +268,10 @@ def create_activation(
             "setup_write_limit": 1,
             "control_arm": True,
             "automatic_correction": True,
-            "automatic_correction_limit": MAXIMUM_CORRECTIONS,
+            "automatic_correction_limit": selected.correction_limit,
             "dac_value_write": True,
-            "maximum_automatic_step_codes": MAXIMUM_STEP_CODES,
-            "maximum_cumulative_codes": MAXIMUM_CUMULATIVE_CODES,
+            "maximum_automatic_step_codes": selected.maximum_step_codes,
+            "maximum_cumulative_codes": selected.cumulative_limit_codes,
             "minimum_code": MINIMUM_CODE,
             "maximum_code": MAXIMUM_CODE,
             "phase_or_hybrid_actionable": False,
@@ -279,8 +305,9 @@ def validate_frozen_activation(
         value.get("schema_version") != 1
         or value.get("tool") != selected.activation_tool
         or value.get("activation_id") != selected.activation_id
-        or value.get("programme_id") != PROGRAMME_ID
+        or value.get("programme_id") != selected.programme_id
         or value.get("operation") != selected.operation
+        or not _sequence_index_exact(value, selected)
         or value.get("status") != "effective_exact_leg_authority"
         or value.get("activation_sha256") != canonical_sha256(unsigned)
         or not isinstance(authority, dict)
@@ -302,9 +329,9 @@ def validate_frozen_activation(
         is not True
         or authority.get("setup_code") != selected.setup_code
         or authority.get("setup_write_limit") != 1
-        or authority.get("automatic_correction_limit") != MAXIMUM_CORRECTIONS
-        or authority.get("maximum_automatic_step_codes") != MAXIMUM_STEP_CODES
-        or authority.get("maximum_cumulative_codes") != MAXIMUM_CUMULATIVE_CODES
+        or authority.get("automatic_correction_limit") != selected.correction_limit
+        or authority.get("maximum_automatic_step_codes") != selected.maximum_step_codes
+        or authority.get("maximum_cumulative_codes") != selected.cumulative_limit_codes
         or authority.get("minimum_code") != MINIMUM_CODE
         or authority.get("maximum_code") != MAXIMUM_CODE
         or authority.get("phase_or_hybrid_actionable") is not False
@@ -321,8 +348,9 @@ def validate_frozen_activation(
     if (
         proposal_binding.get("sha256") != _sha256_file(proposal_path)
         or proposal_binding.get("bundle_sha256") != proposal["bundle_sha256"]
+        or value.get("sequence_index") != proposal.get("sequence_index")
     ):
-        raise ValueError("G2 activation proposal binding differs")
+        raise ValueError("CX319 activation proposal binding differs")
     return value, proposal
 
 
@@ -333,13 +361,14 @@ def validate_activation(
         path, proposal_path=proposal_path
     )
     selected = leg_for_proposal(proposal)
-    require_programme_operation_allowed(PROGRAMME_ID, selected.operation)
+    if selected.programme_id == PROGRAMME_ID:
+        require_programme_operation_allowed(PROGRAMME_ID, selected.operation)
     _validate_current_operational_inputs(proposal)
     rehearsal = validate_operational_rehearsal(
         Path(value["operational_rehearsal"]["path"]), proposal
     )
     if value.get("operational_rehearsal") != rehearsal:
-        raise ValueError("G2 activation rehearsal binding differs")
+        raise ValueError("CX319 activation rehearsal binding differs")
     return value, proposal
 
 
@@ -397,9 +426,14 @@ def create_run_manifest(
         "actionable": True,
         "actuation_authorized": True,
         "qualification_evidence": True,
+        "programme_id": selected.programme_id,
+        "sequence_index": proposal.get("sequence_index"),
+        "sequence_count": proposal.get("sequence_count"),
         "firmware": proposal["firmware"],
         "policy": proposal["policy"],
+        "observational_hybrid_preview": proposal.get("observational_hybrid_preview"),
         selected.prerequisite_key: proposal[selected.prerequisite_key],
+        "predecessor_leg": proposal.get("predecessor_leg"),
         "proposal": {
             "path": str(proposal_path.resolve()),
             "sha256": activation["proposal"]["sha256"],
@@ -425,6 +459,7 @@ def create_run_manifest(
         "cx319": {
             "gate": selected.gate,
             "leg": selected.leg,
+            "sequence_index": proposal.get("sequence_index"),
             "mode": "frequency_only_live",
             "profile_id": proposal["leg_spec"]["profile_id"],
             "run_binding_tag": proposal["leg_spec"]["run_binding_tag"],
@@ -440,10 +475,10 @@ def create_run_manifest(
             "automatic_frequency_control": {
                 "authorized": True,
                 "required_direction": selected.required_direction,
-                "maximum_corrections": MAXIMUM_CORRECTIONS,
-                "maximum_step_codes": MAXIMUM_STEP_CODES,
-                "maximum_cumulative_movement_codes": MAXIMUM_CUMULATIVE_CODES,
-                "minimum_applied_correction_cadence_s": MINIMUM_CADENCE_S,
+                "maximum_corrections": selected.correction_limit,
+                "maximum_step_codes": selected.maximum_step_codes,
+                "maximum_cumulative_movement_codes": selected.cumulative_limit_codes,
+                "minimum_applied_correction_cadence_s": selected.minimum_cadence_s,
                 "minimum_code": MINIMUM_CODE,
                 "maximum_code": MAXIMUM_CODE,
                 "settling_exclusion_s": envelope["settling_exclusion_s"],
@@ -454,7 +489,7 @@ def create_run_manifest(
             },
             "qualification": {
                 "deadline_s": QUALIFICATION_DEADLINE_S,
-                "maximum_qualified_duration_s": MAXIMUM_QUALIFIED_DURATION_S,
+                "maximum_qualified_duration_s": selected.maximum_qualified_duration_s,
                 "no_extension_after_finite_endpoint": True,
             },
             "phase_and_hybrid": {
@@ -520,7 +555,8 @@ def create_run_manifest(
             "COMPLETE",
         ],
         "known_limitations": [
-            f"{selected.gate} grants frequency-only authority for one finite {'lower' if selected.leg == 'A' else 'upper'}-side leg.",
+            f"{selected.gate} grants frequency-only authority for one finite "
+            f"{'lower' if selected.required_sign > 0 else 'upper'}-side leg.",
             "Phase and hybrid preview remain zero-authority.",
             "The result does not establish traceable absolute frequency, UTC, calibrated phase, or holdover.",
         ],
@@ -542,6 +578,8 @@ def _validate_run_manifest(
         or manifest.get("actionable") is not True
         or manifest.get("actuation_authorized") is not True
         or manifest.get("qualification_evidence") is not True
+        or manifest.get("programme_id") != selected.programme_id
+        or not _sequence_index_exact(manifest, selected)
     ):
         raise ValueError(f"{selected.gate} live manifest identity or authority differs")
     activation_binding = manifest.get("activation", {})
@@ -557,10 +595,15 @@ def _validate_run_manifest(
         != activation["activation_sha256"]
         or manifest.get("firmware") != proposal["firmware"]
         or manifest.get("policy") != proposal["policy"]
+        or manifest.get("observational_hybrid_preview")
+        != proposal.get("observational_hybrid_preview")
         or manifest.get(selected.prerequisite_key)
         != proposal[selected.prerequisite_key]
+        or manifest.get("predecessor_leg") != proposal.get("predecessor_leg")
         or manifest.get("proposal", {}).get("bundle_sha256")
         != proposal["bundle_sha256"]
+        or manifest.get("sequence_index") != proposal.get("sequence_index")
+        or manifest.get("sequence_count") != proposal.get("sequence_count")
         or manifest.get("host", {}).get("tool_bindings")
         != proposal["host_tools"]
         or manifest.get("host", {}).get(
@@ -581,23 +624,24 @@ def _validate_run_manifest(
     if (
         exact.get("gate") != selected.gate
         or exact.get("leg") != selected.leg
+        or exact.get("sequence_index") != proposal.get("sequence_index")
         or exact.get("runtime_contract_id") != RUNTIME_CONTRACT_ID
         or exact.get("outcome_contract_id") != selected.outcome_contract_id
         or exact.get("planned_live_stimulus", {}).get("code") != selected.setup_code
         or exact.get("automatic_frequency_control", {}).get("required_direction")
         != selected.required_direction
         or exact.get("automatic_frequency_control", {}).get("maximum_corrections")
-        != MAXIMUM_CORRECTIONS
+        != selected.correction_limit
         or exact.get("automatic_frequency_control", {}).get("maximum_step_codes")
-        != MAXIMUM_STEP_CODES
+        != selected.maximum_step_codes
         or exact.get("automatic_frequency_control", {}).get(
             "maximum_cumulative_movement_codes"
         )
-        != MAXIMUM_CUMULATIVE_CODES
+        != selected.cumulative_limit_codes
         or exact.get("qualification", {}).get("deadline_s")
         != QUALIFICATION_DEADLINE_S
         or exact.get("qualification", {}).get("maximum_qualified_duration_s")
-        != MAXIMUM_QUALIFIED_DURATION_S
+        != selected.maximum_qualified_duration_s
         or any(exact.get("phase_and_hybrid", {}).get(key) is not False for key in (
             "actionable",
             "actuation_authorized",
@@ -629,7 +673,7 @@ def main(argv: list[str] | None = None) -> int:
     activate.add_argument("--operational-rehearsal", type=Path, required=True)
     activate.add_argument("--serial-device", required=True)
     activate.add_argument("--operator-instruction-ref", required=True)
-    activate.add_argument("--leg", choices=("A", "B"), default="A")
+    activate.add_argument("--leg", choices=("A", "B", "L", "U"), default="A")
     activate.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("activation", type=Path)

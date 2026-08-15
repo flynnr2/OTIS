@@ -88,11 +88,19 @@ applied cadence. There is one outstanding request at most, no automatic retry
 and no automatic restore. The next leg consumes the exact predecessor terminal
 and sealed evidence; an acknowledgement alone cannot promote it.
 
-The selected hybrid candidate remains a rejected non-actionable baseline until
-its externally commanded DAC-epoch, candidate-path and terminal-fault lifetime
-semantics are revised and replayed. That work may improve the observation made
-during Part B, but it cannot affect frequency eligibility, requested delta,
-budget state or physical actuation.
+The Part A image retains the historical `p21600_cap1_v2` hybrid candidate so
+the frozen acquisition bundle remains exact. Each Part B image instead carries
+the non-actionable `p21600_cap1_epoch_reseed_v3` observation candidate. At
+every externally applied DAC epoch it reseeds the actual and shadow code,
+candidate start code, correction count, cumulative path, direction history,
+terminal-fault lifetime, frequency support and decision cadence. Host/firmware
+parity tests cover that transition, and the live analyzer independently
+requires the candidate/configuration identity and zeroed first record for every
+physically applied DAC epoch.
+
+This revision improves what Part B can teach about hybrid-preview lifetime
+semantics without broadening authority: hybrid state cannot affect frequency
+eligibility, requested delta, the live frequency budget or physical actuation.
 
 ## Monitoring
 

@@ -22,10 +22,7 @@ from typing import Any
 
 from .board_identity import read_board_identity
 from .no_write_qualification_run import _wait_until
-from .bounded_tight_deadband_outcome_contract import (
-    MAXIMUM_QUALIFIED_DURATION_S,
-    QUALIFICATION_DEADLINE_S,
-)
+from .bounded_tight_deadband_outcome_contract import QUALIFICATION_DEADLINE_S
 from .bounded_tight_deadband_activation import (
     create_run_manifest,
     validate_activation,
@@ -48,7 +45,6 @@ from .evidence_finalization import (
     set_registration_intent,
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
-from .no_write_qualification_bundle import PROGRAMME_ID
 from .run_loader import load_manifest
 from .serial_commands import send_timestamped_command_to_fifo
 
@@ -57,7 +53,6 @@ TOOL_ID = "cx319_g2_run_v1"
 CAPTURE_LOG = Path("reports/cx319_g2_capture_launcher.log")
 SUPERVISOR_LOG = Path("reports/cx319_g2_supervisor.log")
 ORCHESTRATION_FAILURE = Path("reports/cx319_g2_orchestration_failure_v1.json")
-MAXIMUM_WALL_S = QUALIFICATION_DEADLINE_S + MAXIMUM_QUALIFIED_DURATION_S
 TERMINAL_ABORT_DELIVERY_TIMEOUT_S = 15.0
 COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
 INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
@@ -191,7 +186,7 @@ def _flash_exact_upper(
     unsigned = {
         "schema_version": 1,
         "tool": f"{selected.prefix}_run_v1",
-        "operation": "exact_cx319_g3_upper_firmware_flash",
+        "operation": f"exact_cx319_{selected.gate.lower()}_firmware_flash",
         "status": "passed" if passed else "failed",
         "gate": selected.gate,
         "leg": selected.leg,
@@ -225,7 +220,7 @@ def _flash_exact_upper(
     _atomic_new_json(run_dir / selected.flash_record_filename, record)
     if not passed:
         raise RuntimeError(
-            "exact G3 upper upload or board re-enumeration failed; no retry is authorized"
+            f"exact {selected.gate} upload or board re-enumeration failed; no retry is authorized"
         )
     return device_after, board_after, record
 
@@ -342,7 +337,7 @@ def _retain_failure(
         "schema_version": 1,
         "report_type": f"{selected.prefix}_orchestration_failure_v1",
         "tool": f"{selected.prefix}_run_v1",
-        "programme_id": PROGRAMME_ID,
+        "programme_id": selected.programme_id,
         "gate": selected.gate,
         "leg": selected.leg,
         "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
@@ -415,6 +410,7 @@ def run_bounded_tight_deadband_qualification(
     activation_path = activation_path.resolve()
     activation, proposal = validate_activation(activation_path)
     selected = leg_for(activation.get("gate"), activation.get("leg"))
+    maximum_wall_s = QUALIFICATION_DEADLINE_S + selected.maximum_qualified_duration_s
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX319 {selected.gate} run already exists: {run_dir}")
@@ -499,7 +495,7 @@ def run_bounded_tight_deadband_qualification(
         "--run-dir",
         str(run_dir),
         "--duration-s",
-        str(MAXIMUM_WALL_S + 180.0),
+        str(maximum_wall_s + 180.0),
         "--status-interval",
         "5",
         "--command-fifo",
@@ -555,7 +551,7 @@ def run_bounded_tight_deadband_qualification(
             "--expected-build-identity",
             expected_build,
             "--duration-s",
-            str(MAXIMUM_WALL_S + 120.0),
+            str(maximum_wall_s + 120.0),
         ]
         supervisor = subprocess.Popen(
             supervisor_args,
@@ -571,7 +567,7 @@ def run_bounded_tight_deadband_qualification(
         )
         _wait_until(
             lambda: _terminal(run_dir) is not None or supervisor.poll() is not None,
-            MAXIMUM_WALL_S + 120.0,
+            maximum_wall_s + 120.0,
             f"finite {selected.gate} supervisor terminal",
         )
         terminal = _terminal(run_dir)

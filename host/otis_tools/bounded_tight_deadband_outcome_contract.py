@@ -30,7 +30,7 @@ _EVIDENCE = re.compile(r"ACTIVE EVIDENCE ([1-9][0-9]*) ([1-4])\Z")
 _SNAPSHOT = re.compile(r"ACTIVE SNAPSHOT ([1-9][0-9]*)\Z")
 _SETUP = re.compile(
     r"ACTIVE SETUP ([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*) "
-    r"([1-9][0-9]*) ([1-9][0-9]*) 0x(?:A808|A848) 1 ([0-9a-f]{64})\Z",
+    r"([1-9][0-9]*) ([1-9][0-9]*) 0x(?:A800|A808|A848|A890) 1 ([0-9a-f]{64})\Z",
     re.IGNORECASE,
 )
 
@@ -124,7 +124,8 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
     ]
     cadence_exact = all(
-        later - earlier >= MINIMUM_CADENCE_S
+        later - earlier
+        >= (selected_leg.minimum_cadence_s if selected_leg else MINIMUM_CADENCE_S)
         for earlier, later in zip(application_times, application_times[1:])
     )
     required_direction_healthy = [
@@ -145,7 +146,7 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             and contract_id is not None
             and transcript.get("contract_id") == contract_id
             and transcript.get("programme_id")
-            == "cx319_stabilized_tight_deadband"
+            == (selected_leg.programme_id if selected_leg else None)
             and transcript.get("gate") == gate
             and transcript.get("leg") == leg
             and (offline or physical)
@@ -174,7 +175,7 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
                 and hardware.get("dac_writes") == len(transactions) + 1
                 and isinstance(hardware.get("control_arms"), int)
                 and hardware["control_arms"] >= len(transactions)
-                and hardware["control_arms"] <= MAXIMUM_CORRECTIONS
+                and hardware["control_arms"] <= selected_leg.correction_limit
             )
         ),
         "normal_command_envelope_exact_and_acknowledged": (
@@ -206,9 +207,10 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             required_direction_healthy
         ),
         "automatic_limits_range_and_cadence_exact": (
-            len(transactions) <= MAXIMUM_CORRECTIONS
-            and all(0 < movement <= MAXIMUM_STEP_CODES for movement in movements)
-            and sum(movements) <= MAXIMUM_CUMULATIVE_CODES
+            selected_leg is not None
+            and len(transactions) <= selected_leg.correction_limit
+            and all(0 < movement <= selected_leg.maximum_step_codes for movement in movements)
+            and sum(movements) <= selected_leg.cumulative_limit_codes
             and cadence_exact
             and all(
                 MINIMUM_CODE <= int(item.get("applied_code", -1)) <= MAXIMUM_CODE
@@ -217,14 +219,14 @@ def evaluate(transcript: dict[str, Any]) -> dict[str, Any]:
             )
             and limits
             == {
-                "maximum_automatic_corrections": MAXIMUM_CORRECTIONS,
-                "maximum_step_codes": MAXIMUM_STEP_CODES,
-                "maximum_cumulative_codes": MAXIMUM_CUMULATIVE_CODES,
-                "minimum_applied_cadence_s": MINIMUM_CADENCE_S,
+                "maximum_automatic_corrections": selected_leg.correction_limit,
+                "maximum_step_codes": selected_leg.maximum_step_codes,
+                "maximum_cumulative_codes": selected_leg.cumulative_limit_codes,
+                "minimum_applied_cadence_s": selected_leg.minimum_cadence_s,
                 "settling_exclusion_s": 900,
                 "fresh_support_s": 600,
                 "qualification_deadline_s": QUALIFICATION_DEADLINE_S,
-                "maximum_qualified_duration_s": MAXIMUM_QUALIFIED_DURATION_S,
+                "maximum_qualified_duration_s": selected_leg.maximum_qualified_duration_s,
             }
         ),
         "two_estimate_tight_entry_exact": (

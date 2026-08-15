@@ -61,6 +61,7 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE",
     "OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH",
     "OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW",
+    "OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED",
     "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW",
     "OTIS_CX319_RANGE_MAP_INITIAL_CODE",
     "OTIS_CX318_STAGE4_STATIC_CODE",
@@ -321,7 +322,12 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
             expectation == "pass"
             and defines.get("OTIS_ENABLE_CX317_BOUNDED_ACTIVE", "0") == "1"
             and profile_id
-            not in {"cx319_tight_lower", "cx319_tight_upper"}
+            not in {
+                "cx319_tight_lower",
+                "cx319_tight_upper",
+                "cx319_range_part_b_lower",
+                "cx319_range_part_b_upper",
+            }
         ):
             raise MatrixError(
                 "bounded controller-to-DAC reachability is restricted to "

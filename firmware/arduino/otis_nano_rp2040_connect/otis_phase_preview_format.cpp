@@ -15,9 +15,15 @@ constexpr char kFrequencyEstimatorId[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kFrequencyConfigurationSha256[] =
     "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+#if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED
+constexpr char kCandidateId[] = "p21600_cap1_epoch_reseed_v3";
+constexpr char kHybridConfigurationSha256[] =
+    "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d";
+#else
 constexpr char kCandidateId[] = "p21600_cap1_v2";
 constexpr char kHybridConfigurationSha256[] =
     "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76";
+#endif
 constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_dma_v1";
 constexpr char kRawMethodId[] = "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1";
 constexpr char kTimeDomain[] = "rp2040_timer0";
