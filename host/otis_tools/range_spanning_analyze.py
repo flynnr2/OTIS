@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
-from .range_spanning_bundle import canonical_sha256, sha256_file, validate_bundle
+from .range_spanning_bundle import (
+    canonical_sha256,
+    sha256_file,
+    validate_bundle,
+    validate_bundle_for_offline_reanalysis,
+)
 from .run_loader import load_manifest
 from .validate_run import _validate_manifest, _validate_raw_serial_framing
 
@@ -52,12 +57,28 @@ def _read_events(path: Path) -> list[dict[str, Any]]:
     return values
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return value
+
+
 def analyze(
-    *, bundle_path: Path, run_dir: Path, output_path: Path, seal_path: Path
+    *,
+    bundle_path: Path,
+    run_dir: Path,
+    output_path: Path,
+    seal_path: Path,
+    offline_reanalysis: bool = False,
 ) -> dict[str, Any]:
     bundle_path = bundle_path.resolve()
     run_dir = run_dir.resolve()
-    bundle = validate_bundle(bundle_path)
+    bundle = (
+        validate_bundle_for_offline_reanalysis(bundle_path)
+        if offline_reanalysis
+        else validate_bundle(bundle_path)
+    )
     failures: list[str] = []
     manifest = load_manifest(run_dir)
     validation_errors = _validate_manifest(run_dir, manifest)
@@ -92,9 +113,65 @@ def analyze(
     completed = [item for item in events if item.get("event") == "point_completed"]
     terminals = [item for item in events if item.get("event") == "terminal"]
     expected_prefix = bundle["part_a_segment"]["survey_prefix"]
+    point_offset = int(bundle["part_a_segment"].get("global_point_offset", 0))
     observed_codes = [int(item.get("code", -1)) for item in completed]
     if observed_codes != expected_prefix[: len(observed_codes)]:
         failures.append("completed_point_order_differs_from_frozen_prefix")
+    entry = bundle.get("entry", {})
+    live_run = manifest.data.get("stage") == "CX319_RANGE_SPANNING_PART_A_SEGMENT"
+    entry_record = (
+        _read_json(run_dir / "reports/range_spanning_firmware_entry_v2.json")
+        if live_run
+        else {}
+    )
+    if entry.get("mode") == "state_preserving_running_attach":
+        attachments = [
+            (index, item)
+            for index, item in enumerate(events)
+            if item.get("event") == "state_preserving_attachment_passed"
+        ]
+        first_command_index = next(
+            (
+                index
+                for index, item in enumerate(events)
+                if item.get("event") == "point_command_sent"
+            ),
+            len(events),
+        )
+        expected_live = entry["expected_live_state"]
+        if len(attachments) != 1 or attachments[0][0] >= first_command_index:
+            failures.append("state_preserving_attachment_not_proved_before_first_write")
+        elif any(
+            attachments[0][1].get(key) != expected
+            for key, expected in {
+                "predecessor_run_id": entry["predecessor_run_id"],
+                "applied_code": expected_live["applied_code"],
+                "dac_epoch": expected_live["dac_epoch"],
+                "band_state": expected_live["band_state"],
+                "next_code": expected_live["next_code"],
+                "firmware_flash_count": 0,
+                "board_reset_count": 0,
+            }.items()
+        ):
+            failures.append("state_preserving_attachment_identity_differs")
+        if live_run and not (
+            entry_record.get("status") == "passed"
+            and entry_record.get("operation")
+            == "confirmed_installed_firmware_running_attachment"
+            and entry_record.get("predecessor_run_id")
+            == entry["predecessor_run_id"]
+            and int(entry_record.get("firmware_flash_count", -1)) == 0
+            and int(entry_record.get("board_reset_count", -1)) == 0
+            and int(entry_record.get("ordinary_restart_count", -1)) == 0
+            and int(entry_record.get("dac_value_write_attempts", -1)) == 0
+        ):
+            failures.append("no_flash_no_reset_entry_record_invalid")
+    elif live_run and not (
+        entry_record.get("status") == "passed"
+        and entry_record.get("operation") == "exact_range_map_firmware_flash"
+        and int(entry_record.get("firmware_flash_count", -1)) == 1
+    ):
+        failures.append("exact_firmware_flash_entry_record_invalid")
     if not terminals:
         failures.append("supervisor_terminal_absent")
         terminal: dict[str, Any] = {}
@@ -132,15 +209,22 @@ def analyze(
         if row.get("seq", "").isdigit()
     }
     point_results: list[dict[str, Any]] = []
-    previous_epoch = -1
+    previous_epoch = (
+        int(entry["expected_live_state"]["dac_epoch"])
+        if entry.get("mode") == "state_preserving_running_attach"
+        else -1
+    )
     for point in completed:
         point_index = int(point.get("point_index", -1))
         code = int(point.get("code", -1))
         dac_sequence = int(point.get("dac_sequence", -1))
         tdb_sequences = [int(item) for item in point.get("tdb_sequences", [])]
         epoch = int(point.get("dac_epoch", -1))
+        global_point_index = int(point.get("global_point_index", point_index))
         if point_index != len(point_results):
             failures.append(f"point_{point_index}_index_not_contiguous")
+        if global_point_index != point_offset + point_index:
+            failures.append(f"point_{point_index}_global_index_not_contiguous")
         if epoch <= previous_epoch:
             failures.append(f"point_{point_index}_dac_epoch_not_strictly_increasing")
         previous_epoch = epoch
@@ -198,6 +282,7 @@ def analyze(
         point_results.append(
             {
                 "point_index": point_index,
+                "global_point_index": global_point_index,
                 "code": code,
                 "code_hex": f"0x{code:04X}",
                 "dac_sequence": dac_sequence,
@@ -230,6 +315,7 @@ def analyze(
         "terminal": terminal,
         "completed_point_count": len(point_results),
         "frozen_point_count": len(expected_prefix),
+        "global_point_offset": point_offset,
         "point_results": point_results,
         "failures": failures,
         "claims_boundary": (

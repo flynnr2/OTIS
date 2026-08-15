@@ -30,6 +30,12 @@ bool otis_transport_liveness_observe(OtisTransportLiveness *liveness,
                                      uint32_t now_ms,
                                      bool frame_pending,
                                      uint64_t written_bytes);
+// A missing USB carrier is an owner handoff boundary, not evidence of an
+// obstructed present carrier. It may clear an in-progress obstruction before
+// its deadline, but it must never recover an already faulted transport.
+bool otis_transport_liveness_note_carrier_absent(
+    OtisTransportLiveness *liveness, uint32_t now_ms,
+    uint64_t written_bytes);
 bool otis_transport_liveness_faulted(
     const OtisTransportLiveness *liveness);
 

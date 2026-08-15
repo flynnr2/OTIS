@@ -127,8 +127,8 @@ OtisSerialFrameArbiter dual_core_serial_frame_arbiter = {
 };
 OtisTransportLiveness dual_core_transport_liveness = {};
 bool dual_core_transport_abort_queued = false;
-bool dual_core_serial_carrier_seen = false;
 uint32_t dual_core_pre_carrier_records_discarded = 0u;
+uint32_t dual_core_carrier_loss_frames_abandoned = 0u;
 uint32_t dual_core_periodic_service_deferred = 0u;
 OtisStatusEmitContext dual_core_timing_status_context = {};
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
@@ -1426,6 +1426,26 @@ void discard_dual_core_outputs_before_first_carrier(void) {
   OtisPhasePreviewRecordMessage phase_preview;
   if (otis_dual_core_take_phase_preview(&phase_preview))
     note_pre_carrier_discard();
+}
+
+void abandon_dual_core_serial_frames_on_carrier_loss(void) {
+  uint32_t abandoned = 0u;
+  if (dual_core_evidence_transport_active) {
+    dual_core_evidence_transport = {};
+    dual_core_evidence_transport_sent = 0u;
+    dual_core_evidence_transport_active = false;
+    abandoned++;
+  }
+  abandoned += otis_observe_only_discipline_live_abandon_transport();
+  if (otis_phase_preview_transport_abandon_active_frame()) abandoned++;
+  otis_serial_frame_arbiter_reset(&dual_core_serial_frame_arbiter);
+  // CONFIG? must re-establish a complete build-provenance block for the next
+  // evidence segment even though this firmware boot and DAC state continue.
+  config_query_provenance_emitted = false;
+  const uint32_t remaining = UINT32_MAX -
+                             dual_core_carrier_loss_frames_abandoned;
+  dual_core_carrier_loss_frames_abandoned +=
+      abandoned < remaining ? abandoned : remaining;
 }
 
 void publish_dual_core_association_loss_decision(
@@ -3994,6 +4014,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status_u32("dual_core", "pre_carrier_records_discarded",
                     dual_core_pre_carrier_records_discarded,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "carrier_loss_frames_abandoned",
+                    dual_core_carrier_loss_frames_abandoned,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     emit_status_u32("dual_core", "periodic_service_deferred",
                     dual_core_periodic_service_deferred,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -4704,7 +4727,6 @@ void setup() {
     otis_gnss_receiver_service(millis());
 #endif
     if (otis_transport_ready()) {
-      dual_core_serial_carrier_seen = true;
       service_dual_core_outputs();
     } else {
       discard_dual_core_outputs_before_first_carrier();
@@ -4771,7 +4793,6 @@ void loop1() {
   __atomic_store_n(&dual_core_timing_loop_started, true,
                    __ATOMIC_RELEASE);
   const uint32_t now_ms = millis();
-  if (otis_transport_ready()) dual_core_serial_carrier_seen = true;
   // Host attachment controls only delivery of the timing plane's outbound
   // records. It must never gate capture, witness, boundary, estimator, or
   // health service: those producers are already live and their finite queues
@@ -4814,10 +4835,8 @@ void loop1() {
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
                                         otis_capture_ticks_now());
-  if (!dual_core_serial_carrier_seen) {
+  if (!otis_transport_ready()) {
     discard_dual_core_outputs_before_first_carrier();
-    otis_transport_liveness_reset(&dual_core_transport_liveness, now_ms,
-                                  otis_transport_written_bytes());
     otis_gnss_receiver_service(now_ms);
     otis_status_led_poll(now_ms);
   }
@@ -4841,6 +4860,19 @@ void loop() {
   // reset starts a new evidence session.
   const uint32_t now_ms = millis();
   otis_gnss_receiver_service(now_ms);
+  if (!otis_transport_ready()) {
+    if (!otis_transport_liveness_note_carrier_absent(
+            &dual_core_transport_liveness, now_ms,
+            otis_transport_written_bytes())) {
+      otis_dual_core_latch_fault(OtisPartitionFault::TransportObstructed);
+      discard_dual_core_outputs_after_transport_fault();
+    } else {
+      abandon_dual_core_serial_frames_on_carrier_loss();
+    }
+    service_serial_commands(false);
+    otis_status_led_poll(now_ms);
+    return;
+  }
   bool frame_active = dual_core_transport_liveness.state ==
                       OtisTransportLivenessState::FrameObstructed;
   bool transport_live = otis_transport_liveness_observe(

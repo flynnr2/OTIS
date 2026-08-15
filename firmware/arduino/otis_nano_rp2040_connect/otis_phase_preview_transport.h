@@ -6,6 +6,7 @@
 void otis_phase_preview_transport_emit_headers(void);
 bool otis_phase_preview_transport_busy(void);
 bool otis_phase_preview_transport_frame_active(void);
+bool otis_phase_preview_transport_abandon_active_frame(void);
 void otis_phase_preview_transport_service(void);
 
 #endif

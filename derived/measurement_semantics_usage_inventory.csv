@@ -341,11 +341,12 @@ docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/19_Q4_LOWER_SIDE_F
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/33_CURRENT_SESSION_ABSENCE_EXACT_FLASH_QUALIFICATION_PASS.md,6,uncertainty,measurement_uncertainty_semantics,absence criterion. This closes the firmware-entry uncertainty that blocked Q4
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/36_RANGE_SPANNING_BIDIRECTIONAL_AND_HYBRID_PREVIEW_PREPARATION_PROMPT.md,117,uncertainty,measurement_uncertainty_semantics,uncertainty.
 docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md,42,uncertainty,measurement_uncertainty_semantics,"quantization-distribution, and other unavailable uncertainty components."
+docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md,80,uncertainty,measurement_uncertainty_semantics,not establish calibrated uncertainty or a time-invariant code threshold.
 docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/BOARD_MOTION_TELEMETRY_PROGRAMME.md,65,uncertainty,measurement_uncertainty_semantics,"sensor timestamp, and preserve the associated age and uncertainty semantics."
-docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/DISCIPLINED_10MHZ_OUTPUT_PROGRAMME.md,103,uncertainty,measurement_uncertainty_semantics,relevant bandwidth or uncertainty; and
+docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/DISCIPLINED_10MHZ_OUTPUT_PROGRAMME.md,167,uncertainty,measurement_uncertainty_semantics,relevant bandwidth or uncertainty; and
 docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/HYBRID_PHASE_FREQUENCY_CONTROL_PROGRAMME.md,70,uncertainty,measurement_uncertainty_semantics,"calibrated uncertainty is unavailable, and epochs may not be joined by guessed"
-docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/HYBRID_PHASE_FREQUENCY_CONTROL_PROGRAMME.md,157,uncertainty,measurement_uncertainty_semantics,"offsets, or requiring unavailable uncertainty."
-docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/README.md,112,uncertainty,measurement_uncertainty_semantics,counterfactuals and unavailable uncertainty. A policy state such as
+docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/HYBRID_PHASE_FREQUENCY_CONTROL_PROGRAMME.md,168,uncertainty,measurement_uncertainty_semantics,"offsets, or requiring unavailable uncertainty."
+docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/README.md,115,uncertainty,measurement_uncertainty_semantics,counterfactuals and unavailable uncertainty. A policy state such as
 docs/90_ROADMAP/GPSDO_LONG_TERM_MONITORING_AND_REFINEMENT.md,78,uncertainty,measurement_uncertainty_semantics,"or a traceable laboratory reference. Keep the comparison method, uncertainty"
 docs/90_ROADMAP/HARDWARE_FIRMWARE_STAGE_MATRIX.md,105,uncertainty,measurement_uncertainty_semantics,"active actuation remains blocked by the explicit uncertainty, settling,"
 docs/90_ROADMAP/OTIS_SW2_REVISED_ROADMAP.md,40,uncertainty,measurement_uncertainty_semantics,uncertainty with provenance.
@@ -530,10 +531,11 @@ host/otis_tools/pps_estimator_selection.py,84,uncertainty,measurement_uncertaint
 host/otis_tools/pps_estimator_selection.py,254,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable; resolution is not calibrated uncertainty"","
 host/otis_tools/pps_estimator_selection.py,264,uncertainty,measurement_uncertainty_semantics,"""empirical_detection_floor_rule"": ""full observed non-overlapping baseline range plus one representable count increment; explicitly conservative finite-run engineering assumption, not statistical or calibrated uncertainty"","
 host/otis_tools/pps_estimator_selection.py,268,uncertainty,measurement_uncertainty_semantics,"""source"": ""direct Stage 3 assembled-rig fixed-code observations plus documented arithmetic; adding one increment is an explicitly labelled conservative engineering assumption because calibrated combined uncertainty is unavailable"","
-host/otis_tools/range_spanning_rehearsal.py,152,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
-host/otis_tools/range_spanning_rehearsal.py,153,uncertainty,measurement_uncertainty_semantics,"uncertainty_reason_codes=""uncertainty_components_unavailable"","
-host/otis_tools/range_spanning_rehearsal.py,155,uncertainty,measurement_uncertainty_semantics,"uncertainty_model_ref=""unavailable:combined_uncertainty"","
-host/otis_tools/range_spanning_rehearsal.py,236,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
+host/otis_tools/range_spanning_rehearsal.py,175,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
+host/otis_tools/range_spanning_rehearsal.py,176,uncertainty,measurement_uncertainty_semantics,"uncertainty_reason_codes=""uncertainty_components_unavailable"","
+host/otis_tools/range_spanning_rehearsal.py,178,uncertainty,measurement_uncertainty_semantics,"uncertainty_model_ref=""unavailable:combined_uncertainty"","
+host/otis_tools/range_spanning_rehearsal.py,259,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
+host/otis_tools/range_spanning_rehearsal.py,427,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""unavailable"","
 host/otis_tools/reference_quality.py,71,uncertainty,measurement_uncertainty_semantics,reference_standard_uncertainty_s: float | None = None
 host/otis_tools/reference_quality.py,164,uncertainty,measurement_uncertainty_semantics,reference_standard_uncertainty_s=optional_float(
 host/otis_tools/reference_quality.py,165,uncertainty,measurement_uncertainty_semantics,"""reference_standard_uncertainty_s"""

@@ -29,7 +29,14 @@ from .range_spanning_bundle import (
     sha256_file,
     validate_bundle,
 )
-from .range_spanning_run import EVENTS, STATE, _append_event, _replace_json, _write_complete
+from .range_spanning_run import (
+    EVENTS,
+    STATE,
+    _append_event,
+    _prewrite_ready,
+    _replace_json,
+    _write_complete,
+)
 from .run_paths import default_csv_files
 from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
@@ -50,8 +57,19 @@ def _line(row: dict[str, str], contract: str) -> bytes:
         return handle.read().encode("ascii")
 
 
-def _records() -> list[bytes]:
+def _records(bundle: dict[str, Any]) -> list[bytes]:
     modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    code = int(bundle["part_a_segment"]["survey_prefix"][0])
+    prior_epoch = int(
+        bundle.get("entry", {}).get("expected_live_state", {}).get("dac_epoch", 0)
+    )
+    epoch = prior_epoch + 1
+    continuation = bundle["entry"]["mode"] == "state_preserving_running_attach"
+    raw_ticks = (
+        (80_000_000, 96_000_000, 112_000_000)
+        if continuation
+        else (modulus - 16_000_000, 0, 16_000_000)
+    )
     raw = [
         {
             "record_type": "REF",
@@ -63,7 +81,7 @@ def _records() -> list[bytes]:
             "capture_domain": "rp2040_timer0",
             "flags": "16",
         }
-        for index, ticks in enumerate((modulus - 16_000_000, 0, 16_000_000), start=1)
+        for index, ticks in enumerate(raw_ticks, start=10)
     ]
     counts = [
         {
@@ -80,7 +98,12 @@ def _records() -> list[bytes]:
             "flags": "16",
         }
         for index, (open_ticks, close_ticks) in enumerate(
-            ((modulus - 16_000_000, 0), (0, 16_000_000)), start=1
+            (
+                ((64_000_000, 80_000_000), (80_000_000, 96_000_000))
+                if continuation
+                else ((modulus - 16_000_000, 0), (0, 16_000_000))
+            ),
+            start=6,
         )
     ]
     health = [
@@ -97,7 +120,7 @@ def _records() -> list[bytes]:
             "flags": "0",
         }
         for index, (key, value) in enumerate(
-            (("partition_fault", "none"), ("fail_static", "false")), start=1
+            (("partition_fault", "none"), ("fail_static", "false")), start=100
         )
     ]
     dac = {
@@ -106,8 +129,8 @@ def _records() -> list[bytes]:
         "seq": "1",
         "elapsed_ms": "1000",
         "step_index": "-1",
-        "dac_code_requested": "43008",
-        "dac_code_applied": "43008",
+        "dac_code_requested": str(code),
+        "dac_code_applied": str(code),
         "dac_code_clamped": "0",
         "dac_voltage_measured_v": "",
         "ocxo_tune_voltage_measured_v": "",
@@ -169,7 +192,7 @@ def _records() -> list[bytes]:
             decision_timestamp_ticks=str(32_000_000 + sequence * 9_600_000_000),
             time_domain="rp2040_timer0",
             capture_session="1",
-            dac_epoch="1",
+            dac_epoch=str(epoch),
             integer_edge_error_counts="-6",
             absolute_edge_error_counts="6",
             state_before="REQUALIFY_OUTSIDE" if sequence == 1 else "OUTSIDE",
@@ -198,7 +221,7 @@ def _records() -> list[bytes]:
     hybrid.update(
         record_type="HPR",
         schema_version="1",
-        preview_sequence="1",
+        preview_sequence=str(prior_epoch + 1),
         candidate_id="p21600_cap1_v2",
         candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
@@ -208,18 +231,18 @@ def _records() -> list[bytes]:
         configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
         phase_epoch="1",
         observation_sequence="1",
-        dac_epoch="1",
-        decision_timestamp_ticks="16000000",
+        dac_epoch=str(epoch),
+        decision_timestamp_ticks=("96000000" if continuation else "16000000"),
         time_domain="rp2040_timer0",
         source_phase_estimate="PHE:1:1",
         source_frequency_estimate="unavailable",
         raw_relative_phase_cycles="0",
         modeled_relative_phase_cycles="0.000000000000000",
         phase_bias_hz="0.000000000000000",
-        actual_applied_code="43008",
-        shadow_code_before="43008",
-        shadow_code_after="43008",
-        counterfactual_code="43008",
+        actual_applied_code=str(code),
+        shadow_code_before=str(code),
+        shadow_code_after=str(code),
+        counterfactual_code=str(code),
         band_state_before="OUTSIDE",
         band_state_after="OUTSIDE",
         preview_state="RECOVER_PREVIEW",
@@ -246,6 +269,172 @@ def _records() -> list[bytes]:
         (hybrid, "hybrid_preview_decisions_v1"),
         *((row, "estimates_v2") for row in estimates),
         *((row, "tight_deadband_decisions_v1") for row in tdb),
+    ]
+    return [_line(row, contract) for row, contract in ordered]
+
+
+def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
+    entry = bundle.get("entry", {})
+    if entry.get("mode") != "state_preserving_running_attach":
+        return []
+    live = entry["expected_live_state"]
+    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    counts = [
+        {
+            "record_type": "CNT",
+            "schema_version": "1",
+            "count_seq": str(index),
+            "channel_id": "2",
+            "gate_open_ticks": str((index - 1) * 16_000_000),
+            "gate_close_ticks": str(index * 16_000_000),
+            "gate_domain": "rp2040_timer0",
+            "counted_edges": "10000000",
+            "source_edge": "R",
+            "source_domain": "h1_cx317_ocxo_10mhz",
+            "flags": "16",
+        }
+        for index in range(1, 6)
+    ]
+    raw = [
+        {
+            "record_type": "REF",
+            "schema_version": "1",
+            "event_seq": str(index),
+            "channel_id": "1",
+            "edge": "R",
+            "timestamp_ticks": str(ticks),
+            "capture_domain": "rp2040_timer0",
+            "flags": "16",
+        }
+        for index, ticks in enumerate(
+            (
+                modulus - 16_000_000,
+                0,
+                16_000_000,
+                32_000_000,
+                48_000_000,
+                64_000_000,
+            ),
+            start=1,
+        )
+    ]
+    identities = [
+        ("build", "profile_id", "cx319_range_map_part_a"),
+        ("firmware", "git_commit", bundle["firmware"]["git_commit"]),
+        ("firmware", "source_hash", bundle["firmware"]["source_sha256"]),
+        ("firmware", "config_hash", bundle["firmware"]["configuration_sha256"]),
+        ("build", "invocation_id", bundle["firmware"]["build_invocation_id"]),
+        ("gnss_receiver", "identity_stable", "true"),
+        ("gnss_receiver", "metadata_control_eligible", "true"),
+        ("gnss_receiver", "raw_pps_control_eligible", "true"),
+        ("dual_core", "partition_fault", "none"),
+        ("dual_core", "fail_static", "false"),
+        ("dual_core", "service_publish_failures", "0"),
+        ("dual_core", "telemetry_dropped", "0"),
+        ("dac", "initialized", "true"),
+        ("dac", "applied_code_known", "true"),
+        ("dac", "last_write_ok", "true"),
+        ("dac", "last_requested_code", live["applied_code_hex"]),
+        ("dac", "last_applied_code", live["applied_code_hex"]),
+        ("cx318_preview", "applied_code", live["applied_code_hex"]),
+        ("cx318_preview", "dac_epoch", str(live["dac_epoch"])),
+    ]
+    health = [
+        {
+            "record_type": "STS",
+            "schema_version": "1",
+            "status_seq": str(index),
+            "timestamp_ticks": str(index * 1000),
+            "status_domain": "rp2040_timer0",
+            "component": component,
+            "status_key": key,
+            "status_value": value,
+            "severity": "INFO",
+            "flags": "0",
+        }
+        for index, (component, key, value) in enumerate(identities, start=1)
+    ]
+    tdb = {field: "" for field in CONTRACT_FIELDS["tight_deadband_decisions_v1"]}
+    tdb.update(
+        record_type="TDB",
+        schema_version="1",
+        decision_sequence="0",
+        estimate_id="est:cx317:selected600:000000",
+        decision_timestamp_ticks="64000000",
+        time_domain="rp2040_timer0",
+        capture_session="1",
+        dac_epoch=str(live["dac_epoch"]),
+        integer_edge_error_counts="2",
+        absolute_edge_error_counts="2",
+        state_before=live["band_state"],
+        state_after=live["band_state"],
+        entry_counter="2",
+        release_counter="0",
+        transition="false",
+        frequency_controller_eligible="true",
+        requalified="true",
+        requalification_reason="dac_epoch_changed_requalify",
+        historical_v2_inside="true",
+        symmetric_two_count_inside="true",
+        policy_id="CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
+        policy_sha256="352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
+        actionable="false",
+        actuation_authorized="false",
+        authorization_consumed="false",
+        reason_codes="tight_entry_confirmed",
+    )
+    hybrid = {
+        field: "" for field in CONTRACT_FIELDS["hybrid_preview_decisions_v1"]
+    }
+    hybrid.update(
+        record_type="HPR",
+        schema_version="1",
+        preview_sequence="1",
+        candidate_id="p21600_cap1_v2",
+        candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
+        phase_estimator_configuration_sha256="449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
+        frequency_estimator_configuration_sha256="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+        configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        phase_epoch="1",
+        observation_sequence="1",
+        dac_epoch=str(live["dac_epoch"]),
+        decision_timestamp_ticks="64000000",
+        time_domain="rp2040_timer0",
+        source_phase_estimate="PHE:1:1",
+        source_frequency_estimate="unavailable",
+        raw_relative_phase_cycles="0",
+        modeled_relative_phase_cycles="0.000000000000000",
+        phase_bias_hz="0.000000000000000",
+        actual_applied_code=str(live["applied_code"]),
+        shadow_code_before=str(live["applied_code"]),
+        shadow_code_after=str(live["applied_code"]),
+        counterfactual_code=str(live["applied_code"]),
+        band_state_before=live["hybrid_band_state"],
+        band_state_after=live["hybrid_band_state"],
+        preview_state="RECOVER_PREVIEW",
+        decision_reason="predecessor_state_reobserved",
+        frequency_observation_event="false",
+        counterfactual_decision="false",
+        counterfactual_correction="false",
+        step_limited="false",
+        range_clamped="false",
+        correction_count="0",
+        cumulative_movement_codes="0",
+        alternating_correction_count="0",
+        modeled_not_observed_after_divergence="false",
+        uncertainty_status="unavailable",
+        actionable="false",
+        actuation_authorized="false",
+        authorization_consumed="false",
+    )
+    ordered: list[tuple[dict[str, str], str]] = [
+        *((row, "raw_events_v1") for row in raw),
+        *((row, "count_observations_v1") for row in counts),
+        *((row, "health_v1") for row in health),
+        (hybrid, "hybrid_preview_decisions_v1"),
+        (tdb, "tight_deadband_decisions_v1"),
     ]
     return [_line(row, contract) for row, contract in ordered]
 
@@ -277,6 +466,7 @@ def _manifest(run_dir: Path, bundle_path: Path, bundle: dict[str, Any], device: 
             "sha256": sha256_file(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
         },
+        "entry": bundle["entry"],
         "policy": {
             "sha256": sha256_file(ROOT / "profiles/discipline/cx319_stabilized_tight_deadband_v1.json")
         },
@@ -380,9 +570,55 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
         _read_until(master, b"CONFIG?\n")
         send_timestamped_command_to_fifo(normal_fifo, "DAC?")
         _read_until(master, b"DAC?\n")
-        send_timestamped_command_to_fifo(normal_fifo, "DAC SET 0xA800")
-        _read_until(master, b"DAC SET 0xA800\n")
-        for record in _records():
+        attachment_records = _attachment_records(bundle)
+        for record in attachment_records:
+            os.write(master, record)
+            time.sleep(0.005)
+        if attachment_records:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                ready, _reasons = _prewrite_ready(run_dir, bundle)
+                if ready:
+                    break
+                time.sleep(0.05)
+            ready, reasons = _prewrite_ready(run_dir, bundle)
+            if not ready:
+                raise RuntimeError(
+                    "continuation attachment rehearsal gate failed: "
+                    + "; ".join(reasons)
+                )
+            live = bundle["entry"]["expected_live_state"]
+            _append_event(run_dir / EVENTS, {"event": "prewrite_gate_passed"})
+            _append_event(
+                run_dir / EVENTS,
+                {
+                    "event": "state_preserving_attachment_passed",
+                    "predecessor_run_id": bundle["entry"]["predecessor_run_id"],
+                    "applied_code": live["applied_code"],
+                    "dac_epoch": live["dac_epoch"],
+                    "band_state": live["band_state"],
+                    "next_code": live["next_code"],
+                    "firmware_flash_count": 0,
+                    "board_reset_count": 0,
+                },
+            )
+        code = int(bundle["part_a_segment"]["survey_prefix"][0])
+        command = f"DAC SET 0x{code:04X}"
+        _append_event(
+            run_dir / EVENTS,
+            {
+                "event": "point_command_sent",
+                "point_index": 0,
+                "global_point_index": int(
+                    bundle["part_a_segment"].get("global_point_offset", 0)
+                ),
+                "code": code,
+                "command": command,
+            },
+        )
+        send_timestamped_command_to_fifo(normal_fifo, command)
+        _read_until(master, (command + "\n").encode("ascii"))
+        for record in _records(bundle):
             os.write(master, record)
             time.sleep(0.005)
         deadline = time.monotonic() + 5
@@ -393,9 +629,17 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
             time.sleep(0.05)
         point = {
             "point_index": 0,
-            "code": 43008,
+            "global_point_index": int(
+                bundle["part_a_segment"].get("global_point_offset", 0)
+            ),
+            "code": code,
             "dac_sequence": 1,
-            "dac_epoch": 1,
+            "dac_epoch": int(
+                bundle.get("entry", {})
+                .get("expected_live_state", {})
+                .get("dac_epoch", 0)
+            )
+            + 1,
             "tdb_sequences": [1, 2],
         }
         _append_event(run_dir / EVENTS, {"event": "point_completed", **point})
@@ -476,6 +720,10 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
             "domain_rollover_parser_and_validator": True,
             "selected_estimate_to_tdb_analyzer": True,
             "hybrid_same_code_epoch_zero_authority": True,
+            "state_preserving_attachment_gate": (
+                bundle["entry"]["mode"] != "state_preserving_running_attach"
+                or bool(attachment_records)
+            ),
             "normal_fifo_obstruction": transport["normal_fifo_saturated"],
             "independent_priority_abort": transport["priority_abort_observed_in_capture"],
             "continuous_same_pid_rotation": rotation["serial_reopened"] is False,

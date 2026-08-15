@@ -1241,6 +1241,18 @@ bool otis_observe_only_discipline_live_transport_pending(void) {
 #endif
 }
 
+uint8_t otis_observe_only_discipline_live_abandon_transport(void) {
+#if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW
+  const uint8_t abandoned = queue_count;
+  queue_head = 0u;
+  queue_tail = 0u;
+  queue_count = 0u;
+  return abandoned;
+#else
+  return 0u;
+#endif
+}
+
 void otis_observe_only_discipline_live_emit_status(
     OtisStatusEmitContext *status_context) {
 #if OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW

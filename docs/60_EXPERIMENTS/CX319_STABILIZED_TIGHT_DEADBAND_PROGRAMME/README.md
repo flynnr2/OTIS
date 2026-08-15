@@ -6,16 +6,18 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-14: the adversarial-review Q1--Q3 sequence and the
+Current status as of 2026-08-15: the adversarial-review Q1--Q3 sequence and the
 Q4/G2 lower-side physical qualification passed. The Q4/G3 upper run was a
 non-actionable stable tight hold, not a G3 pass. The operator then authorized
-the separately identified range-spanning programme. Its first exact Part A
-segment passed with eight points from `0xA800` through `0xA844`, coarsely
-bracketing the lower increasing-direction entry by `0xA800..0xA820`. The final
-package is sealed and registered. Part A is not complete: the other three
-state-dependent transitions, the fine pass, matched bidirectional response,
-and cadence acceleration remain open. Part B remains prospectively gated on a
-complete Part A result. G4 and phase/hybrid actuation remain unauthorized.
+the separately identified range-spanning programme. Its complete 30-point
+Part A survey passed, returned to `0xA800`, and bracketed all four
+state-dependent transitions. The exact raw package and a separate corrected
+offline reanalysis are sealed and registered. Part A is not complete: the
+one-code fine pass, repeated boundary observations, matched response result,
+and cadence decision remain open. The selected zero-authority hybrid preview
+also reached its prospective low-net-path guard and requires revision. Part B
+remains gated on the final Part A result. G4 and phase/hybrid actuation remain
+unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -228,3 +230,8 @@ The range-spanning implementation, three retained fail-static platform stops,
 passing eight-point Part A survey prefix, immutable evidence identities, and
 state-preserving continuation gate are recorded in
 [`38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`](38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md).
+
+The fresh-restart 30-point complete survey, all four survey-resolution
+transition brackets, hybrid-preview candidate rejection, immutable source
+package, offline analyzer supersession and fine-pass next gate are recorded in
+[`39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md`](39_RANGE_SPANNING_PART_A_COMPLETE_SURVEY_RESULT.md).

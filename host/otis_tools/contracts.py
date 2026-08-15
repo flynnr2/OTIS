@@ -2056,14 +2056,19 @@ def _check_hybrid_preview_decision_v1(
         shadow_code_before = int(row.get("shadow_code_before", ""), 10)
         shadow_code_after = int(row.get("shadow_code_after", ""), 10)
         counterfactual_delta = row.get("counterfactual_delta_codes", "")
-        if counterfactual_delta and not math.isclose(
+        if (
+            row.get("counterfactual_correction") == "true"
+            and counterfactual_delta
+            and not math.isclose(
             float(counterfactual_delta),
             shadow_code_after - shadow_code_before,
             rel_tol=0.0,
             abs_tol=1e-12,
+            )
         ):
             errors.append(
-                f"row {row_number}: counterfactual_delta_codes must equal "
+                f"row {row_number}: an applied counterfactual correction's "
+                "counterfactual_delta_codes must equal "
                 "shadow_code_after-shadow_code_before"
             )
         actual_applied_code = int(row.get("actual_applied_code", ""), 10)

@@ -65,6 +65,35 @@ def test_obstructed_frame_still_services_rx_and_fault_drains() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_absent_carrier_abandons_only_outbound_framing_before_liveness() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    loop = sketch[sketch.index("void loop()") :]
+    dual = loop[
+        loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
+        loop.index("// Capture service always runs first.")
+    ]
+    carrier = dual.index("if (!otis_transport_ready())")
+    liveness = dual.index("bool transport_live = otis_transport_liveness_observe(")
+    assert carrier < liveness
+    absent = dual[carrier:liveness]
+    assert "otis_transport_liveness_note_carrier_absent(" in absent
+    assert "abandon_dual_core_serial_frames_on_carrier_loss();" in absent
+    assert "service_serial_commands(false);" in absent
+    assert "return;" in absent
+
+    abandon = sketch[
+        sketch.index("void abandon_dual_core_serial_frames_on_carrier_loss(void)") :
+        sketch.index("void publish_dual_core_association_loss_decision(")
+    ]
+    assert "dual_core_evidence_transport_active = false;" in abandon
+    assert "otis_observe_only_discipline_live_abandon_transport();" in abandon
+    assert "otis_phase_preview_transport_abandon_active_frame()" in abandon
+    assert "otis_serial_frame_arbiter_reset(" in abandon
+    assert "config_query_provenance_emitted = false;" in abandon
+
+
 def test_core1_capture_drain_has_one_ring_budget() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"

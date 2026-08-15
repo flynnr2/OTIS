@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_range_spanning_survey_prefix() -> None:
+def test_tracked_status_records_complete_range_spanning_survey_and_next_gate() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx319_stabilized_tight_deadband"
@@ -28,14 +28,13 @@ def test_tracked_status_records_range_spanning_survey_prefix() -> None:
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
     assert successor["state"] == (
-        "range_spanning_part_a_survey_prefix_complete"
+        "range_spanning_part_a_complete_survey_fine_pass_pending"
     )
     assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert successor["authority"] == (
-        "state_preserving_part_a_continuation_bundle_pending"
-    )
+    assert successor["authority"] == "survey_derived_part_a_fine_pass_bundle_pending"
     assert successor["next_gate"] == (
-        "freeze_and_rehearse_state_preserving_part_a_continuation_from_0xA844"
+        "freeze_and_rehearse_survey_derived_part_a_one_code_fine_pass_and_"
+        "revised_zero_authority_hybrid_preview"
     )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
@@ -57,6 +56,47 @@ def test_tracked_status_records_range_spanning_survey_prefix() -> None:
     assert range_result["phase_or_hybrid_actuation"] is False
     assert range_result["part_a_complete"] is False
     assert range_result["part_b_executable"] is False
+    complete_survey = successor["range_spanning_part_a_complete_survey_result"]
+    assert complete_survey["status"] == (
+        "passed_complete_survey_requires_fine_pass"
+    )
+    assert complete_survey["completed_point_count"] == 30
+    assert complete_survey["final_applied_code"] == 0xA800
+    assert complete_survey["final_band_state"] == "OUTSIDE"
+    assert complete_survey["lower_increasing_entry_coarse_bracket"] == [
+        0xA800,
+        0xA820,
+    ]
+    assert complete_survey["upper_increasing_release_bracket"] == [
+        0xA848,
+        0xA84C,
+    ]
+    assert complete_survey["upper_decreasing_entry_bracket"] == [
+        0xA844,
+        0xA848,
+    ]
+    assert complete_survey["lower_decreasing_release_bracket"] == [
+        0xA818,
+        0xA81C,
+    ]
+    assert complete_survey["hybrid_preview"] == {
+        "status": "candidate_requires_revision",
+        "candidate_id": "p21600_cap1_v2",
+        "terminal_reason": "prospective_low_net_excess_path",
+        "first_fault_preview_sequence": 40519,
+        "first_fault_dac_epoch": 15,
+        "modeled_corrections": 20,
+        "cumulative_movement_codes": 236,
+        "rejected_proposed_delta_codes": -15,
+        "actionable": False,
+        "actuation_authorized": False,
+    }
+    assert complete_survey["automatic_transactions"] == 0
+    assert complete_survey["phase_or_hybrid_actuation"] is False
+    assert complete_survey["survey_complete"] is True
+    assert complete_survey["part_a_complete"] is False
+    assert complete_survey["part_b_executable"] is False
+    assert complete_survey["physical_rerun_for_reanalysis"] is False
     focused = successor["current_session_rebinding_focused_no_write_authority"]
     assert focused["operator_instruction"] == "authorized"
     assert focused["effective"] is False

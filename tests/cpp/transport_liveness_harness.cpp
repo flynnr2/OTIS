@@ -39,6 +39,24 @@ void intermittent_progress_and_restore_are_bounded() {
   assert(otis_transport_liveness_faulted(&liveness));
 }
 
+void carrier_loss_is_a_recoverable_handoff_only_before_fault() {
+  OtisTransportLiveness liveness = {};
+  otis_transport_liveness_reset(&liveness, 100u, 10u);
+  assert(otis_transport_liveness_observe(&liveness, 100u, true, 10u));
+  assert(liveness.state == OtisTransportLivenessState::FrameObstructed);
+  assert(otis_transport_liveness_note_carrier_absent(&liveness, 500u, 12u));
+  assert(liveness.state == OtisTransportLivenessState::Ready);
+  assert(liveness.last_written_bytes == 12u);
+
+  assert(otis_transport_liveness_observe(&liveness, 600u, true, 12u));
+  assert(!otis_transport_liveness_observe(
+      &liveness, 600u + OTIS_MAXIMUM_SUPPORTED_TX_OBSTRUCTION_MS, true,
+      12u));
+  assert(otis_transport_liveness_faulted(&liveness));
+  assert(!otis_transport_liveness_note_carrier_absent(&liveness, 3000u, 12u));
+  assert(otis_transport_liveness_faulted(&liveness));
+}
+
 void elapsed_comparison_crosses_millis_wrap() {
   OtisTransportLiveness liveness = {};
   const uint32_t start = UINT32_MAX - 500u;
@@ -89,6 +107,7 @@ void explicit_abort_crosses_while_a_tx_frame_is_obstructed() {
 int main() {
   zero_capacity_faults_at_the_declared_boundary();
   intermittent_progress_and_restore_are_bounded();
+  carrier_loss_is_a_recoverable_handoff_only_before_fault();
   elapsed_comparison_crosses_millis_wrap();
   explicit_abort_crosses_while_a_tx_frame_is_obstructed();
   return 0;

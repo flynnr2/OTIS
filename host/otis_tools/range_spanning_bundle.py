@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -80,6 +81,14 @@ def _binding(path: Path) -> dict[str, Any]:
     }
 
 
+def _read_csv(path: Path) -> list[dict[str, str]]:
+    try:
+        with path.open("r", newline="", encoding="utf-8") as handle:
+            return list(csv.DictReader(handle))
+    except (OSError, csv.Error) as exc:
+        raise ValueError(f"cannot read predecessor CSV: {path}: {exc}") from exc
+
+
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -154,14 +163,178 @@ def _firmware(build_manifest_path: Path) -> dict[str, Any]:
     }
 
 
+def _continuation(
+    *, run_dir: Path, programme: dict[str, Any], firmware: dict[str, Any]
+) -> dict[str, Any]:
+    from .evidence import validate_evidence_snapshot
+    from .run_loader import load_manifest
+
+    run_dir = run_dir.resolve()
+    if not run_dir.is_dir():
+        raise ValueError(f"continuation predecessor is unavailable: {run_dir}")
+    entry_path = run_dir / "reports/range_spanning_firmware_entry_v2.json"
+    if not entry_path.is_file():
+        entry_path = run_dir / "reports/range_spanning_firmware_flash_v1.json"
+    paths = {
+        "run_manifest": run_dir / "run_manifest.json",
+        "supervisor_state": run_dir / "reports/range_spanning_supervisor_state.json",
+        "analysis": run_dir / "reports/range_spanning_analysis_v1.json",
+        "seal": run_dir / "reports/range_spanning_seal_v1.json",
+        "firmware_entry": entry_path,
+        "complete": run_dir / "COMPLETE",
+        "evidence_manifest": run_dir / "evidence_manifest.json",
+    }
+    values = {name: _read(path, name) for name, path in paths.items()}
+    manifest = values["run_manifest"]
+    state = values["supervisor_state"]
+    analysis = values["analysis"]
+    seal = values["seal"]
+    flash = values["firmware_entry"]
+    complete = values["complete"]
+    evidence = values["evidence_manifest"]
+    points = list(programme["part_a"]["survey_point_order"])
+    completed = state.get("completed_points", [])
+    completed_codes = [
+        int(item.get("code", -1)) for item in completed if isinstance(item, dict)
+    ]
+    if not completed_codes or completed_codes != points[: len(completed_codes)]:
+        raise ValueError("predecessor does not contain an exact Part A survey prefix")
+    if len(completed_codes) >= len(points):
+        raise ValueError("predecessor already completed the Part A survey")
+    terminal = state.get("terminal", {})
+    if terminal != complete.get("terminal") or not (
+        terminal.get("result") == "healthy_stop"
+        and terminal.get("reason") == "finite_wall_deadline_before_next_point"
+        and int(terminal.get("completed_point_count", -1)) == len(completed_codes)
+    ):
+        raise ValueError("predecessor did not end at a healthy finite boundary")
+    if not (
+        analysis.get("status") == "passed"
+        and seal.get("status") == "passed"
+        and seal.get("analysis_sha256") == analysis.get("analysis_sha256")
+        and int(analysis.get("completed_point_count", -1)) == len(completed_codes)
+        and [int(item.get("code", -1)) for item in analysis.get("point_results", [])]
+        == completed_codes
+    ):
+        raise ValueError("predecessor analysis or seal is not an exact passing prefix")
+    manifest_firmware = manifest.get("firmware", {})
+    if any(
+        manifest_firmware.get(key) != firmware.get(key)
+        for key in (
+            "profile_id",
+            "fqbn",
+            "git_commit",
+            "source_sha256",
+            "configuration_sha256",
+            "build_invocation_id",
+            "build_manifest",
+            "uf2",
+        )
+    ):
+        raise ValueError("predecessor firmware identity differs from continuation")
+    exact_flash = (
+        flash.get("operation") == "exact_range_map_firmware_flash"
+        and int(flash.get("firmware_flash_count", -1)) == 1
+        and flash.get("board_after", {}).get("serial_number")
+        == EXPECTED_BOARD_SERIAL
+    )
+    confirmed_attachment = (
+        flash.get("operation") == "confirmed_installed_firmware_running_attachment"
+        and int(flash.get("firmware_flash_count", -1)) == 0
+        and int(flash.get("board_reset_count", -1)) == 0
+        and int(flash.get("ordinary_restart_count", -1)) == 0
+        and flash.get("board", {}).get("serial_number") == EXPECTED_BOARD_SERIAL
+    )
+    if not (
+        flash.get("status") == "passed"
+        and (exact_flash or confirmed_attachment)
+        and flash.get("uf2_sha256") == firmware["uf2"]["sha256"]
+        and flash.get("profile_id") == firmware["profile_id"]
+    ):
+        raise ValueError("predecessor does not bind the exact installed firmware")
+    evidence_failures, _warnings = validate_evidence_snapshot(
+        run_dir, load_manifest(run_dir)
+    )
+    if evidence_failures:
+        raise ValueError(
+            "predecessor evidence snapshot differs: " + "; ".join(evidence_failures)
+        )
+    last = completed[-1]
+    matching_hybrid = [
+        row
+        for row in _read_csv(
+            run_dir / "csv/hybrid_preview_decisions_v1.csv"
+        )
+        if row.get("actual_applied_code") == str(int(last["code"]))
+        and row.get("dac_epoch") == str(int(last["dac_epoch"]))
+    ]
+    if not matching_hybrid or any(
+        matching_hybrid[-1].get(field) != "false"
+        for field in ("actionable", "actuation_authorized", "authorization_consumed")
+    ):
+        raise ValueError("predecessor hybrid consumer state is absent or actionable")
+    expected_state = {
+        "applied_code": int(last["code"]),
+        "applied_code_hex": f"0x{int(last['code']):04X}",
+        "dac_epoch": int(last["dac_epoch"]),
+        "band_state": str(last["state_after"]),
+        "hybrid_band_state": str(matching_hybrid[-1]["band_state_after"]),
+        "next_code": points[len(completed_codes)],
+        "next_code_hex": f"0x{points[len(completed_codes)]:04X}",
+        "global_point_offset": len(completed_codes),
+    }
+    predecessor_bundle = Path(str(manifest.get("bundle", {}).get("path", "")))
+    if not predecessor_bundle.is_file() or sha256_file(predecessor_bundle) != manifest.get(
+        "bundle", {}
+    ).get("sha256"):
+        raise ValueError("predecessor bundle file identity differs")
+    snapshot_digest = evidence.get("snapshot_digest")
+    if not (
+        isinstance(snapshot_digest, str)
+        and len(snapshot_digest) == 64
+        and all(character in "0123456789abcdef" for character in snapshot_digest)
+    ):
+        raise ValueError("predecessor snapshot identity is invalid")
+    return {
+        "mode": "state_preserving_running_attach",
+        "firmware_flashes_allowed": 0,
+        "board_resets_allowed": 0,
+        "dac_writes_before_attachment_gate_allowed": 0,
+        "predecessor_run_id": str(state.get("run_id", "")),
+        "predecessor_run_dir": str(run_dir),
+        "predecessor_bundle": _binding(predecessor_bundle),
+        "predecessor_bundle_sha256": str(manifest["bundle"]["bundle_sha256"]),
+        "predecessor_snapshot_digest": str(evidence["snapshot_digest"]),
+        "predecessor_files": {
+            name: _binding(path) for name, path in sorted(paths.items())
+        },
+        "expected_live_state": expected_state,
+    }
+
+
 def create_bundle(
-    *, build_manifest_path: Path, output_path: Path, maximum_points: int
+    *,
+    build_manifest_path: Path,
+    output_path: Path,
+    maximum_points: int,
+    continuation_run: Path | None = None,
 ) -> dict[str, Any]:
     programme = load_programme()
     points = list(programme["part_a"]["survey_point_order"])
-    if maximum_points < 1 or maximum_points > len(points):
-        raise ValueError("maximum_points must select a non-empty survey prefix")
     firmware = _firmware(build_manifest_path)
+    continuation = (
+        _continuation(run_dir=continuation_run, programme=programme, firmware=firmware)
+        if continuation_run is not None
+        else None
+    )
+    point_offset = (
+        int(continuation["expected_live_state"]["global_point_offset"])
+        if continuation is not None
+        else 0
+    )
+    available_points = points[point_offset:]
+    if maximum_points < 1 or maximum_points > len(available_points):
+        raise ValueError("maximum_points must select a non-empty available survey prefix")
     operational_timing = programme["part_a"]["operational_point_timing"]
     unsigned: dict[str, Any] = {
         "schema_version": 1,
@@ -176,11 +349,22 @@ def create_bundle(
             "serial_path_resolution": "locate_unique_current_port_by_usb_serial",
         },
         "firmware": firmware,
+        "entry": (
+            continuation
+            if continuation is not None
+            else {
+                "mode": "fresh_exact_firmware_flash",
+                "firmware_flashes_allowed": 1,
+                "board_resets_allowed": 1,
+                "dac_writes_before_attachment_gate_allowed": 0,
+            }
+        ),
         "host_tools": {
             name: _binding(path) for name, path in sorted(HOST_TOOL_PATHS.items())
         },
         "part_a_segment": {
-            "survey_prefix": points[:maximum_points],
+            "survey_prefix": available_points[:maximum_points],
+            "global_point_offset": point_offset,
             "maximum_points": maximum_points,
             "fresh_policy_observations_per_point": 2,
             "settling_exclusion_s": 900,
@@ -262,6 +446,10 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     bindings = [value["programme"], *value["host_tools"].values()]
     firmware = value["firmware"]
     bindings.extend((firmware["build_manifest"], firmware["uf2"]))
+    entry = value.get("entry", {})
+    if entry.get("mode") == "state_preserving_running_attach":
+        bindings.extend(entry["predecessor_files"].values())
+        bindings.append(entry["predecessor_bundle"])
     for binding in bindings:
         path_value = Path(binding["path"])
         if (
@@ -270,6 +458,56 @@ def validate_bundle(path: Path) -> dict[str, Any]:
             or path_value.stat().st_size != binding["size_bytes"]
         ):
             raise ValueError(f"bundle binding differs: {path_value}")
+    observed_firmware = _firmware(Path(firmware["build_manifest"]["path"]))
+    if observed_firmware != firmware:
+        raise ValueError("bundle firmware provenance differs")
+    if value["operator_authority"].get("phase_or_hybrid_actuation") is not False:
+        raise ValueError("bundle must retain zero phase/hybrid authority")
+    if entry.get("mode") == "state_preserving_running_attach":
+        observed_entry = _continuation(
+            run_dir=Path(entry["predecessor_run_dir"]),
+            programme=load_programme(Path(value["programme"]["path"])),
+            firmware=firmware,
+        )
+        if observed_entry != entry:
+            raise ValueError("continuation predecessor binding differs")
+    return value
+
+
+def validate_bundle_for_offline_reanalysis(path: Path) -> dict[str, Any]:
+    """Validate the frozen campaign identity without rebinding old host tools.
+
+    A corrected offline analyzer must consume the exact bundle that governed
+    acquisition, but it cannot truthfully satisfy that bundle's old analyzer
+    and validator hashes.  The reanalysis product separately records both
+    generations.  Firmware, programme, predecessor, authority, and canonical
+    bundle identities remain strict here.
+    """
+
+    value = _read(path.resolve(), "range-spanning bundle")
+    declared_hash = value.get("bundle_sha256")
+    unsigned = {key: item for key, item in value.items() if key != "bundle_sha256"}
+    if (
+        value.get("schema_version") != 1
+        or value.get("bundle_type") != BUNDLE_TYPE
+        or declared_hash != canonical_sha256(unsigned)
+    ):
+        raise ValueError("range-spanning bundle identity differs")
+    load_programme(Path(value["programme"]["path"]))
+    firmware = value["firmware"]
+    bindings = [value["programme"], firmware["build_manifest"], firmware["uf2"]]
+    entry = value.get("entry", {})
+    if entry.get("mode") == "state_preserving_running_attach":
+        bindings.extend(entry["predecessor_files"].values())
+        bindings.append(entry["predecessor_bundle"])
+    for binding in bindings:
+        path_value = Path(binding["path"])
+        if (
+            not path_value.is_file()
+            or sha256_file(path_value) != binding["sha256"]
+            or path_value.stat().st_size != binding["size_bytes"]
+        ):
+            raise ValueError(f"bundle acquisition binding differs: {path_value}")
     observed_firmware = _firmware(Path(firmware["build_manifest"]["path"]))
     if observed_firmware != firmware:
         raise ValueError("bundle firmware provenance differs")
@@ -285,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--build-manifest", type=Path, required=True)
     create.add_argument("--output", type=Path, required=True)
     create.add_argument("--maximum-points", type=int, required=True)
+    create.add_argument("--continuation-run", type=Path)
     validate = commands.add_parser("validate")
     validate.add_argument("bundle", type=Path)
     args = parser.parse_args(argv)
@@ -293,6 +532,7 @@ def main(argv: list[str] | None = None) -> int:
             build_manifest_path=args.build_manifest,
             output_path=args.output,
             maximum_points=args.maximum_points,
+            continuation_run=args.continuation_run,
         )
         if args.command == "create"
         else validate_bundle(args.bundle)

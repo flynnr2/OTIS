@@ -49,6 +49,16 @@ bool otis_transport_liveness_observe(OtisTransportLiveness *liveness,
   return true;
 }
 
+bool otis_transport_liveness_note_carrier_absent(
+    OtisTransportLiveness *liveness, uint32_t now_ms,
+    uint64_t written_bytes) {
+  if (liveness == nullptr ||
+      liveness->state == OtisTransportLivenessState::Faulted)
+    return false;
+  otis_transport_liveness_reset(liveness, now_ms, written_bytes);
+  return true;
+}
+
 bool otis_transport_liveness_faulted(
     const OtisTransportLiveness *liveness) {
   return liveness != nullptr &&

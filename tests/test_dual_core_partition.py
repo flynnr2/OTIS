@@ -188,7 +188,7 @@ def test_stage6_profile_has_real_core0_core1_runtime_partition() -> None:
     assert loop1.index("otis_capture_backend_service();") < loop1.index(
         "service_tcxo_gate();"
     )
-    carrier_gate = loop1.index("if (!dual_core_serial_carrier_seen)")
+    carrier_gate = loop1.index("if (!otis_transport_ready())")
     for call in (
         "service_dual_core_timing_inputs();",
         "otis_capture_backend_service();",
