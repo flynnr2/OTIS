@@ -155,6 +155,125 @@ def test_part_b_campaign_rejects_missing_pyserial_before_output_creation(
     assert not output_root.exists()
 
 
+def test_part_b_resume_seals_retained_leg_without_reexecuting_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "campaign"
+    lower_run = root / "leg_1_lower_acquisition/live_lower_acquisition"
+    lower_run.mkdir(parents=True)
+    readiness = tmp_path / "readiness.json"
+    readiness.write_text("{}", encoding="utf-8")
+    state_path = root / "conditional_part_b_campaign_state_v1.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tool": conditional_part_b_campaign.TOOL_ID,
+                "status": "failed",
+                "part_a_readiness": str(readiness),
+                "current_sequence_index": 1,
+                "current_leg": "lower_acquisition",
+                "completed_legs": [],
+                "run_dir": str(lower_run),
+                "terminal": {
+                    "error": (
+                        "manifest does not satisfy CX319_EVIDENCE_EPOCH_1; "
+                        "fixture finalization escape"
+                    )
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    lower_seal = lower_run / RANGE_LOWER.live_seal_filename
+    recovery_calls: list[Path] = []
+    qualification_calls: list[Path] = []
+
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "_require_physical_runtime_dependencies",
+        lambda: None,
+    )
+
+    def fake_recovery(*, run_dir: Path) -> dict[str, object]:
+        recovery_calls.append(run_dir)
+        return {
+            "status": "passed",
+            "run_dir": str(run_dir),
+            "analysis_and_seal": str(lower_seal),
+            "seal_sha256": "1" * 64,
+            "evidence_content_sha256": "2" * 64,
+            "finalization_recovery": str(
+                run_dir / "reports/cx319_pbl_finalization_recovery_v1.json"
+            ),
+        }
+
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "recover_bounded_tight_deadband_finalization",
+        fake_recovery,
+    )
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "create_proposal",
+        lambda **kwargs: {"bundle_sha256": str(kwargs["sequence_index"]) * 64},
+    )
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "run_rehearsal",
+        lambda **_kwargs: {"status": "passed"},
+    )
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "_locate_board_by_serial",
+        lambda *_args, **_kwargs: ("/dev/cu.fixture", "fixture-board"),
+    )
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "create_activation",
+        lambda **kwargs: {"activation_sha256": str(kwargs["leg_name"]) * 64},
+    )
+
+    def fake_qualification(*, run_dir: Path, **_kwargs) -> dict[str, object]:
+        qualification_calls.append(run_dir)
+        seal = run_dir / "reports/fixture_seal.json"
+        return {
+            "status": "passed",
+            "run_dir": str(run_dir),
+            "analysis_and_seal": str(seal),
+            "seal_sha256": "3" * 64,
+            "evidence_content_sha256": "4" * 64,
+        }
+
+    monkeypatch.setattr(
+        conditional_part_b_campaign,
+        "run_bounded_tight_deadband_qualification",
+        fake_qualification,
+    )
+
+    result = conditional_part_b_campaign.resume_campaign(
+        part_a_readiness_path=readiness,
+        lower_build_manifest_path=tmp_path / "lower-manifest.json",
+        lower_uf2_path=tmp_path / "lower.uf2",
+        upper_build_manifest_path=tmp_path / "upper-manifest.json",
+        upper_uf2_path=tmp_path / "upper.uf2",
+        output_root=root,
+        evidence_index_path=tmp_path / "index.json",
+        operator_instruction_ref="fixture authority",
+        arduino_cli="arduino-cli",
+    )
+
+    assert recovery_calls == [lower_run.resolve()]
+    assert qualification_calls == [
+        (root / "leg_2_upper_acquisition/live_upper_acquisition").resolve(),
+        (root / "leg_3_lower_reacquisition/live_lower_reacquisition").resolve(),
+    ]
+    assert all(path != lower_run.resolve() for path in qualification_calls)
+    assert result["status"] == "complete"
+    assert len(result["completed_legs"]) == 3
+    assert result["completed_legs"][0]["physical_rerun"] is False
+
+
 def test_part_b_observational_hybrid_profile_resets_each_external_dac_epoch() -> None:
     path = Path(
         "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json"

@@ -15,6 +15,8 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx319_tight_upper",
         "cx319_q2_inhibited_transaction",
         "cx319_range_map_part_a",
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (

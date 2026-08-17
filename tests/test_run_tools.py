@@ -51,6 +51,19 @@ def test_current_canonical_manifest_loads_without_identity_translation(
     assert manifest.stage == "CX319_CURRENT_EVIDENCE_FIXTURE"
 
 
+@pytest.mark.parametrize(
+    "profile_id",
+    ("cx319_range_part_b_lower", "cx319_range_part_b_upper"),
+)
+def test_mapping_informed_part_b_profiles_are_current_evidence_packages(
+    tmp_path: Path, profile_id: str
+) -> None:
+    run_dir = tmp_path / profile_id
+    value = _write_manifest(run_dir, cx319={"profile_id": profile_id})
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_current_floor_requires_supported_cx319_profile_identity(
     tmp_path: Path,
 ) -> None:
