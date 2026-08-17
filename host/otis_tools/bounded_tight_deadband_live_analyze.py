@@ -733,7 +733,7 @@ def analyze(
             if selected.prerequisite_key == "g1_pass"
             else manifest_value["g2_pass"]["acquisition_content_sha256"]
             if selected.prerequisite_key == "g2_pass"
-            else manifest_value["part_a_promotion"]["promotion_sha256"]
+            else manifest_value["part_a_readiness"]["readiness_sha256"]
         ),
         "predecessor_leg_seal_sha256": (
             manifest_value.get("predecessor_leg") or {}

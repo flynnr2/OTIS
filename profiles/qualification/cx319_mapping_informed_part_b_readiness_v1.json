@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "contract_id": "cx319_mapping_informed_part_b_readiness_v1",
+  "status": "frozen_offline_replay_contract_non_authorizing",
+  "effective_physical_authority": false,
+  "scientific_question": "Does the sealed Part A map establish a bounded, positive, repeatable-enough response and a reachable inside region for the frozen frequency-only Part B envelope?",
+  "methodology_correction": {
+    "historical_predicate": "maximum two-code mixed transition interval",
+    "disposition": "preserve historical non-promotion; do not reuse transition width as a success predicate",
+    "reason": "Transition width is an observed distribution under a 600-second integer-count estimator. Manufacturer pull range and direct OTIS gain imply materially more than two DAC codes per integer count.",
+    "transition_width_role": "reported_estimand_and_controller_envelope_input"
+  },
+  "source_bindings": {
+    "manufacturer_datasheet": {
+      "path": "docs/datasheets/cx317.pdf",
+      "sha256": "424eb39219937172d9cca58824b883e61e3036d9e6a5b4936d2ccda9ed4a81eb"
+    },
+    "selected_estimator_profile": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "selected_estimator_record": {
+      "path": "docs/50_SOFTWARE/CX317_PPS_GATED_SELECTED_ESTIMATOR.md",
+      "sha256": "f1c307b0e79e0aeda1b17f9b74a5559bd72d420623092d73d14d729b234d00e0"
+    },
+    "run_020_plant_result": {
+      "path": "docs/60_EXPERIMENTS/COMPLETED_AND_HISTORICAL/RUN_020_PLANT_MODEL_RESULTS.md",
+      "sha256": "4503e2d4a513866ca198c5dc7cc6368b26a2f895fc64fe669e08b9c4194a6ea0"
+    },
+    "stage_5_plant_characterization": {
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+      "sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7"
+    },
+    "current_plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "historical_v3_part_a_bundle": {
+      "path": "runs/cx319_range_spanning/conditional_fine_v3_20260815/recovery_2/conditional_part_a_bundle_v3.json",
+      "sha256": "1990ef1b719eab8ebf9dcfd51ed4a54754aa6ca98dbd167fb8919cef23107b5b",
+      "bundle_sha256": "cf42ced71e9091af678d60cba70760b93c48f2ba8046b958c9965e6f26be08e8"
+    }
+  },
+  "derived_expectations": {
+    "estimator_span_s": 600,
+    "integer_count_increment_hz": 0.001666667,
+    "fixed_code_standard_deviation_hz": 0.000821677,
+    "fixed_code_standard_deviation_counts": 0.493006102,
+    "manufacturer_positive_tuning_slope_required": true,
+    "manufacturer_counts_per_code_minimum": 0.06935814,
+    "manufacturer_counts_per_code_maximum": 0.13871628,
+    "direct_plant_counts_per_code_minimum": 0.0935442,
+    "direct_plant_counts_per_code_maximum": 0.112566,
+    "direct_plant_codes_per_count_maximum": 10.690134,
+    "maximum_descriptive_mixed_interval_width_codes": 11,
+    "maximum_directional_displacement_codes": 8,
+    "maximum_point_sample_standard_deviation_counts": 0.986013,
+    "maximum_point_observed_span_counts": 2,
+    "derivation": {
+      "mixed_interval_width": "ceil(one integer count divided by the minimum direct Run 020 counts-per-code gain)",
+      "directional_displacement": "prior Stage 5 maximum observed interior direction-paired difference of 7.349273 codes rounded outward",
+      "sample_standard_deviation": "two times the sealed fixed-code standard deviation expressed in integer counts",
+      "observed_span": "ceil(four times the sealed fixed-code standard deviation expressed in integer counts)"
+    }
+  },
+  "readiness_checks": {
+    "requires_exact_passed_analysis_and_seal": true,
+    "requires_healthy_complete_27_point_terminal": true,
+    "requires_zero_active_transactions_and_zero_phase_hybrid_authority": true,
+    "requires_all_selected_observations_valid_and_epoch_exact": true,
+    "requires_positive_shared_within_direction_slope": true,
+    "shared_slope_must_fit_manufacturer_counts_per_code_range": true,
+    "requires_mixed_interval_width_within_derived_descriptive_envelope": true,
+    "requires_directional_displacement_within_prior_history_envelope": true,
+    "requires_point_variance_within_prior_fixed_code_gross_screen": true,
+    "requires_all_central_references_inside": true,
+    "requires_opening_and_final_closures_outside": true,
+    "requires_known_inside_code_reachable_from_each_part_b_setup": true,
+    "requires_part_b_correction_count_and_cumulative_budget_cover_reachability": true,
+    "does_not_require_per_direction_slope_significance": true,
+    "does_not_require_unmixed_transition_guards": true,
+    "does_not_require_transition_width_to_be_minimized": true
+  },
+  "part_b_envelope": {
+    "known_inside_reference_code": 43056,
+    "lower_setup_code": 43008,
+    "upper_setup_code": 43152,
+    "maximum_step_codes": 21,
+    "maximum_corrections_per_leg": 9,
+    "maximum_cumulative_movement_codes_per_leg": 189,
+    "minimum_applied_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "phase_or_hybrid_actionable": false
+  },
+  "outcomes": {
+    "ready": "sealed_part_a_map_supports_new_mapping_informed_frequency_only_part_b_proposal",
+    "not_ready": "preserve_successful_part_a_map_but_do_not_create_part_b_proposal",
+    "physical_authority": "never_granted_by_this_offline_record"
+  }
+}

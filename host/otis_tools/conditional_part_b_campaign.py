@@ -1,4 +1,4 @@
-"""Execute all three promoted CX319 Part B legs with sealed handoffs."""
+"""Execute three mapping-informed CX319 Part B legs with sealed handoffs."""
 
 from __future__ import annotations
 
@@ -49,9 +49,7 @@ def _write_state(path: Path, value: dict[str, Any]) -> None:
 
 def run_campaign(
     *,
-    part_a_promotion_path: Path,
-    part_a_bundle_path: Path,
-    part_a_run_dir: Path,
+    part_a_readiness_path: Path,
     lower_build_manifest_path: Path,
     lower_uf2_path: Path,
     upper_build_manifest_path: Path,
@@ -72,7 +70,7 @@ def run_campaign(
         "status": "active",
         "started_utc": _utc_now(),
         "updated_utc": _utc_now(),
-        "part_a_promotion": str(part_a_promotion_path.resolve()),
+        "part_a_readiness": str(part_a_readiness_path.resolve()),
         "current_sequence_index": None,
         "completed_legs": [],
         "terminal": None,
@@ -102,9 +100,7 @@ def run_campaign(
             _write_state(state_path, state)
             proposal = create_proposal(
                 sequence_index=index,
-                part_a_promotion_path=part_a_promotion_path,
-                part_a_bundle_path=part_a_bundle_path,
-                part_a_run_dir=part_a_run_dir,
+                part_a_readiness_path=part_a_readiness_path,
                 predecessor_seal_path=predecessor_seal,
                 build_manifest_path=build_manifest,
                 uf2_path=uf2,
@@ -193,9 +189,7 @@ def run_campaign(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--part-a-promotion", type=Path, required=True)
-    parser.add_argument("--part-a-bundle", type=Path, required=True)
-    parser.add_argument("--part-a-run-dir", type=Path, required=True)
+    parser.add_argument("--part-a-readiness", type=Path, required=True)
     parser.add_argument("--lower-build-manifest", type=Path, required=True)
     parser.add_argument("--lower-uf2", type=Path, required=True)
     parser.add_argument("--upper-build-manifest", type=Path, required=True)
@@ -206,9 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--arduino-cli", default="arduino-cli")
     args = parser.parse_args(argv)
     result = run_campaign(
-        part_a_promotion_path=args.part_a_promotion,
-        part_a_bundle_path=args.part_a_bundle,
-        part_a_run_dir=args.part_a_run_dir,
+        part_a_readiness_path=args.part_a_readiness,
         lower_build_manifest_path=args.lower_build_manifest,
         lower_uf2_path=args.lower_uf2,
         upper_build_manifest_path=args.upper_build_manifest,

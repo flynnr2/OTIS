@@ -12,20 +12,19 @@ from tools.firmware_matrix import configuration_hash, load_matrix, source_input_
 
 from .bounded_tight_deadband_bundle import _atomic_new, _binding, _load_policy
 from .bounded_tight_deadband_leg import RANGE_LOWER, RANGE_UPPER, BoundedTightDeadbandLeg
-from .conditional_range_campaign import DEFAULT_PROFILE, load_campaign
-from .conditional_part_a_bundle import (
-    BUNDLE_TYPE as PART_A_BUNDLE_TYPE,
-    validate_bundle,
-)
-from .conditional_part_a_promotion import PROMOTION_TYPE
+from .conditional_part_a_mapping_readiness import validate_readiness_record
 from .no_write_qualification_bundle import MATRIX_PATH, POLICY_PATH, _git_identity
 from .range_spanning_bundle import canonical_sha256, sha256_file
 
 
 SCHEMA_VERSION = 1
 TOOL_ID = "cx319_conditional_part_b_proposal_v1"
-PROGRAMME_ID = "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3"
+PROGRAMME_ID = "CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4"
 EXPECTED_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
+PROGRAMME_PROFILE = (
+    Path(__file__).resolve().parents[2]
+    / "profiles/qualification/cx319_mapping_informed_frequency_traversal_v4.json"
+)
 PART_B_HYBRID_PREVIEW = (
     Path(__file__).resolve().parents[2]
     / "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json"
@@ -91,6 +90,56 @@ def _selected(sequence_index: int) -> BoundedTightDeadbandLeg:
         raise ValueError("conditional Part B sequence index must be 1, 2, or 3") from exc
 
 
+def _validated_programme() -> dict[str, Any]:
+    programme = _read(PROGRAMME_PROFILE, "mapping-informed Part B programme")
+    if (
+        programme.get("schema_version") != 1
+        or programme.get("programme_id") != PROGRAMME_ID
+        or programme.get("status")
+        != "offline_preparation_authorized_physical_entry_not_authorized"
+        or programme.get("effective_physical_authority") is not False
+    ):
+        raise ValueError("mapping-informed Part B programme identity differs")
+    bindings = programme.get("source_bindings", {})
+    for label, binding in bindings.items():
+        source = Path(__file__).resolve().parents[2] / str(binding.get("path", ""))
+        if not source.is_file() or binding.get("sha256") != sha256_file(source):
+            raise ValueError(f"mapping-informed Part B source differs: {label}")
+    readiness_binding = bindings.get("mapping_readiness_record", {})
+    readiness = validate_readiness_record(
+        Path(__file__).resolve().parents[2] / readiness_binding["path"]
+    )
+    if readiness_binding.get("readiness_sha256") != readiness["readiness_sha256"]:
+        raise ValueError("mapping-informed Part B readiness semantic identity differs")
+    part_b = programme.get("part_b", {})
+    expected_legs = [
+        ("lower_acquisition", "cx319_range_part_b_lower", 0xA800, "positive"),
+        ("upper_acquisition", "cx319_range_part_b_upper", 0xA890, "negative"),
+        ("lower_reacquisition", "cx319_range_part_b_lower", 0xA800, "positive"),
+    ]
+    observed_legs = [
+        (
+            item.get("leg_id"),
+            item.get("profile_id"),
+            item.get("setup_code"),
+            item.get("required_direction"),
+        )
+        for item in part_b.get("legs", [])
+    ]
+    if (
+        observed_legs != expected_legs
+        or part_b.get("maximum_step_codes") != 21
+        or part_b.get("maximum_corrections_per_leg") != 9
+        or part_b.get("maximum_cumulative_movement_codes_per_leg") != 189
+        or part_b.get("minimum_applied_cadence_s") != 1800
+        or part_b.get("phase_hybrid_authority") is not False
+        or part_b.get("automatic_retry") is not False
+        or part_b.get("automatic_restore") is not False
+    ):
+        raise ValueError("mapping-informed Part B sequence or envelope differs")
+    return programme
+
+
 def _validated_hybrid_binding() -> dict[str, Any]:
     profile = _read(PART_B_HYBRID_PREVIEW, "Part B observational hybrid profile")
     inherited = profile.get("inherits", {})
@@ -125,55 +174,30 @@ def _validated_hybrid_binding() -> dict[str, Any]:
     return _binding(PART_B_HYBRID_PREVIEW)
 
 
-def _validate_part_a_promotion(
-    promotion_path: Path, *, bundle_path: Path, run_dir: Path
-) -> dict[str, Any]:
-    promotion_path = promotion_path.resolve()
-    bundle_path = bundle_path.resolve()
-    run_dir = run_dir.resolve()
-    promotion = _read(promotion_path, "Part A promotion")
-    unsigned = {
-        key: value for key, value in promotion.items() if key != "promotion_sha256"
-    }
-    bundle = validate_bundle(bundle_path)
-    if bundle.get("bundle_type") != PART_A_BUNDLE_TYPE:
-        raise ValueError("Part B requires the focused conditional Part A bundle")
-    if (
-        promotion.get("schema_version") != 3
-        or promotion.get("promotion_type") != PROMOTION_TYPE
-        or promotion.get("status") != "promoted"
-        or promotion.get("part_b_frequency_only_authorized") is not True
-        or promotion.get("phase_or_hybrid_actuation_authorized") is not False
-        or promotion.get("promotion_sha256") != canonical_sha256(unsigned)
-        or promotion.get("bundle_sha256") != bundle["bundle_sha256"]
-        or promotion.get("bundle_file_sha256") != sha256_file(bundle_path)
-        or promotion.get("run_id") != run_dir.name
-        or promotion.get("failures") != []
-    ):
-        raise ValueError("Part A promotion identity, authority, or digest differs")
-    source_paths = {
-        "analysis_file_sha256": run_dir / "reports/range_spanning_analysis_v1.json",
-        "seal_file_sha256": run_dir / "reports/range_spanning_seal_v1.json",
-        "state_file_sha256": run_dir / "reports/range_spanning_supervisor_state.json",
-        "complete_file_sha256": run_dir / "COMPLETE",
-    }
-    if any(
-        not path.is_file()
-        or promotion["source_artifacts"].get(key) != sha256_file(path)
-        for key, path in source_paths.items()
-    ):
-        raise ValueError("Part A promotion source-artifact binding differs")
+def _validate_part_a_readiness(readiness_path: Path) -> dict[str, Any]:
+    readiness_path = readiness_path.resolve()
+    readiness = validate_readiness_record(readiness_path)
+    mapping = readiness["mapping_evaluation"]
     return {
-        "path": str(promotion_path),
-        "file_sha256": sha256_file(promotion_path),
-        "promotion_sha256": promotion["promotion_sha256"],
-        "bundle": _binding(bundle_path),
-        "bundle_sha256": bundle["bundle_sha256"],
-        "run_dir": str(run_dir),
-        "run_id": run_dir.name,
-        "source_artifacts": promotion["source_artifacts"],
-        "transitions": promotion["transitions"],
-        "part_b_budget_checks": promotion["part_b_budget_checks"],
+        "path": str(readiness_path),
+        "file_sha256": sha256_file(readiness_path),
+        "readiness_sha256": readiness["readiness_sha256"],
+        "status": readiness["status"],
+        "part_a_scientific_result": readiness["part_a_scientific_result"],
+        "historical_v3_promotion_status": readiness[
+            "historical_v3_promotion_status"
+        ],
+        "physical_authority_granted": readiness["physical_authority_granted"],
+        "contract": readiness["contract"],
+        "part_a_bundle": readiness["part_a_bundle"],
+        "part_a_run": readiness["part_a_run"],
+        "source_semantic_identities": readiness["source_semantic_identities"],
+        "transitions": mapping["transitions"],
+        "directional_displacement": mapping["directional_displacement"],
+        "shared_within_direction_slope_counts_per_code": mapping[
+            "shared_within_direction_slope_counts_per_code"
+        ],
+        "part_b_reachability": mapping["part_b_reachability"],
     }
 
 
@@ -270,9 +294,7 @@ def _validate_firmware(
 def create_proposal(
     *,
     sequence_index: int,
-    part_a_promotion_path: Path,
-    part_a_bundle_path: Path,
-    part_a_run_dir: Path,
+    part_a_readiness_path: Path,
     build_manifest_path: Path,
     uf2_path: Path,
     output_path: Path,
@@ -282,10 +304,8 @@ def create_proposal(
     commit, state = _git_identity()
     if state != "clean":
         raise ValueError("conditional Part B proposal requires a clean repository")
-    campaign = load_campaign()
-    part_a = _validate_part_a_promotion(
-        part_a_promotion_path, bundle_path=part_a_bundle_path, run_dir=part_a_run_dir
-    )
+    campaign = _validated_programme()
+    part_a = _validate_part_a_readiness(part_a_readiness_path)
     predecessor = None
     if sequence_index == 1:
         if predecessor_seal_path is not None:
@@ -311,7 +331,7 @@ def create_proposal(
         "source_revision": commit,
         "source_state": state,
         "programme_id": PROGRAMME_ID,
-        "programme": _binding(DEFAULT_PROFILE),
+        "programme": _binding(PROGRAMME_PROFILE),
         "gate": selected.gate,
         "leg": selected.leg,
         "sequence_index": sequence_index,
@@ -325,7 +345,7 @@ def create_proposal(
             "automatic_retry": False,
             "automatic_restore": False,
         },
-        "part_a_promotion": part_a,
+        "part_a_readiness": part_a,
         "predecessor_leg": predecessor,
         "firmware": firmware,
         "policy": policy_binding,
@@ -396,19 +416,16 @@ def validate_proposal(path: Path) -> dict[str, Any]:
     _, state = _git_identity()
     if state != "clean":
         raise ValueError("conditional Part B proposal validation requires clean source")
-    if value.get("programme") != _binding(DEFAULT_PROFILE):
+    _validated_programme()
+    if value.get("programme") != _binding(PROGRAMME_PROFILE):
         raise ValueError("conditional Part B programme binding is stale")
     if value.get("host_tools") != {
         name: _binding(tool_path) for name, tool_path in sorted(HOST_TOOL_PATHS.items())
     }:
         raise ValueError("conditional Part B host-tool binding is stale")
-    part_a = value["part_a_promotion"]
-    if part_a != _validate_part_a_promotion(
-        Path(part_a["path"]),
-        bundle_path=Path(part_a["bundle"]["path"]),
-        run_dir=Path(part_a["run_dir"]),
-    ):
-        raise ValueError("conditional Part B Part A promotion binding is stale")
+    part_a = value["part_a_readiness"]
+    if part_a != _validate_part_a_readiness(Path(part_a["path"])):
+        raise ValueError("conditional Part B Part A readiness binding is stale")
     predecessor = value.get("predecessor_leg")
     if value["sequence_index"] == 1:
         if predecessor is not None:
@@ -436,9 +453,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create")
     create.add_argument("--sequence-index", type=int, choices=(1, 2, 3), required=True)
-    create.add_argument("--part-a-promotion", type=Path, required=True)
-    create.add_argument("--part-a-bundle", type=Path, required=True)
-    create.add_argument("--part-a-run-dir", type=Path, required=True)
+    create.add_argument("--part-a-readiness", type=Path, required=True)
     create.add_argument("--predecessor-seal", type=Path)
     create.add_argument("--build-manifest", type=Path, required=True)
     create.add_argument("--uf2", type=Path, required=True)
@@ -449,9 +464,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "create":
         result = create_proposal(
             sequence_index=args.sequence_index,
-            part_a_promotion_path=args.part_a_promotion,
-            part_a_bundle_path=args.part_a_bundle,
-            part_a_run_dir=args.part_a_run_dir,
+            part_a_readiness_path=args.part_a_readiness,
             predecessor_seal_path=args.predecessor_seal,
             build_manifest_path=args.build_manifest,
             uf2_path=args.uf2,

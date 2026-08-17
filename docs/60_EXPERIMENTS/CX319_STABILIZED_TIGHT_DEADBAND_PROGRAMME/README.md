@@ -6,7 +6,7 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-15: the adversarial-review Q1--Q3 sequence and the
+Current status as of 2026-08-17: the adversarial-review Q1--Q3 sequence and the
 Q4/G2 lower-side physical qualification passed. The Q4/G3 upper run was a
 non-actionable stable tight hold, not a G3 pass. The operator then authorized
 the separately identified range-spanning programme. Its complete 30-point
@@ -16,9 +16,18 @@ offline reanalysis are sealed and registered. The first focused V2 Part A run
 then stopped fail-closed on a D14 electrical edge anomaly after producing a
 decision-bearing mixed result at `0xA819`; it did not promote and no Part B
 image was flashed. The D14 signal and ground were reseated and passed a
-180-second no-write interval check. Part A remains open under the revised V3
-fine map. Part B remains gated on its content-addressed result. G4 and
-phase/hybrid actuation remain unauthorized.
+180-second no-write interval check. The revised V3 fine map then completed all
+27 points healthy and returned to `0xA800`. It is a successful map of broad,
+direction-dependent, quantized transition regions. It did not satisfy the
+frozen two-code Part B promotion premise, so Part B was not executed. Offline
+replay rejects early settling or estimator segmentation as the cause and shows
+that the observed four-to-eight-code mixed regions align with CX317 datasheet,
+direct OTIS gain and 600-second integer-count resolution. The historical V3
+non-promotion remains unchanged. A prospectively frozen, mapping-informed
+readiness replay passes and establishes eligibility to build and rehearse the
+same bounded three-leg frequency-only Part B sequence under the new V4
+programme without repeating Part A. Physical V4 entry, G4 and phase/hybrid
+actuation remain unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -243,3 +252,6 @@ recorded in
 The V2 physical stop, D14 diagnosis, no-write reseat check and evidence-led V3
 focusing decision are recorded in
 [`41_CONDITIONAL_PART_A_V2_ABORT_AND_RECOVERY_BASIS.md`](41_CONDITIONAL_PART_A_V2_ABORT_AND_RECOVERY_BASIS.md).
+The completed V3 transition map, discriminating replay, CX317 expectation
+audit and non-effective mapping-informed Part B rebinding basis are recorded in
+[`42_CONDITIONAL_PART_A_V3_MAPPING_RESULT_AND_CONFIRMATION_BASIS.md`](42_CONDITIONAL_PART_A_V3_MAPPING_RESULT_AND_CONFIRMATION_BASIS.md).

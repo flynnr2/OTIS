@@ -8,6 +8,10 @@ import pytest
 
 from host.otis_tools.conditional_part_a_bundle import create_bundle, validate_bundle
 from host.otis_tools.conditional_part_a_promotion import _transition
+from host.otis_tools.conditional_part_b_bundle import (
+    _validate_part_a_readiness,
+    _validated_programme,
+)
 from host.otis_tools.conditional_range_campaign import campaign_summary, load_campaign
 from host.otis_tools.range_spanning_run import _adaptive_point_rows
 from host.otis_tools.range_spanning_rehearsal import run as run_rehearsal
@@ -105,6 +109,23 @@ def test_campaign_is_a_focused_zero_authority_conditional_sequence() -> None:
         0xA830,
         0xA800,
     ]
+
+
+def test_mapping_informed_part_b_rebinds_without_rewriting_v3_promotion() -> None:
+    programme = _validated_programme()
+    readiness_path = Path(
+        programme["source_bindings"]["mapping_readiness_record"]["path"]
+    )
+    readiness = _validate_part_a_readiness(readiness_path)
+
+    assert programme["programme_id"] == "CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4"
+    assert programme["effective_physical_authority"] is False
+    assert readiness["status"] == "ready"
+    assert readiness["part_a_scientific_result"] == "successful_transition_map"
+    assert readiness["historical_v3_promotion_status"] == "not_promoted"
+    assert readiness["physical_authority_granted"] is False
+    assert RANGE_LOWER.prerequisite_key == "part_a_readiness"
+    assert RANGE_UPPER.prerequisite_key == "part_a_readiness"
 
 
 def test_part_b_observational_hybrid_profile_resets_each_external_dac_epoch() -> None:

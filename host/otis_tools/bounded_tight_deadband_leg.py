@@ -133,12 +133,12 @@ RANGE_LOWER = BoundedTightDeadbandLeg(
     rehearsal_tool="cx319_conditional_part_b_operational_rehearsal_v1",
     rehearsal_analyzer_tool="cx319_conditional_part_b_rehearsal_analyzer_v1",
     rehearsal_seal_type="cx319_conditional_part_b_rehearsal_seal_v1",
-    prerequisite_key="part_a_promotion",
+    prerequisite_key="part_a_readiness",
     firmware_flash=True,
     flash_record_filename=Path("reports/cx319_pbl_flash_record_v1.json"),
     correction_limit=9,
     cumulative_limit_codes=189,
-    programme_id="CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3",
+    programme_id="CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4",
 )
 
 RANGE_UPPER = BoundedTightDeadbandLeg(
@@ -163,12 +163,12 @@ RANGE_UPPER = BoundedTightDeadbandLeg(
     rehearsal_tool="cx319_conditional_part_b_operational_rehearsal_v1",
     rehearsal_analyzer_tool="cx319_conditional_part_b_rehearsal_analyzer_v1",
     rehearsal_seal_type="cx319_conditional_part_b_rehearsal_seal_v1",
-    prerequisite_key="part_a_promotion",
+    prerequisite_key="part_a_readiness",
     firmware_flash=True,
     flash_record_filename=Path("reports/cx319_pbu_flash_record_v1.json"),
     correction_limit=9,
     cumulative_limit_codes=189,
-    programme_id="CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3",
+    programme_id="CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4",
 )
 
 
