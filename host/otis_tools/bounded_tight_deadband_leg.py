@@ -198,7 +198,7 @@ RANGE_UPPER_COMPLETION = BoundedTightDeadbandLeg(
     flash_record_filename=Path("reports/cx319_pbuc_flash_record_v1.json"),
     correction_limit=2,
     cumulative_limit_codes=42,
-    maximum_qualified_duration_s=7200,
+    maximum_qualified_duration_s=9000,
     programme_id="CX319_MAPPING_INFORMED_UPPER_COMPLETION_V1",
 )
 

@@ -64,6 +64,7 @@ TDB_CSV = Path("csv") / TIGHT_DEADBAND_DECISIONS_CSV
 REHEARSAL_DURATION_S = 2700
 QUALIFICATION_DEADLINE_S = 5400
 MAXIMUM_QUALIFIED_DURATION_S = 14400
+CORRECTION_RESPONSE_RESERVE_S = 1800
 SELECTED_INTERVAL_S = 600
 DECISION_CADENCE_S = 1800
 ARM_PROGRESS_THRESHOLD = 520
@@ -157,6 +158,13 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
         )
         if prewrite_contract_startup_grace_s <= 0:
             raise ValueError("pre-write startup grace must be positive")
+        qualified_timeout_s = int(
+            kwargs.pop("qualified_timeout_s", MAXIMUM_QUALIFIED_DURATION_S)
+        )
+        if qualified_timeout_s <= CORRECTION_RESPONSE_RESERVE_S:
+            raise ValueError(
+                "qualified duration must exceed the correction-response reserve"
+            )
         super().__init__(**kwargs)
         self.mode = mode
         self.leg = leg
@@ -170,7 +178,7 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
             decision_cadence_s=DECISION_CADENCE_S,
             arm_progress_threshold=ARM_PROGRESS_THRESHOLD,
             qualification_timeout_s=QUALIFICATION_DEADLINE_S,
-            qualified_timeout_s=MAXIMUM_QUALIFIED_DURATION_S,
+            qualified_timeout_s=qualified_timeout_s,
             service_load_queries=0,
             service_query_period_s=1.0,
         )
@@ -188,6 +196,7 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
         self.state.setdefault("setup_authorization_sequence", 0)
         self.state.setdefault("setup_authority_path", None)
         self.state.setdefault("setup_requested_utc", None)
+        self.state.setdefault("response_horizon_closed_utc", None)
         self._save()
 
     def _prewrite_readiness(
@@ -544,6 +553,26 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
                 self._event("stage5_unused_zero_delta_arm_consumed_without_write")
         if not manual_confirmed or self.state["arm_pending"]:
             return
+        qualified = self.state.get("qualification_started_utc")
+        if isinstance(qualified, str) and qualified:
+            elapsed_qualified_s = time.time() - _parse_utc_epoch(qualified)
+            if (
+                elapsed_qualified_s
+                >= self.timing.qualified_timeout_s
+                - CORRECTION_RESPONSE_RESERVE_S
+            ):
+                if self.state["response_horizon_closed_utc"] is None:
+                    self.state["response_horizon_closed_utc"] = _utc_now()
+                    self._save()
+                    self._event(
+                        "stage5_correction_admission_closed_for_response_horizon",
+                        remaining_qualified_s=max(
+                            0,
+                            int(self.timing.qualified_timeout_s - elapsed_qualified_s),
+                        ),
+                        required_response_reserve_s=CORRECTION_RESPONSE_RESERVE_S,
+                    )
+                return
         tdb = self._latest_tdb()
         if tdb is not None and tdb.get("state_after") == "TIGHT_INSIDE":
             return
@@ -710,7 +739,10 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
             }
             self._save()
             return
-        if now_epoch - _parse_utc_epoch(qualified) >= MAXIMUM_QUALIFIED_DURATION_S:
+        if (
+            now_epoch - _parse_utc_epoch(qualified)
+            >= self.timing.qualified_timeout_s
+        ):
             self._abort("stage5_finite_qualified_endpoint_nonpass")
 
     def run(self) -> int:

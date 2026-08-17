@@ -77,6 +77,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
             tight_deadband_policy_sha256=_sha256(POLICY_PATH),
+            qualified_timeout_s=selected.maximum_qualified_duration_s,
             **kwargs,
         )
         self.state["programme_id"] = selected.programme_id

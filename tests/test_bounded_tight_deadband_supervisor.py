@@ -169,6 +169,7 @@ def test_upper_completion_supervisor_loads_exact_bounded_continuation(
     assert supervisor.spec.cumulative_limit == 42
     assert supervisor.leg.required_direction == -1
     assert supervisor.state["cx319_gate"] == "PBUC"
+    assert supervisor.timing.qualified_timeout_s == 9000
 
 
 def test_g2_prewrite_contract_has_live_leg_identity(tmp_path: Path) -> None:

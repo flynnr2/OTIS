@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from host.otis_tools import frequency_control_supervisor
 from host.otis_tools.contracts import (
     CONTRACT_FIELDS,
     TIGHT_DEADBAND_POLICY_SHA256,
@@ -566,6 +567,40 @@ def test_live_arms_before_next_cadence_after_two_hold_rows(
     assert len(commands) == 1
     assert commands[0].startswith("ACTIVE ARM 1 ")
     assert supervisor.state["arm_pending"] is True
+
+
+def test_live_does_not_arm_inside_the_reserved_response_horizon(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    _write_outside_cadence_hold(supervisor)
+    now = 1_800_000_000.0
+    supervisor.state.update(
+        manual_start_sent=True,
+        setup_confirmed_utc=_utc(now - 5000),
+        qualification_started_utc=_utc(
+            now
+            - supervisor.timing.qualified_timeout_s
+            + frequency_control_supervisor.CORRECTION_RESPONSE_RESERVE_S
+        ),
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(frequency_control_supervisor.time, "time", lambda: now)
+    monkeypatch.setattr(supervisor, "_identity_ready", lambda health: True)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = _health(
+        supervisor,
+        manual_start_confirmed="true",
+        arm_eligible="true",
+        selected_interval_count="520",
+        uptime_s="4120",
+    )
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["response_horizon_closed_utc"] is not None
 
 
 def test_opposite_only_leg_stops_nonpass_at_frozen_endpoint(tmp_path: Path) -> None:

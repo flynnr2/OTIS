@@ -296,7 +296,7 @@ def test_upper_completion_outcome_uses_two_correction_envelope() -> None:
     transcript["limits"].update(  # type: ignore[union-attr]
         maximum_automatic_corrections=2,
         maximum_cumulative_codes=42,
-        maximum_qualified_duration_s=7200,
+        maximum_qualified_duration_s=9000,
     )
 
     result = evaluate(transcript)
