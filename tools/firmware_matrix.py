@@ -327,6 +327,7 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx319_tight_upper",
                 "cx319_range_part_b_lower",
                 "cx319_range_part_b_upper",
+                "cx319_range_part_b_upper_completion",
             }
         ):
             raise MatrixError(

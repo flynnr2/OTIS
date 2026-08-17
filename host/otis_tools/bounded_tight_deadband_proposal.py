@@ -16,7 +16,7 @@ def _identity(path: Path) -> tuple[object, object]:
 
 def validate_frozen_proposal(path: Path) -> dict[str, Any]:
     identity = _identity(path)
-    if identity in {("PBL", "L"), ("PBU", "U")}:
+    if identity in {("PBL", "L"), ("PBU", "U"), ("PBUC", "C")}:
         from .conditional_part_b_bundle import validate_frozen_proposal as validate
     elif identity == ("G3", "B"):
         from .bounded_tight_deadband_upper_bundle import validate_frozen_proposal as validate
@@ -27,7 +27,7 @@ def validate_frozen_proposal(path: Path) -> dict[str, Any]:
 
 def validate_proposal(path: Path) -> dict[str, Any]:
     identity = _identity(path)
-    if identity in {("PBL", "L"), ("PBU", "U")}:
+    if identity in {("PBL", "L"), ("PBU", "U"), ("PBUC", "C")}:
         from .conditional_part_b_bundle import validate_proposal as validate
     elif identity == ("G3", "B"):
         from .bounded_tight_deadband_upper_bundle import validate_proposal as validate

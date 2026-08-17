@@ -67,7 +67,17 @@ def load_no_write_qualification_spec(
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     if policy.get("policy_id") != "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1":
         raise ValueError("unexpected CX319 policy or leg identity")
-    if leg in {"L", "U"}:
+    if leg == "C":
+        expected = (
+            "cx319_range_part_b_upper_completion",
+            3196003,
+            0xA83C,
+            "negative",
+            -1,
+        )
+        correction_limit = 2
+        cumulative_limit = 42
+    elif leg in {"L", "U"}:
         campaign_path = (
             Path(__file__).resolve().parents[2]
             / "profiles/qualification/cx319_conditional_range_campaign_v3.json"

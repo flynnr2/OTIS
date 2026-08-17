@@ -62,7 +62,7 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
         leg = kwargs.get("leg")
         if not isinstance(spec, CampaignSpec) or not isinstance(leg, TightDeadbandLeg):
             raise TypeError("CX319 requires explicit current spec and leg")
-        gate = {"A": "G2", "B": "G3", "L": "PBL", "U": "PBU"}.get(leg.leg)
+        gate = {"A": "G2", "B": "G3", "L": "PBL", "U": "PBU", "C": "PBUC"}.get(leg.leg)
         if gate is None:
             raise ValueError(f"unsupported CX319 live leg {leg.leg!r}")
         selected = leg_for(gate, leg.leg)

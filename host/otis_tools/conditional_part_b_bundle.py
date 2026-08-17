@@ -11,7 +11,12 @@ from typing import Any
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
 from .bounded_tight_deadband_bundle import _atomic_new, _binding, _load_policy
-from .bounded_tight_deadband_leg import RANGE_LOWER, RANGE_UPPER, BoundedTightDeadbandLeg
+from .bounded_tight_deadband_leg import (
+    RANGE_LOWER,
+    RANGE_UPPER,
+    RANGE_UPPER_COMPLETION,
+    BoundedTightDeadbandLeg,
+)
 from .conditional_part_a_mapping_readiness import validate_readiness_record
 from .no_write_qualification_bundle import MATRIX_PATH, POLICY_PATH, _git_identity
 from .range_spanning_bundle import canonical_sha256, sha256_file
@@ -85,9 +90,14 @@ def _read(path: Path, label: str) -> dict[str, Any]:
 
 def _selected(sequence_index: int) -> BoundedTightDeadbandLeg:
     try:
-        return {1: RANGE_LOWER, 2: RANGE_UPPER, 3: RANGE_LOWER}[sequence_index]
+        return {
+            1: RANGE_LOWER,
+            2: RANGE_UPPER,
+            3: RANGE_LOWER,
+            4: RANGE_UPPER_COMPLETION,
+        }[sequence_index]
     except KeyError as exc:
-        raise ValueError("conditional Part B sequence index must be 1, 2, or 3") from exc
+        raise ValueError("conditional Part B sequence index must be 1, 2, 3, or 4") from exc
 
 
 def _validated_programme() -> dict[str, Any]:
@@ -232,6 +242,90 @@ def _validate_predecessor(path: Path, *, sequence_index: int) -> dict[str, Any]:
     }
 
 
+def _validate_upper_completion_predecessor(path: Path) -> dict[str, Any]:
+    """Bind the clean, right-censored V4 upper result and its passed lower leg."""
+
+    path = path.resolve()
+    seal = _read(path, "V4 upper predecessor seal")
+    unsigned = {key: value for key, value in seal.items() if key != "seal_sha256"}
+    transactions = seal.get("transactions", {})
+    epoch_contract = seal.get("part_b_hybrid_epoch_contract", {})
+    epoch_checks = epoch_contract.get("epoch_checks", [])
+    checks = seal.get("checks", {})
+    evidence = seal.get("evidence_snapshot", {})
+    evidence_path = Path(str(evidence.get("path", ""))).resolve()
+    if (
+        seal.get("status") != "failed"
+        or seal.get("programme_id") != PROGRAMME_ID
+        or (seal.get("gate"), seal.get("leg"), seal.get("sequence_index"))
+        != ("PBU", "U", 2)
+        or seal.get("terminal", {}).get("result") != "aborted"
+        or seal.get("terminal", {}).get("reason")
+        != "stage5_finite_qualified_endpoint_nonpass"
+        or seal.get("scientific_outcome") != "not_established"
+        or seal.get("seal_sha256") != canonical_sha256(unsigned)
+        or transactions.get("application_count") != 4
+        or transactions.get("response_count") != 3
+        or transactions.get("healthy_required_direction_count") != 3
+        or transactions.get("path_codes") != 84
+        or epoch_contract.get("exact") is not True
+        or len(epoch_checks) != 5
+        or any(item.get("exact") is not True for item in epoch_checks)
+        or epoch_checks[-1].get("applied_code") != 0xA83C
+        or epoch_checks[-1].get("dac_epoch") != 5
+        or checks.get("all_declared_contracts_validate") is not True
+        or checks.get("capture_closed_cleanly_with_one_owner") is not True
+        or checks.get("frequency_controller_replay_and_application_binding_exact")
+        is not True
+        or checks.get("live_health_has_no_post_attach_telemetry_increment_or_fault")
+        is not True
+        or checks.get("two_estimate_tight_entry_transition_demonstrated")
+        is not False
+        or not evidence_path.is_file()
+        or evidence.get("sha256") != sha256_file(evidence_path)
+    ):
+        raise ValueError("upper-completion predecessor is not the exact clean right-censored V4 result")
+
+    campaign_root = path.parents[3]
+    lower_path = (
+        campaign_root
+        / "leg_1_lower_acquisition/live_lower_acquisition/reports/"
+        "cx319_conditional_part_b_lower_seal_v1.json"
+    )
+    lower = _read(lower_path, "V4 passed lower predecessor seal")
+    lower_unsigned = {key: value for key, value in lower.items() if key != "seal_sha256"}
+    if (
+        lower.get("status") != "passed"
+        or (lower.get("gate"), lower.get("leg"), lower.get("sequence_index"))
+        != ("PBL", "L", 1)
+        or lower.get("programme_id") != PROGRAMME_ID
+        or lower.get("seal_sha256") != canonical_sha256(lower_unsigned)
+        or lower.get("seal_sha256") != seal.get("predecessor_leg_seal_sha256")
+    ):
+        raise ValueError("upper-completion predecessor does not bind the exact passed V4 lower leg")
+    return {
+        "path": str(path),
+        "file_sha256": sha256_file(path),
+        "seal_sha256": seal["seal_sha256"],
+        "status": seal["status"],
+        "gate": seal["gate"],
+        "leg": seal["leg"],
+        "sequence_index": seal["sequence_index"],
+        "terminal": seal["terminal"],
+        "evidence_snapshot": evidence,
+        "last_confirmed_applied_code": 0xA83C,
+        "last_confirmed_dac_epoch": 5,
+        "completed_applications": 4,
+        "completed_healthy_responses": 3,
+        "lower_pass": {
+            "path": str(lower_path),
+            "file_sha256": sha256_file(lower_path),
+            "seal_sha256": lower["seal_sha256"],
+            "evidence_snapshot": lower["evidence_snapshot"],
+        },
+    }
+
+
 def _validate_firmware(
     selected: BoundedTightDeadbandLeg, build_manifest_path: Path, uf2_path: Path
 ) -> dict[str, Any]:
@@ -310,6 +404,10 @@ def create_proposal(
     if sequence_index == 1:
         if predecessor_seal_path is not None:
             raise ValueError("Part B leg 1 has no predecessor leg seal")
+    elif sequence_index == 4:
+        if predecessor_seal_path is None:
+            raise ValueError("upper completion requires the exact V4 upper predecessor seal")
+        predecessor = _validate_upper_completion_predecessor(predecessor_seal_path)
     else:
         if predecessor_seal_path is None:
             raise ValueError("Part B legs 2 and 3 require the exact predecessor seal")
@@ -330,12 +428,12 @@ def create_proposal(
         "created_utc": _utc_now(),
         "source_revision": commit,
         "source_state": state,
-        "programme_id": PROGRAMME_ID,
+        "programme_id": selected.programme_id,
         "programme": _binding(PROGRAMME_PROFILE),
         "gate": selected.gate,
         "leg": selected.leg,
         "sequence_index": sequence_index,
-        "sequence_count": 3,
+        "sequence_count": 4 if sequence_index == 4 else 3,
         "status": "proposed_not_authorized",
         "authority": {
             "effective": False,
@@ -397,10 +495,10 @@ def validate_frozen_proposal(path: Path) -> dict[str, Any]:
         value.get("schema_version") != SCHEMA_VERSION
         or value.get("tool") != TOOL_ID
         or value.get("bundle_id") != selected.proposal_bundle_id
-        or value.get("programme_id") != PROGRAMME_ID
+        or value.get("programme_id") != selected.programme_id
         or value.get("gate") != selected.gate
         or value.get("leg") != selected.leg
-        or value.get("sequence_count") != 3
+        or value.get("sequence_count") != (4 if selected.leg == "C" else 3)
         or value.get("status") != "proposed_not_authorized"
         or value.get("authority", {}).get("effective") is not False
         or value.get("authority", {}).get("phase_or_hybrid_actionable") is not False
@@ -430,6 +528,9 @@ def validate_proposal(path: Path) -> dict[str, Any]:
     if value["sequence_index"] == 1:
         if predecessor is not None:
             raise ValueError("conditional Part B leg 1 unexpectedly has a predecessor")
+    elif value["sequence_index"] == 4:
+        if predecessor != _validate_upper_completion_predecessor(Path(predecessor["path"])):
+            raise ValueError("upper-completion predecessor binding is stale")
     elif predecessor != _validate_predecessor(
         Path(predecessor["path"]), sequence_index=value["sequence_index"]
     ):
@@ -452,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create")
-    create.add_argument("--sequence-index", type=int, choices=(1, 2, 3), required=True)
+    create.add_argument("--sequence-index", type=int, choices=(1, 2, 3, 4), required=True)
     create.add_argument("--part-a-readiness", type=Path, required=True)
     create.add_argument("--predecessor-seal", type=Path)
     create.add_argument("--build-manifest", type=Path, required=True)

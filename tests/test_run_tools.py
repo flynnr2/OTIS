@@ -53,7 +53,11 @@ def test_current_canonical_manifest_loads_without_identity_translation(
 
 @pytest.mark.parametrize(
     "profile_id",
-    ("cx319_range_part_b_lower", "cx319_range_part_b_upper"),
+    (
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
+        "cx319_range_part_b_upper_completion",
+    ),
 )
 def test_mapping_informed_part_b_profiles_are_current_evidence_packages(
     tmp_path: Path, profile_id: str

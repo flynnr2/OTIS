@@ -149,6 +149,28 @@ def test_conditional_part_b_supervisor_loads_exact_nine_correction_leg(
     assert supervisor.state["cx319_gate"] == gate
 
 
+def test_upper_completion_supervisor_loads_exact_bounded_continuation(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "pbuc"
+    (run / "csv").mkdir(parents=True)
+    supervisor = create_supervisor(
+        run_dir=run,
+        command_fifo=tmp_path / "pbuc-normal.fifo",
+        emergency_command_fifo=tmp_path / "pbuc-emergency.fifo",
+        abort_fifo=tmp_path / "pbuc-abort.fifo",
+        expected_build_identity=BUILD_IDENTITY,
+        leg_name="C",
+    )
+
+    assert supervisor.spec.profile == "cx319_range_part_b_upper_completion"
+    assert supervisor.spec.start_code == 0xA83C
+    assert supervisor.spec.correction_limit == 2
+    assert supervisor.spec.cumulative_limit == 42
+    assert supervisor.leg.required_direction == -1
+    assert supervisor.state["cx319_gate"] == "PBUC"
+
+
 def test_g2_prewrite_contract_has_live_leg_identity(tmp_path: Path) -> None:
     supervisor = _supervisor(tmp_path)
     expected = {

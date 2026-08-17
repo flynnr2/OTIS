@@ -27,6 +27,7 @@ from .bounded_tight_deadband_leg import (
     LOWER,
     RANGE_LOWER,
     RANGE_UPPER,
+    RANGE_UPPER_COMPLETION,
     UPPER,
     leg_for,
     leg_for_manifest,
@@ -128,6 +129,8 @@ def _sequence_index_exact(value: dict[str, Any], selected) -> bool:  # type: ign
     sequence_index = value.get("sequence_index")
     if selected.programme_id == PROGRAMME_ID:
         return sequence_index is None
+    if selected.leg == "C":
+        return sequence_index == 4
     return sequence_index in ({1, 3} if selected.leg == "L" else {2})
 
 
@@ -206,6 +209,7 @@ def create_activation(
         "B": UPPER,
         "L": RANGE_LOWER,
         "U": RANGE_UPPER,
+        "C": RANGE_UPPER_COMPLETION,
     }.get(leg_name)
     if requested is None:
         raise ValueError(f"unsupported CX319 activation leg: {leg_name!r}")
@@ -673,7 +677,7 @@ def main(argv: list[str] | None = None) -> int:
     activate.add_argument("--operational-rehearsal", type=Path, required=True)
     activate.add_argument("--serial-device", required=True)
     activate.add_argument("--operator-instruction-ref", required=True)
-    activate.add_argument("--leg", choices=("A", "B", "L", "U"), default="A")
+    activate.add_argument("--leg", choices=("A", "B", "L", "U", "C"), default="A")
     activate.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("activation", type=Path)

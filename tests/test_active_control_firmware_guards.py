@@ -524,6 +524,7 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx319_tight_upper",
         "cx319_range_part_b_lower",
         "cx319_range_part_b_upper",
+        "cx319_range_part_b_upper_completion",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

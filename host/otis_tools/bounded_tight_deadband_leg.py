@@ -171,6 +171,37 @@ RANGE_UPPER = BoundedTightDeadbandLeg(
     programme_id="CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4",
 )
 
+RANGE_UPPER_COMPLETION = BoundedTightDeadbandLeg(
+    gate="PBUC",
+    leg="C",
+    profile_id="cx319_range_part_b_upper_completion",
+    run_binding_tag=3196003,
+    setup_code=0xA83C,
+    required_sign=-1,
+    required_direction="negative",
+    operation="conditional_part_b_upper_completion_frequency_only_leg",
+    outcome_contract_id="cx319_conditional_part_b_leg_outcome_v1",
+    stage="CX319_CONDITIONAL_PART_B_UPPER_COMPLETION_FREQUENCY_ONLY_LIVE",
+    control_mode="cx319_conditional_part_b_upper_completion_frequency_only_live",
+    proposal_tool="cx319_conditional_part_b_proposal_v1",
+    proposal_bundle_id="cx319_conditional_part_b_upper_completion_proposal_v1",
+    proposal_filename=Path("cx319_conditional_part_b_upper_completion_proposal_v1.json"),
+    activation_tool="cx319_conditional_part_b_activation_v1",
+    activation_id="cx319_conditional_part_b_upper_completion_activation_v1",
+    activation_filename=Path("cx319_conditional_part_b_upper_completion_activation_v1.json"),
+    live_seal_filename=Path("reports/cx319_conditional_part_b_upper_completion_seal_v1.json"),
+    rehearsal_tool="cx319_conditional_part_b_operational_rehearsal_v1",
+    rehearsal_analyzer_tool="cx319_conditional_part_b_rehearsal_analyzer_v1",
+    rehearsal_seal_type="cx319_conditional_part_b_rehearsal_seal_v1",
+    prerequisite_key="part_a_readiness",
+    firmware_flash=True,
+    flash_record_filename=Path("reports/cx319_pbuc_flash_record_v1.json"),
+    correction_limit=2,
+    cumulative_limit_codes=42,
+    maximum_qualified_duration_s=7200,
+    programme_id="CX319_MAPPING_INFORMED_UPPER_COMPLETION_V1",
+)
+
 
 def leg_for(gate: object, leg: object) -> BoundedTightDeadbandLeg:
     try:
@@ -179,6 +210,7 @@ def leg_for(gate: object, leg: object) -> BoundedTightDeadbandLeg:
             (UPPER.gate, UPPER.leg): UPPER,
             (RANGE_LOWER.gate, RANGE_LOWER.leg): RANGE_LOWER,
             (RANGE_UPPER.gate, RANGE_UPPER.leg): RANGE_UPPER,
+            (RANGE_UPPER_COMPLETION.gate, RANGE_UPPER_COMPLETION.leg): RANGE_UPPER_COMPLETION,
         }[(gate, leg)]
     except KeyError as exc:
         raise ValueError(f"unsupported CX319 bounded live leg: gate={gate!r}, leg={leg!r}") from exc

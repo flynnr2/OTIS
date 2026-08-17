@@ -30,7 +30,7 @@ _EVIDENCE = re.compile(r"ACTIVE EVIDENCE ([1-9][0-9]*) ([1-4])\Z")
 _SNAPSHOT = re.compile(r"ACTIVE SNAPSHOT ([1-9][0-9]*)\Z")
 _SETUP = re.compile(
     r"ACTIVE SETUP ([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*) "
-    r"([1-9][0-9]*) ([1-9][0-9]*) 0x(?:A800|A808|A848|A890) 1 ([0-9a-f]{64})\Z",
+    r"([1-9][0-9]*) ([1-9][0-9]*) 0x(?:A800|A808|A83C|A848|A890) 1 ([0-9a-f]{64})\Z",
     re.IGNORECASE,
 )
 

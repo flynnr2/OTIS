@@ -17,6 +17,7 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx319_range_map_part_a",
         "cx319_range_part_b_lower",
         "cx319_range_part_b_upper",
+        "cx319_range_part_b_upper_completion",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (
