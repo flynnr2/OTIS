@@ -144,7 +144,7 @@ def _part_b_hybrid_epoch_contract(
         )
     )
     expected_epochs = {
-        int(row["dac_epoch"]): int(row["dac_code_applied"])
+        int(row["seq"]): int(row["dac_code_applied"])
         for row in dac_rows
         if row.get("event") in {"manual_apply", "active_apply"}
     }

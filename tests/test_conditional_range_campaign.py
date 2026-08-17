@@ -312,8 +312,8 @@ def test_part_b_analyzer_rederives_hybrid_identity_and_each_dac_epoch_reset() ->
         }
     }
     dac_rows = [
-        {"event": "manual_apply", "dac_epoch": "1", "dac_code_applied": "43008"},
-        {"event": "active_apply", "dac_epoch": "2", "dac_code_applied": "43029"},
+        {"event": "manual_apply", "seq": "1", "dac_code_applied": "43008"},
+        {"event": "active_apply", "seq": "2", "dac_code_applied": "43029"},
     ]
     hpr_rows = [
         {

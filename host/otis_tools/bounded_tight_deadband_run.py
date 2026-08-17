@@ -781,17 +781,27 @@ def recover_bounded_tight_deadband_finalization(
     phases = journal.get("phases", {})
     primary_failure = journal.get("primary_failure", {})
     terminal = _terminal(run_dir)
+    snapshot_phase = phases.get("snapshot")
+    snapshot_path = run_dir / EVIDENCE_MANIFEST
     if (
         journal.get("run_dir") != str(run_dir)
         or phases.get("capture_closed") is None
         or phases.get("completion") is None
-        or any(phases.get(name) is not None for name in ("snapshot", "analysis", "seal"))
+        or any(phases.get(name) is not None for name in ("analysis", "seal"))
         or primary_failure.get("phase") != "snapshot"
         or EVIDENCE_EPOCH_PROFILE_FAILURE not in str(primary_failure.get("error", ""))
         or not _terminal_expected(terminal)
         or not (run_dir / "COMPLETE").is_file()
         or (run_dir / "capture_in_progress.flag").exists()
-        or (run_dir / EVIDENCE_MANIFEST).exists()
+        or (snapshot_phase is None and snapshot_path.exists())
+        or (
+            snapshot_phase is not None
+            and (
+                not snapshot_path.is_file()
+                or snapshot_phase.get("details", {}).get("path")
+                != str(snapshot_path)
+            )
+        )
         or (run_dir / selected.live_seal_filename).exists()
     ):
         raise ValueError(
@@ -801,7 +811,9 @@ def recover_bounded_tight_deadband_finalization(
     raw_path = run_dir / "raw/serial.log"
     raw_sha256 = _sha256_file(raw_path)
     manifest_sha256 = _sha256_file(manifest_path)
-    snapshot_path = create_evidence_snapshot(run_dir)
+    snapshot_reused = snapshot_phase is not None
+    if not snapshot_reused:
+        snapshot_path = create_evidence_snapshot(run_dir)
     loaded = load_manifest(run_dir)
     failures, warnings = validate_evidence_snapshot(run_dir, loaded)
     if failures or warnings:
@@ -811,9 +823,14 @@ def recover_bounded_tight_deadband_finalization(
         )
     if _sha256_file(raw_path) != raw_sha256 or _sha256_file(manifest_path) != manifest_sha256:
         raise RuntimeError("offline finalization changed frozen acquisition evidence")
-    advance_phase(journal_path, "snapshot", {"path": str(snapshot_path)})
+    if not snapshot_reused:
+        advance_phase(journal_path, "snapshot", {"path": str(snapshot_path)})
 
-    seal_path, seal = analyze(run_dir)
+    try:
+        seal_path, seal = analyze(run_dir)
+    except Exception as exc:
+        record_failure(journal_path, phase="analysis", error=exc)
+        raise
     advance_phase(
         journal_path,
         "analysis",
@@ -849,6 +866,7 @@ def recover_bounded_tight_deadband_finalization(
         "replacement": {
             "runner_sha256": _sha256_file(Path(__file__)),
             "evidence_snapshot_sha256": _sha256_file(snapshot_path),
+            "evidence_snapshot_reused": snapshot_reused,
             "seal_sha256": seal["seal_sha256"],
             "seal_status": seal["status"],
         },
