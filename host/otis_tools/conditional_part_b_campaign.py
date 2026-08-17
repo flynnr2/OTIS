@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,17 @@ from .evidence_index import DEFAULT_INDEX
 
 TOOL_ID = "cx319_conditional_part_b_campaign_v1"
 EXPECTED_BOARD_SERIAL = "503533748A919118"
+
+
+def _require_physical_runtime_dependencies() -> None:
+    """Reject an unprovisioned launcher before creating campaign artifacts."""
+
+    if importlib.util.find_spec("serial") is None:
+        raise RuntimeError(
+            "conditional Part B physical execution requires pyserial in the "
+            "campaign interpreter; use the provisioned repository environment "
+            "(.venv/bin/python)"
+        )
 
 
 def _utc_now() -> str:
@@ -59,6 +71,7 @@ def run_campaign(
     operator_instruction_ref: str,
     arduino_cli: str,
 ) -> dict[str, Any]:
+    _require_physical_runtime_dependencies()
     output_root = output_root.resolve()
     if output_root.exists() and any(output_root.iterdir()):
         raise FileExistsError(f"conditional Part B output root must be empty: {output_root}")

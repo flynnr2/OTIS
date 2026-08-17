@@ -21,6 +21,7 @@ from host.otis_tools.bounded_tight_deadband_live_analyze import (
 from host.otis_tools import (
     bounded_tight_deadband_operational_rehearsal as part_b_rehearsal,
     bounded_tight_deadband_rehearsal_analyze as part_b_rehearsal_analyze,
+    conditional_part_b_campaign,
 )
 from host.otis_tools.bounded_tight_deadband_leg import RANGE_LOWER, RANGE_UPPER
 
@@ -126,6 +127,32 @@ def test_mapping_informed_part_b_rebinds_without_rewriting_v3_promotion() -> Non
     assert readiness["physical_authority_granted"] is False
     assert RANGE_LOWER.prerequisite_key == "part_a_readiness"
     assert RANGE_UPPER.prerequisite_key == "part_a_readiness"
+
+
+def test_part_b_campaign_rejects_missing_pyserial_before_output_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_root = tmp_path / "must-not-be-created"
+    monkeypatch.setattr(
+        conditional_part_b_campaign.importlib.util,
+        "find_spec",
+        lambda name: None if name == "serial" else object(),
+    )
+
+    with pytest.raises(RuntimeError, match="requires pyserial"):
+        conditional_part_b_campaign.run_campaign(
+            part_a_readiness_path=tmp_path / "readiness.json",
+            lower_build_manifest_path=tmp_path / "lower-manifest.json",
+            lower_uf2_path=tmp_path / "lower.uf2",
+            upper_build_manifest_path=tmp_path / "upper-manifest.json",
+            upper_uf2_path=tmp_path / "upper.uf2",
+            output_root=output_root,
+            evidence_index_path=tmp_path / "index.json",
+            operator_instruction_ref="fixture authority",
+            arduino_cli="arduino-cli",
+        )
+
+    assert not output_root.exists()
 
 
 def test_part_b_observational_hybrid_profile_resets_each_external_dac_epoch() -> None:
