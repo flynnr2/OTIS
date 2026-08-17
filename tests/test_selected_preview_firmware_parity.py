@@ -73,7 +73,12 @@ def cx318_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def cx319_part_b_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    output = tmp_path_factory.mktemp("cx319_part_b_preview") / "selected_preview"
+    build_dir = tmp_path_factory.mktemp("cx319_part_b_preview")
+    output = build_dir / "selected_preview"
+    (build_dir / "otis_build_profile.generated.h").write_text(
+        "#define OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED 1\n",
+        encoding="utf-8",
+    )
     subprocess.run(
         [
             _compiler(),
@@ -81,11 +86,13 @@ def cx319_part_b_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "-Wall",
             "-Wextra",
             "-Werror",
-            "-DOTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED=1",
+            "-DARDUINO=1",
             str(HARNESS),
             str(ENGINE),
             "-I",
             str(FIRMWARE),
+            "-I",
+            str(build_dir),
             "-o",
             str(output),
         ],
@@ -418,6 +425,7 @@ def test_engine_has_no_authority_or_io_dependency() -> None:
         "#include <math.h>",
         "#include <stddef.h>",
         "#include <string.h>",
+        '#include "otis_build_profile_config.h"',
     ]
     for forbidden in (
         "otis_cx317_active",

@@ -4,13 +4,7 @@
 // This is the Arduino IDE-friendly configuration surface for the OTIS SW1
 // smoke firmware. Protocol constants and board pin contracts live elsewhere.
 
-#if defined(ARDUINO)
-#if __has_include("otis_build_profile.generated.h")
-#include "otis_build_profile.generated.h"
-#else
-#error "Generate an Arduino profile first: python3 tools/firmware_matrix.py --prepare-ide --profile <profile_id>"
-#endif
-#endif
+#include "otis_build_profile_config.h"
 
 #ifndef OTIS_MINIMUM_FREE_STACK_BYTES
 #define OTIS_MINIMUM_FREE_STACK_BYTES 1024u
@@ -53,10 +47,6 @@
 // Its static code is a build-bound preflight fact, never a write request.
 #ifndef OTIS_ENABLE_CX318_STAGE4_PREVIEW
 #define OTIS_ENABLE_CX318_STAGE4_PREVIEW 0
-#endif
-
-#ifndef OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED
-#define OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED 0
 #endif
 
 // Stage 5 reuses the selected CX318 relative-phase/hybrid preview alongside

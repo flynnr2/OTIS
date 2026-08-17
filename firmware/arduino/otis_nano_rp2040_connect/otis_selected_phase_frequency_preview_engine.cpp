@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "otis_build_profile_config.h"
+
 namespace {
 
 constexpr uint64_t kReferenceTicksPerSecond = 16000000ull;

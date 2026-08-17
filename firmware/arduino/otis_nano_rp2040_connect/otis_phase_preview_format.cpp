@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "otis_build_profile_config.h"
 #include "otis_decimal_format.h"
 
 namespace {
