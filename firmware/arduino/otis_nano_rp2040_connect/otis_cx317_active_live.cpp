@@ -246,15 +246,28 @@ OtisCx317ActiveEligibility eligibility(uint32_t now_s) {
   };
 }
 
-bool critical_continuity_healthy(uint32_t now_s) {
+bool active_integrity_healthy(uint32_t now_s) {
   if (!have_health || !transaction_bound) return false;
-  return latest_health.session_id == transaction.expected_binding.session_id &&
-         latest_health.gnss_metadata_valid &&
-         latest_health.gnss_identity_stable &&
-         latest_health.gnss_3d_evidence && latest_health.raw_pps_valid &&
-         latest_health.count_valid && latest_health.applied_code_confirmed &&
+  return latest_health.gnss_identity_stable &&
+         latest_health.reference_integrity_valid &&
+         latest_health.applied_code_confirmed &&
          latest_health.applied_code == transaction.applied_code &&
          capture_lease_live(now_s) && latest_health.abort_path_live;
+}
+
+bool reference_path_healthy(void) {
+  return have_health && latest_health.session_id != 0u &&
+         latest_health.gnss_metadata_valid && latest_health.gnss_3d_evidence &&
+         latest_health.raw_pps_valid && latest_health.count_valid;
+}
+
+bool reference_requalification_healthy(void) {
+  return reference_path_healthy() && latest_health.estimator_valid;
+}
+
+bool critical_continuity_healthy(uint32_t now_s) {
+  return active_integrity_healthy(now_s) && reference_path_healthy() &&
+         latest_health.session_id == transaction.expected_binding.session_id;
 }
 
 const char *evidence_state_name(void) {
@@ -461,16 +474,56 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s) {
   return true;
 }
 
-void fault_if_active_continuity_lost(uint32_t now_s) {
+void update_active_reference_and_integrity(uint32_t now_s) {
   if (!transaction_bound) return;
-  if ((transaction.state == OtisCx317ActiveState::Armed ||
-       transaction.state == OtisCx317ActiveState::RequestPending ||
-       transaction.state ==
-           OtisCx317ActiveState::AcceptedAwaitingApplication ||
-       transaction.state == OtisCx317ActiveState::AwaitingResponse) &&
-      !critical_continuity_healthy(now_s))
+  const bool inactive =
+      transaction.state == OtisCx317ActiveState::Fault ||
+      transaction.state == OtisCx317ActiveState::Aborted;
+  if (inactive) return;
+  const bool transaction_in_flight =
+      transaction.state == OtisCx317ActiveState::RequestPending ||
+      transaction.state ==
+          OtisCx317ActiveState::AcceptedAwaitingApplication;
+  if ((transaction_in_flight ||
+       transaction.state == OtisCx317ActiveState::Armed ||
+       transaction.state == OtisCx317ActiveState::AwaitingResponse ||
+       transaction.state == OtisCx317ActiveState::ReferenceHold) &&
+      !active_integrity_healthy(now_s)) {
     otis_cx317_active_fault(&transaction,
-                            "active_continuity_or_capture_lease_lost");
+                            "active_integrity_or_capture_lease_lost");
+    return;
+  }
+
+  const bool session_matches =
+      latest_health.session_id == transaction.expected_binding.session_id;
+  const bool reference_healthy = reference_path_healthy();
+  if (transaction_in_flight) {
+    if (!session_matches || !reference_healthy)
+      otis_cx317_active_fault(
+          &transaction,
+          "reference_lost_during_unfinished_actuator_transaction");
+    return;
+  }
+
+  if (transaction.state == OtisCx317ActiveState::ReferenceHold) {
+    if (reference_requalification_healthy())
+      otis_cx317_active_reference_requalify(&transaction,
+                                            latest_health.session_id);
+    return;
+  }
+
+  if ((transaction.state == OtisCx317ActiveState::Disarmed ||
+       transaction.state == OtisCx317ActiveState::Armed ||
+       transaction.state == OtisCx317ActiveState::AwaitingResponse ||
+       transaction.state == OtisCx317ActiveState::OutOfModelHold) &&
+      (!session_matches || !reference_healthy)) {
+    if (!otis_cx317_active_reference_hold(
+            &transaction,
+            session_matches ? "reference_quality_suspect_hold"
+                            : "reference_session_changed_hold"))
+      otis_cx317_active_fault(&transaction,
+                              "reference_hold_transition_failed");
+  }
 }
 
 }  // namespace
@@ -519,7 +572,7 @@ void otis_cx317_active_live_update_health(
     const OtisCx317ActiveBinding binding = expected_binding(health->session_id);
     otis_cx317_active_transaction_init(&transaction, &binding);
     transaction_bound = true;
-  } else if (transaction_bound) {
+  } else if (transaction_bound && !manual_start_confirmed) {
     otis_cx317_active_note_session(&transaction, health->session_id,
                                    manual_start_confirmed);
   }
@@ -536,7 +589,7 @@ void otis_cx317_active_live_update_health(
       otis_cx317_active_fault(&transaction, "confirmed_applied_code_lost");
     }
   }
-  fault_if_active_continuity_lost(now_s);
+  update_active_reference_and_integrity(now_s);
 #else
   (void)health;
   (void)now_s;
@@ -545,7 +598,7 @@ void otis_cx317_active_live_update_health(
 
 void otis_cx317_active_live_service(uint32_t now_s) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
-  fault_if_active_continuity_lost(now_s);
+  update_active_reference_and_integrity(now_s);
   if (transaction_bound && transaction.state == OtisCx317ActiveState::Armed &&
       transaction.have_arm && now_s > transaction.arm.expires_s)
     otis_cx317_active_fault(&transaction, "unused_authorization_expired");

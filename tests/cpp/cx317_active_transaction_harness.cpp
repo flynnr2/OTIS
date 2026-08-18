@@ -128,6 +128,36 @@ void acknowledgement_failure_never_retries_or_restores() {
   assert(transaction.correction_count == 0u);
 }
 
+void transient_reference_loss_holds_and_requalifies_without_actuation() {
+  const auto expected = binding();
+  auto eligibility = healthy();
+  OtisCx317ActiveTransaction transaction;
+  otis_cx317_active_transaction_init(&transaction, &expected);
+  auto authorization = arm(expected);
+  assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                               2400u));
+
+  assert(otis_cx317_active_reference_hold(
+      &transaction, "reference_quality_suspect_hold"));
+  assert(transaction.state == OtisCx317ActiveState::ReferenceHold);
+  assert(!transaction.have_arm);
+  assert(transaction.applied_code == expected.start_code);
+  assert(transaction.correction_count == 0u);
+  assert(transaction.dac_epoch == 0u);
+
+  auto raced_authorization = arm(expected, 2u, 2401u);
+  assert(!otis_cx317_active_arm(&transaction, &raced_authorization,
+                                &eligibility, 2401u));
+  assert(transaction.state == OtisCx317ActiveState::ReferenceHold);
+
+  assert(otis_cx317_active_reference_requalify(&transaction, 2u));
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+  assert(transaction.expected_binding.session_id == 2u);
+  assert(transaction.applied_code == expected.start_code);
+  assert(strcmp(transaction.reason,
+                "reference_requalified_fresh_authorization_required") == 0);
+}
+
 void pre_setup_session_acquisition_is_not_a_false_fault() {
   auto expected = binding();
   OtisCx317ActiveTransaction transaction;
@@ -393,6 +423,7 @@ int main() {
   happy_transaction();
   binding_and_health_fail_closed();
   acknowledgement_failure_never_retries_or_restores();
+  transient_reference_loss_holds_and_requalifies_without_actuation();
   pre_setup_session_acquisition_is_not_a_false_fault();
   bounds_abort_and_response_stops();
   temperature_covariate_and_out_of_model_hold();

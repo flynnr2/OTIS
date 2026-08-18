@@ -132,6 +132,12 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   and flagged with `REFERENCE_VALIDITY_SUSPECT` plus `GATE_INCOMPLETE`;
   `reference_reason` distinguishes duplicate, short, long, and flagged
   boundaries.
+- An isolated cadence anomaly enters `pps_gate/state=suspect`; the anomalous
+  interval and the explicit previous-boundary recovery interval remain invalid.
+  Subsequent valid intervals enter `requalifying`, and `open` plus current
+  control eligibility return only after the configured clean-window count.
+  Lifetime rejected-edge, association-loss, and interval-anomaly counters are
+  retained unchanged but do not themselves prevent that recovery.
 - One continuous physical outage increments the missing-transition counter
   once; reminder, snapshot absence, foreground backlog, and telemetry
   backpressure are separate diagnostics. A missing snapshot with continued REF
@@ -142,8 +148,9 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   and requires a fresh anchor plus adjacent snapshot. No CNT bridges the
   event, and repeated narrow REF glitches do not create duplicate physical
   outage transitions.
-- Failure to receive the first PPS after backend start also produces an
-  explicit missing-PPS fault rather than remaining silently armed.
+- Failure to receive the first PPS after backend start produces an explicit
+  missing-PPS suspect state rather than remaining silently armed. Capture and
+  telemetry continue; actuation remains inhibited until requalification.
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the
   bounded row with `COUNT_SATURATED`.
 - Across `rp2040_timer0` rollover, emitted gate boundaries retain the exact raw

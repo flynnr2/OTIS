@@ -96,6 +96,14 @@ Diagnostics should support debounce, qualification, hysteresis, latching, and
 explicit clearing. A one-sample excursion, a persistent degradation, and a
 recovered fault are different events.
 
+For the established OTIS GNSS/PPS hardware path, an isolated malformed D14
+cadence is a recoverable reference-quality event. Preserve every raw edge,
+invalidate affected measurement windows, inhibit actuation, retain lifetime
+anomaly counters, and require explicit clean-window requalification. Do not
+turn a prior anomaly counter into permanent current ineligibility. A new GNSS
+receiver, PPS conditioning circuit, wiring topology, or capture implementation
+requires fresh qualification before inheriting this recovery policy.
+
 ### Influence control through policy
 
 Diagnostics provide explicit quality and eligibility inputs. Policy may respond

@@ -9,6 +9,7 @@ enum class OtisCx317ActiveState : uint8_t {
   RequestPending,
   AcceptedAwaitingApplication,
   AwaitingResponse,
+  ReferenceHold,
   OutOfModelHold,
   Fault,
   Aborted,
@@ -148,6 +149,7 @@ struct OtisCx317ResponseClassifier {
 
 struct OtisCx317ActiveTransaction {
   OtisCx317ActiveState state;
+  OtisCx317ActiveState reference_hold_resume_state;
   const char *reason;
   OtisCx317ActiveBinding expected_binding;
   OtisCx317ArmRequest arm;
@@ -203,6 +205,10 @@ bool otis_cx317_active_record_response(
     OtisCx317ResponseResult *result);
 void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
                              const char *reason);
+bool otis_cx317_active_reference_hold(
+    OtisCx317ActiveTransaction *transaction, const char *reason);
+bool otis_cx317_active_reference_requalify(
+    OtisCx317ActiveTransaction *transaction, uint32_t session_id);
 void otis_cx317_active_abort(OtisCx317ActiveTransaction *transaction,
                              const char *reason);
 void otis_cx317_active_note_session(OtisCx317ActiveTransaction *transaction,

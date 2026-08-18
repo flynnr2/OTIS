@@ -590,6 +590,8 @@ class ActiveTransactionSupervisor:
             raise ValueError(f"device active state faulted: {reason}")
         if state == "ABORTED":
             raise ValueError(f"device active state aborted: {reason}")
+        if state == "REFERENCE_HOLD":
+            return
         if state == "OUT_OF_MODEL_HOLD":
             self.state["terminal"] = {
                 "result": "held",

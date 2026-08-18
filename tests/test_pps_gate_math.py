@@ -102,6 +102,68 @@ def test_pps_boundary_assessment_covers_rollover_duplicate_intervals_and_flags(
     ]
 
 
+def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibility(
+    tmp_path: Path,
+) -> None:
+    source = textwrap.dedent(
+        f"""
+        #include <stdint.h>
+        #include <stdio.h>
+        #include "{HELPER}"
+
+        int main(void) {{
+          const uint64_t duplicate_maximum = 100000ull * 16ull;
+          const uint64_t minimum = 800000ull * 16ull;
+          const uint64_t maximum = 1200000ull * 16ull;
+          const uint64_t intervals_us[] = {{747525ull, 185ull, 252289ull,
+                                            1000000ull, 1000000ull,
+                                            1000000ull, 1000000ull}};
+          uint64_t opening = 0ull;
+          bool previous_boundary_inhibited = false;
+          unsigned clean_windows = 0u;
+          for (unsigned i = 0; i < 7; ++i) {{
+            const uint64_t closing = opening + intervals_us[i] * 16ull;
+            OtisPpsBoundaryAssessment raw = otis_pps_gate_assess_boundary(
+                opening, closing, 0u, duplicate_maximum, minimum, maximum);
+            const bool effective_valid = raw.valid && !previous_boundary_inhibited;
+            previous_boundary_inhibited = !raw.valid;
+            clean_windows = effective_valid ? clean_windows + 1u : 0u;
+            printf("%d,%d,%u,%d\\n", raw.valid ? 1 : 0, (int)raw.reason,
+                   clean_windows, clean_windows >= 3u ? 1 : 0);
+            opening = closing;
+          }}
+          return 0;
+        }}
+        """
+    )
+    assert _compile_and_run(tmp_path, source) == [
+        "0,2,0,0",  # 747.525 ms: rejected short candidate
+        "0,1,0,0",  # 185 us: rejected duplicate candidate
+        "0,2,0,0",  # 252.289 ms: rejected short candidate
+        "1,0,0,0",  # clean cadence, explicit recovery-inhibit window
+        "1,0,1,0",
+        "1,0,2,0",
+        "1,0,3,1",  # current eligibility can recover after three clean windows
+    ]
+
+    firmware = (FIRMWARE / "otis_count_observation.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    active_health = sketch[
+        sketch.index("void service_cx317_active_health(void)") :
+        sketch.index("void service_cx317_active_application_outcome(void)")
+    ]
+    assert 'return "suspect";' in firmware
+    assert 'return "requalifying";' in firmware
+    assert "control_ready_clean_windows" in firmware
+    assert "d14_rejected_short_count == 0u" not in active_health
+    assert "d14_rejected_long_count == 0u" not in active_health
+    assert "snapshot.continuity_loss_count == 0u" not in active_health
+
+
 def test_pps_backend_exposes_independent_validity_and_unavailable_uncertainty() -> None:
     source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"

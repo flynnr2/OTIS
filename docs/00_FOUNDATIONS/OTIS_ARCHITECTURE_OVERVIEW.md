@@ -80,4 +80,7 @@ or bypass control safety.
 - Separate measurement, metrology, diagnostics, control, and telemetry.
 - Make uncertainty and reason codes visible.
 - Make every control action explainable and replayable.
-- Fail static or enter documented holdover when required evidence is unavailable.
+- Hold the last confirmed actuator state and enter documented reference hold or
+  holdover when reference evidence is temporarily unavailable; reserve latched
+  fail-static state for integrity, ordering, capture-loss, or actuator failures
+  that cannot be requalified in place.

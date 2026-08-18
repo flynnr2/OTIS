@@ -20,3 +20,13 @@ are rejected by the device.
 Serialized evidence is never actionable. Automatic authority exists only in
 the in-memory request handed once from the transaction layer to the actuator
 owner after durable phase-1 acknowledgement.
+
+`REFERENCE_HOLD` is a nonterminal active-control state. It is entered when the
+reference becomes suspect while no actuator request/application handoff is
+unfinished. Firmware holds the last confirmed applied code, consumes any
+unused short-lived arm, and emits no actionable request. After current PPS,
+GNSS metadata, count, and estimator evidence requalify, the transaction returns
+to `DISARMED` and requires a fresh exact authorization. If an application was
+already acknowledged, response observation may resume after requalification.
+Loss during an unfinished request/application handoff remains a terminal
+integrity fault.

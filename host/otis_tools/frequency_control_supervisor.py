@@ -494,6 +494,8 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
         reason = health.get(("cx317_active", "reason"), "")
         if state in {"FAULT", "ABORTED"}:
             raise ValueError(f"device active state {state.lower()}: {reason}")
+        if state == "REFERENCE_HOLD":
+            return
         if state == "OUT_OF_MODEL_HOLD":
             raise ValueError(f"device entered out-of-model hold: {reason}")
 

@@ -118,25 +118,21 @@ def test_dac_epoch_requires_the_complete_settling_and_fresh_history_reset() -> N
     assert ready["preview_available"]
 
 
-def test_fault_is_fail_static_and_requires_explicit_fresh_recovery() -> None:
+def test_reference_fault_automatically_requires_fresh_support() -> None:
     policy = load_policy()
     engine = IOnlyPreviewEngine(policy)
     _ready(engine)
     fault = engine.process(
         Observation(3000, 0.02, policy.fail_static_code, 29.0, reference_valid=False)
     )
-    held = engine.process(Observation(3600, 0.02, policy.fail_static_code, 29.0))
-    reset = engine.process(
-        Observation(3600, 0.02, policy.fail_static_code, 29.0, recovery_requested=True)
-    )
+    held = engine.process(Observation(3599, 0.02, policy.fail_static_code, 29.0))
     recovered = engine.process(
-        Observation(4200, 0.02, policy.fail_static_code, 29.0)
+        Observation(3600, 0.02, policy.fail_static_code, 29.0)
     )
 
-    assert fault["state"] == held["state"] == "FAULT"
-    assert reset["state"] == "QUALIFYING"
+    assert fault["state"] == held["state"] == "QUALIFYING"
     assert recovered["preview_available"]
-    assert all(not row["actionable"] for row in (fault, held, reset, recovered))
+    assert all(not row["actionable"] for row in (fault, held, recovered))
 
 
 def test_model_inapplicability_holds_without_erasing_measurement_and_requalifies() -> None:

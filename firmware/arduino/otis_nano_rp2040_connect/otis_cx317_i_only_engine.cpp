@@ -75,10 +75,14 @@ void fill_common(const OtisCx317IOnlyEngine &engine,
 #endif
 }
 
-const char *fault_reason(const OtisCx317PreviewInput &input) {
+const char *recoverable_quality_reason(const OtisCx317PreviewInput &input) {
   if (!input.reference_valid) return "reference_invalid";
   if (!input.estimator_valid) return "estimator_invalid_or_snapshot_gap";
   if (!input.count_valid) return "count_invalid";
+  return nullptr;
+}
+
+const char *fault_reason(const OtisCx317PreviewInput &input) {
   if (!input.applied_code_matches) return "requested_applied_mismatch";
   if (!input.i2c_ok) return "i2c_failure";
   if (input.current_code < kDacMinimumCode ||
@@ -144,6 +148,21 @@ void otis_cx317_i_only_engine_evaluate(
     return;
   }
   if (engine->state == OtisCx317PreviewState::Aborted) {
+    fill_common(*engine, previous, *input, decision);
+    return;
+  }
+
+  const char *recoverable_quality = recoverable_quality_reason(*input);
+  if (recoverable_quality != nullptr) {
+    engine->state = OtisCx317PreviewState::Qualifying;
+    engine->reason = recoverable_quality;
+    engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
+    engine->integrator_codes = 0.0;
+    engine->have_last_decision = false;
+#if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
+    engine->tight_deadband_decision_available = false;
+#endif
     fill_common(*engine, previous, *input, decision);
     return;
   }
