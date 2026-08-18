@@ -52,7 +52,7 @@ component and control-readiness keys do not imply FC0 ownership:
 |---|---|---|
 | `count_path` | `observation_valid` | latest count observation was bounded and internally coherent |
 | `count_path` | `control_eligible` | startup inhibit has expired and enough clean windows have followed it |
-| `count_path` | `fault_latched` | a post-inhibit count window was invalid |
+| `count_path` | `fault_latched` | recovery inhibition is active after a post-startup invalid window; it clears only after the configured clean-window qualification succeeds |
 | `count_path` | `last_window_invalid_reason` | latest count-window anomaly reason |
 | `count_path` | `consecutive_bad_windows` | consecutive invalid count windows |
 | `count_path` | `total_bad_windows` | invalid count windows observed in this boot |
@@ -62,7 +62,7 @@ PPS-gated ratio runs add component `pps_gate`:
 | Component | Key | Meaning |
 |---|---|---|
 | `pps_gate` | `backend` | selected PPS-gated backend name |
-| `pps_gate` | `state` | `idle`, `armed`, `open`, or `fault` |
+| `pps_gate` | `state` | `idle`, `armed`, `open`, recoverable `suspect`, clean-window `requalifying`, or integrity `fault` |
 | `pps_gate` | `valid` | latest bounded PPS-gated window validity |
 | `pps_gate` | `last_reason` | latest PPS-gate validity or fault reason |
 | `pps_gate` | `reference_validity` | independent `valid`, `invalid`, or `unavailable` state for the authoritative PPS side |
@@ -90,7 +90,7 @@ PPS-gated ratio runs add component `pps_gate`:
 | `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
 | `pps_gate` | `last_interval_us` | latest bounded PPS gate interval in microseconds |
 | `pps_gate` | `missing_pps_count` | missing stop-PPS faults |
-| `pps_gate` | `pps_interval_anomaly_count` | PPS intervals outside configured validity limits |
+| `pps_gate` | `pps_interval_anomaly_count` | lifetime saturating count of PPS intervals outside configured validity limits; evidence of prior anomalies, not current eligibility |
 | `pps_gate` | `count_saturated_count` | oscillator counter saturation events |
 | `pps_gate` | `accepted_window_count` | accepted PPS-gated count windows |
 | `pps_gate` | `rejected_window_count` | rejected PPS-gated count windows |
@@ -112,6 +112,10 @@ continuity are independent eligibility inputs. A reference-only fault must not
 be rewritten as a bad oscillator count, or vice versa. Measurement validity
 requires every physical/provenance dimension; control eligibility additionally
 requires `backend_qualified=true` and the existing startup/recovery gates.
+Rejected-short, rejected-long, association-loss, and interval-anomaly counters
+remain lifetime scientific evidence. Current eligibility is instead derived
+from the latest gate state and clean-window requalification; a nonzero lifetime
+counter must not permanently poison a recovered reference path.
 
 Steady state emits aggregate health at a bounded ten-second default cadence.
 Detailed rows are emitted on a transition, anomaly, timeout, or explicit

@@ -169,6 +169,7 @@ void otis_cx317_active_transaction_init(
   if (transaction == nullptr || binding == nullptr) return;
   *transaction = {};
   transaction->state = OtisCx317ActiveState::Disarmed;
+  transaction->reference_hold_resume_state = OtisCx317ActiveState::Disarmed;
   transaction->reason = "initialized_disarmed";
   transaction->expected_binding = *binding;
   transaction->applied_code = binding->start_code;
@@ -225,6 +226,70 @@ void otis_cx317_active_fault(OtisCx317ActiveTransaction *transaction,
   if (transaction->have_request) transaction->request.actionable = false;
 }
 
+bool otis_cx317_active_reference_hold(
+    OtisCx317ActiveTransaction *transaction, const char *reason) {
+  if (transaction == nullptr) return false;
+  if (transaction->state == OtisCx317ActiveState::ReferenceHold) return true;
+  if (transaction->state != OtisCx317ActiveState::Disarmed &&
+      transaction->state != OtisCx317ActiveState::Armed &&
+      transaction->state != OtisCx317ActiveState::AwaitingResponse &&
+      transaction->state != OtisCx317ActiveState::OutOfModelHold)
+    return false;
+  if (transaction->state == OtisCx317ActiveState::AwaitingResponse) {
+    if (!transaction->have_request || !transaction->have_application)
+      return false;
+  } else if (transaction->have_request || transaction->have_acceptance ||
+             transaction->have_application) {
+    return false;
+  }
+  transaction->reference_hold_resume_state =
+      transaction->state == OtisCx317ActiveState::AwaitingResponse
+          ? OtisCx317ActiveState::AwaitingResponse
+          : (transaction->state == OtisCx317ActiveState::OutOfModelHold
+                 ? OtisCx317ActiveState::OutOfModelHold
+                 : OtisCx317ActiveState::Disarmed);
+  transaction->state = OtisCx317ActiveState::ReferenceHold;
+  transaction->reason =
+      reason == nullptr ? "reference_quality_suspect" : reason;
+  // Reference loss consumes any unused short-lived authorization. An already
+  // applied transaction retains its exact request/application evidence and
+  // resumes response observation only after fresh reference qualification.
+  if (transaction->reference_hold_resume_state ==
+      OtisCx317ActiveState::Disarmed)
+    transaction->have_arm = false;
+  return true;
+}
+
+bool otis_cx317_active_reference_requalify(
+    OtisCx317ActiveTransaction *transaction, uint32_t session_id) {
+  if (transaction == nullptr || session_id == 0u ||
+      transaction->state != OtisCx317ActiveState::ReferenceHold ||
+      transaction->have_arm)
+    return false;
+  if (transaction->reference_hold_resume_state ==
+      OtisCx317ActiveState::AwaitingResponse) {
+    if (!transaction->have_request || !transaction->have_application)
+      return false;
+    transaction->state = OtisCx317ActiveState::AwaitingResponse;
+    transaction->reason = "reference_requalified_response_resumed";
+  } else if (transaction->reference_hold_resume_state ==
+             OtisCx317ActiveState::OutOfModelHold) {
+    if (transaction->have_request || transaction->have_acceptance ||
+        transaction->have_application)
+      return false;
+    transaction->state = OtisCx317ActiveState::OutOfModelHold;
+    transaction->reason = "reference_requalified_out_of_model_hold_resumed";
+  } else {
+    if (transaction->have_request || transaction->have_acceptance ||
+        transaction->have_application)
+      return false;
+    disarm(transaction, "reference_requalified_fresh_authorization_required");
+  }
+  transaction->expected_binding.session_id = session_id;
+  transaction->reference_hold_resume_state = OtisCx317ActiveState::Disarmed;
+  return true;
+}
+
 void otis_cx317_active_abort(OtisCx317ActiveTransaction *transaction,
                              const char *reason) {
   if (transaction == nullptr) return;
@@ -243,6 +308,10 @@ bool otis_cx317_active_arm(OtisCx317ActiveTransaction *transaction,
   if (transaction->state == OtisCx317ActiveState::Fault ||
       transaction->state == OtisCx317ActiveState::Aborted)
     return false;
+  // A host arm can race a newly observed reference anomaly. Reject it without
+  // converting the recoverable hold into a terminal state; requalification
+  // returns to DISARMED and requires a fresh authorization.
+  if (transaction->state == OtisCx317ActiveState::ReferenceHold) return false;
   if (transaction->state == OtisCx317ActiveState::OutOfModelHold) {
     if (!otis_cx317_active_eligibility_valid(eligibility)) return false;
     disarm(transaction, "out_of_model_hold_requalified");
@@ -579,6 +648,8 @@ const char *otis_cx317_active_state_name(OtisCx317ActiveState state) {
       return "ACCEPTED_AWAITING_APPLICATION";
     case OtisCx317ActiveState::AwaitingResponse:
       return "AWAITING_RESPONSE";
+    case OtisCx317ActiveState::ReferenceHold:
+      return "REFERENCE_HOLD";
     case OtisCx317ActiveState::OutOfModelHold:
       return "OUT_OF_MODEL_HOLD";
     case OtisCx317ActiveState::Fault:

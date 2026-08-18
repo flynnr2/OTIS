@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
   if (recovery_mode) {
     otis_cx317_preview_live_on_capture_fault(
         "controlled_metadata_invalidation", 2401u, &code);
-    assert(otis_cx317_preview_live_request_recovery());
+    assert(!otis_cx317_preview_live_request_recovery());
     for (uint32_t second = 2401u; second <= 4201u; ++second) {
       counter -= 10000000u;
       const OtisPpsCountBoundaryObservation observation = {

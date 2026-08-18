@@ -257,7 +257,7 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
         assert result.errors == ()
 
 
-def test_live_preview_controlled_fault_requires_explicit_fresh_recovery(
+def test_live_preview_reference_fault_requalifies_without_explicit_recovery(
     cx317_live_harness: Path,
 ) -> None:
     completed = subprocess.run(
@@ -272,13 +272,13 @@ def test_live_preview_controlled_fault_requires_explicit_fresh_recovery(
     ]))
 
     assert completed.stderr.strip() == "recovery_fixture_pass"
-    assert any(row["control_state"] == "FAULT" for row in controls)
+    assert not any(row["control_state"] == "FAULT" for row in controls)
     assert any(
-        row["decision_reason_code"] == "explicit_recovery_fresh_support"
+        row["decision_reason_code"] == "reference_invalid"
         for row in controls
     )
-    assert controls[-1]["decision_reason_code"] == "inside_evidence_deadband"
-    assert controls[-1]["preview_available"] == "true"
+    assert controls[-1]["decision_reason_code"] == "decision_cadence_hold"
+    assert controls[-1]["control_state"] == "LOCKED_PREVIEW"
     assert all(row["actuation_authorized"] == "false" for row in controls)
     assert all(row["actionable"] == "false" for row in controls)
 

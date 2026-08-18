@@ -1617,13 +1617,15 @@ void service_cx317_active_health(void) {
   // counts only D8 oscillator edges at D14 boundaries. D10 is the independent
   // external-event input; this profile does not claim it and no D10 observation
   // may validate or veto this control-health predicate.
-  const bool raw_pps_valid =
-      d14.d14_accepted_pps_count > 0u &&
-      d14.d14_rejected_short_count == 0u &&
-      d14.d14_rejected_long_count == 0u &&
+  // Rejected-short/long and association-loss counters are lifetime evidence,
+  // not current validity. The count gate below owns transient inhibition and
+  // clean-window requalification; only unrecoverable capture loss remains
+  // latched in this raw-path predicate.
+  const bool raw_pps_valid = d14.d14_accepted_pps_count > 0u;
+  const bool reference_integrity_valid =
       otis_capture_ring_dropped_count() == 0u &&
       otis_pps_count_boundary_ring_dropped_count() == 0u &&
-      !snapshot.fault_latched && snapshot.continuity_loss_count == 0u;
+      !snapshot.fault_latched;
   OtisCx317PreviewAuthorityState preview;
   otis_cx317_preview_live_get_authority_state(&preview);
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -1650,6 +1652,7 @@ void service_cx317_active_health(void) {
       gnss.gsa_3d,
 #endif
       raw_pps_valid,
+      reference_integrity_valid,
       runtime_state.tcxo.valid_for_control &&
           runtime_state.tcxo.last_observation_valid &&
           !runtime_state.tcxo.fault_after_startup,
@@ -2208,8 +2211,6 @@ void emit_gnss_receiver_status(void) {
   raw_pps_control_eligible =
       runtime_state.tcxo.valid_for_control &&
       pps_status.d14_accepted_pps_count > 0u &&
-      pps_status.d14_rejected_short_count == 0u &&
-      pps_status.d14_rejected_long_count == 0u &&
       otis_capture_ring_dropped_count() == 0u &&
       otis_pps_count_boundary_ring_dropped_count() == 0u;
 #endif

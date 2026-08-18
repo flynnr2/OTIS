@@ -16,6 +16,7 @@ struct OtisCx317ActiveLiveHealth {
   bool gnss_identity_stable;
   bool gnss_3d_evidence;
   bool raw_pps_valid;
+  bool reference_integrity_valid;
   bool count_valid;
   bool estimator_valid;
   bool model_applicable;

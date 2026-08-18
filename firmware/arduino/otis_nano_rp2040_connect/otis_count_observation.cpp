@@ -87,6 +87,8 @@ enum class PpsGateState : uint8_t {
   Idle,
   Armed,
   Open,
+  Suspect,
+  Requalifying,
   Fault,
 };
 
@@ -363,6 +365,10 @@ const char *pps_gate_state_name(PpsGateState state) {
       return "armed";
     case PpsGateState::Open:
       return "open";
+    case PpsGateState::Suspect:
+      return "suspect";
+    case PpsGateState::Requalifying:
+      return "requalifying";
     case PpsGateState::Fault:
       return "fault";
   }
@@ -653,7 +659,7 @@ void emit_pps_gate_fault(OtisRuntimeState *runtime_state,
   pps_gated_ratio.last_boundary_reason = kWindowReasonBoundaryCaptureUnavailable;
   pps_gated_ratio.last_aperture_reason = kWindowReasonPhysicalApertureIncomplete;
   pps_gated_ratio.last_pair_reason = kWindowReasonObservationPairInvalid;
-  pps_gated_ratio.state = PpsGateState::Fault;
+  pps_gated_ratio.state = PpsGateState::Suspect;
   otis_pps_diagnostics_increment_saturating(
       &pps_gated_ratio.rejected_window_count);
   runtime_state->tcxo.consecutive_bad_windows += 1u;
@@ -1157,8 +1163,8 @@ bool otis_count_observation_on_pps_boundary(
     pps_gated_ratio.previous_observation = *observation;
     pps_gated_ratio.have_previous_observation = true;
     pps_gated_ratio.previous_boundary_inhibited = !boundary_valid;
-    pps_gated_ratio.state =
-        boundary_valid ? PpsGateState::Open : PpsGateState::Fault;
+    pps_gated_ratio.state = boundary_valid ? PpsGateState::Requalifying
+                                           : PpsGateState::Suspect;
     pps_gated_ratio.last_reference_validity = "unavailable";
     pps_gated_ratio.last_count_validity = "unavailable";
     pps_gated_ratio.last_boundary_validity =
@@ -1418,11 +1424,19 @@ bool otis_count_observation_on_pps_boundary(
   if (anomaly.valid) {
     otis_pps_diagnostics_increment_saturating(
         &pps_gated_ratio.accepted_window_count);
-    pps_gated_ratio.state = PpsGateState::Open;
+    pps_gated_ratio.state = runtime_state->tcxo.valid_for_control
+                                ? PpsGateState::Open
+                                : PpsGateState::Requalifying;
   } else {
     otis_pps_diagnostics_increment_saturating(
         &pps_gated_ratio.rejected_window_count);
-    pps_gated_ratio.state = PpsGateState::Fault;
+    const bool recoverable_reference_anomaly =
+        !validity.reference_interval_valid &&
+        validity.count_boundary_valid && validity.counter_window_valid &&
+        validity.observation_pair_valid && validity.fifo_continuous;
+    pps_gated_ratio.state = recoverable_reference_anomaly
+                                ? PpsGateState::Suspect
+                                : PpsGateState::Fault;
   }
   bool reason_transition =
       strcmp(pps_gated_ratio.last_reason, anomaly.reason) != 0;

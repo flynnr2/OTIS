@@ -513,6 +513,22 @@ def test_rehearsal_has_a_finite_no_write_terminal(tmp_path: Path) -> None:
     assert "no_write_rehearsal" in supervisor.state["terminal"]["reason"]
 
 
+def test_reference_hold_is_nonterminal_and_emits_no_command(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    health = _health(
+        supervisor,
+        state="REFERENCE_HOLD",
+        reason="reference_quality_suspect_hold",
+    )
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["terminal"] is None
+
+
 def test_live_pass_requires_expected_direction_response_and_tight_entry(
     tmp_path: Path,
 ) -> None:

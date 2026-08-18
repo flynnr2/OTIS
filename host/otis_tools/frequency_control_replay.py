@@ -391,11 +391,23 @@ class IOnlyPreviewEngine:
             return self._result(observation)
         if self.state == "ABORTED":
             return self._result(observation)
-        fault_reason = next(
+        recoverable_quality_reason = next(
             (reason for active, reason in (
                 (not observation.reference_valid, "reference_invalid"),
                 (not observation.estimator_valid, "estimator_invalid_or_snapshot_gap"),
                 (not observation.count_valid, "count_invalid"),
+            ) if active), None
+        )
+        if recoverable_quality_reason is not None:
+            self.state = "QUALIFYING"
+            self.latched_reason = recoverable_quality_reason
+            self.qualifying_since_s = observation.timestamp_s
+            self.inhibit_until_s = observation.timestamp_s + self.policy.recovery_support_s
+            self.integrator_codes = 0.0
+            self.last_decision_s = None
+            return self._result(observation)
+        fault_reason = next(
+            (reason for active, reason in (
                 (not observation.applied_code_matches, "requested_applied_mismatch"),
                 (not observation.i2c_ok, "i2c_failure"),
                 (not self.policy.minimum_code <= observation.current_code <= self.policy.maximum_code, "current_code_outside_clamp"),
@@ -554,14 +566,28 @@ def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
         engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
         values = {field: False}
         fault = engine.process(Observation(3000, 0.02, policy.fail_static_code, 29.0, **values))
-        recovery = engine.process(Observation(3600, 0.02, policy.fail_static_code, 29.0, recovery_requested=True))
-        recovered = engine.process(Observation(3600 + policy.recovery_support_s, 0.02, policy.fail_static_code, 29.0))
-        initial_state = (
-            "OUT_OF_MODEL_HOLD"
-            if identifier == "model_mismatch" and policy.out_of_model_hold
-            else "FAULT"
-        )
-        scenarios.append(_scenario(identifier, "fault_recovery", fault["state"] == initial_state and recovery["state"] == "QUALIFYING" and recovered["preview_available"], [fault, recovery, recovered]))
+        if identifier in {"reference_loss", "malformed_pps", "snapshot_gap", "count_fault"}:
+            recovery = engine.process(Observation(3000 + policy.recovery_support_s - 1, 0.02, policy.fail_static_code, 29.0))
+            recovered = engine.process(Observation(3000 + policy.recovery_support_s, 0.02, policy.fail_static_code, 29.0))
+            passed = (
+                fault["state"] == "QUALIFYING"
+                and recovery["state"] == "QUALIFYING"
+                and recovered["preview_available"]
+            )
+        else:
+            recovery = engine.process(Observation(3600, 0.02, policy.fail_static_code, 29.0, recovery_requested=True))
+            recovered = engine.process(Observation(3600 + policy.recovery_support_s, 0.02, policy.fail_static_code, 29.0))
+            initial_state = (
+                "OUT_OF_MODEL_HOLD"
+                if identifier == "model_mismatch" and policy.out_of_model_hold
+                else "FAULT"
+            )
+            passed = (
+                fault["state"] == initial_state
+                and recovery["state"] == "QUALIFYING"
+                and recovered["preview_available"]
+            )
+        scenarios.append(_scenario(identifier, "fault_recovery", passed, [fault, recovery, recovered]))
     if not policy.temperature_required_for_control:
         missing_engine, _ = _prime(policy, code=policy.fail_static_code, error=0.02)
         missing = missing_engine.process(
@@ -587,4 +613,3 @@ def run_scenarios(policy: Policy) -> list[dict[str, Any]]:
     after_abort = engine.process(Observation(3600, 0.02, policy.fail_static_code, 29.0, recovery_requested=True))
     scenarios.append(_scenario("operator_abort_fail_static", "abort", aborted["state"] == "ABORTED" and after_abort["state"] == "ABORTED" and not aborted["preview_available"], [aborted, after_abort]))
     return scenarios
-
