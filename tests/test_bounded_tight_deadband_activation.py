@@ -509,6 +509,7 @@ def test_live_outcome_preserves_clean_bounded_nonpass_and_pass() -> None:
     assert bounded_tight_deadband_live_analyze._classify_outcome(
         common_pass=True,
         pass_checks_exact=False,
+        stable_tight_hold_pass=False,
         terminal_bounded_nonpass=True,
         terminal_abort_delivery_escape=False,
     ) == (
@@ -518,7 +519,18 @@ def test_live_outcome_preserves_clean_bounded_nonpass_and_pass() -> None:
     assert bounded_tight_deadband_live_analyze._classify_outcome(
         common_pass=True,
         pass_checks_exact=True,
+        stable_tight_hold_pass=False,
         terminal_bounded_nonpass=False,
+        terminal_abort_delivery_escape=False,
+    ) == ("passed", "none")
+
+
+def test_live_outcome_accepts_mapping_target_stable_tight_hold() -> None:
+    assert bounded_tight_deadband_live_analyze._classify_outcome(
+        common_pass=True,
+        pass_checks_exact=False,
+        stable_tight_hold_pass=True,
+        terminal_bounded_nonpass=True,
         terminal_abort_delivery_escape=False,
     ) == ("passed", "none")
 

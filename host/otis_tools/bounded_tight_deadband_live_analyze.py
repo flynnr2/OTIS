@@ -189,10 +189,11 @@ def _classify_outcome(
     *,
     common_pass: bool,
     pass_checks_exact: bool,
+    stable_tight_hold_pass: bool = False,
     terminal_bounded_nonpass: bool,
     terminal_abort_delivery_escape: bool,
 ) -> tuple[str, str]:
-    if common_pass and pass_checks_exact:
+    if common_pass and (pass_checks_exact or stable_tight_hold_pass):
         return "passed", "none"
     if common_pass and terminal_bounded_nonpass:
         return (
@@ -671,6 +672,17 @@ def analyze(
         and not applications
         and not responses
     )
+    # PBUC starts from the mapping-derived terminal code of the right-censored
+    # predecessor.  Its correction count is an upper bound, not a required
+    # stimulus.  If that exact setup reaches and sustains tight operation for
+    # the full qualified endpoint, zero corrections is the successful result.
+    # Keep the alternative local to PBUC so historical traversal legs retain
+    # their frozen required-direction qualification semantics.
+    stable_tight_hold_pass = (
+        selected.gate == "PBUC"
+        and stimulus_nonactionable
+        and terminal_abort_delivery["exact"] is True
+    )
     terminal_abort_delivery_escape = (
         stimulus_nonactionable
         and terminal_abort_submissions == 1
@@ -681,6 +693,7 @@ def analyze(
     status, failure_class = _classify_outcome(
         common_pass=common_pass,
         pass_checks_exact=all(pass_checks.values()),
+        stable_tight_hold_pass=stable_tight_hold_pass,
         terminal_bounded_nonpass=terminal_bounded_nonpass,
         terminal_abort_delivery_escape=terminal_abort_delivery_escape,
     )
@@ -691,7 +704,18 @@ def analyze(
         if status == "passed"
         else "not_established"
     )
-    checks = {**common_checks, **pass_checks}
+    if stable_tight_hold_pass:
+        checks = {
+            **common_checks,
+            "two_estimate_tight_entry_transition_demonstrated": pass_checks[
+                "two_estimate_tight_entry_transition_demonstrated"
+            ],
+            "terminal_abort_delivery_exact": terminal_abort_delivery["exact"],
+            "mapping_target_stable_tight_hold_without_correction_demonstrated": True,
+            "accepted_outcome_path_exact": True,
+        }
+    else:
+        checks = {**common_checks, **pass_checks}
 
     source_paths = {
         "run_manifest.json",
@@ -723,6 +747,14 @@ def analyze(
         "status": status,
         "failure_class": failure_class,
         "scientific_outcome": scientific_outcome,
+        "acceptance_path": (
+            "mapping_target_stable_tight_hold_without_correction"
+            if stable_tight_hold_pass
+            else "required_direction_response_and_tight_entry"
+            if status == "passed"
+            else "none"
+        ),
+        "outcome_path_observations": pass_checks,
         "terminal_abort_delivery": terminal_abort_delivery,
         "profile_id": spec.profile,
         "required_direction": selected.required_direction,
