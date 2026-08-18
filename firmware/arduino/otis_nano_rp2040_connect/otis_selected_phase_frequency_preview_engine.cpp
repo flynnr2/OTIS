@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "otis_build_profile_config.h"
+
 namespace {
 
 constexpr uint64_t kReferenceTicksPerSecond = 16000000ull;
@@ -27,6 +29,11 @@ constexpr uint16_t kMinimumCode = 0xA800u;
 constexpr uint16_t kMaximumCode = 0xAB00u;
 constexpr uint16_t kMaximumCorrections = 32u;
 constexpr uint16_t kMaximumPathCodes = 672u;
+#if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED
+constexpr bool kExternalDacEpochCandidateReseed = true;
+#else
+constexpr bool kExternalDacEpochCandidateReseed = false;
+#endif
 
 double clamp_double(double value, double lower, double upper) {
   return value < lower ? lower : (value > upper ? upper : value);
@@ -55,6 +62,16 @@ void reset_band_and_support(OtisSelectedPhaseFrequencyPreviewEngine *engine) {
   engine->last_decision_s = 0.0;
   engine->last_correction_available = false;
   engine->last_correction_s = 0.0;
+}
+
+void reset_candidate_lifetime(OtisSelectedPhaseFrequencyPreviewEngine *engine,
+                              uint16_t actual_applied_code) {
+  engine->start_code = actual_applied_code;
+  engine->correction_count = 0u;
+  engine->path_codes = 0u;
+  memset(engine->directions, 0, sizeof(engine->directions));
+  engine->direction_count = 0u;
+  engine->terminal_reason = nullptr;
 }
 
 void add_frequency_point(OtisSelectedPhaseFrequencyPreviewEngine *engine,
@@ -198,6 +215,10 @@ void invalidate_preview(OtisSelectedPhaseFrequencyPreviewEngine *engine,
                         const char *reason) {
   const uint16_t before_code = engine->shadow_code;
   const bool before_band = engine->band_inside;
+  const bool new_dac_epoch = !engine->hybrid_dac_epoch_available ||
+                             engine->hybrid_dac_epoch != input->dac_epoch;
+  if (new_dac_epoch && kExternalDacEpochCandidateReseed)
+    reset_candidate_lifetime(engine, input->actual_applied_code);
   engine->actual_code = input->actual_applied_code;
   engine->shadow_code = input->actual_applied_code;
   engine->hybrid_dac_epoch = input->dac_epoch;
@@ -387,6 +408,8 @@ bool otis_selected_phase_frequency_preview_process(
   const bool new_dac_epoch = !engine->hybrid_dac_epoch_available ||
                              engine->hybrid_dac_epoch != input->dac_epoch;
   if (new_phase_epoch || new_dac_epoch) {
+    if (new_dac_epoch && kExternalDacEpochCandidateReseed)
+      reset_candidate_lifetime(engine, input->actual_applied_code);
     engine->hybrid_phase_epoch_available = true;
     engine->hybrid_phase_epoch = engine->phase_epoch;
     engine->hybrid_dac_epoch_available = true;
@@ -402,7 +425,11 @@ bool otis_selected_phase_frequency_preview_process(
     complete_preview_output(
         engine, output, before_code, before_band, input->timestamp_s, false, 0.0,
         false, 0.0, 0.0,
-        new_phase_epoch ? "phase_epoch_reseed" : "dac_epoch_bumpless_reseed");
+        new_phase_epoch
+            ? "phase_epoch_reseed"
+            : (kExternalDacEpochCandidateReseed
+                   ? "dac_epoch_candidate_reseed"
+                   : "dac_epoch_bumpless_reseed"));
     return true;
   }
 

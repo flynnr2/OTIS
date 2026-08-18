@@ -22,16 +22,19 @@ from typing import Any
 
 from .board_identity import read_board_identity
 from .no_write_qualification_run import _wait_until
-from .bounded_tight_deadband_outcome_contract import (
-    MAXIMUM_QUALIFIED_DURATION_S,
-    QUALIFICATION_DEADLINE_S,
-)
+from .bounded_tight_deadband_outcome_contract import QUALIFICATION_DEADLINE_S
 from .bounded_tight_deadband_activation import (
     create_run_manifest,
     validate_activation,
+    validate_frozen_run_manifest,
     validate_run_manifest,
 )
-from .bounded_tight_deadband_leg import BoundedTightDeadbandLeg, LOWER, leg_for
+from .bounded_tight_deadband_leg import (
+    BoundedTightDeadbandLeg,
+    LOWER,
+    leg_for,
+    leg_for_manifest,
+)
 from .bounded_tight_deadband_outcome_contract import canonical_sha256
 from .bounded_tight_deadband_live_analyze import analyze
 from .evidence import (
@@ -43,12 +46,12 @@ from .evidence_index import DEFAULT_INDEX, package_identity, register_package
 from .evidence_finalization import (
     advance_phase,
     begin_finalization,
+    journal_path_for,
     record_failure,
     recover_registration,
     set_registration_intent,
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
-from .no_write_qualification_bundle import PROGRAMME_ID
 from .run_loader import load_manifest
 from .serial_commands import send_timestamped_command_to_fifo
 
@@ -57,10 +60,13 @@ TOOL_ID = "cx319_g2_run_v1"
 CAPTURE_LOG = Path("reports/cx319_g2_capture_launcher.log")
 SUPERVISOR_LOG = Path("reports/cx319_g2_supervisor.log")
 ORCHESTRATION_FAILURE = Path("reports/cx319_g2_orchestration_failure_v1.json")
-MAXIMUM_WALL_S = QUALIFICATION_DEADLINE_S + MAXIMUM_QUALIFIED_DURATION_S
 TERMINAL_ABORT_DELIVERY_TIMEOUT_S = 15.0
 COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
 INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
+FINALIZATION_RECOVERY_TOOL_ID = "cx319_bounded_leg_finalization_recovery_v1"
+EVIDENCE_EPOCH_PROFILE_FAILURE = (
+    "manifest does not satisfy CX319_EVIDENCE_EPOCH_1"
+)
 
 
 def _capture_log(selected: BoundedTightDeadbandLeg) -> Path:
@@ -191,7 +197,7 @@ def _flash_exact_upper(
     unsigned = {
         "schema_version": 1,
         "tool": f"{selected.prefix}_run_v1",
-        "operation": "exact_cx319_g3_upper_firmware_flash",
+        "operation": f"exact_cx319_{selected.gate.lower()}_firmware_flash",
         "status": "passed" if passed else "failed",
         "gate": selected.gate,
         "leg": selected.leg,
@@ -225,7 +231,7 @@ def _flash_exact_upper(
     _atomic_new_json(run_dir / selected.flash_record_filename, record)
     if not passed:
         raise RuntimeError(
-            "exact G3 upper upload or board re-enumeration failed; no retry is authorized"
+            f"exact {selected.gate} upload or board re-enumeration failed; no retry is authorized"
         )
     return device_after, board_after, record
 
@@ -342,7 +348,7 @@ def _retain_failure(
         "schema_version": 1,
         "report_type": f"{selected.prefix}_orchestration_failure_v1",
         "tool": f"{selected.prefix}_run_v1",
-        "programme_id": PROGRAMME_ID,
+        "programme_id": selected.programme_id,
         "gate": selected.gate,
         "leg": selected.leg,
         "attempt_classification": INTERRUPTED_INDEX_CLASSIFICATION,
@@ -415,6 +421,7 @@ def run_bounded_tight_deadband_qualification(
     activation_path = activation_path.resolve()
     activation, proposal = validate_activation(activation_path)
     selected = leg_for(activation.get("gate"), activation.get("leg"))
+    maximum_wall_s = QUALIFICATION_DEADLINE_S + selected.maximum_qualified_duration_s
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX319 {selected.gate} run already exists: {run_dir}")
@@ -499,7 +506,7 @@ def run_bounded_tight_deadband_qualification(
         "--run-dir",
         str(run_dir),
         "--duration-s",
-        str(MAXIMUM_WALL_S + 180.0),
+        str(maximum_wall_s + 180.0),
         "--status-interval",
         "5",
         "--command-fifo",
@@ -555,7 +562,7 @@ def run_bounded_tight_deadband_qualification(
             "--expected-build-identity",
             expected_build,
             "--duration-s",
-            str(MAXIMUM_WALL_S + 120.0),
+            str(maximum_wall_s + 120.0),
         ]
         supervisor = subprocess.Popen(
             supervisor_args,
@@ -571,7 +578,7 @@ def run_bounded_tight_deadband_qualification(
         )
         _wait_until(
             lambda: _terminal(run_dir) is not None or supervisor.poll() is not None,
-            MAXIMUM_WALL_S + 120.0,
+            maximum_wall_s + 120.0,
             f"finite {selected.gate} supervisor terminal",
         )
         terminal = _terminal(run_dir)
@@ -746,6 +753,173 @@ def run_bounded_tight_deadband_qualification(
         "evidence_content_sha256": indexed["content_sha256"],
         "evidence_index": str(evidence_index_path.expanduser().resolve()),
         "board": board,
+    }
+
+
+def recover_bounded_tight_deadband_finalization(
+    *, run_dir: Path
+) -> dict[str, Any]:
+    """Finish one unchanged live leg after the evidence-epoch reader escape.
+
+    This path performs no device discovery, serial I/O, firmware upload, DAC
+    write, control arm, retry, or restoration.  It is deliberately limited to
+    the retained package whose physical acquisition already reached a canonical
+    finite terminal and whose first missing phase is the evidence snapshot.
+    """
+
+    run_dir = run_dir.resolve()
+    manifest_path = run_dir / "run_manifest.json"
+    manifest_value = validate_frozen_run_manifest(manifest_path)
+    selected = leg_for_manifest(manifest_value)
+    if selected.profile_id not in {
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
+    }:
+        raise ValueError("finalization recovery is limited to mapping-informed Part B")
+    journal_path = journal_path_for(run_dir)
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    phases = journal.get("phases", {})
+    primary_failure = journal.get("primary_failure", {})
+    terminal = _terminal(run_dir)
+    snapshot_phase = phases.get("snapshot")
+    snapshot_path = run_dir / EVIDENCE_MANIFEST
+    if (
+        journal.get("run_dir") != str(run_dir)
+        or phases.get("capture_closed") is None
+        or phases.get("completion") is None
+        or any(phases.get(name) is not None for name in ("analysis", "seal"))
+        or primary_failure.get("phase") != "snapshot"
+        or EVIDENCE_EPOCH_PROFILE_FAILURE not in str(primary_failure.get("error", ""))
+        or not _terminal_expected(terminal)
+        or not (run_dir / "COMPLETE").is_file()
+        or (run_dir / "capture_in_progress.flag").exists()
+        or (snapshot_phase is None and snapshot_path.exists())
+        or (
+            snapshot_phase is not None
+            and (
+                not snapshot_path.is_file()
+                or snapshot_phase.get("details", {}).get("path")
+                != str(snapshot_path)
+            )
+        )
+        or (run_dir / selected.live_seal_filename).exists()
+    ):
+        raise ValueError(
+            "retained leg does not match the bounded evidence-epoch finalization escape"
+        )
+
+    raw_path = run_dir / "raw/serial.log"
+    raw_sha256 = _sha256_file(raw_path)
+    manifest_sha256 = _sha256_file(manifest_path)
+    snapshot_reused = snapshot_phase is not None
+    if not snapshot_reused:
+        snapshot_path = create_evidence_snapshot(run_dir)
+    loaded = load_manifest(run_dir)
+    failures, warnings = validate_evidence_snapshot(run_dir, loaded)
+    if failures or warnings:
+        raise RuntimeError(
+            f"CX319 {selected.gate} recovered evidence snapshot validation failed: "
+            + json.dumps({"failures": failures, "warnings": warnings})
+        )
+    if _sha256_file(raw_path) != raw_sha256 or _sha256_file(manifest_path) != manifest_sha256:
+        raise RuntimeError("offline finalization changed frozen acquisition evidence")
+    if not snapshot_reused:
+        advance_phase(journal_path, "snapshot", {"path": str(snapshot_path)})
+
+    try:
+        seal_path, seal = analyze(run_dir)
+    except Exception as exc:
+        record_failure(journal_path, phase="analysis", error=exc)
+        raise
+    advance_phase(
+        journal_path,
+        "analysis",
+        {"status": seal["status"], "tool_sha256": seal["tool_sha256"]},
+    )
+    advance_phase(
+        journal_path,
+        "seal",
+        {"path": str(seal_path), "seal_sha256": seal["seal_sha256"]},
+    )
+
+    failure_path = run_dir / _orchestration_failure(selected)
+    recovery_report_path = (
+        run_dir / f"reports/{selected.prefix}_finalization_recovery_v1.json"
+    )
+    recovery_report = {
+        "schema_version": 1,
+        "tool": FINALIZATION_RECOVERY_TOOL_ID,
+        "status": "offline_finalization_replayed",
+        "run_dir": str(run_dir),
+        "gate": selected.gate,
+        "leg": selected.leg,
+        "original_failure": {
+            "path": str(failure_path.relative_to(run_dir)),
+            "sha256": _sha256_file(failure_path),
+            "error": primary_failure["error"],
+        },
+        "frozen_acquisition": {
+            "run_manifest_sha256": manifest_sha256,
+            "raw_serial_sha256": raw_sha256,
+            "terminal": terminal,
+        },
+        "replacement": {
+            "runner_sha256": _sha256_file(Path(__file__)),
+            "evidence_snapshot_sha256": _sha256_file(snapshot_path),
+            "evidence_snapshot_reused": snapshot_reused,
+            "seal_sha256": seal["seal_sha256"],
+            "seal_status": seal["status"],
+        },
+        "raw_acquisition_unchanged": True,
+        "physical_rerun": False,
+        "device_or_actuator_io": False,
+        "claims_boundary": (
+            "Deterministic offline snapshot, analysis, seal, and registration "
+            "of the unchanged retained physical acquisition only."
+        ),
+    }
+    _atomic_new_json(recovery_report_path, recovery_report)
+
+    classification = (
+        COMPLETED_INDEX_CLASSIFICATION
+        if seal["status"] in {"passed", "bounded_nonpass"}
+        else INTERRUPTED_INDEX_CLASSIFICATION
+    )
+    registration = {
+        "source_revision": manifest_value["firmware"]["git_commit"],
+        "build_identity": manifest_value["firmware"]["build_manifest"]["sha256"],
+        "profile_identity": manifest_value["cx319"]["profile_id"],
+        "attempt_classification": classification,
+        "result_or_failure_reason": (
+            f"CX319 {selected.gate} {seal['status']} after deterministic "
+            "evidence-epoch finalization replay"
+        ),
+        "analyzer_identity": seal["tool_sha256"],
+    }
+    set_registration_intent(
+        journal_path,
+        registration=registration,
+        expected_content_sha256=package_identity(run_dir)["content_sha256"],
+    )
+    indexed = recover_registration(journal_path)
+    if seal["status"] == "failed":
+        raise RuntimeError(
+            f"CX319 {selected.gate} integrity analysis failed after offline recovery; "
+            f"retained evidence {indexed['content_sha256']}"
+        )
+    return {
+        "status": seal["status"],
+        "run_dir": str(run_dir),
+        "activation_sha256": manifest_value["activation"]["activation_sha256"],
+        "proposal_bundle_sha256": manifest_value["proposal"]["bundle_sha256"],
+        "firmware_flashes": int(selected.firmware_flash),
+        "analysis_and_seal": str(seal_path),
+        "seal_sha256": seal["seal_sha256"],
+        "evidence_snapshot": str(snapshot_path),
+        "evidence_content_sha256": indexed["content_sha256"],
+        "evidence_index": str(Path(journal["index_path"])),
+        "physical_rerun": False,
+        "finalization_recovery": str(recovery_report_path),
     }
 
 

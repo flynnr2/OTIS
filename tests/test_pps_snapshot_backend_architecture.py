@@ -162,6 +162,9 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx319_tight_lower",
         "cx319_tight_upper",
         "cx319_range_map_part_a",
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
+        "cx319_range_part_b_upper_completion",
     ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"

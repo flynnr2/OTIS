@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "programme_id": "CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4",
+  "status": "offline_preparation_authorized_physical_entry_not_authorized",
+  "effective_physical_authority": false,
+  "methodology_transition": {
+    "historical_programme": "CX319_CONDITIONAL_FINE_MAP_AND_FREQUENCY_TRAVERSAL_V3",
+    "historical_part_a_promotion_status": "not_promoted",
+    "part_a_scientific_disposition": "successful_transition_map",
+    "new_prerequisite": "mapping-informed readiness replay",
+    "claims_boundary": "V4 reuses the sealed V3 acquisition without changing its historical promotion result. V4 physical entry requires an exact new proposal, complete operational rehearsal and a separate effective authority transition."
+  },
+  "source_bindings": {
+    "historical_v3_programme": {
+      "path": "profiles/qualification/cx319_conditional_range_campaign_v3.json",
+      "sha256": "8334ef2a30f3f454851c20fad04237defb8b63f57f84eda6168241d64a1add24"
+    },
+    "mapping_readiness_contract": {
+      "path": "profiles/qualification/cx319_mapping_informed_part_b_readiness_v1.json",
+      "sha256": "64b0202388705146f94bb3fe32c6903cb9a927bd20eb7f36f74e8b553370dfb0"
+    },
+    "mapping_readiness_record": {
+      "path": "runs/cx319_range_spanning/conditional_fine_v3_20260815/mapping_informed_readiness_20260817/conditional_part_a_mapping_readiness_v1.json",
+      "sha256": "27ff502a820e0083addfe3643682f288353961051aa6b939a94b68b184457215",
+      "readiness_sha256": "d1126db85b8792e2e33fbbc9fbe0ed9fe0fdd9e35aeec8c45320c478da704405"
+    }
+  },
+  "part_b": {
+    "execution": "three_fresh_bounded_frequency_only_legs",
+    "phase_hybrid_authority": false,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_step_codes": 21,
+    "maximum_corrections_per_leg": 9,
+    "maximum_cumulative_movement_codes_per_leg": 189,
+    "minimum_applied_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "legs": [
+      {
+        "leg_id": "lower_acquisition",
+        "profile_id": "cx319_range_part_b_lower",
+        "setup_code": 43008,
+        "required_direction": "positive"
+      },
+      {
+        "leg_id": "upper_acquisition",
+        "profile_id": "cx319_range_part_b_upper",
+        "setup_code": 43152,
+        "required_direction": "negative"
+      },
+      {
+        "leg_id": "lower_reacquisition",
+        "profile_id": "cx319_range_part_b_lower",
+        "setup_code": 43008,
+        "required_direction": "positive"
+      }
+    ]
+  },
+  "preparation_authority": {
+    "offline_replay": true,
+    "focused_checks": true,
+    "firmware_build": true,
+    "operational_path_rehearsal": true,
+    "proposal_freeze": true,
+    "firmware_flash": false,
+    "board_reset": false,
+    "serial_open": false,
+    "dac_write": false,
+    "automatic_correction": false
+  },
+  "required_next_transition": {
+    "stop_before_first_flash": true,
+    "report_operationally_significant_rebinding": true,
+    "exact_clean_builds_and_rehearsal_required": true,
+    "effective_physical_authority_record_required": true
+  }
+}

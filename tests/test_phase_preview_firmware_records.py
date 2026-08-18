@@ -41,6 +41,41 @@ def format_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return executable
 
 
+@pytest.fixture(scope="session")
+def cx319_format_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("host C++ compiler is unavailable")
+    build_dir = tmp_path_factory.mktemp("cx319_format")
+    executable = build_dir / "format_harness"
+    (build_dir / "otis_build_profile.generated.h").write_text(
+        "#define OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED 1\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            compiler,
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-DARDUINO=1",
+            str(ROOT / "tests/cpp/phase_preview_format_harness.cpp"),
+            str(FIRMWARE / "otis_phase_preview_format.cpp"),
+            str(FIRMWARE / "otis_decimal_format.cpp"),
+            "-I",
+            str(FIRMWARE),
+            "-I",
+            str(build_dir),
+            "-o",
+            str(executable),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    return executable
+
+
 @pytest.mark.parametrize(
     ("selector", "contract"),
     [
@@ -101,6 +136,24 @@ def test_phe_retains_only_the_authoritative_nonoverlap_frequency_with_age(
     assert row["estimated_frequency_error_hz"] == "0.001666666666667"
     assert row["estimate_age_s"] == "17.000000000000000"
     assert row["reason_codes"] == "selected_600_interval_frequency_retained"
+
+
+def test_cx319_generated_profile_reaches_hybrid_formatter_translation_unit(
+    cx319_format_harness: Path,
+) -> None:
+    result = subprocess.run(
+        [str(cx319_format_harness), "hpr"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=ROOT,
+    )
+    row = next(csv.DictReader(result.stdout.splitlines()))
+
+    assert row["candidate_id"] == "p21600_cap1_epoch_reseed_v3"
+    assert row["candidate_configuration_sha256"] == (
+        "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d"
+    )
 
 
 def test_core1_stage4_producer_has_no_formatter_or_authority_surface() -> None:

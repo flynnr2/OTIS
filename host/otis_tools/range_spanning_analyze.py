@@ -113,6 +113,20 @@ def analyze(
     completed = [item for item in events if item.get("event") == "point_completed"]
     terminals = [item for item in events if item.get("event") == "terminal"]
     expected_prefix = bundle["part_a_segment"]["survey_prefix"]
+    point_plans = bundle["part_a_segment"].get("point_plans")
+    if point_plans is None:
+        required = int(
+            bundle["part_a_segment"]["fresh_policy_observations_per_point"]
+        )
+        point_plans = [
+            {
+                "code": code,
+                "role": "survey_point",
+                "minimum_observations": required,
+                "maximum_observations": required,
+            }
+            for code in expected_prefix
+        ]
     point_offset = int(bundle["part_a_segment"].get("global_point_offset", 0))
     observed_codes = [int(item.get("code", -1)) for item in completed]
     if observed_codes != expected_prefix[: len(observed_codes)]:
@@ -217,6 +231,18 @@ def analyze(
     for point in completed:
         point_index = int(point.get("point_index", -1))
         code = int(point.get("code", -1))
+        point_plan = (
+            point_plans[point_index]
+            if 0 <= point_index < len(point_plans)
+            else {
+                "code": -1,
+                "role": "invalid",
+                "minimum_observations": -1,
+                "maximum_observations": -1,
+            }
+        )
+        minimum_observations = int(point_plan["minimum_observations"])
+        maximum_observations = int(point_plan["maximum_observations"])
         dac_sequence = int(point.get("dac_sequence", -1))
         tdb_sequences = [int(item) for item in point.get("tdb_sequences", [])]
         epoch = int(point.get("dac_epoch", -1))
@@ -236,8 +262,6 @@ def analyze(
             or dac.get("dac_code_clamped") != "0"
         ):
             failures.append(f"point_{point_index}_exact_dac_application_missing")
-        if len(tdb_sequences) != 2:
-            failures.append(f"point_{point_index}_requires_two_tdb_observations")
         rows = [tdb_by_sequence.get(sequence) for sequence in tdb_sequences]
         if any(row is None for row in rows):
             failures.append(f"point_{point_index}_declared_tdb_record_missing")
@@ -279,12 +303,33 @@ def analyze(
         ):
             failures.append(f"point_{point_index}_hybrid_authority_contamination")
         counts = [int(row["integer_edge_error_counts"]) for row in rows]
+        first_minimum = counts[:minimum_observations]
+        mixed = (
+            len(first_minimum) == minimum_observations
+            and any(abs(value) <= 2 for value in first_minimum)
+            and any(abs(value) >= 3 for value in first_minimum)
+        )
+        required_observations = (
+            maximum_observations
+            if maximum_observations > minimum_observations and mixed
+            else minimum_observations
+        )
+        if len(tdb_sequences) != required_observations:
+            failures.append(
+                f"point_{point_index}_adaptive_observation_count_"
+                f"{len(tdb_sequences)}_expected_{required_observations}"
+            )
         point_results.append(
             {
                 "point_index": point_index,
                 "global_point_index": global_point_index,
                 "code": code,
                 "code_hex": f"0x{code:04X}",
+                "role": point_plan["role"],
+                "minimum_observations": minimum_observations,
+                "maximum_observations": maximum_observations,
+                "required_observations": required_observations,
+                "adaptive_extension": required_observations > minimum_observations,
                 "dac_sequence": dac_sequence,
                 "dac_epoch": epoch,
                 "tdb_sequences": tdb_sequences,

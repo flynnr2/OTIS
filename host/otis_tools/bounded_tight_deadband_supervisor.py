@@ -62,7 +62,10 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
         leg = kwargs.get("leg")
         if not isinstance(spec, CampaignSpec) or not isinstance(leg, TightDeadbandLeg):
             raise TypeError("CX319 requires explicit current spec and leg")
-        selected = leg_for("G2" if leg.leg == "A" else "G3", leg.leg)
+        gate = {"A": "G2", "B": "G3", "L": "PBL", "U": "PBU", "C": "PBUC"}.get(leg.leg)
+        if gate is None:
+            raise ValueError(f"unsupported CX319 live leg {leg.leg!r}")
+        selected = leg_for(gate, leg.leg)
         if leg.required_direction != selected.required_sign:
             raise ValueError("CX319 live leg direction differs from its exact contract")
         self.selected_leg = selected
@@ -74,9 +77,10 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
             tight_deadband_policy_sha256=_sha256(POLICY_PATH),
+            qualified_timeout_s=selected.maximum_qualified_duration_s,
             **kwargs,
         )
-        self.state["programme_id"] = PROGRAMME_ID
+        self.state["programme_id"] = selected.programme_id
         self.state["cx319_gate"] = selected.gate
         self.state["cx319_mode"] = "live_frequency_only"
         self.state["cx319_leg"] = selected.leg
@@ -101,7 +105,9 @@ class BoundedFrequencyControlSupervisor(FrequencyControlSupervisor):
             if event.startswith("stage5_")
             else event
         )
-        super()._event(current_event, programme_id=PROGRAMME_ID, **fields)
+        super()._event(
+            current_event, programme_id=self.selected_leg.programme_id, **fields
+        )
 
     def _command(self, command: str) -> None:
         if not normal_command_allowed(command):

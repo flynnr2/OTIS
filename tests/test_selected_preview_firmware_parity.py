@@ -71,6 +71,37 @@ def cx318_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return output
 
 
+@pytest.fixture(scope="session")
+def cx319_part_b_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    build_dir = tmp_path_factory.mktemp("cx319_part_b_preview")
+    output = build_dir / "selected_preview"
+    (build_dir / "otis_build_profile.generated.h").write_text(
+        "#define OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED 1\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            _compiler(),
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-DARDUINO=1",
+            str(HARNESS),
+            str(ENGINE),
+            "-I",
+            str(FIRMWARE),
+            "-I",
+            str(build_dir),
+            "-o",
+            str(output),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    return output
+
+
 def _run_cpp(executable: Path, inputs: list[Input]) -> list[dict[str, str]]:
     lines = [str(START_CODE)]
     for item in inputs:
@@ -106,7 +137,7 @@ def _run_cpp(executable: Path, inputs: list[Input]) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(completed.stdout)))
 
 
-def _run_host(inputs: list[Input]):
+def _run_host(inputs: list[Input], *, part_b_epoch_reseed: bool = False):
     phase_profile, phase_hash = load_phase_profile()
     hybrid_profile, _ = load_hybrid_profile()
     candidate = next(
@@ -114,6 +145,8 @@ def _run_host(inputs: list[Input]):
         for item in hybrid_profile["candidates"]
         if item["candidate_id"] == "p21600_cap1_v2"
     )
+    if part_b_epoch_reseed:
+        candidate = {**candidate, "candidate_id": "p21600_cap1_epoch_reseed_v3"}
     phase = RelativePhaseAccumulator(
         nominal_edges=10_000_000,
         timer_ticks_per_second=TICKS_PER_SECOND,
@@ -352,6 +385,36 @@ def test_dac_epoch_reseed_clears_unavailable_frequency_payload(
     assert float(cpp[-1]["observed_frequency_error_hz"]) == 0.0
 
 
+def test_part_b_dac_epoch_resets_candidate_budget_and_matches_host(
+    cx319_part_b_harness: Path,
+) -> None:
+    inputs = _stream([10] * 600)
+    last = inputs[-1]
+    inputs.append(
+        Input(
+            last.session,
+            last.sequence + 1,
+            (last.counter - 10_000_010) % (1 << 32),
+            last.reference_sequence + 1,
+            last.reference_ticks + TICKS_PER_SECOND,
+            0,
+            10_000_010,
+            1,
+            last.timestamp_s + 1.0,
+            actual_code=START_CODE - 21,
+        )
+    )
+
+    cpp = _run_cpp(cx319_part_b_harness, inputs)
+    host = _run_host(inputs, part_b_epoch_reseed=True)
+    _compare(cpp, host)
+    assert int(cpp[-2]["correction_count"]) == 1
+    assert cpp[-1]["decision_reason"] == "dac_epoch_candidate_reseed"
+    assert int(cpp[-1]["correction_count"]) == 0
+    assert int(cpp[-1]["cumulative_movement_codes"]) == 0
+    assert int(cpp[-1]["alternating_correction_count"]) == 0
+
+
 def test_engine_has_no_authority_or_io_dependency() -> None:
     header = HEADER.read_text(encoding="utf-8")
     source = ENGINE.read_text(encoding="utf-8")
@@ -362,6 +425,7 @@ def test_engine_has_no_authority_or_io_dependency() -> None:
         "#include <math.h>",
         "#include <stddef.h>",
         "#include <string.h>",
+        '#include "otis_build_profile_config.h"',
     ]
     for forbidden in (
         "otis_cx317_active",

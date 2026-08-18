@@ -129,6 +129,9 @@ class HybridCandidateEngine:
         self.profile = profile
         self.candidate = candidate
         self.candidate_id = str(candidate["candidate_id"])
+        self.external_dac_epoch_candidate_reseed = (
+            self.candidate_id == "p21600_cap1_epoch_reseed_v3"
+        )
         self.pull_in_s = int(candidate["pull_in_time_s"])
         self.cap_hz = float(candidate["phase_bias_cap_hz"])
         self.band_policy_id = str(candidate["band_policy"])
@@ -189,6 +192,15 @@ class HybridCandidateEngine:
         self.last_observed_frequency_hz = None
         self.last_decision_s = None
         self.last_correction_s = None
+
+    def _reset_candidate_lifetime(self, actual_applied_code: int) -> None:
+        """Start a fresh non-actionable candidate at an external DAC epoch."""
+
+        self.start_code = actual_applied_code
+        self.correction_count = 0
+        self.path_codes = 0
+        self.directions = []
+        self.terminal_reason = None
 
     def _update_band(self, modeled_frequency_hz: float) -> None:
         absolute = abs(modeled_frequency_hz)
@@ -316,6 +328,9 @@ class HybridCandidateEngine:
     ) -> HybridPreviewDecision:
         before = self.shadow_code
         before_band = self.band_state
+        new_dac_epoch = self.actual_dac_epoch != record.dac_epoch
+        if new_dac_epoch and self.external_dac_epoch_candidate_reseed:
+            self._reset_candidate_lifetime(actual_applied_code)
         self.actual_code = actual_applied_code
         self.shadow_code = actual_applied_code
         self.actual_dac_epoch = record.dac_epoch
@@ -362,6 +377,8 @@ class HybridCandidateEngine:
         new_phase_epoch = self.phase_epoch != record.phase_epoch
         new_dac_epoch = self.actual_dac_epoch != record.dac_epoch
         if new_phase_epoch or new_dac_epoch:
+            if new_dac_epoch and self.external_dac_epoch_candidate_reseed:
+                self._reset_candidate_lifetime(actual_applied_code)
             self.phase_epoch = record.phase_epoch
             self.actual_dac_epoch = record.dac_epoch
             self.actual_code = actual_applied_code
@@ -371,7 +388,13 @@ class HybridCandidateEngine:
             self.previous_timestamp_s = timestamp_s
             self.phase_hold_until_s = None
             self._reset_band_and_support()
-            reason = "phase_epoch_reseed" if new_phase_epoch else "dac_epoch_bumpless_reseed"
+            reason = (
+                "phase_epoch_reseed"
+                if new_phase_epoch
+                else "dac_epoch_candidate_reseed"
+                if self.external_dac_epoch_candidate_reseed
+                else "dac_epoch_bumpless_reseed"
+            )
             return self._output(
                 record,
                 timestamp_s=timestamp_s,

@@ -19,6 +19,9 @@ CURRENT_PROFILES = {
     "cx319_tight_lower",
     "cx319_tight_upper",
     "cx319_range_map_part_a",
+    "cx319_range_part_b_lower",
+    "cx319_range_part_b_upper",
+    "cx319_range_part_b_upper_completion",
 }
 CURRENT_GUARDS = {
     "invalid_active_missing_gnss",
@@ -37,7 +40,7 @@ def test_matrix_contains_only_current_cx319_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 8
+    assert len(profiles) == 11
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -53,7 +56,13 @@ def test_verification_tiers_are_explicit_and_small() -> None:
     matrix = load_matrix()
     assert [item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="fast"
-    )] == ["cx319_tight_lower", "cx319_range_map_part_a"]
+    )] == [
+        "cx319_tight_lower",
+        "cx319_range_map_part_a",
+        "cx319_range_part_b_lower",
+        "cx319_range_part_b_upper",
+        "cx319_range_part_b_upper_completion",
+    ]
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="campaign"
     )} == CURRENT_PROFILES

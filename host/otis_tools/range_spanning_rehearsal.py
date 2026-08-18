@@ -32,7 +32,9 @@ from .range_spanning_bundle import (
 from .range_spanning_run import (
     EVENTS,
     STATE,
+    _adaptive_point_rows,
     _append_event,
+    _point_tdb_rows,
     _prewrite_ready,
     _replace_json,
     _write_complete,
@@ -57,13 +59,21 @@ def _line(row: dict[str, str], contract: str) -> bytes:
         return handle.read().encode("ascii")
 
 
-def _records(bundle: dict[str, Any]) -> list[bytes]:
+def _records(
+    bundle: dict[str, Any], *, point_index: int = 0
+) -> list[bytes]:
     modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
-    code = int(bundle["part_a_segment"]["survey_prefix"][0])
+    code = int(bundle["part_a_segment"]["survey_prefix"][point_index])
     prior_epoch = int(
         bundle.get("entry", {}).get("expected_live_state", {}).get("dac_epoch", 0)
     )
-    epoch = prior_epoch + 1
+    epoch = prior_epoch + point_index + 1
+    decision_base = (0, 2, 6)[point_index]
+    observation_counts = (
+        (-6, -6)
+        if point_index == 0
+        else ((0, 0, 0, 0) if point_index == 1 else (-2, -3, -2, -3, -2, -3))
+    )
     continuation = bundle["entry"]["mode"] == "state_preserving_running_attach"
     raw_ticks = (
         (80_000_000, 96_000_000, 112_000_000)
@@ -82,7 +92,7 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
             "flags": "16",
         }
         for index, ticks in enumerate(raw_ticks, start=10)
-    ]
+    ] if point_index == 0 else []
     counts = [
         {
             "record_type": "CNT",
@@ -105,7 +115,7 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
             ),
             start=6,
         )
-    ]
+    ] if point_index == 0 else []
     health = [
         {
             "record_type": "STS",
@@ -122,11 +132,11 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
         for index, (key, value) in enumerate(
             (("partition_fault", "none"), ("fail_static", "false")), start=100
         )
-    ]
+    ] if point_index == 0 else []
     dac = {
         "record_type": "DAC",
         "schema_version": "1",
-        "seq": "1",
+        "seq": str(point_index + 1),
         "elapsed_ms": "1000",
         "step_index": "-1",
         "dac_code_requested": str(code),
@@ -139,21 +149,24 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
         "flags": "0",
     }
     estimates: list[dict[str, str]] = []
-    for sequence, count in ((1, -6), (2, -6)):
+    for offset, count in enumerate(observation_counts, start=1):
+        sequence = decision_base + offset
         row = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
         row.update(
             record_type="EST",
             schema_version="2",
             estimate_seq=str(sequence),
             estimate_id=f"est:cx317:selected600:{sequence:06d}",
-            estimator_timestamp_ticks=str(32_000_000 + sequence * 9_600_000_000),
+            estimator_timestamp_ticks=str(
+                (32_000_000 + sequence * 9_600_000_000) % modulus
+            ),
             time_domain="rp2040_timer0",
             source_count_seq=str(sequence),
             source_count_ref=f"rehearsal:CNT:{sequence}",
             source_reference_first_seq=str(sequence),
             source_reference_last_seq=str(sequence + 600),
             source_status_refs="rehearsal:STS:1",
-            source_dac_ref="rehearsal:DAC:1",
+            source_dac_ref=f"rehearsal:DAC:{point_index + 1}",
             manifest_ref="firmware_config:cx319_range_map_part_a",
             estimator_version="cx317_selected_600s_nonoverlap_v1",
             config_hash="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
@@ -182,37 +195,57 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
         )
         estimates.append(row)
     tdb: list[dict[str, str]] = []
-    for sequence in (1, 2):
+    for offset, count in enumerate(observation_counts, start=1):
+        sequence = decision_base + offset
         row = {field: "" for field in CONTRACT_FIELDS["tight_deadband_decisions_v1"]}
+        if point_index == 0:
+            state_before = "REQUALIFY_OUTSIDE" if offset == 1 else "OUTSIDE"
+            state_after = "OUTSIDE"
+            transition = offset == 1
+            entry_counter = 0
+        elif point_index == 1:
+            state_before = "REQUALIFY_OUTSIDE" if offset <= 2 else "TIGHT_INSIDE"
+            state_after = "REQUALIFY_OUTSIDE" if offset == 1 else "TIGHT_INSIDE"
+            transition = offset == 2
+            entry_counter = 1 if offset == 1 else 0
+        else:
+            state_before = "REQUALIFY_OUTSIDE"
+            state_after = "REQUALIFY_OUTSIDE"
+            transition = False
+            entry_counter = 1 if abs(count) <= 2 else 0
         row.update(
             record_type="TDB",
             schema_version="1",
             decision_sequence=str(sequence),
             estimate_id=f"est:cx317:selected600:{sequence:06d}",
-            decision_timestamp_ticks=str(32_000_000 + sequence * 9_600_000_000),
+            decision_timestamp_ticks=str(
+                (32_000_000 + sequence * 9_600_000_000) % modulus
+            ),
             time_domain="rp2040_timer0",
             capture_session="1",
             dac_epoch=str(epoch),
-            integer_edge_error_counts="-6",
-            absolute_edge_error_counts="6",
-            state_before="REQUALIFY_OUTSIDE" if sequence == 1 else "OUTSIDE",
-            state_after="OUTSIDE",
-            entry_counter="0",
+            integer_edge_error_counts=str(count),
+            absolute_edge_error_counts=str(abs(count)),
+            state_before=state_before,
+            state_after=state_after,
+            entry_counter=str(entry_counter),
             release_counter="0",
-            transition="true" if sequence == 1 else "false",
+            transition="true" if transition else "false",
             frequency_controller_eligible="true",
-            requalified="true" if sequence == 1 else "false",
+            requalified="true" if offset == 1 else "false",
             requalification_reason=(
-                "dac_epoch_changed_requalify" if sequence == 1 else ""
+                "dac_epoch_changed_requalify" if offset == 1 else ""
             ),
-            historical_v2_inside="false",
-            symmetric_two_count_inside="false",
+            historical_v2_inside="true" if abs(count) <= 3 else "false",
+            symmetric_two_count_inside="true" if abs(count) <= 2 else "false",
             policy_id="CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
             policy_sha256="352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
             actionable="false",
             actuation_authorized="false",
             authorization_consumed="false",
-            reason_codes="outside_loose_evidence",
+            reason_codes=(
+                "tight_entry_confirmed" if abs(count) <= 2 else "outside_loose_evidence"
+            ),
         )
         tdb.append(row)
     hybrid = {
@@ -221,7 +254,7 @@ def _records(bundle: dict[str, Any]) -> list[bytes]:
     hybrid.update(
         record_type="HPR",
         schema_version="1",
-        preview_sequence=str(prior_epoch + 1),
+        preview_sequence=str(epoch),
         candidate_id="p21600_cap1_v2",
         candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
@@ -327,6 +360,9 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
         ("gnss_receiver", "identity_stable", "true"),
         ("gnss_receiver", "metadata_control_eligible", "true"),
         ("gnss_receiver", "raw_pps_control_eligible", "true"),
+        ("pps_d14", "rejected_short_count", "0"),
+        ("pps_d14", "rejected_long_count", "0"),
+        ("pps_gate", "pps_interval_anomaly_count", "0"),
         ("dual_core", "partition_fault", "none"),
         ("dual_core", "fail_static", "false"),
         ("dual_core", "service_publish_failures", "0"),
@@ -602,50 +638,98 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
                     "board_reset_count": 0,
                 },
             )
-        code = int(bundle["part_a_segment"]["survey_prefix"][0])
-        command = f"DAC SET 0x{code:04X}"
-        _append_event(
-            run_dir / EVENTS,
-            {
-                "event": "point_command_sent",
-                "point_index": 0,
+        rehearsal_point_count = (
+            3 if bundle["part_a_segment"].get("point_plans") is not None else 1
+        )
+        completed_points: list[dict[str, Any]] = []
+        prior_epoch = int(
+            bundle.get("entry", {})
+            .get("expected_live_state", {})
+            .get("dac_epoch", 0)
+        )
+        prior_tdb_sequence = -1
+        point_plans = bundle["part_a_segment"].get("point_plans")
+        for point_index in range(rehearsal_point_count):
+            code = int(bundle["part_a_segment"]["survey_prefix"][point_index])
+            point_plan = (
+                point_plans[point_index]
+                if point_plans is not None
+                else {
+                    "role": "survey_point",
+                    "minimum_observations": 2,
+                    "maximum_observations": 2,
+                }
+            )
+            command = f"DAC SET 0x{code:04X}"
+            _append_event(
+                run_dir / EVENTS,
+                {
+                    "event": "point_command_sent",
+                    "point_index": point_index,
+                    "global_point_index": int(
+                        bundle["part_a_segment"].get("global_point_offset", 0)
+                    )
+                    + point_index,
+                    "code": code,
+                    "role": point_plan["role"],
+                    "minimum_observations": point_plan["minimum_observations"],
+                    "maximum_observations": point_plan["maximum_observations"],
+                    "command": command,
+                },
+            )
+            send_timestamped_command_to_fifo(normal_fifo, command)
+            _read_until(master, (command + "\n").encode("ascii"))
+            for record in _records(bundle, point_index=point_index):
+                os.write(master, record)
+                time.sleep(0.005)
+            epoch = prior_epoch + point_index + 1
+            deadline = time.monotonic() + 5
+            selected_rows: list[dict[str, str]] | None = None
+            observation_decision = "awaiting_minimum"
+            while time.monotonic() < deadline:
+                selected_rows, observation_decision = _adaptive_point_rows(
+                    _point_tdb_rows(
+                        run_dir,
+                        after_sequence=prior_tdb_sequence,
+                        epoch=epoch,
+                    ),
+                    minimum=int(point_plan["minimum_observations"]),
+                    maximum=int(point_plan["maximum_observations"]),
+                )
+                if selected_rows is not None:
+                    break
+                time.sleep(0.05)
+            if selected_rows is None:
+                raise RuntimeError(
+                    f"rehearsal point {point_index} did not satisfy adaptive observations"
+                )
+            tdb_sequences = [int(row["decision_sequence"]) for row in selected_rows]
+            prior_tdb_sequence = tdb_sequences[-1]
+            point = {
+                "point_index": point_index,
                 "global_point_index": int(
                     bundle["part_a_segment"].get("global_point_offset", 0)
-                ),
+                )
+                + point_index,
                 "code": code,
-                "command": command,
-            },
-        )
-        send_timestamped_command_to_fifo(normal_fifo, command)
-        _read_until(master, (command + "\n").encode("ascii"))
-        for record in _records(bundle):
-            os.write(master, record)
-            time.sleep(0.005)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            tdb_path = run_dir / "csv/tight_deadband_decisions_v1.csv"
-            if tdb_path.is_file() and len(tdb_path.read_text().splitlines()) >= 3:
-                break
-            time.sleep(0.05)
-        point = {
-            "point_index": 0,
-            "global_point_index": int(
-                bundle["part_a_segment"].get("global_point_offset", 0)
-            ),
-            "code": code,
-            "dac_sequence": 1,
-            "dac_epoch": int(
-                bundle.get("entry", {})
-                .get("expected_live_state", {})
-                .get("dac_epoch", 0)
-            )
-            + 1,
-            "tdb_sequences": [1, 2],
-        }
-        _append_event(run_dir / EVENTS, {"event": "point_completed", **point})
+                "role": point_plan["role"],
+                "minimum_observations": point_plan["minimum_observations"],
+                "maximum_observations": point_plan["maximum_observations"],
+                "observation_rule_decision": observation_decision,
+                "dac_sequence": point_index + 1,
+                "dac_epoch": epoch,
+                "tdb_sequences": tdb_sequences,
+            }
+            completed_points.append(point)
+            _append_event(run_dir / EVENTS, {"event": "point_completed", **point})
         _replace_json(
             run_dir / STATE,
-            {"schema_version": 1, "tool": TOOL_ID, "completed_points": [point], "terminal": None},
+            {
+                "schema_version": 1,
+                "tool": TOOL_ID,
+                "completed_points": completed_points,
+                "terminal": None,
+            },
         )
         transport = _inject_transport_fault(
             capture_pid=capture.pid,
@@ -676,7 +760,7 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
         "event": "terminal",
         "result": "healthy_stop",
         "reason": "finite_wall_deadline_before_next_point",
-        "completed_point_count": 1,
+        "completed_point_count": len(completed_points),
     }
     _append_event(run_dir / EVENTS, terminal)
     state = json.loads((run_dir / STATE).read_text(encoding="utf-8"))
@@ -719,6 +803,21 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
             "exact_dac_command_and_ack_parser": True,
             "domain_rollover_parser_and_validator": True,
             "selected_estimate_to_tdb_analyzer": True,
+            "adaptive_fixed_two_observation_path": (
+                completed_points[0]["observation_rule_decision"] == "fixed_minimum"
+            ),
+            "adaptive_fixed_four_observation_path": (
+                len(completed_points) < 2
+                or completed_points[1]["observation_rule_decision"] == "fixed_minimum"
+            ),
+            "adaptive_mixed_six_observation_extension": (
+                len(completed_points) < 3
+                or (
+                    completed_points[2]["observation_rule_decision"]
+                    == "maximum_mixed_extension"
+                    and len(completed_points[2]["tdb_sequences"]) == 6
+                )
+            ),
             "hybrid_same_code_epoch_zero_authority": True,
             "state_preserving_attachment_gate": (
                 bundle["entry"]["mode"] != "state_preserving_running_attach"

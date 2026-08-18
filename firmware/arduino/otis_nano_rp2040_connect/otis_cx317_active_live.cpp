@@ -90,6 +90,18 @@ constexpr char kExpectedProfile[] = "cx319_tight_lower";
     OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
 constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";
 constexpr char kExpectedProfile[] = "cx319_tight_upper";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER
+constexpr char kRunIdentity[] = "cx319_range_part_b_lower:3196001";
+constexpr char kExpectedProfile[] = "cx319_range_part_b_lower";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER
+constexpr char kRunIdentity[] = "cx319_range_part_b_upper:3196002";
+constexpr char kExpectedProfile[] = "cx319_range_part_b_upper";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
+constexpr char kRunIdentity[] = "cx319_range_part_b_upper_completion:3196003";
+constexpr char kExpectedProfile[] = "cx319_range_part_b_upper_completion";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -182,7 +194,13 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER
+        OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
       true,
 #else
       false,

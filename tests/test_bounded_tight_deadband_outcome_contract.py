@@ -11,6 +11,11 @@ from host.otis_tools.bounded_tight_deadband_outcome_contract import (
     normal_command_allowed,
 )
 from host.otis_tools.bounded_tight_deadband_supervisor import create_supervisor
+from host.otis_tools.bounded_tight_deadband_leg import (
+    RANGE_LOWER,
+    RANGE_UPPER,
+    RANGE_UPPER_COMPLETION,
+)
 
 
 SETUP_COMMAND = (
@@ -226,6 +231,77 @@ def test_g3_outcome_contract_accepts_matched_upper_negative_path() -> None:
 
     assert result["status"] == "passed"
     assert result["observed"]["required_direction"] == "negative"
+
+
+@pytest.mark.parametrize(
+    ("selected", "setup_code", "delta"),
+    [(RANGE_LOWER, 0xA800, 21), (RANGE_UPPER, 0xA890, -21)],
+)
+def test_conditional_part_b_outcome_uses_nine_correction_envelope(
+    selected, setup_code: int, delta: int  # type: ignore[no-untyped-def]
+) -> None:
+    transcript = deepcopy(_transcript())
+    transcript.update(
+        contract_id=selected.outcome_contract_id,
+        programme_id=selected.programme_id,
+        gate=selected.gate,
+        leg=selected.leg,
+    )
+    transcript["commands"][2]["command"] = (  # type: ignore[index]
+        f"ACTIVE SETUP 1 7 99 650 4 0x{setup_code:04X} 1 " + "b" * 64
+    )
+    transcript["setup"] = {  # type: ignore[assignment]
+        "requested_code": setup_code,
+        "applied_code": setup_code,
+        "dac_epoch": 1,
+        "acknowledged": True,
+    }
+    transcript["automatic_transactions"][0].update(  # type: ignore[index]
+        delta_codes=delta,
+        applied_code=setup_code + delta,
+    )
+    transcript["limits"].update(  # type: ignore[union-attr]
+        maximum_automatic_corrections=9,
+        maximum_cumulative_codes=189,
+    )
+
+    result = evaluate(transcript)
+
+    assert result["status"] == "passed"
+    assert all(result["checks"].values())
+
+
+def test_upper_completion_outcome_uses_two_correction_envelope() -> None:
+    selected = RANGE_UPPER_COMPLETION
+    transcript = deepcopy(_transcript())
+    transcript.update(
+        contract_id=selected.outcome_contract_id,
+        programme_id=selected.programme_id,
+        gate=selected.gate,
+        leg=selected.leg,
+    )
+    transcript["commands"][2]["command"] = (  # type: ignore[index]
+        "ACTIVE SETUP 1 7 99 650 4 0xA83C 1 " + "b" * 64
+    )
+    transcript["setup"] = {  # type: ignore[assignment]
+        "requested_code": 0xA83C,
+        "applied_code": 0xA83C,
+        "dac_epoch": 1,
+        "acknowledged": True,
+    }
+    transcript["automatic_transactions"][0].update(  # type: ignore[index]
+        delta_codes=-21,
+        applied_code=0xA827,
+    )
+    transcript["limits"].update(  # type: ignore[union-attr]
+        maximum_automatic_corrections=2,
+        maximum_cumulative_codes=42,
+        maximum_qualified_duration_s=9000,
+    )
+
+    result = evaluate(transcript)
+    assert result["status"] == "passed"
+    assert all(result["checks"].values())
 
 
 def test_g2_outcome_contract_rejects_phase_authority() -> None:
