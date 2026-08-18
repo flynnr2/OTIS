@@ -25,6 +25,7 @@ from .range_spanning_bundle import canonical_sha256, sha256_file
 SCHEMA_VERSION = 1
 TOOL_ID = "cx319_conditional_part_b_proposal_v1"
 PROGRAMME_ID = "CX319_MAPPING_INFORMED_FREQUENCY_TRAVERSAL_V4"
+UPPER_COMPLETION_PROGRAMME_ID = "CX319_MAPPING_INFORMED_UPPER_COMPLETION_V1"
 EXPECTED_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
 PROGRAMME_PROFILE = (
     Path(__file__).resolve().parents[2]
@@ -326,6 +327,68 @@ def _validate_upper_completion_predecessor(path: Path) -> dict[str, Any]:
     }
 
 
+def _validate_lower_reacquisition_predecessor(path: Path) -> dict[str, Any]:
+    """Bind either the original upper leg or its passed PBUC completion."""
+
+    path = path.resolve()
+    seal = _read(path, "lower-reacquisition predecessor seal")
+    if (seal.get("gate"), seal.get("leg")) == ("PBU", "U"):
+        return _validate_predecessor(path, sequence_index=3)
+
+    unsigned = {key: value for key, value in seal.items() if key != "seal_sha256"}
+    checks = seal.get("checks", {})
+    transactions = seal.get("transactions", {})
+    evidence = seal.get("evidence_snapshot", {})
+    evidence_path = Path(str(evidence.get("path", ""))).resolve()
+    supersession = seal.get("analysis_supersession", {})
+    superseded_path = Path(str(supersession.get("superseded_seal_path", ""))).resolve()
+    if (
+        seal.get("status") != "passed"
+        or seal.get("programme_id") != UPPER_COMPLETION_PROGRAMME_ID
+        or (seal.get("gate"), seal.get("leg"), seal.get("sequence_index"))
+        != ("PBUC", "C", 4)
+        or seal.get("acceptance_path")
+        != "mapping_target_stable_tight_hold_without_correction"
+        or seal.get("scientific_outcome")
+        != "stimulus_nonactionable_stable_tight_hold"
+        or seal.get("seal_sha256") != canonical_sha256(unsigned)
+        or seal.get("terminal", {}).get("result") != "aborted"
+        or seal.get("terminal", {}).get("reason")
+        != "stage5_finite_qualified_endpoint_nonpass"
+        or seal.get("terminal_abort_delivery", {}).get("exact") is not True
+        or not checks
+        or any(value is not True for value in checks.values())
+        or transactions.get("application_count") != 0
+        or transactions.get("response_count") != 0
+        or seal.get("tight_entry_transition_count") != 1
+        or supersession.get("raw_acquisition_unchanged") is not True
+        or supersession.get("physical_rerun") is not False
+        or supersession.get("superseded_status") != "bounded_nonpass"
+        or not superseded_path.is_file()
+        or supersession.get("superseded_seal_file_sha256")
+        != sha256_file(superseded_path)
+        or not evidence_path.is_file()
+        or evidence.get("sha256") != sha256_file(evidence_path)
+    ):
+        raise ValueError(
+            "lower reacquisition does not bind the exact passed upper-completion seal"
+        )
+    return {
+        "path": str(path),
+        "file_sha256": sha256_file(path),
+        "seal_sha256": seal["seal_sha256"],
+        "status": seal["status"],
+        "gate": seal["gate"],
+        "leg": seal["leg"],
+        "sequence_index": seal["sequence_index"],
+        "run": seal["run"],
+        "terminal": seal["terminal"],
+        "evidence_snapshot": evidence,
+        "acceptance_path": seal["acceptance_path"],
+        "predecessor_leg_seal_sha256": seal.get("predecessor_leg_seal_sha256"),
+    }
+
+
 def _validate_firmware(
     selected: BoundedTightDeadbandLeg, build_manifest_path: Path, uf2_path: Path
 ) -> dict[str, Any]:
@@ -408,6 +471,12 @@ def create_proposal(
         if predecessor_seal_path is None:
             raise ValueError("upper completion requires the exact V4 upper predecessor seal")
         predecessor = _validate_upper_completion_predecessor(predecessor_seal_path)
+    elif sequence_index == 3:
+        if predecessor_seal_path is None:
+            raise ValueError("Part B leg 3 requires the exact predecessor seal")
+        predecessor = _validate_lower_reacquisition_predecessor(
+            predecessor_seal_path
+        )
     else:
         if predecessor_seal_path is None:
             raise ValueError("Part B legs 2 and 3 require the exact predecessor seal")
@@ -531,6 +600,11 @@ def validate_proposal(path: Path) -> dict[str, Any]:
     elif value["sequence_index"] == 4:
         if predecessor != _validate_upper_completion_predecessor(Path(predecessor["path"])):
             raise ValueError("upper-completion predecessor binding is stale")
+    elif value["sequence_index"] == 3:
+        if predecessor != _validate_lower_reacquisition_predecessor(
+            Path(predecessor["path"])
+        ):
+            raise ValueError("lower-reacquisition predecessor binding is stale")
     elif predecessor != _validate_predecessor(
         Path(predecessor["path"]), sequence_index=value["sequence_index"]
     ):
