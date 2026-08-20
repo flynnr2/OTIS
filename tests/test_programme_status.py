@@ -38,10 +38,15 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     ]
     assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "de0b6a1d5894991ad3fcbb23773176ff515eae9ae04a3ad3bda0c5a682f3b2aa"
+        "eb849af779b5b5db6448b51433c17fca5220102be5a916d60c6adb3fc132057d"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "78be0e257fed3f70ad33834d470226f2effc1068f46b1fa1f597db1f71096ef3"
+        "a310fb6fed84fd1baa0c972cdfc6269990fcedcf227b4511512148652ac22648"
+    )
+    assert cx320["stage5_attempts"][0]["setup_applications"] == 0
+    assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
+    assert cx320["stage5_attempts"][0]["classification"] == (
+        "platform_escape_into_campaign"
     )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
