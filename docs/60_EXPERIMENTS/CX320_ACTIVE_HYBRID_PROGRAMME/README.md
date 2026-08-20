@@ -20,7 +20,9 @@ actuation because the host compared an exact fractional estimator timestamp
 to a floored integer device-uptime value. The attempt-8 firmware and timing
 stream were coherent and the bounded abort left code `0xA83C` fail-static. The
 narrow host predicate and its previously integer-aligned rehearsal seam are
-being corrected before a single-use attempt-9 successor is activated.
+corrected, and the attempt-9 current-suite, release matrix, structural
+preflight and complete live-topology rehearsal have passed. A single-use
+attempt-9 activation is the next gate.
 
 The scientific policy, thresholds, topology, criteria, 12-hour qualified
 duration and progressive actuator envelope remain unchanged.

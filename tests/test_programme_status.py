@@ -33,18 +33,15 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
     assert cx320["state"] == (
-        "stage5_attempt8_activated_ready_for_exact_physical_entry"
+        "stage5_attempt9_offline_gates_passed_awaiting_activation"
     )
-    assert cx320["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        "cx320_stage5_bounded_active_hybrid_live",
-    ]
-    assert cx320["physical_authority_effective"] is True
+    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx320["physical_authority_effective"] is False
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "6c5380f7a2f6dfe20c64f0eb330ce06a6d068475db26de874ba7e9000bc822f4"
+        "824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "5448f46def92fdde0ac2339be967e031d48a7edf527c2be7f57e7a55495075d4"
+        "51ea2a7b4eb00ea8ff4a155f9f260c1ea5e5802f676991833388490bbcf41a39"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
@@ -86,6 +83,14 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["stage5_attempts"][6]["last_confirmed_code"] == 43062
     assert cx320["stage5_attempts"][6]["response_support_elapsed_s"] == 1499
     assert cx320["stage5_attempts"][6]["response_support_required_s"] == 1500
+    assert cx320["stage5_attempts"][7]["automatic_applications"] == 0
+    assert cx320["stage5_attempts"][7]["last_confirmed_code"] == 43068
+    assert cx320["stage5_attempts"][7]["qualified_origin_timestamp_ticks"] == (
+        38_429_602_864
+    )
+    assert cx320["stage5_attempts"][7]["timestamp_above_lower_bound_ticks"] == (
+        13_602_864
+    )
     assert cx320["operational_rehearsal"]["setup_authority_qualification"] == {
         "firmware_startup_inhibit_s": 600,
         "observed_historical_qualification_s": 612,
@@ -105,7 +110,7 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["effective_activation"]["attempt_ordinal"] == 8
     assert cx320["effective_activation"]["automatic_retry"] is False
     assert cx320["effective_activation"]["effective"] is True
-    assert cx320["effective_activation"]["consumed"] is False
+    assert cx320["effective_activation"]["consumed"] is True
     assert cx320["effective_activation"]["activation_sha256"] == (
         "5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788"
     )

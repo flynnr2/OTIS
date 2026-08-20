@@ -75,3 +75,28 @@ setup code, duration, actuator limits, response criterion and progressive
 authority envelope are unchanged; their exact successful evidence may be
 reused where the decision-relevant inputs did not change.
 
+Those deterministic gates passed at host source revision
+`301eeea0c81e173657e105cb1687380411f22120`. The focused fractional-origin
+and live-rehearsal tests passed 27 checks; the affected current set passed 112;
+and the complete current suite passed 880 checks with 27 historical-revision
+tests excluded. All seven supported firmware profiles built and all six
+expected-failure guards matched. The firmware input semantic, configuration
+and reused exact UF2 remain respectively
+`1aa15e0a88c1090afb751d1418a381a6c2ce4b84542508572a436e0841ab42e2`,
+`f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`
+and `cdb6c4f413dddf768b444126ea44646ff5d88f7b3073b0ac646ef4c8c7a095ac`.
+
+Bundle v17 has semantic SHA-256
+`824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54`;
+proposal v17 has semantic SHA-256
+`e9bf9649612a2e2dedfd4067ceb205538f18924b2dc9a54d8f2698c71146dd7b`;
+and structural preflight v17 passed with semantic SHA-256
+`a206159271aca9425111a68682313249a58de47c21f991ecd2397810cdd87e64`.
+The complete live-topology rehearsal passed with semantic SHA-256
+`51ea2a7b4eb00ea8ff4a155f9f260c1ea5e5802f676991833388490bbcf41a39`.
+It exercises the real capture and supervisor processes, all three FIFOs,
+transport obstruction, abort-before-close, atomic terminal status, rotation,
+analysis, sealing and registration. Its accelerated path establishes the exact
+fractional origin only after the integer lower bound reaches it and proves the
+conservative 41,400/43,200-second device-time boundaries across forward and
+backward host UTC steps. No physical action was performed.

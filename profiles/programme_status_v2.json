@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt8_activated_ready_for_exact_physical_entry",
+      "state": "stage5_attempt9_offline_gates_passed_awaiting_activation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx320_stage5_bounded_active_hybrid_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": true,
+      "physical_authority_effective": false,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -29,9 +28,9 @@
         "status": "passed_corrected_materiality_counterfactual"
       },
       "exact_bundle": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_exact_bundle_v16.json",
-        "file_sha256": "6e97cdbea7848782797cefe20fd591e3f6ecee55db1413fae0886512f9a9271c",
-        "bundle_sha256": "6c5380f7a2f6dfe20c64f0eb330ce06a6d068475db26de874ba7e9000bc822f4",
+        "path": "runs/cx320_active_hybrid/stage5_attempt9_successor_bundle_20260820/cx320_active_hybrid_exact_bundle_v17.json",
+        "file_sha256": "acf67939eb5eba1b40dbf396c8fca8f74d35b4418bbd6718f0638ec127df3786",
+        "bundle_sha256": "824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54",
         "firmware_source_revision": "524c9d4e6fa4dd0aff4e787d3b5221f7b4390888",
         "firmware_source_sha256": "1aa15e0a88c1090afb751d1418a381a6c2ce4b84542508572a436e0841ab42e2",
         "configuration_sha256": "f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990",
@@ -45,11 +44,11 @@
         "superseded_for_entry_by_live_topology_rehearsal": true
       },
       "operational_rehearsal": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt8_live_topology_rehearsal_20260820/cx320_active_hybrid_live_topology_rehearsal_v1.json",
-        "result_file_sha256": "766b71fe3920493fa34dcd78c3773905acd823f26d7655c5195360b676727003",
-        "rehearsal_sha256": "5448f46def92fdde0ac2339be967e031d48a7edf527c2be7f57e7a55495075d4",
-        "evidence_content_sha256": "179f91f4fa708c8fdd0b6bad7365cadddcc304504ecbf76765e559eefa1cb07b",
-        "seal_sha256": "3c966d45afc76253124573aaae3746c65c95b115326fc74737d29e43e6216931",
+        "path": "runs/cx320_active_hybrid/stage5_attempt9_live_topology_rehearsal_20260820/cx320_active_hybrid_live_topology_rehearsal_v1.json",
+        "result_file_sha256": "b6572a89e84a3e99c8b69cd6a8b3b80a7b1e2beea48ce68f87bedac8a1c2882f",
+        "rehearsal_sha256": "51ea2a7b4eb00ea8ff4a155f9f260c1ea5e5802f676991833388490bbcf41a39",
+        "evidence_content_sha256": "d4043ecb8a6d69a3d07faca4219d0fc67e3578584c7b1416d6414784962941ae",
+        "seal_sha256": "e02be13b974fbb0799f56d79f288a7ddc6a1e7db7060771d6e8da51961a6e7e0",
         "setup_authority_qualification": {
           "firmware_startup_inhibit_s": 600,
           "observed_historical_qualification_s": 612,
@@ -63,6 +62,10 @@
           "time_domain": "rp2040_timer0",
           "correction_admission_close_elapsed_s": 41400,
           "qualified_endpoint_elapsed_s": 43200,
+          "qualified_origin_subsecond_ticks": 13602864,
+          "fractional_origin_deferred_until_lower_bound": true,
+          "exact_fractional_origin_established": true,
+          "admission_closed_at_first_conservative_uptime": true,
           "host_utc_step_invariant": true
         },
         "normal_fifo_saturated": true,
@@ -75,14 +78,14 @@
         "status": "passed"
       },
       "authority_proposal": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_authority_proposal_v16.json",
-        "file_sha256": "51989fff8fe272e7f3c1c185c05a9598681113c90d1a0e96a184dfbab5423101",
-        "proposal_sha256": "6f964af71fd9a99f0a7548110797c1fd194ae5d8d07cf6c1cf3e262279a2bfe8",
+        "path": "runs/cx320_active_hybrid/stage5_attempt9_successor_bundle_20260820/cx320_active_hybrid_authority_proposal_v17.json",
+        "file_sha256": "13380f249653ca8a29506c63e6bcce61cbc9e7559792dbf3df371d09655b5b70",
+        "proposal_sha256": "e9bf9649612a2e2dedfd4067ceb205538f18924b2dc9a54d8f2698c71146dd7b",
         "root_authorized_proposal_sha256": "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4",
         "root_authorized_bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae",
         "operator_authority_file_sha256": "d085d394df63698cfcbeeb1e7475beee259d302cfc7a4650c9db835c0b0001c8",
         "effective_via_operator_authority_lineage": true,
-        "awaiting_exact_attempt8_activation": false
+        "awaiting_exact_attempt9_activation": true
       },
       "effective_activation": {
         "path": "runs/cx320_active_hybrid/stage5_activation_attempt8_20260820/cx320_active_hybrid_live_activation_v8.json",
@@ -91,12 +94,12 @@
         "attempt_ordinal": 8,
         "automatic_retry": false,
         "effective": true,
-        "consumed": false
+        "consumed": true
       },
       "structural_preflight": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_structural_preflight_v16.json",
-        "file_sha256": "c7321f18fcc197ca3539b69bdcbe378f8b8effe344cfea9446e38e74f2617285",
-        "preflight_sha256": "320bfa516b019ef9ddada8b95dbab902068e0c8d0f7db905c043b05755edb1e0",
+        "path": "runs/cx320_active_hybrid/stage5_attempt9_successor_bundle_20260820/cx320_active_hybrid_structural_preflight_v17.json",
+        "file_sha256": "a64d2dae34c7d6d04fee75a00a357080214638eb530a0d35964b4fe23f7ed360",
+        "preflight_sha256": "a206159271aca9425111a68682313249a58de47c21f991ecd2397810cdd87e64",
         "status": "passed",
         "physical_actions_performed": 0
       },
@@ -237,6 +240,30 @@
           "seal_file_sha256": "57296d34c59608d4694b966c37527775291bff9d6371b3fbdaf19b372b329022",
           "evidence_content_sha256": "b2e5a38fcbe043777a17e02973a128a0a35ad9fcd8f87f1eddf92141e0fcc49e",
           "scientific_result": "first_physical_phase_material_application_observed_but_response_checkpoint_invalid_at_1499s_support"
+        },
+        {
+          "ordinal": 8,
+          "run_id": "stage5_live_attempt8_20260820T1746Z",
+          "classification": "platform_escape_into_campaign",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "host_qualified_clock_validator_compared_exact_fractional_estimator_timestamp_to_floored_integer_uptime_lower_bound",
+          "firmware_flash_count": 1,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 0,
+          "hybrid_decisions": 1,
+          "qualified_origin_estimate_id": "est:cx317:selected600:000541",
+          "qualified_origin_timestamp_ticks": 38429602864,
+          "status_uptime_lower_bound_s": 2401,
+          "timestamp_above_lower_bound_ticks": 13602864,
+          "last_confirmed_code": 43068,
+          "last_confirmed_dac_epoch": 1,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "f358f754eb07e1459a4891c30e1f05499ea9156bb5433a196a1790d50dd9d302",
+          "seal_file_sha256": "04d7726d756a068a17924802ff40ff79aa1c16352566ef25003ca568a3e6b239",
+          "evidence_content_sha256": "98db22b5fa91a9ba65e0c2f9e99009ab3cf88ac936b91123674426e16389ac4e",
+          "scientific_result": "none_host_terminal_before_qualified_origin_or_automatic_application"
         }
       ],
       "verification": {
@@ -279,10 +306,18 @@
         "attempt8_exact_clean_build_passed": true,
         "attempt8_structural_preflight_passed": true,
         "attempt8_operational_rehearsal_passed": true,
-        "attempt8_exact_refreeze_pending": false
+        "attempt8_exact_refreeze_pending": false,
+        "attempt9_fractional_origin_and_live_rehearsal_tests_passed": 27,
+        "attempt9_affected_current_tests_passed": 112,
+        "attempt9_current_release_tests_passed": 880,
+        "attempt9_historical_tests_excluded": 27,
+        "attempt9_supported_firmware_profiles_passed": 7,
+        "attempt9_expected_failure_guards_verified": 6,
+        "attempt9_structural_preflight_pending": false,
+        "attempt9_operational_rehearsal_pending": false
       },
-      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md",
-      "next_gate": "exact_physical_stage5_attempt_8"
+      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md",
+      "next_gate": "attempt9_exact_single_use_activation"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",
