@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_frozen_cx319_and_offline_cx320_next_gate() -> None:
+def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx320_bounded_active_hybrid"
@@ -32,8 +32,17 @@ def test_tracked_status_records_frozen_cx319_and_offline_cx320_next_gate() -> No
     assert successor["authority"] == "completed_programme_no_live_authority"
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
-    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert cx320["physical_authority_effective"] is False
+    assert cx320["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        "cx320_stage5_bounded_active_hybrid_live",
+    ]
+    assert cx320["physical_authority_effective"] is True
+    assert cx320["exact_bundle"]["bundle_sha256"] == (
+        "de0b6a1d5894991ad3fcbb23773176ff515eae9ae04a3ad3bda0c5a682f3b2aa"
+    )
+    assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
+        "78be0e257fed3f70ad33834d470226f2effc1068f46b1fa1f597db1f71096ef3"
+    )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[

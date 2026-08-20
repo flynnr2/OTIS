@@ -28,7 +28,8 @@
 - The last confirmed predecessor state is `TIGHT_INSIDE` at `0xA83C`, DAC epoch
   1. A flash or reset makes the physical code unknown until a new exact setup
   acknowledgement propagates through all consumers.
-- Active-hybrid behavior remains physically unqualified. The CX319 hybrid
-  corpus is counterfactual and zero-authority; CX320 implementation, replay and
-  offline rehearsal do not constitute observed phase steering.
+- Active-hybrid behavior remains physically unqualified until the authorized
+  CX320 Stage 5 acquisition reaches a decision-bearing terminal. The CX319
+  hybrid corpus is counterfactual, and CX320 replay plus real-process PTY
+  rehearsal do not constitute observed phase steering.
 - OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.
