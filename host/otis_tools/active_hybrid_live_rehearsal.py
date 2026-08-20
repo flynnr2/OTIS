@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import stat
@@ -147,6 +148,14 @@ def _binding_matches(binding: object) -> bool:
         and binding.get("sha256") == _sha256_file(path)
         and binding.get("size_bytes") == path.stat().st_size
     )
+
+
+def _is_pseudo_terminal(device: str) -> bool:
+    """Recognize the PTY slave namespaces used by Linux and macOS."""
+
+    return device.startswith("/dev/pts/") or re.fullmatch(
+        r"/dev/ttys[0-9]+", device
+    ) is not None
 
 
 def _create_rehearsal_run_manifest(
@@ -299,7 +308,7 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         or value.get("actionable") is not False
         or value.get("actuation_authorized") is not False
         or value.get("authority_effective") is not False
-        or not device.startswith("/dev/pts/")
+        or not _is_pseudo_terminal(device)
         or host.get("serial_owner_count") != 1
         or host.get("sole_serial_owner") is not True
         or len(set(host.get("fifos", {}).values())) != 3

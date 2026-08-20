@@ -95,6 +95,28 @@ def test_rehearsal_manifest_rejects_non_pty_device(
         rehearsal.validate_rehearsal_run_manifest(path)
 
 
+def test_rehearsal_manifest_accepts_macos_pty_slave(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    monkeypatch.setattr(rehearsal, "validate_bundle", lambda path: bundle)
+    monkeypatch.setattr(rehearsal, "validate_proposal", lambda path: proposal)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/ttys001",
+    )
+
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+
+    assert observed["host"]["serial_device"] == "/dev/ttys001"
+
+
 def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
