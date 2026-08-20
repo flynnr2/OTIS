@@ -337,11 +337,31 @@ def _attempt_descriptor(
             "CX320 predecessor physical terminal seal",
         )
         run_dir = predecessor_terminal_path.parents[1]
+        terminal = seal.get("terminal", {})
+        supervisor_terminal = (
+            terminal.get("supervisor_terminal", {})
+            if isinstance(terminal, dict)
+            else {}
+        )
+        failed_physical_gate = (
+            seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "measurement_authority_or_platform_fault"
+        )
+        bounded_operator_abort = (
+            seal.get("status") == "bounded_nonpass"
+            and seal.get("primary_decision") == "operator_abort"
+            and isinstance(terminal, dict)
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("reason")
+            == "independent_host_abort_fifo"
+        )
         if (
             not (run_dir / "COMPLETE").is_file()
-            or seal.get("status") != "failed"
-            or seal.get("primary_decision")
-            != "measurement_authority_or_platform_fault"
+            or not (failed_physical_gate or bounded_operator_abort)
             or seal.get("acquisition_gate", {}).get("passed") is not False
             or seal.get("offline_finalization_gate", {}).get(
                 "replayable_without_physical_repeat"
@@ -349,7 +369,7 @@ def _attempt_descriptor(
             is not False
         ):
             raise ValueError(
-                "CX320 predecessor does not establish a failed physical gate "
+                "CX320 predecessor does not establish an incomplete physical gate "
                 "requiring a new identified attempt"
             )
         predecessor = {

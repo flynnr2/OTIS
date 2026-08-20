@@ -183,6 +183,105 @@ def test_later_activation_binds_failed_predecessor_terminal(
     assert validated == observed
 
 
+def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-4"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "bounded_nonpass",
+        "run_id": "attempt-4",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "operator_abort",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": "independent_host_abort_fifo",
+            },
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation.create_activation(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        operational_rehearsal_path=rehearsal_path,
+        serial_device="/dev/cu.usbmodem-test",
+        operator_instruction_ref="expanded bounded recovery authority",
+        output_path=tmp_path / "activation-5.json",
+        attempt_ordinal=5,
+        attempt_reason="repair exact firmware setup-consumer handoff",
+        predecessor_terminal_path=predecessor_path,
+    )
+
+    assert observed["attempt"]["ordinal"] == 5
+    assert observed["attempt"]["automatic_retry"] is False
+    assert observed["attempt"]["predecessor_physical_terminal"][
+        "primary_decision"
+    ] == "operator_abort"
+
+
+def test_later_activation_rejects_unconfirmed_operator_abort_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-aborted"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "bounded_nonpass",
+        "run_id": "attempt-aborted",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "operator_abort",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 0,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": "independent_host_abort_fifo",
+            },
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation.create_activation(
+            bundle_path=bundle_path,
+            proposal_path=proposal_path,
+            operational_rehearsal_path=rehearsal_path,
+            serial_device="/dev/cu.usbmodem-test",
+            operator_instruction_ref="expanded bounded recovery authority",
+            output_path=tmp_path / "activation.json",
+            attempt_ordinal=5,
+            attempt_reason="must not accept unconfirmed abort delivery",
+            predecessor_terminal_path=predecessor_path,
+        )
+
+
 def test_later_activation_requires_predecessor_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
