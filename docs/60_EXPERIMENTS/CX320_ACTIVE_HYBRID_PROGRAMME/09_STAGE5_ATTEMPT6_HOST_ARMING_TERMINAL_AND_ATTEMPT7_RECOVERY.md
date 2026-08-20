@@ -97,3 +97,17 @@ Because activation validation is part of the frozen host bundle, this narrow
 correction supersedes the v14 entry artifacts and requires one exact refreeze,
 preflight and operational-path rehearsal before activation. No physical action
 was attempted.
+
+The final refreeze binds source revision
+`dcb67906ec974856dd7bafd3c94851bd7372e590` and exact UF2 SHA-256
+`86bbd57c5a14c153c62ece7badd66e42df18e45b40a58235434037d7759c5df1`.
+Successor bundle v15 has semantic SHA-256
+`f3f3c87dd23e792061da22e49dd3400ac05fb12463e8156da7b55b3a8bdc8fb8`;
+proposal v15 has semantic SHA-256
+`7959b6b21102d3b39da0b37e17fb66a0b78b805a6d0620cd045a88e144168fc5`;
+preflight v15 passed with semantic SHA-256
+`e6dcbb3f1b3aca1f54f4d656043f297f58a677b01c7c55c8499ed8f273c2323f`;
+and the repeated complete operational-path rehearsal passed with semantic
+SHA-256
+`5110659ab8c7e4c53ab70d415f1da4c7c566982bb9267407406bae2fc98fe8ea`.
+These are the attempt-7 entry artifacts eligible for separate activation.
