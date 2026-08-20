@@ -468,6 +468,8 @@ def _capsules_exact(
     rows: list[dict[str, str]],
     events: list[dict[str, Any]],
     supervisor_state: dict[str, Any],
+    *,
+    permitted_unacknowledged_sequences: frozenset[int] = frozenset(),
 ) -> tuple[bool, dict[str, str]]:
     expected_rows = [row for row in rows if row.get("event") != "manual_start"]
     hashes: dict[str, str] = {}
@@ -497,14 +499,25 @@ def _capsules_exact(
             exact = False
             continue
         hashes[str(relative)] = _sha256_file(path)
-        if (record_sequence, phase_by_event[row["event"]]) not in acknowledgements:
+        acknowledged = (
+            record_sequence,
+            phase_by_event[row["event"]],
+        ) in acknowledgements
+        should_be_acknowledged = (
+            record_sequence not in permitted_unacknowledged_sequences
+        )
+        if acknowledged != should_be_acknowledged:
             exact = False
     actual_paths = {
         path.relative_to(run_dir)
         for path in (run_dir / "reports").glob("step_*/record_*_*.json")
+        if not path.name.endswith("_response_replay_attestation.json")
     }
     expected_sequences = sorted(
-        int(row["transaction_record_sequence"]) for row in expected_rows
+        int(row["transaction_record_sequence"])
+        for row in expected_rows
+        if int(row["transaction_record_sequence"])
+        not in permitted_unacknowledged_sequences
     )
     exact &= actual_paths == expected_paths
     exact &= sorted(supervisor_state.get("acknowledged_record_sequences", [])) == expected_sequences

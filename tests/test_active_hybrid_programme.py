@@ -6,7 +6,10 @@ import pytest
 
 from host.otis_tools.active_hybrid_evidence_guard import (
     FROZEN_AHY_HALF_SERIALIZATION_QUANTUM,
+    ResponseCheckpointRejected,
+    _ahy_act_frequency_close,
     _raw_code_close,
+    replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
 from host.otis_tools.active_hybrid_policy import ActiveHybridController, load_policy
@@ -172,6 +175,76 @@ def test_response_guard_scales_12_decimal_hz_quantization_into_raw_codes() -> No
         replayed_raw_codes,
         gain_codes_per_hz=policy.integrator_gain_codes_per_hz_per_decision,
     )
+
+
+def test_response_guard_separates_exact_replay_from_failed_sign_checkpoint(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle()
+    _, ahy_rows, transaction_rows = _modeled_transaction(bundle)
+    material = next(
+        row for row in ahy_rows if row["phase_materially_influenced"] == "true"
+    )
+    decision_sequence = material["decision_sequence"]
+    response_index = next(
+        index
+        for index, row in enumerate(transaction_rows)
+        if row["event"] == "response"
+        and row["decision_sequence"] == decision_sequence
+    )
+    response = transaction_rows[response_index]
+    response.update(
+        {
+            "post_error_hz": "0.000000000",
+            "observed_response_hz": "0.000000000",
+            "cumulative_response_hz": "0.000000000",
+            "consecutive_indeterminate": "1",
+            "response_class": "healthy_indeterminate_near_resolution",
+            "reason": "healthy_evidence_below_empirical_detection_floor",
+        }
+    )
+    response_horizon_index = next(
+        index
+        for index, row in enumerate(ahy_rows)
+        if int(row["decision_sequence"]) > int(decision_sequence)
+        and row["authority_state"] == "AWAITING_RESPONSE"
+    )
+    response_horizon = ahy_rows[response_horizon_index]
+    response_horizon["frequency_error_hz"] = "0.000000000000"
+    response_horizon["frequency_term_hz"] = "-0.000000000000"
+    ahy_rows = ahy_rows[: response_horizon_index + 1]
+    transaction_rows = transaction_rows[: response_index + 1]
+
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transaction_rows)
+    replay = replay_active_hybrid_history(
+        ahy_rows,
+        transaction_rows,
+        expected_run_identity=str(bundle["run_identity"]),
+        expected_build_identity=str(bundle["firmware"]["build_identity"]),
+        expected_profile_identity="cx320_active_hybrid",
+    )
+    assert replay["exact"] is True
+    assert replay["all_response_checkpoints_passed"] is False
+    assert replay["comparisons"][-1]["response_evidence_exact"] is True
+    assert replay["comparisons"][-1]["response_checkpoint_exact"] is True
+    assert replay["comparisons"][-1]["predicted_sign_observed"] is False
+    assert replay["comparisons"][-1]["response_checkpoint_passed"] is False
+    with pytest.raises(
+        ResponseCheckpointRejected, match="response-sign checkpoint did not pass"
+    ):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=response,
+        )
+
+
+def test_response_guard_compares_ahy_and_act_frequency_serialization_domains() -> None:
+    assert _ahy_act_frequency_close(0.001666666940, 0.001666667)
+    assert not _ahy_act_frequency_close(0.001666666940, 0.001666668)
 
 
 def test_response_guard_replays_nonzero_frequency_only_counterfactual(

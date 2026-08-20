@@ -15,9 +15,17 @@ from .contracts import CsvValidationContext, validate_csv
 
 TOOL_ID = "cx320_active_hybrid_response_evidence_guard_v1"
 FROZEN_AHY_FRACTIONAL_DECIMAL_PLACES = 12
+FROZEN_ACT_FREQUENCY_DECIMAL_PLACES = 9
 FROZEN_AHY_HALF_SERIALIZATION_QUANTUM = (
     0.5 * 10**-FROZEN_AHY_FRACTIONAL_DECIMAL_PLACES
 )
+FROZEN_ACT_FREQUENCY_HALF_SERIALIZATION_QUANTUM = (
+    0.5 * 10**-FROZEN_ACT_FREQUENCY_DECIMAL_PLACES
+)
+
+
+class ResponseCheckpointRejected(ValueError):
+    """The evidence replayed exactly but failed a frozen response predicate."""
 
 
 def _rows(path: Path) -> list[dict[str, str]]:
@@ -40,6 +48,20 @@ def _raw_code_close(
         abs(gain_codes_per_hz) + 1.0
     )
     return math.isclose(observed, expected, rel_tol=0, abs_tol=tolerance_codes)
+
+
+def _ahy_act_frequency_close(observed: float, expected: float) -> bool:
+    """Compare the same frequency serialized by AHY and ACT contracts."""
+
+    return math.isclose(
+        observed,
+        expected,
+        rel_tol=0,
+        abs_tol=(
+            FROZEN_AHY_HALF_SERIALIZATION_QUANTUM
+            + FROZEN_ACT_FREQUENCY_HALF_SERIALIZATION_QUANTUM
+        ),
+    )
 
 
 def _bool(row: dict[str, str], name: str) -> bool:
@@ -100,6 +122,7 @@ def replay_active_hybrid_history(
     seen_decisions: set[int] = set()
     outstanding_decision_sequence: int | None = None
     completed_response_decisions: set[int] = set()
+    all_response_checkpoints_passed = True
     for row in decisions:
         try:
             record_sequence = int(row["hybrid_record_sequence"])
@@ -201,6 +224,8 @@ def replay_active_hybrid_history(
                 )
             )
             response_exact = True
+            predicted_sign_observed: bool | None = None
+            response_checkpoint_passed: bool | None = None
             if response_horizon:
                 if outstanding_decision_sequence is None:
                     raise ValueError("response horizon lacks an outstanding decision")
@@ -223,7 +248,7 @@ def replay_active_hybrid_history(
                     and int(row["current_applied_code"])
                     == int(application["applied_code"])
                     and int(row["dac_epoch"]) == int(application["dac_epoch"])
-                    and _close(
+                    and _ahy_act_frequency_close(
                         float(row["frequency_error_hz"]),
                         float(response["post_error_hz"]),
                     )
@@ -236,8 +261,11 @@ def replay_active_hybrid_history(
                         "healthy_indeterminate_near_resolution",
                         "inside_deadband",
                     }
-                    and predicted_sign_observed
                 )
+                response_checkpoint_passed = (
+                    response_exact and predicted_sign_observed
+                )
+                all_response_checkpoints_passed &= response_checkpoint_passed
                 controller.note_response(
                     classification=response["response_class"],
                     predicted_sign_observed=predicted_sign_observed,
@@ -276,7 +304,10 @@ def replay_active_hybrid_history(
                     "numerical_exact": numerical_exact,
                     "sequence_exact": sequence_exact,
                     "transaction_binding_exact": transaction_exact,
+                    "response_evidence_exact": response_exact,
                     "response_checkpoint_exact": response_exact,
+                    "predicted_sign_observed": predicted_sign_observed,
+                    "response_checkpoint_passed": response_checkpoint_passed,
                     "exact": row_exact,
                 }
             )
@@ -330,6 +361,7 @@ def replay_active_hybrid_history(
         "completed_response_decision_sequences": sorted(
             completed_response_decisions
         ),
+        "all_response_checkpoints_passed": all_response_checkpoints_passed,
         "comparisons": comparisons,
     }
 
@@ -418,9 +450,12 @@ def replay_response_before_acknowledgement(
             "healthy_indeterminate_near_resolution",
             "inside_deadband",
         }
-        or not predicted_sign_observed
     ):
-        raise ValueError("CX320 applied code, epoch, or response checkpoint differs")
+        raise ValueError("CX320 applied code, epoch, or response evidence differs")
+    if not predicted_sign_observed:
+        raise ResponseCheckpointRejected(
+            "CX320 frozen response-sign checkpoint did not pass"
+        )
 
     result: dict[str, Any] = {
         "schema_version": 1,

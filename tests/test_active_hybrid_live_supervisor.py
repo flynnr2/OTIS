@@ -319,6 +319,36 @@ def test_exact_runtime_identity_and_frozen_envelope() -> None:
     assert live.ABSOLUTE_WALL_LIMIT_S == 16 * 60 * 60
 
 
+def test_failed_response_sign_checkpoint_maps_to_scientific_terminal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    reasons: list[str] = []
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def reject_response(_self: object) -> None:
+        raise live.ResponseCheckpointRejected(
+            "CX320 frozen response-sign checkpoint did not pass"
+        )
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor, "_process_transactions", reject_response
+    )
+    monkeypatch.setattr(supervisor, "_abort", reasons.append)
+    monkeypatch.setattr(
+        supervisor,
+        "_event",
+        lambda name, **values: events.append((name, values)),
+    )
+    monkeypatch.setattr(supervisor, "_validate_hybrid_decisions", lambda: None)
+    monkeypatch.setattr(live, "_read_csv", lambda _path: [])
+
+    supervisor._process_transactions()
+
+    assert reasons == ["hybrid_response_wrong_or_frequency_not_reacquired"]
+    assert events[0][0] == "cx320_first_phase_response_checkpoint_rejected"
+
+
 def test_cx320_uses_observed_raw_pps_qualification_deadline(
     tmp_path: Path,
 ) -> None:

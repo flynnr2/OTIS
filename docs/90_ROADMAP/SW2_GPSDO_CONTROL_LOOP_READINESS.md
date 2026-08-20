@@ -4,10 +4,11 @@
 readiness decision and its precursor evidence. The later CX318 Stage 5 work is
 suspended incomplete and unsealed. Platform stabilization subsequently passed;
 CX319 subsequently completed its range map and mapping-informed frequency-only
-Part B programme. The CX320 active-hybrid exact offline bundle and operational
-rehearsal pass; physical phase steering remains unauthorized and unqualified
-pending a separate exact-bundle decision. Current details are in
-`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
+Part B programme. CX320 subsequently applied one physical firmware-driven,
+phase-material combined correction, but its exact response was below the frozen
+observability floor and failed the positive-sign checkpoint. The programme is a
+bounded non-pass with no remaining live authority. Current details are in
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
 
 ## Decision
 

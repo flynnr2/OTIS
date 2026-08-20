@@ -7,10 +7,11 @@ incomplete, and unsealed. The platform-stabilization programme in
 completion gate. Historical “next” actions below are not current execution
 authority. The `CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME` subsequently passed
 lower-side acquisition and completed its range map and mapping-informed
-frequency-only Part B programme. CX319 is frozen. The CX320 active-hybrid exact
-offline bundle and operational rehearsal pass; its physical decision is
-separate and no physical authority is effective. See
-`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
+frequency-only Part B programme. CX319 is frozen. CX320 physically applied one
+firmware-driven, phase-material combined correction, but the exact response was
+below the frozen empirical detection floor and failed its positive-sign
+checkpoint. It is a bounded non-pass with no remaining live authority. See
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
@@ -91,7 +92,7 @@ The recommended path is now:
 5. preserve the sealed 24-hour bounded dual-core frequency-control endurance result — **complete**;
 6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority — **complete**;
 7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics — **complete as zero-authority evidence**;
-8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 offline bundle/rehearsal pass; separate physical authority decision pending**;
+8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 bounded non-pass: one physical phase-material correction observed, but its response was below the frozen sign-detection floor**;
 9. add reference-loss holdover and controlled recovery;
 10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic or the DAC driver.
 

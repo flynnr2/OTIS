@@ -8,14 +8,23 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _classify_decision,
     _cx320_commands_exact,
     _frequency_metrics,
+    _legacy_checkpoint_terminal_misclassified,
     _metric_contract,
     _phase_metrics,
     _replay_ahy,
+    _response_attestations,
     _tight_deadband_policy_sha256,
     _wall_origin_and_setup_order_exact,
 )
 from host.otis_tools.active_hybrid_policy import load_policy
-from host.otis_tools.active_hybrid_rehearsal import _modeled_transaction
+from host.otis_tools.active_hybrid_rehearsal import (
+    _modeled_transaction,
+    _write_csv,
+)
+from host.otis_tools.contracts import (
+    ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    CONTRACT_FIELDS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -193,6 +202,96 @@ def test_ahy_replay_detects_materiality_counterfactual_tamper() -> None:
     )["exact"] is False
 
 
+def test_terminal_response_sign_rejection_is_exact_without_phase4_ack(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(POLICY_PATH)
+    build_identity = "b" * 64 + ":" + "c" * 64
+    bundle = {
+        "run_identity": "cx320_active_hybrid:3200001",
+        "bundle_sha256": "d" * 64,
+        "policy": {"policy_sha256": policy.policy_sha256},
+        "firmware": {"build_identity": build_identity},
+        "setup": {
+            "consumer_epoch_propagation_required": [
+                "frequency_estimator",
+                "phase_estimator",
+                "controller",
+                "preview_replay",
+                "recorder",
+                "response_classifier",
+            ]
+        },
+    }
+    _, ahy_rows, transaction_rows = _modeled_transaction(bundle)
+    material = next(
+        row for row in ahy_rows if row["phase_materially_influenced"] == "true"
+    )
+    response_index = next(
+        index
+        for index, row in enumerate(transaction_rows)
+        if row["event"] == "response"
+        and row["decision_sequence"] == material["decision_sequence"]
+    )
+    response = transaction_rows[response_index]
+    response.update(
+        {
+            "post_error_hz": "0.000000000",
+            "observed_response_hz": "0.000000000",
+            "cumulative_response_hz": "0.000000000",
+            "consecutive_indeterminate": "1",
+            "response_class": "healthy_indeterminate_near_resolution",
+            "reason": "healthy_evidence_below_empirical_detection_floor",
+        }
+    )
+    horizon_index = next(
+        index
+        for index, row in enumerate(ahy_rows)
+        if int(row["decision_sequence"]) > int(material["decision_sequence"])
+        and row["authority_state"] == "AWAITING_RESPONSE"
+    )
+    ahy_rows[horizon_index]["frequency_error_hz"] = "0.000000000000"
+    ahy_rows[horizon_index]["frequency_term_hz"] = "-0.000000000000"
+    ahy_rows = ahy_rows[: horizon_index + 1]
+    transaction_rows = transaction_rows[: response_index + 1]
+    run_dir = tmp_path / "run"
+    (run_dir / "csv").mkdir(parents=True)
+    _write_csv(
+        run_dir / "csv/active_hybrid_decisions_v1.csv",
+        ACTIVE_HYBRID_DECISION_V1_FIELDS,
+        ahy_rows,
+    )
+    _write_csv(
+        run_dir / "csv/active_transactions_v1.csv",
+        CONTRACT_FIELDS["active_transactions_v1"],
+        transaction_rows,
+    )
+    events = [
+        {
+            "event": "cx320_live_supervisor_fault",
+            "error": "CX320 independent host replay differs from the firmware decision",
+        }
+    ]
+
+    exact, hashes, comparisons, rejected = _response_attestations(
+        run_dir, [response], events
+    )
+
+    assert exact is True
+    assert hashes == {}
+    assert rejected == frozenset({int(response["transaction_record_sequence"])})
+    assert comparisons == [
+        {
+            "request_sequence": int(response["request_sequence"]),
+            "record_sequence": int(response["transaction_record_sequence"]),
+            "exact": True,
+            "replayed_attestation_sha256": None,
+            "checkpoint_passed": False,
+            "expected_rejection": True,
+        }
+    ]
+
+
 def test_terminal_classification_uses_one_declared_primary_decision() -> None:
     status, decision = _classify_decision(
         integrity_exact=True,
@@ -228,6 +327,27 @@ def test_terminal_classification_uses_one_declared_primary_decision() -> None:
     )
     assert status == "bounded_nonpass"
     assert decision == "first_phase_transaction_passed_sustained_result_incomplete"
+
+
+def test_legacy_checkpoint_override_does_not_hide_other_platform_faults() -> None:
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "reason": (
+            "cx320_live_supervisor_fault:CX320 independent host replay "
+            "differs from the firmware decision"
+        ),
+    }
+    assert _legacy_checkpoint_terminal_misclassified(
+        terminal, checkpoint_rejection_evidence_exact=True
+    )
+    assert not _legacy_checkpoint_terminal_misclassified(
+        {**terminal, "reason": "cx320_live_supervisor_fault:capture owner lost"},
+        checkpoint_rejection_evidence_exact=True,
+    )
+    assert not _legacy_checkpoint_terminal_misclassified(
+        terminal, checkpoint_rejection_evidence_exact=False
+    )
 
 
 def test_partial_prewrite_terminal_is_sealed_as_platform_fault(

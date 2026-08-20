@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt9_activated_ready_for_exact_physical_entry",
+      "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",
       "allowed_operations": [
-        "offline_preparation",
-        "cx320_stage5_bounded_active_hybrid_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-20",
-      "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": true,
+      "authority": "consumed_stage5_operator_authority_offline_only",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -94,8 +93,10 @@
         "activation_sha256": "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db",
         "attempt_ordinal": 9,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt9_20260820T1854Z",
+        "terminal_primary_decision": "hybrid_response_wrong_or_frequency_not_reacquired"
       },
       "structural_preflight": {
         "path": "runs/cx320_active_hybrid/stage5_attempt9_successor_bundle_20260820/cx320_active_hybrid_structural_preflight_v17.json",
@@ -265,6 +266,47 @@
           "seal_file_sha256": "04d7726d756a068a17924802ff40ff79aa1c16352566ef25003ca568a3e6b239",
           "evidence_content_sha256": "98db22b5fa91a9ba65e0c2f9e99009ab3cf88ac936b91123674426e16389ac4e",
           "scientific_result": "none_host_terminal_before_qualified_origin_or_automatic_application"
+        },
+        {
+          "ordinal": 9,
+          "run_id": "stage5_live_attempt9_20260820T1854Z",
+          "classification": "bounded_scientific_nonpass_with_superseded_host_terminal_interpretation",
+          "terminal": "hybrid_response_wrong_or_frequency_not_reacquired",
+          "terminal_reason": "exact_1500s_response_healthy_but_below_empirical_detection_floor_and_positive_sign_checkpoint_not_observed",
+          "firmware_flash_count": 1,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 1,
+          "phase_nonzero_applications": 1,
+          "phase_material_applications": 1,
+          "qualified_origin_estimate_id": "est:cx317:selected600:000541",
+          "qualified_origin_timestamp_ticks": 38421851680,
+          "first_material_frequency_term_hz": -0.00166666694,
+          "first_material_phase_term_hz": -0.00037037037,
+          "first_material_combined_term_hz": -0.00203703731,
+          "first_material_requested_delta_codes": -6,
+          "first_material_frequency_only_counterfactual_delta_codes": -5,
+          "last_confirmed_code": 43062,
+          "last_confirmed_dac_epoch": 2,
+          "response_support_elapsed_s": 1500,
+          "response_observed_hz": 0.0,
+          "response_classification": "healthy_indeterminate_near_resolution",
+          "response_reason": "healthy_evidence_below_empirical_detection_floor",
+          "response_evidence_exact": true,
+          "response_class_healthy": true,
+          "response_predicted_sign_observed": false,
+          "response_checkpoint_passed": false,
+          "later_progressive_authority_released": false,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "original_supervisor_terminal": "measurement_authority_or_platform_fault",
+          "original_supervisor_terminal_reason": "cx320_live_supervisor_fault:CX320 independent host replay differs from the firmware decision",
+          "original_seal_sha256": "d2f197ca391dbd47006b5247a73f2562d8ae7a00b8add058243e97f7d0401e05",
+          "original_seal_file_sha256": "2e8ad4e94e2f8e6a6ef46a09ea00eb434e1a601f2169b303fcd739be11a9193e",
+          "superseding_seal_sha256": "1ec4ebb79be358f6fd8c19aa602f81ba28cdcd45e808edefeb5bdd297f59ba22",
+          "superseding_seal_file_sha256": "cde924d0ef5f32f78123bf6eb3b4748c6c681902967a1760fe5d6feb77e0c551",
+          "superseding_evidence_content_sha256": "6cd4637660e29f40007ae2ccaa49a53017d9df84d362e24117fa973f71b51ff9",
+          "scientific_result": "one_firmware_driven_phase_material_application_observed_but_frozen_positive_response_sign_checkpoint_not_satisfied"
         }
       ],
       "verification": {
@@ -316,10 +358,15 @@
         "attempt9_expected_failure_guards_verified": 6,
         "attempt9_structural_preflight_pending": false,
         "attempt9_operational_rehearsal_pending": false,
-        "attempt9_exact_activation_created": true
+        "attempt9_exact_activation_created": true,
+        "attempt9_terminal_analyzer_regressions_passed": 49,
+        "attempt9_postterminal_current_tests_passed": 886,
+        "attempt9_postterminal_historical_tests_excluded": 27,
+        "attempt9_physical_acquisition_gate_passed": true,
+        "attempt9_superseding_offline_finalization_passed": true
       },
-      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md",
-      "next_gate": "exact_physical_stage5_attempt_9"
+      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md",
+      "next_gate": "prospective_successor_response_observability_design_then_separate_exact_bundle_authority"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

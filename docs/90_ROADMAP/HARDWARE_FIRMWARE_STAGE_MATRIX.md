@@ -5,9 +5,10 @@ unsealed. Platform stabilization passed its completion gate under
 `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md`. CX319 is complete:
 the lower bounded acquisition passed, the matched upper stimulus was
 non-actionable, and its range map plus mapping-informed Part B are sealed.
-CX320 active-hybrid qualification is offline-ready for a separate exact-bundle
-authority decision; physical
-phase/hybrid actuation remains gated. The detailed stage
+CX320 active-hybrid qualification physically applied one phase-material
+combined correction, but the response was below the frozen observability floor
+and failed its positive-sign checkpoint. CX320 is a bounded non-pass with no
+remaining live authority. The detailed stage
 evidence below is retained as historical development context; its
 stage-specific “next” statements do not create execution authority.
 
@@ -33,7 +34,7 @@ This avoids using `Stage 1` to mean different things in hardware, firmware, and 
 | `SW1.5a` | PIO sparse-edge validation | PIO FIFO observation for sparse event edges while high-rate oscillator observation remains on FC0 | complete enough                     |
 | `A0`     | Basic replay/report        | validate runs and derive simple intervals/frequency estimates                                     | active/usable                       |
 | `H1`     | Steerable oscillator prep  | open-loop XCXO/OCXO + DAC steering-path bring-up before SW2 control-loop firmware                 | active/open-loop characterization   |
-| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and bounded control experiments                           | CX317 and platform stabilization complete; CX318 suspended; CX319 mapping-informed Part B complete; CX320 exact offline bundle and rehearsal pass, physical decision pending |
+| `SW2`    | Control-loop firmware      | explicit GPSDO/discipline-loop telemetry and bounded control experiments                           | CX317 and platform stabilization complete; CX318 suspended; CX319 mapping-informed Part B complete; CX320 physical response checkpoint bounded non-pass |
 
 ## Validated H0/SW1 State
 

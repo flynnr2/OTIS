@@ -25,6 +25,7 @@ from .active_hybrid_activation import (
     validate_frozen_run_manifest,
 )
 from .active_hybrid_evidence_guard import (
+    ResponseCheckpointRejected,
     replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
@@ -587,11 +588,14 @@ def _replay_ahy(
 def _response_attestations(
     run_dir: Path,
     active_rows: list[dict[str, str]],
-) -> tuple[bool, dict[str, str], list[dict[str, Any]]]:
+    supervisor_events: list[dict[str, Any]],
+) -> tuple[bool, dict[str, str], list[dict[str, Any]], frozenset[int]]:
     exact = True
     hashes: dict[str, str] = {}
     comparisons: list[dict[str, Any]] = []
+    rejected_record_sequences: set[int] = set()
     for response in (row for row in active_rows if row.get("event") == "response"):
+        relative: Path | None = None
         try:
             request_sequence: object = int(response["request_sequence"])
             record_sequence: object = int(response["transaction_record_sequence"])
@@ -608,11 +612,51 @@ def _response_attestations(
             row_exact = retained == replayed
             if path.is_file():
                 hashes[str(relative)] = _sha256_file(path)
+            checkpoint_passed = True
+            expected_rejection = False
+        except ResponseCheckpointRejected as exc:
+            request_sequence = int(response["request_sequence"])
+            record_sequence = int(response["transaction_record_sequence"])
+            relative = Path("reports") / f"step_{request_sequence:03d}" / (
+                f"record_{record_sequence:06d}_response_replay_attestation.json"
+            )
+            path = run_dir / relative
+            phase_acknowledged = any(
+                item.get("event") == "transaction_phase_acknowledged"
+                and int(item.get("record_sequence", -1)) == record_sequence
+                and int(item.get("phase", -1)) == 4
+                for item in supervisor_events
+            )
+            rejection_recorded = any(
+                (
+                    item.get("event")
+                    == "cx320_first_phase_response_checkpoint_rejected"
+                    and int(item.get("request_sequence", -1)) == request_sequence
+                )
+                or (
+                    item.get("event") == "cx320_live_supervisor_fault"
+                    and item.get("error")
+                    == "CX320 independent host replay differs from the firmware decision"
+                )
+                for item in supervisor_events
+            )
+            row_exact = (
+                not path.exists()
+                and not phase_acknowledged
+                and rejection_recorded
+            )
+            if row_exact:
+                rejected_record_sequences.add(record_sequence)
+            replayed = {"error": str(exc)}
+            checkpoint_passed = False
+            expected_rejection = row_exact
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             row_exact = False
             replayed = {"error": str(exc)}
             request_sequence = response.get("request_sequence")
             record_sequence = response.get("transaction_record_sequence")
+            checkpoint_passed = False
+            expected_rejection = False
         exact &= row_exact
         comparisons.append(
             {
@@ -620,9 +664,11 @@ def _response_attestations(
                 "record_sequence": record_sequence,
                 "exact": row_exact,
                 "replayed_attestation_sha256": replayed.get("attestation_sha256"),
+                "checkpoint_passed": checkpoint_passed,
+                "expected_rejection": expected_rejection,
             }
         )
-    return exact, hashes, comparisons
+    return exact, hashes, comparisons, frozenset(rejected_record_sequences)
 
 
 def _cx320_commands_exact(
@@ -832,7 +878,10 @@ def _application_contract(
             "healthy_indeterminate_near_resolution",
             "inside_deadband",
         }
-        and float(row["observed_response_hz"])
+        for row in responses
+    )
+    response_signs_observed = all(
+        float(row["observed_response_hz"])
         * int(row["requested_delta_codes"])
         > 0.0
         for row in responses
@@ -854,6 +903,10 @@ def _application_contract(
         "first_phase_checkpoint_passed": first_checkpoint,
         "later_authority_gated_by_first_checkpoint": later_authority_gated,
         "all_response_classes_healthy": response_classes_healthy,
+        "all_response_predicted_signs_observed": response_signs_observed,
+        "all_response_checkpoints_passed": (
+            response_classes_healthy and response_signs_observed
+        ),
         "application_epochs_exact": epochs_exact,
         "dac_application_exact": dac_exact,
         "budgets_range_step_cadence_and_clamp_exact": budgets_exact,
@@ -905,6 +958,24 @@ def _classify_decision(
     if not phase_pass:
         return "bounded_nonpass", "hybrid_response_wrong_or_frequency_not_reacquired"
     return "passed", "bounded_active_hybrid_control_passed"
+
+
+def _legacy_checkpoint_terminal_misclassified(
+    terminal: dict[str, Any], *, checkpoint_rejection_evidence_exact: bool
+) -> bool:
+    """Recognize only attempt-9's exact legacy platform-label escape."""
+
+    return (
+        checkpoint_rejection_evidence_exact
+        and terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and terminal.get("reason")
+        == (
+            "cx320_live_supervisor_fault:CX320 independent host replay "
+            "differs from the firmware decision"
+        )
+    )
 
 
 def _source_hashes(
@@ -1097,23 +1168,65 @@ def analyze(
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         retained_input_failures.append(f"raw serial markers: {exc}")
         markers = []
+    (
+        attestation_exact,
+        attestation_hashes,
+        attestation_replay,
+        rejected_response_record_sequences,
+    ) = _response_attestations(run_dir, active_rows, supervisor_events)
     try:
         capsule_exact, capsule_hashes = _capsules_exact(
-            run_dir, active_rows, supervisor_events, supervisor_state
+            run_dir,
+            active_rows,
+            supervisor_events,
+            supervisor_state,
+            permitted_unacknowledged_sequences=(
+                rejected_response_record_sequences
+            ),
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         capsule_exact = False
         capsule_hashes = {}
         retained_input_failures.append(f"transaction capsules: {exc}")
-    attestation_exact, attestation_hashes, attestation_replay = _response_attestations(
-        run_dir, active_rows
-    )
     terminal = supervisor_state.get("terminal", {})
     if not isinstance(terminal, dict):
         terminal = {}
     operator_abort = terminal.get("primary_decision") == "operator_abort"
-    platform_terminal = terminal.get("primary_decision") == (
-        "measurement_authority_or_platform_fault"
+    response_rows = [row for row in active_rows if row.get("event") == "response"]
+    terminal_rejected_response_exact = (
+        len(rejected_response_record_sequences) == 1
+        and bool(response_rows)
+        and int(response_rows[-1]["transaction_record_sequence"])
+        in rejected_response_record_sequences
+    )
+    checkpoint_rejection_evidence_exact = (
+        terminal_rejected_response_exact
+        and all(
+        item.get("exact") is True
+        for item in attestation_replay
+        if item.get("expected_rejection") is True
+        )
+    )
+    legacy_checkpoint_terminal_misclassified = (
+        _legacy_checkpoint_terminal_misclassified(
+            terminal,
+            checkpoint_rejection_evidence_exact=(
+                checkpoint_rejection_evidence_exact
+            ),
+        )
+    )
+    frozen_checkpoint_rejection_exact = (
+        checkpoint_rejection_evidence_exact
+        and (
+            legacy_checkpoint_terminal_misclassified
+            or terminal.get("primary_decision")
+            == "hybrid_response_wrong_or_frequency_not_reacquired"
+        )
+    )
+    platform_terminal = (
+        terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and not legacy_checkpoint_terminal_misclassified
     )
     terminal_requires_abort = (
         terminal.get("result") in {"aborted", "nonpass"}
@@ -1199,6 +1312,8 @@ def analyze(
             "first_phase_checkpoint_passed": False,
             "later_authority_gated_by_first_checkpoint": False,
             "all_response_classes_healthy": False,
+            "all_response_predicted_signs_observed": False,
+            "all_response_checkpoints_passed": False,
             "application_epochs_exact": False,
             "dac_application_exact": False,
             "budgets_range_step_cadence_and_clamp_exact": False,
@@ -1389,7 +1504,7 @@ def analyze(
         endpoint_complete=endpoint_complete,
         material_applications=int(applications["phase_material_application_count"]),
         first_checkpoint_passed=first_checkpoint_exact,
-        responses_healthy=bool(applications["all_response_classes_healthy"]),
+        responses_healthy=bool(applications["all_response_checkpoints_passed"]),
         tight_reacquired_and_retained=terminal_tight_inside,
         policy_limits_exact=no_fault_or_chatter,
         phase_pass=bool(phase_metrics["pass"]),
@@ -1409,8 +1524,11 @@ def analyze(
         "first_checkpoint_passed_before_later_authority": (
             first_checkpoint_exact and progressive_authority_exact
         ),
-        "all_completed_responses_healthy": applications[
+        "all_completed_response_classifications_healthy": applications[
             "all_response_classes_healthy"
+        ],
+        "all_completed_response_sign_checkpoints_passed": applications[
+            "all_response_predicted_signs_observed"
         ],
         "phase_improvement_thresholds_pass": bool(phase_metrics["pass"]),
         "frequency_degradation_thresholds_pass": bool(
@@ -1485,6 +1603,12 @@ def analyze(
             "response_classifier_comparisons": response_replay,
             "response_attestations_exact": attestation_exact,
             "response_attestation_comparisons": attestation_replay,
+            "frozen_checkpoint_rejection_exact": (
+                frozen_checkpoint_rejection_exact
+            ),
+            "unacknowledged_rejected_response_record_sequences": sorted(
+                rejected_response_record_sequences
+            ),
         },
         "measurement_replay": {
             "exact": measurement_exact,
@@ -1498,6 +1622,17 @@ def analyze(
         "tight_deadband_replay": tdb_replay_detail,
         "terminal": {
             "supervisor_terminal": terminal,
+            "legacy_supervisor_terminal_misclassification_corrected": (
+                legacy_checkpoint_terminal_misclassified
+            ),
+            "offline_corrected_primary_decision": (
+                primary_decision
+                if legacy_checkpoint_terminal_misclassified
+                else None
+            ),
+            "frozen_checkpoint_rejection_exact": (
+                frozen_checkpoint_rejection_exact
+            ),
             "endpoint_complete": endpoint_complete,
             "latest_hybrid_state": latest_hybrid_state,
             "static_code": terminal_static_code,

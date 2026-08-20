@@ -10,22 +10,21 @@ The governing preparation prompt is
 The implementation and authority contract is
 [`../../50_SOFTWARE/CX320_ACTIVE_HYBRID_CONTRACT_AND_AUTHORITY.md`](../../50_SOFTWARE/CX320_ACTIVE_HYBRID_CONTRACT_AND_AUTHORITY.md).
 
-Current status: Stage 5 physical entry is explicitly authorized. Attempts 1
-through 6 ended as sealed platform or firmware-integration escapes before a
-physical hybrid correction. Attempt 7 was the first run to apply a genuine
-firmware-driven combined phase-frequency correction and observe its response;
-it exposed a one-second firmware response-window boundary defect. Attempt 8
-carried that correction but stopped before qualification or automatic
-actuation because the host compared an exact fractional estimator timestamp
-to a floored integer device-uptime value. The attempt-8 firmware and timing
-stream were coherent and the bounded abort left code `0xA83C` fail-static. The
-narrow host predicate and its previously integer-aligned rehearsal seam are
-corrected, and the attempt-9 current-suite, release matrix, structural
-preflight and complete live-topology rehearsal have passed. A single-use
-attempt-9 activation is effective for the exact physical successor run.
+Current status: Stage 5 reached a decision-bearing physical terminal in
+attempt 9. Firmware applied one genuine combined phase-frequency correction
+from `0xA83C` to `0xA836`. Its exact 1,500-second response replayed as
+`healthy_indeterminate_near_resolution`, but the observed zero response did not
+satisfy the separately frozen positive-sign checkpoint. The programme is a
+bounded scientific non-pass, not a capture or replay failure. The attempt-9
+activation is consumed, later authority remained blocked, the instrument is
+`FAIL_STATIC` at `0xA836`, and no attempt 10 is authorized.
 
-The scientific policy, thresholds, topology, criteria, 12-hour qualified
-duration and progressive actuator envelope remain unchanged.
+The superseding offline seal preserves the original terminal record while
+correcting its host-side classification. The frozen scientific policy,
+thresholds and criteria were not changed after observation. Any successor must
+prospectively resolve the mismatch between a six-code expected plant response
+and the larger empirical detection floor, freeze a new bundle, and receive
+separate authority.
 
 - [`01_OFFLINE_REPLAY_AND_SELECTION.md`](01_OFFLINE_REPLAY_AND_SELECTION.md)
 - [`02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`](02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md)
@@ -38,3 +37,4 @@ duration and progressive actuator envelope remain unchanged.
 - [`09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md`](09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md)
 - [`10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md`](10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md)
 - [`11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md`](11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md)
+- [`12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`](12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md)

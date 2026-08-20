@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() -> None:
+def test_tracked_status_records_frozen_cx319_and_terminal_cx320_result() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx320_bounded_active_hybrid"
@@ -33,13 +33,10 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
     assert cx320["state"] == (
-        "stage5_attempt9_activated_ready_for_exact_physical_entry"
+        "stage5_bounded_nonpass_successor_design_requires_new_authority"
     )
-    assert cx320["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        "cx320_stage5_bounded_active_hybrid_live",
-    ]
-    assert cx320["physical_authority_effective"] is True
+    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx320["physical_authority_effective"] is False
     assert cx320["exact_bundle"]["bundle_sha256"] == (
         "824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54"
     )
@@ -94,6 +91,18 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["stage5_attempts"][7]["timestamp_above_lower_bound_ticks"] == (
         13_602_864
     )
+    attempt9 = cx320["stage5_attempts"][8]
+    assert attempt9["automatic_applications"] == 1
+    assert attempt9["phase_material_applications"] == 1
+    assert attempt9["last_confirmed_code"] == 0xA836
+    assert attempt9["last_confirmed_dac_epoch"] == 2
+    assert attempt9["response_support_elapsed_s"] == 1500
+    assert attempt9["response_class_healthy"] is True
+    assert attempt9["response_predicted_sign_observed"] is False
+    assert attempt9["response_checkpoint_passed"] is False
+    assert attempt9["terminal"] == (
+        "hybrid_response_wrong_or_frequency_not_reacquired"
+    )
     assert cx320["operational_rehearsal"]["setup_authority_qualification"] == {
         "firmware_startup_inhibit_s": 600,
         "observed_historical_qualification_s": 612,
@@ -112,8 +121,11 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     ] is True
     assert cx320["effective_activation"]["attempt_ordinal"] == 9
     assert cx320["effective_activation"]["automatic_retry"] is False
-    assert cx320["effective_activation"]["effective"] is True
-    assert cx320["effective_activation"]["consumed"] is False
+    assert cx320["effective_activation"]["effective"] is False
+    assert cx320["effective_activation"]["consumed"] is True
+    assert cx320["effective_activation"]["consumed_by_run_id"] == (
+        "stage5_live_attempt9_20260820T1854Z"
+    )
     assert cx320["effective_activation"]["activation_sha256"] == (
         "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
@@ -1096,6 +1108,11 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert require_programme_operation_allowed(
         "cx320_bounded_active_hybrid", OFFLINE_PREPARATION
     ) == cx320
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "cx320_bounded_active_hybrid",
+            "cx320_stage5_bounded_active_hybrid_live",
+        )
     for blocked_operation in (
         OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,

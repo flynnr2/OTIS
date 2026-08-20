@@ -19,6 +19,7 @@ import time
 from typing import Any
 
 from .abort_transport import AbortFifo
+from .active_hybrid_evidence_guard import ResponseCheckpointRejected
 from .active_control_supervisor import (
     ESTIMATES_CSV,
     RP2040_TIMER0_TICKS_PER_SECOND,
@@ -527,7 +528,26 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
 
     def _process_transactions(self) -> None:
         prior_terminal = self.state.get("terminal")
-        super()._process_transactions()
+        try:
+            super()._process_transactions()
+        except ResponseCheckpointRejected as exc:
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+            response = next(
+                (row for row in reversed(rows) if row.get("event") == "response"),
+                {},
+            )
+            self._event(
+                "cx320_first_phase_response_checkpoint_rejected",
+                error=str(exc),
+                request_sequence=int(response.get("request_sequence", "0")),
+                response_class=response.get("response_class", "unavailable"),
+                observed_response_hz=float(
+                    response.get("observed_response_hz", "nan")
+                ),
+            )
+            self._abort("hybrid_response_wrong_or_frequency_not_reacquired")
+            self._validate_hybrid_decisions()
+            return
         # The shared frequency supervisor historically treated exhausted
         # frequency authority as an early campaign success.  CX320 instead
         # observes the instrument through its full finite qualified duration;
@@ -997,6 +1017,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         elif reason == "phase_channel_degraded_frequency_control_retained":
             terminal["primary_decision"] = (
                 "phase_channel_degraded_frequency_control_retained"
+            )
+        elif reason == "hybrid_response_wrong_or_frequency_not_reacquired":
+            terminal["primary_decision"] = (
+                "hybrid_response_wrong_or_frequency_not_reacquired"
             )
         elif reason.startswith("cx320_wall_endpoint"):
             terminal["primary_decision"] = "right_censored_incomplete"

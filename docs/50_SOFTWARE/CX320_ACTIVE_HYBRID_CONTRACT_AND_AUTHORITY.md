@@ -136,6 +136,31 @@ The response checkpoint does not accept this model as observation. It requires
 fresh post-settling physical evidence and, for an accepted signed response,
 `delta_f_observed * delta_final > 0` in the exact applied DAC epoch.
 
+Response health and checkpoint passage are deliberately separate. A response
+may be complete, correctly bound and free of contradictory evidence while its
+magnitude remains below the empirical detection floor. Such evidence is
+classified `healthy_indeterminate_near_resolution`; it is valid scientific
+evidence, but it does not satisfy the frozen positive-sign predicate and cannot
+release later progressive authority.
+
+The attempt-9 result exposed the quantitative observability boundary. For its
+six-code correction, the frozen plant envelope predicts
+
+```text
+6 * G = 0.0009814453369472176 .. 0.0010400406026747078 Hz
+```
+
+while the frozen empirical response-detection floor is
+`0.0033333317438761396 Hz`. At the lower plant-gain bound, 20 codes still
+predict only `0.003271484456490725 Hz`; 21 codes are the smallest integer step
+whose lower-bound prediction, `0.0034350586793152614 Hz`, exceeds the floor.
+This does not retrospectively change the controller, step limit, classifier or
+checkpoint. It means that a small legitimate hybrid correction can be healthy
+yet incapable of producing the frozen sign evidence in one response window.
+Any successor must prospectively improve response observability or define a
+different evidence-bearing checkpoint, freeze it before acquisition, and
+receive new authority.
+
 ## Progressive states
 
 1. `FREQUENCY_ACQUIRE`: phase term is zero; only settled-outside frequency
@@ -205,3 +230,15 @@ occupancy degradation, all common-health gates and an exact static terminal.
 The complete primary decision vocabulary is frozen in the policy. An honest
 non-pass remains decision-bearing and cannot be tuned, extended or retried
 after observation.
+
+## Physical qualification result
+
+Attempt 9 applied one phase-material correction and reached the exact
+1,500-second response boundary. Independent replay matched the firmware,
+capture and response classifier. The observed response was `0 Hz`, correctly
+classified `healthy_indeterminate_near_resolution`; the positive-sign
+predicate was false. CX320 therefore terminated
+`hybrid_response_wrong_or_frequency_not_reacquired` and remained `FAIL_STATIC`
+at `0xA836`. The reviewed evidence and superseding host-only interpretation are
+recorded in
+`docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
