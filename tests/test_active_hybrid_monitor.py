@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_monitor as monitor
+from host.otis_tools.contracts import CONTRACT_FIELDS
 
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
@@ -18,6 +19,14 @@ def _write_csv(path: Path, row: dict[str, str]) -> None:
         writer = csv.DictWriter(handle, fieldnames=tuple(row))
         writer.writeheader()
         writer.writerow(row)
+
+
+def _contract_row(contract: str, **values: str) -> dict[str, str]:
+    row = {field: "" for field in CONTRACT_FIELDS[contract]}
+    unknown = set(values) - set(row)
+    assert not unknown
+    row.update(values)
+    return row
 
 
 def _fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
@@ -76,13 +85,14 @@ def test_running_snapshot_reports_owner_and_scientific_progress(
     run_dir, now = _fixture(tmp_path, monkeypatch)
     _write_csv(
         run_dir / monitor.HYBRID,
-        {
-            "decision_sequence": "8",
-            "dac_epoch": "2",
-            "hybrid_state": "PHASE_QUALIFY",
-            "phase_material_application": "true",
-            "applied_delta_codes": "4",
-        },
+        _contract_row(
+            "active_hybrid_decisions_v1",
+            decision_sequence="8",
+            dac_epoch="2",
+            state_after="PHASE_QUALIFY",
+            phase_materially_influenced="true",
+            requested_delta_codes="4",
+        ),
     )
 
     result = monitor.snapshot(run_dir, now=now)
@@ -92,6 +102,69 @@ def test_running_snapshot_reports_owner_and_scientific_progress(
     assert result["capture"]["serial_owner_pids"] == [321]
     assert result["progress"]["phase_material_application_count"] == 1
     assert result["progress"]["active_hybrid_decisions"]["rows"] == 1
+
+
+def test_progress_latest_fields_are_drawn_from_declared_csv_contracts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _fixture(tmp_path, monkeypatch)
+    _write_csv(
+        run_dir / monitor.ESTIMATES,
+        _contract_row(
+            "estimates_v2",
+            estimate_id="estimate-7",
+            estimator_timestamp_ticks="42000000",
+            source_dac_ref="dac-2",
+            frequency_error_hz="0.00125",
+        ),
+    )
+    _write_csv(
+        run_dir / monitor.ACTIVE,
+        _contract_row(
+            "active_transactions_v1",
+            transaction_record_sequence="12",
+            event="response",
+            request_sequence="3",
+            active_state="DISARMED",
+            response_class="healthy_detected",
+        ),
+    )
+    _write_csv(
+        run_dir / monitor.HYBRID,
+        _contract_row(
+            "active_hybrid_decisions_v1",
+            hybrid_record_sequence="9",
+            decision_sequence="8",
+            dac_epoch="2",
+            state_after="FIRST_PHASE_TRANSACTION",
+            phase_materially_influenced="true",
+            requested_delta_codes="4",
+        ),
+    )
+
+    progress = monitor.snapshot(run_dir, now=now)["progress"]
+
+    assert progress["estimates"]["latest"] == {
+        "estimate_id": "estimate-7",
+        "estimator_timestamp_ticks": "42000000",
+        "source_dac_ref": "dac-2",
+        "frequency_error_hz": "0.00125",
+    }
+    assert progress["active_transactions"]["latest"] == {
+        "transaction_record_sequence": "12",
+        "event": "response",
+        "request_sequence": "3",
+        "active_state": "DISARMED",
+        "response_class": "healthy_detected",
+    }
+    assert progress["active_hybrid_decisions"]["latest"] == {
+        "hybrid_record_sequence": "9",
+        "decision_sequence": "8",
+        "dac_epoch": "2",
+        "state_after": "FIRST_PHASE_TRANSACTION",
+        "phase_materially_influenced": "true",
+        "requested_delta_codes": "4",
+    }
 
 
 def test_stale_capture_and_wrong_owner_are_faults(tmp_path: Path, monkeypatch) -> None:

@@ -345,6 +345,103 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("terminal_static_code", None)
         self._save()
 
+    def _fresh_active_snapshot_after(
+        self, generation: int
+    ) -> dict[tuple[str, str], str]:
+        self._command(self._status_query_command())
+        deadline = time.monotonic() + 5.0
+        while True:
+            health = self._current_health()
+            observed = int(
+                health.get(("cx317_active", "snapshot_generation_complete"), "0")
+            )
+            if observed > generation:
+                return health
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "CX320 fresh active snapshot did not follow evidence acknowledgement"
+                )
+            time.sleep(0.05)
+
+    def _prepare_evidence_acknowledgement(
+        self, row: dict[str, str], phase: int
+    ) -> dict[str, object]:
+        current = self._current_health()
+        generation = int(
+            current.get(("cx317_active", "snapshot_generation_complete"), "0")
+        )
+        health = self._fresh_active_snapshot_after(generation)
+        expected_phase = {
+            1: "request_pending",
+            2: "acceptance_pending",
+            3: "application_pending",
+            4: "response_pending",
+        }[phase]
+        request_sequence = int(row["request_sequence"])
+        if (
+            health.get(("cx317_active", "evidence_phase")) != expected_phase
+            or int(
+                health.get(("cx317_active", "evidence_request_sequence"), "0")
+            )
+            != request_sequence
+        ):
+            raise ValueError(
+                "CX320 firmware evidence frontier differs before acknowledgement: "
+                f"request={request_sequence} phase={expected_phase}"
+            )
+        return {
+            "pre_submit_snapshot_generation": int(
+                health[("cx317_active", "snapshot_generation_complete")]
+            ),
+            "pre_submit_evidence_phase": expected_phase,
+        }
+
+    def _confirm_evidence_acknowledgement(
+        self, acknowledgement: dict[str, object]
+    ) -> bool:
+        phase = int(acknowledgement["phase"])
+        request_sequence = int(acknowledgement["request_sequence"])
+        baseline = int(acknowledgement["pre_submit_snapshot_generation"])
+        health = self._fresh_active_snapshot_after(baseline)
+        observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+        observed_request = int(
+            health.get(("cx317_active", "evidence_request_sequence"), "0")
+        )
+        permitted = {
+            1: {
+                "evidence_clear",
+                "acceptance_pending",
+                "application_pending",
+                "response_pending",
+            },
+            2: {"evidence_clear", "application_pending", "response_pending"},
+            3: {"evidence_clear", "response_pending"},
+            4: {"evidence_clear"},
+        }[phase]
+        if observed_phase not in permitted:
+            return False
+        if (
+            observed_phase == "evidence_clear"
+            and observed_request != 0
+        ) or (
+            observed_phase != "evidence_clear"
+            and observed_request != request_sequence
+        ):
+            raise ValueError(
+                "CX320 evidence acknowledgement advanced to a contradictory "
+                "request identity"
+            )
+        self._event(
+            "cx320_firmware_evidence_acknowledgement_confirmed",
+            request_sequence=request_sequence,
+            phase=phase,
+            snapshot_generation=int(
+                health[("cx317_active", "snapshot_generation_complete")]
+            ),
+            resulting_evidence_phase=observed_phase,
+        )
+        return True
+
     def _prewrite_readiness(
         self, health: dict[tuple[str, str], str]
     ) -> PrewriteReadiness:
@@ -548,8 +645,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
 
     @staticmethod
     def _fresh_authoritative_selected_estimate(
-        rows: list[dict[str, str]],
+        rows: list[dict[str, str]], *, dac_epoch: int,
     ) -> dict[str, str] | None:
+        expected_dac_ref = f"live:DAC:{dac_epoch}"
         candidates = [
             row
             for row in rows
@@ -562,6 +660,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and row.get("count_continuity") == "true"
             and row.get("diagnostic_health") == "healthy"
             and row.get("preview_eligibility") == "true"
+            and row.get("source_dac_ref") == expected_dac_ref
             and int(row.get("accepted_sample_count") or "0") >= SELECTED_INTERVAL_S
         ]
         return candidates[-1] if candidates else None
@@ -579,8 +678,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             or int(health.get(("cx317_active", "dac_epoch"), "0")) < 1
         ):
             return
+        dac_epoch = int(health[("cx317_active", "dac_epoch")])
         estimate = self._fresh_authoritative_selected_estimate(
-            _read_csv(self.run_dir / ESTIMATES_CSV)
+            _read_csv(self.run_dir / ESTIMATES_CSV), dac_epoch=dac_epoch
         )
         if estimate is None:
             return
@@ -591,7 +691,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             "cx320_qualified_origin_established",
             estimate_id=estimate["estimate_id"],
             source_count_ref=estimate["source_count_ref"],
-            dac_epoch=int(health[("cx317_active", "dac_epoch")]),
+            source_dac_ref=estimate["source_dac_ref"],
+            dac_epoch=dac_epoch,
             qualified_duration_s=QUALIFIED_DURATION_S,
         )
 

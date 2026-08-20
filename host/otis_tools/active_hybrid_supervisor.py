@@ -208,7 +208,12 @@ class ActiveHybridSupervisor:
             self.fail_static("response_without_outstanding_application")
             raise SupervisorContractError(self.terminal_reason or "missing response")
         healthy = (
-            response_class in {"healthy_detected", "healthy_indeterminate_near_resolution"}
+            response_class
+            in {
+                "healthy_detected",
+                "healthy_indeterminate_near_resolution",
+                "inside_deadband",
+            }
             and support_fresh
             and sign_healthy
             and replay_exact

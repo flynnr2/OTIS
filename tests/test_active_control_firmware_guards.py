@@ -341,10 +341,37 @@ def test_setup_ack_propagates_the_new_dac_epoch_to_all_hybrid_consumers() -> Non
     )
     state_release = confirm_consumers.index("hybrid_engine_ready = true")
     assert frequency_consumer < phase_consumer < engine_initialization < state_release
+    assert "transaction.have_last_application" in confirm_consumers
+    assert "transaction.last_application_s" in confirm_consumers
 
     status = live[live.index("void otis_cx317_active_live_get_status") :]
     assert "hybrid_engine_ready" in status
     assert "otis_active_hybrid_state_name(hybrid_engine.state)" in status
+
+
+def test_hybrid_response_checkpoint_uses_observed_sign_not_class_name() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    response_record = live[
+        live.index("if (transaction.state == OtisCx317ActiveState::AwaitingResponse)") :
+        live.index("if (transaction.state != OtisCx317ActiveState::Armed)")
+    ]
+    acknowledgement = live[
+        live.index("if (evidence_phase == EvidencePhase::Response)") :
+        live.index("evidence_phase = EvidencePhase::None;", live.index(
+            "if (evidence_phase == EvidencePhase::Response)"
+        ))
+    ]
+
+    assert "response.observed_response_hz" in response_record
+    assert "transaction.request.requested_delta_codes" in response_record
+    assert "pending_hybrid_predicted_sign_observed" in response_record
+    assert "predicted_sign_observed" in acknowledgement
+    assert (
+        "&hybrid_engine, healthy_classification, predicted_sign_observed"
+        in acknowledgement
+    )
 
 
 def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:

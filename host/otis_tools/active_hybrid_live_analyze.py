@@ -25,9 +25,10 @@ from .active_hybrid_activation import (
     validate_frozen_run_manifest,
 )
 from .active_hybrid_evidence_guard import (
+    replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
-from .active_hybrid_policy import ActiveHybridController, HybridObservation, load_policy
+from .active_hybrid_policy import load_policy
 from .active_status_contract import latest_complete_health
 from .active_transactions import (
     ACTIVE_CSV,
@@ -302,13 +303,11 @@ def _phase_metrics(
         active_by_epoch.items(),
         key=lambda item: int(item[1][0]["closing_reference_sequence"]),
     )
-    matched_epoch = next(
-        (
-            (epoch, rows)
-            for epoch, rows in active_epoch_rows
-            if len(rows) >= comparison_observations
-        ),
-        None,
+    continuous_active = active_by_epoch.get(phase_epoch, [])
+    matched_epoch = (
+        (phase_epoch, continuous_active)
+        if len(continuous_active) >= comparison_observations
+        else None
     )
     active_segment = matched_epoch[1] if matched_epoch is not None else []
     active = active_segment[:comparison_observations]
@@ -353,7 +352,7 @@ def _phase_metrics(
             )
         )
         and matched_epoch is not None
-        and matched_epoch[0] != phase_epoch
+        and matched_epoch[0] == phase_epoch
     )
     if not contiguous:
         result["reason"] = "matched_1800_phase_sequence_not_contiguous"
@@ -564,194 +563,15 @@ def _replay_ahy(
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
-    policy = load_policy(policy_path)
-    controller = ActiveHybridController(policy)
-    request_rows: dict[int, dict[str, str]] = {}
-    application_rows: dict[int, dict[str, str]] = {}
-    response_rows: dict[int, dict[str, str]] = {}
-    mapping_exact = True
-    mappings = {
-        "request_created": request_rows,
-        "application": application_rows,
-        "response": response_rows,
-    }
-    for row in transactions:
-        target = mappings.get(row.get("event", ""))
-        if target is None:
-            continue
-        try:
-            sequence = int(row["decision_sequence"])
-        except (KeyError, TypeError, ValueError):
-            mapping_exact = False
-            continue
-        if sequence in target:
-            mapping_exact = False
-        target[sequence] = row
-    comparisons: list[dict[str, Any]] = []
-    exact = mapping_exact
-    prior_record_sequence = 0
-    seen_decisions: set[int] = set()
-    for row in decisions:
-        try:
-            record_sequence = int(row["hybrid_record_sequence"])
-            decision_sequence = int(row["decision_sequence"])
-            identity_exact = (
-                row["run_identity"] == expected_run_identity
-                and row["build_identity"] == expected_build_identity
-                and row["profile_identity"] == expected_profile_identity
-                and row["active_policy_sha256"] == policy.policy_sha256
-                and row["frequency_estimator_sha256"]
-                == policy.frequency_estimator_sha256
-                and row["phase_estimator_sha256"] == policy.phase_estimator_sha256
-                and row["response_policy_sha256"] == policy.response_policy_sha256
-            )
-            observation = HybridObservation(
-                timestamp_s=int(row["decision_timestamp_s"]),
-                capture_session=int(row["capture_session"]),
-                source_first_sequence=int(row["source_first_sequence"]),
-                source_last_sequence=int(row["source_last_sequence"]),
-                dac_epoch=int(row["dac_epoch"]),
-                applied_code=int(row["current_applied_code"]),
-                frequency_error_hz=float(row["frequency_error_hz"]),
-                accumulated_edge_error_counts=int(
-                    row["accumulated_edge_error_counts"]
-                ),
-                tight_state=row["tight_state"],
-                phase_epoch=int(row["phase_epoch"]),
-                phase_observation_sequence=int(row["phase_observation_sequence"]),
-                relative_phase_cycles=int(row["relative_phase_cycles"]),
-                phase_dac_epoch=int(row["phase_dac_epoch"]),
-                phase_applied_code=int(row["phase_applied_code"]),
-                phase_continuous=_bool(row["phase_continuous"]),
-                phase_current=_bool(row["phase_current"]),
-                phase_step_detected=_bool(row["phase_step_detected"]),
-                identity_exact=identity_exact,
-                common_health_clean=True,
-                phase_consumers_exact=(
-                    _bool(row["phase_recorder_published"])
-                    and _bool(row["downstream_epoch_exact"])
-                ),
-                outstanding_request=False,
-                outstanding_response=False,
-            )
-            replayed = controller.decide(observation)
-            numerical_exact = (
-                row["state_before"] == replayed.state_before
-                and row["state_after"] == replayed.state_after
-                and row["reason"] == replayed.reason
-                and _close(
-                    float(row["frequency_term_hz"]), replayed.frequency_term_hz
-                )
-                and _close(float(row["phase_term_hz"]), replayed.phase_term_hz)
-                and _close(
-                    float(row["combined_demand_hz"]), replayed.combined_demand_hz
-                )
-                and _close(
-                    float(row["raw_combined_delta_codes"]),
-                    replayed.raw_combined_delta_codes,
-                )
-                and int(row["requested_delta_codes"])
-                == replayed.requested_delta_codes
-                and int(row["requested_code"]) == replayed.requested_code
-                and int(row["counterfactual_frequency_only_delta_codes"])
-                == replayed.counterfactual_frequency_only_delta_codes
-                and _bool(row["phase_materially_influenced"])
-                == replayed.phase_materially_influenced
-                and _bool(row["step_limited"]) == replayed.step_limited
-                and _bool(row["range_clamped"]) == replayed.range_clamped
-                and _bool(row["cadence_limited"]) == replayed.cadence_limited
-                and _bool(row["count_limited"]) == replayed.count_limited
-                and _bool(row["cumulative_budget_limited"])
-                == replayed.cumulative_budget_limited
-                and int(row["correction_count_before"])
-                == replayed.correction_count_before
-                and int(row["cumulative_movement_before_codes"])
-                == replayed.cumulative_movement_before_codes
-            )
-            sequence_exact = (
-                record_sequence == prior_record_sequence + 1
-                and decision_sequence not in seen_decisions
-            )
-            request = request_rows.get(decision_sequence)
-            transaction_exact = (
-                (replayed.requested_delta_codes == 0 and request is None)
-                or (
-                    replayed.requested_delta_codes != 0
-                    and request is not None
-                    and int(request["requested_delta_codes"])
-                    == replayed.requested_delta_codes
-                    and int(request["requested_code"]) == replayed.requested_code
-                    and int(request["request_sequence"]) == int(row["request_sequence"])
-                )
-            )
-            row_exact = identity_exact and numerical_exact and sequence_exact and transaction_exact
-            comparisons.append(
-                {
-                    "decision_sequence": decision_sequence,
-                    "requested_delta_codes": replayed.requested_delta_codes,
-                    "counterfactual_frequency_only_delta_codes": replayed.counterfactual_frequency_only_delta_codes,
-                    "phase_materially_influenced": replayed.phase_materially_influenced,
-                    "identity_exact": identity_exact,
-                    "numerical_exact": numerical_exact,
-                    "sequence_exact": sequence_exact,
-                    "transaction_binding_exact": transaction_exact,
-                    "exact": row_exact,
-                }
-            )
-            exact &= row_exact
-            prior_record_sequence = record_sequence
-            seen_decisions.add(decision_sequence)
-            if replayed.requested_delta_codes != 0:
-                application = application_rows.get(decision_sequence)
-                response = response_rows.get(decision_sequence)
-                if application is None or response is None:
-                    raise ValueError("nonzero AHY decision lacks complete ACT application/response")
-                controller.note_application(
-                    replayed,
-                    applied_code=int(application["applied_code"]),
-                    dac_epoch=int(application["dac_epoch"]),
-                    downstream_consumers_exact=True,
-                )
-                healthy_class = response.get("response_class") in {
-                    "healthy_detected",
-                    "healthy_indeterminate_near_resolution",
-                    "inside_deadband",
-                }
-                controller.note_response(
-                    classification=str(response.get("response_class", "")),
-                    predicted_sign_observed=healthy_class,
-                    exact_replay=True,
-                    support_fresh=True,
-                    applied_epoch_exact=(
-                        int(response["applied_code"]) == int(application["applied_code"])
-                        and int(response["dac_epoch"]) == int(application["dac_epoch"])
-                    ),
-                )
-        except (KeyError, TypeError, ValueError) as exc:
-            exact = False
-            comparisons.append(
-                {
-                    "decision_sequence": row.get("decision_sequence"),
-                    "exact": False,
-                    "error": str(exc),
-                }
-            )
-    unmatched_requests = sorted(set(request_rows) - seen_decisions)
-    exact &= not unmatched_requests and bool(decisions)
-    phase_nonzero_count = 0
-    for row in decisions:
-        try:
-            phase_nonzero_count += float(row["phase_term_hz"]) != 0.0
-        except (KeyError, TypeError, ValueError):
-            exact = False
-    return {
-        "exact": exact,
-        "decision_count": len(decisions),
-        "phase_nonzero_decision_count": phase_nonzero_count,
-        "phase_material_decision_count": sum(row["phase_materially_influenced"] == "true" for row in decisions),
-        "unmatched_request_decision_sequences": unmatched_requests,
-        "comparisons": comparisons,
-    }
+    return replay_active_hybrid_history(
+        decisions,
+        transactions,
+        policy_path=policy_path,
+        expected_run_identity=expected_run_identity,
+        expected_build_identity=expected_build_identity,
+        expected_profile_identity=expected_profile_identity,
+    )
+
 
 
 def _response_attestations(
@@ -921,6 +741,11 @@ def _application_contract(
         if int(row["decision_sequence"]) not in material_decisions
     ]
     times = [int(row["application_timestamp_s"]) for row in applications]
+    cadence_times = (
+        [int(manual[0]["application_timestamp_s"]), *times]
+        if len(manual) == 1
+        else times
+    )
     movements = [abs(int(row["requested_delta_codes"])) for row in applications]
     epochs_exact = (
         len(manual) == 1
@@ -961,7 +786,7 @@ def _application_contract(
         )
         and all(
             later - earlier >= minimum_cadence_s
-            for earlier, later in zip(times, times[1:])
+            for earlier, later in zip(cadence_times, cadence_times[1:])
         )
         and all(row.get("clamped") == "false" for row in applications)
     )
@@ -971,7 +796,14 @@ def _application_contract(
             int(response["request_sequence"])
             == int(material_applications[0]["request_sequence"])
             and response.get("response_class")
-            in {"healthy_detected", "healthy_indeterminate_near_resolution"}
+            in {
+                "healthy_detected",
+                "healthy_indeterminate_near_resolution",
+                "inside_deadband",
+            }
+            and float(response["observed_response_hz"])
+            * int(response["requested_delta_codes"])
+            > 0.0
             for response in responses
         )
     )
@@ -985,7 +817,14 @@ def _application_contract(
     )
     response_classes_healthy = all(
         row.get("response_class")
-        in {"healthy_detected", "healthy_indeterminate_near_resolution"}
+        in {
+            "healthy_detected",
+            "healthy_indeterminate_near_resolution",
+            "inside_deadband",
+        }
+        and float(row["observed_response_hz"])
+        * int(row["requested_delta_codes"])
+        > 0.0
         for row in responses
     )
     return {

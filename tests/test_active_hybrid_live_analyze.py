@@ -13,12 +13,8 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _replay_ahy,
     _wall_origin_and_setup_order_exact,
 )
-from host.otis_tools.active_hybrid_policy import (
-    ActiveHybridController,
-    HybridObservation,
-    load_policy,
-)
-from host.otis_tools.active_hybrid_rehearsal import _ahy_row
+from host.otis_tools.active_hybrid_policy import load_policy
+from host.otis_tools.active_hybrid_rehearsal import _modeled_transaction
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,11 +41,9 @@ def test_frozen_phase_and_frequency_metrics_pass_matched_1800() -> None:
         )
         rows.append(
             {
-                "phase_epoch": "4" if sequence <= 1_800 else "5",
+                "phase_epoch": "4",
                 "capture_session": "1",
-                "observation_sequence": str(
-                    sequence if sequence <= 1_800 else sequence - 1_800
-                ),
+                "observation_sequence": str(sequence),
                 "closing_reference_sequence": str(sequence),
                 "relative_phase_cycles": str(phase),
                 "qualification_state": "qualified",
@@ -151,74 +145,25 @@ def test_command_and_wall_origin_setup_order_are_exact() -> None:
 
 def test_ahy_replay_detects_materiality_counterfactual_tamper() -> None:
     policy = load_policy(POLICY_PATH)
-    controller = ActiveHybridController(policy)
-
-    def observation(timestamp: int) -> HybridObservation:
-        return HybridObservation(
-            timestamp_s=timestamp,
-            capture_session=1,
-            source_first_sequence=max(1, timestamp - 599),
-            source_last_sequence=max(600, timestamp),
-            dac_epoch=controller.dac_epoch,
-            applied_code=controller.applied_code,
-            frequency_error_hz=0.0,
-            accumulated_edge_error_counts=0,
-            tight_state="TIGHT_INSIDE",
-            phase_epoch=1,
-            phase_observation_sequence=timestamp + 1,
-            relative_phase_cycles=720,
-            phase_dac_epoch=controller.dac_epoch,
-            phase_applied_code=controller.applied_code,
-        )
-
-    first = controller.decide(observation(0))
-    second = controller.decide(observation(1_800))
-    assert second.phase_materially_influenced is True
     build_identity = "b" * 64 + ":" + "c" * 64
-    rows = [
-        _ahy_row(
-            first,
-            record_sequence=1,
-            run_identity="cx320_active_hybrid:3200001",
-            build_identity=build_identity,
-            policy_sha256=policy.policy_sha256,
-            response_policy_sha256=policy.response_policy_sha256,
-        ),
-        _ahy_row(
-            second,
-            record_sequence=2,
-            run_identity="cx320_active_hybrid:3200001",
-            build_identity=build_identity,
-            policy_sha256=policy.policy_sha256,
-            response_policy_sha256=policy.response_policy_sha256,
-        ),
-    ]
-    rows[1]["request_sequence"] = "1"
-    transactions = [
+    _, rows, transactions = _modeled_transaction(
         {
-            "event": "request_created",
-            "decision_sequence": "2",
-            "request_sequence": "1",
-            "requested_delta_codes": str(second.requested_delta_codes),
-            "requested_code": str(second.requested_code),
-        },
-        {
-            "event": "application",
-            "decision_sequence": "2",
-            "request_sequence": "1",
-            "requested_delta_codes": str(second.requested_delta_codes),
-            "applied_code": str(second.requested_code),
-            "dac_epoch": "2",
-        },
-        {
-            "event": "response",
-            "decision_sequence": "2",
-            "request_sequence": "1",
-            "response_class": "healthy_detected",
-            "applied_code": str(second.requested_code),
-            "dac_epoch": "2",
-        },
-    ]
+            "run_identity": "cx320_active_hybrid:3200001",
+            "bundle_sha256": "d" * 64,
+            "policy": {"policy_sha256": policy.policy_sha256},
+            "firmware": {"build_identity": build_identity},
+            "setup": {
+                "consumer_epoch_propagation_required": [
+                    "frequency_estimator",
+                    "phase_estimator",
+                    "controller",
+                    "preview_replay",
+                    "recorder",
+                    "response_classifier",
+                ]
+            },
+        }
+    )
     replay = _replay_ahy(
         rows,
         transactions,
@@ -228,11 +173,14 @@ def test_ahy_replay_detects_materiality_counterfactual_tamper() -> None:
         expected_profile_identity="cx320_active_hybrid",
     )
     assert replay["exact"] is True
-    assert replay["phase_material_decision_count"] == 1
+    assert replay["phase_material_decision_count"] == 2
 
     tampered = [dict(row) for row in rows]
-    tampered[1]["counterfactual_frequency_only_delta_codes"] = str(
-        second.counterfactual_frequency_only_delta_codes + 1
+    material = next(
+        row for row in tampered if row["phase_materially_influenced"] == "true"
+    )
+    material["counterfactual_frequency_only_delta_codes"] = str(
+        int(material["counterfactual_frequency_only_delta_codes"]) + 1
     )
     assert _replay_ahy(
         tampered,

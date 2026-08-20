@@ -90,7 +90,8 @@ struct OtisActiveHybridEngine {
   uint32_t phase_qualification_started_s;
 };
 
-void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine);
+void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
+                                    uint32_t setup_application_s);
 bool otis_active_hybrid_engine_decide(
     OtisActiveHybridEngine *engine,
     const OtisActiveHybridObservation *observation,

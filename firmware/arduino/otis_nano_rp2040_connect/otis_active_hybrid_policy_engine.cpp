@@ -94,13 +94,16 @@ const char *chatter_reason(const OtisActiveHybridEngine *engine,
 
 }  // namespace
 
-void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine) {
+void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
+                                    uint32_t setup_application_s) {
   if (engine == nullptr) return;
   *engine = {};
   engine->state = OtisActiveHybridState::FrequencyAcquire;
   engine->reason = "initialized_frequency_acquire";
   engine->applied_code = kStartCode;
   engine->dac_epoch = 1u;
+  engine->last_application_available = true;
+  engine->last_application_s = setup_application_s;
 }
 
 bool otis_active_hybrid_engine_decide(

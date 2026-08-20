@@ -124,6 +124,23 @@ def _python_rows() -> dict[str, list[dict[str, object]]]:
         controller = ActiveHybridController(load_policy())
         rows[name] = [_decision(controller, _observation(1800, frequency_hz=error, tight_state="OUTSIDE"))]
 
+    controller = ActiveHybridController(load_policy(), setup_application_s=611)
+    rows["setup_cadence_611"] = [
+        _decision(
+            controller,
+            _observation(2400, frequency_hz=0.01, tight_state="OUTSIDE"),
+        ),
+        _decision(
+            controller,
+            _observation(
+                2411,
+                frequency_hz=0.01,
+                tight_state="OUTSIDE",
+                phase_sequence=2,
+            ),
+        ),
+    ]
+
     controller = ActiveHybridController(load_policy())
     progressive = [_decision(controller, _observation(1800))]
     first = controller.decide(_observation(3600, phase_cycles=-24, phase_sequence=2))
@@ -210,6 +227,16 @@ def test_complete_cpp_host_policy_decision_parity(active_hybrid_harness: Path) -
         [str(active_hybrid_harness)], check=True, text=True, capture_output=True
     )
     firmware = list(csv.DictReader(io.StringIO(completed.stdout)))
+    setup_cadence = [
+        row for row in firmware if row["scenario"] == "setup_cadence_611"
+    ]
+    assert [
+        (row["reason"], row["cadence_limited"], row["requested_delta_codes"])
+        for row in setup_cadence
+    ] == [
+        ("minimum_applied_cadence_hold", "1", "0"),
+        ("frequency_acquisition_request_ready", "0", "-21"),
+    ]
     host = _python_rows()
     positions = {name: 0 for name in host}
     bool_fields = (

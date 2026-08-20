@@ -178,6 +178,7 @@ bool pending_hybrid_decision_valid = false;
 OtisCx317ResponseClass pending_hybrid_response_class =
     OtisCx317ResponseClass::MeasurementOrActuatorFault;
 bool pending_hybrid_response_valid = false;
+bool pending_hybrid_predicted_sign_observed = false;
 uint32_t hybrid_record_sequence = 0u;
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -696,6 +697,7 @@ bool otis_cx317_active_live_begin(void) {
   pending_hybrid_response_class =
       OtisCx317ResponseClass::MeasurementOrActuatorFault;
   pending_hybrid_response_valid = false;
+  pending_hybrid_predicted_sign_observed = false;
   hybrid_record_sequence = 0u;
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -933,6 +935,9 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
              OtisCx317ResponseClass::HealthyIndeterminateNearResolution ||
          pending_hybrid_response_class ==
              OtisCx317ResponseClass::InsideDeadband);
+    const bool predicted_sign_observed =
+        pending_hybrid_response_valid &&
+        pending_hybrid_predicted_sign_observed;
     const bool applied_epoch_exact =
         latest_health.applied_code_confirmed &&
         latest_health.applied_code == hybrid_engine.applied_code &&
@@ -940,9 +945,10 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
     // The CX320 response ACK is prospectively restricted to a host that has
     // durably captured and exactly replayed the AHY/ACT response evidence.
     const bool noted = otis_active_hybrid_engine_note_response(
-        &hybrid_engine, healthy_classification, healthy_classification,
+        &hybrid_engine, healthy_classification, predicted_sign_observed,
         true, latest_health.estimator_valid, applied_epoch_exact);
     pending_hybrid_response_valid = false;
+    pending_hybrid_predicted_sign_observed = false;
     if (!noted ||
         hybrid_engine.state == OtisActiveHybridState::FailStatic)
       otis_cx317_active_fault(
@@ -1094,6 +1100,7 @@ bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
                                                     uint32_t dac_epoch) {
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   if (!transaction_bound || !manual_start_confirmed ||
+      !transaction.have_last_application ||
       applied_code != OTIS_CX317_ACTIVE_START_CODE || dac_epoch != 1u ||
       transaction.applied_code != applied_code ||
       transaction.dac_epoch != dac_epoch ||
@@ -1111,7 +1118,8 @@ bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
         &transaction, "active_hybrid_setup_phase_epoch_mismatch");
     return false;
   }
-  otis_active_hybrid_engine_init(&hybrid_engine);
+  otis_active_hybrid_engine_init(&hybrid_engine,
+                                 transaction.last_application_s);
   hybrid_engine_ready = true;
   return true;
 #else
@@ -1233,6 +1241,10 @@ void otis_cx317_active_live_on_decision(
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
     pending_hybrid_response_class = response.classification;
     pending_hybrid_response_valid = true;
+    pending_hybrid_predicted_sign_observed =
+        response.observed_response_hz *
+            static_cast<double>(transaction.request.requested_delta_codes) >
+        0.0;
 #endif
     if (!queue_frame("response", &response, decision->frequency_error_hz)) {
       otis_cx317_active_fault(&transaction, "response_evidence_queue_fault");

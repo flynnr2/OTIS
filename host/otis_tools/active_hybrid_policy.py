@@ -282,7 +282,13 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 class ActiveHybridController:
     """One-output progressive-authority controller with explicit checkpoints."""
 
-    def __init__(self, policy: ActiveHybridPolicy, *, plant_gain_hz_per_code: float | None = None) -> None:
+    def __init__(
+        self,
+        policy: ActiveHybridPolicy,
+        *,
+        plant_gain_hz_per_code: float | None = None,
+        setup_application_s: int | None = None,
+    ) -> None:
         self.policy = policy
         self.plant_gain = (
             policy.plant_gain_nominal_hz_per_code
@@ -296,6 +302,8 @@ class ActiveHybridController:
             <= policy.plant_gain_maximum_hz_per_code
         ):
             raise ValueError("plant gain is outside the frozen measured envelope")
+        if setup_application_s is not None and setup_application_s < 0:
+            raise ValueError("setup application timestamp must be nonnegative")
         self.state = HybridState.FREQUENCY_ACQUIRE
         self.reason = "initialized_frequency_acquire"
         self.decision_sequence = 0
@@ -305,7 +313,7 @@ class ActiveHybridController:
         self.dac_epoch = 1
         self.correction_count = 0
         self.cumulative_movement_codes = 0
-        self.last_application_s: int | None = None
+        self.last_application_s = setup_application_s
         self.direction_history: list[int] = []
         self.transaction_outstanding = False
         self.outstanding_phase_material = False

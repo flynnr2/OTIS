@@ -13,6 +13,7 @@ from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
     canonical_prewrite_fixture,
 )
 from host.otis_tools.prewrite_readiness_contract import PrewriteReadiness
+from host.otis_tools.contracts import CONTRACT_FIELDS
 
 
 def _utc(epoch: float) -> str:
@@ -215,6 +216,42 @@ def _write_control_hold(supervisor: live.ActiveHybridLiveSupervisor) -> None:
         )
 
 
+def _append_selected_estimate(
+    supervisor: live.ActiveHybridLiveSupervisor,
+    *,
+    estimate_seq: int,
+    source_dac_ref: str,
+) -> None:
+    path = supervisor.run_dir / live.ESTIMATES_CSV
+    fields = CONTRACT_FIELDS["estimates_v2"]
+    row = {field: "" for field in fields}
+    row.update(
+        {
+            "record_type": "EST",
+            "schema_version": "2",
+            "estimate_seq": str(estimate_seq),
+            "estimate_id": f"est:cx317:selected600:{estimate_seq:06d}",
+            "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+            "source_count_ref": f"live:CNT:{estimate_seq * 600}",
+            "source_dac_ref": source_dac_ref,
+            "observation_validity": "valid",
+            "reference_validity": "valid",
+            "reference_continuity": "true",
+            "count_validity": "valid",
+            "count_continuity": "true",
+            "diagnostic_health": "healthy",
+            "accepted_sample_count": "600",
+            "preview_eligibility": "true",
+        }
+    )
+    write_header = not path.exists()
+    with path.open("a", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
 def test_exact_runtime_identity_and_frozen_envelope() -> None:
     manifest = _manifest()
     spec, identities = live.load_active_hybrid_spec(manifest)
@@ -289,6 +326,40 @@ def test_cx320_prewrite_accepts_the_complete_setup_authority_snapshot(
     assert readiness.ready is True
     assert readiness.missing == ()
     assert readiness.mismatches == ()
+
+
+def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    health = _health(supervisor, dac_epoch="1")
+
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=1,
+        source_dac_ref="live:DAC:0",
+    )
+    supervisor._maybe_qualify(health)
+
+    assert supervisor.state["qualification_started_utc"] is None
+    assert supervisor.state["qualified_origin_estimate_id"] is None
+
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=2,
+        source_dac_ref="live:DAC:1",
+    )
+    supervisor._maybe_qualify(health)
+
+    assert supervisor.state["qualification_started_utc"] is not None
+    assert supervisor.state["qualified_origin_estimate_id"] == (
+        "est:cx317:selected600:000002"
+    )
+    assert '"source_dac_ref": "live:DAC:1"' in (
+        supervisor.events_path.read_text(encoding="utf-8")
+    )
 
 
 def test_production_factory_validates_the_run_manifest(
@@ -416,6 +487,53 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     assert "cx320_first_phase_checkpoint_release_observed" in (
         supervisor.events_path.read_text(encoding="utf-8")
     )
+
+
+def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    acknowledgement = {
+        "record_sequence": 2,
+        "request_sequence": 1,
+        "phase": 1,
+        "host_write_confirmed": True,
+        "pre_submit_snapshot_generation": 7,
+        "pre_submit_evidence_phase": "request_pending",
+    }
+    pending = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        evidence_phase="request_pending",
+        evidence_request_sequence="1",
+    )
+    monkeypatch.setattr(
+        supervisor, "_fresh_active_snapshot_after", lambda _generation: pending
+    )
+    assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is False
+
+    advanced = _health(
+        supervisor,
+        snapshot_generation_begin="9",
+        snapshot_generation_complete="9",
+        evidence_phase="acceptance_pending",
+        evidence_request_sequence="1",
+    )
+    monkeypatch.setattr(
+        supervisor, "_fresh_active_snapshot_after", lambda _generation: advanced
+    )
+    assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is True
+
+    contradictory = dict(advanced)
+    contradictory[("cx317_active", "evidence_request_sequence")] = "2"
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: contradictory,
+    )
+    with pytest.raises(ValueError, match="contradictory request identity"):
+        supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 
 def test_phase_degradation_stops_as_active_hybrid_nonpass(

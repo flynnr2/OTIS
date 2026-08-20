@@ -120,20 +120,32 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
 
     estimates = _row_summary(
         run_dir / ESTIMATES,
-        ("estimate_id", "estimate_timestamp_ticks", "dac_epoch", "error_counts"),
+        (
+            "estimate_id",
+            "estimator_timestamp_ticks",
+            "source_dac_ref",
+            "frequency_error_hz",
+        ),
     )
     transactions = _row_summary(
         run_dir / ACTIVE,
-        ("record_sequence", "request_sequence", "phase", "application_result"),
+        (
+            "transaction_record_sequence",
+            "event",
+            "request_sequence",
+            "active_state",
+            "response_class",
+        ),
     )
     hybrid = _row_summary(
         run_dir / HYBRID,
         (
+            "hybrid_record_sequence",
             "decision_sequence",
             "dac_epoch",
-            "hybrid_state",
-            "phase_material_application",
-            "applied_delta_codes",
+            "state_after",
+            "phase_materially_influenced",
+            "requested_delta_codes",
         ),
     )
     status = (

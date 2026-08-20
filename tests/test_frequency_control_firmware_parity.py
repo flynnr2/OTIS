@@ -236,6 +236,7 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
     selected = [row for row in estimates if "selected600" in row["estimate_id"]]
     assert len(selected) == 1
     assert float(selected[0]["frequency_estimate_hz"]) == pytest.approx(10_000_000.0)
+    assert selected[0]["source_dac_ref"] == "live:DAC:0"
     assert controls
     assert all(row["preview_only"] == "true" for row in controls)
     assert all(row["actuation_authorized"] == "false" for row in controls)
