@@ -123,6 +123,31 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     )
 
 
+def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
+    source = Path(rehearsal.__file__).read_text(encoding="utf-8")
+    capture_stop = source.index("os.kill(capture.pid, signal.SIGSTOP)")
+    supervisor_stop = source.index(
+        "os.kill(supervisor.pid, signal.SIGSTOP)", capture_stop
+    )
+    saturate = source.index("for _ in range(100_000):", supervisor_stop)
+    abort = source.index("send_abort(host_abort)", saturate)
+    supervisor_continue = source.index(
+        "os.kill(supervisor.pid, signal.SIGCONT)", abort
+    )
+    capture_continue = source.index(
+        "os.kill(capture.pid, signal.SIGCONT)", supervisor_continue
+    )
+
+    assert (
+        capture_stop
+        < supervisor_stop
+        < saturate
+        < abort
+        < supervisor_continue
+        < capture_continue
+    )
+
+
 def test_accelerated_prewrite_boundary_uses_physical_evidence_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

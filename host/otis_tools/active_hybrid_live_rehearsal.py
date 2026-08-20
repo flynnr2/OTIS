@@ -711,6 +711,7 @@ def _run_real_process_topology(
     capture_output = ""
     supervisor_output = ""
     capture_stopped = False
+    supervisor_stopped = False
     normal_fifo_queued = 0
     normal_fifo_saturated = False
     try:
@@ -778,6 +779,13 @@ def _run_real_process_topology(
         )
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
+        # Freeze the command producer as well as its consumer before filling
+        # the normal FIFO.  This makes the obstruction deterministic: once the
+        # independent abort is queued, the supervisor's first decision after
+        # resuming must be AbortFifo.poll(), not an incidental periodic normal
+        # command that can lose the race with a deliberately full FIFO.
+        os.kill(supervisor.pid, signal.SIGSTOP)
+        supervisor_stopped = True
         for _ in range(100_000):
             try:
                 send_timestamped_command_to_fifo(normal, "CONFIG?")
@@ -788,7 +796,9 @@ def _run_real_process_topology(
         if not normal_fifo_saturated:
             raise RuntimeError("CX320 rehearsal normal FIFO did not saturate")
         send_abort(host_abort)
-        time.sleep(0.25)
+        os.kill(supervisor.pid, signal.SIGCONT)
+        supervisor_stopped = False
+        supervisor.wait(timeout=5)
         os.kill(capture.pid, signal.SIGCONT)
         capture_stopped = False
         observed_commands = _read_until(master, b"ACTIVE ABORT\n")
@@ -827,6 +837,8 @@ def _run_real_process_topology(
         if owners_after != {capture.pid}:
             raise RuntimeError("CX320 rehearsal lost sole ownership after rotation")
     finally:
+        if supervisor_stopped and supervisor is not None:
+            os.kill(supervisor.pid, signal.SIGCONT)
         if capture_stopped:
             os.kill(capture.pid, signal.SIGCONT)
         if supervisor is not None and supervisor.poll() is None:
