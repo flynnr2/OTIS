@@ -10,7 +10,7 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt7_entry_gates_passed_awaiting_activation",
+      "state": "stage5_attempt7_activation_classifier_corrected_refreeze_required",
       "allowed_operations": [
         "offline_preparation"
       ],
@@ -34,7 +34,8 @@
         "firmware_source_revision": "78c7899cba3b7e12716aef7c1e3be0731f3fba01",
         "firmware_source_sha256": "5a97de4d0fd9681a7af5cd31ffd38c2cfcfc2fda45894640a5982df4c2072d7b",
         "configuration_sha256": "f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990",
-        "firmware_uf2_sha256": "c625fa9b08bece7b0b0bbec14490e09bbe020a1be3d5e53c1fc628f9a5d555a0"
+        "firmware_uf2_sha256": "c625fa9b08bece7b0b0bbec14490e09bbe020a1be3d5e53c1fc628f9a5d555a0",
+        "superseded_for_entry_by_activation_classifier_correction": true
       },
       "root_structural_preflight": {
         "path": "runs/cx320_active_hybrid/exact_bundle_passing_20260820/structural_preflight_v1.json",
@@ -232,10 +233,11 @@
         "attempt7_affected_firmware_profile_passed": 1,
         "attempt7_exact_clean_build_passed": true,
         "attempt7_structural_preflight_passed": true,
-        "attempt7_operational_rehearsal_passed": true
+        "attempt7_operational_rehearsal_passed": true,
+        "attempt7_v14_entry_gates_superseded": true
       },
       "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md",
-      "next_gate": "attempt7_exact_activation"
+      "next_gate": "attempt7_exact_refreeze_preflight_and_operational_rehearsal"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

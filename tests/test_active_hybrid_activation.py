@@ -200,13 +200,19 @@ def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
         "bundle_sha256": "1" * 64,
         "build_identity": "2" * 64 + ":" + "3" * 64,
         "primary_decision": "operator_abort",
-        "acquisition_gate": {"passed": False},
+        # A clean acquisition and replayable offline finalization do not fill
+        # the missing physical qualification interval after a bounded abort.
+        "acquisition_gate": {"passed": True},
         "offline_finalization_gate": {
-            "replayable_without_physical_repeat": False
+            "replayable_without_physical_repeat": True
+        },
+        "scientific_acceptance_checks": {
+            "qualified_12h_endpoint_complete": False,
         },
         "terminal": {
             "abort_submission_count": 1,
             "abort_delivery_count": 1,
+            "endpoint_complete": False,
             "supervisor_terminal": {
                 "result": "aborted",
                 "reason": "independent_host_abort_fifo",

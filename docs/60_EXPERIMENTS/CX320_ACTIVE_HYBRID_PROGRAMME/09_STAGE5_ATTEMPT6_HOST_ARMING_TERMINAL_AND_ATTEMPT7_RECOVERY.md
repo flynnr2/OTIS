@@ -83,3 +83,17 @@ acknowledged command, independent priority-abort delivery, complete post-abort
 snapshot, logical rotation, accelerated controller boundaries, analysis,
 sealing and registration. It made no physical-action or qualification claim.
 Attempt 7 remains offline-only until its separate exact activation is issued.
+
+The first activation attempt correctly remained no-I/O but rejected the
+attempt-6 seal because its validator treated a passed acquisition gate and
+replayable offline finalization as proof that no new physical interval was
+needed. Those fields mean only that the retained acquisition is valid and its
+offline consumers can be replayed; they cannot supply the missing automatic
+application or 12-hour physical qualification. The validator now accepts an
+exactly delivered bounded operator abort only when the terminal also declares
+the endpoint incomplete and the frozen 12-hour acceptance check false. The
+existing failed-acquisition path retains its stricter non-replayable gate.
+Because activation validation is part of the frozen host bundle, this narrow
+correction supersedes the v14 entry artifacts and requires one exact refreeze,
+preflight and operational-path rehearsal before activation. No physical action
+was attempted.
