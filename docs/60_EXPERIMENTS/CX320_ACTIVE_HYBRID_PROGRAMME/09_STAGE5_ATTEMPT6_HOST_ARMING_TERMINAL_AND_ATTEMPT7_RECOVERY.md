@@ -111,3 +111,12 @@ and the repeated complete operational-path rehearsal passed with semantic
 SHA-256
 `5110659ab8c7e4c53ab70d415f1da4c7c566982bb9267407406bae2fc98fe8ea`.
 These are the attempt-7 entry artifacts eligible for separate activation.
+
+Attempt-7 activation v7 is effective with semantic SHA-256
+`1ad46ad921cb6e017711e4782c8954e550de658f99150b6a78e4a73483656738`.
+It binds predecessor attempt-6 seal
+`d414035380ccbb6684717705823fe2048a6443118dbbb07b492fe95270ad9259`,
+the exact v15 bundle and rehearsal, board serial `503533748A919118`, serial
+device `/dev/cu.usbmodem14601`, one flash, one setup application, one live
+acquisition and the unchanged progressive authority envelope. It is not an
+automatic retry and is consumed by the first physical terminal.
