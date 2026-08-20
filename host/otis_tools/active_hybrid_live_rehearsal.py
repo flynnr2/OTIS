@@ -34,6 +34,14 @@ from .active_hybrid_live_supervisor import (
 )
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_rehearsal import run as run_accelerated_rehearsal
+from .active_status_contract import (
+    ACTIVE_STATUS_KEYS,
+    ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+)
+from .active_status_live_state import ActiveStatusLiveReducer
 from .bounded_tight_deadband_prewrite_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     canonical_prewrite_fixture,
@@ -61,6 +69,7 @@ REHEARSAL_COVERAGE = (
     "emergency_abort_fifo",
     "host_abort_fifo",
     "live_supervisor_process",
+    "active_hybrid_status_handoff",
     "setup_authority_qualification_deadline",
     "setup_propagation",
     "progressive_checkpoint",
@@ -386,7 +395,71 @@ def _prewrite_boundary_supervisor(
     health[("cx317_active", "query_nonce")] = str(
         supervisor.state["host_attach_query_nonce"]
     )
+    health.update(
+        {
+            ("cx317_active", "hybrid_state"): "SETUP_PENDING",
+            ("cx317_active", "hybrid_reason"): "setup_consumers_pending",
+            ("cx317_active", "first_phase_checkpoint_passed"): "false",
+            ("cx317_active", "phase_nonzero_application_count"): "0",
+            ("cx317_active", "phase_material_application_count"): "0",
+            ("cx317_active", "frequency_only_application_count"): "0",
+        }
+    )
     return supervisor, health
+
+
+def _reduce_complete_active_health(
+    health: dict[tuple[str, str], str], *, generation: int
+) -> dict[tuple[str, str], str]:
+    """Pass a complete fixture through the actual atomic live reducer."""
+
+    reducer = ActiveStatusLiveReducer()
+    sequence = 0
+
+    def row(component: str, key: str, value: str) -> dict[str, str]:
+        nonlocal sequence
+        sequence += 1
+        return {
+            "record_type": "STS",
+            "schema_version": "1",
+            "status_seq": str(sequence),
+            "timestamp_ticks": str(sequence * 16_000),
+            "status_domain": "rp2040_timer0",
+            "component": component,
+            "status_key": key,
+            "status_value": value,
+            "severity": "INFO",
+            "flags": "0",
+        }
+
+    for (component, key), value in sorted(health.items()):
+        if component != "cx317_active":
+            reducer.observe(row(component, key, value))
+    latest = reducer.observe(
+        row("cx317_active", SNAPSHOT_BEGIN_KEY, str(generation))
+    )
+    latest = reducer.observe(
+        row(
+            "cx317_active",
+            SNAPSHOT_CONTRACT_KEY,
+            ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+        )
+    )
+    for key in ACTIVE_STATUS_KEYS:
+        latest = reducer.observe(
+            row("cx317_active", key, health[("cx317_active", key)])
+        )
+    latest = reducer.observe(
+        row("cx317_active", SNAPSHOT_COMPLETE_KEY, str(generation))
+    )
+    if latest is None or latest.get("state") != "complete":
+        raise RuntimeError("CX320 atomic active-status rehearsal did not complete")
+    return {
+        (str(item["component"]), str(item["status_key"])): str(
+            item["status_value"]
+        )
+        for item in latest["records"]  # type: ignore[index]
+    }
 
 
 def _exercise_prewrite_qualification_boundary(
@@ -418,6 +491,11 @@ def _exercise_prewrite_qualification_boundary(
     qualified_health[("gnss_receiver", "control_eligible")] = "true"
     qualified_health[("cx317_active", "uptime_s")] = "612"
     ready = waiting._check_prewrite_contract(qualified_health, 612.0)
+    reduced_health = _reduce_complete_active_health(
+        qualified_health, generation=612
+    )
+    waiting.state["manual_start_sent"] = True
+    waiting._check_fail_static_health(reduced_health)
 
     deadline, deadline_health = _prewrite_boundary_supervisor(
         run_dir=output_dir / "deadline",
@@ -446,6 +524,10 @@ def _exercise_prewrite_qualification_boundary(
         "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
         "waits_while_unqualified_at_30s": early is not None and not early.ready,
         "ready_at_observed_612s": ready is not None and ready.ready,
+        "atomic_handoff_hybrid_state": reduced_health.get(
+            ("cx317_active", "hybrid_state")
+        ),
+        "first_post_setup_consumer_passed": True,
         "missing_authority_at_660s_is_terminal": deadline_rejected,
         "setup_commands_issued": 0,
         "physical_actions_performed": 0,
@@ -455,6 +537,7 @@ def _exercise_prewrite_qualification_boundary(
         for key in (
             "waits_while_unqualified_at_30s",
             "ready_at_observed_612s",
+            "first_post_setup_consumer_passed",
             "missing_authority_at_660s_is_terminal",
         )
     ):
@@ -735,6 +818,7 @@ def run(
                 "logical_evidence_rotation",
             ],
             "accelerated_deterministic": [
+                "active_hybrid_status_handoff",
                 "setup_authority_qualification_deadline",
                 "setup_propagation",
                 "progressive_checkpoint",

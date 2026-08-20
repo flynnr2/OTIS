@@ -158,6 +158,8 @@ def test_accelerated_prewrite_boundary_uses_physical_evidence_deadline(
         "qualification_deadline_s": 660,
         "waits_while_unqualified_at_30s": True,
         "ready_at_observed_612s": True,
+        "atomic_handoff_hybrid_state": "SETUP_PENDING",
+        "first_post_setup_consumer_passed": True,
         "missing_authority_at_660s_is_terminal": True,
         "setup_commands_issued": 0,
         "physical_actions_performed": 0,

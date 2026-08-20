@@ -47,6 +47,7 @@ TOOL_PATHS = {
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "active_transaction_supervisor": Path(__file__).with_name("active_transactions.py"),
     "active_transport_supervisor": Path(__file__).with_name("active_control_supervisor.py"),
+    "active_status_snapshot_contract": Path(__file__).with_name("active_status_contract.py"),
     "priority_abort": Path(__file__).with_name("abort_transport.py"),
     "logical_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
     "contract_validator": Path(__file__).with_name("contracts.py"),
