@@ -20,6 +20,7 @@ from typing import Any
 
 from .active_hybrid_bundle import REQUIRED_FALSE_AUTHORITY, validate_bundle
 from .active_hybrid_proposal import validate_proposal
+from .evidence_index import package_identity
 from .run_paths import default_csv_files
 
 
@@ -32,6 +33,10 @@ RUNTIME_RUN_IDENTITY = "cx320_active_hybrid:3200001"
 PROFILE_IDENTITY = "cx320_active_hybrid"
 EXPECTED_BOARD_SERIAL = "503533748A919118"
 EXPECTED_BAUD = 115200
+DEFAULT_ATTEMPT_REASON = (
+    "initial Stage 5 physical entry after bounded pre-entry materiality and "
+    "live-path remediation"
+)
 SETUP_CODE = 0xA83C
 SETUP_CODE_HEX = "0xA83C"
 RUN_ACTIVATION_PATH = Path("cx320_active_hybrid_live_activation_v1.json")
@@ -305,6 +310,65 @@ def _authority() -> dict[str, Any]:
     }
 
 
+def _attempt_descriptor(
+    *,
+    ordinal: int,
+    reason: str,
+    predecessor_terminal_path: Path | None,
+) -> dict[str, Any]:
+    if type(ordinal) is not int or ordinal < 1:
+        raise ValueError("CX320 attempt ordinal must be a positive integer")
+    reason = reason.strip()
+    if not reason:
+        raise ValueError("CX320 attempt requires a concrete reason")
+    if ordinal == 1:
+        if predecessor_terminal_path is not None:
+            raise ValueError("initial CX320 attempt cannot name a predecessor terminal")
+        predecessor: dict[str, Any] | None = None
+    else:
+        if predecessor_terminal_path is None:
+            raise ValueError("later CX320 attempt requires a predecessor terminal")
+        predecessor_terminal_path = predecessor_terminal_path.resolve()
+        seal = _semantic_object(
+            predecessor_terminal_path,
+            "seal_sha256",
+            "CX320 predecessor physical terminal seal",
+        )
+        run_dir = predecessor_terminal_path.parents[1]
+        if (
+            not (run_dir / "COMPLETE").is_file()
+            or seal.get("status") != "failed"
+            or seal.get("primary_decision")
+            != "measurement_authority_or_platform_fault"
+            or seal.get("acquisition_gate", {}).get("passed") is not False
+            or seal.get("offline_finalization_gate", {}).get(
+                "replayable_without_physical_repeat"
+            )
+            is not False
+        ):
+            raise ValueError(
+                "CX320 predecessor does not establish a failed physical gate "
+                "requiring a new identified attempt"
+            )
+        predecessor = {
+            **_binding(predecessor_terminal_path),
+            "seal_sha256": seal["seal_sha256"],
+            "run_id": seal["run_id"],
+            "bundle_sha256": seal["bundle_sha256"],
+            "build_identity": seal["build_identity"],
+            "primary_decision": seal["primary_decision"],
+            "evidence_content_sha256": package_identity(run_dir)[
+                "content_sha256"
+            ],
+        }
+    return {
+        "ordinal": ordinal,
+        "reason": reason,
+        "predecessor_physical_terminal": predecessor,
+        "automatic_retry": False,
+    }
+
+
 def create_activation(
     *,
     bundle_path: Path,
@@ -313,6 +377,9 @@ def create_activation(
     serial_device: str,
     operator_instruction_ref: str,
     output_path: Path,
+    attempt_ordinal: int = 1,
+    attempt_reason: str = DEFAULT_ATTEMPT_REASON,
+    predecessor_terminal_path: Path | None = None,
 ) -> dict[str, Any]:
     if not serial_device.startswith("/dev/"):
         raise ValueError("CX320 activation requires an explicit /dev serial path")
@@ -356,15 +423,11 @@ def create_activation(
             "proposal_sha256": proposal["proposal_sha256"],
         },
         "authority_lineage": proposal.get("lineage"),
-        "attempt": {
-            "ordinal": 1,
-            "reason": (
-                "initial Stage 5 physical entry after bounded pre-entry "
-                "materiality and live-path remediation"
-            ),
-            "predecessor_physical_terminal": None,
-            "automatic_retry": False,
-        },
+        "attempt": _attempt_descriptor(
+            ordinal=attempt_ordinal,
+            reason=attempt_reason,
+            predecessor_terminal_path=predecessor_terminal_path,
+        ),
         "operational_rehearsal": rehearsal,
         "device": {
             "path": serial_device,
@@ -452,16 +515,6 @@ def validate_frozen_activation(
         )
         or proposal_binding.get("proposal_sha256") != proposal["proposal_sha256"]
         or activation.get("authority_lineage") != proposal.get("lineage")
-        or activation.get("attempt")
-        != {
-            "ordinal": 1,
-            "reason": (
-                "initial Stage 5 physical entry after bounded pre-entry "
-                "materiality and live-path remediation"
-            ),
-            "predecessor_physical_terminal": None,
-            "automatic_retry": False,
-        }
         or activation.get("firmware") != bundle.get("firmware")
         or activation.get("policy") != bundle.get("policy")
         or activation.get("host_tools") != host_tools
@@ -488,6 +541,22 @@ def validate_frozen_activation(
         or activation.get("authority") != _authority()
     ):
         raise ValueError("CX320 activation identity, topology, or authority differs")
+    attempt = activation.get("attempt")
+    if not isinstance(attempt, dict):
+        raise ValueError("CX320 activation attempt identity is malformed")
+    predecessor = attempt.get("predecessor_physical_terminal")
+    predecessor_path = (
+        Path(str(predecessor.get("path", "")))
+        if isinstance(predecessor, dict)
+        else None
+    )
+    expected_attempt = _attempt_descriptor(
+        ordinal=attempt.get("ordinal"),
+        reason=str(attempt.get("reason", "")),
+        predecessor_terminal_path=predecessor_path,
+    )
+    if attempt != expected_attempt:
+        raise ValueError("CX320 activation attempt lineage differs")
     rehearsal_binding = activation.get("operational_rehearsal", {})
     rehearsal_path = Path(str(rehearsal_binding.get("path", ""))).resolve()
     observed_rehearsal = validate_operational_rehearsal(
@@ -850,6 +919,9 @@ def main(argv: list[str] | None = None) -> int:
     activate.add_argument("--operational-rehearsal", type=Path, required=True)
     activate.add_argument("--serial-device", required=True)
     activate.add_argument("--operator-instruction-ref", required=True)
+    activate.add_argument("--attempt-ordinal", type=int, default=1)
+    activate.add_argument("--attempt-reason", default=DEFAULT_ATTEMPT_REASON)
+    activate.add_argument("--predecessor-terminal", type=Path)
     activate.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("activation", type=Path)
@@ -876,6 +948,9 @@ def main(argv: list[str] | None = None) -> int:
                 serial_device=args.serial_device,
                 operator_instruction_ref=args.operator_instruction_ref,
                 output_path=args.output,
+                attempt_ordinal=args.attempt_ordinal,
+                attempt_reason=args.attempt_reason,
+                predecessor_terminal_path=args.predecessor_terminal,
             )
         elif args.command == "validate":
             validator = validate_frozen_activation if args.frozen else validate_activation

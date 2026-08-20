@@ -136,6 +136,74 @@ def test_activation_is_separate_effective_artifact_and_proposal_stays_false(
     assert validated == observed
 
 
+def test_later_activation_binds_failed_predecessor_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-1"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "attempt-1",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+    output = tmp_path / "activation-2.json"
+
+    observed = activation.create_activation(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        operational_rehearsal_path=rehearsal_path,
+        serial_device="/dev/cu.usbmodem-test",
+        operator_instruction_ref="expanded bounded recovery authority",
+        output_path=output,
+        attempt_ordinal=2,
+        attempt_reason="repair pre-setup integrity gating",
+        predecessor_terminal_path=predecessor_path,
+    )
+
+    assert observed["attempt"]["ordinal"] == 2
+    assert observed["attempt"]["automatic_retry"] is False
+    assert observed["attempt"]["predecessor_physical_terminal"][
+        "seal_sha256"
+    ] == _semantic(predecessor_unsigned, "seal_sha256")["seal_sha256"]
+    validated, _, _ = activation.validate_activation(output)
+    assert validated == observed
+
+
+def test_later_activation_requires_predecessor_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+
+    with pytest.raises(ValueError, match="requires a predecessor terminal"):
+        activation.create_activation(
+            bundle_path=bundle_path,
+            proposal_path=proposal_path,
+            operational_rehearsal_path=rehearsal_path,
+            serial_device="/dev/cu.usbmodem-test",
+            operator_instruction_ref="expanded bounded recovery authority",
+            output_path=tmp_path / "activation-2.json",
+            attempt_ordinal=2,
+            attempt_reason="repair pre-setup integrity gating",
+        )
+
+
 def test_activation_rejects_old_programme_only_run_identity_before_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

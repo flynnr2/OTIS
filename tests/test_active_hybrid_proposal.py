@@ -64,6 +64,7 @@ def test_successor_proposal_preserves_root_authority_and_frozen_envelope(
         parent_proposal_path=parent_path,
         operator_authority_path=authority_path,
         output_path=output,
+        successor_reason="attempt 2 after pre-setup firmware integrity repair",
     )
     validated = proposal_tool.validate_proposal(output)
 
@@ -72,4 +73,7 @@ def test_successor_proposal_preserves_root_authority_and_frozen_envelope(
     assert created["lineage"][
         "scientific_thresholds_criteria_and_duration_unchanged"
     ] is True
+    assert created["lineage"]["successor_reason"] == (
+        "attempt 2 after pre-setup firmware integrity repair"
+    )
     assert created["progressive_envelope"] == proposal_tool._progressive_envelope()

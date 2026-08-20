@@ -18,6 +18,10 @@ PROPOSAL_ID = "cx320_active_hybrid_physical_authority_proposal_v1"
 PROGRAMME_ID = "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1"
 ROOT_BUNDLE_SHA256 = "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae"
 ROOT_PROPOSAL_SHA256 = "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4"
+DEFAULT_SUCCESSOR_REASON = (
+    "pre-entry materiality-counterfactual and live-path platform repairs "
+    "under expanded recovery authority"
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -90,6 +94,7 @@ def create_successor_proposal(
     parent_proposal_path: Path,
     operator_authority_path: Path,
     output_path: Path,
+    successor_reason: str = DEFAULT_SUCCESSOR_REASON,
 ) -> dict[str, Any]:
     """Create a non-effective successor under the already-authorized root."""
 
@@ -97,6 +102,9 @@ def create_successor_proposal(
     parent_proposal_path = parent_proposal_path.resolve()
     operator_authority_path = operator_authority_path.resolve()
     bundle = validate_bundle(bundle_path)
+    successor_reason = successor_reason.strip()
+    if not successor_reason:
+        raise ValueError("CX320 successor proposal requires a concrete reason")
     parent = _semantic_object(parent_proposal_path, "proposal_sha256")
     authority = json.loads(operator_authority_path.read_text(encoding="utf-8"))
     if (
@@ -171,10 +179,7 @@ def create_successor_proposal(
                 "proposal_sha256": parent["proposal_sha256"],
             },
             "operator_authority": _binding(operator_authority_path),
-            "successor_reason": (
-                "pre-entry materiality-counterfactual and live-path platform "
-                "repairs under expanded recovery authority"
-            ),
+            "successor_reason": successor_reason,
             "scientific_thresholds_criteria_and_duration_unchanged": True,
             "automatic_controller_retry": False,
             "automatic_restoration": False,
@@ -253,6 +258,8 @@ def validate_proposal(path: Path) -> dict[str, Any]:
             is not True
             or lineage.get("automatic_controller_retry") is not False
             or lineage.get("automatic_restoration") is not False
+            or not isinstance(lineage.get("successor_reason"), str)
+            or not lineage["successor_reason"].strip()
         ):
             raise ValueError("CX320 successor proposal lineage differs")
     return proposal
@@ -265,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bundle", type=Path)
     parser.add_argument("--parent-proposal", type=Path)
     parser.add_argument("--operator-authority", type=Path)
+    parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     if args.create:
@@ -283,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             parent_proposal_path=args.parent_proposal,
             operator_authority_path=args.operator_authority,
             output_path=args.output,
+            successor_reason=args.successor_reason,
         )
     else:
         if args.proposal is None:
