@@ -38,10 +38,10 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     ]
     assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "7ca36f272f8d3210822452b1b7bac83ef12ed8c5d544bccc87dfe9e894228559"
+        "a0912f956bd066e9d648b0626b59efcf2cfa579ccc2b54564331459c3c1e532e"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "baa3a62b5f0fab34c7f765d6663cf07d447f28e58f589d45b18628238240691b"
+        "1f0e23e8328e48e259e4a63c06b55db8f7546c867e2b5f4f48f2fcd067a53fb5"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0

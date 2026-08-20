@@ -46,11 +46,24 @@ host-inferred transition.
 
 A deterministic firmware source guard traces the real acknowledgement branch
 through both consumers, engine initialization and the first status consumer.
-The affected exact firmware profile compiles successfully, 34 focused firmware
-and host parity checks pass, and the broader current non-retired suite records
-854 passes. The complete host operational-path rehearsal also passes. It does
-not claim the RP2040 cross-core boundary; attempt 5 is the shortest physical
-gate for that corrected boundary.
+Before physical re-entry, a consolidated setup-to-analysis audit superseded the
+initial attempt-5 candidates. It found and corrected six additional
+pre-entry-detectable contract mismatches: setup-to-first-application cadence,
+post-setup DAC-epoch qualification, response-horizon replay chronology,
+same-phase-epoch analysis, firmware-consumed evidence acknowledgement, and the
+live monitor schema. It also separated response classification from observed
+commanded-sign evidence. These are implementation and observability corrections;
+they do not change the scientific policy or acceptance boundary.
+
+The final affected exact firmware profile compiles successfully. Seventy focused
+firmware, policy, supervisor, replay, analyzer, transaction and monitor checks
+pass. The current non-historical suite records 863 passes, with 27 historical
+tests excluded by policy. The complete accelerated and real-process host
+operational-path rehearsals pass, including setup propagation, first-decision
+cadence, response replay, progressive release, transport obstruction, priority
+abort, analysis, sealing and registration. They do not claim the RP2040
+cross-core, physical DAC or D14/D8 boundaries; attempt 5 is the shortest
+remaining physical gate.
 
 No scientific policy, threshold, acceptance criterion, duration, command
 envelope or progressive-authority limit changed.
@@ -61,14 +74,16 @@ Attempt 5 is a separately identified successor under the operator's expanded
 recovery authority. It is not an automatic retry or restoration.
 
 - firmware source/configuration identity:
-  `ffdac3de0370a086cb04df19acca7254e1e098506b4c0c3771f032c483ba222c:f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`;
+  `38a03e6224bba6b92e3737b2c89ebdd208cee772b0ada1f4a5f80167e70e7a60:f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`;
 - exact UF2 SHA-256:
-  `f03418251c1002fd5ea2b2a236ea538a667ff949641a8f4ca732b9a61f3fcb1e`;
+  `ebeb4fbe406daa37e66daf269cf201769cf1f9e3db9a4dbac341b3c5c5065d26`;
 - bundle semantic SHA-256:
-  `7ca36f272f8d3210822452b1b7bac83ef12ed8c5d544bccc87dfe9e894228559`;
+  `a0912f956bd066e9d648b0626b59efcf2cfa579ccc2b54564331459c3c1e532e`;
 - successor proposal semantic SHA-256:
-  `cbfa8bf5a78973aefc0b48589c270e7be70a3d741af3230c0da5f34f300f894c`;
+  `9fe4f80013d232872c631006da07da2853fbba0e66c69ca88a1d6290340671ec`;
 - operational rehearsal semantic SHA-256:
-  `baa3a62b5f0fab34c7f765d6663cf07d447f28e58f589d45b18628238240691b`.
+  `1f0e23e8328e48e259e4a63c06b55db8f7546c867e2b5f4f48f2fcd067a53fb5`;
+- effective activation semantic SHA-256:
+  `9399945cdf6969129447abf5ed57ef9f2010d9d5c61bebe2542eadce34c0de40`.
 
 The shortest remaining affected gate is exact physical Stage 5 attempt 5.
