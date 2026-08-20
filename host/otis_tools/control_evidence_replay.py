@@ -62,6 +62,23 @@ def _selected_windows_nonoverlap(windows: list[tuple[int, int]]) -> bool:
     )
 
 
+def _selected_frequency_estimator_sha256(manifest_value: dict[str, Any]) -> str:
+    """Resolve the selected estimator across the current programme schemas."""
+
+    bindings = manifest_value.get("policy", {}).get("bindings", {})
+    if not isinstance(bindings, dict):
+        raise ValueError("policy estimator bindings are unavailable")
+    binding = bindings.get("selected_frequency_estimator")
+    if binding is None:
+        binding = bindings.get("frequency_estimator")
+    if not isinstance(binding, dict):
+        raise ValueError("selected frequency estimator binding is unavailable")
+    identity = binding.get("sha256")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise ValueError("selected frequency estimator identity is malformed")
+    return identity
+
+
 def _measurement_replay(
     manifest: Any,
     manifest_value: dict[str, Any],
@@ -76,9 +93,7 @@ def _measurement_replay(
         return False, {"reason": "measurement replay source is empty"}, {}
     continuity, count_by_seq = check_continuity(counts, snapshots, references)
     continuity_exact = all(item.passed for item in continuity)
-    expected_estimator_hash = manifest_value["policy"]["bindings"][
-        "selected_frequency_estimator"
-    ]["sha256"]
+    expected_estimator_hash = _selected_frequency_estimator_sha256(manifest_value)
     sequences = [int(row["estimate_seq"]) for row in estimates]
     sequence_exact = sequences == list(range(sequences[0], sequences[-1] + 1))
     identifiers: set[str] = set()

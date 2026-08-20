@@ -81,6 +81,16 @@ TERMINAL_DECISIONS = frozenset(
 )
 
 
+def _tight_deadband_policy_sha256(policy_document: dict[str, Any]) -> str:
+    binding = policy_document.get("bindings", {}).get(
+        "frequency_policy_predecessor", {}
+    )
+    identity = binding.get("sha256") if isinstance(binding, dict) else None
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise ValueError("CX320 tight-deadband predecessor identity is unavailable")
+    return identity
+
+
 def _sha256_file(path: Path) -> str:
     digest = sha256()
     with path.open("rb") as handle:
@@ -973,6 +983,7 @@ def analyze(
     policy_path = Path(str(manifest_value["policy"]["path"])).resolve()
     policy = load_policy(policy_path)
     policy_document = _read_object(policy_path)
+    tight_deadband_policy_sha256 = _tight_deadband_policy_sha256(policy_document)
     metric_contract = _metric_contract(
         policy_document,
         comparison_observations=policy.phase_qualification_residence_s,
@@ -1009,6 +1020,7 @@ def analyze(
                     contract=contract,
                     known_channels=manifest.known_channels,
                     known_domains=manifest.known_domains,
+                    tight_deadband_policy_sha256=tight_deadband_policy_sha256,
                 ),
             )
             validations[contract] = {
@@ -1195,7 +1207,10 @@ def analyze(
         }
 
     try:
-        tdb_replay = replay_tight_deadband(run_dir / TDB_CSV)
+        tdb_replay = replay_tight_deadband(
+            run_dir / TDB_CSV,
+            policy_sha256=tight_deadband_policy_sha256,
+        )
         tdb_replay_exact = tdb_replay.exact
         tdb_replay_detail: dict[str, Any] = tdb_replay.as_dict()
     except (KeyError, OSError, TypeError, ValueError) as exc:

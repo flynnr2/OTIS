@@ -11,6 +11,7 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _metric_contract,
     _phase_metrics,
     _replay_ahy,
+    _tight_deadband_policy_sha256,
     _wall_origin_and_setup_order_exact,
 )
 from host.otis_tools.active_hybrid_policy import load_policy
@@ -284,3 +285,11 @@ def test_partial_prewrite_terminal_is_sealed_as_platform_fault(
     assert seal["primary_decision"] == "measurement_authority_or_platform_fault"
     assert seal["missing_source_artifacts"]
     assert seal["offline_finalization_gate"]["passed"] is False
+
+
+def test_cx320_analyzer_binds_tdb_to_frozen_frequency_predecessor() -> None:
+    policy_document = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    tight_sha256 = policy_document["bindings"]["frequency_policy_predecessor"][
+        "sha256"
+    ]
+    assert _tight_deadband_policy_sha256(policy_document) == tight_sha256

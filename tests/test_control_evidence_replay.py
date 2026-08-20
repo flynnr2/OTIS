@@ -8,6 +8,7 @@ from host.otis_tools.control_evidence_replay import (
     _commands_exact,
     _controller_replay,
     _response_replay,
+    _selected_frequency_estimator_sha256,
     _selected_windows_nonoverlap,
 )
 from host.otis_tools.frequency_control_replay import load_current_replay_policy
@@ -72,6 +73,22 @@ def test_response_replay_matches_firmware_without_float_deadband() -> None:
 def test_selected_windows_allow_reset_gaps_but_reject_overlap() -> None:
     assert _selected_windows_nonoverlap([(0, 600), (600, 1200), (2700, 3300)])
     assert not _selected_windows_nonoverlap([(0, 600), (599, 1199)])
+
+
+def test_measurement_replay_resolves_current_and_legacy_estimator_bindings() -> None:
+    identity = "a" * 64
+    assert _selected_frequency_estimator_sha256(
+        {"policy": {"bindings": {"frequency_estimator": {"sha256": identity}}}}
+    ) == identity
+    assert _selected_frequency_estimator_sha256(
+        {
+            "policy": {
+                "bindings": {
+                    "selected_frequency_estimator": {"sha256": identity}
+                }
+            }
+        }
+    ) == identity
 
 
 def test_required_direction_is_bound_to_its_own_healthy_response() -> None:
