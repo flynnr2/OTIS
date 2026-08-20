@@ -55,3 +55,31 @@ criterion, duration, topology, setup code, actuator limit or progressive
 authority rule changed. Attempt 7 requires a fresh exact build and identity
 binding, structural preflight, complete operational-path rehearsal and a
 separate immutable activation before physical re-entry.
+
+## Attempt 7 entry gates
+
+The bounded correction is frozen in source revision
+`78c7899cba3b7e12716aef7c1e3be0731f3fba01`. The clean exact build retained
+the unchanged firmware source semantic SHA-256
+`5a97de4d0fd9681a7af5cd31ffd38c2cfcfc2fda45894640a5982df4c2072d7b`
+and configuration SHA-256
+`f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`;
+its exact UF2 SHA-256 is
+`c625fa9b08bece7b0b0bbec14490e09bbe020a1be3d5e53c1fc628f9a5d555a0`.
+
+Successor bundle v14 has semantic SHA-256
+`df7e9efd0c1609bfd4a8cc2ef5d3854727b09cb74547fb04fa8ddc527bdbcf71`.
+Proposal v14 has semantic SHA-256
+`1b69c33aa9e04fe5f3148c2e7ed466c2b98b5e4ab2a2732c6c557af8c8a33334`
+and retains the original operator-authority lineage. Structural preflight v14
+passed with semantic SHA-256
+`88203a30605a17db0e2fffcef4b423e83bf08d9b2c50765c55088602d62751ce`.
+
+The complete PTY operational-path rehearsal passed with semantic SHA-256
+`6d2201f5d47542e7f7266344ef26d056a38dc26fae7961a8c182437eef8b9ed8`.
+It exercised the real capture and live-supervisor processes, sole serial
+ownership, the exact 56-field hybrid record, normal-FIFO saturation after an
+acknowledged command, independent priority-abort delivery, complete post-abort
+snapshot, logical rotation, accelerated controller boundaries, analysis,
+sealing and registration. It made no physical-action or qualification claim.
+Attempt 7 remains offline-only until its separate exact activation is issued.
