@@ -28,8 +28,16 @@ from typing import Any, Callable
 
 from .abort_transport import send_abort
 from .active_hybrid_bundle import validate_bundle
+from .active_hybrid_live_supervisor import (
+    ActiveHybridLiveSupervisor,
+    load_active_hybrid_spec,
+)
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_rehearsal import run as run_accelerated_rehearsal
+from .bounded_tight_deadband_prewrite_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    canonical_prewrite_fixture,
+)
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
 from .run_paths import default_csv_files
@@ -53,6 +61,7 @@ REHEARSAL_COVERAGE = (
     "emergency_abort_fifo",
     "host_abort_fifo",
     "live_supervisor_process",
+    "setup_authority_qualification_deadline",
     "setup_propagation",
     "progressive_checkpoint",
     "conditional_release",
@@ -332,6 +341,127 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
     return value
 
 
+def _prewrite_boundary_supervisor(
+    *,
+    run_dir: Path,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    proposal_path: Path,
+    proposal: dict[str, Any],
+) -> tuple[ActiveHybridLiveSupervisor, dict[tuple[str, str], str]]:
+    run_dir.mkdir(parents=True)
+    (run_dir / "csv").mkdir()
+    manifest_path = _create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/ttys999",
+    )
+    manifest = validate_rehearsal_run_manifest(manifest_path)
+    spec, identities = load_active_hybrid_spec(manifest)
+    supervisor = ActiveHybridLiveSupervisor(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        run_dir=run_dir,
+        command_fifo=run_dir / "control/normal_commands.fifo",
+        emergency_command_fifo=run_dir / "control/emergency_abort.fifo",
+        abort_fifo=run_dir / "control/host_abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity=str(bundle["firmware"]["build_identity"]),
+        duration_s=None,
+    )
+    expected_identity = {
+        "run_identity": spec.run_identity,
+        "build_identity": supervisor.expected_build_identity,
+        "profile_identity": spec.profile,
+        **identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected_identity,
+        planned_live_stimulus_code=spec.start_code,
+    )
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    return supervisor, health
+
+
+def _exercise_prewrite_qualification_boundary(
+    *,
+    output_dir: Path,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    proposal_path: Path,
+    proposal: dict[str, Any],
+) -> dict[str, Any]:
+    """Accelerate the exact firmware-grounded setup-authority deadline."""
+
+    waiting, waiting_health = _prewrite_boundary_supervisor(
+        run_dir=output_dir / "qualification",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+    waiting_health[("cx317_active", "setup_reference_eligible")] = "false"
+    waiting_health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
+    waiting_health[("gnss_receiver", "control_eligible")] = "false"
+    waiting_health[("cx317_active", "uptime_s")] = "30"
+    early = waiting._check_prewrite_contract(waiting_health, 30.0)
+
+    qualified_health = dict(waiting_health)
+    qualified_health[("cx317_active", "setup_reference_eligible")] = "true"
+    qualified_health[("gnss_receiver", "raw_pps_control_eligible")] = "true"
+    qualified_health[("gnss_receiver", "control_eligible")] = "true"
+    qualified_health[("cx317_active", "uptime_s")] = "612"
+    ready = waiting._check_prewrite_contract(qualified_health, 612.0)
+
+    deadline, deadline_health = _prewrite_boundary_supervisor(
+        run_dir=output_dir / "deadline",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+    deadline_health[("cx317_active", "setup_reference_eligible")] = "false"
+    deadline_health[("gnss_receiver", "raw_pps_control_eligible")] = "false"
+    deadline_health[("gnss_receiver", "control_eligible")] = "false"
+    deadline_health[("cx317_active", "uptime_s")] = str(
+        RAW_PPS_QUALIFICATION_DEADLINE_S
+    )
+    deadline_rejected = False
+    try:
+        deadline._check_prewrite_contract(
+            deadline_health, float(RAW_PPS_QUALIFICATION_DEADLINE_S)
+        )
+    except ValueError as exc:
+        deadline_rejected = "setup_reference_eligible" in str(exc)
+
+    result = {
+        "startup_inhibit_s": 600,
+        "observed_historical_qualification_s": 612,
+        "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
+        "waits_while_unqualified_at_30s": early is not None and not early.ready,
+        "ready_at_observed_612s": ready is not None and ready.ready,
+        "missing_authority_at_660s_is_terminal": deadline_rejected,
+        "setup_commands_issued": 0,
+        "physical_actions_performed": 0,
+    }
+    if not all(
+        result[key]
+        for key in (
+            "waits_while_unqualified_at_30s",
+            "ready_at_observed_612s",
+            "missing_authority_at_660s_is_terminal",
+        )
+    ):
+        raise RuntimeError("CX320 accelerated prewrite boundary rehearsal failed")
+    return result
+
+
 def _run_real_process_topology(
     *,
     output_dir: Path,
@@ -563,6 +693,13 @@ def run(
         proposal_path=proposal_path,
         proposal=proposal,
     )
+    prewrite_boundary = _exercise_prewrite_qualification_boundary(
+        output_dir=output_dir / "prewrite_boundary",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
@@ -578,6 +715,7 @@ def run(
         "coverage": coverage,
         "tool_bindings": bundle["host_tools"],
         "real_process_topology": topology,
+        "accelerated_prewrite_boundary": prewrite_boundary,
         "accelerated_boundary_result": {
             "status": accelerated["status"],
             "seal_sha256": accelerated["seal_sha256"],
@@ -597,6 +735,7 @@ def run(
                 "logical_evidence_rotation",
             ],
             "accelerated_deterministic": [
+                "setup_authority_qualification_deadline",
                 "setup_propagation",
                 "progressive_checkpoint",
                 "conditional_release",

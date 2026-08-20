@@ -121,3 +121,44 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
     )
+
+
+def test_accelerated_prewrite_boundary_uses_physical_evidence_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    policy_path = (
+        Path(__file__).resolve().parents[1]
+        / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"
+    )
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    bundle["policy"] = {
+        **_binding(policy_path),
+        "policy_sha256": policy_sha256,
+    }
+    bundle["firmware"] = {
+        **bundle["firmware"],
+        "source_sha256": "a" * 64,
+        "configuration_sha256": "b" * 64,
+    }
+    monkeypatch.setattr(rehearsal, "validate_bundle", lambda path: bundle)
+    monkeypatch.setattr(rehearsal, "validate_proposal", lambda path: proposal)
+
+    result = rehearsal._exercise_prewrite_qualification_boundary(
+        output_dir=tmp_path / "boundary",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+
+    assert result == {
+        "startup_inhibit_s": 600,
+        "observed_historical_qualification_s": 612,
+        "qualification_deadline_s": 660,
+        "waits_while_unqualified_at_30s": True,
+        "ready_at_observed_612s": True,
+        "missing_authority_at_660s_is_terminal": True,
+        "setup_commands_issued": 0,
+        "physical_actions_performed": 0,
+    }

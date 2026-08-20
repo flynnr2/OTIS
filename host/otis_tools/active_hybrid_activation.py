@@ -52,6 +52,7 @@ REHEARSAL_COVERAGE = (
     "emergency_abort_fifo",
     "host_abort_fifo",
     "live_supervisor_process",
+    "setup_authority_qualification_deadline",
     "setup_propagation",
     "progressive_checkpoint",
     "conditional_release",
