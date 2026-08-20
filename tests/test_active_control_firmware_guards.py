@@ -294,7 +294,7 @@ def test_pre_setup_session_does_not_apply_post_setup_integrity_predicate() -> No
     assert pre_setup_return < state_checks < strict_integrity
 
 
-def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> None:
+def test_setup_ack_propagates_the_new_dac_epoch_to_all_hybrid_consumers() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
@@ -314,11 +314,37 @@ def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> Non
     propagation = setup_ack.index(
         "propagate_cx317_applied_epoch_to_previews", manual_start
     )
-    assert manual_start < propagation
+    confirmation = setup_ack.index(
+        "otis_cx317_active_live_confirm_setup_consumers", propagation
+    )
+    assert manual_start < propagation < confirmation
     assert "active_status.manual_start_confirmed" in setup_ack
     assert "active_status.dac_epoch != 0u" in setup_ack
     assert "otis_cx317_preview_live_on_dac_applied_epoch" in helper
     assert "otis_phase_preview_live_update_applied_code" in helper
+
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    confirm_consumers = live[
+        live.index("bool otis_cx317_active_live_confirm_setup_consumers") :
+        live.index("void otis_cx317_active_live_on_decision")
+    ]
+    frequency_consumer = confirm_consumers.index(
+        "otis_cx317_preview_live_applied_epoch_exact"
+    )
+    phase_consumer = confirm_consumers.index(
+        "otis_phase_preview_live_get_status"
+    )
+    engine_initialization = confirm_consumers.index(
+        "otis_active_hybrid_engine_init"
+    )
+    state_release = confirm_consumers.index("hybrid_engine_ready = true")
+    assert frequency_consumer < phase_consumer < engine_initialization < state_release
+
+    status = live[live.index("void otis_cx317_active_live_get_status") :]
+    assert "hybrid_engine_ready" in status
+    assert "otis_active_hybrid_state_name(hybrid_engine.state)" in status
 
 
 def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:

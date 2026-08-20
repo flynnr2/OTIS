@@ -885,9 +885,16 @@ void service_dual_core_timing_inputs(void) {
         OtisCx317ActiveLiveStatus active_status = {};
         otis_cx317_active_live_get_status(&active_status, millis() / 1000u);
         if (active_status.manual_start_confirmed &&
-            active_status.dac_epoch != 0u)
+            active_status.dac_epoch != 0u) {
           propagate_cx317_applied_epoch_to_previews(
               ack.applied_code, active_status.dac_epoch, millis() / 1000u);
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+          if (!otis_cx317_active_live_confirm_setup_consumers(
+                  ack.applied_code, active_status.dac_epoch))
+            otis_dual_core_latch_fault(
+                OtisPartitionFault::ActuatorAcknowledgementMismatch);
+#endif
+        }
       } else {
         publish_dual_core_setup_phase(
             ack.kind == OtisSetupApplicationAck::Kind::Failed
