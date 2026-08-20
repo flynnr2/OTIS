@@ -45,27 +45,38 @@ and the last confirmed applied code. The real-process PTY rehearsal now passes
 an exact 56-field hybrid record through capture and carries that post-abort
 snapshot through the first dependent runner decision before capture closes.
 
-Sixty-eight focused serialization, analyzer, runner and live-topology tests
-pass. The affected exact firmware profile builds successfully. No scientific
+Seventy focused serialization, analyzer, runner and live-topology tests pass.
+The affected exact firmware profile builds successfully. No scientific
 policy, threshold, acceptance criterion, duration, topology, setup code,
 command envelope or progressive-authority limit changed.
 
-## Attempt 6 offline identity
+## Attempt 6 exact entry gate
 
 Attempt 6 is a separately identified successor under the operator's expanded
 bounded-recovery authority. It is not an automatic controller retry or
 restoration. Before a new physical run, the exact successor must pass its
 structural preflight and complete operational-path rehearsal, then receive an
-immutable activation bound to those results.
+immutable activation bound to those results. Those first two gates now pass.
+The real-process path accepted an exact 56-field hybrid record with all frozen
+estimator and policy identities, saturated the normal FIFO, delivered one
+independent priority abort, retained a complete post-abort snapshot, preserved
+sole serial ownership through rotation, and completed analysis, sealing and
+registration with zero parser errors. It performed no physical action and
+supplies no physical qualification evidence.
 
 - firmware source/configuration identity:
   `5a97de4d0fd9681a7af5cd31ffd38c2cfcfc2fda45894640a5982df4c2072d7b:f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`;
 - exact UF2 SHA-256:
-  `78846b28c7d764d9a16574b35f7f6d1a5915f7076fcd04ab16a98d4887da12fb`;
+  `9e301e276d08544b52fd4829a86bf32bb5acf0e2a01efb48991b80964b582d1f`;
 - bundle semantic SHA-256:
-  `a2e9bb091b335f7ec3c58db8db5265536d062fcc6134342c2b00e58659bd75b5`;
+  `3785d1bb42ba64f4b75d0729a8124f7f61e839bf0a3e60ccae4e840706e13979`;
 - successor proposal semantic SHA-256:
-  `fca3f5d34c6572388dfeb493e7de2a810c1d3fc28a247eb1ebad5bedcbe043c0`.
+  `e1037858183c5efa726fb34c804bcc4dbeda8aee641d23e840cd0d923b2f033f`;
+- structural preflight semantic SHA-256:
+  `6edc15abb80ab829a45ce2fed3333545b0d8ff8f73c1d82911aed68aee923034`;
+- operational rehearsal semantic SHA-256:
+  `111af538e29dc67b0ce91272bb8a1f0fca6a11460870cb02d8f6f3db5e0d5328`.
 
 The proposal remains non-effective and permits offline preparation only until
-those exact gates pass.
+an immutable activation binds this exact gate under the recorded operator
+authority lineage.

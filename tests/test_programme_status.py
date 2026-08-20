@@ -35,10 +35,10 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
     assert cx320["physical_authority_effective"] is False
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "a2e9bb091b335f7ec3c58db8db5265536d062fcc6134342c2b00e58659bd75b5"
+        "3785d1bb42ba64f4b75d0729a8124f7f61e839bf0a3e60ccae4e840706e13979"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "1f0e23e8328e48e259e4a63c06b55db8f7546c867e2b5f4f48f2fcd067a53fb5"
+        "111af538e29dc67b0ce91272bb8a1f0fca6a11460870cb02d8f6f3db5e0d5328"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
@@ -76,6 +76,14 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
         "atomic_handoff_hybrid_state": "SETUP_PENDING",
         "first_post_setup_consumer_passed": True,
     }
+    assert cx320["operational_rehearsal"][
+        "first_active_hybrid_wire_field_count"
+    ] == 56
+    assert cx320["operational_rehearsal"]["capture_parser_errors"] == 0
+    assert cx320["operational_rehearsal"]["priority_abort_observed"] is True
+    assert cx320["operational_rehearsal"][
+        "post_abort_complete_active_snapshot"
+    ] is True
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
