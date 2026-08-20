@@ -277,6 +277,23 @@ def test_setup_ack_survives_one_in_flight_pre_setup_health_sample() -> None:
     assert confirmation < loss_gate < fault
 
 
+def test_pre_setup_session_does_not_apply_post_setup_integrity_predicate() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    integrity = live[
+        live.index("void update_active_reference_and_integrity") :
+        live.index("}  // namespace")
+    ]
+
+    pre_setup_return = integrity.index(
+        "if (!transaction_bound || !manual_start_confirmed) return;"
+    )
+    state_checks = integrity.index("const bool inactive")
+    strict_integrity = integrity.index("!active_integrity_healthy(now_s)")
+    assert pre_setup_return < state_checks < strict_integrity
+
+
 def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"

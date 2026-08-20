@@ -613,7 +613,12 @@ bool queue_active_hybrid_decision(
 #endif
 
 void update_active_reference_and_integrity(uint32_t now_s) {
-  if (!transaction_bound) return;
+  // Before the one-shot setup acknowledgement there is no authoritative DAC
+  // code to protect, and the host may not yet have established its capture
+  // lease. Keep the bound session in SETUP_PENDING until those preconditions
+  // are deliberately established; the post-setup integrity predicate below
+  // requires both and would otherwise manufacture an unrecoverable boot fault.
+  if (!transaction_bound || !manual_start_confirmed) return;
   const bool inactive =
       transaction.state == OtisCx317ActiveState::Fault ||
       transaction.state == OtisCx317ActiveState::Aborted;
