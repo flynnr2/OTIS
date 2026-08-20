@@ -11,6 +11,7 @@ qualification claim.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -52,7 +53,7 @@ from .bounded_tight_deadband_prewrite_contract import (
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
-from .contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
+from .contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS, CONTRACT_FIELDS
 from .run_paths import default_csv_files
 from .serial_commands import send_timestamped_command_to_fifo
 
@@ -675,14 +676,45 @@ def _exercise_qualified_device_time_boundaries(
         proposal=proposal,
     )
     origin_uptime_s = 4_000
-    supervisor.state["qualification_started_utc"] = supervisor.envelope.wall_origin_utc
-    supervisor.state["qualified_origin_estimate_id"] = (
-        "est:cx317:selected600:device_clock_rehearsal"
-    )
-    supervisor.state["qualified_origin_timestamp_ticks"] = (
+    # Preserve the non-zero subsecond phase that escaped the attempt-8 host
+    # validator.  Scientific boundaries are measured from this exact device
+    # timestamp, while integer uptime remains a conservative lower bound.
+    origin_subsecond_ticks = 13_602_864
+    origin_ticks = (
         origin_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+        + origin_subsecond_ticks
     )
-    supervisor.state["qualified_origin_session_id"] = 1
+    estimate_path = supervisor.run_dir / "csv/estimates_v2.csv"
+    estimate = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
+    estimate.update(
+        {
+            "record_type": "EST",
+            "schema_version": "2",
+            "estimate_seq": "541",
+            "estimate_id": "est:cx317:selected600:device_clock_rehearsal",
+            "estimator_timestamp_ticks": str(origin_ticks),
+            "time_domain": "rp2040_timer0",
+            "source_count_ref": "live:CNT:2400",
+            "source_dac_ref": "live:DAC:1",
+            "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+            "observation_validity": "valid",
+            "reference_validity": "valid",
+            "reference_continuity": "true",
+            "count_validity": "valid",
+            "count_continuity": "true",
+            "diagnostic_health": "healthy",
+            "accepted_sample_count": "600",
+            "preview_eligibility": "true",
+        }
+    )
+    with estimate_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=CONTRACT_FIELDS["estimates_v2"]
+        )
+        writer.writeheader()
+        writer.writerow(estimate)
+
+    supervisor.state["setup_confirmed_utc"] = supervisor.envelope.wall_origin_utc
     supervisor.state["manual_start_sent"] = True
     supervisor._save()
     health.update(
@@ -694,6 +726,7 @@ def _exercise_qualified_device_time_boundaries(
             ("cx317_active", "manual_start_confirmed"): "true",
             ("cx317_active", "confirmed_applied_code_known"): "true",
             ("cx317_active", "confirmed_applied_code"): "43068",
+            ("cx317_active", "dac_epoch"): "1",
             ("cx317_active", "session_id"): "1",
             ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
             ("cx317_active", "first_phase_checkpoint_passed"): "true",
@@ -704,17 +737,31 @@ def _exercise_qualified_device_time_boundaries(
         }
     )
 
+    health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
+    supervisor._maybe_qualify(health)
+    fractional_origin_deferred = (
+        supervisor.state["qualified_origin_estimate_id"] is None
+    )
+    health[("cx317_active", "uptime_s")] = str(origin_uptime_s + 1)
+    supervisor._maybe_qualify(health)
+    exact_origin_established = (
+        supervisor.state["qualified_origin_estimate_id"]
+        == "est:cx317:selected600:device_clock_rehearsal"
+        and supervisor.state["qualified_origin_timestamp_ticks"] == origin_ticks
+        and supervisor.state["qualified_origin_session_id"] == 1
+    )
+
     admission_elapsed_s = QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S
-    health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + admission_elapsed_s - 1
-    )
-    admission_open_before = not supervisor._close_response_horizon_if_required(
-        health
-    )
     health[("cx317_active", "uptime_s")] = str(
         origin_uptime_s + admission_elapsed_s
     )
-    admission_closed_exact = supervisor._close_response_horizon_if_required(
+    admission_open_at_floor = not supervisor._close_response_horizon_if_required(
+        health
+    )
+    health[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + admission_elapsed_s + 1
+    )
+    admission_closed_conservatively = supervisor._close_response_horizon_if_required(
         health
     )
 
@@ -722,12 +769,12 @@ def _exercise_qualified_device_time_boundaries(
         supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
     ).timestamp()
     health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + QUALIFIED_DURATION_S - 1
+        origin_uptime_s + QUALIFIED_DURATION_S
     )
     supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
     endpoint_open_after_forward_utc_step = supervisor.state["terminal"] is None
     health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + QUALIFIED_DURATION_S
+        origin_uptime_s + QUALIFIED_DURATION_S + 1
     )
     supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
     endpoint_closed_after_backward_utc_step = (
@@ -738,10 +785,19 @@ def _exercise_qualified_device_time_boundaries(
     result = {
         "time_domain": "rp2040_timer0",
         "capture_session": 1,
+        "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
+        "fractional_origin_deferred_until_lower_bound": (
+            fractional_origin_deferred
+        ),
+        "exact_fractional_origin_established": exact_origin_established,
         "correction_admission_close_elapsed_s": admission_elapsed_s,
         "qualified_endpoint_elapsed_s": QUALIFIED_DURATION_S,
-        "admission_open_one_second_before": admission_open_before,
-        "admission_closed_at_exact_boundary": admission_closed_exact,
+        "admission_open_at_floor_before_exact_boundary": (
+            admission_open_at_floor
+        ),
+        "admission_closed_at_first_conservative_uptime": (
+            admission_closed_conservatively
+        ),
         "forward_host_utc_step_did_not_close_early": (
             endpoint_open_after_forward_utc_step
         ),
@@ -753,8 +809,10 @@ def _exercise_qualified_device_time_boundaries(
     if not all(
         result[key]
         for key in (
-            "admission_open_one_second_before",
-            "admission_closed_at_exact_boundary",
+            "fractional_origin_deferred_until_lower_bound",
+            "exact_fractional_origin_established",
+            "admission_open_at_floor_before_exact_boundary",
+            "admission_closed_at_first_conservative_uptime",
             "forward_host_utc_step_did_not_close_early",
             "backward_host_utc_step_did_not_delay_endpoint",
         )

@@ -40,6 +40,7 @@ from .bounded_tight_deadband_prewrite_contract import (
     evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
 )
 from .frequency_control_supervisor import (
+    ACTIVE_STATUS_COMPLETE_MAX_AGE_S,
     ARM_LIFETIME_S,
     ARM_PROGRESS_THRESHOLD,
     CONTROL_CSV,
@@ -68,6 +69,14 @@ MAXIMUM_CODE = 0xAB00
 QUALIFIED_DURATION_S = 43_200
 ABSOLUTE_WALL_LIMIT_S = 57_600
 MINIMUM_PHASE_MATERIAL_APPLICATIONS = 2
+# ``uptime_s`` is an integer status value, while estimator timestamps retain
+# the fractional RP2040 timer coordinate.  A fresh estimator can also be
+# published after the latest complete queried status snapshot.  This bound is
+# therefore the complete-snapshot freshness limit plus the one-second uptime
+# quantization interval; it is a coherence guard, not qualified duration.
+QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S = (
+    int(ACTIVE_STATUS_COMPLETE_MAX_AGE_S) + 1
+)
 
 HYBRID_STATES = frozenset(
     {
@@ -694,12 +703,24 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             session_id = int(health[("cx317_active", "session_id")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 qualified origin device clock is malformed") from exc
+        current_uptime_lower_bound_ticks = (
+            current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+        )
+        maximum_coherent_origin_ticks = (
+            current_uptime_s + QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
+        ) * RP2040_TIMER0_TICKS_PER_SECOND
         if (
             origin_ticks <= 0
             or session_id <= 0
-            or current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND < origin_ticks
+            or origin_ticks > maximum_coherent_origin_ticks
         ):
             raise ValueError("CX320 qualified origin device clock is incoherent")
+        # The integer uptime value is a conservative lower bound.  Do not
+        # reject a legitimate exact estimator timestamp in its fractional
+        # second (or just after the last complete status snapshot); wait until
+        # a later snapshot's lower bound has actually reached it.
+        if origin_ticks > current_uptime_lower_bound_ticks:
+            return
         self.state["qualification_started_utc"] = _utc_now()
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks

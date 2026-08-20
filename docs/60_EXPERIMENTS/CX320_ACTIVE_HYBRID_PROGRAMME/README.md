@@ -10,20 +10,20 @@ The governing preparation prompt is
 The implementation and authority contract is
 [`../../50_SOFTWARE/CX320_ACTIVE_HYBRID_CONTRACT_AND_AUTHORITY.md`](../../50_SOFTWARE/CX320_ACTIVE_HYBRID_CONTRACT_AND_AUTHORITY.md).
 
-Current status: Stage 5 physical entry is explicitly authorized. Attempts 1,
-2 and 3 ended as sealed platform escapes before scientific control. Attempt 1
-exposed pre-setup firmware integrity gating. Attempt 2 passed that boundary but
-exposed a host prewrite contract that omitted the firmware's exact
-setup-reference eligibility. Attempt 3 then proved exact setup acceptance and
-one setup DAC application, but exposed omission of the CX320 hybrid fields from
-the host's atomic status handoff. Attempt 4 proved that repaired host boundary
-and exact setup again, then exposed a firmware handoff that propagated the
-setup epoch to both preview consumers without confirming them to the hybrid
-controller. It was proactively aborted before a foreknown first-decision fault.
-All four narrow defects are corrected. Attempt 5 has a fresh exact firmware
-build, successor bundle and passing operational rehearsal. The scientific
-policy, thresholds, criteria, duration and progressive envelope remain
-unchanged.
+Current status: Stage 5 physical entry is explicitly authorized. Attempts 1
+through 6 ended as sealed platform or firmware-integration escapes before a
+physical hybrid correction. Attempt 7 was the first run to apply a genuine
+firmware-driven combined phase-frequency correction and observe its response;
+it exposed a one-second firmware response-window boundary defect. Attempt 8
+carried that correction but stopped before qualification or automatic
+actuation because the host compared an exact fractional estimator timestamp
+to a floored integer device-uptime value. The attempt-8 firmware and timing
+stream were coherent and the bounded abort left code `0xA83C` fail-static. The
+narrow host predicate and its previously integer-aligned rehearsal seam are
+being corrected before a single-use attempt-9 successor is activated.
+
+The scientific policy, thresholds, topology, criteria, 12-hour qualified
+duration and progressive actuator envelope remain unchanged.
 
 - [`01_OFFLINE_REPLAY_AND_SELECTION.md`](01_OFFLINE_REPLAY_AND_SELECTION.md)
 - [`02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`](02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md)
@@ -32,3 +32,7 @@ unchanged.
 - [`05_STAGE5_ATTEMPT2_PREWRITE_TERMINAL_AND_ATTEMPT3_RECOVERY.md`](05_STAGE5_ATTEMPT2_PREWRITE_TERMINAL_AND_ATTEMPT3_RECOVERY.md)
 - [`06_STAGE5_ATTEMPT3_STATUS_HANDOFF_TERMINAL_AND_ATTEMPT4_RECOVERY.md`](06_STAGE5_ATTEMPT3_STATUS_HANDOFF_TERMINAL_AND_ATTEMPT4_RECOVERY.md)
 - [`07_STAGE5_ATTEMPT4_FIRMWARE_HANDOFF_TERMINAL_AND_ATTEMPT5_RECOVERY.md`](07_STAGE5_ATTEMPT4_FIRMWARE_HANDOFF_TERMINAL_AND_ATTEMPT5_RECOVERY.md)
+- [`08_STAGE5_ATTEMPT5_SERIALIZATION_TERMINAL_AND_ATTEMPT6_RECOVERY.md`](08_STAGE5_ATTEMPT5_SERIALIZATION_TERMINAL_AND_ATTEMPT6_RECOVERY.md)
+- [`09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md`](09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md)
+- [`10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md`](10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md)
+- [`11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md`](11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md)

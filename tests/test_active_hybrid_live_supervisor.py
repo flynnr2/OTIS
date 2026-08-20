@@ -249,6 +249,7 @@ def _append_selected_estimate(
     estimate_seq: int,
     source_dac_ref: str,
     timestamp_s: int | None = None,
+    timestamp_ticks: int | None = None,
 ) -> None:
     path = supervisor.run_dir / live.ESTIMATES_CSV
     fields = CONTRACT_FIELDS["estimates_v2"]
@@ -260,7 +261,13 @@ def _append_selected_estimate(
             "estimate_seq": str(estimate_seq),
             "estimate_id": f"est:cx317:selected600:{estimate_seq:06d}",
             "estimator_timestamp_ticks": str(
-                (timestamp_s if timestamp_s is not None else estimate_seq * 600)
+                timestamp_ticks
+                if timestamp_ticks is not None
+                else (
+                    timestamp_s
+                    if timestamp_s is not None
+                    else estimate_seq * 600
+                )
                 * live.RP2040_TIMER0_TICKS_PER_SECOND
             ),
             "time_domain": "rp2040_timer0",
@@ -397,6 +404,100 @@ def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
     assert '"source_dac_ref": "live:DAC:1"' in (
         supervisor.events_path.read_text(encoding="utf-8")
     )
+
+
+def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
+    tmp_path: Path,
+) -> None:
+    """Regress the exact host-side escape observed by physical attempt 8."""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    attempt8_origin_ticks = 38_429_602_864  # 2401.850179 s
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=541,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=attempt8_origin_ticks,
+    )
+
+    # A complete snapshot with integer uptime=2401 only proves that the exact
+    # device clock is at least 2401 s.  The estimator timestamp is 0.850179 s
+    # beyond that lower bound, so qualification must wait rather than abort.
+    supervisor._maybe_qualify(_health(supervisor, uptime_s="2401"))
+    assert supervisor.state["qualification_started_utc"] is None
+    assert supervisor.state["qualified_origin_estimate_id"] is None
+
+    supervisor._maybe_qualify(_health(supervisor, uptime_s="2402"))
+    assert supervisor.state["qualified_origin_estimate_id"] == (
+        "est:cx317:selected600:000541"
+    )
+    assert supervisor.state["qualified_origin_timestamp_ticks"] == (
+        attempt8_origin_ticks
+    )
+
+    # All later boundaries remain conservative relative to the exact origin:
+    # the integer lower bound cannot close one until it has crossed the exact
+    # fractional timestamp plus the frozen duration.
+    endpoint_floor_s = 2401 + live.QUALIFIED_DURATION_S
+    before = _health(supervisor, uptime_s=str(endpoint_floor_s))
+    assert supervisor._qualified_elapsed_ticks(before) < (
+        live.QUALIFIED_DURATION_S * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    after = _health(supervisor, uptime_s=str(endpoint_floor_s + 1))
+    assert supervisor._qualified_elapsed_ticks(after) >= (
+        live.QUALIFIED_DURATION_S * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+
+
+def test_qualified_clock_status_lead_and_lower_bound_edges(
+    tmp_path: Path,
+) -> None:
+    at_lower = _supervisor(tmp_path / "lower")
+    at_lower.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    at_lower._save()
+    _append_selected_estimate(
+        at_lower,
+        estimate_seq=9,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=2401 * live.RP2040_TIMER0_TICKS_PER_SECOND,
+    )
+    at_lower._maybe_qualify(_health(at_lower, uptime_s="2401"))
+    assert at_lower.state["qualified_origin_estimate_id"] == (
+        "est:cx317:selected600:000009"
+    )
+
+    at_lead_limit = _supervisor(tmp_path / "lead_limit")
+    at_lead_limit.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    at_lead_limit._save()
+    maximum_coherent = (
+        2401 + live.QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
+    ) * live.RP2040_TIMER0_TICKS_PER_SECOND
+    _append_selected_estimate(
+        at_lead_limit,
+        estimate_seq=10,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=maximum_coherent,
+    )
+    at_lead_limit._maybe_qualify(
+        _health(at_lead_limit, uptime_s="2401")
+    )
+    assert at_lead_limit.state["qualified_origin_estimate_id"] is None
+
+    beyond_lead = _supervisor(tmp_path / "beyond_lead")
+    beyond_lead.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    beyond_lead._save()
+    _append_selected_estimate(
+        beyond_lead,
+        estimate_seq=11,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=maximum_coherent + 1,
+    )
+    with pytest.raises(ValueError, match="device clock is incoherent"):
+        beyond_lead._maybe_qualify(
+            _health(beyond_lead, uptime_s="2401")
+        )
 
 
 def test_production_factory_validates_the_run_manifest(
