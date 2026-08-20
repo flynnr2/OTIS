@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt5_serialization_terminal_attempt6_entry_gates_passed",
+      "state": "stage5_attempt5_serialization_terminal_attempt6_ready",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx320_stage5_bounded_active_hybrid_live"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": false,
+      "physical_authority_effective": true,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -74,8 +75,16 @@
         "root_authorized_proposal_sha256": "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4",
         "root_authorized_bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae",
         "operator_authority_file_sha256": "d085d394df63698cfcbeeb1e7475beee259d302cfc7a4650c9db835c0b0001c8",
-        "effective_via_operator_authority_lineage": false,
-        "awaiting_exact_attempt6_activation": true
+        "effective_via_operator_authority_lineage": true,
+        "awaiting_exact_attempt6_activation": false
+      },
+      "effective_activation": {
+        "path": "runs/cx320_active_hybrid/stage5_activation_attempt6_20260820/cx320_active_hybrid_live_activation_v6.json",
+        "file_sha256": "200ae1776de7bc55c37776c622b70aacfb299cf7c1ad2b8bbd687ff5b8da554f",
+        "activation_sha256": "df6a697749f6939dbff8a9c9ebc4c21d50bbb63b3886fd54ce254fdac6381803",
+        "attempt_ordinal": 6,
+        "automatic_retry": false,
+        "effective": true
       },
       "structural_preflight": {
         "path": "runs/cx320_active_hybrid/stage5_attempt6_successor_bundle_20260820_v4/cx320_active_hybrid_structural_preflight_v13.json",
@@ -198,7 +207,7 @@
         "attempt6_operational_rehearsal_passed": true
       },
       "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/08_STAGE5_ATTEMPT5_SERIALIZATION_TERMINAL_AND_ATTEMPT6_RECOVERY.md",
-      "next_gate": "attempt6_effective_activation"
+      "next_gate": "exact_physical_stage5_attempt_6"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

@@ -75,8 +75,9 @@ supplies no physical qualification evidence.
 - structural preflight semantic SHA-256:
   `6edc15abb80ab829a45ce2fed3333545b0d8ff8f73c1d82911aed68aee923034`;
 - operational rehearsal semantic SHA-256:
-  `111af538e29dc67b0ce91272bb8a1f0fca6a11460870cb02d8f6f3db5e0d5328`.
+  `111af538e29dc67b0ce91272bb8a1f0fca6a11460870cb02d8f6f3db5e0d5328`;
+- effective activation semantic SHA-256:
+  `df6a697749f6939dbff8a9c9ebc4c21d50bbb63b3886fd54ce254fdac6381803`.
 
-The proposal remains non-effective and permits offline preparation only until
-an immutable activation binds this exact gate under the recorded operator
-authority lineage.
+The immutable activation binds this exact gate under the recorded operator
+authority lineage. Exact physical Stage 5 attempt 6 is the next gate.
