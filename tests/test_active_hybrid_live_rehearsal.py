@@ -8,6 +8,7 @@ import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
+from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
 
 
 def _binding(path: Path) -> dict[str, object]:
@@ -121,6 +122,37 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
     )
+
+
+def test_wire_fixture_uses_frozen_supervisor_identities() -> None:
+    policy_path = (
+        Path(__file__).resolve().parents[1]
+        / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"
+    )
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    bundle = {
+        "firmware": {"build_identity": "a" * 64 + ":" + "b" * 64},
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+
+    values = rehearsal._active_hybrid_wire_fixture(bundle).decode().strip().split(",")
+    row = dict(zip(ACTIVE_HYBRID_DECISION_V1_FIELDS, values, strict=True))
+
+    assert len(values) == 56
+    assert row["frequency_estimator_sha256"] == policy["bindings"][
+        "frequency_estimator"
+    ]["sha256"]
+    assert row["phase_estimator_sha256"] == policy["bindings"]["phase_estimator"][
+        "sha256"
+    ]
+    assert row["active_policy_sha256"] == bundle["policy"]["policy_sha256"]
+    assert row["response_policy_sha256"] == policy["bindings"]["response_policy"][
+        "sha256"
+    ]
+    assert row["actionable"] == "false"
 
 
 def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:

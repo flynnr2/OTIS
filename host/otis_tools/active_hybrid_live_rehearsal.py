@@ -161,6 +161,8 @@ def _read_until(master: int, expected: bytes, timeout_s: float = 10.0) -> bytes:
 
 
 def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
+    policy = _read_object(Path(str(bundle["policy"]["path"])))
+    bindings = policy["bindings"]
     values = {field: "0" for field in ACTIVE_HYBRID_DECISION_V1_FIELDS}
     values.update(
         {
@@ -175,11 +177,13 @@ def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
             "capture_session": "1",
             "source_first_sequence": "1799",
             "source_last_sequence": "2399",
-            "frequency_estimator_sha256": "a" * 64,
+            "frequency_estimator_sha256": bindings["frequency_estimator"][
+                "sha256"
+            ],
             "frequency_error_hz": "0.001666666940",
             "accumulated_edge_error_counts": "1",
             "tight_state": "OUTSIDE",
-            "phase_estimator_sha256": "b" * 64,
+            "phase_estimator_sha256": bindings["phase_estimator"]["sha256"],
             "phase_epoch": "1",
             "phase_observation_sequence": "2394",
             "relative_phase_cycles": "4",
@@ -217,8 +221,8 @@ def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
             "actual_dac_epoch": "1",
             "downstream_epoch_exact": "true",
             "reason": "minimum_applied_cadence_hold",
-            "active_policy_sha256": "c" * 64,
-            "response_policy_sha256": "d" * 64,
+            "active_policy_sha256": bundle["policy"]["policy_sha256"],
+            "response_policy_sha256": bindings["response_policy"]["sha256"],
             "actionable": "false",
         }
     )
