@@ -38,16 +38,25 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     ]
     assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "eb849af779b5b5db6448b51433c17fca5220102be5a916d60c6adb3fc132057d"
+        "419f8e5da0240d5b894199768fcfa62d88cd22343d02a5346b53a4c0fcf41103"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "a310fb6fed84fd1baa0c972cdfc6269990fcedcf227b4511512148652ac22648"
+        "948388650b65a311667904b04065f34272adfa2fc3fd34a1961020595ff730de"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
     assert cx320["stage5_attempts"][0]["classification"] == (
         "platform_escape_into_campaign"
     )
+    assert cx320["stage5_attempts"][1]["setup_requests"] == 1
+    assert cx320["stage5_attempts"][1]["setup_applications"] == 0
+    assert cx320["stage5_attempts"][1]["automatic_applications"] == 0
+    assert cx320["operational_rehearsal"]["setup_authority_qualification"] == {
+        "firmware_startup_inhibit_s": 600,
+        "observed_historical_qualification_s": 612,
+        "host_deadline_s": 660,
+        "accelerated_boundary_passed": True,
+    }
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
