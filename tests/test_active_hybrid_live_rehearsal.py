@@ -125,11 +125,13 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
 
 def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
     source = Path(rehearsal.__file__).read_text(encoding="utf-8")
-    capture_stop = source.index("os.kill(capture.pid, signal.SIGSTOP)")
     supervisor_stop = source.index(
-        "os.kill(supervisor.pid, signal.SIGSTOP)", capture_stop
+        "os.kill(supervisor.pid, signal.SIGSTOP)"
     )
-    saturate = source.index("for _ in range(100_000):", supervisor_stop)
+    capture_stop = source.index(
+        "os.kill(capture.pid, signal.SIGSTOP)", supervisor_stop
+    )
+    saturate = source.index("for _ in range(100_000):", capture_stop)
     abort = source.index("send_abort(host_abort)", saturate)
     supervisor_continue = source.index(
         "os.kill(supervisor.pid, signal.SIGCONT)", abort
@@ -139,8 +141,8 @@ def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
     )
 
     assert (
-        capture_stop
-        < supervisor_stop
+        supervisor_stop
+        < capture_stop
         < saturate
         < abort
         < supervisor_continue

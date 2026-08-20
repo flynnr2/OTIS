@@ -765,7 +765,17 @@ def _run_real_process_topology(
             15.0,
             "real live supervisor and host-abort FIFO",
         )
-        initial_commands = _read_until(master, b"DAC?\n")
+        initial_commands = _read_until(master, b"ACTIVE LEASE 1\n")
+        _wait_until(
+            lambda: int(
+                _read_object(run_dir / "reports/capture_device_state.json").get(
+                    "commands_sent", 0
+                )
+            )
+            >= 4,
+            10.0,
+            "initial live-supervisor command acknowledgements",
+        )
         os.write(master, _active_hybrid_wire_fixture(bundle))
         _wait_until(
             lambda: len(
@@ -777,15 +787,13 @@ def _run_real_process_topology(
             10.0,
             "first exact 56-field active-hybrid wire record",
         )
-        os.kill(capture.pid, signal.SIGSTOP)
-        capture_stopped = True
-        # Freeze the command producer as well as its consumer before filling
-        # the normal FIFO.  This makes the obstruction deterministic: once the
-        # independent abort is queued, the supervisor's first decision after
-        # resuming must be AbortFifo.poll(), not an incidental periodic normal
-        # command that can lose the race with a deliberately full FIFO.
+        # Stop the producer only after its initial lease has reached the PTY,
+        # then stop the consumer.  This avoids manufacturing a stale in-flight
+        # command while constructing the deliberate normal-FIFO obstruction.
         os.kill(supervisor.pid, signal.SIGSTOP)
         supervisor_stopped = True
+        os.kill(capture.pid, signal.SIGSTOP)
+        capture_stopped = True
         for _ in range(100_000):
             try:
                 send_timestamped_command_to_fifo(normal, "CONFIG?")
