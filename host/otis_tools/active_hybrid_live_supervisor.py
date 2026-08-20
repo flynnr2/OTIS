@@ -22,7 +22,6 @@ from .abort_transport import AbortFifo
 from .active_control_supervisor import (
     ESTIMATES_CSV,
     ControlSupervisorBase,
-    _next_selected_interval_is_cadence_eligible,
     _parse_utc_epoch,
 )
 from .active_transactions import (
@@ -791,18 +790,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         preview = preview_rows[-1] if preview_rows else None
         if not self._arm_progress_epoch_ready(preview, progress):
             return
+        # CX320 must arm the next fresh selected-estimate epoch even when the
+        # frequency-only predecessor preview is available every 600 seconds.
+        # The hybrid firmware owns the 1800-second *applied* cadence and
+        # consumes an early or zero-delta one-shot arm without writing.  Using
+        # the CX319 preview-cadence predictor here can therefore suppress every
+        # phase-material decision after the first armed hold.
         if not (
             state == "DISARMED"
             and _truth(health, "arm_eligible")
             and health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
             and not _truth(health, "evidence_pending")
             and progress >= ARM_PROGRESS_THRESHOLD
-            and _next_selected_interval_is_cadence_eligible(
-                self.run_dir / CONTROL_CSV,
-                self.run_dir / ESTIMATES_CSV,
-                selected_interval_s=SELECTED_INTERVAL_S,
-                decision_cadence_s=DECISION_CADENCE_S,
-            )
         ):
             return
         uptime = int(health[("cx317_active", "uptime_s")])

@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
+from host.otis_tools.active_control_supervisor import (
+    _next_selected_interval_is_cadence_eligible,
+)
 from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     canonical_prewrite_fixture,
@@ -214,6 +217,30 @@ def _write_control_hold(supervisor: live.ActiveHybridLiveSupervisor) -> None:
                 "preview_available": "false",
             }
         )
+
+
+def _write_continuously_available_control_previews(
+    supervisor: live.ActiveHybridLiveSupervisor,
+) -> None:
+    path = supervisor.run_dir / live.CONTROL_CSV
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=(
+                "decision_id",
+                "decision_timestamp_ticks",
+                "preview_available",
+            ),
+        )
+        writer.writeheader()
+        for sequence, timestamp_s in enumerate((3001, 3601, 4201), start=2):
+            writer.writerow(
+                {
+                    "decision_id": f"control:{sequence}",
+                    "decision_timestamp_ticks": str(timestamp_s * 16_000_000),
+                    "preview_available": "true",
+                }
+            )
 
 
 def _append_selected_estimate(
@@ -461,6 +488,43 @@ def test_exact_setup_then_frequency_acquisition_arm(
     assert len(commands) == 2
     assert commands[1].startswith("ACTIVE ARM 1 ")
     assert commands[1].split()[-1] == str(4000 + live.ARM_LIFETIME_S)
+    assert supervisor.state["arm_pending"] is True
+
+
+def test_phase_qualify_rearms_despite_continuous_frequency_preview(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    supervisor.state["manual_start_sent"] = True
+    supervisor.state["qualification_started_utc"] = _utc(1_800_000_000.0)
+    supervisor._save()
+    _write_continuously_available_control_previews(supervisor)
+
+    # This is the exact attempt-6 escape: the CX319 predictor remains false
+    # when every 600-second predecessor preview is marked available.
+    assert not _next_selected_interval_is_cadence_eligible(
+        supervisor.run_dir / live.CONTROL_CSV,
+        supervisor.run_dir / live.ESTIMATES_CSV,
+        selected_interval_s=live.SELECTED_INTERVAL_S,
+        decision_cadence_s=live.DECISION_CADENCE_S,
+    )
+
+    phase_qualify = _health(
+        supervisor,
+        hybrid_state="PHASE_QUALIFY",
+        hybrid_reason="phase_qualified_first_transaction_eligible",
+        selected_interval_count="0",
+    )
+    supervisor._maybe_start_or_arm(phase_qualify)
+    phase_qualify[("cx317_active", "selected_interval_count")] = str(
+        live.ARM_PROGRESS_THRESHOLD
+    )
+    supervisor._maybe_start_or_arm(phase_qualify)
+
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE ARM 1 ")
     assert supervisor.state["arm_pending"] is True
 
 

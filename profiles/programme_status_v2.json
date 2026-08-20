@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt5_serialization_terminal_attempt6_ready",
+      "state": "stage5_attempt6_host_arming_terminal_attempt7_offline_preparation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx320_stage5_bounded_active_hybrid_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": true,
+      "physical_authority_effective": false,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -84,7 +83,9 @@
         "activation_sha256": "df6a697749f6939dbff8a9c9ebc4c21d50bbb63b3886fd54ce254fdac6381803",
         "attempt_ordinal": 6,
         "automatic_retry": false,
-        "effective": true
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt6_20260820T1347Z"
       },
       "structural_preflight": {
         "path": "runs/cx320_active_hybrid/stage5_attempt6_successor_bundle_20260820_v4/cx320_active_hybrid_structural_preflight_v13.json",
@@ -179,6 +180,27 @@
           "superseding_seal_file_sha256": "e389c3fc561044e8812208f02a8e4e223963adca5a55f553111fe2a912b1a920",
           "evidence_snapshot_sha256": "6b84aad2d5e397c6a62b8405d694e5b3fe25eb851c60ed7034e2349cd6e32408",
           "scientific_result": "none_first_hybrid_decision_parser_terminal_before_any_automatic_application"
+        },
+        {
+          "ordinal": 6,
+          "run_id": "stage5_live_attempt6_20260820T1347Z",
+          "classification": "platform_escape_into_campaign",
+          "terminal": "operator_abort",
+          "terminal_reason": "proactive_abort_after_shared_host_cadence_predictor_suppressed_rearm_before_first_phase_material_decision",
+          "firmware_flash_count": 1,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 0,
+          "phase_material_requests_observed": 1,
+          "missed_phase_material_delta_codes": -6,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "last_confirmed_code": 43068,
+          "seal_sha256": "d414035380ccbb6684717705823fe2048a6443118dbbb07b492fe95270ad9259",
+          "seal_file_sha256": "358e3828cbe0533a92862cf79523ef48334ea83e40ca4af0e4b005fcef69a97d",
+          "evidence_content_sha256": "adb420fa5264f1c0f5b02c65a2e5889d2eb525940f54964c6e09255e7812185e",
+          "evidence_snapshot_sha256": "ec03182fa50a5d88c3effd12e4d1ce255f51db3a27a2a3d7b21cf0578f3543ac",
+          "scientific_result": "none_phase_material_request_not_armed_or_applied"
         }
       ],
       "verification": {
@@ -204,10 +226,12 @@
         "attempt6_affected_firmware_profile_passed": 1,
         "attempt6_exact_clean_build_passed": true,
         "attempt6_structural_preflight_passed": true,
-        "attempt6_operational_rehearsal_passed": true
+        "attempt6_operational_rehearsal_passed": true,
+        "attempt7_direct_host_rearm_regression_passed": true,
+        "attempt7_focused_tests_passed": 55
       },
-      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/08_STAGE5_ATTEMPT5_SERIALIZATION_TERMINAL_AND_ATTEMPT6_RECOVERY.md",
-      "next_gate": "exact_physical_stage5_attempt_6"
+      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md",
+      "next_gate": "attempt7_exact_build_preflight_and_operational_rehearsal"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",
