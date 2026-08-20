@@ -421,6 +421,12 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "setup_gnss_eligible",
         "setup_reference_eligible",
         "setup_partition_healthy",
+        "hybrid_state",
+        "hybrid_reason",
+        "first_phase_checkpoint_passed",
+        "phase_nonzero_application_count",
+        "phase_material_application_count",
+        "frequency_only_application_count",
         "session_id",
         "query_nonce",
         "uptime_s",
@@ -525,6 +531,7 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx319_range_part_b_lower",
         "cx319_range_part_b_upper",
         "cx319_range_part_b_upper_completion",
+        "cx320_active_hybrid",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

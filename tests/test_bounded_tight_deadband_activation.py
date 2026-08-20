@@ -230,6 +230,11 @@ def test_authorized_activation_creates_an_exact_live_manifest(
         bounded_tight_deadband_bundle, "_git_identity", lambda: ("8" * 40, "clean")
     )
     monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "require_programme_operation_allowed",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
         bounded_tight_deadband_bundle, "validate_no_write_qualification_pass", lambda path: fake_g1
     )
     monkeypatch.setattr(

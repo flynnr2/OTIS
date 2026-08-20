@@ -21,6 +21,7 @@ DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
 ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
+ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
 HYBRID_PREVIEW_DECISIONS_CSV = "hybrid_preview_decisions_v1.csv"
@@ -89,6 +90,10 @@ class RunPaths:
         return self.csv_dir / ACTIVE_TRANSACTIONS_CSV
 
     @property
+    def active_hybrid_decisions_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_HYBRID_DECISIONS_CSV
+
+    @property
     def relative_phase_observations_csv(self) -> Path:
         return self.csv_dir / RELATIVE_PHASE_OBSERVATIONS_CSV
 
@@ -141,6 +146,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {
             "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_CSV}",
             "contract": "active_transactions_v1",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_CSV}",
+            "contract": "active_hybrid_decisions_v1",
             "optional": True,
         },
         {

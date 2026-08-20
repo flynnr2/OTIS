@@ -34,6 +34,7 @@ uint32_t last_phase_epoch = 0u;
 uint32_t last_observation_sequence = 0u;
 bool have_frequency_event_timestamp = false;
 uint64_t last_frequency_event_timestamp = 0u;
+OtisPhasePreviewActiveSnapshot active_snapshot = {};
 
 template <typename T>
 T atomic_load_acquire(const T *value) {
@@ -140,6 +141,7 @@ bool otis_phase_preview_live_begin(uint16_t confirmed_static_code,
   atomic_store_release(&published_records, static_cast<uint32_t>(0));
   atomic_store_release(&last_phase_epoch, static_cast<uint32_t>(0));
   atomic_store_release(&last_observation_sequence, static_cast<uint32_t>(0));
+  active_snapshot = {};
   atomic_store_release(&initialized, true);
   return true;
 #else
@@ -290,7 +292,27 @@ void otis_phase_preview_live_on_boundary(
   copy_text(message.band_state_after, output.band_state_after);
   copy_text(message.preview_state, output.preview_state);
   copy_text(message.decision_reason, output.decision_reason);
-  if (!otis_dual_core_publish_phase_preview(&message)) return;
+  if (!otis_dual_core_publish_phase_preview(&message)) {
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+    active_snapshot = {};
+    otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
+#endif
+    return;
+  }
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  active_snapshot.available = true;
+  active_snapshot.recorder_published = true;
+  active_snapshot.phase_continuous =
+      output.phase_state == OtisReferenceRelativePhaseState::Qualified;
+  active_snapshot.phase_current = output.phase_accepted;
+  active_snapshot.phase_step_detected = phase_step_detected;
+  active_snapshot.capture_session = output.capture_session;
+  active_snapshot.phase_epoch = output.phase_epoch;
+  active_snapshot.observation_sequence = output.observation_sequence;
+  active_snapshot.relative_phase_cycles = output.relative_phase_cycles;
+  active_snapshot.dac_epoch = output.dac_epoch;
+  active_snapshot.applied_code = output.actual_applied_code;
+#endif
   atomic_store_release(&last_phase_epoch, output.phase_epoch);
   atomic_store_release(&last_observation_sequence,
                        output.observation_sequence);
@@ -311,6 +333,9 @@ void otis_phase_preview_live_note_reset(void) {
   have_reference_timestamp = false;
   have_frequency_event_timestamp = false;
   last_frequency_event_timestamp = 0u;
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  active_snapshot = {};
+#endif
 #endif
 }
 
@@ -329,4 +354,18 @@ void otis_phase_preview_live_get_status(OtisPhasePreviewLiveStatus *status) {
   status->last_phase_epoch = atomic_load_acquire(&last_phase_epoch);
   status->last_observation_sequence =
       atomic_load_acquire(&last_observation_sequence);
+}
+
+bool otis_phase_preview_live_get_active_snapshot(
+    OtisPhasePreviewActiveSnapshot *snapshot) {
+  if (snapshot == nullptr) return false;
+  *snapshot = {};
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  if (!atomic_load_acquire(&initialized) || !active_snapshot.available)
+    return false;
+  *snapshot = active_snapshot;
+  return true;
+#else
+  return false;
+#endif
 }

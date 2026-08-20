@@ -40,6 +40,19 @@ struct OtisCx317ActiveLiveDecision {
   bool model_applicable;
   bool control_eligible;
   bool preview_available;
+  uint32_t capture_session;
+  int32_t accumulated_edge_error_counts;
+  const char *tight_state;
+  uint32_t dac_epoch;
+  uint32_t phase_epoch;
+  uint32_t phase_observation_sequence;
+  int64_t relative_phase_cycles;
+  uint32_t phase_dac_epoch;
+  uint16_t phase_applied_code;
+  bool phase_continuous;
+  bool phase_current;
+  bool phase_step_detected;
+  bool phase_recorder_published;
 };
 
 struct OtisCx317ActiveLiveOutcome {
@@ -88,6 +101,12 @@ struct OtisCx317ActiveLiveStatus {
   bool setup_gnss_eligible;
   bool setup_reference_eligible;
   bool setup_partition_healthy;
+  const char *hybrid_state;
+  const char *hybrid_reason;
+  uint16_t phase_nonzero_application_count;
+  uint16_t phase_material_application_count;
+  uint16_t frequency_only_application_count;
+  bool first_phase_checkpoint_passed;
 };
 
 typedef void (*OtisCx317ActiveStatusVisitor)(
@@ -116,6 +135,8 @@ bool otis_cx317_active_live_manual_start_allowed(uint16_t requested_code);
 void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
                                               bool i2c_ok,
                                               uint32_t now_s);
+bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
+                                                    uint32_t dac_epoch);
 void otis_cx317_active_live_on_decision(
     const OtisCx317ActiveLiveDecision *decision,
     OtisCx317ActiveLiveOutcome *outcome);

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "proposal_id": "cx320_active_hybrid_physical_authority_proposal_v1",
+  "created_utc": "2026-08-20T08:55:00Z",
+  "status": "non_effective_awaiting_separate_operator_decision",
+  "programme_id": "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1",
+  "run_identity": "cx320_active_hybrid_12h_v1:3200001",
+  "exact_bundle": {
+    "path": "/Users/richardflynn/git/OTIS/runs/cx320_active_hybrid/exact_bundle_passing_20260820/cx320_active_hybrid_exact_bundle_v1.json",
+    "file_sha256": "4a7ee9f08fea39759ca15cbff4547ce51d556235a94a39ba6fa16671a8ea9d9d",
+    "bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae"
+  },
+  "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
+  "build_identity": "6fc392da0562a77b0e80845738e57f61e7d8e44b3c41ade2ebc1292bb66b2206:f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990",
+  "firmware_uf2_sha256": "95864a904e4407b159b30bf45ba8f9d185ad33938cb2a10e50aea4bc712de777",
+  "progressive_envelope": {
+    "maximum_total_automatic_applications": 4,
+    "first_phase_material_applications_before_checkpoint": 1,
+    "minimum_phase_material_applications_for_pass": 2,
+    "maximum_combined_step_codes": 21,
+    "maximum_cumulative_absolute_movement_codes": 84,
+    "minimum_applied_cadence_s": 1800,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "qualified_duration_s": 43200,
+    "absolute_wall_clock_limit_s": 57600,
+    "retry": false,
+    "extension": false
+  },
+  "requested_after_separate_decision": {
+    "firmware_flash_limit": 1,
+    "reset_for_entry_or_bounded_recovery": true,
+    "serial_access": true,
+    "command_fifo": true,
+    "exact_setup_application_limit": 1,
+    "control_arm_limit": 1,
+    "physical_operational_rehearsal_limit": 1,
+    "live_acquisition_limit": 1,
+    "authority_consumed_by_first_physical_terminal": true,
+    "automatic_retry": false,
+    "automatic_restoration": false
+  },
+  "authority": {
+    "offline_preparation": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "command_fifo": false,
+    "setup_stimulus": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "separate_exact_bundle_operator_decision_required": true,
+    "consumed": false
+  },
+  "claim_boundary": {
+    "offline_replay_is_not_observed_physical_response": true,
+    "operational_rehearsal_is_not_physical_plant_qualification": true,
+    "current_physical_actions_authorized": 0,
+    "current_DAC_writes_authorized": 0
+  },
+  "proposal_sha256": "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4"
+}

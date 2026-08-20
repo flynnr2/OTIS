@@ -63,6 +63,14 @@
 #define OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW 0
 #endif
 
+// CX320 is the first profile in which the selected relative-phase estimate may
+// influence the single existing bounded transaction path.  It still uses the
+// stabilized integer-count tight band; the separate selector prevents any
+// historical CX319 build from gaining phase authority.
+#ifndef OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#define OTIS_ENABLE_CX320_ACTIVE_HYBRID 0
+#endif
+
 // CX319 Part A keeps the selected frequency, relative-phase and hybrid
 // engines live while an externally precommitted DAC scan owns every write.
 // It has no automatic-control authority and is a distinct identity from the
@@ -163,6 +171,7 @@
 #define OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER 10
 #define OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER 11
 #define OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION 12
+#define OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID 13
 
 #ifndef OTIS_CX317_ACTIVE_CAMPAIGN
 #define OTIS_CX317_ACTIVE_CAMPAIGN OTIS_CX317_ACTIVE_CAMPAIGN_NONE
@@ -315,6 +324,8 @@
 #ifndef OTIS_FIRMWARE_VERSION
 #if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
 #define OTIS_FIRMWARE_VERSION "CX318_STAGE4_SINGLE_WRITE_PREMISE_SETUP_V1"
+#elif OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#define OTIS_FIRMWARE_VERSION "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
 #elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
 #define OTIS_FIRMWARE_VERSION \
   "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1"
@@ -874,6 +885,21 @@
 #error "OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW must be 0 or 1."
 #endif
 
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID != 0 && \
+    OTIS_ENABLE_CX320_ACTIVE_HYBRID != 1
+#error "OTIS_ENABLE_CX320_ACTIVE_HYBRID must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID && \
+    (!OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW || \
+     !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW || \
+     !OTIS_ENABLE_DUAL_CORE_PARTITION || \
+     !OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     OTIS_CX317_ACTIVE_CAMPAIGN != \
+         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID)
+#error "CX320 active hybrid requires its exact dual-core tight-band campaign identity."
+#endif
+
 #if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW != 0 && \
     OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW != 1
 #error "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW must be 0 or 1."
@@ -1006,7 +1032,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
 #error "CX319 tight preview requires an exact successor leg identity."
 #endif
 
@@ -1019,7 +1047,7 @@
 #if OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW && \
     (OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE != 0xA828u || \
      OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH != 0u)
-#error "CX319 no-write/live handoff requires the historical A828 preview context at local DAC epoch zero."
+#error "Tight-band setup handoff requires the historical A828 preview context at local DAC epoch zero."
 #endif
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION && OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
@@ -1040,7 +1068,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
 #error "Dual-core bounded authority is restricted to exact historical or current programme profiles."
 #endif
 
@@ -1206,14 +1236,25 @@
 #error "CX319 range Part B upper-completion parameters differ from the continuation contract."
 #endif
 
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
+    (OTIS_CX317_ACTIVE_START_CODE != 0xA83Cu || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 4u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 84u)
+#error "CX320 active-hybrid parameters differ from the frozen candidate."
+#endif
+
 #if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
-#error "External DAC-epoch candidate reseed is restricted to conditional Part B."
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
+#error "External DAC-epoch candidate reseed is restricted to conditional Part B and CX320."
 #endif
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
@@ -1251,7 +1292,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION
+        OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
 #error "Bounded active control requires an exact programme campaign identity."
 #endif
 

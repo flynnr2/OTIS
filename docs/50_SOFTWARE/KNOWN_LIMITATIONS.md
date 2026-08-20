@@ -13,21 +13,22 @@
   semantics, not a measured physical maximum service interval. That interval
   remains a Q1 measurement.
 - Q1 real-I/O, Q2 inhibited-actuator, Q3 physical no-write, bounded lower-side
-  frequency acquisition, and the first eight points of the range-spanning Part
-  A survey have physical evidence. Those results qualify only their exact
+  frequency acquisition, the complete range map and mapping-informed Part B
+  have physical evidence. Those results qualify only their exact
   bundles and claims; they do not make future firmware or host changes
   physically qualified.
 - The exact stale-uptime attachment event described historically was not
   observed. The source-level causal defect was the absence of a post-attach
   boundary; current authority uses a solicited nonce and generation instead of
   an uptime threshold.
-- The current range survey has only a 32-code lower increasing-direction entry
-  bracket, `0xA800..0xA820`. It has not yet mapped the other three hysteretic
-  transitions or produced the required at-most-two-code fine brackets.
-- The last confirmed range-survey state is `TIGHT_INSIDE` at `0xA844`.
-  Continuing the same hysteretic visit requires a no-reset, no-flash exact
-  continuation that re-establishes this state; otherwise the survey must
-  restart under a new identity.
-- Matched bidirectional plant response, cadence acceleration, Part B automatic
-  traversal, and active-hybrid behavior remain unqualified. Hybrid output is
-  currently preview-only and non-actionable.
+- CX319's lower reacquisition is inferred rather than a third physical Part B
+  acquisition. Its original upper traversal is a right-censored bounded
+  non-pass; a separate upper completion and host-only finalizer supersession do
+  not erase that terminal.
+- The last confirmed predecessor state is `TIGHT_INSIDE` at `0xA83C`, DAC epoch
+  1. A flash or reset makes the physical code unknown until a new exact setup
+  acknowledgement propagates through all consumers.
+- Active-hybrid behavior remains physically unqualified. The CX319 hybrid
+  corpus is counterfactual and zero-authority; CX320 implementation, replay and
+  offline rehearsal do not constitute observed phase steering.
+- OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.

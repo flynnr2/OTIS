@@ -1,12 +1,13 @@
 # SW2 GPSDO Control Loop Readiness
 
-**Lifecycle note (updated 2026-08-14):** this document records the completed CX317
+**Lifecycle note (updated 2026-08-20):** this document records the completed CX317
 readiness decision and its precursor evidence. The later CX318 Stage 5 work is
 suspended incomplete and unsealed. Platform stabilization subsequently passed;
-the current CX319 result is a successful lower-side acquisition plus a passing
-eight-point prefix of the range-spanning Part A survey. The full boundary map,
-Part B, and active hybrid remain incomplete. Current details are in
-`../60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
+CX319 subsequently completed its range map and mapping-informed frequency-only
+Part B programme. The CX320 active-hybrid exact offline bundle and operational
+rehearsal pass; physical phase steering remains unauthorized and unqualified
+pending a separate exact-bundle decision. Current details are in
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
 
 ## Decision
 

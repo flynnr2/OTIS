@@ -44,6 +44,11 @@ def test_g2_proposal_and_preflight_remain_non_authorizing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_g1 = _fake_g1()
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "require_programme_operation_allowed",
+        lambda *args, **kwargs: {},
+    )
     monkeypatch.setattr(bounded_tight_deadband_bundle, "_git_identity", lambda: ("d" * 40, "clean"))
     monkeypatch.setattr(bounded_tight_deadband_bundle, "validate_no_write_qualification_pass", lambda path: fake_g1)
     monkeypatch.setattr(
@@ -99,6 +104,11 @@ def test_g2_current_firmware_delta_reuses_q3_and_accepts_unattended_phase(
         },
         "retained_q3_pass": {"run_id": "retained-q3"},
     }
+    monkeypatch.setattr(
+        bounded_tight_deadband_bundle,
+        "require_programme_operation_allowed",
+        lambda *args, **kwargs: {},
+    )
     monkeypatch.setattr(
         bounded_tight_deadband_bundle,
         "_git_identity",

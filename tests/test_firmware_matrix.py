@@ -22,8 +22,10 @@ CURRENT_PROFILES = {
     "cx319_range_part_b_lower",
     "cx319_range_part_b_upper",
     "cx319_range_part_b_upper_completion",
+    "cx320_active_hybrid",
 }
 CURRENT_GUARDS = {
+    "invalid_cx320_active_hybrid_parameters",
     "invalid_active_missing_gnss",
     "invalid_gnss_uart_tx_enabled",
     "invalid_cx319_lower_parameters",
@@ -36,11 +38,11 @@ def _profile(matrix: dict, identifier: str) -> dict:
     return next(item for item in matrix["profiles"] if item["id"] == identifier)
 
 
-def test_matrix_contains_only_current_cx319_profiles_and_guards() -> None:
+def test_matrix_contains_only_current_cx319_cx320_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 11
+    assert len(profiles) == 13
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -62,6 +64,7 @@ def test_verification_tiers_are_explicit_and_small() -> None:
         "cx319_range_part_b_lower",
         "cx319_range_part_b_upper",
         "cx319_range_part_b_upper_completion",
+        "cx320_active_hybrid",
     ]
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="campaign"
@@ -97,6 +100,21 @@ def test_current_profiles_freeze_the_cx319_envelope(
     assert defines["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
     assert defines["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
     assert defines["OTIS_CX317_DECISION_CADENCE_S"] == "1800u"
+
+
+def test_current_cx320_profile_freezes_one_active_hybrid_envelope() -> None:
+    profile = _profile(load_matrix(), "cx320_active_hybrid")
+    defines = profile["defines"]
+    assert profile["expect"] == "pass"
+    assert defines["OTIS_ENABLE_CX320_ACTIVE_HYBRID"] == "1"
+    assert defines["OTIS_ENABLE_CX317_BOUNDED_ACTIVE"] == "1"
+    assert defines["OTIS_CX317_ACTIVE_CAMPAIGN"] == (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+    )
+    assert defines["OTIS_CX317_ACTIVE_START_CODE"] == "0xA83Cu"
+    assert defines["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "4u"
+    assert defines["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "84u"
+    assert defines["OTIS_CX317_MINIMUM_APPLIED_CADENCE_S"] == "1800u"
 
 
 def test_expected_failures_are_release_only_current_guards() -> None:

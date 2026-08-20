@@ -10,6 +10,7 @@
 #include "otis_cx317_snapshot_estimator.h"
 #include "otis_decimal_format.h"
 #include "otis_dual_core_partition.h"
+#include "otis_phase_preview_live.h"
 #include "otis_protocol.h"
 #include "otis_spsc_queue.h"
 #include "otis_transport_serial.h"
@@ -102,6 +103,7 @@ uint32_t control_seq = 0u;
 uint32_t startup_s = 0u;
 uint32_t settling_until_s = 0u;
 uint32_t current_dac_epoch = 0u;
+uint16_t current_applied_code = 0u;
 uint32_t tight_deadband_seq = 0u;
 bool initialized = false;
 bool warmup_boundary_seen = false;
@@ -405,6 +407,7 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   startup_s = startup_uptime_s;
   settling_until_s = startup_uptime_s;
   current_dac_epoch = 0u;
+  current_applied_code = 0u;
   tight_deadband_seq = 0u;
   initialized = true;
   queue.reset();
@@ -469,11 +472,24 @@ void otis_cx317_preview_live_on_dac_applied_epoch(uint16_t applied_code,
                                                  uint32_t uptime_s) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   current_dac_epoch = dac_epoch;
+  current_applied_code = applied_code;
   otis_cx317_preview_live_on_dac_applied(applied_code, uptime_s);
 #else
   (void)applied_code;
   (void)dac_epoch;
   (void)uptime_s;
+#endif
+}
+
+bool otis_cx317_preview_live_applied_epoch_exact(uint16_t applied_code,
+                                                 uint32_t dac_epoch) {
+#if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
+  return initialized && current_applied_code == applied_code &&
+         current_dac_epoch == dac_epoch;
+#else
+  (void)applied_code;
+  (void)dac_epoch;
+  return false;
 #endif
 }
 
@@ -584,6 +600,33 @@ void otis_cx317_preview_live_on_boundary(
 #endif
         decision.preview_available,
     };
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+    OtisPhasePreviewActiveSnapshot phase_snapshot = {};
+    const bool phase_snapshot_available =
+        otis_phase_preview_live_get_active_snapshot(&phase_snapshot);
+    active_decision.capture_session = observation->session;
+    active_decision.accumulated_edge_error_counts =
+        span.selected_accumulated_edge_error_counts;
+    active_decision.tight_state =
+        otis_integer_count_tight_deadband_state_name(
+            decision.tight_deadband.state_after);
+    active_decision.dac_epoch = current_dac_epoch;
+    active_decision.phase_epoch = phase_snapshot.phase_epoch;
+    active_decision.phase_observation_sequence =
+        phase_snapshot.observation_sequence;
+    active_decision.relative_phase_cycles =
+        phase_snapshot.relative_phase_cycles;
+    active_decision.phase_dac_epoch = phase_snapshot.dac_epoch;
+    active_decision.phase_applied_code = phase_snapshot.applied_code;
+    active_decision.phase_continuous =
+        phase_snapshot_available && phase_snapshot.phase_continuous;
+    active_decision.phase_current =
+        phase_snapshot_available && phase_snapshot.phase_current;
+    active_decision.phase_step_detected =
+        !phase_snapshot_available || phase_snapshot.phase_step_detected;
+    active_decision.phase_recorder_published =
+        phase_snapshot_available && phase_snapshot.recorder_published;
+#endif
     OtisCx317ActiveLiveOutcome local_active_outcome;
     otis_cx317_active_live_on_decision(&active_decision,
                                        &local_active_outcome);

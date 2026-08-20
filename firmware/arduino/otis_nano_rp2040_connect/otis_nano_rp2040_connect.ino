@@ -1682,6 +1682,12 @@ void service_cx317_active_health(void) {
     propagate_cx317_applied_epoch_to_previews(
         dual_core_static_code.applied_code, active_status.dac_epoch,
         now_ms / 1000u);
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+    if (!otis_cx317_active_live_confirm_setup_consumers(
+            dual_core_static_code.applied_code, active_status.dac_epoch))
+      otis_dual_core_latch_fault(
+          OtisPartitionFault::ActuatorAcknowledgementMismatch);
+#endif
 #endif
   }
 #endif
@@ -1742,6 +1748,19 @@ void emit_pps_count_boundary(
 #else
   const bool preview_receiver_valid = true;
 #endif
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
+    OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  // CX320 consumes the exact phase record produced at this boundary. Publish
+  // that canonical record before the selected frequency decision can observe
+  // its same-core snapshot.
+  otis_phase_preview_live_on_boundary(
+      &observation, snapshot_status,
+      static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
+      window_completed,
+      window_completed && runtime_state.tcxo.last_observation_valid &&
+          preview_receiver_valid,
+      false);
+#endif
   otis_cx317_preview_live_on_boundary(
       &observation,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
@@ -1752,7 +1771,8 @@ void emit_pps_count_boundary(
       window_completed && runtime_state.tcxo.last_observation_valid &&
           preview_receiver_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
+#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
+    !OTIS_ENABLE_CX320_ACTIVE_HYBRID
   otis_phase_preview_live_on_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),

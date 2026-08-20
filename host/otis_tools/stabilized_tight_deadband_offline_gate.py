@@ -186,6 +186,10 @@ def _firmware_checks() -> dict[str, bool]:
         "otis_cx317_active_live_on_decision", decision_start
     )
     actual_frequency_decision = preview[decision_start:decision_end].lower()
+    cx320_guard = "#if otis_enable_cx320_active_hybrid"
+    historical_frequency_decision = actual_frequency_decision.split(
+        cx320_guard, 1
+    )[0]
     return {
         "policy_hash_bound_by_active_and_preview": (
             EXPECTED_POLICY_HASH in active and EXPECTED_POLICY_HASH in preview
@@ -198,11 +202,12 @@ def _firmware_checks() -> dict[str, bool]:
             item["campaign"] in config for item in EXPECTED_PROFILES.values()
         ),
         "actual_frequency_decision_has_no_phase_or_hybrid_input": (
-            "frequency_error_hz" in actual_frequency_decision
+            "frequency_error_hz" in historical_frequency_decision
             and "tight_deadband.frequency_controller_eligible"
-            in actual_frequency_decision
-            and "phase" not in actual_frequency_decision
-            and "hybrid" not in actual_frequency_decision
+            in historical_frequency_decision
+            and "phase" not in historical_frequency_decision
+            and "hybrid" not in historical_frequency_decision
+            and cx320_guard in actual_frequency_decision
         ),
         "phase_preview_has_no_actuator_or_active_decision_call": (
             "otis_dac_ad5693r_set_raw" not in phase_preview
