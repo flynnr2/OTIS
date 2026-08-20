@@ -55,6 +55,7 @@ REHEARSAL_COVERAGE = (
     "first_active_hybrid_wire_record",
     "active_hybrid_status_handoff",
     "setup_authority_qualification_deadline",
+    "qualified_device_time_boundaries",
     "setup_propagation",
     "progressive_checkpoint",
     "conditional_release",

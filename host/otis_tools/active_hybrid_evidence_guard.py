@@ -14,6 +14,10 @@ from .contracts import CsvValidationContext, validate_csv
 
 
 TOOL_ID = "cx320_active_hybrid_response_evidence_guard_v1"
+FROZEN_AHY_FRACTIONAL_DECIMAL_PLACES = 12
+FROZEN_AHY_HALF_SERIALIZATION_QUANTUM = (
+    0.5 * 10**-FROZEN_AHY_FRACTIONAL_DECIMAL_PLACES
+)
 
 
 def _rows(path: Path) -> list[dict[str, str]]:
@@ -23,6 +27,19 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 def _close(observed: float, expected: float) -> bool:
     return math.isclose(observed, expected, rel_tol=0, abs_tol=5e-12)
+
+
+def _raw_code_close(
+    observed: float, expected: float, *, gain_codes_per_hz: float
+) -> bool:
+    # AHY serializes both the frequency input used by independent replay and
+    # the firmware raw-code result to 12 fractional decimal places.  Bound the
+    # former's half-quantum after conversion to codes, then add the latter's
+    # half-quantum in its native code unit.
+    tolerance_codes = FROZEN_AHY_HALF_SERIALIZATION_QUANTUM * (
+        abs(gain_codes_per_hz) + 1.0
+    )
+    return math.isclose(observed, expected, rel_tol=0, abs_tol=tolerance_codes)
 
 
 def _bool(row: dict[str, str], name: str) -> bool:
@@ -142,9 +159,12 @@ def replay_active_hybrid_history(
                 and _close(
                     float(row["combined_demand_hz"]), replayed.combined_demand_hz
                 )
-                and _close(
+                and _raw_code_close(
                     float(row["raw_combined_delta_codes"]),
                     replayed.raw_combined_delta_codes,
+                    gain_codes_per_hz=(
+                        policy.integrator_gain_codes_per_hz_per_decision
+                    ),
                 )
                 and int(row["requested_delta_codes"])
                 == replayed.requested_delta_codes

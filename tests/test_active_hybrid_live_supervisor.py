@@ -248,6 +248,7 @@ def _append_selected_estimate(
     *,
     estimate_seq: int,
     source_dac_ref: str,
+    timestamp_s: int | None = None,
 ) -> None:
     path = supervisor.run_dir / live.ESTIMATES_CSV
     fields = CONTRACT_FIELDS["estimates_v2"]
@@ -258,6 +259,11 @@ def _append_selected_estimate(
             "schema_version": "2",
             "estimate_seq": str(estimate_seq),
             "estimate_id": f"est:cx317:selected600:{estimate_seq:06d}",
+            "estimator_timestamp_ticks": str(
+                (timestamp_s if timestamp_s is not None else estimate_seq * 600)
+                * live.RP2040_TIMER0_TICKS_PER_SECOND
+            ),
+            "time_domain": "rp2040_timer0",
             "estimator_version": "cx317_selected_600s_nonoverlap_v1",
             "source_count_ref": f"live:CNT:{estimate_seq * 600}",
             "source_dac_ref": source_dac_ref,
@@ -384,6 +390,10 @@ def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
     assert supervisor.state["qualified_origin_estimate_id"] == (
         "est:cx317:selected600:000002"
     )
+    assert supervisor.state["qualified_origin_timestamp_ticks"] == (
+        1200 * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    assert supervisor.state["qualified_origin_session_id"] == 1
     assert '"source_dac_ref": "live:DAC:1"' in (
         supervisor.events_path.read_text(encoding="utf-8")
     )
@@ -625,8 +635,13 @@ def test_qualified_endpoint_requires_clear_static_terminal(tmp_path: Path) -> No
     supervisor = _supervisor(tmp_path)
     origin = 1_800_000_000.0
     supervisor.state["qualification_started_utc"] = _utc(origin)
+    supervisor.state["qualified_origin_timestamp_ticks"] = (
+        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    supervisor.state["qualified_origin_session_id"] = 1
     health = _health(
         supervisor,
+        uptime_s=str(4000 + live.QUALIFIED_DURATION_S),
         hybrid_state="HYBRID_TRACKING",
         first_phase_checkpoint_passed="true",
         phase_nonzero_application_count="2",
@@ -644,6 +659,80 @@ def test_qualified_endpoint_requires_clear_static_terminal(tmp_path: Path) -> No
         "last_confirmed_code": live.SETUP_CODE,
         "utc": supervisor.state["terminal"]["utc"],
     }
+
+
+def test_qualified_boundaries_use_device_time_despite_host_utc_steps(
+    tmp_path: Path,
+) -> None:
+    origin_utc = 1_800_000_000.0
+    origin_uptime_s = 4_000
+    supervisor = _supervisor(tmp_path, wall_origin_epoch=origin_utc)
+    supervisor.state["qualification_started_utc"] = _utc(origin_utc)
+    supervisor.state["qualified_origin_timestamp_ticks"] = (
+        origin_uptime_s * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    supervisor.state["qualified_origin_session_id"] = 1
+    supervisor._save()
+
+    before_admission_close = _health(
+        supervisor,
+        uptime_s=str(
+            origin_uptime_s
+            + live.QUALIFIED_DURATION_S
+            - live.CORRECTION_RESPONSE_RESERVE_S
+            - 1
+        ),
+    )
+    assert not supervisor._close_response_horizon_if_required(
+        before_admission_close
+    )
+    at_admission_close = _health(
+        supervisor,
+        uptime_s=str(
+            origin_uptime_s
+            + live.QUALIFIED_DURATION_S
+            - live.CORRECTION_RESPONSE_RESERVE_S
+        ),
+    )
+    assert supervisor._close_response_horizon_if_required(at_admission_close)
+
+    before_endpoint = _health(
+        supervisor,
+        uptime_s=str(origin_uptime_s + live.QUALIFIED_DURATION_S - 1),
+        hybrid_state="HYBRID_TRACKING",
+        first_phase_checkpoint_passed="true",
+        phase_nonzero_application_count="2",
+        phase_material_application_count="2",
+        correction_count="2",
+        cumulative_movement_codes="8",
+    )
+    # A 50,000-second forward UTC step is still inside the independent 16-hour
+    # wall endpoint but must not complete 43,200 seconds of device support.
+    supervisor._maybe_finish(before_endpoint, origin_utc + 50_000, 0.0)
+    assert supervisor.state["terminal"] is None
+
+    at_endpoint = dict(before_endpoint)
+    at_endpoint[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + live.QUALIFIED_DURATION_S
+    )
+    # A backward UTC step must likewise not delay the device-domain endpoint.
+    supervisor._maybe_finish(at_endpoint, origin_utc - 1_000, 0.0)
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx320_12h_qualified_endpoint_complete"
+    )
+
+
+def test_qualified_clock_rejects_capture_session_change(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["qualified_origin_timestamp_ticks"] = (
+        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    supervisor.state["qualified_origin_session_id"] = 1
+
+    with pytest.raises(ValueError, match="capture session changed"):
+        supervisor._qualified_elapsed_ticks(
+            _health(supervisor, session_id="2", uptime_s="5000")
+        )
 
 
 def test_wall_endpoint_is_right_censored_nonpass_when_static(tmp_path: Path) -> None:

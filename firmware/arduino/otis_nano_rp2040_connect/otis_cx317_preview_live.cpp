@@ -519,7 +519,11 @@ void otis_cx317_preview_live_on_boundary(
                  estimate_seq);
     return;
   }
-  if (uptime_s < warmup_complete_s || uptime_s < settling_until_s) {
+  // A boundary stamped exactly at settling_until_s closes the oscillator
+  // interval that began one second earlier, so it still straddles the
+  // excluded settling window.  Admit only boundaries strictly after it; the
+  // 600th accepted interval then closes after the full 900 + 600 seconds.
+  if (uptime_s < warmup_complete_s || uptime_s <= settling_until_s) {
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;

@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt7_activated_ready_for_exact_physical_entry",
+      "state": "stage5_attempt7_terminal_attempt8_recovery_in_progress",
       "allowed_operations": [
-        "offline_preparation",
-        "cx320_stage5_bounded_active_hybrid_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": true,
+      "physical_authority_effective": false,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -85,7 +84,8 @@
         "attempt_ordinal": 7,
         "automatic_retry": false,
         "effective": true,
-        "consumed": false
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt7_20260820T1525Z"
       },
       "structural_preflight": {
         "path": "runs/cx320_active_hybrid/stage5_attempt7_successor_bundle_20260820_v2/cx320_active_hybrid_structural_preflight_v15.json",
@@ -201,6 +201,36 @@
           "evidence_content_sha256": "adb420fa5264f1c0f5b02c65a2e5889d2eb525940f54964c6e09255e7812185e",
           "evidence_snapshot_sha256": "ec03182fa50a5d88c3effd12e4d1ce255f51db3a27a2a3d7b21cf0578f3543ac",
           "scientific_result": "none_phase_material_request_not_armed_or_applied"
+        },
+        {
+          "ordinal": 7,
+          "run_id": "stage5_live_attempt7_20260820T1525Z",
+          "classification": "firmware_defect_under_intended_stress_with_host_replay_and_terminal_platform_escapes",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "first_phase_response_checkpoint_rejected_after_1499s_support_and_independent_host_replay_precision_mismatch",
+          "firmware_flash_count": 1,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 1,
+          "phase_nonzero_applications": 1,
+          "phase_material_applications": 1,
+          "first_material_frequency_term_hz": -0.00166666694,
+          "first_material_phase_term_hz": -0.00037037037,
+          "first_material_requested_delta_codes": -6,
+          "first_material_frequency_only_counterfactual_delta_codes": -5,
+          "last_confirmed_code": 43062,
+          "last_confirmed_dac_epoch": 2,
+          "response_observed_hz": -0.001666667,
+          "response_support_elapsed_s": 1499,
+          "response_support_required_s": 1500,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "terminal_complete_snapshot_generation": 1255,
+          "trailing_incomplete_snapshot_generation": 1256,
+          "seal_sha256": "ad6086afc15b3812e0f9cc75ea7fc9df6e55bbea89e51951192afc4971617c7b",
+          "seal_file_sha256": "57296d34c59608d4694b966c37527775291bff9d6371b3fbdaf19b372b329022",
+          "evidence_content_sha256": "b2e5a38fcbe043777a17e02973a128a0a35ad9fcd8f87f1eddf92141e0fcc49e",
+          "scientific_result": "first_physical_phase_material_application_observed_but_response_checkpoint_invalid_at_1499s_support"
         }
       ],
       "verification": {
@@ -234,10 +264,14 @@
         "attempt7_structural_preflight_passed": true,
         "attempt7_operational_rehearsal_passed": true,
         "attempt7_v14_entry_gates_superseded": true,
-        "attempt7_v15_exact_refreeze_passed": true
+        "attempt7_v15_exact_refreeze_passed": true,
+        "attempt8_response_boundary_replay_clock_and_capture_regressions_passed": 128,
+        "attempt8_current_release_tests_passed": 878,
+        "attempt8_historical_tests_excluded": 27,
+        "attempt8_exact_refreeze_pending": true
       },
-      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/09_STAGE5_ATTEMPT6_HOST_ARMING_TERMINAL_AND_ATTEMPT7_RECOVERY.md",
-      "next_gate": "exact_physical_stage5_attempt_7"
+      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md",
+      "next_gate": "attempt8_consolidated_post_response_rehearsal_and_exact_refreeze"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

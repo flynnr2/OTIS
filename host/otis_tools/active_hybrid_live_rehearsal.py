@@ -29,6 +29,9 @@ from typing import Any, Callable
 from .abort_transport import send_abort
 from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_live_supervisor import (
+    CORRECTION_RESPONSE_RESERVE_S,
+    QUALIFIED_DURATION_S,
+    RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
     load_active_hybrid_spec,
 )
@@ -74,6 +77,7 @@ REHEARSAL_COVERAGE = (
     "first_active_hybrid_wire_record",
     "active_hybrid_status_handoff",
     "setup_authority_qualification_deadline",
+    "qualified_device_time_boundaries",
     "setup_propagation",
     "progressive_checkpoint",
     "conditional_release",
@@ -653,6 +657,112 @@ def _exercise_prewrite_qualification_boundary(
     return result
 
 
+def _exercise_qualified_device_time_boundaries(
+    *,
+    output_dir: Path,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    proposal_path: Path,
+    proposal: dict[str, Any],
+) -> dict[str, Any]:
+    """Prove scientific duration is owned by the qualifying device clock."""
+
+    supervisor, health = _prewrite_boundary_supervisor(
+        run_dir=output_dir / "qualified_device_clock",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+    origin_uptime_s = 4_000
+    supervisor.state["qualification_started_utc"] = supervisor.envelope.wall_origin_utc
+    supervisor.state["qualified_origin_estimate_id"] = (
+        "est:cx317:selected600:device_clock_rehearsal"
+    )
+    supervisor.state["qualified_origin_timestamp_ticks"] = (
+        origin_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    supervisor.state["qualified_origin_session_id"] = 1
+    supervisor.state["manual_start_sent"] = True
+    supervisor._save()
+    health.update(
+        {
+            ("cx317_active", "state"): "DISARMED",
+            ("cx317_active", "evidence_pending"): "false",
+            ("cx317_active", "evidence_phase"): "evidence_clear",
+            ("cx317_active", "evidence_request_sequence"): "0",
+            ("cx317_active", "manual_start_confirmed"): "true",
+            ("cx317_active", "confirmed_applied_code_known"): "true",
+            ("cx317_active", "confirmed_applied_code"): "43068",
+            ("cx317_active", "session_id"): "1",
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+            ("cx317_active", "phase_nonzero_application_count"): "2",
+            ("cx317_active", "phase_material_application_count"): "2",
+            ("cx317_active", "correction_count"): "2",
+            ("cx317_active", "cumulative_movement_codes"): "8",
+        }
+    )
+
+    admission_elapsed_s = QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S
+    health[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + admission_elapsed_s - 1
+    )
+    admission_open_before = not supervisor._close_response_horizon_if_required(
+        health
+    )
+    health[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + admission_elapsed_s
+    )
+    admission_closed_exact = supervisor._close_response_horizon_if_required(
+        health
+    )
+
+    wall_origin_epoch = datetime.fromisoformat(
+        supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
+    ).timestamp()
+    health[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + QUALIFIED_DURATION_S - 1
+    )
+    supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
+    endpoint_open_after_forward_utc_step = supervisor.state["terminal"] is None
+    health[("cx317_active", "uptime_s")] = str(
+        origin_uptime_s + QUALIFIED_DURATION_S
+    )
+    supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
+    endpoint_closed_after_backward_utc_step = (
+        (supervisor.state.get("terminal") or {}).get("reason")
+        == "cx320_12h_qualified_endpoint_complete"
+    )
+
+    result = {
+        "time_domain": "rp2040_timer0",
+        "capture_session": 1,
+        "correction_admission_close_elapsed_s": admission_elapsed_s,
+        "qualified_endpoint_elapsed_s": QUALIFIED_DURATION_S,
+        "admission_open_one_second_before": admission_open_before,
+        "admission_closed_at_exact_boundary": admission_closed_exact,
+        "forward_host_utc_step_did_not_close_early": (
+            endpoint_open_after_forward_utc_step
+        ),
+        "backward_host_utc_step_did_not_delay_endpoint": (
+            endpoint_closed_after_backward_utc_step
+        ),
+        "physical_actions_performed": 0,
+    }
+    if not all(
+        result[key]
+        for key in (
+            "admission_open_one_second_before",
+            "admission_closed_at_exact_boundary",
+            "forward_host_utc_step_did_not_close_early",
+            "backward_host_utc_step_did_not_delay_endpoint",
+        )
+    ):
+        raise RuntimeError("CX320 qualified device-clock rehearsal failed")
+    return result
+
+
 def _run_real_process_topology(
     *,
     output_dir: Path,
@@ -932,6 +1042,13 @@ def run(
         proposal_path=proposal_path,
         proposal=proposal,
     )
+    qualified_device_clock = _exercise_qualified_device_time_boundaries(
+        output_dir=output_dir / "qualified_device_clock",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
@@ -948,6 +1065,7 @@ def run(
         "tool_bindings": bundle["host_tools"],
         "real_process_topology": topology,
         "accelerated_prewrite_boundary": prewrite_boundary,
+        "accelerated_qualified_device_clock": qualified_device_clock,
         "accelerated_boundary_result": {
             "status": accelerated["status"],
             "seal_sha256": accelerated["seal_sha256"],
@@ -971,6 +1089,7 @@ def run(
             "accelerated_deterministic": [
                 "active_hybrid_status_handoff",
                 "setup_authority_qualification_deadline",
+                "qualified_device_time_boundaries",
                 "setup_propagation",
                 "progressive_checkpoint",
                 "conditional_release",

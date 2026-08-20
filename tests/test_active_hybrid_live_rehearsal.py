@@ -223,3 +223,39 @@ def test_accelerated_prewrite_boundary_uses_physical_evidence_deadline(
         "setup_commands_issued": 0,
         "physical_actions_performed": 0,
     }
+
+
+def test_accelerated_qualified_boundaries_use_device_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    policy_path = (
+        Path(__file__).resolve().parents[1]
+        / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"
+    )
+    bundle["policy"] = {
+        **_binding(policy_path),
+        "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+    }
+    monkeypatch.setattr(rehearsal, "validate_bundle", lambda path: bundle)
+    monkeypatch.setattr(rehearsal, "validate_proposal", lambda path: proposal)
+
+    result = rehearsal._exercise_qualified_device_time_boundaries(
+        output_dir=tmp_path / "qualified_time",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+
+    assert result == {
+        "time_domain": "rp2040_timer0",
+        "capture_session": 1,
+        "correction_admission_close_elapsed_s": 41_400,
+        "qualified_endpoint_elapsed_s": 43_200,
+        "admission_open_one_second_before": True,
+        "admission_closed_at_exact_boundary": True,
+        "forward_host_utc_step_did_not_close_early": True,
+        "backward_host_utc_step_did_not_delay_endpoint": True,
+        "physical_actions_performed": 0,
+    }

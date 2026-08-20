@@ -32,11 +32,11 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert successor["authority"] == "completed_programme_no_live_authority"
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
-    assert cx320["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        "cx320_stage5_bounded_active_hybrid_live",
-    ]
-    assert cx320["physical_authority_effective"] is True
+    assert cx320["state"] == (
+        "stage5_attempt7_terminal_attempt8_recovery_in_progress"
+    )
+    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx320["physical_authority_effective"] is False
     assert cx320["exact_bundle"]["bundle_sha256"] == (
         "f3f3c87dd23e792061da22e49dd3400ac05fb12463e8156da7b55b3a8bdc8fb8"
     )
@@ -78,6 +78,11 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["stage5_attempts"][5]["classification"] == (
         "platform_escape_into_campaign"
     )
+    assert cx320["stage5_attempts"][6]["automatic_applications"] == 1
+    assert cx320["stage5_attempts"][6]["phase_material_applications"] == 1
+    assert cx320["stage5_attempts"][6]["last_confirmed_code"] == 43062
+    assert cx320["stage5_attempts"][6]["response_support_elapsed_s"] == 1499
+    assert cx320["stage5_attempts"][6]["response_support_required_s"] == 1500
     assert cx320["operational_rehearsal"]["setup_authority_qualification"] == {
         "firmware_startup_inhibit_s": 600,
         "observed_historical_qualification_s": 612,
@@ -97,7 +102,10 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["effective_activation"]["attempt_ordinal"] == 7
     assert cx320["effective_activation"]["automatic_retry"] is False
     assert cx320["effective_activation"]["effective"] is True
-    assert cx320["effective_activation"]["consumed"] is False
+    assert cx320["effective_activation"]["consumed"] is True
+    assert cx320["effective_activation"]["consumed_by_run_id"] == (
+        "stage5_live_attempt7_20260820T1525Z"
+    )
     assert cx320["effective_activation"]["activation_sha256"] == (
         "1ad46ad921cb6e017711e4782c8954e550de658f99150b6a78e4a73483656738"
     )

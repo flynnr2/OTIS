@@ -186,6 +186,12 @@ The proposed physical run has a 43,200-second qualified limit starting at the
 first complete fresh authoritative 600-second estimate after exact setup
 support, and a 57,600-second wall-clock limit starting when the sole capture
 owner records the exact run identity before setup. Neither may be extended.
+The qualified origin and elapsed interval are measured in the estimate's
+`rp2040_timer0` device domain and remain bound to the same capture session;
+host UTC records only when the supervisor observed the origin. Host clock
+steps or service latency must not move the 41,400-second correction-admission
+close or the 43,200-second qualified endpoint. The independent 57,600-second
+absolute endpoint retains its declared wall-clock origin.
 
 The prospective baseline is the final continuous 1,800 seconds of
 `PHASE_QUALIFY` immediately before the first material application. The primary

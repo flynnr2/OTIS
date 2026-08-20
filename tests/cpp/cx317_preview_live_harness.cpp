@@ -39,6 +39,8 @@ void otis_status_emit_u32(OtisStatusEmitContext *, const char *, const char *,
 
 int main(int argc, char **argv) {
   const bool recovery_mode = argc == 2 && std::string(argv[1]) == "recovery";
+  const bool response_window_mode =
+      argc == 2 && std::string(argv[1]) == "response_window";
   constexpr uint64_t kTicksPerSecond = 16000000ull;
   otis_cx317_preview_live_begin(0u);
   otis_cx317_preview_live_emit_headers();
@@ -75,6 +77,26 @@ int main(int argc, char **argv) {
     }
     assert(!otis_cx317_preview_live_request_recovery());
     std::cerr << "recovery_fixture_pass\n";
+  }
+  if (response_window_mode) {
+    constexpr uint32_t kApplicationTimestampS = 2401u;
+    otis_cx317_preview_live_on_dac_applied_epoch(
+        0xA82Bu, 2u, kApplicationTimestampS);
+    const OtisCx317StaticCodeState response_code = {
+        true, true, true, 0xA82Bu};
+    for (uint32_t second = kApplicationTimestampS; second <= 3901u;
+         ++second) {
+      counter -= 10000000u;
+      const OtisPpsCountBoundaryObservation observation = {
+          1u, second, second, second * kTicksPerSecond, counter, 10000000u,
+          0u, 0u,
+      };
+      otis_cx317_preview_live_on_boundary(
+          &observation, 10000000u, true, second, &response_code, nullptr);
+      for (uint8_t drain = 0u; drain < 16u; ++drain) {
+        otis_cx317_preview_live_service_transport();
+      }
+    }
   }
   std::cout << output;
   return 0;

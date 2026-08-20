@@ -127,6 +127,12 @@ class ActiveStatusLivePublisher:
         self.path = run_dir / LIVE_STATE_PATH
         self.reducer = ActiveStatusLiveReducer()
 
+    @property
+    def active_snapshot_in_progress(self) -> bool:
+        """Whether capture has begun but not completed an atomic ACTIVE burst."""
+
+        return self.reducer.current_generation is not None
+
     def process_line(
         self, line: str, *, transport_generation: int
     ) -> None:
@@ -1328,6 +1334,13 @@ class CaptureDeviceRunner:
                                 and not raw_writer.partial
                                 and not self.framer.buffer
                                 and not self.framer.discarding_oversize
+                                # A complete serial line is not necessarily a
+                                # complete control-plane record: ACTIVE status
+                                # is an atomic multi-line generation.  Drain a
+                                # generation already begun before closing so a
+                                # terminal query cannot replace the last
+                                # complete snapshot with an in-progress one.
+                                and not sink.active_status_live_publisher.active_snapshot_in_progress
                             ):
                                 if duration_reached:
                                     _log_event(

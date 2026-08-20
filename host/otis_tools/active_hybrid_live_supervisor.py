@@ -21,6 +21,7 @@ from typing import Any
 from .abort_transport import AbortFifo
 from .active_control_supervisor import (
     ESTIMATES_CSV,
+    RP2040_TIMER0_TICKS_PER_SECOND,
     ControlSupervisorBase,
     _parse_utc_epoch,
 )
@@ -337,6 +338,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 )
             self.state[key] = value
         self.state.setdefault("qualified_origin_estimate_id", None)
+        self.state.setdefault("qualified_origin_timestamp_ticks", None)
+        self.state.setdefault("qualified_origin_session_id", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
         self.state.setdefault("later_authority_released", False)
@@ -683,31 +686,81 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         )
         if estimate is None:
             return
+        if estimate.get("time_domain") != "rp2040_timer0":
+            raise ValueError("CX320 qualified origin is not in rp2040_timer0")
+        try:
+            origin_ticks = int(estimate["estimator_timestamp_ticks"])
+            current_uptime_s = int(health[("cx317_active", "uptime_s")])
+            session_id = int(health[("cx317_active", "session_id")])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("CX320 qualified origin device clock is malformed") from exc
+        if (
+            origin_ticks <= 0
+            or session_id <= 0
+            or current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND < origin_ticks
+        ):
+            raise ValueError("CX320 qualified origin device clock is incoherent")
         self.state["qualification_started_utc"] = _utc_now()
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
+        self.state["qualified_origin_timestamp_ticks"] = origin_ticks
+        self.state["qualified_origin_session_id"] = session_id
         self._save()
         self._event(
             "cx320_qualified_origin_established",
             estimate_id=estimate["estimate_id"],
+            estimator_timestamp_ticks=origin_ticks,
+            time_domain="rp2040_timer0",
+            capture_session=session_id,
             source_count_ref=estimate["source_count_ref"],
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
             qualified_duration_s=QUALIFIED_DURATION_S,
         )
 
-    def _close_response_horizon_if_required(self, now_epoch: float) -> bool:
-        qualified = self.state.get("qualification_started_utc")
-        if not isinstance(qualified, str) or not qualified:
+    def _qualified_elapsed_ticks(
+        self, health: dict[tuple[str, str], str]
+    ) -> int | None:
+        origin = self.state.get("qualified_origin_timestamp_ticks")
+        origin_session = self.state.get("qualified_origin_session_id")
+        if origin is None and origin_session is None:
+            return None
+        if type(origin) is not int or type(origin_session) is not int:
+            raise ValueError("CX320 retained qualified origin is incomplete")
+        try:
+            current_session = int(health[("cx317_active", "session_id")])
+            current_uptime_s = int(health[("cx317_active", "uptime_s")])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("CX320 current qualified device clock is malformed") from exc
+        if current_session != origin_session:
+            raise ValueError("CX320 capture session changed after qualified origin")
+        elapsed = current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND - origin
+        if elapsed < 0:
+            raise ValueError("CX320 device clock moved behind qualified origin")
+        return elapsed
+
+    def _close_response_horizon_if_required(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        elapsed_ticks = self._qualified_elapsed_ticks(health)
+        if elapsed_ticks is None:
             return False
-        elapsed = now_epoch - _parse_utc_epoch(qualified)
-        if elapsed < QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S:
+        admission_ticks = (
+            QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S
+        ) * RP2040_TIMER0_TICKS_PER_SECOND
+        if elapsed_ticks < admission_ticks:
             return False
         if self.state["response_horizon_closed_utc"] is None:
             self.state["response_horizon_closed_utc"] = _utc_now()
             self._save()
             self._event(
                 "cx320_correction_admission_closed_for_response_horizon",
-                remaining_qualified_s=max(0, int(QUALIFIED_DURATION_S - elapsed)),
+                elapsed_qualified_device_ticks=elapsed_ticks,
+                time_domain="rp2040_timer0",
+                remaining_qualified_s=max(
+                    0,
+                    QUALIFIED_DURATION_S
+                    - elapsed_ticks // RP2040_TIMER0_TICKS_PER_SECOND,
+                ),
                 required_response_reserve_s=CORRECTION_RESPONSE_RESERVE_S,
             )
         return True
@@ -765,7 +818,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self._event("cx320_unused_zero_delta_arm_consumed_without_write")
         if not manual_confirmed or self.state["arm_pending"]:
             return
-        if self._close_response_horizon_if_required(time.time()):
+        if self._close_response_horizon_if_required(health):
             return
 
         hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
@@ -884,14 +937,17 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
-        qualified = self.state.get("qualification_started_utc")
-        if isinstance(qualified, str) and qualified:
-            if now_epoch - _parse_utc_epoch(qualified) >= QUALIFIED_DURATION_S:
-                if self._healthy_terminal_ready(health):
-                    self._set_healthy_endpoint(
-                        health, endpoint="cx320_12h_qualified_endpoint_complete"
-                    )
-                    return
+        qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        if (
+            qualified_elapsed_ticks is not None
+            and qualified_elapsed_ticks
+            >= QUALIFIED_DURATION_S * RP2040_TIMER0_TICKS_PER_SECOND
+            and self._healthy_terminal_ready(health)
+        ):
+            self._set_healthy_endpoint(
+                health, endpoint="cx320_12h_qualified_endpoint_complete"
+            )
+            return
 
         wall_origin = self.state.get("wall_origin_utc")
         if (

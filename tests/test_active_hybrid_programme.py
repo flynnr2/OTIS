@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.active_hybrid_evidence_guard import (
+    FROZEN_AHY_HALF_SERIALIZATION_QUANTUM,
+    _raw_code_close,
     replay_response_before_acknowledgement,
 )
 from host.otis_tools.active_hybrid_policy import ActiveHybridController, load_policy
@@ -146,6 +148,30 @@ def test_response_guard_rejects_changed_firmware_delta(tmp_path: Path) -> None:
             active_transactions_csv=act_path,
             response_row=response,
         )
+
+
+def test_response_guard_scales_12_decimal_hz_quantization_into_raw_codes() -> None:
+    policy = load_policy()
+    firmware_raw_codes = -5.875839765254
+    replayed_raw_codes = -5.875839765673529
+    tolerance_codes = FROZEN_AHY_HALF_SERIALIZATION_QUANTUM * (
+        policy.integrator_gain_codes_per_hz_per_decision + 1.0
+    )
+
+    assert abs(firmware_raw_codes - replayed_raw_codes) == pytest.approx(
+        4.1952930018851475e-10
+    )
+    assert tolerance_codes == pytest.approx(1.4427513853232257e-9)
+    assert _raw_code_close(
+        firmware_raw_codes,
+        replayed_raw_codes,
+        gain_codes_per_hz=policy.integrator_gain_codes_per_hz_per_decision,
+    )
+    assert not _raw_code_close(
+        replayed_raw_codes + tolerance_codes * 1.01,
+        replayed_raw_codes,
+        gain_codes_per_hz=policy.integrator_gain_codes_per_hz_per_decision,
+    )
 
 
 def test_response_guard_replays_nonzero_frequency_only_counterfactual(
