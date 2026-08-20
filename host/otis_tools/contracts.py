@@ -348,6 +348,65 @@ ACTIVE_TRANSACTION_V1_FIELDS = [
     "evidence_state",
 ]
 
+ACTIVE_HYBRID_DECISION_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "hybrid_record_sequence",
+    "decision_sequence",
+    "decision_timestamp_s",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "capture_session",
+    "source_first_sequence",
+    "source_last_sequence",
+    "frequency_estimator_sha256",
+    "frequency_error_hz",
+    "accumulated_edge_error_counts",
+    "tight_state",
+    "phase_estimator_sha256",
+    "phase_epoch",
+    "phase_observation_sequence",
+    "relative_phase_cycles",
+    "phase_continuous",
+    "phase_current",
+    "phase_step_detected",
+    "phase_recorder_published",
+    "current_applied_code",
+    "dac_epoch",
+    "phase_applied_code",
+    "phase_dac_epoch",
+    "state_before",
+    "state_after",
+    "frequency_term_hz",
+    "phase_term_hz",
+    "combined_demand_hz",
+    "raw_combined_delta_codes",
+    "requested_delta_codes",
+    "requested_code",
+    "counterfactual_frequency_only_delta_codes",
+    "phase_materially_influenced",
+    "step_limited",
+    "range_clamped",
+    "cadence_limited",
+    "count_limited",
+    "cumulative_budget_limited",
+    "correction_count_before",
+    "cumulative_movement_before_codes",
+    "authority_state",
+    "request_sequence",
+    "acceptance_sequence",
+    "application_sequence",
+    "response_class",
+    "actual_applied_code",
+    "actual_dac_epoch",
+    "downstream_epoch_exact",
+    "reason",
+    "active_policy_sha256",
+    "response_policy_sha256",
+    "actionable",
+]
+
 # CX318 Stage 4 telemetry is deliberately separate from the accepted frequency
 # control products.  RPH is the immutable raw relative-phase boundary; HPR is
 # a candidate-specific, counterfactual hybrid-preview boundary.  Neither
@@ -488,6 +547,7 @@ CONTRACT_FIELDS = {
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
     "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
+    "active_hybrid_decisions_v1": ACTIVE_HYBRID_DECISION_V1_FIELDS,
     "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
     "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
@@ -508,6 +568,7 @@ CONTRACT_RECORD_TYPES = {
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
     "active_transactions_v1": {"ACT"},
+    "active_hybrid_decisions_v1": {"AHY"},
     "relative_phase_observations_v1": {"RPH"},
     "phase_estimator_outputs_v1": {"PHE"},
     "hybrid_preview_decisions_v1": {"HPR"},
@@ -528,6 +589,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "estimates_v2": 2,
     "control_previews_v1": 1,
     "active_transactions_v1": 1,
+    "active_hybrid_decisions_v1": 1,
     "relative_phase_observations_v1": 1,
     "phase_estimator_outputs_v1": 1,
     "hybrid_preview_decisions_v1": 1,
@@ -548,6 +610,7 @@ SEQUENCE_FIELDS = {
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
     "active_transactions_v1": "transaction_record_sequence",
+    "active_hybrid_decisions_v1": "hybrid_record_sequence",
     "relative_phase_observations_v1": "observation_sequence",
     "phase_estimator_outputs_v1": "observation_sequence",
     "hybrid_preview_decisions_v1": "preview_sequence",
@@ -568,6 +631,7 @@ TIMESTAMP_FIELDS = {
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
     "active_transactions_v1": (),
+    "active_hybrid_decisions_v1": (),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
@@ -593,6 +657,7 @@ DOMAIN_FIELDS = {
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
     "active_transactions_v1": (),
+    "active_hybrid_decisions_v1": (),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("time_domain",),
@@ -608,6 +673,7 @@ CONTRACT_IMPLICIT_TIME_DOMAINS = {
 SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
+    "active_hybrid_decisions_v1": "capture_session",
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -779,6 +845,15 @@ VALID_ACTIVE_EVIDENCE_STATES = {
     "acceptance_pending",
     "application_pending",
     "response_pending",
+}
+
+VALID_ACTIVE_HYBRID_STATES = {
+    "FREQUENCY_ACQUIRE",
+    "PHASE_QUALIFY",
+    "FIRST_PHASE_TRANSACTION",
+    "HYBRID_TRACKING",
+    "PHASE_DEGRADED_FREQUENCY_ONLY",
+    "FAIL_STATIC",
 }
 
 
@@ -1784,6 +1859,129 @@ def _check_active_transaction_v1(
         errors.append(f"row {row_number}: response requires a response classification")
 
 
+def _check_active_hybrid_decision_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "frequency_estimator_sha256",
+            "tight_state",
+            "phase_estimator_sha256",
+            "state_before",
+            "state_after",
+            "authority_state",
+            "response_class",
+            "reason",
+            "active_policy_sha256",
+            "response_policy_sha256",
+        ),
+    )
+    for field_name in (
+        "phase_continuous",
+        "phase_current",
+        "phase_step_detected",
+        "phase_recorder_published",
+        "phase_materially_influenced",
+        "step_limited",
+        "range_clamped",
+        "cadence_limited",
+        "count_limited",
+        "cumulative_budget_limited",
+        "downstream_epoch_exact",
+        "actionable",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("actionable") != "false":
+        errors.append(
+            f"row {row_number}: serialized active-hybrid evidence must never be actionable"
+        )
+    if row.get("state_before") not in VALID_ACTIVE_HYBRID_STATES:
+        errors.append(f"row {row_number}: invalid active-hybrid state_before")
+    if row.get("state_after") not in VALID_ACTIVE_HYBRID_STATES:
+        errors.append(f"row {row_number}: invalid active-hybrid state_after")
+    if row.get("authority_state") not in VALID_ACTIVE_STATES:
+        errors.append(f"row {row_number}: invalid transaction authority_state")
+    if row.get("response_class") not in VALID_ACTIVE_RESPONSE_CLASSES:
+        errors.append(f"row {row_number}: invalid response_class")
+    if row.get("tight_state") not in VALID_TIGHT_DEADBAND_STATES:
+        errors.append(f"row {row_number}: invalid tight_state")
+    for field_name in (
+        "decision_sequence",
+        "decision_timestamp_s",
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+        "phase_epoch",
+        "phase_observation_sequence",
+        "current_applied_code",
+        "dac_epoch",
+        "phase_applied_code",
+        "phase_dac_epoch",
+        "requested_code",
+        "correction_count_before",
+        "cumulative_movement_before_codes",
+        "request_sequence",
+        "acceptance_sequence",
+        "application_sequence",
+        "actual_applied_code",
+        "actual_dac_epoch",
+    ):
+        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    for field_name in (
+        "accumulated_edge_error_counts",
+        "relative_phase_cycles",
+        "requested_delta_codes",
+        "counterfactual_frequency_only_delta_codes",
+    ):
+        _parse_int(row.get(field_name, ""), field_name, row_number, errors)
+    for field_name in (
+        "frequency_error_hz",
+        "frequency_term_hz",
+        "phase_term_hz",
+        "combined_demand_hz",
+        "raw_combined_delta_codes",
+    ):
+        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
+    for field_name in (
+        "frequency_estimator_sha256",
+        "phase_estimator_sha256",
+        "active_policy_sha256",
+        "response_policy_sha256",
+    ):
+        _check_sha256(row, field_name, row_number, errors)
+
+    try:
+        current_code = int(row["current_applied_code"])
+        delta = int(row["requested_delta_codes"])
+        requested_code = int(row["requested_code"])
+        counterfactual = int(row["counterfactual_frequency_only_delta_codes"])
+        phase_term = float(row["phase_term_hz"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if requested_code != current_code + delta:
+        errors.append(f"row {row_number}: requested code does not equal current plus delta")
+    if not 0xA800 <= requested_code <= 0xAB00:
+        errors.append(f"row {row_number}: requested code is outside A800..AB00")
+    expected_material = phase_term != 0.0 and delta != counterfactual
+    if (row.get("phase_materially_influenced") == "true") != expected_material:
+        errors.append(f"row {row_number}: phase materiality counterfactual differs")
+    if row.get("phase_recorder_published") != "true":
+        errors.append(f"row {row_number}: active decision lacks prior phase publication")
+    if row.get("downstream_epoch_exact") != "true":
+        errors.append(f"row {row_number}: active decision lacks exact downstream DAC epoch")
+    if delta != 0 and any(
+        row.get(field_name) == "true"
+        for field_name in ("cadence_limited", "count_limited", "cumulative_budget_limited")
+    ):
+        errors.append(f"row {row_number}: limited active decision retained a non-zero delta")
+
+
 def _check_sha256(row: dict[str, str], field_name: str, row_number: int, errors: list[str]) -> None:
     value = row.get(field_name, "")
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
@@ -2332,6 +2530,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_control_preview_v1(row, row_count, errors)
             if context.contract == "active_transactions_v1":
                 _check_active_transaction_v1(row, row_count, errors)
+            if context.contract == "active_hybrid_decisions_v1":
+                _check_active_hybrid_decision_v1(row, row_count, errors)
             if context.contract == "relative_phase_observations_v1":
                 _check_relative_phase_observation_v1(row, row_count, errors)
             if context.contract == "phase_estimator_outputs_v1":

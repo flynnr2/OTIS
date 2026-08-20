@@ -16,10 +16,10 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_complete_range_spanning_survey_and_next_gate() -> None:
+def test_tracked_status_records_frozen_cx319_and_offline_cx320_next_gate() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] == "cx319_stabilized_tight_deadband"
+    assert status["active_programme"] == "cx320_bounded_active_hybrid"
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
         "allowed_operations": [],
@@ -27,15 +27,13 @@ def test_tracked_status_records_complete_range_spanning_survey_and_next_gate() -
         "authority": "passed_completion_gate",
     }
     successor = status["programmes"]["cx319_stabilized_tight_deadband"]
-    assert successor["state"] == (
-        "range_spanning_part_a_complete_survey_fine_pass_pending"
-    )
-    assert successor["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert successor["authority"] == "survey_derived_part_a_fine_pass_bundle_pending"
-    assert successor["next_gate"] == (
-        "freeze_and_rehearse_survey_derived_part_a_one_code_fine_pass_and_"
-        "revised_zero_authority_hybrid_preview"
-    )
+    assert successor["state"] == "completed_mapping_informed_part_b_frozen"
+    assert successor["allowed_operations"] == ["historical_validation"]
+    assert successor["authority"] == "completed_programme_no_live_authority"
+    assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
+    cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
+    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx320["physical_authority_effective"] is False
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1013,9 +1011,10 @@ def test_tracked_status_records_complete_range_spanning_survey_and_next_gate() -
         require_programme_execution_allowed("platform_stabilization")
 
     assert require_programme_operation_allowed(
-        "cx319_stabilized_tight_deadband", OFFLINE_PREPARATION
-    ) == successor
+        "cx320_bounded_active_hybrid", OFFLINE_PREPARATION
+    ) == cx320
     for blocked_operation in (
+        OFFLINE_PREPARATION,
         NO_WRITE_BENCH_REHEARSAL,
         BOUNDED_TIGHT_DEADBAND_LIVE_LEG,
         BOUNDED_TIGHT_DEADBAND_UPPER_LIVE_LEG,

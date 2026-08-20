@@ -9,9 +9,10 @@ The design principles are in
 
 ## Current support boundary
 
-Current HEAD supports only `CX319_EVIDENCE_EPOCH_1`. The exact package floor,
-retained deployed wire identities, fail-closed rules, and historical
-reproduction procedure are in
+Current HEAD preserves `CX319_EVIDENCE_EPOCH_1` as its physical evidence floor
+and adds the non-effective CX320 active-hybrid implementation and offline
+qualification tooling. The retained deployed CX319 wire identities,
+fail-closed rules, and historical reproduction procedure are in
 [`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`](docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md).
 
 H0/SW1, H1, Phase 4/5, CX317, and CX318 operational readers, profiles, campaign
@@ -21,15 +22,22 @@ and Git history. Reproduce a historical package from the exact revision named
 by its manifest, bundle, index record, or report; do not treat a successful
 historical reproduction as current validation or authority.
 
-The current CX319 range-spanning programme has completed a passing eight-point
-Part A survey prefix. The last confirmed code is `0xA844`; the observed lower
-increasing-direction entry is coarsely bracketed by `0xA800..0xA820`. The
-reviewed result and exact evidence identities are in
-[`38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`](docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md).
-Continuation requires an exact state-preserving bundle and rehearsal. Part B
-remains gated on completed Part A evidence, and phase/hybrid actuation remains
-unauthorized. Current programme state is recorded in
-`profiles/programme_status_v2.json`.
+The CX319 range-spanning programme is complete and frozen. Its mapping-informed
+Part B seal binds two physical acquisitions; the lower reacquisition remains an
+inference, the original upper traversal remains a right-censored bounded
+non-pass, and its completion is preserved as a separate acquisition plus a
+host-only finalizer supersession. The terminal report and exact claims boundary
+are in
+[`43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md`](docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md).
+
+The active programme is now CX320 bounded active-hybrid qualification. Current
+authority is offline preparation only. Its exact bundle, structural preflight
+and simulated operational path pass, and its tracked proposal is non-effective;
+no flash, reset, serial access, setup, DAC write, arm, physical rehearsal or
+live acquisition is authorized until the exact passing bundle receives a
+separate operator decision. The last confirmed predecessor code is `0xA83C`,
+but any future flash or reset makes the physical code unknown until a new exact
+setup acknowledgement is captured.
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute
@@ -65,9 +73,9 @@ compatibility tests. See
 | `data_contracts/` | current deployed contract documentation |
 | `firmware/arduino/otis_nano_rp2040_connect/` | current firmware platform |
 | `host/otis_tools/` | current capture, control, replay, and evidence tools |
-| `profiles/` | current CX319 policy, model, estimator, and authority bindings |
+| `profiles/` | current CX319 evidence and CX320 policy, model, estimator, and authority bindings |
 | `schemas/` | current machine-readable schemas |
-| `tests/` | current platform and CX319 regression tests |
+| `tests/` | current platform, CX319 evidence, and CX320 regression tests |
 | `docs/60_EXPERIMENTS/` | reviewed current and historical scientific record |
 
 ## License

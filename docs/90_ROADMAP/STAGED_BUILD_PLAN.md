@@ -1,11 +1,12 @@
 # Staged Build Plan
 
-Current status (2026-08-14): this long-horizon plan retains historical stage
-context; it is not execution authority. The active CX319 programme has passed
-bounded lower-side acquisition and the first eight points of a range-spanning
-Part A survey. The full hysteretic boundary map, matched bidirectional Part B,
-cadence acceleration, and active hybrid remain incomplete. See
-`../60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
+Current status (2026-08-20): this long-horizon plan retains historical stage
+context; it is not execution authority. CX319 completed its range map and
+mapping-informed Part B programme and is frozen. The CX320 bounded active-hybrid
+exact offline bundle and operational rehearsal pass; physical phase steering
+remains unauthorized and unqualified pending a separate exact-bundle decision.
+See
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
 
 ## Stage 0 — Foundations
 

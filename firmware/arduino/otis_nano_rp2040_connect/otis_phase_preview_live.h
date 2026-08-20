@@ -20,6 +20,23 @@ struct OtisPhasePreviewLiveStatus {
   uint32_t last_observation_sequence;
 };
 
+// CX320-only same-core handoff.  This snapshot is published only after the
+// canonical HPR record has entered the recorder queue, so the active policy
+// cannot consume phase evidence that the recorder did not accept.
+struct OtisPhasePreviewActiveSnapshot {
+  bool available;
+  bool recorder_published;
+  bool phase_continuous;
+  bool phase_current;
+  bool phase_step_detected;
+  uint32_t capture_session;
+  uint32_t phase_epoch;
+  uint32_t observation_sequence;
+  int64_t relative_phase_cycles;
+  uint32_t dac_epoch;
+  uint16_t applied_code;
+};
+
 // Called only on Core 1. The static code must have been confirmed by preflight;
 // this function has no mechanism to read or write a DAC.
 bool otis_phase_preview_live_begin(uint16_t confirmed_static_code,
@@ -37,5 +54,7 @@ void otis_phase_preview_live_on_boundary(
     bool phase_step_detected);
 void otis_phase_preview_live_note_reset(void);
 void otis_phase_preview_live_get_status(OtisPhasePreviewLiveStatus *status);
+bool otis_phase_preview_live_get_active_snapshot(
+    OtisPhasePreviewActiveSnapshot *snapshot);
 
 #endif

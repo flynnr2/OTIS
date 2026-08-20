@@ -31,6 +31,8 @@ void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
 void otis_cx317_preview_live_on_dac_applied_epoch(uint16_t applied_code,
                                                  uint32_t dac_epoch,
                                                  uint32_t uptime_s);
+bool otis_cx317_preview_live_applied_epoch_exact(uint16_t applied_code,
+                                                 uint32_t dac_epoch);
 void otis_cx317_preview_live_on_boundary(
     const OtisPpsCountBoundaryObservation *observation,
     uint32_t interval_count, bool interval_valid, uint32_t uptime_s,

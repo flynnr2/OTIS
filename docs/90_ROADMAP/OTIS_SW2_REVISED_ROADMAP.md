@@ -1,15 +1,16 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Lifecycle note (updated 2026-08-14):** this is a historical roadmap through the
+**Lifecycle note (updated 2026-08-20):** this is a historical roadmap through the
 sealed CX317 result. The subsequent CX318 Stage 5 programme remains suspended,
 incomplete, and unsealed. The platform-stabilization programme in
 `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md` passed its
 completion gate. Historical “next” actions below are not current execution
 authority. The `CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME` subsequently passed
-lower-side acquisition, recorded a non-actionable upper stimulus, and completed
-a passing eight-point prefix of its separately authorized range-spanning Part A
-survey. Part A, Part B, and active-hybrid qualification are not complete. See
-`../60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/38_RANGE_SPANNING_PART_A_SURVEY_PREFIX_RESULT.md`.
+lower-side acquisition and completed its range map and mapping-informed
+frequency-only Part B programme. CX319 is frozen. The CX320 active-hybrid exact
+offline bundle and operational rehearsal pass; its physical decision is
+separate and no physical authority is effective. See
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
@@ -88,9 +89,9 @@ The recommended path is now:
 3. preserve bounded single-core bidirectional acquisition evidence — **complete**;
 4. preserve the Core 0 service / Core 1 timing ownership and fail-static transport contract — **complete**;
 5. preserve the sealed 24-hour bounded dual-core frequency-control endurance result — **complete**;
-6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority;
-7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics;
-8. authorize any hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed;
+6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority — **complete**;
+7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics — **complete as zero-authority evidence**;
+8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 offline bundle/rehearsal pass; separate physical authority decision pending**;
 9. add reference-loss holdover and controlled recovery;
 10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic or the DAC driver.
 

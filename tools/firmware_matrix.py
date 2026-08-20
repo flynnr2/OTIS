@@ -61,6 +61,7 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_INTEGER_COUNT_DEADBAND_INITIAL_CODE",
     "OTIS_INTEGER_COUNT_DEADBAND_INITIAL_DAC_EPOCH",
     "OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW",
+    "OTIS_ENABLE_CX320_ACTIVE_HYBRID",
     "OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED",
     "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW",
     "OTIS_CX319_RANGE_MAP_INITIAL_CODE",
@@ -328,6 +329,7 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx319_range_part_b_lower",
                 "cx319_range_part_b_upper",
                 "cx319_range_part_b_upper_completion",
+                "cx320_active_hybrid",
             }
         ):
             raise MatrixError(

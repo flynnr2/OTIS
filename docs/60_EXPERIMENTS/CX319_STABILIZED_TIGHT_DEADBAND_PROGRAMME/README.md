@@ -6,7 +6,7 @@ validation, combined real-reference observation and non-actuating fault tests,
 then final review—while rebuilding every operational surface on the stabilized
 OTIS platform.
 
-Current status as of 2026-08-17: the adversarial-review Q1--Q3 sequence and the
+Terminal status as of 2026-08-20: the adversarial-review Q1--Q3 sequence and the
 Q4/G2 lower-side physical qualification passed. The Q4/G3 upper run was a
 non-actionable stable tight hold, not a G3 pass. The operator then authorized
 the separately identified range-spanning programme. Its complete 30-point
@@ -26,8 +26,13 @@ direct OTIS gain and 600-second integer-count resolution. The historical V3
 non-promotion remains unchanged. A prospectively frozen, mapping-informed
 readiness replay passes and establishes eligibility to build and rehearse the
 same bounded three-leg frequency-only Part B sequence under the new V4
-programme without repeating Part A. Physical V4 entry, G4 and phase/hybrid
-actuation remain unauthorized.
+programme without repeating Part A. The mapping-informed V4 Part B programme
+subsequently completed and is frozen as predecessor evidence: exactly two
+physical Part B acquisitions are bound, lower reacquisition is inferred, and
+the right-censored upper traversal plus separate upper completion retain their
+distinct identities. CX319 phase/hybrid actuation remained zero throughout.
+CX320 offline active-hybrid preparation is now the next programme; its physical
+entry remains unauthorized.
 
 G0, the exact physical G1 no-write qualification, and G2 offline readiness
 passed on 2026-08-11. The operator then authorized the exact frozen G2 Leg A
@@ -255,3 +260,7 @@ focusing decision are recorded in
 The completed V3 transition map, discriminating replay, CX317 expectation
 audit and non-effective mapping-informed Part B rebinding basis are recorded in
 [`42_CONDITIONAL_PART_A_V3_MAPPING_RESULT_AND_CONFIRMATION_BASIS.md`](42_CONDITIONAL_PART_A_V3_MAPPING_RESULT_AND_CONFIRMATION_BASIS.md).
+
+The final mapping-informed Part B seal, claims boundary, last confirmed
+`0xA83C` state and handoff to CX320 are recorded in
+[`43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md`](43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md).

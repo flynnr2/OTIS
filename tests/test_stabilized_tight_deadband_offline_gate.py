@@ -9,6 +9,19 @@ from host.otis_tools import stabilized_tight_deadband_offline_gate
 from tools.firmware_matrix import configuration_hash, load_matrix, source_input_hash
 
 
+@pytest.fixture(autouse=True)
+def _historical_cx319_offline_gate_unit_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the retired gate logic without reopening CX319 authority."""
+
+    monkeypatch.setattr(
+        stabilized_tight_deadband_offline_gate,
+        "require_programme_operation_allowed",
+        lambda *args, **kwargs: {},
+    )
+
+
 def _matrix_summary(tmp_path: Path) -> Path:
     matrix = load_matrix(stabilized_tight_deadband_offline_gate.MATRIX_PATH)
     profiles = {item["id"]: item for item in matrix["profiles"]}

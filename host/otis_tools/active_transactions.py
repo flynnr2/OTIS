@@ -417,6 +417,25 @@ class ActiveTransactionSupervisor:
         active_csv = self.run_dir / ACTIVE_CSV
         _fsync_path(active_csv)
         _fsync_path(capsule)
+        if self.spec.profile == "cx320_active_hybrid" and phase == 4:
+            from .active_hybrid_evidence_guard import (
+                replay_response_before_acknowledgement,
+            )
+
+            active_hybrid_csv = (
+                self.run_dir / "csv/active_hybrid_decisions_v1.csv"
+            )
+            _fsync_path(active_hybrid_csv)
+            attestation = replay_response_before_acknowledgement(
+                active_hybrid_csv=active_hybrid_csv,
+                active_transactions_csv=active_csv,
+                response_row=row,
+            )
+            attestation_path = capsule_dir / (
+                f"record_{record_sequence:06d}_response_replay_attestation.json"
+            )
+            _atomic_json(attestation_path, attestation)
+            _fsync_path(attestation_path)
         self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
         acknowledged = self.state["acknowledged_record_sequences"]
         if record_sequence not in acknowledged:

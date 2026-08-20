@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx319_stabilized_tight_deadband",
+  "active_programme": "cx320_bounded_active_hybrid",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -9,13 +9,79 @@
       "effective_date": "2026-08-11",
       "authority": "passed_completion_gate"
     },
-    "cx319_stabilized_tight_deadband": {
-      "state": "range_spanning_part_a_complete_survey_fine_pass_pending",
+    "cx320_bounded_active_hybrid": {
+      "state": "offline_ready_for_separate_exact_bundle_authority_decision",
       "allowed_operations": [
         "offline_preparation"
       ],
-      "effective_date": "2026-08-15",
-      "authority": "survey_derived_part_a_fine_pass_bundle_pending",
+      "effective_date": "2026-08-20",
+      "authority": "offline_stages_0_through_4_complete_no_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "cx319_stabilized_tight_deadband",
+      "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
+      "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
+      "offline_replay": {
+        "path": "runs/cx320_active_hybrid/frozen_replay_20260820/active_hybrid_frozen_replay_v1.json",
+        "file_sha256": "7138b10f43db35473295d2618836aeaf6ccffaf9942b56c426df4c470dcdad53",
+        "report_sha256": "649cd9422f276dee09c6fbbacbc481a8529fed1a6cfbebd67fe5f49bd5c0825c",
+        "selected_candidate_id": "p21600_cap1_tight_active_v1",
+        "status": "passed"
+      },
+      "exact_bundle": {
+        "path": "runs/cx320_active_hybrid/exact_bundle_passing_20260820/cx320_active_hybrid_exact_bundle_v1.json",
+        "file_sha256": "4a7ee9f08fea39759ca15cbff4547ce51d556235a94a39ba6fa16671a8ea9d9d",
+        "bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae",
+        "firmware_source_sha256": "6fc392da0562a77b0e80845738e57f61e7d8e44b3c41ade2ebc1292bb66b2206",
+        "configuration_sha256": "f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990",
+        "firmware_uf2_sha256": "95864a904e4407b159b30bf45ba8f9d185ad33938cb2a10e50aea4bc712de777"
+      },
+      "structural_preflight": {
+        "path": "runs/cx320_active_hybrid/exact_bundle_passing_20260820/structural_preflight_v1.json",
+        "file_sha256": "b2dfc10d937d291a7014bb5d004030b66a20ce885f13ba2df3e87112c9782032",
+        "preflight_sha256": "24d327260a1d5e5c5de0cc0f030850d490948fd626330ec85ea6bbfbec7ddb93",
+        "status": "passed"
+      },
+      "operational_rehearsal": {
+        "path": "runs/cx320_active_hybrid/operational_rehearsal_passing_20260820",
+        "result_file_sha256": "8aad40d526088506c129c1dc863f93376bff679d4f3b8120c9bd5cc5ccac838d",
+        "evidence_content_sha256": "9b974b84bd31a9c9aea4d6e1e819c45d2e68a2725a981657295eff8c8872064d",
+        "seal_sha256": "9ef2cfa5f1a9b31e527146baf38ba87751effceed83189464eb2812e7b1096bb",
+        "registration_valid": true,
+        "qualification_evidence": false,
+        "physical_actions_performed": 0,
+        "status": "passed"
+      },
+      "authority_proposal": {
+        "path": "profiles/qualification/cx320_active_hybrid_authority_proposal_v1.json",
+        "file_sha256": "22c0c0df67757ae50bdc8ea11b45b69c4508456d82200907c6cf95b2cc56b3ca",
+        "proposal_sha256": "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4",
+        "effective": false
+      },
+      "verification": {
+        "fast_tests_passed": 99,
+        "campaign_tests_passed": 242,
+        "release_current_tests_passed": 802,
+        "release_historical_tests_excluded": 27,
+        "supported_firmware_profiles_passed": 7,
+        "expected_failure_guards_verified": 6
+      },
+      "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md",
+      "next_gate": "separate_explicit_operator_decision_naming_exact_bundle_62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae"
+    },
+    "cx319_stabilized_tight_deadband": {
+      "state": "completed_mapping_informed_part_b_frozen",
+      "allowed_operations": [
+        "historical_validation"
+      ],
+      "effective_date": "2026-08-20",
+      "authority": "completed_programme_no_live_authority",
+      "terminal_report": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md",
+      "mapping_informed_part_b_programme_seal_sha256": "2a954fb564a91834a1d67cf09aae483fe7e73578eff5923bddca85749b02ae0e",
+      "mapping_informed_part_b_programme_seal_file_sha256": "a86569c734ca200de08f268012fb6b4db1fcbc57d27aa4442c68b174e9f6d930",
+      "physical_part_b_acquisitions": 2,
+      "lower_reacquisition": "inferred_not_physically_observed",
+      "last_confirmed_applied_code": 43068,
+      "future_flash_or_reset_effect": "physical_applied_code_unknown_until_new_exact_setup_acknowledgement",
       "operator_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/05_G2_AND_CONDITIONAL_G3_LIVE_AUTHORITY.md",
         "g2_v5_effective": false,
@@ -214,7 +280,7 @@
         "q3_no_write": true,
         "q4_authorized": false
       },
-      "next_gate": "freeze_and_rehearse_survey_derived_part_a_one_code_fine_pass_and_revised_zero_authority_hybrid_preview",
+      "next_gate": "cx320_bounded_active_hybrid_offline_preparation",
       "current_session_rebinding_focused_no_write_authority": {
         "record": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/27_CURRENT_SESSION_REBINDING_FOCUSED_NO_WRITE_AUTHORITY.md",
         "operator_instruction": "authorized",

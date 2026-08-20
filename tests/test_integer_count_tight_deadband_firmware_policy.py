@@ -120,10 +120,14 @@ def test_stage5_firmware_binds_policy_and_keeps_phase_preview_one_way() -> None:
         preview.index("OtisCx317ActiveLiveDecision active_decision") :
         preview.index("otis_cx317_active_live_on_decision", preview.index("OtisCx317ActiveLiveDecision active_decision"))
     ]
-    assert "frequency_error_hz" in decision
-    assert "tight_deadband.frequency_controller_eligible" in decision
-    assert "phase" not in decision.lower()
-    assert "hybrid" not in decision.lower()
+    historical_frequency_path = decision[: decision.index("#if OTIS_ENABLE_CX320_ACTIVE_HYBRID")]
+    cx320_extension = decision[decision.index("#if OTIS_ENABLE_CX320_ACTIVE_HYBRID") :]
+    assert "frequency_error_hz" in historical_frequency_path
+    assert "tight_deadband.frequency_controller_eligible" in historical_frequency_path
+    assert "phase" not in historical_frequency_path.lower()
+    assert "hybrid" not in historical_frequency_path.lower()
+    assert "otis_phase_preview_live_get_active_snapshot" in cx320_extension
+    assert "phase_recorder_published" in cx320_extension
     assert "otis_dac_ad5693r_set_raw" not in cx318
     assert "otis_cx317_active_live_on_decision" not in cx318
     assert "otis_phase_preview_live_update_applied_code" in sketch
