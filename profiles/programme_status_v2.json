@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt7_terminal_attempt8_recovery_in_progress",
+      "state": "stage5_attempt8_activated_ready_for_exact_physical_entry",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx320_stage5_bounded_active_hybrid_live"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": false,
+      "physical_authority_effective": true,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -28,13 +29,13 @@
         "status": "passed_corrected_materiality_counterfactual"
       },
       "exact_bundle": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt7_successor_bundle_20260820_v2/cx320_active_hybrid_exact_bundle_v15.json",
-        "file_sha256": "4f221502bcb240509dd0b93ed53f8a0a5f8a5e625aefd5b2a5cb07389a335de0",
-        "bundle_sha256": "f3f3c87dd23e792061da22e49dd3400ac05fb12463e8156da7b55b3a8bdc8fb8",
-        "firmware_source_revision": "dcb67906ec974856dd7bafd3c94851bd7372e590",
-        "firmware_source_sha256": "5a97de4d0fd9681a7af5cd31ffd38c2cfcfc2fda45894640a5982df4c2072d7b",
+        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_exact_bundle_v16.json",
+        "file_sha256": "6e97cdbea7848782797cefe20fd591e3f6ecee55db1413fae0886512f9a9271c",
+        "bundle_sha256": "6c5380f7a2f6dfe20c64f0eb330ce06a6d068475db26de874ba7e9000bc822f4",
+        "firmware_source_revision": "524c9d4e6fa4dd0aff4e787d3b5221f7b4390888",
+        "firmware_source_sha256": "1aa15e0a88c1090afb751d1418a381a6c2ce4b84542508572a436e0841ab42e2",
         "configuration_sha256": "f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990",
-        "firmware_uf2_sha256": "86bbd57c5a14c153c62ece7badd66e42df18e45b40a58235434037d7759c5df1"
+        "firmware_uf2_sha256": "cdb6c4f413dddf768b444126ea44646ff5d88f7b3073b0ac646ef4c8c7a095ac"
       },
       "root_structural_preflight": {
         "path": "runs/cx320_active_hybrid/exact_bundle_passing_20260820/structural_preflight_v1.json",
@@ -44,11 +45,11 @@
         "superseded_for_entry_by_live_topology_rehearsal": true
       },
       "operational_rehearsal": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt7_live_topology_rehearsal_20260820_v2/cx320_active_hybrid_live_topology_rehearsal_v1.json",
-        "result_file_sha256": "870f3597f8ad1b9ecef9c144ff4e9b0fd55d051803ea43db7bf4dce6ec4e84ea",
-        "rehearsal_sha256": "5110659ab8c7e4c53ab70d415f1da4c7c566982bb9267407406bae2fc98fe8ea",
-        "evidence_content_sha256": "b1e1630c2b8dcf33726c1492da60a9fb91f8e412d309b4356218a536d6909507",
-        "seal_sha256": "8108a828814642246723e73669017fe8cddb7793865997537c504f79b6d8e4ed",
+        "path": "runs/cx320_active_hybrid/stage5_attempt8_live_topology_rehearsal_20260820/cx320_active_hybrid_live_topology_rehearsal_v1.json",
+        "result_file_sha256": "766b71fe3920493fa34dcd78c3773905acd823f26d7655c5195360b676727003",
+        "rehearsal_sha256": "5448f46def92fdde0ac2339be967e031d48a7edf527c2be7f57e7a55495075d4",
+        "evidence_content_sha256": "179f91f4fa708c8fdd0b6bad7365cadddcc304504ecbf76765e559eefa1cb07b",
+        "seal_sha256": "3c966d45afc76253124573aaae3746c65c95b115326fc74737d29e43e6216931",
         "setup_authority_qualification": {
           "firmware_startup_inhibit_s": 600,
           "observed_historical_qualification_s": 612,
@@ -58,6 +59,12 @@
           "first_post_setup_consumer_passed": true
         },
         "first_active_hybrid_wire_field_count": 56,
+        "qualified_device_clock": {
+          "time_domain": "rp2040_timer0",
+          "correction_admission_close_elapsed_s": 41400,
+          "qualified_endpoint_elapsed_s": 43200,
+          "host_utc_step_invariant": true
+        },
         "normal_fifo_saturated": true,
         "priority_abort_observed": true,
         "post_abort_complete_active_snapshot": true,
@@ -68,29 +75,28 @@
         "status": "passed"
       },
       "authority_proposal": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt7_successor_bundle_20260820_v2/cx320_active_hybrid_authority_proposal_v15.json",
-        "file_sha256": "6db429ebe22f49c6a02166d1400119b7caa0c009cb843f69ba05049005fc985b",
-        "proposal_sha256": "7959b6b21102d3b39da0b37e17fb66a0b78b805a6d0620cd045a88e144168fc5",
+        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_authority_proposal_v16.json",
+        "file_sha256": "51989fff8fe272e7f3c1c185c05a9598681113c90d1a0e96a184dfbab5423101",
+        "proposal_sha256": "6f964af71fd9a99f0a7548110797c1fd194ae5d8d07cf6c1cf3e262279a2bfe8",
         "root_authorized_proposal_sha256": "153577ae94dce4faaf5942a80b4118cd51817e9e291f496b80d75e0a200d38f4",
         "root_authorized_bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae",
         "operator_authority_file_sha256": "d085d394df63698cfcbeeb1e7475beee259d302cfc7a4650c9db835c0b0001c8",
         "effective_via_operator_authority_lineage": true,
-        "awaiting_exact_attempt7_activation": false
+        "awaiting_exact_attempt8_activation": false
       },
       "effective_activation": {
-        "path": "runs/cx320_active_hybrid/stage5_activation_attempt7_20260820/cx320_active_hybrid_live_activation_v7.json",
-        "file_sha256": "28da5772de941f0cda278ee36aec18b57392ca33bf73cd67d0daaa37f274a86d",
-        "activation_sha256": "1ad46ad921cb6e017711e4782c8954e550de658f99150b6a78e4a73483656738",
-        "attempt_ordinal": 7,
+        "path": "runs/cx320_active_hybrid/stage5_activation_attempt8_20260820/cx320_active_hybrid_live_activation_v8.json",
+        "file_sha256": "f35efe8931cde8381396cced2bca9fc8bad5f4fb73be60fa7e4f643303cc7524",
+        "activation_sha256": "5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788",
+        "attempt_ordinal": 8,
         "automatic_retry": false,
         "effective": true,
-        "consumed": true,
-        "consumed_by_run_id": "stage5_live_attempt7_20260820T1525Z"
+        "consumed": false
       },
       "structural_preflight": {
-        "path": "runs/cx320_active_hybrid/stage5_attempt7_successor_bundle_20260820_v2/cx320_active_hybrid_structural_preflight_v15.json",
-        "file_sha256": "a2a3aa01e52c64b0335c24be0e7c47ada48407acbec8907268f979a60c15dbbe",
-        "preflight_sha256": "e6dcbb3f1b3aca1f54f4d656043f297f58a677b01c7c55c8499ed8f273c2323f",
+        "path": "runs/cx320_active_hybrid/stage5_attempt8_successor_bundle_20260820/cx320_active_hybrid_structural_preflight_v16.json",
+        "file_sha256": "c7321f18fcc197ca3539b69bdcbe378f8b8effe344cfea9446e38e74f2617285",
+        "preflight_sha256": "320bfa516b019ef9ddada8b95dbab902068e0c8d0f7db905c043b05755edb1e0",
         "status": "passed",
         "physical_actions_performed": 0
       },
@@ -268,10 +274,15 @@
         "attempt8_response_boundary_replay_clock_and_capture_regressions_passed": 128,
         "attempt8_current_release_tests_passed": 878,
         "attempt8_historical_tests_excluded": 27,
-        "attempt8_exact_refreeze_pending": true
+        "attempt8_supported_firmware_profiles_passed": 7,
+        "attempt8_expected_failure_guards_verified": 6,
+        "attempt8_exact_clean_build_passed": true,
+        "attempt8_structural_preflight_passed": true,
+        "attempt8_operational_rehearsal_passed": true,
+        "attempt8_exact_refreeze_pending": false
       },
       "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/10_STAGE5_ATTEMPT7_RESPONSE_BOUNDARY_TERMINAL_AND_ATTEMPT8_RECOVERY.md",
-      "next_gate": "attempt8_consolidated_post_response_rehearsal_and_exact_refreeze"
+      "next_gate": "exact_physical_stage5_attempt_8"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

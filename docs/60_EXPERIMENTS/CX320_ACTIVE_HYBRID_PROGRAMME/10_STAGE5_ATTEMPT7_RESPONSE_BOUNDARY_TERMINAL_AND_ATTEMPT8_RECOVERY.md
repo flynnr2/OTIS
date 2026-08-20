@@ -84,8 +84,8 @@ scientific boundaries.
 
 ## Attempt 8 gate
 
-Attempt 7 consumed activation v7. No physical authority is currently
-effective and no run is active. Attempt 8 may enter only after the response
+Attempt 7 consumed activation v7. At that terminal no physical authority
+remained effective and no run was active. Attempt 8 could enter only after the response
 window, serialization, terminal-generation and qualified-clock regressions
 pass together; the complete post-response seam is accelerated through phase-4
 acknowledgement, tight reacquisition, later re-arm, a second material
@@ -95,3 +95,34 @@ bundle, structural preflight, full live-topology rehearsal and immutable
 activation bind the new source and UF2 identities. Scientific thresholds,
 duration, topology, setup code, actuator limits and progressive authority are
 unchanged.
+
+Those gates passed at source revision
+`524c9d4e6fa4dd0aff4e787d3b5221f7b4390888`. The exact firmware source
+semantic SHA-256 is
+`1aa15e0a88c1090afb751d1418a381a6c2ce4b84542508572a436e0841ab42e2`,
+the unchanged configuration SHA-256 is
+`f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`,
+and UF2 SHA-256 is
+`cdb6c4f413dddf768b444126ea44646ff5d88f7b3073b0ac646ef4c8c7a095ac`.
+All 878 current tests passed with 27 historical-revision tests excluded; all
+seven supported profiles built and all six expected-failure profiles matched
+their declared failures.
+
+Bundle v16 has semantic SHA-256
+`6c5380f7a2f6dfe20c64f0eb330ce06a6d068475db26de874ba7e9000bc822f4`;
+proposal v16 has semantic SHA-256
+`6f964af71fd9a99f0a7548110797c1fd194ae5d8d07cf6c1cf3e262279a2bfe8`;
+and structural preflight v16 passed with semantic SHA-256
+`320bfa516b019ef9ddada8b95dbab902068e0c8d0f7db905c043b05755edb1e0`.
+The complete live-topology rehearsal passed with semantic SHA-256
+`5448f46def92fdde0ac2339be967e031d48a7edf527c2be7f57e7a55495075d4`.
+It additionally proves the device-domain 41,400/43,200-second boundaries
+against forward and backward host UTC changes.
+
+Attempt-8 activation v8 is effective with semantic SHA-256
+`5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788`.
+It binds the attempt-7 terminal, bundle v16, the complete rehearsal, board
+serial `503533748A919118`, `/dev/cu.usbmodem14601`, one flash, one exact setup
+application, one finite live acquisition and the unchanged progressive
+authority envelope. It is not an automatic retry and is consumed by the first
+attempt-8 physical terminal.

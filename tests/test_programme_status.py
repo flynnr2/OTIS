@@ -33,15 +33,18 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
     assert cx320["state"] == (
-        "stage5_attempt7_terminal_attempt8_recovery_in_progress"
+        "stage5_attempt8_activated_ready_for_exact_physical_entry"
     )
-    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert cx320["physical_authority_effective"] is False
+    assert cx320["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        "cx320_stage5_bounded_active_hybrid_live",
+    ]
+    assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "f3f3c87dd23e792061da22e49dd3400ac05fb12463e8156da7b55b3a8bdc8fb8"
+        "6c5380f7a2f6dfe20c64f0eb330ce06a6d068475db26de874ba7e9000bc822f4"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "5110659ab8c7e4c53ab70d415f1da4c7c566982bb9267407406bae2fc98fe8ea"
+        "5448f46def92fdde0ac2339be967e031d48a7edf527c2be7f57e7a55495075d4"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
@@ -99,15 +102,12 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["operational_rehearsal"][
         "post_abort_complete_active_snapshot"
     ] is True
-    assert cx320["effective_activation"]["attempt_ordinal"] == 7
+    assert cx320["effective_activation"]["attempt_ordinal"] == 8
     assert cx320["effective_activation"]["automatic_retry"] is False
     assert cx320["effective_activation"]["effective"] is True
-    assert cx320["effective_activation"]["consumed"] is True
-    assert cx320["effective_activation"]["consumed_by_run_id"] == (
-        "stage5_live_attempt7_20260820T1525Z"
-    )
+    assert cx320["effective_activation"]["consumed"] is False
     assert cx320["effective_activation"]["activation_sha256"] == (
-        "1ad46ad921cb6e017711e4782c8954e550de658f99150b6a78e4a73483656738"
+        "5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788"
     )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
