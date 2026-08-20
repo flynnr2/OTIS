@@ -33,10 +33,13 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert successor["next_gate"] == "cx320_bounded_active_hybrid_offline_preparation"
     cx320 = status["programmes"]["cx320_bounded_active_hybrid"]
     assert cx320["state"] == (
-        "stage5_attempt9_offline_gates_passed_awaiting_activation"
+        "stage5_attempt9_activated_ready_for_exact_physical_entry"
     )
-    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert cx320["physical_authority_effective"] is False
+    assert cx320["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        "cx320_stage5_bounded_active_hybrid_live",
+    ]
+    assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
         "824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54"
     )
@@ -107,12 +110,12 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["operational_rehearsal"][
         "post_abort_complete_active_snapshot"
     ] is True
-    assert cx320["effective_activation"]["attempt_ordinal"] == 8
+    assert cx320["effective_activation"]["attempt_ordinal"] == 9
     assert cx320["effective_activation"]["automatic_retry"] is False
     assert cx320["effective_activation"]["effective"] is True
-    assert cx320["effective_activation"]["consumed"] is True
+    assert cx320["effective_activation"]["consumed"] is False
     assert cx320["effective_activation"]["activation_sha256"] == (
-        "5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788"
+        "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True

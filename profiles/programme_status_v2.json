@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx320_bounded_active_hybrid": {
-      "state": "stage5_attempt9_offline_gates_passed_awaiting_activation",
+      "state": "stage5_attempt9_activated_ready_for_exact_physical_entry",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx320_stage5_bounded_active_hybrid_live"
       ],
       "effective_date": "2026-08-20",
       "authority": "explicit_stage5_operator_authority_with_bounded_recovery",
-      "physical_authority_effective": false,
+      "physical_authority_effective": true,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
       "policy_sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
@@ -85,16 +86,16 @@
         "root_authorized_bundle_sha256": "62ee48c2e8e20e78f30b5c77d7457b37f6f8495b0a536a6b349f59c777d50fae",
         "operator_authority_file_sha256": "d085d394df63698cfcbeeb1e7475beee259d302cfc7a4650c9db835c0b0001c8",
         "effective_via_operator_authority_lineage": true,
-        "awaiting_exact_attempt9_activation": true
+        "awaiting_exact_attempt9_activation": false
       },
       "effective_activation": {
-        "path": "runs/cx320_active_hybrid/stage5_activation_attempt8_20260820/cx320_active_hybrid_live_activation_v8.json",
-        "file_sha256": "f35efe8931cde8381396cced2bca9fc8bad5f4fb73be60fa7e4f643303cc7524",
-        "activation_sha256": "5bd6347234547a3e5e3c2cef29bea3055881e707c3c9a5f684c2d202fdecf788",
-        "attempt_ordinal": 8,
+        "path": "runs/cx320_active_hybrid/stage5_activation_attempt9_20260820/cx320_active_hybrid_live_activation_v9.json",
+        "file_sha256": "271935dcde961b5134dd4a189715a6531fee34873d39aeb753c73b6c4dccb8eb",
+        "activation_sha256": "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db",
+        "attempt_ordinal": 9,
         "automatic_retry": false,
         "effective": true,
-        "consumed": true
+        "consumed": false
       },
       "structural_preflight": {
         "path": "runs/cx320_active_hybrid/stage5_attempt9_successor_bundle_20260820/cx320_active_hybrid_structural_preflight_v17.json",
@@ -314,10 +315,11 @@
         "attempt9_supported_firmware_profiles_passed": 7,
         "attempt9_expected_failure_guards_verified": 6,
         "attempt9_structural_preflight_pending": false,
-        "attempt9_operational_rehearsal_pending": false
+        "attempt9_operational_rehearsal_pending": false,
+        "attempt9_exact_activation_created": true
       },
       "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/11_STAGE5_ATTEMPT8_QUALIFIED_CLOCK_TERMINAL_AND_ATTEMPT9_RECOVERY.md",
-      "next_gate": "attempt9_exact_single_use_activation"
+      "next_gate": "exact_physical_stage5_attempt_9"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

@@ -22,7 +22,7 @@ stream were coherent and the bounded abort left code `0xA83C` fail-static. The
 narrow host predicate and its previously integer-aligned rehearsal seam are
 corrected, and the attempt-9 current-suite, release matrix, structural
 preflight and complete live-topology rehearsal have passed. A single-use
-attempt-9 activation is the next gate.
+attempt-9 activation is effective for the exact physical successor run.
 
 The scientific policy, thresholds, topology, criteria, 12-hour qualified
 duration and progressive actuator envelope remain unchanged.

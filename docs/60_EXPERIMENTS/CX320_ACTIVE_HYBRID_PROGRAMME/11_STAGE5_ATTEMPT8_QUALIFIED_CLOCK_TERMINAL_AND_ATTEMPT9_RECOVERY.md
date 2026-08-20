@@ -100,3 +100,11 @@ analysis, sealing and registration. Its accelerated path establishes the exact
 fractional origin only after the integer lower bound reaches it and proves the
 conservative 41,400/43,200-second device-time boundaries across forward and
 backward host UTC steps. No physical action was performed.
+
+Attempt-9 activation v9 is effective with semantic SHA-256
+`126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db`.
+It binds the attempt-8 terminal seal, bundle v17, the complete rehearsal, board
+serial `503533748A919118`, `/dev/cu.usbmodem14601`, one reflash of the unchanged
+exact UF2, one exact setup application and one finite live acquisition. It is
+not an automatic retry and is consumed by the first attempt-9 physical
+terminal.
