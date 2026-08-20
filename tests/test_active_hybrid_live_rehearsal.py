@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+from hashlib import sha256
+import json
+from pathlib import Path
+
+import pytest
+
+from host.otis_tools import active_hybrid_activation as activation
+from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
+
+
+def _binding(path: Path) -> dict[str, object]:
+    return {
+        "path": str(path.resolve()),
+        "sha256": sha256(path.read_bytes()).hexdigest(),
+        "size_bytes": path.stat().st_size,
+    }
+
+
+def _fixture(tmp_path: Path) -> tuple[Path, dict, Path, dict]:
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text("{}\n", encoding="utf-8")
+    tool_path = tmp_path / "tool.py"
+    tool_path.write_text("# tool\n", encoding="utf-8")
+    bundle_path = tmp_path / "bundle.json"
+    proposal_path = tmp_path / "proposal.json"
+    firmware = {
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "source_sha256": "a" * 64,
+        "configuration_sha256": "b" * 64,
+        "uf2": {"sha256": "c" * 64},
+    }
+    bundle = {
+        "bundle_sha256": "d" * 64,
+        "firmware": firmware,
+        "policy": {
+            **_binding(policy_path),
+            "policy_sha256": "e" * 64,
+        },
+        "host_tools": {"fixture": _binding(tool_path)},
+    }
+    proposal = {
+        "proposal_sha256": "f" * 64,
+        "exact_bundle": {"bundle_sha256": bundle["bundle_sha256"]},
+    }
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+    return bundle_path, bundle, proposal_path, proposal
+
+
+def test_rehearsal_manifest_is_strictly_non_authorizing_and_pty_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    monkeypatch.setattr(rehearsal, "validate_bundle", lambda path: bundle)
+    monkeypatch.setattr(rehearsal, "validate_proposal", lambda path: proposal)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/pts/99",
+    )
+
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+
+    assert observed["qualification_evidence"] is False
+    assert observed["physical_actions_performed"] == 0
+    assert observed["actionable"] is False
+    assert observed["actuation_authorized"] is False
+
+
+def test_rehearsal_manifest_rejects_non_pty_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    monkeypatch.setattr(rehearsal, "validate_bundle", lambda path: bundle)
+    monkeypatch.setattr(rehearsal, "validate_proposal", lambda path: proposal)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/cu.usbmodem-real",
+    )
+
+    with pytest.raises(ValueError, match="no-I/O boundary"):
+        rehearsal.validate_rehearsal_run_manifest(path)
+
+
+def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
+    assert set(rehearsal.REHEARSAL_COVERAGE) == set(
+        activation.REHEARSAL_COVERAGE
+    )

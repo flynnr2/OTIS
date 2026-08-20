@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <utility>
 
 #include "otis_active_hybrid_policy_engine.h"
 
@@ -82,6 +83,20 @@ int main() {
   simple_phase_case("phase_negative", 24);
   simple_phase_case("phase_small_zero", -1);
   simple_phase_case("phase_cap", -1000);
+
+  for (const auto &item : {
+           std::pair<const char *, int64_t>{"phase_frequency_material", -24},
+           std::pair<const char *, int64_t>{"phase_frequency_nonmaterial", -1},
+       }) {
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init(&engine);
+    OtisActiveHybridDecision decision;
+    auto input = observation(1800u);
+    decide_and_emit(item.first, 1u, &engine, &input, &decision);
+    input = observation(3600u, 0xA83Cu, 1u, -0.001, "TIGHT_INSIDE",
+                        item.second, 2u);
+    decide_and_emit(item.first, 2u, &engine, &input, &decision);
+  }
 
   {
     OtisActiveHybridEngine engine;

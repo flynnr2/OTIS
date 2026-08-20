@@ -102,6 +102,24 @@ def _python_rows() -> dict[str, list[dict[str, object]]]:
         "phase_cap": _simple_phase(-1000),
     }
 
+    for name, phase_cycles in (
+        ("phase_frequency_material", -24),
+        ("phase_frequency_nonmaterial", -1),
+    ):
+        controller = ActiveHybridController(load_policy())
+        rows[name] = [
+            _decision(controller, _observation(1800)),
+            _decision(
+                controller,
+                _observation(
+                    3600,
+                    frequency_hz=-0.001,
+                    phase_cycles=phase_cycles,
+                    phase_sequence=2,
+                ),
+            ),
+        ]
+
     for name, error in (("frequency_negative", 0.01), ("frequency_positive", -0.01)):
         controller = ActiveHybridController(load_policy())
         rows[name] = [_decision(controller, _observation(1800, frequency_hz=error, tight_state="OUTSIDE"))]

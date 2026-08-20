@@ -77,6 +77,21 @@ def test_current_floor_requires_supported_cx319_profile_identity(
         load_manifest(run_dir)
 
 
+def test_cx320_active_hybrid_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx320"
+    value = _write_manifest(
+        run_dir,
+        run_id="cx320_active_hybrid_live_fixture",
+        stage="CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_LIVE",
+        cx319=None,
+        cx320={"profile_id": "cx320_active_hybrid"},
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_legacy_manifest_filename_is_rejected_with_revision_guidance(
     tmp_path: Path,
 ) -> None:

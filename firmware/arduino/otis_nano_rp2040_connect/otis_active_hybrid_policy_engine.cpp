@@ -235,16 +235,23 @@ bool otis_active_hybrid_engine_decide(
             &decision->raw_combined_delta_codes,
             &decision->requested_delta_codes, &decision->step_limited,
             &decision->range_clamped);
-        if (phase_authorized) {
-          decision->counterfactual_frequency_only_delta_codes = 0;
-        } else {
-          double ignored_raw = 0.0;
-          bool ignored_step = false;
-          bool ignored_range = false;
-          limited_delta(decision->frequency_term_hz,
-                        observation->applied_code, &ignored_raw,
-                        &decision->counterfactual_frequency_only_delta_codes,
-                        &ignored_step, &ignored_range);
+        double ignored_raw = 0.0;
+        bool ignored_step = false;
+        bool ignored_range = false;
+        limited_delta(decision->frequency_term_hz, observation->applied_code,
+                      &ignored_raw,
+                      &decision->counterfactual_frequency_only_delta_codes,
+                      &ignored_step, &ignored_range);
+        int32_t &counterfactual =
+            decision->counterfactual_frequency_only_delta_codes;
+        const uint16_t counterfactual_movement = static_cast<uint16_t>(
+            counterfactual < 0 ? -counterfactual : counterfactual);
+        if (counterfactual != 0 &&
+            (engine->correction_count + 1u > kMaximumApplications ||
+             engine->cumulative_movement_codes + counterfactual_movement >
+                 kMaximumCumulativeMovementCodes ||
+             chatter_reason(engine, counterfactual) != nullptr)) {
+          counterfactual = 0;
         }
         int32_t &delta = decision->requested_delta_codes;
         if (delta != 0 && phase_authorized &&

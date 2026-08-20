@@ -364,6 +364,25 @@ class ActiveHybridController:
             return "prospective_low_efficiency_path"
         return None
 
+    def _frequency_only_counterfactual_delta(
+        self, frequency_term_hz: float, current_code: int
+    ) -> int:
+        """Replay the final integer request with only the phase term removed."""
+
+        _, delta, _, _ = self._limited_delta(frequency_term_hz, current_code)
+        if delta == 0:
+            return 0
+        if self.correction_count + 1 > self.policy.maximum_applications:
+            return 0
+        if (
+            self.cumulative_movement_codes + abs(delta)
+            > self.policy.maximum_cumulative_movement_codes
+        ):
+            return 0
+        if self._chatter_reason(delta) is not None:
+            return 0
+        return delta
+
     def decide(self, observation: HybridObservation) -> HybridDecision:
         self.decision_sequence += 1
         before = self.state
@@ -493,14 +512,9 @@ class ActiveHybridController:
                     raw_delta, delta, step_limited, range_clamped = self._limited_delta(
                         combined, observation.applied_code
                     )
-                    if phase_authorized:
-                        # Tight-frequency control alone holds.  This is the
-                        # frozen materiality counterfactual for the active policy.
-                        counterfactual_delta = 0
-                    else:
-                        _, counterfactual_delta, _, _ = self._limited_delta(
-                            frequency_term, observation.applied_code
-                        )
+                    counterfactual_delta = self._frequency_only_counterfactual_delta(
+                        frequency_term, observation.applied_code
+                    )
                     if delta != 0 and phase_authorized and delta * phase_term < 0:
                         delta = 0
                         reason = "phase_direction_coherence_hold"

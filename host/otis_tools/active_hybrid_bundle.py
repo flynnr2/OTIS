@@ -17,6 +17,8 @@ TOOL_ID = "cx320_active_hybrid_exact_bundle_v1"
 BUNDLE_ID = "cx320_active_hybrid_12h_qualified_16h_wall_bundle_v1"
 PROFILE_ID = "cx320_active_hybrid"
 PROGRAMME_ID = "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1"
+RUNTIME_RUN_IDENTITY = "cx320_active_hybrid:3200001"
+EXPECTED_BOARD_SERIAL = "503533748A919118"
 REQUIRED_FALSE_AUTHORITY = (
     "effective",
     "firmware_flash",
@@ -50,6 +52,12 @@ TOOL_PATHS = {
     "contract_validator": Path(__file__).with_name("contracts.py"),
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "registration": Path(__file__).with_name("evidence_index.py"),
+    "live_activation_and_manifest": Path(__file__).with_name("active_hybrid_activation.py"),
+    "live_supervisor": Path(__file__).with_name("active_hybrid_live_supervisor.py"),
+    "live_runner": Path(__file__).with_name("active_hybrid_run.py"),
+    "live_analyzer_and_sealer": Path(__file__).with_name("active_hybrid_live_analyze.py"),
+    "live_topology_rehearsal": Path(__file__).with_name("active_hybrid_live_rehearsal.py"),
+    "live_monitor": Path(__file__).with_name("active_hybrid_monitor.py"),
 }
 
 
@@ -125,6 +133,8 @@ def _validate_build(build_manifest_path: Path) -> dict[str, Any]:
         raise ValueError("firmware target differs")
     if not toolchain.get("compiler_identity") or not toolchain.get("installed_sha256"):
         raise ValueError("firmware toolchain identity is incomplete")
+    if source.get("state") != "clean":
+        raise ValueError("exact CX320 live firmware build requires clean source state")
     return {
         "profile_id": PROFILE_ID,
         "build_manifest": _binding(build_manifest_path),
@@ -168,6 +178,7 @@ def create_bundle(
     *, build_manifest_path: Path, replay_path: Path
 ) -> dict[str, Any]:
     policy = load_policy()
+    policy_document = _read_object(DEFAULT_POLICY)
     firmware = _validate_build(build_manifest_path.resolve())
     replay = _validate_replay(replay_path.resolve(), policy.policy_sha256)
     authority = {name: False for name in REQUIRED_FALSE_AUTHORITY}
@@ -188,7 +199,7 @@ def create_bundle(
         .isoformat()
         .replace("+00:00", "Z"),
         "status": "frozen_non_effective_physical_proposal_input",
-        "run_identity": "cx320_active_hybrid_12h_v1:3200001",
+        "run_identity": RUNTIME_RUN_IDENTITY,
         "policy": {
             **_binding(DEFAULT_POLICY),
             "policy_id": policy.policy_id,
@@ -206,6 +217,7 @@ def create_bundle(
             "serial_owner_count": 1,
             "serial_owner": "capture_device",
             "normal_and_priority_abort_fifos_distinct": True,
+            "expected_board_serial": EXPECTED_BOARD_SERIAL,
         },
         "setup": {
             "exact_code": 0xA83C,
@@ -239,6 +251,7 @@ def create_bundle(
             "automatic_restoration": False,
             "live_extension": False,
         },
+        "prospective_metrics": policy_document["prospective_metrics"],
         "progressive_authority": {
             "states": [
                 "FREQUENCY_ACQUIRE",
@@ -256,7 +269,7 @@ def create_bundle(
         "command_envelope": {
             "identity_queries_before_setup": ["CONFIG?", "DUALCORE?", "DAC?", "ACTIVE?"],
             "setup": "ACTIVE SETUP <authorization> <generation> <nonce> <expiry> <session> 0xA83C 1 <configuration_sha256>",
-            "arm": "ACTIVE ARM <authorization> <generation> <nonce>",
+            "arm": "ACTIVE ARM <authorization_sequence> <nonce> <absolute_expiry_s>",
             "evidence_acknowledgement": "ACTIVE EVIDENCE <request_sequence> <phase_1_to_4>",
             "priority_abort_only": "ACTIVE ABORT",
             "normal_command_max_age_s": 2.0,
@@ -303,10 +316,17 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         bundle.get("bundle_id") != BUNDLE_ID
         or bundle.get("programme_id") != PROGRAMME_ID
         or bundle.get("status") != "frozen_non_effective_physical_proposal_input"
+        or bundle.get("run_identity") != RUNTIME_RUN_IDENTITY
+        or bundle.get("topology", {}).get("expected_board_serial")
+        != EXPECTED_BOARD_SERIAL
+        or bundle.get("command_envelope", {}).get("arm")
+        != "ACTIVE ARM <authorization_sequence> <nonce> <absolute_expiry_s>"
     ):
         raise ValueError("unexpected CX320 bundle identity")
     if any(bundle.get("authority", {}).get(name) is not False for name in REQUIRED_FALSE_AUTHORITY):
         raise ValueError("CX320 bundle contains effective physical authority")
+    if set(bundle.get("host_tools", {})) != set(TOOL_PATHS):
+        raise ValueError("CX320 bundle does not bind the complete current host path")
     for section, bindings in (("host_tools", bundle.get("host_tools", {})),):
         if not isinstance(bindings, dict):
             raise ValueError(f"CX320 {section} bindings are unavailable")
@@ -321,6 +341,11 @@ def validate_bundle(path: Path) -> dict[str, Any]:
     policy = load_policy(policy_path)
     if policy.policy_sha256 != policy_binding["policy_sha256"]:
         raise ValueError("CX320 semantic policy binding differs")
+    policy_document = _read_object(policy_path)
+    if bundle.get("prospective_metrics") != policy_document.get(
+        "prospective_metrics"
+    ):
+        raise ValueError("CX320 prospective scientific metrics differ from policy")
     _validate_build(Path(bundle["firmware"]["build_manifest"]["path"]))
     _validate_replay(Path(bundle["offline_replay"]["path"]), policy.policy_sha256)
     return bundle

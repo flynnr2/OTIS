@@ -7,12 +7,15 @@ import pytest
 from host.otis_tools.active_hybrid_evidence_guard import (
     replay_response_before_acknowledgement,
 )
-from host.otis_tools.active_hybrid_policy import load_policy
+from host.otis_tools.active_hybrid_policy import ActiveHybridController, load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
+    _ahy_row,
     _modeled_transaction,
+    _observation,
     _scenario_abort_failure,
     _scenario_clean_degradation,
     _scenario_shared_fault,
+    _transaction_rows,
     _write_csv,
 )
 from host.otis_tools.active_hybrid_supervisor import (
@@ -30,7 +33,7 @@ from host.otis_tools.contracts import (
 def _bundle() -> dict[str, object]:
     policy = load_policy()
     return {
-        "run_identity": "cx320_active_hybrid_12h_v1:3200001",
+        "run_identity": "cx320_active_hybrid:3200001",
         "bundle_sha256": "b" * 64,
         "policy": {"policy_sha256": policy.policy_sha256},
         "firmware": {"build_identity": "a" * 64 + ":" + "c" * 64},
@@ -135,6 +138,84 @@ def test_response_guard_rejects_changed_firmware_delta(tmp_path: Path) -> None:
         if row["event"] == "response"
         and row["decision_sequence"] == material["decision_sequence"]
     )
+    with pytest.raises(ValueError, match="independent host replay differs"):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=response,
+        )
+
+
+def test_response_guard_replays_nonzero_frequency_only_counterfactual(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy()
+    controller = ActiveHybridController(policy)
+    controller.decide(
+        _observation(
+            controller,
+            timestamp_s=1800,
+            sequence=1800,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+        )
+    )
+    decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=3600,
+            sequence=3600,
+            frequency_error_hz=-0.001,
+            counts=-1,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+        )
+    )
+    run_identity = "cx320_active_hybrid:3200001"
+    build_identity = "a" * 64 + ":" + "c" * 64
+    ahy_rows = [
+        _ahy_row(
+            decision,
+            record_sequence=1,
+            run_identity=run_identity,
+            build_identity=build_identity,
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        )
+    ]
+    transaction_rows = _transaction_rows(
+        decision,
+        record_sequence=1,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=abs(decision.requested_delta_codes),
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transaction_rows)
+    response = transaction_rows[-1]
+
+    attestation = replay_response_before_acknowledgement(
+        active_hybrid_csv=ahy_path,
+        active_transactions_csv=act_path,
+        response_row=response,
+    )
+    assert attestation["counterfactual_frequency_only_delta_codes"] == 3
+    assert attestation["requested_delta_codes"] == 6
+
+    ahy_rows[0]["counterfactual_frequency_only_delta_codes"] = "0"
+    ahy_path.unlink()
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
     with pytest.raises(ValueError, match="independent host replay differs"):
         replay_response_before_acknowledgement(
             active_hybrid_csv=ahy_path,

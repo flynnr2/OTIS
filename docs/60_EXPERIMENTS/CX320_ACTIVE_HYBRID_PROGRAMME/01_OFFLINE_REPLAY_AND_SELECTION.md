@@ -8,29 +8,39 @@ tested: a 21,600-second pull-in horizon, `1/600 Hz` phase cap, current tight-ban
 semantics, one combined request path and the four-application/84-code global
 budget.
 
-The immutable local replay report is
-`runs/cx320_active_hybrid/frozen_replay_20260820/active_hybrid_frozen_replay_v1.json`.
+The corrected immutable local replay report is
+`runs/cx320_active_hybrid/materiality_counterfactual_remediation_20260820/active_hybrid_frozen_replay_v2.json`.
 Its file SHA-256 is
-`7138b10f43db35473295d2618836aeaf6ccffaf9942b56c426df4c470dcdad53` and
-its semantic `report_sha256` is
-`649cd9422f276dee09c6fbbacbc481a8529fed1a6cfbebd67fe5f49bd5c0825c`.
+`aa8a1e35adc70ae3ee6e3b9c5e64587fe35f43331e5a64633e6d96038167c4cb`
+and its semantic `report_sha256` is
+`4213b70888f8091a7a399f40c17c271813b545d2c6350e3997ecc6c694a8b824`.
 The selected policy SHA-256 is
 `4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d`.
+
+The original v1 replay is retained as superseded evidence. Its implementation
+set the frequency-only counterfactual to zero whenever phase authority was
+present instead of replaying the same integer request with only the phase term
+removed. That could overstate phase materiality. The v2 replay corrects that
+decision-bearing predicate without changing the frozen policy, scientific
+thresholds, source evidence or physical observations.
 
 ## Frozen-evidence result
 
 All four source streams exercised the progressive checkpoint and respected
 step, range, count and cumulative budgets at nominal measured plant gain:
 
-| Source | Applications | Frequency-only | Phase-material | Path (codes) | Terminal |
-|---|---:|---:|---:|---:|---|
-| Part A mapping | 4 | 1 | 3 | 22 | clean phase degradation to frequency-only |
-| Part B lower | 4 | 1 | 3 | 36 | hybrid tracking |
-| Part B original upper | 4 | 1 | 3 | 8 | hybrid tracking |
-| Part B upper completion | 4 | 2 | 2 | 24 | hybrid tracking |
+| Source | Applications | Frequency-only | Phase-nonzero | Phase-material | Path (codes) | Terminal |
+|---|---:|---:|---:|---:|---:|---|
+| Part A mapping | 4 | 2 | 3 | 2 | 22 | clean phase degradation to frequency-only |
+| Part B lower | 4 | 1 | 3 | 3 | 36 | hybrid tracking |
+| Part B original upper | 4 | 1 | 3 | 3 | 8 | hybrid tracking |
+| Part B upper completion | 4 | 3 | 2 | 1 | 24 | hybrid tracking |
 
-There were no modeled range clamps or fail-static terminals. The selected
-candidate retained at least two material applications in every source stream.
+There were no modeled range clamps or fail-static terminals. Three source
+streams retained at least two material applications; the upper-completion
+stream retained one. A phase-nonzero application is not counted as material
+unless removing phase and replaying the same rounding and limiting rules
+changes the final integer DAC request.
 The 10,800-second and double-cap alternatives were retained only as finite
 comparisons; neither supplied evidence sufficient to justify its greater
 aggression. Sensitivity replay over the measured minimum, nominal and maximum
