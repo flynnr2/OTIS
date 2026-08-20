@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
+from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    canonical_prewrite_fixture,
+)
 from host.otis_tools.prewrite_readiness_contract import PrewriteReadiness
 
 
@@ -171,6 +175,25 @@ def _ready() -> PrewriteReadiness:
     )
 
 
+def _prewrite_health(
+    supervisor: live.ActiveHybridLiveSupervisor,
+) -> dict[tuple[str, str], str]:
+    expected = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": supervisor.expected_build_identity,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = canonical_prewrite_fixture(
+        expected_identity=expected,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    health[("cx317_active", "query_nonce")] = str(
+        supervisor.state["host_attach_query_nonce"]
+    )
+    return health
+
+
 def _write_control_hold(supervisor: live.ActiveHybridLiveSupervisor) -> None:
     path = supervisor.run_dir / live.CONTROL_CSV
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -217,6 +240,55 @@ def test_exact_runtime_identity_and_frozen_envelope() -> None:
     ]
     assert live.QUALIFIED_DURATION_S == 12 * 60 * 60
     assert live.ABSOLUTE_WALL_LIMIT_S == 16 * 60 * 60
+
+
+def test_cx320_uses_observed_raw_pps_qualification_deadline(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+
+    assert supervisor.prewrite_contract_startup_grace_s == (
+        RAW_PPS_QUALIFICATION_DEADLINE_S
+    )
+
+
+def test_cx320_prewrite_waits_for_exact_firmware_setup_authority(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = _prewrite_health(supervisor)
+    health[("cx317_active", "setup_reference_eligible")] = "false"
+
+    readiness = supervisor._prewrite_readiness(health)
+    supervisor._maybe_start_or_arm(health)
+
+    assert readiness.ready is False
+    assert readiness.contract_id == (
+        "cx320_active_hybrid_prewrite_runtime_contract_v1"
+    )
+    assert readiness.mismatches == (
+        "cx317_active.setup_reference_eligible='false', expected 'true' "
+        "before setup",
+    )
+    assert commands == []
+    assert supervisor.state["manual_start_sent"] is False
+    assert not (
+        supervisor.run_dir / "reports/setup_authority_input_v1.json"
+    ).exists()
+
+
+def test_cx320_prewrite_accepts_the_complete_setup_authority_snapshot(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+
+    readiness = supervisor._prewrite_readiness(_prewrite_health(supervisor))
+
+    assert readiness.ready is True
+    assert readiness.missing == ()
+    assert readiness.mismatches == ()
 
 
 def test_production_factory_validates_the_run_manifest(

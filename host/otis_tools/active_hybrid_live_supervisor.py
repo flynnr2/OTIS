@@ -34,11 +34,17 @@ from .active_transactions import (
     _utc_now,
 )
 from .contracts import CsvValidationContext, validate_csv
+from .bounded_tight_deadband_prewrite_contract import (
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    PrewriteReadiness,
+    evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
+)
 from .frequency_control_supervisor import (
     ARM_LIFETIME_S,
     ARM_PROGRESS_THRESHOLD,
     CONTROL_CSV,
     CORRECTION_RESPONSE_RESERVE_S,
+    DAC_CSV,
     DECISION_CADENCE_S,
     SELECTED_INTERVAL_S,
     FrequencyControlSupervisor,
@@ -297,6 +303,14 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             leg=TightDeadbandLeg("CX320", 0, "combined_frequency_phase"),
             allow_manual_start=True,
             allow_arm=True,
+            # The installed profile deliberately inhibits D14/D8 control
+            # eligibility for 600 s.  Prior physical CX319 evidence first
+            # observed the same predicate at 612 s, so retain its frozen
+            # 660 s qualification deadline rather than the older CX318
+            # 30 s complete-snapshot grace.
+            prewrite_contract_startup_grace_s=(
+                RAW_PPS_QUALIFICATION_DEADLINE_S
+            ),
             qualified_timeout_s=QUALIFIED_DURATION_S,
             **kwargs,
         )
@@ -330,6 +344,45 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("phase_material_application_count", 0)
         self.state.setdefault("terminal_static_code", None)
         self._save()
+
+    def _prewrite_readiness(
+        self, health: dict[tuple[str, str], str]
+    ) -> PrewriteReadiness:
+        """Require the firmware's exact setup-authority inputs before setup."""
+
+        identity = {
+            "run_identity": self.spec.run_identity,
+            "build_identity": self.expected_build_identity,
+            "profile_identity": self.spec.profile,
+            **self.identities,
+        }
+        readiness = evaluate_setup_prewrite_readiness(
+            health,
+            expected_identity=identity,
+            planned_live_stimulus_code=self.spec.start_code,
+            active_row_count=len(_read_csv(self.run_dir / ACTIVE_CSV)),
+            dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
+            telemetry_drop_baseline=0,
+        )
+        mismatches = list(readiness.mismatches)
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
+            mismatches.append("solicited post-attachment snapshot is absent")
+        return PrewriteReadiness(
+            contract_id="cx320_active_hybrid_prewrite_runtime_contract_v1",
+            ready=not readiness.missing and not mismatches,
+            missing=readiness.missing,
+            mismatches=tuple(dict.fromkeys(mismatches)),
+            inherited_preview_baseline_code=(
+                readiness.inherited_preview_baseline_code
+            ),
+            inherited_preview_baseline_provenance=(
+                readiness.inherited_preview_baseline_provenance
+            ),
+            planned_live_stimulus_code=readiness.planned_live_stimulus_code,
+            physical_dac_confirmation=readiness.physical_dac_confirmation,
+        )
 
     def _validate_hybrid_decisions(self) -> None:
         path = self.run_dir / ACTIVE_HYBRID_CSV
