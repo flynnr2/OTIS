@@ -38,10 +38,10 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     ]
     assert cx320["physical_authority_effective"] is True
     assert cx320["exact_bundle"]["bundle_sha256"] == (
-        "4d83a7ec30284713d315b7e171c7ea6daac78389275ac2677e37c16eb23fe774"
+        "7ca36f272f8d3210822452b1b7bac83ef12ed8c5d544bccc87dfe9e894228559"
     )
     assert cx320["operational_rehearsal"]["rehearsal_sha256"] == (
-        "df12f75f840d2a2bf5e52c51b7fde0e690a5fb6af4e0471808910797ab2084dd"
+        "baa3a62b5f0fab34c7f765d6663cf07d447f28e58f589d45b18628238240691b"
     )
     assert cx320["stage5_attempts"][0]["setup_applications"] == 0
     assert cx320["stage5_attempts"][0]["automatic_applications"] == 0
@@ -56,6 +56,13 @@ def test_tracked_status_records_frozen_cx319_and_authorized_cx320_next_gate() ->
     assert cx320["stage5_attempts"][2]["automatic_applications"] == 0
     assert cx320["stage5_attempts"][2]["classification"] == (
         "platform_escape_into_campaign"
+    )
+    assert cx320["stage5_attempts"][3]["setup_requests"] == 1
+    assert cx320["stage5_attempts"][3]["setup_applications"] == 1
+    assert cx320["stage5_attempts"][3]["automatic_applications"] == 0
+    assert cx320["stage5_attempts"][3]["last_confirmed_code"] == 0xA83C
+    assert cx320["stage5_attempts"][3]["classification"] == (
+        "firmware_defect_under_intended_stress"
     )
     assert cx320["operational_rehearsal"]["setup_authority_qualification"] == {
         "firmware_startup_inhibit_s": 600,
