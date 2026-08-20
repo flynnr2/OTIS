@@ -374,6 +374,22 @@ def test_hybrid_response_checkpoint_uses_observed_sign_not_class_name() -> None:
     )
 
 
+def test_abort_consumption_publishes_complete_resulting_active_snapshot() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    start = sketch.index(
+        "message.run_control.kind == OtisRunControlKind::Abort"
+    )
+    branch = sketch[
+        start : sketch.index("OtisRunControlKind::EvidenceRelease", start)
+    ]
+    abort = branch.index("otis_cx317_active_live_abort")
+    accepted = branch.index("abort_accepted_on_core1", abort)
+    snapshot = branch.index("publish_dual_core_active_status", accepted)
+    assert abort < accepted < snapshot
+
+
 def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"

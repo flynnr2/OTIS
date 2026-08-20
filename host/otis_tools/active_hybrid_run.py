@@ -32,6 +32,7 @@ from .active_hybrid_activation import (
     validate_activation,
     validate_frozen_run_manifest,
 )
+from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .board_identity import read_board_identity
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .evidence import (
@@ -392,9 +393,10 @@ def _record_abort_delivery_failure(
             "error": str(error),
             "delivery_status": "bounded_failure",
             "claims_boundary": (
-                "Priority abort delivery was not confirmed before the bounded "
-                "deadline. This record does not claim that firmware received or "
-                "applied the abort."
+                "Priority abort delivery plus a complete resulting firmware "
+                "ABORTED/fail-static snapshot was not confirmed before the "
+                "bounded deadline. This record does not claim that firmware "
+                "consumed and applied the abort."
             ),
         },
     )
@@ -409,12 +411,36 @@ def _wait_for_terminal_abort_delivery(
 
     def delivered() -> bool:
         state = _read_json(run_dir / "reports/capture_device_state.json")
-        return bool(
+        if not (
             state
             and state.get("capture_active") is True
             and state.get("emergency_abort_latched") is True
             and int(state.get("emergency_aborts_sent", 0)) == 1
-        )
+        ):
+            return False
+        live = read_live_health_state(run_dir / LIVE_STATE_PATH)
+        if live.state != "complete":
+            return False
+        health = live.health
+        if not (
+            health.get(("cx317_active", "state")) == "ABORTED"
+            and health.get(("cx317_active", "fail_static")) == "true"
+            and health.get(("cx317_active", "evidence_pending")) == "false"
+            and health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
+            and health.get(("cx317_active", "evidence_request_sequence")) == "0"
+        ):
+            return False
+        static_code = terminal.get("last_confirmed_code")
+        if type(static_code) is int:
+            return bool(
+                health.get(("cx317_active", "confirmed_applied_code_known"))
+                == "true"
+                and int(
+                    health.get(("cx317_active", "confirmed_applied_code"), "-1")
+                )
+                == static_code
+            )
+        return static_code is None
 
     try:
         _wait_until(

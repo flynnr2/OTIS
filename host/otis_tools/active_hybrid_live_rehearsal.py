@@ -32,6 +32,7 @@ from .active_hybrid_live_supervisor import (
     ActiveHybridLiveSupervisor,
     load_active_hybrid_spec,
 )
+from .active_hybrid_run import _wait_for_terminal_abort_delivery
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_rehearsal import run as run_accelerated_rehearsal
 from .active_status_contract import (
@@ -48,6 +49,7 @@ from .bounded_tight_deadband_prewrite_contract import (
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
+from .contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
 from .run_paths import default_csv_files
 from .serial_commands import send_timestamped_command_to_fifo
 
@@ -69,6 +71,7 @@ REHEARSAL_COVERAGE = (
     "emergency_abort_fifo",
     "host_abort_fifo",
     "live_supervisor_process",
+    "first_active_hybrid_wire_record",
     "active_hybrid_status_handoff",
     "setup_authority_qualification_deadline",
     "setup_propagation",
@@ -79,6 +82,7 @@ REHEARSAL_COVERAGE = (
     "shared_fail_static_fault",
     "transport_obstruction",
     "terminal_abort_delivery_before_capture_close",
+    "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
 )
@@ -154,6 +158,106 @@ def _read_until(master: int, expected: bytes, timeout_s: float = 10.0) -> bytes:
     raise TimeoutError(
         f"did not observe emulated firmware command {expected!r}: {observed!r}"
     )
+
+
+def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
+    values = {field: "0" for field in ACTIVE_HYBRID_DECISION_V1_FIELDS}
+    values.update(
+        {
+            "record_type": "AHY",
+            "schema_version": "1",
+            "hybrid_record_sequence": "1",
+            "decision_sequence": "1",
+            "decision_timestamp_s": "2401",
+            "run_identity": RUN_IDENTITY,
+            "build_identity": str(bundle["firmware"]["build_identity"]),
+            "profile_identity": PROFILE_ID,
+            "capture_session": "1",
+            "source_first_sequence": "1799",
+            "source_last_sequence": "2399",
+            "frequency_estimator_sha256": "a" * 64,
+            "frequency_error_hz": "0.001666666940",
+            "accumulated_edge_error_counts": "1",
+            "tight_state": "OUTSIDE",
+            "phase_estimator_sha256": "b" * 64,
+            "phase_epoch": "1",
+            "phase_observation_sequence": "2394",
+            "relative_phase_cycles": "4",
+            "phase_continuous": "true",
+            "phase_current": "true",
+            "phase_step_detected": "false",
+            "phase_recorder_published": "true",
+            "current_applied_code": str(0xA83C),
+            "dac_epoch": "1",
+            "phase_applied_code": str(0xA83C),
+            "phase_dac_epoch": "1",
+            "state_before": "FREQUENCY_ACQUIRE",
+            "state_after": "FREQUENCY_ACQUIRE",
+            "frequency_term_hz": "-0.001666666940",
+            "phase_term_hz": "0.000000000000",
+            "combined_demand_hz": "-0.001666666940",
+            "raw_combined_delta_codes": "0.000000000000",
+            "requested_delta_codes": "0",
+            "requested_code": str(0xA83C),
+            "counterfactual_frequency_only_delta_codes": "0",
+            "phase_materially_influenced": "false",
+            "step_limited": "false",
+            "range_clamped": "false",
+            "cadence_limited": "true",
+            "count_limited": "false",
+            "cumulative_budget_limited": "false",
+            "correction_count_before": "0",
+            "cumulative_movement_before_codes": "0",
+            "authority_state": "ARMED",
+            "request_sequence": "0",
+            "acceptance_sequence": "0",
+            "application_sequence": "0",
+            "response_class": "unavailable",
+            "actual_applied_code": str(0xA83C),
+            "actual_dac_epoch": "1",
+            "downstream_epoch_exact": "true",
+            "reason": "minimum_applied_cadence_hold",
+            "active_policy_sha256": "c" * 64,
+            "response_policy_sha256": "d" * 64,
+            "actionable": "false",
+        }
+    )
+    return (
+        ",".join(values[field] for field in ACTIVE_HYBRID_DECISION_V1_FIELDS)
+        + "\r\n"
+    ).encode()
+
+
+def _post_abort_active_status_wire_fixture(*, generation: int) -> bytes:
+    values = {key: "unavailable" for key in ACTIVE_STATUS_KEYS}
+    values.update(
+        {
+            "enabled": "true",
+            "state": "ABORTED",
+            "reason": "device_abort_command_via_core0",
+            "evidence_pending": "false",
+            "evidence_phase": "evidence_clear",
+            "fail_static": "true",
+            "hybrid_state": "FAIL_STATIC",
+            "hybrid_reason": "device_abort_command_via_core0",
+            "evidence_request_sequence": "0",
+            "confirmed_applied_code_known": "false",
+            "confirmed_applied_code": "unavailable",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+        }
+    )
+    records = [
+        (SNAPSHOT_BEGIN_KEY, str(generation)),
+        (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+        *((key, values[key]) for key in ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_COMPLETE_KEY, str(generation)),
+    ]
+    return "".join(
+        f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+        f"cx317_active,{key},{value},INFO,0\r\n"
+        for sequence, (key, value) in enumerate(records, start=1)
+    ).encode()
 
 
 def _binding_matches(binding: object) -> bool:
@@ -661,6 +765,17 @@ def _run_real_process_topology(
             "real live supervisor and host-abort FIFO",
         )
         initial_commands = _read_until(master, b"DAC?\n")
+        os.write(master, _active_hybrid_wire_fixture(bundle))
+        _wait_until(
+            lambda: len(
+                (run_dir / "csv/active_hybrid_decisions_v1.csv")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            )
+            == 2,
+            10.0,
+            "first exact 56-field active-hybrid wire record",
+        )
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
         for _ in range(100_000):
@@ -687,12 +802,17 @@ def _run_real_process_topology(
             10.0,
             "priority abort delivery through sole owner",
         )
+        os.write(master, _post_abort_active_status_wire_fixture(generation=1))
         supervisor_output, _ = supervisor.communicate(timeout=15)
         if supervisor.returncode != 3:
             raise RuntimeError(
                 "live supervisor rehearsal did not reach independent-host-abort "
                 f"terminal: exit={supervisor.returncode}; {supervisor_output[-2000:]}"
             )
+        terminal_state = _read_object(
+            run_dir / "reports/cx317_active_supervisor_state.json"
+        )
+        _wait_for_terminal_abort_delivery(run_dir, terminal_state["terminal"])
         prepare_transition(run_dir / "run_manifest.json", transition_dir)
         rotation = request_rotation(
             control_dir=carrier_dir,
@@ -743,6 +863,11 @@ def _run_real_process_topology(
         "normal_fifo_saturated": normal_fifo_saturated,
         "priority_abort_observed": b"ACTIVE ABORT\n" in observed_commands,
         "capture_emergency_aborts_sent": state.get("emergency_aborts_sent"),
+        "capture_parser_errors": state.get("parser_errors"),
+        "first_active_hybrid_wire_field_count": len(
+            ACTIVE_HYBRID_DECISION_V1_FIELDS
+        ),
+        "post_abort_complete_active_snapshot": True,
         "supervisor_terminal": terminal.get("terminal"),
         "rotation": rotation,
         "capture_output_sha256": sha256(capture_output.encode()).hexdigest(),
@@ -814,7 +939,9 @@ def run(
                 "emergency_abort_fifo",
                 "host_abort_fifo",
                 "live_supervisor_process",
+                "first_active_hybrid_wire_record",
                 "terminal_abort_delivery_before_capture_close",
+                "post_abort_complete_active_snapshot",
                 "logical_evidence_rotation",
             ],
             "accelerated_deterministic": [

@@ -999,6 +999,9 @@ void service_dual_core_timing_inputs(void) {
         snprintf(transition.reason, sizeof(transition.reason), "%s",
                  "abort_accepted_on_core1");
         otis_dual_core_publish_critical(&transition);
+        // Preserve the resulting consumer state before the sole serial owner
+        // closes; producer-side command delivery is not proof of consumption.
+        publish_dual_core_active_status(millis());
       } else if (message.run_control.kind ==
                  OtisRunControlKind::EvidenceRelease) {
         const bool accepted = otis_cx317_active_live_acknowledge_evidence(

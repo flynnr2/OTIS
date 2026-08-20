@@ -52,6 +52,7 @@ REHEARSAL_COVERAGE = (
     "emergency_abort_fifo",
     "host_abort_fifo",
     "live_supervisor_process",
+    "first_active_hybrid_wire_record",
     "active_hybrid_status_handoff",
     "setup_authority_qualification_deadline",
     "setup_propagation",
@@ -62,6 +63,7 @@ REHEARSAL_COVERAGE = (
     "shared_fail_static_fault",
     "transport_obstruction",
     "terminal_abort_delivery_before_capture_close",
+    "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
 )

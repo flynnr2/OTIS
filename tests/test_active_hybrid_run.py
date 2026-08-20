@@ -145,6 +145,46 @@ def test_abort_delivery_timeout_is_recorded_before_capture_may_close(
     assert failure["terminal"] == terminal
 
 
+def test_abort_delivery_waits_for_complete_consumed_firmware_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "last_confirmed_code": 0xA83C,
+    }
+    _write(
+        tmp_path / "reports/capture_device_state.json",
+        {
+            "capture_active": True,
+            "emergency_abort_latched": True,
+            "emergency_aborts_sent": 1,
+        },
+    )
+    live = SimpleNamespace(
+        state="complete",
+        health={
+            ("cx317_active", "state"): "ABORTED",
+            ("cx317_active", "fail_static"): "true",
+            ("cx317_active", "evidence_pending"): "false",
+            ("cx317_active", "evidence_phase"): "evidence_clear",
+            ("cx317_active", "evidence_request_sequence"): "0",
+            ("cx317_active", "confirmed_applied_code_known"): "true",
+            ("cx317_active", "confirmed_applied_code"): str(0xA83C),
+        },
+    )
+    monkeypatch.setattr(runner, "read_live_health_state", lambda _path: live)
+    observed = []
+
+    def wait(predicate, _timeout, description):  # type: ignore[no-untyped-def]
+        observed.append(description)
+        assert predicate()
+
+    monkeypatch.setattr(runner, "_wait_until", wait)
+    runner._wait_for_terminal_abort_delivery(tmp_path, terminal)
+    assert observed == ["priority abort delivery before sole-owner capture close"]
+
+
 def test_prewrite_abort_does_not_invent_a_confirmed_static_code() -> None:
     assert runner._terminal_expected(
         {
