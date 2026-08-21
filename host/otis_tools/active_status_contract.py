@@ -85,6 +85,19 @@ CX321_ACTIVE_STATUS_WIRE_KEYS = (
 ALL_ACTIVE_STATUS_WIRE_KEYS = frozenset(
     (*ACTIVE_STATUS_WIRE_KEYS, *CX321_ACTIVE_STATUS_WIRE_KEYS)
 )
+# The frozen CX321 firmware transports status keys through a 40-byte
+# cross-core field.  This one 41-character semantic key is therefore observed
+# on the wire with its last two characters truncated.  Preserve the raw CSV,
+# but canonicalize the known one-to-one spelling in derived status state.
+ACTIVE_STATUS_WIRE_KEY_ALIASES = {
+    "plant_sign_accumulator_accepted_interva": (
+        "plant_sign_accumulator_accepted_intervals"
+    ),
+}
+
+
+def canonical_active_status_key(key: str) -> str:
+    return ACTIVE_STATUS_WIRE_KEY_ALIASES.get(key, key)
 
 
 def active_status_wire_keys(contract: str) -> tuple[str, ...] | None:
@@ -140,7 +153,7 @@ def complete_active_status_snapshots(
             ACTIVE_STATUS_COMPONENT
         ):
             continue
-        key = row.get("status_key", "")
+        key = canonical_active_status_key(row.get("status_key", ""))
         value = row.get("status_value", "")
         if key == SNAPSHOT_BEGIN_KEY:
             current_generation = _unsigned_generation(value)

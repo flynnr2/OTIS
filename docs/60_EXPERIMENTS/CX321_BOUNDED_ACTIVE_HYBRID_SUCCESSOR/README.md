@@ -1,8 +1,8 @@
 # CX321 Bounded Active-Hybrid Successor
 
-Status: exact clean-source bundle, structural preflight and same-bundle
-rehearsal passed; the operator-authorized single-use Stage 5 activation is
-effective and physical entry is pending.
+Status: two prewrite platform terminals are sealed with no setup or DAC write;
+the narrow host status-key correction is verified and exact refreeze is
+pending under the operator's expanded remediation authority.
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -242,4 +242,13 @@ as `f8e3bb8a1b887ed10c303e93d871eeb369cb19e05700d149708d38b370edadc5`.
 The operator's expanded remediation authority permits the exact predecessor-
 bound attempt-2 activation
 `9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac`;
-the firmware, bundle and scientific criteria remain unchanged.
+the firmware, bundle and scientific criteria remained unchanged. Attempt 2
+passed flash, sole serial ownership, capture and identity queries with zero
+parser loss, then stopped before setup because the firmware's 40-byte cross-
+core status-key field emitted the 41-character
+`plant_sign_accumulator_accepted_intervals` key as the unique truncated wire
+spelling `plant_sign_accumulator_accepted_interva`. The priority abort was
+delivered; no setup, DAC write or control arm occurred. The retained raw CSV is
+unchanged. Host-derived live status now canonicalizes that one frozen spelling,
+and exact bundle refreeze plus the shortest affected rehearsal are pending;
+scientific criteria remain unchanged.

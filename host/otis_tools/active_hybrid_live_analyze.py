@@ -1334,20 +1334,24 @@ def analyze(
         if programme.identification_required
         else None
     )
-    ahy_replay = _replay_ahy(
-        decision_rows,
-        active_rows,
-        policy_path=policy_path,
-        expected_run_identity=spec.run_identity,
-        expected_build_identity=build_identity,
-        expected_profile_identity=spec.profile,
-        expected_active_policy_sha256=(
-            str(manifest_value["programme_policy"]["sha256"])
-            if programme.identification_required
-            else policy.policy_sha256
-        ),
-        plant_sign_records=plant_sign_records,
-    )
+    try:
+        ahy_replay = _replay_ahy(
+            decision_rows,
+            active_rows,
+            policy_path=policy_path,
+            expected_run_identity=spec.run_identity,
+            expected_build_identity=build_identity,
+            expected_profile_identity=spec.profile,
+            expected_active_policy_sha256=(
+                str(manifest_value["programme_policy"]["sha256"])
+                if programme.identification_required
+                else policy.policy_sha256
+            ),
+            plant_sign_records=plant_sign_records,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        retained_input_failures.append(f"active-hybrid replay: {exc}")
+        ahy_replay = {"exact": False, "error": str(exc)}
 
     supervisor_state = _read_object_or_empty(
         run_dir / SUPERVISOR_STATE,

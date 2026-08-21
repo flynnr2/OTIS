@@ -399,11 +399,23 @@ def test_partial_prewrite_terminal_is_sealed_as_platform_fault(
     monkeypatch.setattr(
         live_analyze, "validate_frozen_run_manifest", lambda _path: manifest
     )
+    monkeypatch.setattr(
+        live_analyze,
+        "_replay_ahy",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("partial active-hybrid evidence is unavailable")
+        ),
+    )
     output, seal = live_analyze.analyze(run_dir)
     assert output.is_file()
     assert seal["status"] == "failed"
     assert seal["primary_decision"] == "measurement_authority_or_platform_fault"
     assert seal["missing_source_artifacts"]
+    assert any(
+        "active-hybrid replay: partial active-hybrid evidence is unavailable"
+        in failure
+        for failure in seal["retained_input_failures"]
+    )
     assert seal["offline_finalization_gate"]["passed"] is False
 
 
