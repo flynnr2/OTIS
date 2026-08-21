@@ -14,11 +14,11 @@ from typing import Iterable, Mapping
 
 from .active_status_contract import (
     ACTIVE_STATUS_COMPONENT,
-    ACTIVE_STATUS_SNAPSHOT_CONTRACT,
-    ACTIVE_STATUS_WIRE_KEYS,
+    ALL_ACTIVE_STATUS_WIRE_KEYS,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
+    active_status_wire_keys,
 )
 
 
@@ -143,7 +143,7 @@ class ActiveStatusLiveReducer:
                 "in_progress", row, reason="snapshot_generation_started"
             )
 
-        if self.current_generation is None or key not in ACTIVE_STATUS_WIRE_KEYS:
+        if self.current_generation is None or key not in ALL_ACTIVE_STATUS_WIRE_KEYS:
             return None
         if key in self.current_active:
             return self._invalidate(
@@ -156,20 +156,21 @@ class ActiveStatusLiveReducer:
             return None
 
         completed_generation = _positive_int(row.get("status_value"))
-        missing = sorted(set(ACTIVE_STATUS_WIRE_KEYS) - set(self.current_active))
         contract = self.current_active.get(SNAPSHOT_CONTRACT_KEY, {}).get(
             "status_value"
         )
+        required_wire_keys = active_status_wire_keys(str(contract))
         if completed_generation != self.current_generation:
             return self._invalidate(
                 row,
                 "snapshot completion generation differs from begin: "
                 f"{completed_generation} != {self.current_generation}",
             )
-        if contract != ACTIVE_STATUS_SNAPSHOT_CONTRACT:
+        if required_wire_keys is None:
             return self._invalidate(
                 row, f"active snapshot contract is {contract!r}"
             )
+        missing = sorted(set(required_wire_keys) - set(self.current_active))
         if missing:
             return self._invalidate(
                 row, "active snapshot is missing keys: " + ", ".join(missing)
@@ -268,9 +269,17 @@ def read_live_health_state(
             )
         latest[record_key] = str(item.get("status_value", ""))
 
+    contract = latest.get(
+        (ACTIVE_STATUS_COMPONENT, SNAPSHOT_CONTRACT_KEY), ""
+    )
+    required_wire_keys = active_status_wire_keys(contract)
+    if required_wire_keys is None:
+        return _invalid_state(
+            f"complete live-health active snapshot contract is {contract!r}"
+        )
     active = {
         key: latest.get((ACTIVE_STATUS_COMPONENT, key))
-        for key in ACTIVE_STATUS_WIRE_KEYS
+        for key in required_wire_keys
     }
     missing = sorted(key for key, item in active.items() if item is None)
     if missing:
@@ -281,7 +290,7 @@ def read_live_health_state(
     if (
         active[SNAPSHOT_BEGIN_KEY] != str(generation)
         or active[SNAPSHOT_COMPLETE_KEY] != str(generation)
-        or active[SNAPSHOT_CONTRACT_KEY] != ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        or active[SNAPSHOT_CONTRACT_KEY] != contract
     ):
         return _invalid_state("complete live-health active snapshot is invalid")
     if required_query_nonce is not None and active.get("query_nonce") != str(

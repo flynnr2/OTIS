@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
+import json
 
 import pytest
 
@@ -22,7 +24,10 @@ from host.otis_tools.active_hybrid_rehearsal import (
     _scenario_shared_fault,
     _transaction_rows,
     _write_csv,
+    run as run_accelerated_rehearsal,
 )
+from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
+from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_hybrid_supervisor import (
     ActiveHybridSupervisor,
     SupervisorContractError,
@@ -97,6 +102,128 @@ def test_accelerated_path_exercises_material_checkpoint_and_shared_budget(
     assert attestation["phase_materially_influenced"] is True
     assert attestation["response_class"] == "inside_deadband"
     assert attestation["predicted_sign_observed"] is True
+
+
+def test_cx321_accelerated_path_asserts_the_frozen_natural_timing_bridge() -> None:
+    bundle = _bundle()
+    programme_policy_path = CX321_PROGRAMME.policy_path
+    bundle.update(
+        {
+            "run_identity": CX321_PROGRAMME.runtime_run_identity,
+            "programme_policy": {
+                "path": str(programme_policy_path),
+                "sha256": sha256(programme_policy_path.read_bytes()).hexdigest(),
+            },
+            "policy": {
+                **bundle["policy"],
+                "path": str(CX321_PROGRAMME.natural_policy_path),
+            },
+        }
+    )
+
+    primary, ahy_rows, _ = _modeled_transaction(bundle, CX321_PROGRAMME)
+
+    bridge = primary["cx321_natural_timing_bridge"]
+    assert bridge["first_natural_selected_epoch_s"] == 8_400
+    assert bridge["first_natural_request_s"] == 8_400
+    assert bridge["application_bridge_passed"] is True
+    assert bridge["setup_bridge_passed"] is True
+    assert min(
+        int(row["decision_timestamp_s"])
+        for row in ahy_rows
+        if int(row["requested_delta_codes"]) != 0
+    ) == 8_400
+
+
+def test_cx321_accelerated_rehearsal_produces_complete_successor_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    natural_path = CX321_PROGRAMME.natural_policy_path
+    programme_path = CX321_PROGRAMME.policy_path
+    natural_sha256 = sha256(natural_path.read_bytes()).hexdigest()
+    programme_sha256 = sha256(programme_path.read_bytes()).hexdigest()
+    bundle = {
+        **_bundle(),
+        "programme_id": CX321_PROGRAMME.programme_id,
+        "run_identity": CX321_PROGRAMME.runtime_run_identity,
+        "programme_policy": {
+            "path": str(programme_path),
+            "sha256": programme_sha256,
+        },
+        "policy": {
+            "path": str(natural_path),
+            "policy_sha256": natural_sha256,
+        },
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "c" * 64,
+            "source_revision": "frozen-test-revision",
+        },
+        "finite_limits": {
+            "qualified_duration_s": 43_200,
+            "absolute_wall_clock_limit_s": 57_600,
+        },
+    }
+    proposal = {
+        "proposal_sha256": "d" * 64,
+        "exact_bundle": {"bundle_sha256": bundle["bundle_sha256"]},
+    }
+    bundle_path = tmp_path / "bundle.json"
+    proposal_path = tmp_path / "proposal.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal_tool, "validate_bundle", lambda path, *args: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal_tool, "validate_proposal", lambda path, *args: proposal
+    )
+
+    result = run_accelerated_rehearsal(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        output_dir=tmp_path / "rehearsal",
+    )
+
+    assert result["status"] == "passed"
+    assert result["registration_valid"] is True
+    assert result["cx321_natural_timing_bridge"][
+        "first_natural_request_s"
+    ] == 8_400
+    evidence = tmp_path / "rehearsal" / "evidence"
+    trace = json.loads(
+        (evidence / "reports/operational_trace_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    analysis = json.loads(
+        (evidence / "reports/active_hybrid_analysis_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    seal = json.loads(
+        (evidence / "reports/active_hybrid_rehearsal_seal_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    receipt = json.loads(
+        (
+            tmp_path
+            / "rehearsal/registration/registration_receipt_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert trace["trace_type"] == "cx321_active_hybrid_operational_trace_v1"
+    assert trace["modeled_phase_transaction"][
+        "cx321_natural_timing_bridge"
+    ]["first_natural_request_s"] == 8_400
+    assert analysis["report_type"] == (
+        "cx321_active_hybrid_operational_rehearsal_analysis_v1"
+    )
+    assert seal["seal_type"] == (
+        "cx321_active_hybrid_operational_rehearsal_seal_v1"
+    )
+    assert receipt["receipt_type"] == (
+        "cx321_active_hybrid_rehearsal_registration_receipt_v1"
+    )
 
 
 def test_phase_degradation_and_transport_faults_are_distinct() -> None:

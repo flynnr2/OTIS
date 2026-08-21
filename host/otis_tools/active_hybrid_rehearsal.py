@@ -22,6 +22,11 @@ from .active_hybrid_policy import (
     load_policy,
 )
 from .active_hybrid_proposal import validate_proposal
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
 from .active_hybrid_supervisor import ActiveHybridSupervisor, SupervisorContractError
 from .contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS, CONTRACT_FIELDS
 from .evidence_index import package_identity, register_package, validate_index
@@ -102,6 +107,7 @@ def _ahy_row(
     build_identity: str,
     policy_sha256: str,
     response_policy_sha256: str,
+    profile_identity: str = "cx320_active_hybrid",
 ) -> dict[str, str]:
     value = asdict(decision)
     return {
@@ -112,7 +118,7 @@ def _ahy_row(
         "decision_timestamp_s": str(decision.timestamp_s),
         "run_identity": run_identity,
         "build_identity": build_identity,
-        "profile_identity": "cx320_active_hybrid",
+        "profile_identity": profile_identity,
         "capture_session": str(decision.capture_session),
         "source_first_sequence": str(decision.source_first_sequence),
         "source_last_sequence": str(decision.source_last_sequence),
@@ -182,7 +188,10 @@ def _transaction_rows(
     estimator_sha256: str,
     model_sha256: str,
     response_policy_sha256: str,
+    numerical_policy_sha256: str | None = None,
+    profile_identity: str = "cx320_active_hybrid",
 ) -> list[dict[str, str]]:
+    numerical_policy_sha256 = numerical_policy_sha256 or policy_sha256
     observed_response_hz = (
         decision.requested_delta_codes * 0.00017008467693813145
     )
@@ -193,7 +202,7 @@ def _transaction_rows(
         "schema_version": "1",
         "run_identity": run_identity,
         "build_identity": build_identity,
-        "profile_identity": "cx320_active_hybrid",
+        "profile_identity": profile_identity,
         "session_id": "1",
         "authorization_sequence": str(request_sequence),
         "nonce": str(3_200_000 + request_sequence),
@@ -213,7 +222,7 @@ def _transaction_rows(
         "model_sha256": model_sha256,
         "active_policy_sha256": policy_sha256,
         "response_policy_sha256": response_policy_sha256,
-        "numerical_policy_sha256": policy_sha256,
+        "numerical_policy_sha256": numerical_policy_sha256,
         "actionable": "false",
     }
     phases = (
@@ -326,20 +335,28 @@ def _transaction_rows(
     ]
 
 
-def _prepared_supervisor(bundle: dict[str, Any], *, owner: str) -> ActiveHybridSupervisor:
+def _prepared_supervisor(
+    bundle: dict[str, Any], *, owner: str, programme: ActiveHybridProgramme
+) -> ActiveHybridSupervisor:
+    active_policy_sha256 = (
+        bundle["programme_policy"]["sha256"]
+        if programme.identification_required
+        else bundle["policy"]["policy_sha256"]
+    )
     supervisor = ActiveHybridSupervisor(
         run_identity=bundle["run_identity"],
         bundle_sha256=bundle["bundle_sha256"],
-        policy_sha256=bundle["policy"]["policy_sha256"],
+        policy_sha256=active_policy_sha256,
         build_identity=bundle["firmware"]["build_identity"],
+        profile_identity=programme.profile_id,
     )
     supervisor.establish_capture(owner=owner)
     supervisor.confirm_identity(
         run_identity=bundle["run_identity"],
         bundle_sha256=bundle["bundle_sha256"],
-        policy_sha256=bundle["policy"]["policy_sha256"],
+        policy_sha256=active_policy_sha256,
         build_identity=bundle["firmware"]["build_identity"],
-        profile_identity="cx320_active_hybrid",
+        profile_identity=programme.profile_id,
     )
     supervisor.confirm_setup_propagation(
         requested_code=0xA83C,
@@ -353,11 +370,21 @@ def _prepared_supervisor(bundle: dict[str, Any], *, owner: str) -> ActiveHybridS
 
 
 def _modeled_transaction(
-    bundle: dict[str, Any]
+    bundle: dict[str, Any],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> tuple[dict[str, Any], list[dict[str, str]], list[dict[str, str]]]:
-    policy = load_policy()
+    policy = load_policy(
+        Path(str(bundle["policy"].get("path", programme.natural_policy_path)))
+    )
+    active_policy_sha256 = (
+        bundle["programme_policy"]["sha256"]
+        if programme.identification_required
+        else policy.policy_sha256
+    )
     controller = ActiveHybridController(policy, setup_application_s=0)
-    supervisor = _prepared_supervisor(bundle, owner="capture_owner_3201")
+    supervisor = _prepared_supervisor(
+        bundle, owner="capture_owner_3201", programme=programme
+    )
     ahy_rows: list[dict[str, str]] = []
     transaction_rows: list[dict[str, str]] = []
     request_sequence = 0
@@ -370,6 +397,52 @@ def _modeled_transaction(
         (7200, 7200, 0.0, 0, "TIGHT_INSIDE", 28),
         (9000, 9000, 0.0, 0, "TIGHT_INSIDE", 18),
     )
+    timing_bridge: dict[str, Any] | None = None
+    if programme.identification_required:
+        programme_policy = json.loads(
+            Path(str(bundle["programme_policy"]["path"])).read_text(
+                encoding="utf-8"
+            )
+        )
+        timing = programme_policy["finite_timing"]
+        identification_application_s = int(
+            timing[
+                "setup_application_to_identification_decision_lower_bound_s"
+            ]
+        )
+        application_to_natural_s = int(
+            timing[
+                "identification_application_to_first_eligible_natural_selected_epoch_lower_bound_s"
+            ]
+        )
+        setup_to_natural_s = int(
+            timing[
+                "setup_application_to_first_eligible_natural_request_lower_bound_s_excluding_identification_transaction_latency"
+            ]
+        )
+        first_natural_epoch_s = max(
+            identification_application_s + application_to_natural_s,
+            setup_to_natural_s,
+        )
+        shift_s = first_natural_epoch_s - observations[0][0]
+        observations = tuple(
+            (timestamp + shift_s, sequence + shift_s, *rest)
+            for timestamp, sequence, *rest in observations
+        )
+        timing_bridge = {
+            "source_policy_sha256": bundle["programme_policy"]["sha256"],
+            "modeled_setup_application_s": 0,
+            "modeled_identification_application_s_excluding_transaction_latency": (
+                identification_application_s
+            ),
+            "identification_application_to_first_natural_selected_epoch_lower_bound_s": (
+                application_to_natural_s
+            ),
+            "setup_to_first_natural_request_lower_bound_s_excluding_identification_transaction_latency": (
+                setup_to_natural_s
+            ),
+            "first_natural_selected_epoch_s": first_natural_epoch_s,
+        }
     hybrid_record_sequence = 0
     for item in observations:
         decision = controller.decide(
@@ -390,8 +463,9 @@ def _modeled_transaction(
                 record_sequence=hybrid_record_sequence,
                 run_identity=bundle["run_identity"],
                 build_identity=bundle["firmware"]["build_identity"],
-                policy_sha256=policy.policy_sha256,
+                policy_sha256=active_policy_sha256,
                 response_policy_sha256=policy.response_policy_sha256,
+                profile_identity=programme.profile_id,
             )
         )
         if decision.requested_delta_codes == 0:
@@ -429,10 +503,12 @@ def _modeled_transaction(
             cumulative_movement=controller.cumulative_movement_codes,
             run_identity=bundle["run_identity"],
             build_identity=bundle["firmware"]["build_identity"],
-            policy_sha256=policy.policy_sha256,
+            policy_sha256=active_policy_sha256,
             estimator_sha256=policy.frequency_estimator_sha256,
             model_sha256=policy.plant_model_sha256,
             response_policy_sha256=policy.response_policy_sha256,
+            numerical_policy_sha256=policy.policy_sha256,
+            profile_identity=programme.profile_id,
         )
         transaction_rows.extend(new_rows)
         transaction_record_sequence += 4
@@ -463,8 +539,9 @@ def _modeled_transaction(
             record_sequence=hybrid_record_sequence,
             run_identity=bundle["run_identity"],
             build_identity=bundle["firmware"]["build_identity"],
-            policy_sha256=policy.policy_sha256,
+            policy_sha256=active_policy_sha256,
             response_policy_sha256=policy.response_policy_sha256,
+            profile_identity=programme.profile_id,
         )
         response_ahy.update(
             {
@@ -497,19 +574,57 @@ def _modeled_transaction(
     supervisor.close_capture(owner="capture_owner_3201", logical_rotation=True)
     snapshot = supervisor.snapshot()
     snapshot.update(controller.snapshot())
+    if timing_bridge is not None:
+        first_natural_request_s = min(
+            int(row["decision_timestamp_s"])
+            for row in ahy_rows
+            if int(row["requested_delta_codes"]) != 0
+        )
+        timing_bridge["first_natural_request_s"] = first_natural_request_s
+        timing_bridge["application_bridge_passed"] = (
+            first_natural_request_s
+            >= timing_bridge[
+                "modeled_identification_application_s_excluding_transaction_latency"
+            ]
+            + timing_bridge[
+                "identification_application_to_first_natural_selected_epoch_lower_bound_s"
+            ]
+        )
+        timing_bridge["setup_bridge_passed"] = (
+            first_natural_request_s
+            >= timing_bridge[
+                "setup_to_first_natural_request_lower_bound_s_excluding_identification_transaction_latency"
+            ]
+        )
+        if not (
+            timing_bridge["application_bridge_passed"]
+            and timing_bridge["setup_bridge_passed"]
+        ):
+            raise ValueError("CX321 natural-controller timing bridge differs")
+        snapshot["cx321_natural_timing_bridge"] = timing_bridge
     snapshot["events"] = supervisor.events
     snapshot["response_attestations"] = response_attestations
     return snapshot, ahy_rows, transaction_rows
 
 
-def _scenario_clean_degradation(bundle: dict[str, Any]) -> dict[str, Any]:
-    supervisor = _prepared_supervisor(bundle, owner="capture_owner_3202")
+def _scenario_clean_degradation(
+    bundle: dict[str, Any],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
+    supervisor = _prepared_supervisor(
+        bundle, owner="capture_owner_3202", programme=programme
+    )
     supervisor.degrade_phase_cleanly(reason="deterministic_phase_epoch_invalidation")
     return supervisor.snapshot()
 
 
-def _scenario_shared_fault(bundle: dict[str, Any]) -> dict[str, Any]:
-    supervisor = _prepared_supervisor(bundle, owner="capture_owner_3203")
+def _scenario_shared_fault(
+    bundle: dict[str, Any],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
+    supervisor = _prepared_supervisor(
+        bundle, owner="capture_owner_3203", programme=programme
+    )
     supervisor.transport_obstructed()
     supervisor.submit_priority_abort()
     supervisor.confirm_priority_abort_delivery()
@@ -517,8 +632,13 @@ def _scenario_shared_fault(bundle: dict[str, Any]) -> dict[str, Any]:
     return supervisor.snapshot()
 
 
-def _scenario_abort_failure(bundle: dict[str, Any]) -> dict[str, Any]:
-    supervisor = _prepared_supervisor(bundle, owner="capture_owner_3204")
+def _scenario_abort_failure(
+    bundle: dict[str, Any],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
+    supervisor = _prepared_supervisor(
+        bundle, owner="capture_owner_3204", programme=programme
+    )
     supervisor.transport_obstructed()
     supervisor.submit_priority_abort()
     supervisor.record_priority_abort_delivery_failure(reason="injected_abort_fifo_obstruction")
@@ -533,8 +653,20 @@ def _scenario_abort_failure(bundle: dict[str, Any]) -> dict[str, Any]:
 
 
 def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
-    bundle = validate_bundle(bundle_path)
-    proposal = validate_proposal(proposal_path)
+    raw_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_bundle, dict):
+        raise ValueError("active-hybrid rehearsal bundle root is not an object")
+    programme = programme_from_mapping(raw_bundle)
+    bundle = (
+        validate_bundle(bundle_path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(bundle_path, programme)
+    )
+    proposal = (
+        validate_proposal(proposal_path)
+        if programme is CX320_PROGRAMME
+        else validate_proposal(proposal_path, programme)
+    )
     if proposal["exact_bundle"]["bundle_sha256"] != bundle["bundle_sha256"]:
         raise ValueError("rehearsal proposal and bundle differ")
     output_dir = output_dir.resolve()
@@ -545,7 +677,12 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
     evidence_dir.mkdir(parents=True, exist_ok=True)
     registration_dir.mkdir(parents=True, exist_ok=True)
 
-    primary, ahy_rows, transaction_rows = _modeled_transaction(bundle)
+    primary, ahy_rows, transaction_rows = _modeled_transaction(bundle, programme)
+    active_policy_sha256 = (
+        bundle["programme_policy"]["sha256"]
+        if programme.identification_required
+        else bundle["policy"]["policy_sha256"]
+    )
     run_manifest = {
         "schema_version": 1,
         "programme_id": bundle["programme_id"],
@@ -559,9 +696,10 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         "bundle_sha256": bundle["bundle_sha256"],
         "proposal_path": str(proposal_path.resolve()),
         "proposal_sha256": proposal["proposal_sha256"],
-        "policy_sha256": bundle["policy"]["policy_sha256"],
+        "policy_sha256": active_policy_sha256,
+        "numerical_policy_sha256": bundle["policy"]["policy_sha256"],
         "build_identity": bundle["firmware"]["build_identity"],
-        "profile_identity": "cx320_active_hybrid",
+        "profile_identity": programme.profile_id,
         "timing": bundle["finite_limits"],
         "created_utc": _utc_now(),
     }
@@ -591,11 +729,14 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         active_hybrid_csv=evidence_dir / "csv/active_hybrid_decisions_v1.csv",
         active_transactions_csv=evidence_dir / "csv/active_transactions_v1.csv",
         response_row=first_material_response,
+        policy_path=Path(str(bundle["policy"]["path"])),
+        expected_profile_identity=programme.profile_id,
+        expected_active_policy_sha256=active_policy_sha256,
     )
     primary["response_attestations"] = [attestation]
     trace = {
         "schema_version": 1,
-        "trace_type": "cx320_active_hybrid_operational_trace_v1",
+        "trace_type": f"{programme.key}_active_hybrid_operational_trace_v1",
         "tool": TOOL_ID,
         "tool_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "created_utc": _utc_now(),
@@ -624,23 +765,31 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
             "CX317_plant_response",
             "USB_device_transport",
         ],
+        "successor_scope": {
+            "programme": programme.key,
+            "natural_controller_semantics_exercised_in_isolation": True,
+            "plant_sign_identification_lifecycle_modeled_here": False,
+            "plant_sign_identification_lifecycle_is_exercised_by_live_topology_rehearsal": (
+                programme.identification_required
+            ),
+        },
         "modeled_phase_transaction": primary,
-        "clean_phase_degradation": _scenario_clean_degradation(bundle),
-        "shared_fail_static_transport_obstruction": _scenario_shared_fault(bundle),
-        "abort_delivery_failure": _scenario_abort_failure(bundle),
+        "clean_phase_degradation": _scenario_clean_degradation(bundle, programme),
+        "shared_fail_static_transport_obstruction": _scenario_shared_fault(bundle, programme),
+        "abort_delivery_failure": _scenario_abort_failure(bundle, programme),
     }
     _write_new_json(evidence_dir / "reports/operational_trace_v1.json", trace)
     seal = finalize(evidence_dir)
     validate_seal(evidence_dir)
 
-    with tempfile.TemporaryDirectory(prefix="cx320-rehearsal-registration-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{programme.key}-rehearsal-registration-") as temporary:
         index_path = Path(temporary) / "evidence_index_v1.json"
         registration = register_package(
             index_path=index_path,
             package_path=evidence_dir,
             source_revision=bundle["firmware"]["source_revision"],
             build_identity=bundle["firmware"]["build_identity"],
-            profile_identity="cx320_active_hybrid",
+            profile_identity=programme.profile_id,
             attempt_classification="successful_rehearsal",
             result_or_failure_reason="accelerated_operational_path_passed",
             analyzer_identity=seal["analysis"]["analysis_sha256"],
@@ -650,7 +799,7 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
             raise ValueError("CX320 temporary external registration validation failed")
     receipt = {
         "schema_version": 1,
-        "receipt_type": "cx320_active_hybrid_rehearsal_registration_receipt_v1",
+        "receipt_type": f"{programme.key}_active_hybrid_rehearsal_registration_receipt_v1",
         "created_utc": _utc_now(),
         "temporary_external_index_exercised": True,
         "index_validation": index_validation,
@@ -669,6 +818,10 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         "physical_actions_performed": 0,
         "output_dir": str(output_dir),
     }
+    if programme.identification_required:
+        result["cx321_natural_timing_bridge"] = primary[
+            "cx321_natural_timing_bridge"
+        ]
     _write_new_json(output_dir / "operational_rehearsal_result_v1.json", result)
     return result
 

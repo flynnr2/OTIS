@@ -199,6 +199,14 @@ bool otis_cx317_active_accept(OtisCx317ActiveTransaction *transaction,
 bool otis_cx317_active_acknowledge_application(
     OtisCx317ActiveTransaction *transaction,
     const OtisCx317AppliedAck *acknowledgement);
+// CX321 charges its identification application to the global transaction
+// budgets, then starts the natural-controller reversal history empty.
+bool otis_cx317_active_rebase_natural_history_after_identification(
+    OtisCx317ActiveTransaction *transaction, uint16_t expected_applied_code,
+    uint32_t expected_dac_epoch);
+bool otis_cx317_active_complete_identification_response(
+    OtisCx317ActiveTransaction *transaction, uint16_t expected_applied_code,
+    uint32_t expected_dac_epoch);
 bool otis_cx317_active_record_response(
     OtisCx317ActiveTransaction *transaction, double post_error_hz,
     bool measurement_healthy, bool control_eligible_after_response,

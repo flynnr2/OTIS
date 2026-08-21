@@ -61,6 +61,26 @@ def test_backward_ambiguous_duplicate_and_unknown_domain_fail_closed() -> None:
         forward_progress(1, 2, domain="invented")
 
 
+def test_extended_timer0_is_strict_nonwrapping_and_accepts_long_progress() -> None:
+    long_progress = forward_progress(
+        3_902 * 16_000_000,
+        6_302 * 16_000_000,
+        domain="rp2040_timer0_extended",
+    )
+    backward = forward_progress(
+        6_302 * 16_000_000,
+        3_902 * 16_000_000,
+        domain="rp2040_timer0_extended",
+    )
+
+    assert long_progress.valid is True
+    assert long_progress.distance_ticks == 2_400 * 16_000_000
+    assert (backward.valid, backward.reason) == (
+        False,
+        "illegal_backward_movement",
+    )
+
+
 def test_manifest_domain_declarations_reject_absent_unknown_and_contradictory() -> None:
     assert validate_domain_declarations(None)
     assert validate_domain_declarations(
@@ -79,6 +99,14 @@ def test_manifest_domain_declarations_reject_absent_unknown_and_contradictory() 
     assert any("rollover" in error for error in errors)
     assert not validate_domain_declarations(
         [{"name": "rp2040_timer0", "nominal_hz": 16_000_000}]
+    )
+    assert not validate_domain_declarations(
+        [
+            {
+                "name": "rp2040_timer0_extended",
+                "nominal_hz": 16_000_000,
+            }
+        ]
     )
 
 

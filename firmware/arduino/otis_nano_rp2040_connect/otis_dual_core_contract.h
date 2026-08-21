@@ -28,6 +28,7 @@ enum class OtisRunControlKind : uint8_t {
   SyntheticReceiverInvalidation,
   CaptureLease,
   EvidenceRelease,
+  PlantSignEvidenceRelease,
   StatusQuery,
   DiagnosticConfigQuery,
   DiagnosticRuntimeQuery,
@@ -78,6 +79,12 @@ struct OtisRunControlMessage {
   uint32_t capture_lease_sequence;
   uint32_t request_sequence;
   uint32_t evidence_phase;
+  uint32_t response_psq_record_sequence;
+  int64_t response_counts;
+  uint32_t application_sequence;
+  uint32_t dac_epoch;
+  uint32_t response_source_last_sequence;
+  char replay_attestation_sha256[65];
   uint32_t expires_s;
   OtisRunControlKind kind;
   bool asserted;

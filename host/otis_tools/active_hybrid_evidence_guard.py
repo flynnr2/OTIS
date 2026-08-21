@@ -71,6 +71,49 @@ def _bool(row: dict[str, str], name: str) -> bool:
     return value == "true"
 
 
+def _cx321_natural_replay_handoff(
+    plant_sign_records: list[dict[str, str]],
+    transactions: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Recover the one exact CX321 natural-controller replay seed."""
+
+    handoffs = [row for row in plant_sign_records if row.get("event") == "handoff"]
+    if len(handoffs) != 1:
+        raise ValueError("CX321 natural replay requires one exact PSQ handoff")
+    handoff = handoffs[0]
+    if (
+        handoff.get("attested") != "true"
+        or handoff.get("global_correction_count") != "1"
+        or handoff.get("global_cumulative_movement_codes") != "21"
+        or handoff.get("natural_cumulative_movement_codes") != "0"
+        or handoff.get("natural_direction_count") != "0"
+    ):
+        raise ValueError("CX321 PSQ handoff does not preserve exact natural seed")
+    request_sequence = int(handoff["request_sequence"])
+    applications = [
+        row
+        for row in transactions
+        if row.get("event") == "application"
+        and int(row.get("request_sequence", "0")) == request_sequence
+        and row.get("applied_code") == handoff.get("applied_code")
+        and row.get("dac_epoch") == handoff.get("dac_epoch")
+    ]
+    if len(applications) != 1:
+        raise ValueError("CX321 PSQ handoff lacks one exact ACT application")
+    application = applications[0]
+    timer_hz = 16_000_000
+    handoff_ticks = int(handoff["event_timestamp_ticks"])
+    qualification_started_s = (handoff_ticks + timer_hz - 1) // timer_hz
+    return {
+        "applied_code": int(handoff["applied_code"]),
+        "dac_epoch": int(handoff["dac_epoch"]),
+        "application_s": int(application["application_timestamp_s"]),
+        "qualification_started_s": qualification_started_s,
+        "attestation_id": handoff["replay_attestation_sha256"],
+        "identification_request_sequence": request_sequence,
+    }
+
+
 def replay_active_hybrid_history(
     decisions: list[dict[str, str]],
     transactions: list[dict[str, str]],
@@ -79,6 +122,8 @@ def replay_active_hybrid_history(
     expected_run_identity: str,
     expected_build_identity: str,
     expected_profile_identity: str,
+    expected_active_policy_sha256: str | None = None,
+    plant_sign_handoff: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Replay the real request/application/response chronology exactly.
 
@@ -90,6 +135,9 @@ def replay_active_hybrid_history(
     """
 
     policy = load_policy() if policy_path is None else load_policy(policy_path)
+    active_policy_sha256 = (
+        expected_active_policy_sha256 or policy.policy_sha256
+    )
     manual = [row for row in transactions if row.get("event") == "manual_start"]
     setup_application_s = (
         int(manual[0]["application_timestamp_s"]) if len(manual) == 1 else None
@@ -97,6 +145,20 @@ def replay_active_hybrid_history(
     controller = ActiveHybridController(
         policy, setup_application_s=setup_application_s
     )
+    identification_request_sequence: int | None = None
+    if plant_sign_handoff is not None:
+        controller.rebase_after_plant_sign(
+            applied_code=int(plant_sign_handoff["applied_code"]),
+            dac_epoch=int(plant_sign_handoff["dac_epoch"]),
+            application_s=int(plant_sign_handoff["application_s"]),
+            qualification_started_s=int(
+                plant_sign_handoff["qualification_started_s"]
+            ),
+            attestation_id=str(plant_sign_handoff["attestation_id"]),
+        )
+        identification_request_sequence = int(
+            plant_sign_handoff["identification_request_sequence"]
+        )
     mappings: dict[str, dict[int, dict[str, str]]] = {
         "request_created": {},
         "application": {},
@@ -104,6 +166,12 @@ def replay_active_hybrid_history(
     }
     mapping_exact = True
     for row in transactions:
+        if (
+            identification_request_sequence is not None
+            and int(row.get("request_sequence", "0"))
+            == identification_request_sequence
+        ):
+            continue
         target = mappings.get(row.get("event", ""))
         if target is None:
             continue
@@ -131,7 +199,7 @@ def replay_active_hybrid_history(
                 row["run_identity"] == expected_run_identity
                 and row["build_identity"] == expected_build_identity
                 and row["profile_identity"] == expected_profile_identity
-                and row["active_policy_sha256"] == policy.policy_sha256
+                and row["active_policy_sha256"] == active_policy_sha256
                 and row["frequency_estimator_sha256"]
                 == policy.frequency_estimator_sha256
                 and row["phase_estimator_sha256"]
@@ -371,6 +439,10 @@ def replay_response_before_acknowledgement(
     active_hybrid_csv: Path,
     active_transactions_csv: Path,
     response_row: dict[str, str],
+    policy_path: Path | None = None,
+    expected_profile_identity: str = "cx320_active_hybrid",
+    expected_active_policy_sha256: str | None = None,
+    plant_sign_csv: Path | None = None,
 ) -> dict[str, Any]:
     validation = validate_csv(
         active_hybrid_csv,
@@ -400,21 +472,32 @@ def replay_response_before_acknowledgement(
     if len(decisions) != 1:
         raise ValueError("CX320 response does not identify exactly one AHY decision")
     decision = decisions[0]
-    policy = load_policy()
-    if decision["active_policy_sha256"] != policy.policy_sha256:
+    policy = load_policy() if policy_path is None else load_policy(policy_path)
+    active_policy_sha256 = expected_active_policy_sha256 or policy.policy_sha256
+    plant_sign_handoff = (
+        None
+        if plant_sign_csv is None
+        else _cx321_natural_replay_handoff(
+            _rows(plant_sign_csv), all_transactions
+        )
+    )
+    if decision["active_policy_sha256"] != active_policy_sha256:
         raise ValueError("CX320 decision policy identity differs")
     if decision["run_identity"] != response_row["run_identity"]:
         raise ValueError("CX320 decision and transaction run identities differ")
     if decision["build_identity"] != response_row["build_identity"]:
         raise ValueError("CX320 decision and transaction build identities differ")
-    if decision["profile_identity"] != "cx320_active_hybrid":
+    if decision["profile_identity"] != expected_profile_identity:
         raise ValueError("CX320 decision profile identity differs")
     replay = replay_active_hybrid_history(
         all_decisions,
         all_transactions,
+        policy_path=policy_path,
         expected_run_identity=decision["run_identity"],
         expected_build_identity=decision["build_identity"],
         expected_profile_identity=decision["profile_identity"],
+        expected_active_policy_sha256=active_policy_sha256,
+        plant_sign_handoff=plant_sign_handoff,
     )
     if not replay["exact"]:
         raise ValueError("CX320 independent host replay differs from the firmware decision")

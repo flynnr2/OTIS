@@ -40,6 +40,17 @@ TIME_DOMAINS: Mapping[str, TimeDomain] = {
         modulus_ticks=RP2040_TIMER0_MICROS_WRAP_TICKS,
         rollover="modular_forward",
     ),
+    # CX321 plant-sign evidence carries firmware-extended TIMER0 coordinates.
+    # These values are reconstructed monotonically across the 32-bit
+    # microsecond source wrap and therefore must never be reinterpreted as the
+    # modular raw timer domain above.
+    "rp2040_timer0_extended": TimeDomain(
+        name="rp2040_timer0_extended",
+        nominal_hz=16_000_000,
+        counter_width_bits=None,
+        modulus_ticks=None,
+        rollover="strict_nonwrapping",
+    ),
     # D8 counted-edge totals are not RP2040 timer coordinates.  Current CSV
     # timestamp fields do not use this domain, but declaring its strict
     # non-wrapping semantics prevents an accidental timer-style inference.

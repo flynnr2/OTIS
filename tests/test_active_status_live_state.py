@@ -7,6 +7,8 @@ import time
 from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_KEYS,
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    CX321_ACTIVE_STATUS_KEYS,
+    CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
@@ -36,9 +38,19 @@ def _row(
     }
 
 
-def _burst(generation: int, *, nonce: int = 99) -> list[dict[str, str]]:
+def _burst(
+    generation: int,
+    *,
+    nonce: int = 99,
+    contract: str = ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+) -> list[dict[str, str]]:
+    keys = (
+        CX321_ACTIVE_STATUS_KEYS
+        if contract == CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        else ACTIVE_STATUS_KEYS
+    )
     values = {
-        key: f"value:{key}" for key in ACTIVE_STATUS_KEYS
+        key: f"value:{key}" for key in keys
     }
     values["query_nonce"] = str(nonce)
     rows = [
@@ -47,12 +59,12 @@ def _burst(generation: int, *, nonce: int = 99) -> list[dict[str, str]]:
             3,
             "cx317_active",
             SNAPSHOT_CONTRACT_KEY,
-            ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+            contract,
         ),
     ]
     rows.extend(
         _row(index, "cx317_active", key, values[key])
-        for index, key in enumerate(ACTIVE_STATUS_KEYS, start=4)
+        for index, key in enumerate(keys, start=4)
     )
     rows.append(
         _row(
@@ -128,6 +140,31 @@ def test_complete_atomic_state_carries_one_coherent_health_frontier(
     unmatched = read_live_health_state(path, required_query_nonce=4321)
     assert unmatched.state == "unmatched"
     assert unmatched.health == {}
+
+
+def test_cx321_v2_atomic_state_requires_and_returns_plant_fields(
+    tmp_path: Path,
+) -> None:
+    reducer = ActiveStatusLiveReducer()
+    latest = None
+    for row in _burst(
+        12,
+        nonce=321,
+        contract=CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    ):
+        update = reducer.observe(row)
+        if update is not None:
+            latest = update
+    assert latest is not None and latest["state"] == "complete"
+    path = tmp_path / "cx321_state.json"
+    path.write_text(json.dumps(_published(latest)), encoding="utf-8")
+
+    selected = read_live_health_state(path, required_query_nonce=321)
+
+    assert selected.state == "complete"
+    assert selected.health[("cx317_active", "plant_sign_state")] == (
+        "value:plant_sign_state"
+    )
 
 
 def test_duplicate_missing_and_interrupted_generations_are_invalid() -> None:

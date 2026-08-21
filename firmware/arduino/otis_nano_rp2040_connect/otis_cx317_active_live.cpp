@@ -10,6 +10,8 @@
 #include "otis_decimal_format.h"
 #include "otis_dual_core_partition.h"
 #include "otis_cx317_preview_live.h"
+#include "otis_cx321_plant_sign.h"
+#include "otis_cx321_plant_sign_format.h"
 #include "otis_phase_preview_live.h"
 #include "otis_protocol.h"
 #include "otis_transport_serial.h"
@@ -32,6 +34,11 @@ constexpr char kNumericalPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
+#elif OTIS_ENABLE_CX321_ACTIVE_HYBRID
+constexpr char kNumericalPolicyHash[] =
+    "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d";
+constexpr char kActivePolicyHash[] =
+    "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4";
 #elif OTIS_ENABLE_CX320_ACTIVE_HYBRID
 constexpr char kNumericalPolicyHash[] =
     "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d";
@@ -57,6 +64,14 @@ constexpr char kResponsePolicyHash[] =
     "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e";
 constexpr char kPhaseEstimatorHash[] =
     "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4";
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+constexpr char kPlantSignGateHash[] =
+    "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62";
+constexpr char kIdentificationEstimatorHash[] =
+    "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1";
+constexpr char kIdentificationEstimatorConfigHash[] =
+    "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8";
+#endif
 constexpr uint32_t kCaptureLeaseMaximumAgeS = 30u;
 constexpr uint32_t kEvidenceAcknowledgementMaximumAgeS = 30u;
 constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
@@ -117,6 +132,10 @@ constexpr char kExpectedProfile[] = "cx319_range_part_b_upper_completion";
     OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
 constexpr char kRunIdentity[] = "cx320_active_hybrid:3200001";
 constexpr char kExpectedProfile[] = "cx320_active_hybrid";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
+constexpr char kRunIdentity[] = "cx321_active_hybrid:3210001";
+constexpr char kExpectedProfile[] = "cx321_active_hybrid";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -181,6 +200,18 @@ OtisCx317ResponseClass pending_hybrid_response_class =
 bool pending_hybrid_response_valid = false;
 bool pending_hybrid_predicted_sign_observed = false;
 uint32_t hybrid_record_sequence = 0u;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+OtisCx321PlantSignEngine plant_sign_engine = {};
+bool plant_sign_engine_ready = false;
+bool pending_plant_sign_application = false;
+bool dispatching_plant_sign_request = false;
+uint64_t pending_application_timestamp_ticks = 0u;
+uint64_t setup_application_timestamp_ticks = 0u;
+uint32_t plant_sign_record_sequence = 0u;
+uint32_t pending_response_psq_record_sequence = 0u;
+bool plant_sign_handoff_pending = false;
+char plant_sign_attestation_sha256[65] = {};
+#endif
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 OtisActuatorTransactionGuard timing_actuator_guard = {};
@@ -195,6 +226,15 @@ bool capture_lease_live(uint32_t now_s) {
              kCaptureLeaseMaximumAgeS;
 }
 
+bool exact_sha256_text(const char *value) {
+  if (value == nullptr) return false;
+  for (uint8_t index = 0u; index < 64u; ++index) {
+    const char c = value[index];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+  }
+  return value[64] == '\0';
+}
+
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
 void hybrid_fail_static(const char *reason) {
   hybrid_engine.state = OtisActiveHybridState::FailStatic;
@@ -203,6 +243,14 @@ void hybrid_fail_static(const char *reason) {
   hybrid_engine.transaction_outstanding = false;
   hybrid_engine.outstanding_phase_material = false;
   pending_hybrid_decision_valid = false;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (plant_sign_engine_ready) {
+    plant_sign_engine.state = OtisCx321PlantSignState::FailStatic;
+    plant_sign_engine.reason = reason;
+    plant_sign_engine.attested = false;
+  }
+  pending_plant_sign_application = false;
+#endif
 }
 #endif
 
@@ -240,6 +288,9 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID
+      true,
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
       true,
 #else
       false,
@@ -564,6 +615,81 @@ bool queue_active_hybrid_decision(
 }
 #endif
 
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+bool queue_plant_sign_frame(
+    const char *event, uint64_t event_ticks, const char *state_before,
+    const char *state_after, const char *reason,
+    const OtisCx321PlantSignEstimate *estimate, const char *tight_state) {
+  if (frame.length != 0u || event == nullptr || state_before == nullptr ||
+      state_after == nullptr || reason == nullptr)
+    return false;
+  frame = {};
+  OtisCx321PlantSignFormatRecord record = {};
+  record.record_sequence = plant_sign_record_sequence + 1u;
+  record.event = event;
+  record.event_ticks = event_ticks;
+  record.run_identity = kRunIdentity;
+  record.build_identity = kBuildIdentity;
+  record.profile_identity = OTIS_BUILD_PROFILE_ID;
+  record.capture_session = transaction.expected_binding.session_id;
+  record.policy_sha256 = kActivePolicyHash;
+  record.plant_sign_gate_sha256 = kPlantSignGateHash;
+  record.identification_estimator_sha256 = kIdentificationEstimatorHash;
+  record.identification_estimator_config_sha256 =
+      kIdentificationEstimatorConfigHash;
+  record.natural_frequency_estimator_sha256 = kEstimatorHash;
+  record.setup_application_ticks = setup_application_timestamp_ticks;
+  record.setup_applied_code = OTIS_CX317_ACTIVE_START_CODE;
+  record.state_before = state_before;
+  record.state_after = state_after;
+  record.reason = reason;
+  record.have_estimate = estimate != nullptr;
+  if (estimate != nullptr) record.estimate = *estimate;
+  record.tight_state = tight_state;
+  record.decision = plant_sign_engine.pending_decision;
+  record.request_sequence = transaction.request.request_sequence;
+  record.acceptance_sequence = transaction.accepted.request_sequence;
+  record.application_sequence = transaction.applied.application_sequence;
+  record.accepted_code = transaction.accepted.accepted_code;
+  record.applied_code = transaction.applied.applied_code;
+  record.application_ticks = plant_sign_engine.application_ticks;
+  record.dac_epoch = transaction.dac_epoch;
+  record.response = plant_sign_engine.pending_response;
+  record.acknowledged_response_record_sequence =
+      pending_response_psq_record_sequence;
+  record.host_replay_exact = true;
+  record.replay_attestation_sha256 = plant_sign_attestation_sha256;
+  record.global_correction_count = hybrid_engine.correction_count;
+  record.global_cumulative_movement_codes =
+      hybrid_engine.cumulative_movement_codes;
+  record.global_last_application_ticks = hybrid_engine.last_application_ticks;
+  record.natural_chatter_origin_code = hybrid_engine.natural_chatter_origin_code;
+  record.natural_cumulative_movement_codes =
+      hybrid_engine.natural_cumulative_movement_codes;
+  record.natural_direction_count = hybrid_engine.direction_count;
+  record.attested = plant_sign_engine.attested;
+  if (!otis_cx321_plant_sign_format_record(
+          &record, frame.data, sizeof(frame.data), &frame.length)) {
+    frame = {};
+    return false;
+  }
+  frame.sent = 0u;
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  evidence_frame_scratch = {};
+  evidence_frame_scratch.sequence = plant_sign_record_sequence + 1u;
+  evidence_frame_scratch.length = frame.length;
+  memcpy(evidence_frame_scratch.data, frame.data, frame.length + 1u);
+  if (!otis_dual_core_publish_evidence(&evidence_frame_scratch)) {
+    frame = {};
+    return false;
+  }
+  frame = {};
+#endif
+  plant_sign_record_sequence++;
+  return true;
+}
+#endif
+
 void update_active_reference_and_integrity(uint32_t now_s) {
   // Before the one-shot setup acknowledgement there is no authoritative DAC
   // code to protect, and the host may not yet have established its capture
@@ -650,6 +776,18 @@ bool otis_cx317_active_live_begin(void) {
   pending_hybrid_response_valid = false;
   pending_hybrid_predicted_sign_observed = false;
   hybrid_record_sequence = 0u;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  otis_cx321_plant_sign_engine_init(&plant_sign_engine);
+  plant_sign_engine_ready = false;
+  pending_plant_sign_application = false;
+  dispatching_plant_sign_request = false;
+  pending_application_timestamp_ticks = 0u;
+  setup_application_timestamp_ticks = 0u;
+  plant_sign_record_sequence = 0u;
+  pending_response_psq_record_sequence = 0u;
+  plant_sign_handoff_pending = false;
+  plant_sign_attestation_sha256[0] = '\0';
+#endif
 #endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   otis_actuator_guard_init(&timing_actuator_guard);
@@ -668,6 +806,10 @@ void otis_cx317_active_live_emit_headers(void) {
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   otis_transport_write_cstr(
       "record_type,schema_version,hybrid_record_sequence,decision_sequence,decision_timestamp_s,run_identity,build_identity,profile_identity,capture_session,source_first_sequence,source_last_sequence,frequency_estimator_sha256,frequency_error_hz,accumulated_edge_error_counts,tight_state,phase_estimator_sha256,phase_epoch,phase_observation_sequence,relative_phase_cycles,phase_continuous,phase_current,phase_step_detected,phase_recorder_published,current_applied_code,dac_epoch,phase_applied_code,phase_dac_epoch,state_before,state_after,frequency_term_hz,phase_term_hz,combined_demand_hz,raw_combined_delta_codes,requested_delta_codes,requested_code,counterfactual_frequency_only_delta_codes,phase_materially_influenced,step_limited,range_clamped,cadence_limited,count_limited,cumulative_budget_limited,correction_count_before,cumulative_movement_before_codes,authority_state,request_sequence,acceptance_sequence,application_sequence,response_class,actual_applied_code,actual_dac_epoch,downstream_epoch_exact,reason,active_policy_sha256,response_policy_sha256,actionable\r\n");
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  otis_transport_write_cstr(otis_cx321_plant_sign_csv_header());
+  otis_transport_write_cstr("\r\n");
+#endif
 #endif
 #endif
 }
@@ -721,7 +863,11 @@ void otis_cx317_active_live_service(uint32_t now_s) {
   if (transaction_bound &&
       (transaction.state == OtisCx317ActiveState::Fault ||
        transaction.state == OtisCx317ActiveState::Aborted) &&
-      hybrid_engine_ready &&
+      (hybrid_engine_ready
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+       || plant_sign_engine_ready
+#endif
+       ) &&
       hybrid_engine.state != OtisActiveHybridState::FailStatic)
     hybrid_fail_static(transaction.reason);
 #endif
@@ -878,6 +1024,11 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
 #endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   if (evidence_phase == EvidencePhase::Response) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    if (plant_sign_engine.state ==
+        OtisCx321PlantSignState::ResponseAckPending)
+      return false;
+#endif
     const bool healthy_classification =
         pending_hybrid_response_valid &&
         (pending_hybrid_response_class ==
@@ -956,6 +1107,15 @@ bool otis_cx317_active_live_on_cross_core_ack(
                             "cross_core_actuator_rejected_or_bad_phase");
     return false;
   }
+  uint64_t application_ticks = acknowledgement->acknowledgement_ticks;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!otis_cx317_preview_live_extend_timer0_ticks(
+          acknowledgement->acknowledgement_ticks, &application_ticks)) {
+    otis_cx317_active_fault(
+        &transaction, "cross_core_application_timestamp_projection_failed");
+    return false;
+  }
+#endif
   const OtisCx317AppliedAck applied = {
       acknowledgement->request_sequence,
       acknowledgement->authorization_sequence,
@@ -980,6 +1140,10 @@ bool otis_cx317_active_live_on_cross_core_ack(
   deferred_application_outcome.request_sequence =
       acknowledgement->request_sequence;
   deferred_application_outcome.dac_epoch = transaction.dac_epoch;
+  deferred_application_outcome.application_timestamp_ticks =
+      application_ticks;
+  deferred_application_outcome.capture_session =
+      transaction.expected_binding.session_id;
   deferred_application_outcome.requested_code =
       acknowledgement->requested_code;
   deferred_application_outcome.applied_code = acknowledgement->applied_code;
@@ -988,6 +1152,10 @@ bool otis_cx317_active_live_on_cross_core_ack(
   deferred_application_outcome.reason = transaction.reason;
   deferred_application_outcome_valid = true;
   last_application_acknowledged = acknowledged;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  pending_application_timestamp_ticks =
+      acknowledged ? application_ticks : 0u;
+#endif
   if (acknowledged) {
     latest_health.applied_code = transaction.applied_code;
     latest_health.applied_code_confirmed = true;
@@ -1050,6 +1218,14 @@ void otis_cx317_active_live_note_manual_start(uint16_t code, bool i2c_ok,
 bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
                                                     uint32_t dac_epoch) {
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  (void)applied_code;
+  (void)dac_epoch;
+  if (transaction_bound)
+    otis_cx317_active_fault(
+        &transaction, "cx321_setup_requires_exact_application_ticks");
+  return false;
+#else
   if (!transaction_bound || !manual_start_confirmed ||
       !transaction.have_last_application ||
       applied_code != OTIS_CX317_ACTIVE_START_CODE || dac_epoch != 1u ||
@@ -1073,6 +1249,7 @@ bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
                                  transaction.last_application_s);
   hybrid_engine_ready = true;
   return true;
+#endif
 #else
   (void)applied_code;
   (void)dac_epoch;
@@ -1080,8 +1257,49 @@ bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
 #endif
 }
 
-void otis_cx317_active_live_on_decision(
+bool otis_cx317_active_live_confirm_setup_consumers_exact(
+    uint16_t applied_code, uint32_t dac_epoch,
+    uint64_t setup_application_ticks, uint32_t capture_session) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!transaction_bound || !manual_start_confirmed ||
+      !transaction.have_last_application || setup_application_ticks == 0u ||
+      capture_session != transaction.expected_binding.session_id ||
+      applied_code != OTIS_CX317_ACTIVE_START_CODE || dac_epoch != 1u ||
+      transaction.applied_code != applied_code ||
+      transaction.dac_epoch != dac_epoch ||
+      !otis_cx317_preview_live_applied_epoch_exact(applied_code, dac_epoch)) {
+    if (transaction_bound)
+      otis_cx317_active_fault(
+          &transaction, "cx321_setup_consumer_epoch_or_tick_mismatch");
+    return false;
+  }
+  OtisPhasePreviewLiveStatus phase = {};
+  otis_phase_preview_live_get_status(&phase);
+  if (!phase.initialized || !phase.applied_code_bound ||
+      phase.applied_code != applied_code || phase.dac_epoch != dac_epoch) {
+    otis_cx317_active_fault(&transaction,
+                            "cx321_setup_phase_epoch_mismatch");
+    return false;
+  }
+  setup_application_timestamp_ticks = setup_application_ticks;
+  transaction.last_application_s = static_cast<uint32_t>(
+      setup_application_ticks / kCaptureTicksPerSecond);
+  otis_cx321_plant_sign_engine_init(&plant_sign_engine);
+  plant_sign_engine_ready = true;
+  hybrid_engine = {};
+  hybrid_engine_ready = false;
+  return true;
+#else
+  (void)setup_application_ticks;
+  (void)capture_session;
+  return otis_cx317_active_live_confirm_setup_consumers(applied_code,
+                                                        dac_epoch);
+#endif
+}
+
+static void active_live_on_decision_impl(
     const OtisCx317ActiveLiveDecision *decision,
+    bool decision_ticks_available, uint64_t decision_timestamp_ticks,
     OtisCx317ActiveLiveOutcome *outcome) {
   if (outcome != nullptr) *outcome = {};
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
@@ -1098,6 +1316,14 @@ void otis_cx317_active_live_on_decision(
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   OtisCx317ActiveLiveDecision hybrid_source = *decision;
   OtisActiveHybridDecision hybrid_decision = {};
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!dispatching_plant_sign_request && !hybrid_engine_ready) {
+    outcome->reason = plant_sign_engine.reason;
+    return;
+  }
+  const OtisActiveHybridState hybrid_state_before = hybrid_engine.state;
+  if (!dispatching_plant_sign_request) {
+#endif
   if (!hybrid_engine_ready) {
     otis_cx317_active_fault(
         &transaction, "active_hybrid_setup_consumers_not_confirmed");
@@ -1142,8 +1368,17 @@ void otis_cx317_active_live_on_decision(
       hybrid_engine.transaction_outstanding,
       transaction.state == OtisCx317ActiveState::AwaitingResponse,
   };
-  if (!otis_active_hybrid_engine_decide(
-          &hybrid_engine, &hybrid_input, &hybrid_decision) ||
+  const bool hybrid_decided =
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+      decision_ticks_available &&
+      otis_active_hybrid_engine_decide_at_ticks(
+          &hybrid_engine, &hybrid_input, decision_timestamp_ticks,
+          &hybrid_decision);
+#else
+      otis_active_hybrid_engine_decide(
+          &hybrid_engine, &hybrid_input, &hybrid_decision);
+#endif
+  if (!hybrid_decided ||
       !queue_active_hybrid_decision(*decision, hybrid_decision)) {
     hybrid_fail_static("active_hybrid_decision_evidence_queue_fault");
     otis_cx317_active_fault(
@@ -1158,6 +1393,25 @@ void otis_cx317_active_live_on_decision(
     outcome->reason = transaction.reason;
     return;
   }
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (plant_sign_handoff_pending) {
+    if (!queue_plant_sign_frame(
+            "handoff", decision_timestamp_ticks,
+            otis_active_hybrid_state_name(hybrid_state_before),
+            otis_active_hybrid_state_name(hybrid_engine.state),
+            "plant_sign_first_natural_consumer_handoff_exact", nullptr,
+            nullptr)) {
+      hybrid_fail_static("plant_sign_first_consumer_evidence_queue_fault");
+      otis_cx317_active_fault(
+          &transaction, "plant_sign_first_consumer_evidence_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+      return;
+    }
+    plant_sign_handoff_pending = false;
+    pending_response_psq_record_sequence = 0u;
+  }
+#endif
   hybrid_source.decision_sequence = hybrid_decision.decision_sequence;
   hybrid_source.requested_delta_codes =
       hybrid_decision.requested_delta_codes;
@@ -1166,6 +1420,9 @@ void otis_cx317_active_live_on_decision(
       hybrid_decision.requested_delta_codes != 0;
   hybrid_source.preview_available = true;
   effective_decision = &hybrid_source;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  }
+#endif
 #endif
   if (transaction.state == OtisCx317ActiveState::AwaitingResponse) {
     OtisCx317ResponseResult response;
@@ -1264,8 +1521,14 @@ void otis_cx317_active_live_on_decision(
 #endif
   estimator_history_reset = false;
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!dispatching_plant_sign_request) {
+#endif
   pending_hybrid_decision = hybrid_decision;
   pending_hybrid_decision_valid = true;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  }
+#endif
 #endif
   outcome->request_created = true;
   outcome->request_sequence = request.request_sequence;
@@ -1291,6 +1554,242 @@ void otis_cx317_active_live_on_decision(
   }
 #else
   (void)decision;
+  (void)decision_ticks_available;
+  (void)decision_timestamp_ticks;
+#endif
+}
+
+void otis_cx317_active_live_on_decision(
+    const OtisCx317ActiveLiveDecision *decision,
+    OtisCx317ActiveLiveOutcome *outcome) {
+  active_live_on_decision_impl(decision, false, 0u, outcome);
+}
+
+void otis_cx317_active_live_on_decision_at_ticks(
+    const OtisCx317ActiveLiveDecision *decision,
+    uint64_t decision_timestamp_ticks, OtisCx317ActiveLiveOutcome *outcome) {
+  active_live_on_decision_impl(decision, true, decision_timestamp_ticks,
+                               outcome);
+}
+
+void otis_cx317_active_live_on_plant_sign_estimate(
+    const OtisCx321PlantSignEstimate *estimate, uint16_t current_applied_code,
+    bool latest_natural_tight_inside, uint64_t event_timestamp_ticks,
+    uint32_t now_s, OtisCx317ActiveLiveOutcome *outcome) {
+  if (outcome != nullptr) *outcome = {};
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!initialized || !transaction_bound || !plant_sign_engine_ready ||
+      estimate == nullptr || outcome == nullptr)
+    return;
+  const OtisCx317ActiveEligibility current = eligibility(now_s);
+  const bool common_evidence_exact =
+      otis_cx317_active_eligibility_valid(&current) &&
+      estimate->capture_session == transaction.expected_binding.session_id &&
+      current_applied_code == transaction.applied_code &&
+      event_timestamp_ticks == estimate->close_ticks;
+  if (plant_sign_engine.state == OtisCx321PlantSignState::FrequencyAcquire) {
+    const OtisCx321PlantSignState state_before = plant_sign_engine.state;
+    const uint8_t pre_window_count_before =
+        plant_sign_engine.pre_window_count;
+    OtisCx321PlantSignDecision identification = {};
+    const bool request_ready = otis_cx321_plant_sign_engine_on_pre_estimate(
+        &plant_sign_engine, estimate, current_applied_code,
+        transaction.dac_epoch, transaction.correction_count,
+        latest_natural_tight_inside, common_evidence_exact, &identification);
+    const char *pre_event = pre_window_count_before == 0u ? "pre1" : "pre2";
+    if (!queue_plant_sign_frame(
+            pre_event, event_timestamp_ticks,
+            otis_cx321_plant_sign_state_name(state_before),
+            otis_cx321_plant_sign_state_name(plant_sign_engine.state),
+            plant_sign_engine.reason, estimate,
+            latest_natural_tight_inside ? "TIGHT_INSIDE" : "TIGHT_OUTSIDE")) {
+      otis_cx317_active_fault(&transaction,
+                              "plant_sign_pre_evidence_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+      return;
+    }
+    if (!request_ready) {
+      if (plant_sign_engine.state == OtisCx321PlantSignState::NotExercised) {
+        otis_cx317_active_fault(&transaction,
+                                "plant_sign_qualification_not_exercised");
+        outcome->faulted = true;
+      } else if (plant_sign_engine.state ==
+                 OtisCx321PlantSignState::FailStatic) {
+        otis_cx317_active_fault(&transaction, plant_sign_engine.reason);
+        outcome->faulted = true;
+      }
+      outcome->reason = plant_sign_engine.reason;
+      return;
+    }
+    const OtisCx317ActiveLiveDecision request = {
+        identification.decision_sequence,
+        identification.source_first_sequence,
+        identification.source_last_sequence,
+        now_s,
+        identification.current_code,
+        identification.requested_delta_codes,
+        identification.requested_code,
+        static_cast<double>(identification.pre_error_counts) / 1500.0,
+        true,
+        true,
+        true,
+        true,
+    };
+    dispatching_plant_sign_request = true;
+    active_live_on_decision_impl(&request, true, event_timestamp_ticks,
+                                 outcome);
+    dispatching_plant_sign_request = false;
+    pending_plant_sign_application = outcome->request_created;
+    if (!pending_plant_sign_application && !outcome->faulted) {
+      otis_cx317_active_fault(&transaction,
+                              "plant_sign_request_not_created");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+    } else if (!queue_plant_sign_frame(
+                   "request", event_timestamp_ticks,
+                   otis_cx321_plant_sign_state_name(
+                       OtisCx321PlantSignState::PlantSignQualify),
+                   otis_cx321_plant_sign_state_name(
+                       OtisCx321PlantSignState::PlantSignQualify),
+                   "identification_request_created", nullptr, nullptr)) {
+      pending_plant_sign_application = false;
+      otis_cx317_active_fault(&transaction,
+                              "plant_sign_request_evidence_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+    }
+    return;
+  }
+  if (plant_sign_engine.state == OtisCx321PlantSignState::PlantSignQualify &&
+      plant_sign_engine.application_ticks != 0u) {
+    OtisCx321PlantSignResponse response = {};
+    const bool passed = otis_cx321_plant_sign_engine_on_response(
+        &plant_sign_engine, estimate, common_evidence_exact,
+        latest_natural_tight_inside, &response);
+    if (!queue_plant_sign_frame(
+            "response", event_timestamp_ticks,
+            otis_cx321_plant_sign_state_name(
+                OtisCx321PlantSignState::PlantSignQualify),
+            otis_cx321_plant_sign_state_name(plant_sign_engine.state),
+            plant_sign_engine.reason, estimate,
+            latest_natural_tight_inside ? "TIGHT_INSIDE" : "TIGHT_OUTSIDE")) {
+      otis_cx317_active_fault(&transaction,
+                              "plant_sign_response_evidence_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+      return;
+    }
+    outcome->response_recorded = true;
+    outcome->reason = plant_sign_engine.reason;
+    if (!passed) {
+      otis_cx317_active_fault(
+          &transaction,
+          strcmp(plant_sign_engine.reason,
+                 "identification_response_evidence_inexact") == 0
+              ? plant_sign_engine.reason
+              : "plant_sign_qualification_failed");
+      outcome->faulted = true;
+      return;
+    }
+    evidence_phase = EvidencePhase::Response;
+    evidence_request_sequence = response.request_sequence;
+    evidence_pending_since_s = now_s;
+    pending_response_psq_record_sequence = plant_sign_record_sequence;
+    const OtisCx317ResponseResult active_response = {
+        OtisCx317ResponseClass::HealthyDetected,
+        "plant_sign_integer_response_passed_host_replay_pending",
+        static_cast<double>(response.response_counts) / 1500.0,
+        static_cast<double>(response.response_counts) / 1500.0,
+        0u,
+    };
+    if (!queue_frame("response", &active_response,
+                     static_cast<double>(estimate->signed_error_counts) /
+                         1500.0)) {
+      otis_cx317_active_fault(
+          &transaction, "plant_sign_active_response_evidence_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+    }
+  }
+#else
+  (void)estimate;
+  (void)current_applied_code;
+  (void)latest_natural_tight_inside;
+  (void)event_timestamp_ticks;
+  (void)now_s;
+#endif
+}
+
+bool otis_cx317_active_live_acknowledge_plant_sign_response(
+    uint32_t request_sequence, uint32_t response_psq_record_sequence,
+    int64_t response_counts, uint32_t application_sequence,
+    uint32_t dac_epoch, uint32_t response_source_last_sequence,
+    const char *attestation_sha256, uint64_t acknowledgement_ticks) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  uint64_t extended_acknowledgement_ticks = 0u;
+  if (!initialized || !transaction_bound || !plant_sign_engine_ready ||
+      evidence_phase != EvidencePhase::Response ||
+      request_sequence != evidence_request_sequence ||
+      response_psq_record_sequence != pending_response_psq_record_sequence ||
+      !exact_sha256_text(attestation_sha256)) {
+    if (transaction_bound)
+      otis_cx317_active_fault(
+          &transaction, "plant_sign_response_ack_identity_mismatch");
+    return false;
+  }
+  if (!otis_cx317_preview_live_extend_timer0_ticks(
+          acknowledgement_ticks, &extended_acknowledgement_ticks)) {
+    otis_cx317_active_fault(
+        &transaction, "plant_sign_response_ack_timestamp_projection_failed");
+    return false;
+  }
+  if (!otis_cx321_plant_sign_engine_acknowledge_response(
+          &plant_sign_engine, request_sequence, application_sequence,
+          dac_epoch, response_source_last_sequence, response_counts,
+          extended_acknowledgement_ticks, true) ||
+      !otis_cx317_active_rebase_natural_history_after_identification(
+          &transaction, plant_sign_engine.applied_code,
+          plant_sign_engine.applied_dac_epoch) ||
+      !otis_cx317_active_complete_identification_response(
+          &transaction, plant_sign_engine.applied_code,
+          plant_sign_engine.applied_dac_epoch) ||
+      !otis_cx321_plant_sign_engine_rebase_natural_controller(
+          &plant_sign_engine, &hybrid_engine)) {
+    otis_cx317_active_fault(&transaction,
+                            "plant_sign_response_ack_or_handoff_failed");
+    hybrid_fail_static(transaction.reason);
+    return false;
+  }
+  memcpy(plant_sign_attestation_sha256, attestation_sha256, 65u);
+  hybrid_engine_ready = true;
+  if (!queue_plant_sign_frame(
+          "response_ack", extended_acknowledgement_ticks,
+          otis_cx321_plant_sign_state_name(
+              OtisCx321PlantSignState::ResponseAckPending),
+          otis_cx321_plant_sign_state_name(
+              OtisCx321PlantSignState::PhaseQualify),
+          "identification_response_acknowledged", nullptr, nullptr)) {
+    otis_cx317_active_fault(&transaction,
+                            "plant_sign_response_ack_evidence_queue_fault");
+    hybrid_fail_static(transaction.reason);
+    return false;
+  }
+  plant_sign_handoff_pending = true;
+  evidence_phase = EvidencePhase::None;
+  evidence_request_sequence = 0u;
+  evidence_pending_since_s = 0u;
+  return true;
+#else
+  (void)request_sequence;
+  (void)response_psq_record_sequence;
+  (void)response_counts;
+  (void)application_sequence;
+  (void)dac_epoch;
+  (void)response_source_last_sequence;
+  (void)attestation_sha256;
+  (void)acknowledgement_ticks;
+  return false;
 #endif
 }
 
@@ -1321,17 +1820,48 @@ bool otis_cx317_active_live_complete_application_evidence(
   if (last_application_acknowledged && estimator_history_reset) {
     OtisPhasePreviewLiveStatus phase = {};
     otis_phase_preview_live_get_status(&phase);
-    const bool downstream_exact =
-        pending_hybrid_decision_valid &&
+    const bool downstream_epoch_exact =
         otis_cx317_preview_live_applied_epoch_exact(
             transaction.applied_code, transaction.dac_epoch) &&
         phase.initialized && phase.applied_code_bound &&
         phase.applied_code == transaction.applied_code &&
         phase.dac_epoch == transaction.dac_epoch;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    if (pending_plant_sign_application) {
+      const bool identification_noted =
+          otis_cx321_plant_sign_engine_note_application(
+              &plant_sign_engine, transaction.request.request_sequence,
+              transaction.applied.application_sequence,
+              transaction.applied_code, transaction.dac_epoch,
+              pending_application_timestamp_ticks, downstream_epoch_exact);
+      if (!identification_noted) {
+        estimator_history_reset = false;
+        otis_cx317_active_fault(
+            &transaction, "plant_sign_application_epoch_mismatch");
+      } else if (!queue_plant_sign_frame(
+                     "application", pending_application_timestamp_ticks,
+                     otis_cx321_plant_sign_state_name(
+                         OtisCx321PlantSignState::PlantSignQualify),
+                     otis_cx321_plant_sign_state_name(
+                         OtisCx321PlantSignState::PlantSignQualify),
+                     plant_sign_engine.reason, nullptr, nullptr)) {
+        estimator_history_reset = false;
+        otis_cx317_active_fault(
+            &transaction, "plant_sign_application_evidence_queue_fault");
+      }
+      pending_plant_sign_application = false;
+    } else if (!otis_active_hybrid_engine_note_application_at_ticks(
+                   &hybrid_engine, &pending_hybrid_decision,
+                   transaction.applied_code, transaction.dac_epoch,
+                   pending_application_timestamp_ticks,
+                   pending_hybrid_decision_valid &&
+                       downstream_epoch_exact)) {
+#else
     if (!otis_active_hybrid_engine_note_application(
             &hybrid_engine, &pending_hybrid_decision,
             transaction.applied_code, transaction.dac_epoch,
-            downstream_exact)) {
+            pending_hybrid_decision_valid && downstream_epoch_exact)) {
+#endif
       estimator_history_reset = false;
       otis_cx317_active_fault(
           &transaction, "active_hybrid_application_epoch_mismatch");
@@ -1396,7 +1926,11 @@ void otis_cx317_active_live_visit_status(
   visitor(context, "snapshot_generation_begin", snapshot_generation,
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   visitor(context, "snapshot_contract",
-          OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT, OTIS_SEVERITY_INFO,
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+          OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V2, OTIS_SEVERITY_INFO,
+#else
+          OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V1, OTIS_SEVERITY_INFO,
+#endif
           OTIS_FLAG_PROFILE_ASSUMPTION);
   OtisCx317ActiveLiveStatus active = {};
   otis_cx317_active_live_get_status(&active, now_s);
@@ -1419,6 +1953,25 @@ void otis_cx317_active_live_visit_status(
   visitor(context, "numerical_policy_sha256",
           active.numerical_policy_sha256, OTIS_SEVERITY_INFO,
           OTIS_FLAG_PROFILE_ASSUMPTION);
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  visitor(context, "plant_sign_gate_sha256", active.plant_sign_gate_sha256,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "identification_estimator_sha256",
+          active.identification_estimator_sha256, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "identification_estimator_config_sha256",
+          active.identification_estimator_config_sha256,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "natural_frequency_estimator_sha256",
+          active.natural_frequency_estimator_sha256, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_PROFILE_ASSUMPTION);
+  visitor(context, "plant_sign_state", active.plant_sign_state,
+          active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "plant_sign_arm_window_eligible",
+          active.plant_sign_arm_window_eligible ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
   visitor(context, "state", active.state,
           active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
           OTIS_FLAG_NONE);
@@ -1471,6 +2024,15 @@ void otis_cx317_active_live_visit_status(
           active.first_phase_checkpoint_passed ? "true" : "false",
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   char value[24];
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  snprintf(value, sizeof(value), "%u", active.plant_sign_pre_window_count);
+  visitor(context, "plant_sign_pre_window_count", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u",
+           active.plant_sign_accumulator_accepted_intervals);
+  visitor(context, "plant_sign_accumulator_accepted_intervals", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
   snprintf(value, sizeof(value), "%u",
            active.phase_nonzero_application_count);
   visitor(context, "phase_nonzero_application_count", value,
@@ -1565,6 +2127,26 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->active_policy_sha256 = kActivePolicyHash;
   status->response_policy_sha256 = kResponsePolicyHash;
   status->numerical_policy_sha256 = kNumericalPolicyHash;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  status->plant_sign_gate_sha256 = kPlantSignGateHash;
+  status->identification_estimator_sha256 = kIdentificationEstimatorHash;
+  status->identification_estimator_config_sha256 =
+      kIdentificationEstimatorConfigHash;
+  status->natural_frequency_estimator_sha256 = kEstimatorHash;
+  status->plant_sign_state =
+      otis_cx321_plant_sign_state_name(plant_sign_engine.state);
+  status->plant_sign_pre_window_count = plant_sign_engine.pre_window_count;
+  status->plant_sign_accumulator_accepted_intervals =
+      otis_cx317_preview_live_plant_sign_accepted_intervals();
+  status->plant_sign_arm_window_eligible =
+      plant_sign_engine_ready &&
+      plant_sign_engine.state == OtisCx321PlantSignState::FrequencyAcquire &&
+      plant_sign_engine.pre_window_count == 1u &&
+      status->plant_sign_accumulator_accepted_intervals >= 1400u &&
+      transaction.state == OtisCx317ActiveState::Disarmed &&
+      evidence_phase == EvidencePhase::None &&
+      otis_cx317_active_arm_eligibility_valid(&current_eligibility);
+#endif
   status->state = transaction_bound
                       ? otis_cx317_active_state_name(transaction.state)
                       : "UNBOUND";
@@ -1616,12 +2198,26 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->setup_partition_healthy = true;
 #endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  status->hybrid_state =
+      hybrid_engine_ready
+          ? otis_active_hybrid_state_name(hybrid_engine.state)
+          : (plant_sign_engine_ready
+                 ? otis_cx321_plant_sign_state_name(plant_sign_engine.state)
+                 : "SETUP_PENDING");
+  status->hybrid_reason =
+      hybrid_engine_ready
+          ? hybrid_engine.reason
+          : (plant_sign_engine_ready ? plant_sign_engine.reason
+                                     : "setup_consumers_pending");
+#else
   status->hybrid_state =
       hybrid_engine_ready
           ? otis_active_hybrid_state_name(hybrid_engine.state)
           : "SETUP_PENDING";
   status->hybrid_reason =
       hybrid_engine_ready ? hybrid_engine.reason : "setup_consumers_pending";
+#endif
   status->phase_nonzero_application_count =
       hybrid_engine.phase_nonzero_application_count;
   status->phase_material_application_count =

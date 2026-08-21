@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "profile_id": "cx321_plant_sign_1500_v1",
+  "status": "selected_offline_identification_only_non_effective",
+  "qualified_scope": "prospective_CX321_plant_sign_identification_only_against_retained_fixed_code_null_and_plant_dwell_evidence",
+  "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+  "base_estimator": {
+    "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
+    "sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+  },
+  "runtime_config": {
+    "path": "profiles/estimators/cx321_plant_sign_1500_config_v1.json",
+    "file_sha256": "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8",
+    "canonical_config_hash": "da9d0851abacccecf7c866abbefc2d6ff2e917186fed43c192a29c3d08b77c7a",
+    "strict_loader": "host.otis_tools.pps_cumulative_span_estimator.SpanEstimatorConfig.from_mapping"
+  },
+  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+  "counter_direction": "down",
+  "counter_width_bits": 32,
+  "accumulator_width_bits": 64,
+  "nominal_reference_interval_s": 1.0,
+  "timer_domain": "rp2040_timer0",
+  "timer_nominal_hz": 16000000,
+  "maximum_captured_edge_rate_hz": 133000000,
+  "authoritative_denominator": "exactly_1500_accepted_nominal_D14_PPS_intervals",
+  "authoritative_policy": {
+    "span_s": 1500,
+    "output_mode": "non_overlapping",
+    "output_cadence_s": 1500,
+    "boxcar_group_delay_s": 750,
+    "boxcar_minus_3db_bandwidth_hz": 0.0002952976471263015,
+    "boxcar_first_null_hz": 0.0006666666666666666,
+    "clean_time_to_first_estimate_s": 1500,
+    "fresh_support_recovery_time_s": 1500,
+    "count_increment_hz": 0.0006666666666666666,
+    "stage3_population_stddev_hz": 0.0003324814458103915,
+    "stage3_nonoverlapping_range_counts": 2,
+    "stage3_nonoverlapping_range_hz": 0.0013333333333333333,
+    "empirical_detection_floor_rule": "stage3_nonoverlapping_range_counts_plus_one_exact_count",
+    "empirical_detection_floor_counts": 3,
+    "empirical_detection_floor_hz": 0.002,
+    "stage3_independent_estimate_count": 28,
+    "future_identification_decision_epoch_s": 1500,
+    "calibrated_resolution_status": "unavailable_finite_record_observed_floor_only"
+  },
+  "exact_arithmetic": {
+    "adjacent_count_formula": "(opening_downcounter-closing_downcounter)_mod_2^32",
+    "window_total_formula": "unsigned_64_bit_sum_of_exactly_1500_consecutive_accepted_adjacent_counts",
+    "frequency_formula": "window_total_counts / 1500",
+    "response_formula": "post_window_total_counts - pre_window_total_counts",
+    "response_verdict_domain": "exact_integer_counts",
+    "floating_frequency_subtraction_forbidden_for_verdicts": true,
+    "timer_normalized_frequency_role": "diagnostic_only"
+  },
+  "invalidation_policy": {
+    "reset_on": [
+      "invalid_adjacent_interval",
+      "session_boundary",
+      "sequence_discontinuity",
+      "reference_association_failure",
+      "snapshot_fault",
+      "counter_zero_or_saturation",
+      "fifo_dma_or_ring_fault",
+      "parser_or_transport_loss",
+      "reset_evidence",
+      "dac_control_epoch",
+      "declared_settling_exclusion"
+    ],
+    "dac_epoch_policy": "no_span_crosses_a_DAC_control_epoch",
+    "settling_policy": "after_each_application_exclude_through_the_900_exact_device_second_deadline_then_begin_with_the_first_interval_whose_opening_D14_boundary_is_at_or_after_that_deadline_and_require_1500_entirely_fresh_intervals",
+    "recovery_policy": "fresh_contiguous_support_required_for_each_span"
+  },
+  "qualification_evidence": {
+    "historical_acquisition_revision": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "historical_analysis_revision": "b4b3ca46019a740c77ea52267c8fb5e96998f00e",
+    "historical_estimator_implementation_sha256": "96e3b96d39eb03c7e1a24fe04a33868ace9312c0c9eddbeddea67f32ab334d38",
+    "current_estimator_implementation_sha256": "3693f0c267380d643814319c69497122c86715e2f3c3d99d93c05dabf0890968",
+    "fixed_code": {
+      "run_id": "stage3_fixed_code_20260801T121709Z",
+      "evidence_manifest_sha256": "489d0b5812c99beaccce338f9d5d5fe68dccf11c1f7d09a92ace5774b57dcdad",
+      "run_manifest_sha256": "ddbb71efed0693baae08bb1b624e83cdb9ec9f1bd69679299b37f58ed41786ea",
+      "cnt_sha256": "93167eddd7f6600b55a9c24b893a7032ed8a6fc14bbc578ee906b2a5d95c9f9e",
+      "snp_sha256": "596bb0284f0d5c7061c7e26a31c41bd5ee057c932febc5684b81122d5f393958",
+      "stable_interval_count": 43227,
+      "independent_output_count": 28,
+      "observed_range_counts": 2
+    },
+    "plant_dwell_parity": {
+      "run_id": "stage5_fresh_session_smoke_20260802T080043Z",
+      "exact_reconstruction": {
+        "path": "profiles/qualification/cx321_plant_parity_1500_reconstruction_v1.json",
+        "sha256": "3c73a1de1a828ab947f0148e6ee589055d491602ac1eb086fe902fe3aee3903e"
+      },
+      "run_manifest_sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c",
+      "ref_sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5",
+      "cnt_sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264",
+      "snp_sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b",
+      "interval_policy_sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3",
+      "historical_plant_report_sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7",
+      "dwell_s": 2400,
+      "settling_exclusion_s": 900,
+      "visit_count": 9,
+      "one_complete_1500s_window_per_visit": true,
+      "settled_support_minimum_s": 1501,
+      "settled_support_maximum_s": 1571,
+      "window_total_counts": [
+        15000000069,
+        15000000006,
+        14999999985,
+        15000000005,
+        15000000070,
+        15000000136,
+        15000000181,
+        15000000137,
+        15000000071
+      ],
+      "exact_drift_cancelled_gain_hz_per_code": {
+        "minimum": "202567743791/1229818398912000",
+        "median_approximate": 0.00016972656230778,
+        "maximum": "212198163607/1229947150848000",
+        "minimum_decimal": 0.00016471354142222,
+        "maximum_decimal": 0.000172526245099798
+      }
+    }
+  },
+  "separation_claim": {
+    "accepted_interval_gap_cases_per_exclusion": [900, 901],
+    "primary_noncoincident_application_gap": 901,
+    "primary_complete_timeline_placements": 36926,
+    "eligible_exact_equal_pre_window_placements": 18219,
+    "null_response_count_minimum": -2,
+    "null_response_count_maximum": 2,
+    "false_detected_attributions_at_three_counts_for_each_gap_case": {
+      "900": 0,
+      "901": 0
+    },
+    "interpretation": "zero_observed_outcomes_in_one_finite_retained_record_not_a_calibrated_future_false_positive_probability"
+  },
+  "role_separation": {
+    "CX321_identification_only": true,
+    "natural_600s_controller_estimator_changed": false,
+    "natural_controller_decision_authority": false,
+    "general_plant_model_control_authority": false,
+    "physical_authority": false,
+    "implementation_requirement": "dedicated_parallel_accumulator_over_the_same_exact_accepted_interval_identity_without_resetting_rephasing_or_changing_the_natural_600s_estimator",
+    "first_downstream_consumer_requirement": "exact_1500s_config_hash_total_count_support_epoch_and_response_count_must_propagate_through_the_firmware_decision_and_host_replay_ack"
+  },
+  "limitations": [
+    "Counter-aperture, D14 reference, calibration and combined uncertainty remain unavailable.",
+    "The empirical floor is an observed finite-record separation rule, not a calibrated resolution or probability bound.",
+    "The retained plant dwells establish direct estimator parity but do not physically qualify a future firmware implementation or bundle.",
+    "The 1500-second output is selected only for the one-time CX321 identification transaction; the unchanged natural controller retains its selected 600-second estimator."
+  ],
+  "authority": {
+    "offline_preparation": true,
+    "effective": false,
+    "actuation_authorized": false,
+    "controller_ported_to_firmware": false,
+    "diagnostic_bypass_permitted": false
+  }
+}

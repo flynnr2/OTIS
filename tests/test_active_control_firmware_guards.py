@@ -61,7 +61,7 @@ def test_prewrite_capsule_requires_exact_phase_ack_before_single_i2c_attempt() -
         encoding="utf-8"
     )
     decision = active[
-        active.index("void otis_cx317_active_live_on_decision") :
+        active.index("static void active_live_on_decision_impl") :
         active.index("bool otis_cx317_active_live_take_application_outcome")
     ]
     acknowledgement = active[
@@ -496,6 +496,12 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "active_policy_sha256",
         "response_policy_sha256",
         "numerical_policy_sha256",
+        "plant_sign_gate_sha256",
+        "identification_estimator_sha256",
+        "identification_estimator_config_sha256",
+        "natural_frequency_estimator_sha256",
+        "plant_sign_state",
+        "plant_sign_arm_window_eligible",
         "state",
         "reason",
         "evidence_pending",
@@ -510,6 +516,8 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "hybrid_state",
         "hybrid_reason",
         "first_phase_checkpoint_passed",
+        "plant_sign_pre_window_count",
+        "plant_sign_accumulator_accepted_intervals",
         "phase_nonzero_application_count",
         "phase_material_application_count",
         "frequency_only_application_count",
@@ -618,6 +626,7 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx319_range_part_b_upper",
         "cx319_range_part_b_upper_completion",
         "cx320_active_hybrid",
+        "cx321_active_hybrid",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

@@ -41,13 +41,16 @@ reset makes the physical code unknown until a new exact setup acknowledgement
 is captured. See the
 [`attempt-9 terminal report`](docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md).
 
-The active programme is offline-only CX321 successor preparation. Its selected
-design adds one separately identified 21-code plant-sign qualification
-transaction before the unchanged natural hybrid controller. Twenty-one codes
-are the smallest existing bounded step whose lower-gain modeled response
-exceeds the frozen 600-second estimator's detection floor. Implementation,
-exact bundle, rehearsal and separate physical authority are all pending. See
-the [CX321 design decision](docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md).
+The active programme is offline-only CX321 successor preparation. Its v2 design
+adds one separately identified 21-code plant-sign transaction using a dedicated
+1,500-second estimator before the unchanged 600-second natural hybrid
+controller. Exhaustive fixed-code replay selected the three-count gate over the
+original 600-second and persistent candidates; the retained plant dwells give
+direct estimator parity. Firmware, host replay, supervision, analysis and the
+producer-to-first-natural-consumer path are implemented and release-verified.
+The exact clean-source bundle, its same-bundle rehearsal and separate physical
+authority are still pending. See the
+[CX321 design decision](docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md).
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute

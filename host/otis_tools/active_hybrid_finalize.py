@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .active_hybrid_analyze import analyze
+from .active_hybrid_programme_contract import programme_from_mapping
 
 
 TOOL_ID = "cx320_active_hybrid_finalizer_and_sealer_v1"
@@ -42,6 +43,8 @@ def _write_new(path: Path, value: dict[str, Any]) -> None:
 
 def finalize(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    programme = programme_from_mapping(manifest)
     bindings = []
     for relative in SNAPSHOT_FILES:
         path = run_dir / relative
@@ -56,7 +59,7 @@ def finalize(run_dir: Path) -> dict[str, Any]:
         )
     snapshot: dict[str, Any] = {
         "schema_version": 1,
-        "snapshot_type": "cx320_active_hybrid_immutable_evidence_snapshot_v1",
+        "snapshot_type": f"{programme.key}_active_hybrid_immutable_evidence_snapshot_v1",
         "created_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
@@ -71,14 +74,13 @@ def finalize(run_dir: Path) -> dict[str, Any]:
     analysis_path = run_dir / "reports/active_hybrid_analysis_v1.json"
     _write_new(analysis_path, analysis)
 
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     trace = json.loads(
         (run_dir / "reports/operational_trace_v1.json").read_text(encoding="utf-8")
     )
     primary = trace["modeled_phase_transaction"]
     seal: dict[str, Any] = {
         "schema_version": 1,
-        "seal_type": "cx320_active_hybrid_operational_rehearsal_seal_v1",
+        "seal_type": f"{programme.key}_active_hybrid_operational_rehearsal_seal_v1",
         "tool": TOOL_ID,
         "tool_sha256": _sha256_file(Path(__file__)),
         "created_utc": datetime.now(timezone.utc)
@@ -131,6 +133,10 @@ def finalize(run_dir: Path) -> dict[str, Any]:
 
 def validate_seal(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
+    manifest = json.loads(
+        (run_dir / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    programme = programme_from_mapping(manifest)
     seal_path = run_dir / "reports/active_hybrid_rehearsal_seal_v1.json"
     seal = json.loads(seal_path.read_text(encoding="utf-8"))
     claimed = seal.pop("seal_sha256", None)
@@ -138,6 +144,15 @@ def validate_seal(run_dir: Path) -> dict[str, Any]:
     seal["seal_sha256"] = claimed
     if claimed != observed:
         raise ValueError("CX320 rehearsal semantic seal identity differs")
+    if (
+        seal.get("seal_type")
+        != f"{programme.key}_active_hybrid_operational_rehearsal_seal_v1"
+        or seal.get("run_identity") != manifest.get("run_identity")
+        or seal.get("bundle_sha256") != manifest.get("bundle_sha256")
+        or seal.get("policy_sha256") != manifest.get("policy_sha256")
+        or seal.get("build_identity") != manifest.get("build_identity")
+    ):
+        raise ValueError("active-hybrid rehearsal seal identity tuple differs")
     for name in ("evidence_snapshot", "analysis"):
         binding = seal[name]
         path = run_dir / binding["path"]

@@ -63,6 +63,8 @@ struct OtisSetupApplicationAck {
   uint16_t requested_code;
   uint16_t applied_code;
   uint16_t one_shot_ordinal;
+  // Captured immediately after the sole Core 0 DAC write returns.
+  uint64_t application_timestamp_ticks;
   enum class Kind : uint8_t {
     Core0Accepted,
     Core0Rejected,

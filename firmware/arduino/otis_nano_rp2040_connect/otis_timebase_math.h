@@ -21,6 +21,27 @@ static inline uint64_t otis_timer0_interval_ticks(uint64_t start_ticks,
          OTIS_RP2040_TIMER0_TICKS_PER_US;
 }
 
+static inline bool otis_timer0_project_nearest_ticks(
+    uint64_t anchor_raw_ticks, uint64_t anchor_extended_ticks,
+    uint64_t event_raw_ticks, uint64_t maximum_distance_ticks,
+    uint64_t *event_extended_ticks) {
+  if (event_extended_ticks == nullptr) return false;
+  const uint64_t forward =
+      otis_timer0_interval_ticks(anchor_raw_ticks, event_raw_ticks);
+  if (forward <= maximum_distance_ticks) {
+    *event_extended_ticks = anchor_extended_ticks + forward;
+    return true;
+  }
+  const uint64_t backward =
+      otis_timer0_interval_ticks(event_raw_ticks, anchor_raw_ticks);
+  if (backward <= maximum_distance_ticks &&
+      anchor_extended_ticks >= backward) {
+    *event_extended_ticks = anchor_extended_ticks - backward;
+    return true;
+  }
+  return false;
+}
+
 static inline OtisPpsIntervalClass otis_classify_pps_interval_ticks(
     uint64_t interval_ticks, uint64_t short_threshold_ticks,
     uint64_t long_threshold_ticks) {

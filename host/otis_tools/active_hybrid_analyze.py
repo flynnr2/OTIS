@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import CsvValidationContext, validate_csv
+from .active_hybrid_programme_contract import programme_from_mapping
 
 
 TOOL_ID = "cx320_active_hybrid_analyzer_v1"
@@ -77,9 +78,10 @@ def _validate_scenario(
 def analyze(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     manifest = _read_object(run_dir / "run_manifest.json")
+    programme = programme_from_mapping(manifest)
     trace = _read_object(run_dir / "reports/operational_trace_v1.json")
-    if manifest.get("programme_id") != "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1":
-        raise ValueError("unexpected CX320 programme identity")
+    if manifest.get("programme_id") != programme.programme_id:
+        raise ValueError("unexpected active-hybrid programme identity")
     if manifest.get("mode") != "accelerated_no_io_operational_rehearsal":
         raise ValueError("analyzer expected a no-I/O operational rehearsal")
     if manifest.get("qualification_evidence") is not False:
@@ -195,7 +197,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
 
     report: dict[str, Any] = {
         "schema_version": 1,
-        "report_type": "cx320_active_hybrid_operational_rehearsal_analysis_v1",
+        "report_type": f"{programme.key}_active_hybrid_operational_rehearsal_analysis_v1",
         "tool": TOOL_ID,
         "tool_sha256": _sha256_file(Path(__file__)),
         "created_utc": datetime.now(timezone.utc)
@@ -224,7 +226,7 @@ def analyze(run_dir: Path) -> dict[str, Any]:
             "Serialized AHY records are non-actionable evidence; no command FIFO or serial device was opened.",
         ],
     }
-    if any(value not in TERMINAL_DECISIONS for value in report["scenario_terminal_classifications"].values()):
+    if any(value not in programme.terminal_decisions for value in report["scenario_terminal_classifications"].values()):
         raise ValueError("rehearsal used an undeclared terminal classification")
     report["analysis_sha256"] = _canonical_sha256(report)
     return report

@@ -7,9 +7,10 @@ one firmware-driven, phase-material combined correction, but its exact response
 was below the frozen observability floor and failed the positive-sign
 checkpoint. CX320 is a bounded non-pass with no remaining live authority. See
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The selected offline CX321 successor adds a separate 21-code plant-sign gate
-before the unchanged natural hybrid controller; implementation, bundle,
-rehearsal and physical authority remain pending. See
+The selected offline CX321 v2 successor adds a separate 21-code plant-sign gate
+using a dedicated 1,500-second estimator before the unchanged 600-second
+natural hybrid controller. Implementation and release verification pass;
+exact-bundle rehearsal and physical authority remain pending. See
 `../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Stage 0 — Foundations

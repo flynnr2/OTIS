@@ -117,6 +117,22 @@ It is not a capture timestamp, UTC, or `rp2040_timer0` evidence coordinate.
 Intervals are compared with wrap-safe signed differences and must remain below
 half the representation range.
 
+### Extended RP2040 TIMER0 ticks
+
+The non-wrapping, session-bound coordinate reconstructed by firmware from
+successive qualified D14 boundary timestamps in the wrapping raw
+`rp2040_timer0` domain. The reconstruction adds each wrap-safe adjacent
+boundary interval to the preceding extended value; setup, application and
+acknowledgement instants may be projected into that coordinate only when they
+are unambiguously close to a retained boundary.
+
+Its canonical domain name is `rp2040_timer0_extended`, with a nominal rate of
+16 MHz and strict non-wrapping ordering. It is derived evidence, not a wider
+hardware counter and not a new timing authority. Raw `rp2040_timer0` records
+remain unchanged. A value in one domain must not be compared directly with a
+value in the other without the explicit session reconstruction or projection
+that relates them.
+
 ### Host written
 
 A host-operation observation that the sole serial carrier completed writing a

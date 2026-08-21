@@ -118,6 +118,39 @@ def test_rehearsal_manifest_accepts_macos_pty_slave(
     assert observed["host"]["serial_device"] == "/dev/ttys001"
 
 
+def test_cx321_rehearsal_manifest_declares_extended_plant_sign_time_domain(
+    tmp_path: Path,
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    bundle.update(
+        {
+            "programme_id": "CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR_V2",
+            "run_identity": "cx321_active_hybrid:3210001",
+            "programme_policy": {"sha256": "1" * 64},
+            "identification": {"bindings": {}},
+        }
+    )
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    run_dir = tmp_path / "cx321_run"
+    run_dir.mkdir()
+
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/ttys001",
+    )
+    observed = json.loads(path.read_text(encoding="utf-8"))
+
+    assert {
+        "name": "rp2040_timer0_extended",
+        "nominal_hz": 16_000_000,
+    } in observed["domains"]
+    assert observed["contracts"]["plant_sign_qualification_v1"] == 1
+
+
 def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
@@ -153,6 +186,50 @@ def test_wire_fixture_uses_frozen_supervisor_identities() -> None:
         "sha256"
     ]
     assert row["actionable"] == "false"
+
+
+def test_cx321_first_natural_fixture_consumes_identification_handoff() -> None:
+    root = Path(__file__).resolve().parents[1]
+    natural_policy = (
+        root
+        / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"
+    )
+    programme_policy = (
+        root
+        / "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json"
+    )
+    bundle = {
+        "programme_id": "CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR_V2",
+        "firmware": {"build_identity": "a" * 64 + ":" + "b" * 64},
+        "policy": {"path": str(natural_policy)},
+        "programme_policy": {
+            "path": str(programme_policy),
+            "sha256": sha256(programme_policy.read_bytes()).hexdigest(),
+        },
+    }
+
+    ahy_rows, transactions, summary = (
+        rehearsal._cx321_first_natural_transaction_fixture(bundle)
+    )
+    ahy = ahy_rows[0]
+
+    assert ahy["current_applied_code"] == str(0xA827)
+    assert ahy["dac_epoch"] == "2"
+    assert ahy["correction_count_before"] == "1"
+    assert ahy["cumulative_movement_before_codes"] == "21"
+    assert ahy["request_sequence"] == "2"
+    assert summary["plant_sign_handoff_first_consumer"] is True
+    assert summary["phase_materially_influenced"] is True
+    assert [row["event"] for row in transactions] == [
+        "request_created",
+        "core0_accepted",
+        "application",
+        "response",
+    ]
+    assert {row["request_sequence"] for row in transactions} == {"2"}
+    assert transactions[-1]["correction_count"] == "2"
+    assert ahy_rows[1]["authority_state"] == "AWAITING_RESPONSE"
+    assert ahy_rows[1]["request_sequence"] == "2"
 
 
 def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:

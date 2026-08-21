@@ -266,6 +266,12 @@ class HybridDecision:
     cumulative_budget_limited: bool
     correction_count_before: int
     cumulative_movement_before_codes: int
+    global_last_application_s: int | None
+    natural_chatter_origin_code: int
+    natural_cumulative_movement_codes: int
+    natural_direction_count: int
+    plant_sign_attestation_id: str | None
+    plant_sign_handoff_first_consumer: bool
     actionable: bool = False
 
 
@@ -314,6 +320,12 @@ class ActiveHybridController:
         self.correction_count = 0
         self.cumulative_movement_codes = 0
         self.last_application_s = setup_application_s
+        # CX320 starts its natural-controller path at the setup code, so these
+        # values evolve in lockstep with the global authority counters.  CX321
+        # deliberately rebases only this natural chatter/path history after
+        # its separately classified plant-sign transaction.
+        self.natural_chatter_origin_code = policy.start_code
+        self.natural_cumulative_movement_codes = 0
         self.direction_history: list[int] = []
         self.transaction_outstanding = False
         self.outstanding_phase_material = False
@@ -325,6 +337,68 @@ class ActiveHybridController:
         self.phase_session: int | None = None
         self.phase_qualification_started_s: int | None = None
         self.fault_reason: str | None = None
+        self.plant_sign_attestation_id: str | None = None
+        self._plant_sign_handoff_first_consumer_pending = False
+
+    def rebase_after_plant_sign(
+        self,
+        *,
+        applied_code: int,
+        dac_epoch: int,
+        application_s: int,
+        qualification_started_s: int,
+        attestation_id: str,
+    ) -> None:
+        """Enter CX321's unchanged natural controller after plant-sign pass.
+
+        The identification move consumes the shared physical authority budget
+        and cadence, but it is not a natural controller decision and therefore
+        must not contaminate reversal, path-efficiency, materiality, or phase-
+        performance history.  This is an explicit one-time handoff rather than
+        a general controller reset.
+        """
+
+        if (
+            self.state is HybridState.FAIL_STATIC
+            or self.transaction_outstanding
+            or self.correction_count != 0
+            or self.cumulative_movement_codes != 0
+            or self.direction_history
+            or not attestation_id.strip()
+            or applied_code < self.policy.minimum_code
+            or applied_code > self.policy.maximum_code
+            or dac_epoch != 2
+            or application_s < 0
+            or qualification_started_s < application_s
+        ):
+            self._fault("invalid_plant_sign_handoff")
+            raise HybridPolicyError(self.reason)
+        movement = abs(applied_code - self.policy.start_code)
+        if movement != self.policy.maximum_step_codes:
+            self._fault("plant_sign_handoff_movement_mismatch")
+            raise HybridPolicyError(self.reason)
+
+        self.applied_code = applied_code
+        self.dac_epoch = dac_epoch
+        self.correction_count = 1
+        self.cumulative_movement_codes = movement
+        self.last_application_s = application_s
+        self.natural_chatter_origin_code = applied_code
+        self.natural_cumulative_movement_codes = 0
+        self.direction_history = []
+        self.transaction_outstanding = False
+        self.outstanding_phase_material = False
+        self.phase_material_application_count = 0
+        self.frequency_only_application_count = 0
+        self.phase_nonzero_application_count = 0
+        self.first_checkpoint_response_passed = False
+        self.phase_epoch = None
+        self.phase_session = None
+        self.phase_qualification_started_s = qualification_started_s
+        self.state = HybridState.PHASE_QUALIFY
+        self.reason = "plant_sign_attested_fresh_phase_qualification"
+        self.plant_sign_attestation_id = attestation_id
+        self._plant_sign_handoff_first_consumer_pending = True
 
     def _fault(self, reason: str) -> None:
         self.state = HybridState.FAIL_STATIC
@@ -366,8 +440,8 @@ class ActiveHybridController:
         reversals = sum(a != b for a, b in zip(prospective, prospective[1:]))
         if len(prospective) == 4 and reversals == 3:
             return "prospective_repeated_alternation"
-        path = self.cumulative_movement_codes + abs(delta)
-        net = abs(self.applied_code + delta - self.policy.start_code)
+        path = self.natural_cumulative_movement_codes + abs(delta)
+        net = abs(self.applied_code + delta - self.natural_chatter_origin_code)
         if path >= 42 and net <= 0.25 * path:
             return "prospective_low_efficiency_path"
         return None
@@ -407,6 +481,19 @@ class ActiveHybridController:
         delta = 0
         counterfactual_delta = 0
         reason = self.reason
+        handoff_first_consumer = self._plant_sign_handoff_first_consumer_pending
+
+        if handoff_first_consumer:
+            if (
+                self.plant_sign_attestation_id is None
+                or self.correction_count != 1
+                or self.cumulative_movement_codes != self.policy.maximum_step_codes
+                or self.natural_cumulative_movement_codes != 0
+                or self.direction_history
+                or self.natural_chatter_origin_code != self.applied_code
+            ):
+                self._fault("plant_sign_first_consumer_handoff_mismatch")
+            self._plant_sign_handoff_first_consumer_pending = False
 
         phase_exact_now = self._phase_exact(observation)
         if self.state is HybridState.FAIL_STATIC:
@@ -591,6 +678,12 @@ class ActiveHybridController:
             cumulative_budget_limited=cumulative_limited,
             correction_count_before=self.correction_count,
             cumulative_movement_before_codes=self.cumulative_movement_codes,
+            global_last_application_s=self.last_application_s,
+            natural_chatter_origin_code=self.natural_chatter_origin_code,
+            natural_cumulative_movement_codes=self.natural_cumulative_movement_codes,
+            natural_direction_count=len(self.direction_history),
+            plant_sign_attestation_id=self.plant_sign_attestation_id,
+            plant_sign_handoff_first_consumer=handoff_first_consumer,
             actionable=False,
         )
 
@@ -618,6 +711,9 @@ class ActiveHybridController:
         self.dac_epoch = dac_epoch
         self.correction_count += 1
         self.cumulative_movement_codes += abs(decision.requested_delta_codes)
+        self.natural_cumulative_movement_codes += abs(
+            decision.requested_delta_codes
+        )
         self.last_application_s = decision.timestamp_s
         self.direction_history.append(1 if decision.requested_delta_codes > 0 else -1)
         self.transaction_outstanding = True
@@ -691,6 +787,11 @@ class ActiveHybridController:
             "dac_epoch": self.dac_epoch,
             "correction_count": self.correction_count,
             "cumulative_movement_codes": self.cumulative_movement_codes,
+            "global_last_application_s": self.last_application_s,
+            "natural_chatter_origin_code": self.natural_chatter_origin_code,
+            "natural_cumulative_movement_codes": self.natural_cumulative_movement_codes,
+            "natural_direction_count": len(self.direction_history),
+            "plant_sign_attestation_id": self.plant_sign_attestation_id,
             "phase_nonzero_application_count": self.phase_nonzero_application_count,
             "phase_material_application_count": self.phase_material_application_count,
             "frequency_only_application_count": self.frequency_only_application_count,

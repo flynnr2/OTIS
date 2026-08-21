@@ -73,8 +73,18 @@ struct OtisActiveHybridEngine {
   uint32_t dac_epoch;
   uint16_t correction_count;
   uint16_t cumulative_movement_codes;
+  // Global authority accounting includes every automatic application.  These
+  // natural-history fields deliberately exclude a CX321 identification move.
+  // CX320 initializes both origins at kStartCode, so its behavior is unchanged.
+  uint16_t natural_chatter_origin_code;
+  uint16_t natural_cumulative_movement_codes;
   bool last_application_available;
   uint32_t last_application_s;
+  // CX321 enters through the exact-tick APIs so neither the 1,800-second
+  // cadence nor phase residence can be released early by integer-second
+  // truncation.  CX320 continues to use the legacy seconds fields/APIs.
+  bool exact_tick_timing_required;
+  uint64_t last_application_ticks;
   int8_t direction_history[4];
   uint8_t direction_count;
   bool transaction_outstanding;
@@ -88,18 +98,34 @@ struct OtisActiveHybridEngine {
   uint32_t phase_session;
   bool phase_qualification_started;
   uint32_t phase_qualification_started_s;
+  uint64_t phase_qualification_started_ticks;
 };
 
 void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
                                     uint32_t setup_application_s);
+bool otis_active_hybrid_engine_rebase_after_plant_sign(
+    OtisActiveHybridEngine *engine, uint16_t applied_code, uint32_t dac_epoch,
+    uint16_t global_correction_count,
+    uint16_t global_cumulative_movement_codes,
+    uint64_t identification_application_ticks,
+    uint64_t response_acknowledgement_ticks);
 bool otis_active_hybrid_engine_decide(
     OtisActiveHybridEngine *engine,
     const OtisActiveHybridObservation *observation,
     OtisActiveHybridDecision *decision);
+bool otis_active_hybrid_engine_decide_at_ticks(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridObservation *observation,
+    uint64_t observation_ticks, OtisActiveHybridDecision *decision);
 bool otis_active_hybrid_engine_note_application(
     OtisActiveHybridEngine *engine,
     const OtisActiveHybridDecision *decision,
     uint16_t applied_code, uint32_t dac_epoch,
+    bool downstream_consumers_exact);
+bool otis_active_hybrid_engine_note_application_at_ticks(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridDecision *decision,
+    uint16_t applied_code, uint32_t dac_epoch, uint64_t application_ticks,
     bool downstream_consumers_exact);
 bool otis_active_hybrid_engine_note_response(
     OtisActiveHybridEngine *engine,

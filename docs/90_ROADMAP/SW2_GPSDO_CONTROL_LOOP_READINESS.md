@@ -9,9 +9,10 @@ phase-material combined correction, but its exact response was below the frozen
 observability floor and failed the positive-sign checkpoint. The programme is a
 bounded non-pass with no remaining live authority. Current details are in
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The offline CX321 successor selects a separate 21-code plant-sign transaction
-before unchanged natural hybrid requests. It is not implemented or physically
-authorized; see
+The offline CX321 v2 successor selects a separate 21-code plant-sign transaction
+using a dedicated 1,500-second estimator before unchanged 600-second natural
+hybrid requests. It is implemented and release-verified but has no exact-bundle
+physical authority; see
 `../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Decision

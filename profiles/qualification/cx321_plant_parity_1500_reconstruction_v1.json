@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "reconstruction_id": "CX321_PLANT_PARITY_1500_RECONSTRUCTION_V1",
+  "status": "offline_historical_reconstruction_non_effective",
+  "source": {
+    "run_id": "stage5_fresh_session_smoke_20260802T080043Z",
+    "historical_acquisition_revision": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "historical_analysis_revision": "b4b3ca46019a740c77ea52267c8fb5e96998f00e",
+    "run_manifest_sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c",
+    "ref_sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5",
+    "cnt_sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264",
+    "snp_sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b",
+    "interval_policy_sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3",
+    "historical_plant_report_sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7"
+  },
+  "span_nominal_PPS_intervals": 1500,
+  "authoritative_frequency_formula": "total_count / 1500",
+  "representative_tick_formula": "(opening_unwrapped_timer_ticks + closing_unwrapped_timer_ticks) / 2",
+  "timer_domain": "rp2040_timer0",
+  "timer_nominal_hz": 16000000,
+  "visits": [
+    {
+      "label": "centre_1",
+      "epoch": "dwell_01_centre_1_0xA950",
+      "code": 43344,
+      "code_hex": "0xA950",
+      "first_cnt_sequence": 3290,
+      "last_cnt_sequence": 4789,
+      "opening_snp_sequence": 3289,
+      "closing_snp_sequence": 4789,
+      "opening_unwrapped_timer_ticks": 52665667008,
+      "closing_unwrapped_timer_ticks": 76665549648,
+      "representative_tick_numerator": 129331216656,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000069
+    },
+    {
+      "label": "lower_interior_1",
+      "epoch": "dwell_02_lower_interior_1_0xA850",
+      "code": 43088,
+      "code_hex": "0xA850",
+      "first_cnt_sequence": 5692,
+      "last_cnt_sequence": 7191,
+      "opening_snp_sequence": 5691,
+      "closing_snp_sequence": 7191,
+      "opening_unwrapped_timer_ticks": 91097478448,
+      "closing_unwrapped_timer_ticks": 115097359280,
+      "representative_tick_numerator": 206194837728,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000006
+    },
+    {
+      "label": "lower_endpoint",
+      "epoch": "dwell_03_lower_endpoint_0xA800",
+      "code": 43008,
+      "code_hex": "0xA800",
+      "first_cnt_sequence": 8094,
+      "last_cnt_sequence": 9593,
+      "opening_snp_sequence": 8093,
+      "closing_snp_sequence": 9593,
+      "opening_unwrapped_timer_ticks": 129529294560,
+      "closing_unwrapped_timer_ticks": 153529186240,
+      "representative_tick_numerator": 283058480800,
+      "representative_tick_denominator": 2,
+      "total_count": 14999999985
+    },
+    {
+      "label": "lower_interior_2",
+      "epoch": "dwell_04_lower_interior_2_0xA850",
+      "code": 43088,
+      "code_hex": "0xA850",
+      "first_cnt_sequence": 10496,
+      "last_cnt_sequence": 11995,
+      "opening_snp_sequence": 10495,
+      "closing_snp_sequence": 11995,
+      "opening_unwrapped_timer_ticks": 167961124672,
+      "closing_unwrapped_timer_ticks": 191961021680,
+      "representative_tick_numerator": 359922146352,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000005
+    },
+    {
+      "label": "centre_2",
+      "epoch": "dwell_05_centre_2_0xA950",
+      "code": 43344,
+      "code_hex": "0xA950",
+      "first_cnt_sequence": 12898,
+      "last_cnt_sequence": 14397,
+      "opening_snp_sequence": 12897,
+      "closing_snp_sequence": 14397,
+      "opening_unwrapped_timer_ticks": 206392959520,
+      "closing_unwrapped_timer_ticks": 230392856864,
+      "representative_tick_numerator": 436785816384,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000070
+    },
+    {
+      "label": "upper_interior_1",
+      "epoch": "dwell_06_upper_interior_1_0xAA50",
+      "code": 43600,
+      "code_hex": "0xAA50",
+      "first_cnt_sequence": 15300,
+      "last_cnt_sequence": 16799,
+      "opening_snp_sequence": 15299,
+      "closing_snp_sequence": 16799,
+      "opening_unwrapped_timer_ticks": 244824798528,
+      "closing_unwrapped_timer_ticks": 268824700544,
+      "representative_tick_numerator": 513649499072,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000136
+    },
+    {
+      "label": "upper_endpoint",
+      "epoch": "dwell_07_upper_endpoint_0xAB00",
+      "code": 43776,
+      "code_hex": "0xAB00",
+      "first_cnt_sequence": 17702,
+      "last_cnt_sequence": 19201,
+      "opening_snp_sequence": 17701,
+      "closing_snp_sequence": 19201,
+      "opening_unwrapped_timer_ticks": 283256641120,
+      "closing_unwrapped_timer_ticks": 307256541584,
+      "representative_tick_numerator": 590513182704,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000181
+    },
+    {
+      "label": "upper_interior_2",
+      "epoch": "dwell_08_upper_interior_2_0xAA50",
+      "code": 43600,
+      "code_hex": "0xAA50",
+      "first_cnt_sequence": 20104,
+      "last_cnt_sequence": 21603,
+      "opening_snp_sequence": 20103,
+      "closing_snp_sequence": 21603,
+      "opening_unwrapped_timer_ticks": 321688486736,
+      "closing_unwrapped_timer_ticks": 345688400080,
+      "representative_tick_numerator": 667376886816,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000137
+    },
+    {
+      "label": "final_safe_centre",
+      "epoch": "dwell_09_final_safe_centre_0xA950",
+      "code": 43344,
+      "code_hex": "0xA950",
+      "first_cnt_sequence": 22507,
+      "last_cnt_sequence": 24006,
+      "opening_snp_sequence": 22506,
+      "closing_snp_sequence": 24006,
+      "opening_unwrapped_timer_ticks": 360136348112,
+      "closing_unwrapped_timer_ticks": 384136255984,
+      "representative_tick_numerator": 744272604096,
+      "representative_tick_denominator": 2,
+      "total_count": 15000000071
+    }
+  ],
+  "drift_cancelled_gain_samples": [
+    {
+      "sample": "lower_interior_outbound",
+      "target_label": "lower_interior_1",
+      "bracket_labels": ["centre_1", "centre_2"],
+      "code_difference": 256,
+      "interpolation_fraction": "1601325439/6405304161",
+      "gain_hz_per_code": "202567743791/1229818398912000"
+    },
+    {
+      "sample": "lower_endpoint",
+      "target_label": "lower_endpoint",
+      "bracket_labels": ["lower_interior_1", "lower_interior_2"],
+      "code_difference": 80,
+      "interpolation_fraction": "4803977692/9607956789",
+      "gain_hz_per_code": "196963114877/1152954814680000"
+    },
+    {
+      "sample": "lower_interior_return",
+      "target_label": "lower_interior_2",
+      "bracket_labels": ["centre_1", "centre_2"],
+      "code_difference": 256,
+      "interpolation_fraction": "4803977702/6405304161",
+      "gain_hz_per_code": "207371722003/1229818398912000"
+    },
+    {
+      "sample": "upper_interior_outbound",
+      "target_label": "upper_interior_1",
+      "bracket_labels": ["centre_2", "final_safe_centre"],
+      "code_difference": 256,
+      "interpolation_fraction": "46192117/184787733",
+      "gain_hz_per_code": "12149798261/70958489472000"
+    },
+    {
+      "sample": "upper_endpoint",
+      "target_label": "upper_endpoint",
+      "bracket_labels": ["upper_interior_1", "upper_interior_2"],
+      "code_difference": 176,
+      "interpolation_fraction": "4803980227/9607961734",
+      "gain_hz_per_code": "427554297803/2536501897776000"
+    },
+    {
+      "sample": "upper_interior_return",
+      "target_label": "upper_interior_2",
+      "bracket_labels": ["centre_2", "final_safe_centre"],
+      "code_difference": 256,
+      "interpolation_fraction": "2401990317/3202987372",
+      "gain_hz_per_code": "212198163607/1229947150848000"
+    }
+  ],
+  "claims": {
+    "direct_existing_plant_dwell_parity": true,
+    "new_physical_qualification": false,
+    "physical_authority": false
+  }
+}

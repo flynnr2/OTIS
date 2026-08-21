@@ -6,6 +6,8 @@ from pathlib import Path
 from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_KEYS,
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    CX321_ACTIVE_STATUS_KEYS,
+    CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
@@ -24,18 +26,28 @@ def _row(component: str, key: str, value: str) -> dict[str, str]:
     }
 
 
-def _burst(generation: int, *, missing: str | None = None) -> list[dict[str, str]]:
+def _burst(
+    generation: int,
+    *,
+    missing: str | None = None,
+    contract: str = ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+) -> list[dict[str, str]]:
+    keys = (
+        CX321_ACTIVE_STATUS_KEYS
+        if contract == CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        else ACTIVE_STATUS_KEYS
+    )
     rows = [
         _row("cx317_active", SNAPSHOT_BEGIN_KEY, str(generation)),
         _row(
             "cx317_active",
             SNAPSHOT_CONTRACT_KEY,
-            ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+            contract,
         ),
     ]
     rows.extend(
         _row("cx317_active", key, f"{generation}:{key}")
-        for key in ACTIVE_STATUS_KEYS
+        for key in keys
         if key != missing
     )
     rows.append(
@@ -61,6 +73,24 @@ def test_active_snapshot_contract_carries_cx320_first_consumer_state() -> None:
         "phase_material_application_count",
         "frequency_only_application_count",
     } <= set(ACTIVE_STATUS_KEYS)
+
+
+def test_cx321_v2_requires_and_retains_plant_sign_state() -> None:
+    status = latest_complete_active_status(
+        _burst(3, contract=CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT)
+    )
+
+    assert status[SNAPSHOT_CONTRACT_KEY] == (
+        CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    )
+    assert status["plant_sign_state"] == "3:plant_sign_state"
+    assert latest_complete_active_status(
+        _burst(
+            4,
+            contract=CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+            missing="plant_sign_state",
+        )
+    ) == {}
 
 
 def test_newer_incomplete_or_duplicate_burst_cannot_mix_with_older_state() -> None:

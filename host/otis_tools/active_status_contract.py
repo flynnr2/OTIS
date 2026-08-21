@@ -8,6 +8,7 @@ from typing import Iterable, Mapping
 
 
 ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx317_active_status_snapshot_v1"
+CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx321_active_status_snapshot_v2"
 ACTIVE_STATUS_COMPONENT = "cx317_active"
 SNAPSHOT_BEGIN_KEY = "snapshot_generation_begin"
 SNAPSHOT_CONTRACT_KEY = "snapshot_contract"
@@ -54,12 +55,48 @@ ACTIVE_STATUS_KEYS = (
     "automatic_retry",
     "automatic_restore",
 )
+CX321_ACTIVE_STATUS_KEYS = (
+    *ACTIVE_STATUS_KEYS,
+    "plant_sign_state",
+    "plant_sign_pre_window_count",
+    "plant_sign_accumulator_accepted_intervals",
+    "plant_sign_arm_window_eligible",
+    "plant_sign_gate_sha256",
+    "identification_estimator_sha256",
+    "identification_estimator_config_sha256",
+    "natural_frequency_estimator_sha256",
+)
+ACTIVE_STATUS_CONTRACT_KEYS = {
+    ACTIVE_STATUS_SNAPSHOT_CONTRACT: ACTIVE_STATUS_KEYS,
+    CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT: CX321_ACTIVE_STATUS_KEYS,
+}
 ACTIVE_STATUS_WIRE_KEYS = (
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_CONTRACT_KEY,
     *ACTIVE_STATUS_KEYS,
     SNAPSHOT_COMPLETE_KEY,
 )
+CX321_ACTIVE_STATUS_WIRE_KEYS = (
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+    *CX321_ACTIVE_STATUS_KEYS,
+    SNAPSHOT_COMPLETE_KEY,
+)
+ALL_ACTIVE_STATUS_WIRE_KEYS = frozenset(
+    (*ACTIVE_STATUS_WIRE_KEYS, *CX321_ACTIVE_STATUS_WIRE_KEYS)
+)
+
+
+def active_status_wire_keys(contract: str) -> tuple[str, ...] | None:
+    keys = ACTIVE_STATUS_CONTRACT_KEYS.get(contract)
+    if keys is None:
+        return None
+    return (
+        SNAPSHOT_BEGIN_KEY,
+        SNAPSHOT_CONTRACT_KEY,
+        *keys,
+        SNAPSHOT_COMPLETE_KEY,
+    )
 
 
 def _unsigned_generation(value: str) -> int | None:
@@ -118,12 +155,13 @@ def complete_active_status_snapshots(
             continue
         if key == SNAPSHOT_COMPLETE_KEY:
             completed_generation = _unsigned_generation(value)
+            contract = current.get(SNAPSHOT_CONTRACT_KEY, "")
+            required = ACTIVE_STATUS_CONTRACT_KEYS.get(contract)
             if (
                 not duplicate_or_invalid
                 and completed_generation == current_generation
-                and current.get(SNAPSHOT_CONTRACT_KEY)
-                == ACTIVE_STATUS_SNAPSHOT_CONTRACT
-                and all(field in current for field in ACTIVE_STATUS_KEYS)
+                and required is not None
+                and all(field in current for field in required)
             ):
                 snapshots.append({
                     **current,

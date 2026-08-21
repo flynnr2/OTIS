@@ -33,6 +33,11 @@ from .active_hybrid_activation import (
     validate_frozen_run_manifest,
 )
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
 from .board_identity import read_board_identity
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .evidence import (
@@ -96,6 +101,14 @@ HEALTHY_PRELIMINARY_DECISIONS = {
     "first_phase_transaction_passed_sustained_result_incomplete",
     "hybrid_response_wrong_or_frequency_not_reacquired",
 }
+
+
+def _programme_path(
+    path: Path, programme: ActiveHybridProgramme
+) -> Path:
+    if programme is CX320_PROGRAMME:
+        return path
+    return Path(str(path).replace("cx320", programme.key))
 
 
 def _utc_now() -> str:
@@ -195,6 +208,7 @@ def _upload_exact_firmware(
     device: str,
     board_before: dict[str, str],
     arduino_cli: str,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     authority = activation["authority"]
     firmware = activation["firmware"]
@@ -244,7 +258,7 @@ def _upload_exact_firmware(
     record = {
         "schema_version": 1,
         "tool": TOOL_ID,
-        "operation": "exact_cx320_firmware_upload",
+        "operation": f"exact_{programme.key}_firmware_upload",
         "status": "passed" if passed else "failed",
         "started_utc": started_utc,
         "completed_utc": _utc_now(),
@@ -277,7 +291,7 @@ def _upload_exact_firmware(
             record, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode()
     ).hexdigest()
-    _atomic_new_json(run_dir / FLASH_RECORD, record)
+    _atomic_new_json(run_dir / _programme_path(FLASH_RECORD, programme), record)
     if not passed:
         raise RuntimeError(
             "exact CX320 upload or board re-enumeration failed; automatic retry is forbidden"
@@ -286,7 +300,12 @@ def _upload_exact_firmware(
     return device_after, board_after, record
 
 
-def _capture_command(*, device: str, run_dir: Path) -> list[str]:
+def _capture_command(
+    *,
+    device: str,
+    run_dir: Path,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> list[str]:
     return [
         sys.executable,
         "-m",
@@ -296,7 +315,7 @@ def _capture_command(*, device: str, run_dir: Path) -> list[str]:
         "--run-dir",
         str(run_dir),
         "--duration-s",
-        str(CAPTURE_DURATION_S),
+        str(programme.capture_duration_s),
         "--status-interval",
         "5",
         "--command-fifo",
@@ -310,7 +329,12 @@ def _capture_command(*, device: str, run_dir: Path) -> list[str]:
     ]
 
 
-def _supervisor_command(*, run_dir: Path, build_identity: str) -> list[str]:
+def _supervisor_command(
+    *,
+    run_dir: Path,
+    build_identity: str,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> list[str]:
     return [
         sys.executable,
         "-m",
@@ -328,7 +352,7 @@ def _supervisor_command(*, run_dir: Path, build_identity: str) -> list[str]:
         "--expected-build-identity",
         build_identity,
         "--duration-s",
-        str(SUPERVISOR_DURATION_S),
+        str(programme.supervisor_duration_s),
     ]
 
 
@@ -348,14 +372,18 @@ def _terminal(run_dir: Path) -> dict[str, Any] | None:
     return terminal if isinstance(terminal, dict) else None
 
 
-def _terminal_expected(terminal: dict[str, Any] | None) -> bool:
+def _terminal_expected(
+    terminal: dict[str, Any] | None,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> bool:
     if terminal is None:
         return False
     result = terminal.get("result")
     decision_is_valid = (
-        terminal.get("preliminary_decision") in HEALTHY_PRELIMINARY_DECISIONS
+        terminal.get("preliminary_decision")
+        in programme.healthy_preliminary_decisions
         if result == "healthy_stop"
-        else terminal.get("primary_decision") in PRIMARY_DECISIONS
+        else terminal.get("primary_decision") in programme.terminal_decisions
     )
     static_code = terminal.get("last_confirmed_code")
     static_code_is_valid = type(static_code) is int or (
@@ -827,8 +855,18 @@ def run_active_hybrid_qualification(
     arduino_cli: str = "arduino-cli",
 ) -> dict[str, Any]:
     activation_path = activation_path.resolve()
-    activation, bundle, _proposal = validate_activation(activation_path)
-    require_programme_operation_allowed(STATUS_PROGRAMME_ID, OPERATION)
+    activation_value = _read_json(activation_path)
+    if activation_value is None:
+        raise ValueError("active-hybrid activation is unreadable")
+    programme = programme_from_mapping(activation_value)
+    activation, bundle, _proposal = (
+        validate_activation(activation_path)
+        if programme is CX320_PROGRAMME
+        else validate_activation(activation_path, programme=programme)
+    )
+    require_programme_operation_allowed(
+        programme.status_programme_id, programme.operation
+    )
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX320 live run already exists: {run_dir}")
@@ -843,20 +881,26 @@ def run_active_hybrid_qualification(
     run_dir.mkdir(parents=True)
     (run_dir / "reports").mkdir()
     (run_dir / "control").mkdir()
-    run_activation = run_dir / RUN_ACTIVATION_PATH
-    run_bundle = run_dir / RUN_BUNDLE_PATH
-    run_proposal = run_dir / RUN_PROPOSAL_PATH
+    run_activation = run_dir / programme.run_activation_path
+    run_bundle = run_dir / programme.run_bundle_path
+    run_proposal = run_dir / programme.run_proposal_path
     _copy_immutable(activation_path, run_activation)
     _copy_immutable(Path(activation["bundle"]["path"]), run_bundle)
     _copy_immutable(Path(activation["proposal"]["path"]), run_proposal)
     try:
-        device, board, _flash = _upload_exact_firmware(
-            run_dir=run_dir,
-            activation=activation,
-            device=device,
-            board_before=board,
-            arduino_cli=arduino_cli,
-        )
+        upload_args = {
+            "run_dir": run_dir,
+            "activation": activation,
+            "device": device,
+            "board_before": board,
+            "arduino_cli": arduino_cli,
+        }
+        if programme is CX320_PROGRAMME:
+            device, board, _flash = _upload_exact_firmware(**upload_args)
+        else:
+            device, board, _flash = _upload_exact_firmware(
+                **upload_args, programme=programme
+            )
     except (Exception, KeyboardInterrupt) as caught:
         exc = (
             caught
@@ -893,7 +937,7 @@ def run_active_hybrid_qualification(
         finalization_journal = begin_finalization(
             run_dir=run_dir,
             index_path=evidence_index_path,
-            required_seal=LIVE_SEAL,
+            required_seal=programme.physical_seal_path,
             registration=_registration(
                 activation=activation,
                 status="failed",
@@ -931,10 +975,17 @@ def run_active_hybrid_qualification(
     orchestration_error: Exception | None = None
     capture_closed = False
     try:
-        capture_log = (run_dir / CAPTURE_LOG).open("x", encoding="utf-8")
-        supervisor_log = (run_dir / SUPERVISOR_LOG).open("x", encoding="utf-8")
+        capture_log = (
+            run_dir / _programme_path(CAPTURE_LOG, programme)
+        ).open("x", encoding="utf-8")
+        supervisor_log = (
+            run_dir / _programme_path(SUPERVISOR_LOG, programme)
+        ).open("x", encoding="utf-8")
         capture = _launch_process(
-            _capture_command(device=device, run_dir=run_dir), capture_log
+            _capture_command(
+                device=device, run_dir=run_dir, programme=programme
+            ),
+            capture_log,
         )
         normal_fifo = run_dir / NORMAL_FIFO
         emergency_fifo = run_dir / EMERGENCY_FIFO
@@ -957,6 +1008,7 @@ def run_active_hybrid_qualification(
             _supervisor_command(
                 run_dir=run_dir,
                 build_identity=str(bundle["firmware"]["build_identity"]),
+                programme=programme,
             ),
             supervisor_log,
         )
@@ -973,11 +1025,11 @@ def run_active_hybrid_qualification(
         _wait_until(
             lambda: _terminal(run_dir) is not None
             or (supervisor is not None and supervisor.poll() is not None),
-            SUPERVISOR_DURATION_S,
+            programme.supervisor_duration_s,
             "finite CX320 supervisor terminal",
         )
         terminal = _terminal(run_dir)
-        if not _terminal_expected(terminal):
+        if not _terminal_expected(terminal, programme):
             raise RuntimeError(
                 "CX320 supervisor reached a non-canonical terminal: "
                 + json.dumps(terminal, sort_keys=True)
@@ -1098,7 +1150,7 @@ def run_active_hybrid_qualification(
         record_failure(finalization_journal, phase="seal", error=exc)
         if not (run_dir / EVIDENCE_MANIFEST).is_file():
             _atomic_new_json(
-                run_dir / FINALIZATION_FAILURE,
+                run_dir / _programme_path(FINALIZATION_FAILURE, programme),
                 {
                     "schema_version": 1,
                     "report_type": "cx320_active_hybrid_finalization_failure_v1",
@@ -1124,7 +1176,9 @@ def run_active_hybrid_qualification(
             "bundle_sha256": activation["bundle"]["bundle_sha256"],
             "build_identity": activation["firmware"]["build_identity"],
             "firmware_flashes": 1,
-            "flash_record": str(run_dir / FLASH_RECORD),
+            "flash_record": str(
+                run_dir / _programme_path(FLASH_RECORD, programme)
+            ),
             "board": board,
         }
     )
@@ -1161,6 +1215,10 @@ def recover_active_hybrid_finalization(
     activation = _read_json(activation_path)
     if activation is None:
         raise ValueError("CX320 retained activation is unavailable")
+    try:
+        programme = programme_from_mapping(manifest)
+    except ValueError:
+        programme = programme_from_mapping(activation)
     raw_path = run_dir / "raw/serial.log"
 
     def retained_identity(path: Path) -> str | None:
@@ -1190,7 +1248,7 @@ def recover_active_hybrid_finalization(
     frozen_acquisition_identities = _snapshotted_artifact_identities(
         run_dir, snapshot
     )
-    seal_path = run_dir / LIVE_SEAL
+    seal_path = run_dir / programme.physical_seal_path
     if seal_path.is_file():
         seal = _read_json(seal_path)
         if seal is None:

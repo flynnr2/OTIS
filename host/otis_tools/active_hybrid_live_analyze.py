@@ -24,8 +24,14 @@ from .active_hybrid_activation import (
     PROGRAMME_ID,
     validate_frozen_run_manifest,
 )
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
 from .active_hybrid_evidence_guard import (
     ResponseCheckpointRejected,
+    _cx321_natural_replay_handoff,
     replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
@@ -35,6 +41,7 @@ from .active_transactions import (
     ACTIVE_CSV,
     HEALTH_CSV,
     CampaignSpec,
+    _join_cx321_psq_response_to_act,
     _read_csv,
     validate_transaction_history,
 )
@@ -51,6 +58,14 @@ from .control_evidence_replay import (
     _capsules_exact,
     _measurement_replay,
     _response_replay,
+)
+from .cx321_plant_sign_evidence_guard import (
+    PlantSignReplayContext,
+    complete_plant_sign_evidence_chain,
+    replay_plant_sign_evidence,
+    replay_plant_sign_leading_prefix,
+    replay_plant_sign_terminal_prefix,
+    replay_plant_sign_windows_against_snapshots,
 )
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .frequency_control_supervisor import DAC_CSV, RPH_CSV, TDB_CSV
@@ -571,6 +586,8 @@ def _replay_ahy(
     expected_run_identity: str,
     expected_build_identity: str,
     expected_profile_identity: str,
+    expected_active_policy_sha256: str | None = None,
+    plant_sign_records: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
@@ -581,6 +598,14 @@ def _replay_ahy(
         expected_run_identity=expected_run_identity,
         expected_build_identity=expected_build_identity,
         expected_profile_identity=expected_profile_identity,
+        expected_active_policy_sha256=expected_active_policy_sha256,
+        plant_sign_handoff=(
+            None
+            if plant_sign_records is None
+            else _cx321_natural_replay_handoff(
+                plant_sign_records, transactions
+            )
+        ),
     )
 
 
@@ -589,6 +614,9 @@ def _response_attestations(
     run_dir: Path,
     active_rows: list[dict[str, str]],
     supervisor_events: list[dict[str, Any]],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+    policy_path: Path | None = None,
+    expected_active_policy_sha256: str | None = None,
 ) -> tuple[bool, dict[str, str], list[dict[str, Any]], frozenset[int]]:
     exact = True
     hashes: dict[str, str] = {}
@@ -607,6 +635,14 @@ def _response_attestations(
                 active_hybrid_csv=run_dir / ACTIVE_HYBRID_CSV,
                 active_transactions_csv=run_dir / ACTIVE_CSV,
                 response_row=response,
+                policy_path=policy_path,
+                expected_profile_identity=programme.profile_id,
+                expected_active_policy_sha256=expected_active_policy_sha256,
+                plant_sign_csv=(
+                    run_dir / "csv/plant_sign_qualification_v1.csv"
+                    if programme.identification_required
+                    else None
+                ),
             )
             retained = _read_object(path)
             row_exact = retained == replayed
@@ -630,11 +666,11 @@ def _response_attestations(
             rejection_recorded = any(
                 (
                     item.get("event")
-                    == "cx320_first_phase_response_checkpoint_rejected"
+                    == f"{programme.key}_first_phase_response_checkpoint_rejected"
                     and int(item.get("request_sequence", -1)) == request_sequence
                 )
                 or (
-                    item.get("event") == "cx320_live_supervisor_fault"
+                    item.get("event") == f"{programme.key}_live_supervisor_fault"
                     and item.get("error")
                     == "CX320 independent host replay differs from the firmware decision"
                 )
@@ -728,6 +764,7 @@ def _wall_origin_and_setup_order_exact(
     supervisor_state: dict[str, Any],
     supervisor_events: list[dict[str, Any]],
     markers: list[dict[str, Any]],
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> bool:
     capture_starts = [
         index for index, item in enumerate(markers) if item.get("event") == "capture_started"
@@ -741,12 +778,12 @@ def _wall_origin_and_setup_order_exact(
     supervisor_starts = [
         index
         for index, item in enumerate(supervisor_events)
-        if item.get("event") == "cx320_live_supervisor_started"
+        if item.get("event") == f"{programme.key}_live_supervisor_started"
     ]
     setup_requests = [
         index
         for index, item in enumerate(supervisor_events)
-        if item.get("event") == "cx320_exact_setup_requested"
+        if item.get("event") == f"{programme.key}_exact_setup_requested"
     ]
     wall_origin = manifest.get("started_at_utc")
     return (
@@ -1032,6 +1069,153 @@ def _source_hashes(
     return hashes, sorted(set(missing))
 
 
+def _cx321_plant_sign_replay(
+    run_dir: Path,
+    manifest: RunManifest,
+    manifest_value: dict[str, Any],
+    terminal: dict[str, Any],
+) -> dict[str, Any]:
+    path = _contract_path(manifest, "plant_sign_qualification_v1")
+    rows = _read_csv(path)
+    decision = terminal.get("primary_decision") or terminal.get(
+        "preliminary_decision"
+    )
+    if not rows:
+        if not isinstance(decision, str) or not decision:
+            raise ValueError(
+                "CX321 empty plant-sign evidence lacks a preceding terminal"
+            )
+        if decision in {
+            "plant_sign_qualification_not_exercised",
+            "plant_sign_qualification_failed",
+        }:
+            raise ValueError(
+                "CX321 plant-sign scientific terminal lacks PSQ evidence"
+            )
+        return {
+            "exact_replay": True,
+            "scientific_terminal_exact": False,
+            "right_censored_by_other_terminal": True,
+            "terminal_preceded_pre1": True,
+            "events": [],
+        }
+    bindings = manifest_value["identification"]["bindings"]
+    context = PlantSignReplayContext(
+        run_identity=str(manifest_value["run_identity"]),
+        build_identity=str(manifest_value["firmware"]["build_identity"]),
+        profile_identity=str(manifest_value["profile_identity"]),
+        policy_sha256=str(manifest_value["programme_policy"]["sha256"]),
+        plant_sign_gate_sha256=str(bindings["plant_sign_gate"]["sha256"]),
+        identification_estimator_sha256=str(
+            bindings["identification_estimator"]["sha256"]
+        ),
+        identification_estimator_config_sha256=str(
+            manifest_value["identification"]["estimator_runtime_config"][
+                "sha256"
+            ]
+        ),
+        natural_frequency_estimator_sha256=str(
+            bindings["natural_frequency_estimator"]["sha256"]
+        ),
+        capture_session=int(rows[0]["capture_session"]),
+    )
+    snapshots = _read_csv(_contract_path(manifest, "pps_snapshots_v1"))
+    snapshot_proof = replay_plant_sign_windows_against_snapshots(
+        rows, snapshots, context
+    )
+    response = next(
+        (row for row in rows if row.get("event") == "response"), None
+    )
+    complete_chain: dict[str, Any] | None = None
+    if response is not None:
+        transaction_rows = _read_csv(
+            _contract_path(manifest, "active_transactions_v1")
+        )
+        act_responses = [
+            row
+            for row in transaction_rows
+            if row.get("event") == "response"
+            and row.get("request_sequence")
+            == response.get("request_sequence")
+        ]
+        if len(act_responses) != 1:
+            raise ValueError(
+                "CX321 response lacks exactly one matching ACT response"
+            )
+        psq_replay = replay_plant_sign_evidence(rows[:5], context)
+        act_join = _join_cx321_psq_response_to_act(
+            psq_response=response,
+            act_response=act_responses[0],
+            timer_hz=context.timer_hz,
+        )
+        complete_chain = complete_plant_sign_evidence_chain(
+            psq_replay=psq_replay,
+            snapshot_window_proof=snapshot_proof,
+            act_response_join=act_join,
+        )
+
+    def with_complete_proof(result: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **result,
+            "snapshot_window_proof": snapshot_proof,
+            **(
+                {"complete_evidence_chain": complete_chain}
+                if complete_chain is not None
+                else {}
+            ),
+        }
+
+    if decision in {
+        "plant_sign_qualification_not_exercised",
+        "plant_sign_qualification_failed",
+    }:
+        return with_complete_proof(
+            replay_plant_sign_terminal_prefix(
+                rows, context, terminal_decision=str(decision)
+            )
+        )
+    if tuple(row.get("event") for row in rows) == (
+        "pre1",
+        "pre2",
+        "request",
+        "application",
+        "response",
+        "response_ack",
+        "handoff",
+    ):
+        result = replay_plant_sign_evidence(
+            rows,
+            context,
+            require_ack_handoff=True,
+            expected_ack_attestation_sha256=(
+                None
+                if complete_chain is None
+                else str(complete_chain["attestation_sha256"])
+            ),
+        )
+        return with_complete_proof(
+            {**result, "scientific_terminal_exact": True}
+        )
+    # A non-plant terminal (for example an operator abort) may right-censor a
+    # strictly replayed progressing prefix.  It is not plant science.
+    prefix = replay_plant_sign_leading_prefix(
+        rows,
+        context,
+        expected_ack_attestation_sha256=(
+            None
+            if complete_chain is None
+            else str(complete_chain["attestation_sha256"])
+        ),
+    )
+    return with_complete_proof(
+        {
+            **prefix,
+            "scientific_terminal_exact": False,
+            "right_censored_by_other_terminal": True,
+        }
+    )
+
+
 def analyze(
     run_dir: Path,
     *,
@@ -1044,8 +1228,11 @@ def analyze(
     if not (run_dir / COMPLETE_MARKER).is_file():
         raise ValueError("CX320 live run is not marked complete")
     manifest_value = validate_frozen_run_manifest(run_dir / "run_manifest.json")
-    if manifest_value.get("stage") != LIVE_STAGE:
-        raise ValueError("run is not the frozen CX320 live stage")
+    programme = programme_from_mapping(manifest_value)
+    if manifest_value.get("stage") != programme.live_stage:
+        raise ValueError(
+            f"run is not the frozen {programme.key.upper()} live stage"
+        )
     manifest = RunManifest(
         root=run_dir,
         path=run_dir / "run_manifest.json",
@@ -1059,11 +1246,12 @@ def analyze(
         policy_document,
         comparison_observations=policy.phase_qualification_residence_s,
     )
-    control = manifest_value["cx320"]["automatic_control"]
-    setup_code = int(manifest_value["cx320"]["setup"]["code"])
+    programme_section = manifest_value[programme.manifest_section]
+    control = programme_section["automatic_control"]
+    setup_code = int(programme_section["setup"]["code"])
     build_identity = str(manifest_value["firmware"]["build_identity"])
     spec = CampaignSpec(
-        campaign="cx320_active_hybrid",
+        campaign=programme.campaign_name,
         profile=str(manifest_value["profile_identity"]),
         run_identity=str(manifest_value["run_identity"]),
         start_code=setup_code,
@@ -1141,6 +1329,11 @@ def analyze(
         measurement_exact = False
         measurement_replay = {"reason": str(exc)}
         estimates_by_id = {}
+    plant_sign_records = (
+        _read_csv(_contract_path(manifest, "plant_sign_qualification_v1"))
+        if programme.identification_required
+        else None
+    )
     ahy_replay = _replay_ahy(
         decision_rows,
         active_rows,
@@ -1148,6 +1341,12 @@ def analyze(
         expected_run_identity=spec.run_identity,
         expected_build_identity=build_identity,
         expected_profile_identity=spec.profile,
+        expected_active_policy_sha256=(
+            str(manifest_value["programme_policy"]["sha256"])
+            if programme.identification_required
+            else policy.policy_sha256
+        ),
+        plant_sign_records=plant_sign_records,
     )
 
     supervisor_state = _read_object_or_empty(
@@ -1173,7 +1372,18 @@ def analyze(
         attestation_hashes,
         attestation_replay,
         rejected_response_record_sequences,
-    ) = _response_attestations(run_dir, active_rows, supervisor_events)
+    ) = _response_attestations(
+        run_dir,
+        active_rows,
+        supervisor_events,
+        programme,
+        policy_path,
+        (
+            str(manifest_value["programme_policy"]["sha256"])
+            if programme.identification_required
+            else policy.policy_sha256
+        ),
+    )
     try:
         capsule_exact, capsule_hashes = _capsules_exact(
             run_dir,
@@ -1191,6 +1401,22 @@ def analyze(
     terminal = supervisor_state.get("terminal", {})
     if not isinstance(terminal, dict):
         terminal = {}
+    plant_sign_replay: dict[str, Any] = {
+        "exact_replay": not programme.identification_required,
+        "scientific_terminal_exact": not programme.identification_required,
+    }
+    if programme.identification_required:
+        try:
+            plant_sign_replay = _cx321_plant_sign_replay(
+                run_dir, manifest, manifest_value, terminal
+            )
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            retained_input_failures.append(f"CX321 plant-sign replay: {exc}")
+            plant_sign_replay = {
+                "exact_replay": False,
+                "scientific_terminal_exact": False,
+                "error": str(exc),
+            }
     operator_abort = terminal.get("primary_decision") == "operator_abort"
     response_rows = [row for row in active_rows if row.get("event") == "response"]
     terminal_rejected_response_exact = (
@@ -1230,7 +1456,8 @@ def analyze(
     )
     terminal_requires_abort = (
         terminal.get("result") in {"aborted", "nonpass"}
-        and terminal.get("reason") != "cx320_16h_absolute_wall_endpoint"
+        and terminal.get("reason")
+        != f"{programme.key}_16h_absolute_wall_endpoint"
     )
     allowed_emergency_aborts = 1 if terminal_requires_abort else 0
     abort_submissions = sum(
@@ -1285,7 +1512,11 @@ def analyze(
         command_exact = False
         retained_input_failures.append(f"command stream: {exc}")
     wall_origin_exact = _wall_origin_and_setup_order_exact(
-        manifest_value, supervisor_state, supervisor_events, markers
+        manifest_value,
+        supervisor_state,
+        supervisor_events,
+        markers,
+        programme,
     )
     try:
         applications = _application_contract(
@@ -1403,7 +1634,8 @@ def analyze(
         retained_input_failures.append("terminal static code is malformed")
     endpoint_complete = (
         terminal.get("result") == "healthy_stop"
-        and terminal.get("reason") == "cx320_12h_qualified_endpoint_complete"
+        and terminal.get("reason")
+        == f"{programme.key}_12h_qualified_endpoint_complete"
     )
     phase_degraded = (
         terminal.get("primary_decision")
@@ -1482,6 +1714,9 @@ def analyze(
         "terminal_disarmed_evidence_clear_no_outstanding_static_code": static_terminal_exact,
         "registration_source_artifacts_present": not missing_source_artifacts,
         "retained_inputs_readable": not retained_input_failures,
+        "plant_sign_evidence_replay_exact": bool(
+            plant_sign_replay.get("exact_replay")
+        ),
     }
     acquisition_check_names = {
         "frozen_live_manifest_exact",
@@ -1513,8 +1748,23 @@ def analyze(
             metric_contract["minimum_material_phase_applications"]
         ),
     )
-    if primary_decision not in TERMINAL_DECISIONS:
-        raise AssertionError("CX320 analyzer produced an undeclared terminal decision")
+    preliminary_decision = terminal.get("preliminary_decision")
+    plant_terminal_decision = terminal.get("primary_decision")
+    if (
+        programme.identification_required
+        and (plant_terminal_decision or preliminary_decision)
+        in {
+            "plant_sign_qualification_not_exercised",
+            "plant_sign_qualification_failed",
+        }
+        and plant_sign_replay.get("scientific_terminal_exact") is True
+    ):
+        status = "bounded_nonpass"
+        primary_decision = str(plant_terminal_decision or preliminary_decision)
+    if primary_decision not in programme.terminal_decisions:
+        raise AssertionError(
+            f"{programme.key.upper()} analyzer produced an undeclared terminal decision"
+        )
 
     scientific_acceptance_checks = {
         "minimum_two_material_physical_applications": (
@@ -1561,15 +1811,15 @@ def analyze(
 
     unsigned: dict[str, Any] = {
         "schema_version": 1,
-        "seal_type": SEAL_TYPE,
+        "seal_type": f"{programme.key}_active_hybrid_physical_seal_v1",
         "tool": TOOL_ID,
         "tool_sha256": _sha256_file(Path(__file__)),
         "created_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z"),
-        "programme_id": PROGRAMME_ID,
-        "stage": LIVE_STAGE,
+        "programme_id": programme.programme_id,
+        "stage": programme.live_stage,
         "run_id": manifest_value["run_id"],
         "run_identity": manifest_value["run_identity"],
         "build_identity": build_identity,
@@ -1620,6 +1870,7 @@ def analyze(
         "phase_performance": phase_metrics,
         "frequency_performance": frequency_metrics,
         "tight_deadband_replay": tdb_replay_detail,
+        "plant_sign_replay": plant_sign_replay,
         "terminal": {
             "supervisor_terminal": terminal,
             "legacy_supervisor_terminal_misclassification_corrected": (
@@ -1671,7 +1922,7 @@ def analyze(
     destination = (
         output_path.resolve()
         if output_path is not None
-        else run_dir / DEFAULT_SEAL
+        else run_dir / programme.physical_seal_path
     )
     _atomic_new_json(destination, unsigned)
     return destination, unsigned
