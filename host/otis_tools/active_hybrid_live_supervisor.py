@@ -20,6 +20,11 @@ from typing import Any
 
 from .abort_transport import AbortFifo
 from .active_hybrid_evidence_guard import ResponseCheckpointRejected
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
 from .active_control_supervisor import (
     ESTIMATES_CSV,
     RP2040_TIMER0_TICKS_PER_SECOND,
@@ -93,6 +98,13 @@ HYBRID_STATES = frozenset(
 ARMABLE_HYBRID_STATES = frozenset(
     {"FREQUENCY_ACQUIRE", "PHASE_QUALIFY", "HYBRID_TRACKING"}
 )
+PLANT_SIGN_SPAN_INTERVALS = 1_500
+# The 110 s one-shot arm must be submitted after at least 1,400 accepted
+# one-second intervals.  That leaves at most 100 s until the plant window
+# closes and one complete 10 s status-query margin before arm expiry.
+PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS = PLANT_SIGN_SPAN_INTERVALS - (
+    ARM_LIFETIME_S - int(QUERY_PERIOD_S)
+)
 
 
 def _read_object(path: Path) -> dict[str, Any]:
@@ -130,31 +142,60 @@ def _bound_file(binding: object, label: str) -> Path:
 
 @dataclass(frozen=True)
 class RuntimeEnvelope:
+    programme: ActiveHybridProgramme
     manifest_sha256: str
     bundle_sha256: str
     policy_sha256: str
     build_identity: str
     uf2_sha256: str
     policy_path: Path
+    natural_policy_path: Path
+    natural_policy_sha256: str
     phase_estimator_sha256: str
+    plant_sign_identities: dict[str, str]
     wall_origin_utc: str
 
 
 def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     """Extract identities only from a validated, run-local live manifest."""
 
-    cx320 = manifest.get("cx320", {})
-    control = cx320.get("automatic_control", {}) if isinstance(cx320, dict) else {}
-    qualification = cx320.get("qualification", {}) if isinstance(cx320, dict) else {}
-    setup = cx320.get("setup", {}) if isinstance(cx320, dict) else {}
+    programme = programme_from_mapping(manifest)
+    section = manifest.get(programme.manifest_section, {})
+    control = (
+        section.get("automatic_control", {}) if isinstance(section, dict) else {}
+    )
+    qualification = (
+        section.get("qualification", {}) if isinstance(section, dict) else {}
+    )
+    setup = section.get("setup", {}) if isinstance(section, dict) else {}
     firmware = manifest.get("firmware", {})
-    policy_binding = manifest.get("policy", {})
-    if not isinstance(firmware, dict) or not isinstance(policy_binding, dict):
+    natural_policy_binding = manifest.get("policy", {})
+    active_policy_binding = (
+        manifest.get("programme_policy", {})
+        if programme.identification_required
+        else natural_policy_binding
+    )
+    if (
+        not isinstance(firmware, dict)
+        or not isinstance(natural_policy_binding, dict)
+        or not isinstance(active_policy_binding, dict)
+    ):
         raise ValueError("CX320 manifest firmware or policy binding is unavailable")
-    policy_path = _bound_file(policy_binding, "policy")
+    natural_policy_path = _bound_file(natural_policy_binding, "policy")
+    natural_policy = _read_object(natural_policy_path)
+    natural_policy_sha256 = _sha256_identity(
+        natural_policy_binding.get("policy_sha256"),
+        "policy.policy_sha256",
+    )
+    policy_path = _bound_file(active_policy_binding, "active policy")
     policy = _read_object(policy_path)
     policy_sha256 = _sha256_identity(
-        policy_binding.get("policy_sha256"), "policy.policy_sha256"
+        (
+            active_policy_binding.get("sha256")
+            if programme.identification_required
+            else active_policy_binding.get("policy_sha256")
+        ),
+        "active_policy.sha256",
     )
     build_identity = _manifest_build_identity(manifest)
     source_sha256, separator, configuration_sha256 = build_identity.partition(":")
@@ -177,47 +218,70 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     _parse_utc_epoch(wall_origin_utc)
 
     if (
-        manifest.get("programme_id") != PROGRAMME_ID
-        or manifest.get("stage")
-        != "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_LIVE"
-        or manifest.get("run_identity") != RUNTIME_RUN_IDENTITY
-        or manifest.get("profile_identity") != PROFILE_ID
-        or cx320.get("run_identity") != RUNTIME_RUN_IDENTITY
-        or cx320.get("profile_id") != PROFILE_ID
-        or setup.get("code") != SETUP_CODE
-        or control.get("maximum_total_applications") != MAXIMUM_APPLICATIONS
+        manifest.get("programme_id") != programme.programme_id
+        or manifest.get("stage") != programme.live_stage
+        or manifest.get("run_identity") != programme.runtime_run_identity
+        or manifest.get("profile_identity") != programme.profile_id
+        or section.get("run_identity") != programme.runtime_run_identity
+        or section.get("profile_id") != programme.profile_id
+        or setup.get("code") != programme.setup_code
+        or control.get("maximum_total_applications")
+        != programme.maximum_applications
         or control.get("maximum_cumulative_movement_codes")
-        != MAXIMUM_CUMULATIVE_MOVEMENT_CODES
-        or control.get("maximum_step_codes") != MAXIMUM_STEP_CODES
-        or control.get("minimum_applied_cadence_s") != DECISION_CADENCE_S
-        or control.get("minimum_code") != MINIMUM_CODE
-        or control.get("maximum_code") != MAXIMUM_CODE
-        or qualification.get("qualified_duration_s") != QUALIFIED_DURATION_S
+        != programme.maximum_cumulative_movement_codes
+        or control.get("maximum_step_codes") != programme.maximum_step_codes
+        or control.get("minimum_applied_cadence_s")
+        != programme.minimum_applied_cadence_s
+        or control.get("minimum_code") != programme.minimum_code
+        or control.get("maximum_code") != programme.maximum_code
+        or qualification.get("qualified_duration_s")
+        != programme.qualified_duration_s
         or qualification.get("absolute_wall_clock_limit_s")
-        != ABSOLUTE_WALL_LIMIT_S
+        != programme.absolute_wall_limit_s
         or qualification.get("no_extension") is not True
     ):
         raise ValueError("CX320 live manifest does not carry the exact envelope")
 
-    numerical = policy.get("numerical_policy", {})
-    authority = policy.get("global_authority_limits", {})
+    numerical = natural_policy.get("numerical_policy", {})
+    authority = natural_policy.get("global_authority_limits", {})
     if (
-        policy.get("programme_id") != PROGRAMME_ID
-        or policy.get("policy_id") != "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
-        or policy.get("setup", {}).get("exact_start_code") != SETUP_CODE
+        natural_policy.get("programme_id") != CX320_PROGRAMME.programme_id
+        or natural_policy.get("policy_id") != programme.natural_policy_id
+        or natural_policy.get("setup", {}).get("exact_start_code")
+        != programme.setup_code
         or authority.get("maximum_total_automatic_applications")
-        != MAXIMUM_APPLICATIONS
+        != programme.maximum_applications
         or authority.get("maximum_cumulative_absolute_movement_codes")
-        != MAXIMUM_CUMULATIVE_MOVEMENT_CODES
-        or authority.get("maximum_combined_step_codes") != MAXIMUM_STEP_CODES
-        or authority.get("minimum_applied_cadence_s") != DECISION_CADENCE_S
-        or authority.get("minimum_code") != MINIMUM_CODE
-        or authority.get("maximum_code") != MAXIMUM_CODE
+        != programme.maximum_cumulative_movement_codes
+        or authority.get("maximum_combined_step_codes")
+        != programme.maximum_step_codes
+        or authority.get("minimum_applied_cadence_s")
+        != programme.minimum_applied_cadence_s
+        or authority.get("minimum_code") != programme.minimum_code
+        or authority.get("maximum_code") != programme.maximum_code
         or numerical.get("settling_exclusion_s") != 900
         or numerical.get("fresh_support_after_settling_s") != 600
         or numerical.get("response_support_total_s") != 1500
     ):
         raise ValueError("current CX320 policy does not carry the exact live envelope")
+
+    if programme.identification_required:
+        active_authority = policy.get("global_authority_limits", {})
+        if (
+            policy.get("programme_id") != programme.programme_id
+            or policy.get("policy_id") != programme.policy_id
+            or active_authority.get("maximum_total_automatic_applications")
+            != programme.maximum_applications
+            or active_authority.get(
+                "maximum_cumulative_absolute_movement_codes"
+            )
+            != programme.maximum_cumulative_movement_codes
+            or active_authority.get("maximum_combined_step_codes")
+            != programme.maximum_step_codes
+            or active_authority.get("minimum_code") != programme.minimum_code
+            or active_authority.get("maximum_code") != programme.maximum_code
+        ):
+            raise ValueError("current CX321 programme policy envelope differs")
 
     bindings = policy.get("bindings", {})
     if not isinstance(bindings, dict):
@@ -226,7 +290,32 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         bindings.get("phase_estimator", {}).get("sha256"),
         "policy.phase_estimator_sha256",
     )
+    plant_sign_identities: dict[str, str] = {}
+    if programme.identification_required:
+        identification = manifest.get("identification", {})
+        if not isinstance(identification, dict):
+            raise ValueError("CX321 manifest identification binding is unavailable")
+        plant_sign_identities = {
+            "policy_sha256": policy_sha256,
+            "plant_sign_gate_sha256": _sha256_identity(
+                bindings.get("plant_sign_gate", {}).get("sha256"),
+                "plant_sign_gate_sha256",
+            ),
+            "identification_estimator_sha256": _sha256_identity(
+                bindings.get("identification_estimator", {}).get("sha256"),
+                "identification_estimator_sha256",
+            ),
+            "identification_estimator_config_sha256": _sha256_identity(
+                identification.get("estimator_runtime_config", {}).get("sha256"),
+                "identification_estimator_config_sha256",
+            ),
+            "natural_frequency_estimator_sha256": _sha256_identity(
+                bindings.get("natural_frequency_estimator", {}).get("sha256"),
+                "natural_frequency_estimator_sha256",
+            ),
+        }
     return RuntimeEnvelope(
+        programme=programme,
         manifest_sha256=_sha256_identity(
             manifest.get("manifest_sha256"), "manifest_sha256"
         ),
@@ -238,7 +327,10 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         build_identity=build_identity,
         uf2_sha256=_sha256_identity(uf2.get("sha256"), "firmware.uf2.sha256"),
         policy_path=policy_path,
+        natural_policy_path=natural_policy_path,
+        natural_policy_sha256=natural_policy_sha256,
         phase_estimator_sha256=phase_estimator_sha256,
+        plant_sign_identities=plant_sign_identities,
         wall_origin_utc=wall_origin_utc,
     )
 
@@ -249,11 +341,22 @@ def load_active_hybrid_spec(
     """Load the exact runtime contract from a validated live manifest."""
 
     envelope = _runtime_envelope(manifest)
+    programme = envelope.programme
     policy = _read_object(envelope.policy_path)
     bindings = policy["bindings"]
+    frequency_binding = (
+        "natural_frequency_estimator"
+        if programme.identification_required
+        else "frequency_estimator"
+    )
+    response_binding = (
+        "natural_response_classifier"
+        if programme.identification_required
+        else "response_policy"
+    )
     identities = {
         "estimator_sha256": _sha256_identity(
-            bindings["frequency_estimator"]["sha256"],
+            bindings[frequency_binding]["sha256"],
             "policy.frequency_estimator_sha256",
         ),
         "model_sha256": _sha256_identity(
@@ -262,24 +365,24 @@ def load_active_hybrid_spec(
         ),
         "active_policy_sha256": envelope.policy_sha256,
         "response_policy_sha256": _sha256_identity(
-            bindings["response_policy"]["sha256"],
+            bindings[response_binding]["sha256"],
             "policy.response_policy_sha256",
         ),
         # The firmware's combined controller implementation deliberately uses
         # the semantic active-policy identity as its numerical-policy identity.
-        "numerical_policy_sha256": envelope.policy_sha256,
+        "numerical_policy_sha256": envelope.natural_policy_sha256,
     }
     return (
         CampaignSpec(
-            campaign="cx320_active_hybrid",
-            profile=PROFILE_ID,
-            run_identity=RUNTIME_RUN_IDENTITY,
-            start_code=SETUP_CODE,
-            correction_limit=MAXIMUM_APPLICATIONS,
-            cumulative_limit=MAXIMUM_CUMULATIVE_MOVEMENT_CODES,
-            minimum_code=MINIMUM_CODE,
-            maximum_code=MAXIMUM_CODE,
-            maximum_step=MAXIMUM_STEP_CODES,
+            campaign=programme.campaign_name,
+            profile=programme.profile_id,
+            run_identity=programme.runtime_run_identity,
+            start_code=programme.setup_code,
+            correction_limit=programme.maximum_applications,
+            cumulative_limit=programme.maximum_cumulative_movement_codes,
+            minimum_code=programme.minimum_code,
+            maximum_code=programme.maximum_code,
+            maximum_step=programme.maximum_step_codes,
         ),
         identities,
     )
@@ -308,9 +411,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             or kwargs.get("expected_build_identity") != envelope.build_identity
         ):
             raise ValueError("CX320 supervisor inputs differ from the live manifest")
+        self.programme = envelope.programme
         super().__init__(
             mode="live",
-            leg=TightDeadbandLeg("CX320", 0, "combined_frequency_phase"),
+            leg=TightDeadbandLeg(
+                self.programme.key.upper(), 0, "combined_frequency_phase"
+            ),
             allow_manual_start=True,
             allow_arm=True,
             # The installed profile deliberately inhibits D14/D8 control
@@ -321,16 +427,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             prewrite_contract_startup_grace_s=(
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
-            qualified_timeout_s=QUALIFIED_DURATION_S,
+            qualified_timeout_s=self.programme.qualified_duration_s,
             **kwargs,
         )
         self.manifest = manifest
         self.manifest_path = manifest_path.resolve()
         self.envelope = envelope
         self.phase_estimator_sha256 = envelope.phase_estimator_sha256
-        self.part = "cx320_active_hybrid_live"
+        self.plant_sign_identities = envelope.plant_sign_identities
+        self.natural_policy_path = envelope.natural_policy_path
+        self.expected_active_policy_sha256 = envelope.policy_sha256
+        self.part = f"{self.programme.key}_active_hybrid_live"
         exact_state = {
-            "programme_id": PROGRAMME_ID,
+            "programme_id": self.programme.programme_id,
             "manifest_path": str(self.manifest_path),
             "manifest_sha256": envelope.manifest_sha256,
             "bundle_sha256": envelope.bundle_sha256,
@@ -355,7 +464,30 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("later_authority_released", False)
         self.state.setdefault("phase_material_application_count", 0)
         self.state.setdefault("terminal_static_code", None)
+        self.state.setdefault("latest_plant_sign_state", None)
+        self.state.setdefault("plant_sign_prearm_sent", False)
+        self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
         self._save()
+
+    def _programme_event(self, suffix: str, **payload: object) -> None:
+        self._event(f"{self.programme.key}_{suffix}", **payload)
+
+    def _identity_ready(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        if not super()._identity_ready(health):
+            return False
+        for key, expected in self.plant_sign_identities.items():
+            if key == "policy_sha256":
+                continue
+            observed = health.get(("cx317_active", key))
+            if observed is None:
+                return False
+            if observed != expected:
+                raise ValueError(
+                    f"live {key} mismatch: {observed!r} != {expected!r}"
+                )
+        return True
 
     def _fresh_active_snapshot_after(
         self, generation: int
@@ -443,8 +575,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 "CX320 evidence acknowledgement advanced to a contradictory "
                 "request identity"
             )
-        self._event(
-            "cx320_firmware_evidence_acknowledgement_confirmed",
+        self._programme_event(
+            "firmware_evidence_acknowledgement_confirmed",
             request_sequence=request_sequence,
             phase=phase,
             snapshot_generation=int(
@@ -479,7 +611,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ):
             mismatches.append("solicited post-attachment snapshot is absent")
         return PrewriteReadiness(
-            contract_id="cx320_active_hybrid_prewrite_runtime_contract_v1",
+            contract_id=(
+                f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v1"
+            ),
             ready=not readiness.missing and not mismatches,
             missing=readiness.missing,
             mismatches=tuple(dict.fromkeys(mismatches)),
@@ -536,8 +670,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 (row for row in reversed(rows) if row.get("event") == "response"),
                 {},
             )
-            self._event(
-                "cx320_first_phase_response_checkpoint_rejected",
+            self._programme_event(
+                "first_phase_response_checkpoint_rejected",
                 error=str(exc),
                 request_sequence=int(response.get("request_sequence", "0")),
                 response_class=response.get("response_class", "unavailable"),
@@ -604,7 +738,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if self.state["manual_start_sent"]:
                 raise ValueError("CX320 hybrid firmware state is absent")
             return
-        if hybrid_state not in HYBRID_STATES:
+        if hybrid_state not in self.programme.hybrid_states:
             raise ValueError(f"unexpected CX320 hybrid state: {hybrid_state!r}")
         if hybrid_state == "FAIL_STATIC":
             reason = health.get(("cx317_active", "hybrid_reason"), "unknown")
@@ -633,8 +767,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         )
         checkpoint = _truth(health, "first_phase_checkpoint_passed")
         if (
-            corrections > MAXIMUM_APPLICATIONS
-            or movement > MAXIMUM_CUMULATIVE_MOVEMENT_CODES
+            corrections > self.programme.maximum_applications
+            or movement > self.programme.maximum_cumulative_movement_codes
             or material > phase_nonzero
             or phase_nonzero + frequency_only > corrections
         ):
@@ -648,7 +782,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         dirty = changed
         if _truth(health, "confirmed_applied_code_known"):
             applied = int(health[("cx317_active", "confirmed_applied_code")], 0)
-            if not MINIMUM_CODE <= applied <= MAXIMUM_CODE:
+            if not self.programme.minimum_code <= applied <= self.programme.maximum_code:
                 raise ValueError("CX320 confirmed code is outside the frozen range")
             if self.state.get("terminal_static_code") != applied:
                 self.state["terminal_static_code"] = applied
@@ -656,6 +790,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
 
         if changed:
             self.state["latest_hybrid_state"] = hybrid_state
+        if self.programme.identification_required:
+            plant_state = health.get(("cx317_active", "plant_sign_state"))
+            if plant_state != self.state.get("latest_plant_sign_state"):
+                self.state["latest_plant_sign_state"] = plant_state
+                dirty = True
         if self.state["phase_material_application_count"] != material:
             self.state["phase_material_application_count"] = material
             dirty = True
@@ -666,8 +805,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if not self.state["later_authority_released"]:
                 self.state["later_authority_released"] = True
                 dirty = True
-                self._event(
-                    "cx320_first_phase_checkpoint_release_observed",
+                self._programme_event(
+                    "first_phase_checkpoint_release_observed",
                     hybrid_state=hybrid_state,
                     phase_material_application_count=material,
                 )
@@ -705,7 +844,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             not _truth(health, "manual_start_confirmed")
             or not _truth(health, "confirmed_applied_code_known")
             or int(health.get(("cx317_active", "confirmed_applied_code"), "0"), 0)
-            != SETUP_CODE
+            != self.programme.setup_code
             or int(health.get(("cx317_active", "dac_epoch"), "0")) < 1
         ):
             return
@@ -746,8 +885,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
         self.state["qualified_origin_session_id"] = session_id
         self._save()
-        self._event(
-            "cx320_qualified_origin_established",
+        self._programme_event(
+            "qualified_origin_established",
             estimate_id=estimate["estimate_id"],
             estimator_timestamp_ticks=origin_ticks,
             time_domain="rp2040_timer0",
@@ -755,7 +894,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             source_count_ref=estimate["source_count_ref"],
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
-            qualified_duration_s=QUALIFIED_DURATION_S,
+            qualified_duration_s=self.programme.qualified_duration_s,
         )
 
     def _qualified_elapsed_ticks(
@@ -786,20 +925,20 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if elapsed_ticks is None:
             return False
         admission_ticks = (
-            QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S
+            self.programme.qualified_duration_s - CORRECTION_RESPONSE_RESERVE_S
         ) * RP2040_TIMER0_TICKS_PER_SECOND
         if elapsed_ticks < admission_ticks:
             return False
         if self.state["response_horizon_closed_utc"] is None:
             self.state["response_horizon_closed_utc"] = _utc_now()
             self._save()
-            self._event(
-                "cx320_correction_admission_closed_for_response_horizon",
+            self._programme_event(
+                "correction_admission_closed_for_response_horizon",
                 elapsed_qualified_device_ticks=elapsed_ticks,
                 time_domain="rp2040_timer0",
                 remaining_qualified_s=max(
                     0,
-                    QUALIFIED_DURATION_S
+                    self.programme.qualified_duration_s
                     - elapsed_ticks // RP2040_TIMER0_TICKS_PER_SECOND,
                 ),
                 required_response_reserve_s=CORRECTION_RESPONSE_RESERVE_S,
@@ -834,8 +973,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self.state["manual_start_sent"] = True
             self.state["setup_requested_utc"] = _utc_now()
             self._save()
-            self._event(
-                "cx320_exact_setup_requested",
+            self._programme_event(
+                "exact_setup_requested",
                 code=SETUP_CODE,
                 authorization_sequence=request["authorization_sequence"],
                 status_generation=request["status_generation"],
@@ -856,17 +995,57 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self.state["arm_pending"] = False
                 self.state["arm_sent_at_utc"] = None
                 self._save()
-                self._event("cx320_unused_zero_delta_arm_consumed_without_write")
+                self._programme_event(
+                    "unused_zero_delta_arm_consumed_without_write"
+                )
         if not manual_confirmed or self.state["arm_pending"]:
             return
         if self._close_response_horizon_if_required(health):
             return
 
         hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
+        identification_prearm = False
+        if self.programme.identification_required:
+            try:
+                pre_window_count = int(
+                    health.get(
+                        ("cx317_active", "plant_sign_pre_window_count"), "-1"
+                    )
+                )
+                accepted_intervals = int(
+                    health.get(
+                        (
+                            "cx317_active",
+                            "plant_sign_accumulator_accepted_intervals",
+                        ),
+                        "-1",
+                    )
+                )
+            except ValueError as exc:
+                raise ValueError("CX321 plant-sign progress is malformed") from exc
+            plant_state = health.get(("cx317_active", "plant_sign_state"), "")
+            firmware_window_eligible = _truth(
+                health, "plant_sign_arm_window_eligible"
+            )
+            identification_prearm = (
+                plant_state == "FREQUENCY_ACQUIRE"
+                and pre_window_count == 1
+                and PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS
+                <= accepted_intervals
+                < PLANT_SIGN_SPAN_INTERVALS
+                and firmware_window_eligible
+            )
+            if firmware_window_eligible and not identification_prearm:
+                raise ValueError(
+                    "CX321 firmware plant-sign arm window contradicts retained progress"
+                )
         # FIRST_PHASE_TRANSACTION stays unarmed until firmware has both passed
         # the durable response checkpoint and observed tight reacquisition.
         # PHASE_DEGRADED and FAIL_STATIC are terminal paths, not arm states.
-        if hybrid_state not in ARMABLE_HYBRID_STATES:
+        if (
+            hybrid_state not in self.programme.armable_hybrid_states
+            and not identification_prearm
+        ):
             return
         if hybrid_state == "HYBRID_TRACKING" and not _truth(
             health, "first_phase_checkpoint_passed"
@@ -875,15 +1054,16 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         correction_count = int(
             health.get(("cx317_active", "correction_count"), "0")
         )
-        if correction_count >= MAXIMUM_APPLICATIONS:
+        if correction_count >= self.programme.maximum_applications:
             return
         progress = int(
             health.get(("cx317_active", "selected_interval_count"), "0")
         )
-        preview_rows = _read_csv(self.run_dir / CONTROL_CSV)
-        preview = preview_rows[-1] if preview_rows else None
-        if not self._arm_progress_epoch_ready(preview, progress):
-            return
+        if not identification_prearm:
+            preview_rows = _read_csv(self.run_dir / CONTROL_CSV)
+            preview = preview_rows[-1] if preview_rows else None
+            if not self._arm_progress_epoch_ready(preview, progress):
+                return
         # CX320 must arm the next fresh selected-estimate epoch even when the
         # frequency-only predecessor preview is available every 600 seconds.
         # The hybrid firmware owns the 1800-second *applied* cadence and
@@ -895,7 +1075,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and _truth(health, "arm_eligible")
             and health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
             and not _truth(health, "evidence_pending")
-            and progress >= ARM_PROGRESS_THRESHOLD
+            and (
+                identification_prearm
+                or progress >= ARM_PROGRESS_THRESHOLD
+            )
         ):
             return
         uptime = int(health[("cx317_active", "uptime_s")])
@@ -906,13 +1089,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self._command(f"ACTIVE ARM {sequence} {nonce} {expiry}")
         self.state["arm_pending"] = True
         self.state["arm_sent_at_utc"] = _utc_now()
+        if identification_prearm:
+            if self.state["plant_sign_prearm_sent"]:
+                raise ValueError("CX321 plant-sign identification was armed more than once")
+            self.state["plant_sign_prearm_sent"] = True
+            self.state["plant_sign_prearm_accepted_intervals"] = accepted_intervals
         self._save()
-        self._event(
-            "cx320_one_decision_armed",
+        self._programme_event(
+            "one_decision_armed",
             authorization_sequence=sequence,
             expiry_s=expiry,
             selected_interval_count=progress,
             hybrid_state=hybrid_state,
+            identification_prearm=identification_prearm,
+            plant_sign_accepted_intervals=(
+                accepted_intervals if identification_prearm else None
+            ),
         )
 
     def _healthy_terminal_ready(
@@ -930,7 +1122,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ):
             return False
         code = int(health[("cx317_active", "confirmed_applied_code")], 0)
-        if not MINIMUM_CODE <= code <= MAXIMUM_CODE:
+        if not self.programme.minimum_code <= code <= self.programme.maximum_code:
             return False
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
         if rows and rows[-1].get("event") not in {"manual_start", "response"}:
@@ -941,15 +1133,20 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _set_healthy_endpoint(
         self, health: dict[tuple[str, str], str], *, endpoint: str
     ) -> None:
+        corrections = int(
+            health.get(("cx317_active", "correction_count"), "0")
+        )
         material = int(
             health.get(
                 ("cx317_active", "phase_material_application_count"), "0"
             )
         )
         checkpoint = _truth(health, "first_phase_checkpoint_passed")
-        if material == 0:
+        if self.programme.identification_required and corrections == 0:
+            preliminary = "plant_sign_qualification_not_exercised"
+        elif material == 0:
             preliminary = "phase_influence_not_exercised"
-        elif material < MINIMUM_PHASE_MATERIAL_APPLICATIONS:
+        elif material < self.programme.minimum_natural_phase_material_applications:
             preliminary = "first_phase_transaction_passed_sustained_result_incomplete"
         elif not checkpoint:
             preliminary = "hybrid_response_wrong_or_frequency_not_reacquired"
@@ -982,11 +1179,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if (
             qualified_elapsed_ticks is not None
             and qualified_elapsed_ticks
-            >= QUALIFIED_DURATION_S * RP2040_TIMER0_TICKS_PER_SECOND
+            >= self.programme.qualified_duration_s
+            * RP2040_TIMER0_TICKS_PER_SECOND
             and self._healthy_terminal_ready(health)
         ):
             self._set_healthy_endpoint(
-                health, endpoint="cx320_12h_qualified_endpoint_complete"
+                health,
+                endpoint=f"{self.programme.key}_12h_qualified_endpoint_complete",
             )
             return
 
@@ -995,19 +1194,21 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             isinstance(wall_origin, str)
             and wall_origin
             and now_epoch - _parse_utc_epoch(wall_origin)
-            >= ABSOLUTE_WALL_LIMIT_S
+            >= self.programme.absolute_wall_limit_s
         ):
             if self._healthy_terminal_ready(health):
                 self.state["terminal"] = {
                     "result": "nonpass",
-                    "reason": "cx320_16h_absolute_wall_endpoint",
+                    "reason": f"{self.programme.key}_16h_absolute_wall_endpoint",
                     "primary_decision": "right_censored_incomplete",
                     "last_confirmed_code": self.state["terminal_static_code"],
                     "utc": _utc_now(),
                 }
                 self._save()
             else:
-                self._abort("cx320_wall_endpoint_without_clear_static_terminal")
+                self._abort(
+                    f"{self.programme.key}_wall_endpoint_without_clear_static_terminal"
+                )
 
     def _abort(self, reason: str) -> None:
         super()._abort(reason)
@@ -1022,7 +1223,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             terminal["primary_decision"] = (
                 "hybrid_response_wrong_or_frequency_not_reacquired"
             )
-        elif reason.startswith("cx320_wall_endpoint"):
+        elif self.programme.identification_required and any(
+            decision in reason
+            for decision in (
+                "plant_sign_qualification_not_exercised",
+                "plant_sign_qualification_failed",
+            )
+        ):
+            terminal["primary_decision"] = next(
+                decision
+                for decision in (
+                    "plant_sign_qualification_not_exercised",
+                    "plant_sign_qualification_failed",
+                )
+                if decision in reason
+            )
+        elif reason.startswith(f"{self.programme.key}_wall_endpoint"):
             terminal["primary_decision"] = "right_censored_incomplete"
         else:
             terminal["primary_decision"] = "measurement_authority_or_platform_fault"
@@ -1040,8 +1256,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         last_query = 0.0
         with AbortFifo(self.abort_fifo) as abort:
             self._live_command_ack_required = True
-            self._event(
-                "cx320_live_supervisor_started",
+            self._programme_event(
+                "live_supervisor_started",
                 abort_fifo=str(self.abort_fifo),
                 manifest_sha256=self.envelope.manifest_sha256,
                 bundle_sha256=self.envelope.bundle_sha256,
@@ -1080,8 +1296,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     self._maybe_start_or_arm(health)
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
-                        self._event(
-                            "cx320_campaign_terminal", **self.state["terminal"]
+                        self._programme_event(
+                            "campaign_terminal", **self.state["terminal"]
                         )
                         self.state["terminal_event_emitted"] = True
                         self._save()
@@ -1193,8 +1409,10 @@ def main(argv: list[str] | None = None) -> int:
         return supervisor.run()
     except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
         if "supervisor" in locals():
-            supervisor._event("cx320_live_supervisor_fault", error=str(exc))
-            supervisor._abort(f"cx320_live_supervisor_fault:{exc}")
+            supervisor._programme_event("live_supervisor_fault", error=str(exc))
+            supervisor._abort(
+                f"{supervisor.programme.key}_live_supervisor_fault:{exc}"
+            )
             return 2
         parser.error(str(exc))
 

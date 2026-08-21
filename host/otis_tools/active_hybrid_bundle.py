@@ -9,7 +9,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .active_hybrid_policy import DEFAULT_POLICY, load_policy
+from .active_hybrid_policy import load_policy
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    get_active_hybrid_programme,
+    programme_from_mapping,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -33,24 +39,36 @@ REQUIRED_FALSE_AUTHORITY = (
 )
 TOOL_PATHS = {
     "bundle": Path(__file__),
+    "programme_contract": Path(__file__).with_name(
+        "active_hybrid_programme_contract.py"
+    ),
     "controller_reference": Path(__file__).with_name("active_hybrid_policy.py"),
     "predecessor_audit": Path(__file__).with_name("active_hybrid_evidence_audit.py"),
     "frozen_evidence_replay": Path(__file__).with_name("active_hybrid_replay.py"),
     "host_supervisor_contract": Path(__file__).with_name("active_hybrid_supervisor.py"),
     "response_replay_guard": Path(__file__).with_name("active_hybrid_evidence_guard.py"),
+    "plant_sign_replay_guard": Path(__file__).with_name(
+        "cx321_plant_sign_evidence_guard.py"
+    ),
     "authority_proposal_validator": Path(__file__).with_name("active_hybrid_proposal.py"),
     "structural_preflight": Path(__file__).with_name("active_hybrid_preflight.py"),
     "operational_rehearsal": Path(__file__).with_name("active_hybrid_rehearsal.py"),
     "analyzer": Path(__file__).with_name("active_hybrid_analyze.py"),
     "finalizer_and_sealer": Path(__file__).with_name("active_hybrid_finalize.py"),
     "capture": Path(__file__).with_name("capture_device.py"),
+    "capture_splitter": Path(__file__).with_name("capture_serial.py"),
+    "run_paths": Path(__file__).with_name("run_paths.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "active_transaction_supervisor": Path(__file__).with_name("active_transactions.py"),
     "active_transport_supervisor": Path(__file__).with_name("active_control_supervisor.py"),
     "active_status_snapshot_contract": Path(__file__).with_name("active_status_contract.py"),
+    "active_status_live_state": Path(__file__).with_name(
+        "active_status_live_state.py"
+    ),
     "priority_abort": Path(__file__).with_name("abort_transport.py"),
     "logical_rotation": Path(__file__).with_name("capture_segment_rotation.py"),
     "contract_validator": Path(__file__).with_name("contracts.py"),
+    "time_domain_contract": Path(__file__).with_name("time_domains.py"),
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
     "registration": Path(__file__).with_name("evidence_index.py"),
     "live_activation_and_manifest": Path(__file__).with_name("active_hybrid_activation.py"),
@@ -90,20 +108,29 @@ def _binding(path: Path) -> dict[str, Any]:
     }
 
 
-def _validate_build(build_manifest_path: Path) -> dict[str, Any]:
+def _validate_build(
+    build_manifest_path: Path,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
     manifest = _read_object(build_manifest_path)
     provenance = manifest.get("provenance", {})
     configuration = provenance.get("configuration", {})
     source = provenance.get("source", {})
     target = provenance.get("target", {})
     toolchain = provenance.get("toolchain", {})
-    if configuration.get("profile_id") != PROFILE_ID:
-        raise ValueError("firmware build is not the exact CX320 profile")
+    if configuration.get("profile_id") != programme.profile_id:
+        raise ValueError(
+            f"firmware build is not the exact {programme.key.upper()} profile"
+        )
     defines = configuration.get("defines", {})
     expected_defines = {
         "OTIS_ENABLE_CX320_ACTIVE_HYBRID": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
-        "OTIS_CX317_ACTIVE_CAMPAIGN": "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID",
+        "OTIS_CX317_ACTIVE_CAMPAIGN": (
+            "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
+            if programme.identification_required
+            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+        ),
         "OTIS_CX317_ACTIVE_START_CODE": "0xA83Cu",
         "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "4u",
         "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u",
@@ -112,8 +139,12 @@ def _validate_build(build_manifest_path: Path) -> dict[str, Any]:
         "OTIS_DAC_MAX_CODE": "0xAB00u",
         "OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED": "1",
     }
+    if programme.identification_required:
+        expected_defines["OTIS_ENABLE_CX321_ACTIVE_HYBRID"] = "1"
     if any(defines.get(name) != value for name, value in expected_defines.items()):
-        raise ValueError("firmware build CX320 compile-time envelope differs")
+        raise ValueError(
+            f"firmware build {programme.key.upper()} compile-time envelope differs"
+        )
     configuration_sha256 = configuration.get("sha256")
     source_sha256 = source.get("sha256")
     if not all(
@@ -135,9 +166,11 @@ def _validate_build(build_manifest_path: Path) -> dict[str, Any]:
     if not toolchain.get("compiler_identity") or not toolchain.get("installed_sha256"):
         raise ValueError("firmware toolchain identity is incomplete")
     if source.get("state") != "clean":
-        raise ValueError("exact CX320 live firmware build requires clean source state")
+        raise ValueError(
+            f"exact {programme.key.upper()} live firmware build requires clean source state"
+        )
     return {
-        "profile_id": PROFILE_ID,
+        "profile_id": programme.profile_id,
         "build_manifest": _binding(build_manifest_path),
         "source_revision": source.get("git_commit"),
         "source_state": source.get("state"),
@@ -176,11 +209,14 @@ def _validate_replay(replay_path: Path, policy_sha256: str) -> dict[str, Any]:
 
 
 def create_bundle(
-    *, build_manifest_path: Path, replay_path: Path
+    *,
+    build_manifest_path: Path,
+    replay_path: Path,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
-    policy = load_policy()
-    policy_document = _read_object(DEFAULT_POLICY)
-    firmware = _validate_build(build_manifest_path.resolve())
+    policy = load_policy(programme.natural_policy_path)
+    policy_document = _read_object(programme.natural_policy_path)
+    firmware = _validate_build(build_manifest_path.resolve(), programme)
     replay = _validate_replay(replay_path.resolve(), policy.policy_sha256)
     authority = {name: False for name in REQUIRED_FALSE_AUTHORITY}
     authority.update(
@@ -192,17 +228,17 @@ def create_bundle(
     )
     bundle: dict[str, Any] = {
         "schema_version": 1,
-        "bundle_id": BUNDLE_ID,
-        "programme_id": PROGRAMME_ID,
+        "bundle_id": programme.bundle_id,
+        "programme_id": programme.programme_id,
         "tool": TOOL_ID,
         "created_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z"),
         "status": "frozen_non_effective_physical_proposal_input",
-        "run_identity": RUNTIME_RUN_IDENTITY,
+        "run_identity": programme.runtime_run_identity,
         "policy": {
-            **_binding(DEFAULT_POLICY),
+            **_binding(programme.natural_policy_path),
             "policy_id": policy.policy_id,
             "policy_sha256": policy.policy_sha256,
         },
@@ -221,8 +257,8 @@ def create_bundle(
             "expected_board_serial": EXPECTED_BOARD_SERIAL,
         },
         "setup": {
-            "exact_code": 0xA83C,
-            "exact_code_hex": "0xA83C",
+            "exact_code": programme.setup_code,
+            "exact_code_hex": f"0x{programme.setup_code:04X}",
             "physical_applied_code_before_setup": "unknown",
             "one_setup_application": True,
             "same_code_reapplication_opens_new_epoch": True,
@@ -237,16 +273,16 @@ def create_bundle(
             ],
         },
         "finite_limits": {
-            "qualified_duration_s": 43_200,
+            "qualified_duration_s": programme.qualified_duration_s,
             "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
-            "absolute_wall_clock_limit_s": 57_600,
+            "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
             "wall_clock_origin": "sole_capture_owner_records_exact_run_identity_before_setup_submission",
-            "maximum_total_automatic_applications": 4,
-            "maximum_combined_step_codes": 21,
-            "maximum_cumulative_absolute_movement_codes": 84,
-            "minimum_applied_cadence_s": 1_800,
-            "minimum_code": 0xA800,
-            "maximum_code": 0xAB00,
+            "maximum_total_automatic_applications": programme.maximum_applications,
+            "maximum_combined_step_codes": programme.maximum_step_codes,
+            "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+            "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+            "minimum_code": programme.minimum_code,
+            "maximum_code": programme.maximum_code,
             "maximum_outstanding_requests": 1,
             "automatic_retry": False,
             "automatic_restoration": False,
@@ -254,14 +290,18 @@ def create_bundle(
         },
         "prospective_metrics": policy_document["prospective_metrics"],
         "progressive_authority": {
-            "states": [
-                "FREQUENCY_ACQUIRE",
-                "PHASE_QUALIFY",
-                "FIRST_PHASE_TRANSACTION",
-                "HYBRID_TRACKING",
-                "PHASE_DEGRADED_FREQUENCY_ONLY",
-                "FAIL_STATIC",
-            ],
+            "states": (
+                [
+                    "FREQUENCY_ACQUIRE",
+                    "PHASE_QUALIFY",
+                    "FIRST_PHASE_TRANSACTION",
+                    "HYBRID_TRACKING",
+                    "PHASE_DEGRADED_FREQUENCY_ONLY",
+                    "FAIL_STATIC",
+                ]
+                if programme is CX320_PROGRAMME
+                else sorted(programme.hybrid_states - {"SETUP_PENDING"})
+            ),
             "first_phase_application_limit_before_checkpoint": 1,
             "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
             "first_response_acknowledgement_requires_exact_host_replay": True,
@@ -301,23 +341,100 @@ def create_bundle(
         },
         "authority": authority,
     }
+    if programme.identification_required:
+        programme_policy = _read_object(programme.policy_path)
+        policy_bindings = programme_policy.get("bindings")
+        if not isinstance(policy_bindings, dict):
+            raise ValueError("CX321 programme policy bindings are unavailable")
+        exact_bindings: dict[str, dict[str, Any]] = {}
+        for name, declared in policy_bindings.items():
+            if not isinstance(declared, dict):
+                raise ValueError(f"CX321 policy binding {name} is malformed")
+            source = REPO_ROOT / str(declared.get("path", ""))
+            if (
+                not source.is_file()
+                or _sha256_file(source) != declared.get("sha256")
+            ):
+                raise ValueError(f"CX321 policy binding differs: {name}")
+            exact_bindings[name] = _binding(source)
+        estimator_document = _read_object(
+            REPO_ROOT
+            / str(policy_bindings["identification_estimator"]["path"])
+        )
+        runtime_config = estimator_document.get("runtime_config")
+        if not isinstance(runtime_config, dict):
+            raise ValueError("CX321 strict estimator config binding is unavailable")
+        runtime_config_path = REPO_ROOT / str(runtime_config.get("path", ""))
+        if (
+            not runtime_config_path.is_file()
+            or _sha256_file(runtime_config_path)
+            != runtime_config.get("file_sha256")
+        ):
+            raise ValueError("CX321 strict estimator config file differs")
+        from .pps_cumulative_span_estimator import SpanEstimatorConfig
+
+        strict_config = SpanEstimatorConfig.from_mapping(
+            _read_object(runtime_config_path)
+        )
+        if strict_config.config_hash != runtime_config.get(
+            "canonical_config_hash"
+        ):
+            raise ValueError("CX321 canonical estimator config identity differs")
+        bundle["profile_identity"] = programme.profile_id
+        bundle["programme_policy"] = {
+            **_binding(programme.policy_path),
+            "policy_id": programme.policy_id,
+        }
+        bundle["identification"] = {
+            "bindings": exact_bindings,
+            "estimator_runtime_config": {
+                **_binding(runtime_config_path),
+                "canonical_config_hash": strict_config.config_hash,
+            },
+            "step_codes": 21,
+            "response_floor_counts": 3,
+            "response_ceiling_counts": 14,
+            "settling_exclusion_s": 900,
+            "span_intervals": 1500,
+            "host_replay_ack_deadline_s": 30,
+        }
+        bundle["command_envelope"]["evidence_acknowledgement"] = (
+            "ACTIVE EVIDENCE <request_sequence> <phase_1_to_3>"
+        )
+        bundle["command_envelope"]["plant_sign_response_acknowledgement"] = (
+            "ACTIVE EVIDENCE <request_sequence> 4 "
+            "<response_psq_record_sequence> <response_counts> "
+            "<application_sequence> <dac_epoch> "
+            "<response_source_last_sequence> <attestation_sha256>"
+        )
+        bundle["progressive_authority"][
+            "plant_sign_identification_required"
+        ] = True
     bundle["bundle_sha256"] = _canonical_sha256(bundle)
     return bundle
 
 
-def validate_bundle(path: Path) -> dict[str, Any]:
+def validate_bundle(
+    path: Path,
+    programme: ActiveHybridProgramme | None = None,
+) -> dict[str, Any]:
     path = path.resolve()
     bundle = _read_object(path)
     claimed = bundle.pop("bundle_sha256", None)
     observed = _canonical_sha256(bundle)
     bundle["bundle_sha256"] = claimed
+    programme = programme or programme_from_mapping(bundle)
     if claimed != observed:
         raise ValueError("CX320 bundle semantic identity differs")
     if (
-        bundle.get("bundle_id") != BUNDLE_ID
-        or bundle.get("programme_id") != PROGRAMME_ID
+        bundle.get("bundle_id") != programme.bundle_id
+        or bundle.get("programme_id") != programme.programme_id
         or bundle.get("status") != "frozen_non_effective_physical_proposal_input"
-        or bundle.get("run_identity") != RUNTIME_RUN_IDENTITY
+        or bundle.get("run_identity") != programme.runtime_run_identity
+        or (
+            programme.identification_required
+            and bundle.get("profile_identity") != programme.profile_id
+        )
         or bundle.get("topology", {}).get("expected_board_serial")
         != EXPECTED_BOARD_SERIAL
         or bundle.get("command_envelope", {}).get("arm")
@@ -335,6 +452,94 @@ def validate_bundle(path: Path) -> dict[str, Any]:
             bound = Path(str(binding.get("path", "")))
             if not bound.is_file() or _sha256_file(bound) != binding.get("sha256"):
                 raise ValueError(f"CX320 {section} binding differs: {name}")
+    if programme.identification_required:
+        if bundle.get("command_envelope", {}).get(
+            "evidence_acknowledgement"
+        ) != "ACTIVE EVIDENCE <request_sequence> <phase_1_to_3>" or bundle.get(
+            "command_envelope", {}
+        ).get("plant_sign_response_acknowledgement") != (
+            "ACTIVE EVIDENCE <request_sequence> 4 "
+            "<response_psq_record_sequence> <response_counts> "
+            "<application_sequence> <dac_epoch> "
+            "<response_source_last_sequence> <attestation_sha256>"
+        ):
+            raise ValueError("CX321 command envelope differs")
+        programme_policy_binding = bundle.get("programme_policy", {})
+        programme_policy_path = Path(
+            str(programme_policy_binding.get("path", ""))
+        )
+        if (
+            not programme_policy_path.is_file()
+            or _sha256_file(programme_policy_path)
+            != programme_policy_binding.get("sha256")
+            or programme_policy_binding.get("policy_id") != programme.policy_id
+        ):
+            raise ValueError("active-hybrid programme policy binding differs")
+        programme_policy_document = _read_object(programme_policy_path)
+        declared_bindings = programme_policy_document.get("bindings", {})
+        identification = bundle.get("identification", {})
+        exact_bindings = identification.get("bindings", {})
+        if (
+            not isinstance(declared_bindings, dict)
+            or not isinstance(exact_bindings, dict)
+            or set(exact_bindings) != set(declared_bindings)
+        ):
+            raise ValueError("CX321 exact identification bindings differ")
+        for name, declared in declared_bindings.items():
+            bound = exact_bindings[name]
+            source = REPO_ROOT / str(declared.get("path", ""))
+            if (
+                not source.is_file()
+                or declared.get("sha256") != _sha256_file(source)
+                or bound != _binding(source)
+            ):
+                raise ValueError(f"CX321 identification binding differs: {name}")
+        estimator = _read_object(
+            REPO_ROOT
+            / str(declared_bindings["identification_estimator"]["path"])
+        )
+        runtime = estimator.get("runtime_config", {})
+        runtime_path = REPO_ROOT / str(runtime.get("path", ""))
+        runtime_binding = identification.get("estimator_runtime_config", {})
+        from .pps_cumulative_span_estimator import SpanEstimatorConfig
+
+        runtime_config = SpanEstimatorConfig.from_mapping(
+            _read_object(runtime_path)
+        )
+        if (
+            runtime_binding
+            != {
+                **_binding(runtime_path),
+                "canonical_config_hash": runtime_config.config_hash,
+            }
+            or runtime_config.config_hash
+            != runtime.get("canonical_config_hash")
+            or {
+                "step_codes": identification.get("step_codes"),
+                "response_floor_counts": identification.get(
+                    "response_floor_counts"
+                ),
+                "response_ceiling_counts": identification.get(
+                    "response_ceiling_counts"
+                ),
+                "settling_exclusion_s": identification.get(
+                    "settling_exclusion_s"
+                ),
+                "span_intervals": identification.get("span_intervals"),
+                "host_replay_ack_deadline_s": identification.get(
+                    "host_replay_ack_deadline_s"
+                ),
+            }
+            != {
+                "step_codes": 21,
+                "response_floor_counts": 3,
+                "response_ceiling_counts": 14,
+                "settling_exclusion_s": 900,
+                "span_intervals": 1500,
+                "host_replay_ack_deadline_s": 30,
+            }
+        ):
+            raise ValueError("CX321 strict identification envelope differs")
     policy_binding = bundle["policy"]
     policy_path = Path(policy_binding["path"])
     if _sha256_file(policy_path) != policy_binding["sha256"]:
@@ -347,7 +552,7 @@ def validate_bundle(path: Path) -> dict[str, Any]:
         "prospective_metrics"
     ):
         raise ValueError("CX320 prospective scientific metrics differ from policy")
-    _validate_build(Path(bundle["firmware"]["build_manifest"]["path"]))
+    _validate_build(Path(bundle["firmware"]["build_manifest"]["path"]), programme)
     _validate_replay(Path(bundle["offline_replay"]["path"]), policy.policy_sha256)
     return bundle
 
@@ -358,15 +563,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--replay", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate", type=Path)
+    parser.add_argument("--programme", choices=("cx320", "cx321"), default="cx320")
     args = parser.parse_args(argv)
+    programme = get_active_hybrid_programme(args.programme)
     if args.validate is not None:
-        result = validate_bundle(args.validate)
+        result = validate_bundle(args.validate, programme)
     else:
         if args.build_manifest is None or args.replay is None:
             parser.error("bundle creation requires --build-manifest and --replay")
         result = create_bundle(
             build_manifest_path=args.build_manifest,
             replay_path=args.replay,
+            programme=programme,
         )
         if args.output is not None:
             if args.output.exists():

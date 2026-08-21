@@ -190,9 +190,9 @@ def parse_serial_command(text: str) -> SerialCommand:
 
     if command.startswith("ACTIVE EVIDENCE "):
         fields = command[len("ACTIVE EVIDENCE ") :].split()
-        if len(fields) != 2 or any(
+        if len(fields) not in {2, 8} or any(
             not re.fullmatch(r"[1-9][0-9]*", field) or int(field, 10) > 0xFFFFFFFF
-            for field in fields
+            for field in fields[:2]
         ):
             raise ValueError(
                 "ACTIVE EVIDENCE requires non-zero request and phase sequences"
@@ -200,6 +200,44 @@ def parse_serial_command(text: str) -> SerialCommand:
         if int(fields[1], 10) not in {1, 2, 3, 4}:
             raise ValueError(
                 "ACTIVE EVIDENCE phase sequence must be 1, 2, 3, or 4"
+            )
+        if len(fields) == 8:
+            if int(fields[1], 10) != 4:
+                raise ValueError(
+                    "extended ACTIVE EVIDENCE is restricted to phase 4"
+                )
+            unsigned = (fields[2], fields[4], fields[5], fields[6])
+            if any(
+                not re.fullmatch(r"[1-9][0-9]*", field)
+                or int(field, 10) > 0xFFFFFFFF
+                for field in unsigned
+            ):
+                raise ValueError(
+                    "extended ACTIVE EVIDENCE identities must be non-zero uint32 values"
+                )
+            attestation = fields[7].lower()
+            if (
+                re.fullmatch(r"-?(0|[1-9][0-9]*)", fields[3]) is None
+                or not -0x80000000 <= int(fields[3], 10) <= 0x7FFFFFFF
+                or re.fullmatch(r"[0-9a-f]{64}", attestation) is None
+            ):
+                raise ValueError(
+                    "extended ACTIVE EVIDENCE requires canonical response count and SHA-256 attestation"
+                )
+            return SerialCommand(
+                "ACTIVE EVIDENCE "
+                + " ".join(
+                    [
+                        str(int(fields[0], 10)),
+                        "4",
+                        str(int(fields[2], 10)),
+                        str(int(fields[3], 10)),
+                        str(int(fields[4], 10)),
+                        str(int(fields[5], 10)),
+                        str(int(fields[6], 10)),
+                        attestation,
+                    ]
+                )
             )
         return SerialCommand(
             f"ACTIVE EVIDENCE {int(fields[0], 10)} {int(fields[1], 10)}"

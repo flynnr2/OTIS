@@ -18,10 +18,16 @@ import subprocess
 import tempfile
 from typing import Any
 
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
+
 from .active_hybrid_bundle import REQUIRED_FALSE_AUTHORITY, validate_bundle
 from .active_hybrid_proposal import validate_proposal
 from .evidence_index import package_identity
-from .run_paths import default_csv_files
+from .run_paths import cx321_csv_files, default_csv_files
 
 
 TOOL_ID = "cx320_active_hybrid_live_activation_v1"
@@ -194,8 +200,23 @@ def _bundle_binds_this_tool(bundle: dict[str, Any]) -> bool:
     )
 
 
+def _validate_current_bundle(
+    path: Path, programme: ActiveHybridProgramme
+) -> dict[str, Any]:
+    # Preserve the established CX320 call surface for tests and retained
+    # operational integrations that replace the one-argument validator.
+    return (
+        validate_bundle(path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(path, programme)
+    )
+
+
 def _validate_frozen_inputs(
-    *, bundle_path: Path, proposal_path: Path
+    *,
+    bundle_path: Path,
+    proposal_path: Path,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     bundle_path = bundle_path.resolve()
     proposal_path = proposal_path.resolve()
@@ -210,11 +231,11 @@ def _validate_frozen_inputs(
     if (
         not isinstance(exact_bundle, dict)
         or not isinstance(host_tools, dict)
-        or bundle.get("programme_id") != PROGRAMME_ID
-        or bundle.get("run_identity") != RUNTIME_RUN_IDENTITY
+        or bundle.get("programme_id") != programme.programme_id
+        or bundle.get("run_identity") != programme.runtime_run_identity
         or bundle.get("status") != "frozen_non_effective_physical_proposal_input"
-        or proposal.get("programme_id") != PROGRAMME_ID
-        or proposal.get("run_identity") != RUNTIME_RUN_IDENTITY
+        or proposal.get("programme_id") != programme.programme_id
+        or proposal.get("run_identity") != programme.runtime_run_identity
         or proposal.get("status")
         != "non_effective_awaiting_separate_operator_decision"
         or not isinstance(proposal_authority, dict)
@@ -244,9 +265,11 @@ def validate_operational_rehearsal(
     bundle: dict[str, Any],
     proposal: dict[str, Any],
     require_current_tools: bool = True,
+    programme: ActiveHybridProgramme | None = None,
 ) -> dict[str, Any]:
     path = path.resolve()
     report = _read_object(path, "CX320 live-topology rehearsal")
+    programme = programme or programme_from_mapping(bundle)
     claimed = report.get("rehearsal_sha256")
     unsigned = {
         key: item for key, item in report.items() if key != "rehearsal_sha256"
@@ -255,7 +278,7 @@ def validate_operational_rehearsal(
     tool_bindings = report.get("tool_bindings")
     if (
         report.get("schema_version") != 1
-        or report.get("report_type") != REHEARSAL_REPORT_TYPE
+        or report.get("report_type") != programme.rehearsal_report_type
         or report.get("status") != "passed"
         or report.get("bundle_sha256") != bundle.get("bundle_sha256")
         or report.get("proposal_sha256") != proposal.get("proposal_sha256")
@@ -268,6 +291,82 @@ def validate_operational_rehearsal(
         or tool_bindings != bundle.get("host_tools")
     ):
         raise ValueError("CX320 live-topology rehearsal receipt differs or is incomplete")
+    if programme.identification_required:
+        ordering = report.get("cx321_identification_ordering", {})
+        if not isinstance(ordering, dict) or not all(
+            ordering.get(key) is True
+            for key in (
+                "no_early_or_stale_identification_arm",
+                "one_exact_pre2_identification_arm",
+                "phase4_waited_for_matching_psq_after_act_split",
+            )
+        ):
+            raise ValueError("CX321 rehearsal lacks exact identification ordering")
+        topology = report.get("real_process_topology", {})
+        transaction = (
+            topology.get("cx321_real_transaction_path", {})
+            if isinstance(topology, dict)
+            else {}
+        )
+        phases = transaction.get("evidence_phase_commands", [])
+        extended = transaction.get("extended_phase4_command")
+        digest = transaction.get("complete_evidence_chain_sha256")
+        extended_fields = extended.split() if isinstance(extended, str) else []
+        natural = transaction.get("first_natural_decision", {})
+        natural_phases = transaction.get("natural_evidence_phase_commands", [])
+        if (
+            not isinstance(transaction, dict)
+            or transaction.get("canonical_psq_field_count") != 60
+            or transaction.get("canonical_snp_rows_captured") != 4502
+            or transaction.get("canonical_act_field_count") != 47
+            or not isinstance(phases, list)
+            or len(phases) != 4
+            or phases[:3]
+            != [
+                "ACTIVE EVIDENCE 1 1",
+                "ACTIVE EVIDENCE 1 2",
+                "ACTIVE EVIDENCE 1 3",
+            ]
+            or phases[3] != extended
+            or len(extended_fields) != 10
+            or extended_fields[:4] != ["ACTIVE", "EVIDENCE", "1", "4"]
+            or extended_fields[4:9] != ["5", "-5", "1", "2", "6302"]
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or extended_fields[-1:] != [digest]
+            or transaction.get("raw_timer_rollover_between_application_and_response")
+            is not True
+            or transaction.get("firmware_consumption_confirmed") is not True
+            or transaction.get("response_ack_handoff_exact") is not True
+            or transaction.get("act_response_join", {}).get("exact") is not True
+            or not isinstance(transaction.get("raw_snapshot_proof_sha256"), str)
+            or not isinstance(natural, dict)
+            or natural.get("request_sequence") != 2
+            or natural.get("global_correction_count_before") != 1
+            or natural.get("global_cumulative_movement_before_codes") != 21
+            or natural.get("natural_cumulative_movement_codes") != 0
+            or natural.get("natural_direction_count") != 0
+            or natural.get("plant_sign_handoff_first_consumer") is not True
+            or natural.get("phase_materially_influenced") is not True
+            or transaction.get("natural_ahy_rows_captured") != 2
+            or not isinstance(natural_phases, list)
+            or natural_phases
+            != [
+                "ACTIVE EVIDENCE 2 1",
+                "ACTIVE EVIDENCE 2 2",
+                "ACTIVE EVIDENCE 2 3",
+                "ACTIVE EVIDENCE 2 4",
+            ]
+            or transaction.get(
+                "natural_response_firmware_consumption_confirmed"
+            )
+            is not True
+        ):
+            raise ValueError(
+                "CX321 rehearsal lacks the exact real-process plant-sign "
+                "transaction path"
+            )
     if require_current_tools:
         if not isinstance(tool_bindings, dict):
             raise ValueError("CX320 rehearsal tool bindings are unavailable")
@@ -279,12 +378,14 @@ def validate_operational_rehearsal(
                 raise ValueError(f"CX320 rehearsal tool binding differs: {name}")
     return {
         **_binding(path),
-        "report_type": REHEARSAL_REPORT_TYPE,
+        "report_type": programme.rehearsal_report_type,
         "rehearsal_sha256": claimed,
     }
 
 
-def _authority() -> dict[str, Any]:
+def _authority(
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
     return {
         "effective": True,
         "physical_execution": True,
@@ -293,20 +394,22 @@ def _authority() -> dict[str, Any]:
         "serial_open": True,
         "command_fifo": True,
         "setup_stimulus": True,
-        "setup_code": SETUP_CODE,
+        "setup_code": programme.setup_code,
         "setup_write_limit": 1,
         "control_arm": True,
         "live_acquisition_limit": 1,
-        "maximum_total_automatic_applications": 4,
+        "maximum_total_automatic_applications": programme.maximum_applications,
         "first_phase_material_applications_before_checkpoint": 1,
-        "minimum_phase_material_applications_for_pass": 2,
-        "maximum_combined_step_codes": 21,
-        "maximum_cumulative_absolute_movement_codes": 84,
-        "minimum_applied_cadence_s": 1800,
-        "minimum_code": 0xA800,
-        "maximum_code": 0xAB00,
-        "qualified_duration_s": 43_200,
-        "absolute_wall_clock_limit_s": 57_600,
+        "minimum_phase_material_applications_for_pass": (
+            programme.minimum_natural_phase_material_applications
+        ),
+        "maximum_combined_step_codes": programme.maximum_step_codes,
+        "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+        "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+        "minimum_code": programme.minimum_code,
+        "maximum_code": programme.maximum_code,
+        "qualified_duration_s": programme.qualified_duration_s,
+        "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
         "maximum_outstanding_requests": 1,
         "automatic_retry": False,
         "automatic_restoration": False,
@@ -411,15 +514,22 @@ def create_activation(
     attempt_ordinal: int = 1,
     attempt_reason: str = DEFAULT_ATTEMPT_REASON,
     predecessor_terminal_path: Path | None = None,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
     if not serial_device.startswith("/dev/"):
         raise ValueError("CX320 activation requires an explicit /dev serial path")
     if not operator_instruction_ref.strip():
         raise ValueError("CX320 activation requires an operator-instruction reference")
-    bundle = validate_bundle(bundle_path)
-    proposal = validate_proposal(proposal_path)
+    bundle = _validate_current_bundle(bundle_path, programme)
+    proposal = (
+        validate_proposal(proposal_path)
+        if programme is CX320_PROGRAMME
+        else validate_proposal(proposal_path, programme)
+    )
     frozen_bundle, frozen_proposal = _validate_frozen_inputs(
-        bundle_path=bundle_path, proposal_path=proposal_path
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        programme=programme,
     )
     if bundle != frozen_bundle or proposal != frozen_proposal:
         raise ValueError("CX320 current and frozen input validation differs")
@@ -432,19 +542,20 @@ def create_activation(
         bundle=bundle,
         proposal=proposal,
         require_current_tools=True,
+        programme=programme,
     )
     unsigned: dict[str, Any] = {
         "schema_version": 1,
         "tool": TOOL_ID,
         "tool_binding": _binding(Path(__file__)),
-        "activation_id": ACTIVATION_ID,
+        "activation_id": programme.activation_id,
         "created_utc": _utc_now(),
-        "programme_id": PROGRAMME_ID,
-        "operation": OPERATION,
+        "programme_id": programme.programme_id,
+        "operation": programme.operation,
         "status": "effective_exact_bundle_authority",
         "operator_instruction_ref": operator_instruction_ref.strip(),
-        "run_identity": RUNTIME_RUN_IDENTITY,
-        "profile_identity": PROFILE_IDENTITY,
+        "run_identity": programme.runtime_run_identity,
+        "profile_identity": programme.profile_id,
         "bundle": {
             **_binding(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
@@ -474,13 +585,13 @@ def create_activation(
             "fifos": FIFO_PATHS,
         },
         "setup": {
-            "code": SETUP_CODE,
-            "code_hex": SETUP_CODE_HEX,
+            "code": programme.setup_code,
+            "code_hex": f"0x{programme.setup_code:04X}",
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
         },
-        "authority": _authority(),
+        "authority": _authority(programme),
     }
     activation = {
         **unsigned,
@@ -495,9 +606,11 @@ def validate_frozen_activation(
     *,
     bundle_path: Path | None = None,
     proposal_path: Path | None = None,
+    programme: ActiveHybridProgramme | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     path = path.resolve()
     activation = _read_object(path, "CX320 live activation")
+    programme = programme or programme_from_mapping(activation)
     claimed = activation.get("activation_sha256")
     unsigned = {
         key: item for key, item in activation.items() if key != "activation_sha256"
@@ -520,7 +633,9 @@ def validate_frozen_activation(
     bundle_path = (bundle_path or bound_bundle_path).resolve()
     proposal_path = (proposal_path or bound_proposal_path).resolve()
     bundle, proposal = _validate_frozen_inputs(
-        bundle_path=bundle_path, proposal_path=proposal_path
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        programme=programme,
     )
     host_tools = bundle.get("host_tools")
     if not isinstance(host_tools, dict):
@@ -529,12 +644,12 @@ def validate_frozen_activation(
     if (
         activation.get("schema_version") != 1
         or activation.get("tool") != TOOL_ID
-        or activation.get("activation_id") != ACTIVATION_ID
-        or activation.get("programme_id") != PROGRAMME_ID
-        or activation.get("operation") != OPERATION
+        or activation.get("activation_id") != programme.activation_id
+        or activation.get("programme_id") != programme.programme_id
+        or activation.get("operation") != programme.operation
         or activation.get("status") != "effective_exact_bundle_authority"
-        or activation.get("run_identity") != RUNTIME_RUN_IDENTITY
-        or activation.get("profile_identity") != PROFILE_IDENTITY
+        or activation.get("run_identity") != programme.runtime_run_identity
+        or activation.get("profile_identity") != programme.profile_id
         or claimed != _canonical_sha256(unsigned)
         or not _binding_content_matches(bundle_binding, bundle_path)
         or (not bundle_overridden and bundle_binding.get("path") != str(bundle_path))
@@ -563,13 +678,13 @@ def validate_frozen_activation(
         or len(set(fifos.values())) != 3
         or activation.get("setup")
         != {
-            "code": SETUP_CODE,
-            "code_hex": SETUP_CODE_HEX,
+            "code": programme.setup_code,
+            "code_hex": f"0x{programme.setup_code:04X}",
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
         }
-        or activation.get("authority") != _authority()
+        or activation.get("authority") != _authority(programme)
     ):
         raise ValueError("CX320 activation identity, topology, or authority differs")
     attempt = activation.get("attempt")
@@ -595,6 +710,7 @@ def validate_frozen_activation(
         bundle=bundle,
         proposal=proposal,
         require_current_tools=False,
+        programme=programme,
     )
     if rehearsal_binding != observed_rehearsal:
         raise ValueError("CX320 activation rehearsal binding differs")
@@ -606,15 +722,25 @@ def validate_activation(
     *,
     bundle_path: Path | None = None,
     proposal_path: Path | None = None,
+    programme: ActiveHybridProgramme | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     activation, frozen_bundle, frozen_proposal = validate_frozen_activation(
-        path, bundle_path=bundle_path, proposal_path=proposal_path
+        path,
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        programme=programme,
     )
-    current_bundle = validate_bundle(
-        (bundle_path or Path(activation["bundle"]["path"])).resolve()
+    programme = programme or programme_from_mapping(activation)
+    current_bundle = _validate_current_bundle(
+        (bundle_path or Path(activation["bundle"]["path"])).resolve(), programme
     )
-    current_proposal = validate_proposal(
-        (proposal_path or Path(activation["proposal"]["path"])).resolve()
+    current_proposal_path = (
+        proposal_path or Path(activation["proposal"]["path"])
+    ).resolve()
+    current_proposal = (
+        validate_proposal(current_proposal_path)
+        if programme is CX320_PROGRAMME
+        else validate_proposal(current_proposal_path, programme)
     )
     if current_bundle != frozen_bundle or current_proposal != frozen_proposal:
         raise ValueError("CX320 current activation inputs differ from retained inputs")
@@ -629,11 +755,14 @@ def validate_activation(
         bundle=current_bundle,
         proposal=current_proposal,
         require_current_tools=True,
+        programme=programme,
     )
     return activation, current_bundle, current_proposal
 
 
-def _required_files() -> list[dict[str, Any]]:
+def _required_files(
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> list[dict[str, Any]]:
     required = {
         "pps_snapshots_v1",
         "reference_observations_v1",
@@ -647,7 +776,10 @@ def _required_files() -> list[dict[str, Any]]:
         "hybrid_preview_decisions_v1",
         "tight_deadband_decisions_v1",
     }
-    files: list[dict[str, Any]] = [dict(entry) for entry in default_csv_files()]
+    source = cx321_csv_files() if programme.identification_required else default_csv_files()
+    files: list[dict[str, Any]] = [dict(entry) for entry in source]
+    if programme.identification_required:
+        required.add("plant_sign_qualification_v1")
     for entry in files:
         if entry["contract"] in required:
             entry.pop("optional", None)
@@ -667,30 +799,37 @@ def create_run_manifest(
     output_path = output_path.resolve()
     if output_path != (run_dir / RUN_MANIFEST_PATH).resolve():
         raise ValueError("CX320 live manifest must be run-local run_manifest.json")
+    activation_value = _read_object(activation_path, "active-hybrid activation")
+    programme = programme_from_mapping(activation_value)
     activation, bundle, proposal = validate_activation(
         activation_path,
         bundle_path=bundle_path,
         proposal_path=proposal_path,
+        programme=programme,
     )
     actual_device = serial_device or str(activation["device"]["path"])
     if not actual_device.startswith("/dev/"):
         raise ValueError("CX320 live manifest requires an explicit serial device")
-    files = _required_files()
+    files = _required_files(programme)
     authority = activation["authority"]
     manifest: dict[str, Any] = {
         "schema_version": 1,
-        "compatibility_floor": "CX320_EVIDENCE_EPOCH_1",
+        "compatibility_floor": programme.compatibility_floor,
         "template": False,
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
-        "stage": LIVE_STAGE,
-        "programme_id": PROGRAMME_ID,
-        "run_identity": RUNTIME_RUN_IDENTITY,
-        "profile_identity": PROFILE_IDENTITY,
+        "stage": programme.live_stage,
+        "programme_id": programme.programme_id,
+        "run_identity": programme.runtime_run_identity,
+        "profile_identity": programme.profile_id,
         "board": "arduino_nano_rp2040_connect",
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
-        "control_mode": "bounded_active_hybrid_phase_frequency",
+        "control_mode": (
+            "bounded_active_hybrid_plant_sign_phase_frequency"
+            if programme.identification_required
+            else "bounded_active_hybrid_phase_frequency"
+        ),
         "closed_loop_control": True,
         "actionable": True,
         "actuation_authorized": True,
@@ -723,14 +862,14 @@ def create_run_manifest(
             "fifos": FIFO_PATHS,
             "tool_bindings": bundle["host_tools"],
         },
-        "cx320": {
+        programme.manifest_section: {
             "mode": "active_hybrid_live",
-            "profile_id": PROFILE_IDENTITY,
-            "run_identity": RUNTIME_RUN_IDENTITY,
+            "profile_id": programme.profile_id,
+            "run_identity": programme.runtime_run_identity,
             "authority": authority,
             "setup": {
-                "code": SETUP_CODE,
-                "code_hex": SETUP_CODE_HEX,
+                "code": programme.setup_code,
+                "code_hex": f"0x{programme.setup_code:04X}",
                 "maximum_applications": 1,
                 "physical_applied_code_before_setup": "unknown",
                 "same_code_reapplication_opens_new_epoch": True,
@@ -738,26 +877,26 @@ def create_run_manifest(
             },
             "automatic_control": {
                 "authorized": True,
-                "maximum_total_applications": 4,
-                "maximum_step_codes": 21,
-                "maximum_cumulative_movement_codes": 84,
-                "minimum_applied_cadence_s": 1800,
-                "minimum_code": 0xA800,
-                "maximum_code": 0xAB00,
+                "maximum_total_applications": programme.maximum_applications,
+                "maximum_step_codes": programme.maximum_step_codes,
+                "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+                "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+                "minimum_code": programme.minimum_code,
+                "maximum_code": programme.maximum_code,
                 "maximum_outstanding_requests": 1,
                 "automatic_retry": False,
                 "automatic_restore": False,
             },
             "progressive_authority": {
                 "first_phase_material_applications_before_checkpoint": 1,
-                "minimum_phase_material_applications_for_pass": 2,
+                "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
                 "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
                 "first_response_acknowledgement_requires_exact_host_replay": True,
                 "later_authority_requires_healthy_response_and_tight_reacquisition": True,
             },
             "qualification": {
-                "qualified_duration_s": 43_200,
-                "absolute_wall_clock_limit_s": 57_600,
+                "qualified_duration_s": programme.qualified_duration_s,
+                "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
                 "qualified_origin": bundle["finite_limits"]["qualified_origin"],
                 "wall_clock_origin": bundle["finite_limits"]["wall_clock_origin"],
                 "no_extension": True,
@@ -799,9 +938,9 @@ def create_run_manifest(
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
             "reports/capture_segment_closure_v1.json",
-            str(RUN_ACTIVATION_PATH),
-            str(RUN_PROPOSAL_PATH),
-            str(RUN_BUNDLE_PATH),
+            str(programme.run_activation_path),
+            str(programme.run_proposal_path),
+            str(programme.run_bundle_path),
             "COMPLETE",
         ],
         "evidence_artifacts": [
@@ -809,11 +948,11 @@ def create_run_manifest(
             "reports/cx317_active_supervisor_state.json",
             "reports/cx317_active_supervisor_events.jsonl",
             "reports/capture_segment_closure_v1.json",
-            "reports/cx320_active_hybrid_capture.log",
-            "reports/cx320_active_hybrid_supervisor.log",
-            str(RUN_ACTIVATION_PATH),
-            str(RUN_PROPOSAL_PATH),
-            str(RUN_BUNDLE_PATH),
+            f"reports/{programme.key}_active_hybrid_capture.log",
+            f"reports/{programme.key}_active_hybrid_supervisor.log",
+            str(programme.run_activation_path),
+            str(programme.run_proposal_path),
+            str(programme.run_bundle_path),
             "COMPLETE",
         ],
         "known_limitations": [
@@ -825,6 +964,20 @@ def create_run_manifest(
             ),
         ],
     }
+    if programme.identification_required:
+        manifest["domains"].append(
+            {
+                "name": "rp2040_timer0_extended",
+                "nominal_hz": 16_000_000,
+            }
+        )
+        manifest["programme_policy"] = bundle["programme_policy"]
+        manifest["identification"] = bundle["identification"]
+        manifest[programme.manifest_section]["plant_sign_identification"] = {
+            "required": True,
+            "contract": "plant_sign_qualification_v1",
+            "programme_policy": bundle["programme_policy"],
+        }
     manifest["manifest_sha256"] = _canonical_sha256(manifest)
     _atomic_new_json(output_path, manifest)
     return manifest
@@ -839,6 +992,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
     }
     if claimed != _canonical_sha256(unsigned):
         raise ValueError("CX320 run-manifest semantic identity differs")
+    programme = programme_from_mapping(manifest)
     run_dir = path.parent.resolve()
     activation_binding = manifest.get("activation", {})
     bundle_binding = manifest.get("bundle", {})
@@ -850,23 +1004,24 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         activation_path,
         bundle_path=bundle_path,
         proposal_path=proposal_path,
+        programme=programme,
     )
     host = manifest.get("host", {})
-    cx320 = manifest.get("cx320", {})
-    if not isinstance(host, dict) or not isinstance(cx320, dict):
+    section = manifest.get(programme.manifest_section, {})
+    if not isinstance(host, dict) or not isinstance(section, dict):
         raise ValueError("CX320 live run manifest host or programme section is malformed")
-    control = cx320.get("automatic_control", {})
-    progressive = cx320.get("progressive_authority", {})
-    qualification = cx320.get("qualification", {})
+    control = section.get("automatic_control", {})
+    progressive = section.get("progressive_authority", {})
+    qualification = section.get("qualification", {})
     if (
         path != (run_dir / RUN_MANIFEST_PATH)
         or manifest.get("schema_version") != 1
-        or manifest.get("compatibility_floor") != "CX320_EVIDENCE_EPOCH_1"
+        or manifest.get("compatibility_floor") != programme.compatibility_floor
         or manifest.get("template") is not False
-        or manifest.get("stage") != LIVE_STAGE
-        or manifest.get("programme_id") != PROGRAMME_ID
-        or manifest.get("run_identity") != RUNTIME_RUN_IDENTITY
-        or manifest.get("profile_identity") != PROFILE_IDENTITY
+        or manifest.get("stage") != programme.live_stage
+        or manifest.get("programme_id") != programme.programme_id
+        or manifest.get("run_identity") != programme.runtime_run_identity
+        or manifest.get("profile_identity") != programme.profile_id
         or manifest.get("closed_loop_control") is not True
         or manifest.get("actionable") is not True
         or manifest.get("actuation_authorized") is not True
@@ -889,19 +1044,19 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or host.get("serial_owner_count") != 1
         or host.get("fifos") != FIFO_PATHS
         or len(set(host.get("fifos", {}).values())) != 3
-        or cx320.get("authority") != activation["authority"]
-        or cx320.get("run_identity") != RUNTIME_RUN_IDENTITY
-        or cx320.get("setup", {}).get("code") != SETUP_CODE
-        or cx320.get("setup", {}).get("maximum_applications") != 1
+        or section.get("authority") != activation["authority"]
+        or section.get("run_identity") != programme.runtime_run_identity
+        or section.get("setup", {}).get("code") != programme.setup_code
+        or section.get("setup", {}).get("maximum_applications") != 1
         or control
         != {
             "authorized": True,
-            "maximum_total_applications": 4,
-            "maximum_step_codes": 21,
-            "maximum_cumulative_movement_codes": 84,
-            "minimum_applied_cadence_s": 1800,
-            "minimum_code": 0xA800,
-            "maximum_code": 0xAB00,
+            "maximum_total_applications": programme.maximum_applications,
+            "maximum_step_codes": programme.maximum_step_codes,
+            "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+            "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+            "minimum_code": programme.minimum_code,
+            "maximum_code": programme.maximum_code,
             "maximum_outstanding_requests": 1,
             "automatic_retry": False,
             "automatic_restore": False,
@@ -909,13 +1064,15 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or progressive
         != {
             "first_phase_material_applications_before_checkpoint": 1,
-            "minimum_phase_material_applications_for_pass": 2,
+            "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
             "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
             "first_response_acknowledgement_requires_exact_host_replay": True,
             "later_authority_requires_healthy_response_and_tight_reacquisition": True,
         }
-        or qualification.get("qualified_duration_s") != 43_200
-        or qualification.get("absolute_wall_clock_limit_s") != 57_600
+        or qualification.get("qualified_duration_s")
+        != programme.qualified_duration_s
+        or qualification.get("absolute_wall_clock_limit_s")
+        != programme.absolute_wall_limit_s
         or qualification.get("no_extension") is not True
     ):
         raise ValueError("CX320 live run manifest identity, topology, or bounds differ")
@@ -926,6 +1083,20 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         "phase_estimator_outputs_v1",
         "estimates_v2",
     }
+    if programme.identification_required:
+        required_contracts.add("plant_sign_qualification_v1")
+        identification = section.get("plant_sign_identification", {})
+        if (
+            not isinstance(identification, dict)
+            or identification.get("required") is not True
+            or identification.get("contract")
+            != "plant_sign_qualification_v1"
+            or identification.get("programme_policy")
+            != manifest.get("programme_policy")
+            or manifest.get("programme_policy") != bundle.get("programme_policy")
+            or manifest.get("identification") != bundle.get("identification")
+        ):
+            raise ValueError("CX321 plant-sign manifest binding differs")
     if not required_contracts <= set(manifest.get("contracts", {})):
         raise ValueError("CX320 live manifest lacks decision-bearing contracts")
     return manifest
@@ -933,10 +1104,12 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
 
 def validate_run_manifest(path: Path) -> dict[str, Any]:
     manifest = validate_frozen_run_manifest(path)
+    programme = programme_from_mapping(manifest)
     validate_activation(
         Path(manifest["activation"]["path"]),
         bundle_path=Path(manifest["bundle"]["path"]),
         proposal_path=Path(manifest["proposal"]["path"]),
+        programme=programme,
     )
     return manifest
 
@@ -972,6 +1145,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "activate":
+            programme = programme_from_mapping(
+                _read_object(args.bundle, "active-hybrid activation bundle")
+            )
             result: Any = create_activation(
                 bundle_path=args.bundle,
                 proposal_path=args.proposal,
@@ -982,6 +1158,7 @@ def main(argv: list[str] | None = None) -> int:
                 attempt_ordinal=args.attempt_ordinal,
                 attempt_reason=args.attempt_reason,
                 predecessor_terminal_path=args.predecessor_terminal,
+                programme=programme,
             )
         elif args.command == "validate":
             validator = validate_frozen_activation if args.frozen else validate_activation

@@ -18,6 +18,10 @@ import time
 from typing import Any
 
 from .active_hybrid_activation import validate_frozen_run_manifest
+from .active_hybrid_programme_contract import (
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
 from .capture_runtime_checks import _serial_owner_pids
 
 
@@ -28,6 +32,7 @@ RAW_SERIAL = Path("raw/serial.log")
 ESTIMATES = Path("csv/estimates_v2.csv")
 ACTIVE = Path("csv/active_transactions_v1.csv")
 HYBRID = Path("csv/active_hybrid_decisions_v1.csv")
+PLANT_SIGN = Path("csv/plant_sign_qualification_v1.csv")
 CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 
@@ -82,6 +87,12 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
 
     run_dir = run_dir.resolve()
     manifest = validate_frozen_run_manifest(run_dir / "run_manifest.json")
+    try:
+        programme = programme_from_mapping(manifest)
+    except ValueError:
+        # Retain compatibility with the narrow monitor fixtures and historical
+        # CX320 snapshots that predate an explicit programme field.
+        programme = CX320_PROGRAMME
     now = time.time() if now is None else now
     capture = _read_object(run_dir / CAPTURE_STATE)
     supervisor = _read_object(run_dir / SUPERVISOR_STATE)
@@ -148,6 +159,33 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "requested_delta_codes",
         ),
     )
+    plant_sign = (
+        _row_summary(
+            run_dir / PLANT_SIGN,
+            (
+                "qualification_record_sequence",
+                "event",
+                "state_after",
+                "accepted_intervals",
+                "request_sequence",
+                "passed",
+                "reason",
+            ),
+        )
+        if programme.identification_required
+        else {"rows": 0, "latest": None}
+    )
+    if programme.identification_required and not terminal_reached:
+        plant_state = (
+            None if supervisor is None else supervisor.get("latest_plant_sign_state")
+        )
+        if plant_state == "PLANT_SIGN_RESPONSE_ACK_PENDING":
+            psq_age = _age_s(run_dir / PLANT_SIGN, now=now)
+            latest_psq = plant_sign.get("latest")
+            if psq_age is None or psq_age > EVIDENCE_MAX_AGE_S:
+                integrity_faults.append("plant_sign_response_evidence_stale")
+            if not isinstance(latest_psq, dict) or latest_psq.get("event") != "response":
+                integrity_faults.append("plant_sign_response_evidence_not_visible")
     status = (
         "terminal"
         if terminal_reached
@@ -166,6 +204,11 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
         "activation_sha256": manifest["activation"]["activation_sha256"],
         "terminal": terminal,
         "integrity_faults": integrity_faults,
+        "monitoring": {
+            "maximum_poll_interval_s": 10,
+            "plant_sign_ack_deadline_s": 30,
+            "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
+        },
         "capture": {
             "pid": capture_pid,
             "pid_alive": _pid_alive(capture_pid),
@@ -201,6 +244,13 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "estimates": estimates,
             "active_transactions": transactions,
             "active_hybrid_decisions": hybrid,
+            "plant_sign_qualification": plant_sign,
+            "plant_sign_state": (
+                None if supervisor is None else supervisor.get("latest_plant_sign_state")
+            ),
+            "plant_sign_prearm_sent": (
+                False if supervisor is None else supervisor.get("plant_sign_prearm_sent", False)
+            ),
         },
     }
 

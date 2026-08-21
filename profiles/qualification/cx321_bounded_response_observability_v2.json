@@ -1,0 +1,289 @@
+{
+  "schema_version": 2,
+  "programme_id": "CX321_BOUNDED_RESPONSE_OBSERVABILITY_V2",
+  "status": "offline_design_selected_non_effective",
+  "supersedes": {
+    "path": "profiles/qualification/cx321_bounded_response_observability_v1.json",
+    "sha256": "84fdfd50e6dc050a625abd14cec3756b55bbd4309bafb0fd388bde5333438dd7",
+    "reason": "the_first_600s_response_gate_has_observed_fixed_code_false_attributions_and_only_0.061_count_modeled_minimum_margin"
+  },
+  "question": "Can a dedicated identification-only 1500-second D14/D8 estimator distinguish the bounded 21-code DAC response from retained fixed-code behavior before the unchanged 600-second natural hybrid controller receives authority?",
+  "disposition": "selected_as_the_separate_pre_hybrid_gate_natural_hybrid_estimator_requests_and_mathematics_remain_unchanged",
+  "bindings": {
+    "cx320_terminal": {
+      "run_id": "stage5_live_attempt9_20260820T1854Z",
+      "status": "bounded_nonpass",
+      "primary_decision": "hybrid_response_wrong_or_frequency_not_reacquired",
+      "superseding_seal_sha256": "1ec4ebb79be358f6fd8c19aa602f81ba28cdcd45e808edefeb5bdd297f59ba22",
+      "superseding_seal_file_sha256": "cde924d0ef5f32f78123bf6eb3b4748c6c681902967a1760fe5d6feb77e0c551",
+      "registered_evidence_content_sha256": "6cd4637660e29f40007ae2ccaa49a53017d9df84d362e24117fa973f71b51ff9"
+    },
+    "cx320_policy": {
+      "path": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
+      "sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d"
+    },
+    "comparison": {
+      "path": "profiles/qualification/cx321_response_observability_comparison_v1.json",
+      "sha256": "3a2e345ac9ba66129de3f3400d86dddadc1c2abb86c517090747e6f604a552b6"
+    },
+    "identification_estimator": {
+      "path": "profiles/estimators/cx321_plant_sign_1500_v1.json",
+      "sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1"
+    },
+    "natural_controller_frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "natural_response_classifier": {
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+    }
+  },
+  "topology": {
+    "reference_input": "D14_authoritative_PPS",
+    "oscillator_count_input": "D8_CX317_oscillator_count",
+    "independent_external_event_input": "D10_external_event_not_reference_or_control_authority",
+    "gnss_role": "qualification_metadata_from_same_receiver_as_D14_not_timing_replacement",
+    "D9_GPOUT0_output": "deferred_not_modified_not_claimed"
+  },
+  "measurement_contract": {
+    "identification_estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+    "identification_span_s": 1500,
+    "identification_output_mode": "non_overlapping",
+    "identification_count_increment_hz": 0.0006666666666666666,
+    "identification_empirical_floor_counts": 3,
+    "identification_empirical_floor_hz": 0.002,
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 1500,
+    "response_evidence_complete_lower_bound_s": 2400,
+    "response_evidence_ack_deadline_s": 30,
+    "response_transaction_estimate_count": 1,
+    "new_identification_estimator": true,
+    "natural_controller_estimator_span_s": 600,
+    "natural_controller_estimator_changed": false,
+    "diagnostic_trajectory_decision_authority": false
+  },
+  "response_observability_derivation": {
+    "plant_gain_hz_per_code": {
+      "minimum_conservative_600s": 0.00016357422282453626,
+      "nominal_600s": 0.00017008467693813145,
+      "maximum_600s": 0.00017334010044578463,
+      "retained_1500s_exact_parity_minimum": 0.00016471354142222,
+      "retained_1500s_exact_parity_maximum": 0.000172526245099798,
+      "step_sizing_uses_lower_value": "minimum_conservative_600s"
+    },
+    "arithmetic_floor_clearing_formula": "ceil(identification_empirical_floor_hz / minimum_conservative_600s_gain_hz_per_code)",
+    "arithmetic_floor_clearing_step_codes": 13,
+    "thirteen_code_expected_response_counts_minimum": 3.189697345078457,
+    "thirteen_code_disposition": "not_selected_only_0.1897_count_modeled_margin_over_the_observed_floor",
+    "selected_step_codes": 21,
+    "selected_step_reason": "already_bounded_maximum_step_with_more_than_two_exact_counts_of_modeled_minimum_margin_and_full_five_count_synthetic_null_replay_sensitivity",
+    "twenty_one_code_expected_response_hz": {
+      "minimum": 0.0034350586793152614,
+      "nominal": 0.0035717782157007605,
+      "maximum": 0.003640142109361477
+    },
+    "twenty_one_code_expected_response_counts": {
+      "minimum": 5.152588018972892,
+      "nominal": 5.357667323551141,
+      "maximum": 5.460213164042216
+    },
+    "minimum_modeled_margin_counts_over_floor": 2.152588018972892,
+    "cx320_six_code_expected_response_hz": {
+      "minimum": 0.0009814453369472176,
+      "nominal": 0.0010205080616287887,
+      "maximum": 0.0010400406026747078
+    },
+    "cx320_six_codes_exceed_identification_floor": false
+  },
+  "setup": {
+    "exact_start_code": 43068,
+    "exact_start_code_hex": "0xA83C",
+    "last_confirmed_pre_setup_code": 43062,
+    "last_confirmed_pre_setup_code_hex": "0xA836",
+    "physical_code_before_new_setup": "unknown_after_any_flash_or_reset",
+    "new_exact_setup_application_and_acknowledgement_required": true,
+    "new_DAC_epoch_required": true,
+    "all_consumer_epoch_propagation_required_before_stimulus": true,
+    "pre_identification_automatic_applications_allowed": 0,
+    "current_code_must_remain_exact_start_code_until_stimulus": true
+  },
+  "pre_stimulus_gate": {
+    "setup_settling_exclusion_deadline_s": 900,
+    "first_full_interval_after_exclusion_required": true,
+    "estimate_count": 2,
+    "estimate_span_s": 1500,
+    "contiguous_nonoverlapping_same_setup_epoch_required": true,
+    "exact_same_total_count_required": true,
+    "signed_nonzero_frequency_error_required": true,
+    "eligible_absolute_1500s_error_counts": [1, 2, 3, 4, 5],
+    "natural_600s_TIGHT_INSIDE_state_also_required": true,
+    "null_replay_absolute_frequency_note": "the_fixed_code_run_is_outside_the_live_entry_band_but_exact_count_differences_are_shift_invariant",
+    "no_prior_automatic_application": true
+  },
+  "stimulus": {
+    "identity": "one_time_response_observability_identification_stimulus",
+    "classification": "explicit_identification_not_frequency_control_not_phase_control_not_phase_material_application",
+    "requested_delta_formula": "-21 * sign(pre_stimulus_1500s_frequency_error_counts)",
+    "negative_direction_transition": {
+      "pre_error_sign": "positive",
+      "requested_delta_codes": -21,
+      "requested_code": 43047,
+      "requested_code_hex": "0xA827",
+      "distance_from_nearest_range_endpoint_codes": 39
+    },
+    "positive_direction_transition": {
+      "pre_error_sign": "negative",
+      "requested_delta_codes": 21,
+      "requested_code": 43089,
+      "requested_code_hex": "0xA851",
+      "distance_from_nearest_range_endpoint_codes": 81
+    },
+    "maximum_automatic_applications": 1,
+    "maximum_cumulative_absolute_movement_codes": 21,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_outstanding_requests": 1,
+    "automatic_retry": false,
+    "automatic_restoration": false,
+    "counts_as_hybrid_application": false,
+    "counts_as_phase_material_application": false
+  },
+  "predicted_post_stimulus_frequency_error": {
+    "maximum_absolute_hz": 0.00297347544269481,
+    "maximum_absolute_1500s_counts": 4.460213164042215,
+    "inside_existing_TIGHT_entry_bound": true
+  },
+  "response_observability_gate": {
+    "fresh_support_and_applied_epoch_exact_required": true,
+    "pre_total_formula": "exact_second_pre_stimulus_1500s_total_count_that_generated_the_request",
+    "post_total_formula": "first_complete_fresh_1500_interval_total_whose_opening_D14_boundary_is_at_or_after_the_900_exact_device_second_deadline",
+    "response_counts_formula": "post_total_counts - pre_total_counts",
+    "predicted_sign_formula": "response_counts * requested_delta_codes > 0",
+    "detected_magnitude_formula": "abs(response_counts) >= 3",
+    "maximum_response_counts": 14,
+    "maximum_response_hz_equivalent": 0.009333333333333334,
+    "existing_21_code_upper_empirical_classifier_threshold_hz": 0.009890137738354194,
+    "integer_upper_guard_interpretation": "14_counts_is_the_largest_exact_1500s_response_not_exceeding_the_existing_empirical_classifier_threshold",
+    "pass_formula": "all_common_health_identity_support_and_epoch_gates && response_counts*requested_delta_codes>0 && 3<=abs(response_counts)<=14 && exact_firmware_host_replay_ack && TIGHT_INSIDE_reentry",
+    "firmware_host_replay_exact_required": true,
+    "host_replay_snapshot_binding": {
+      "canonical_source": "retained_pps_snapshots_v1",
+      "windows_replayed": ["pre1", "pre2", "response"],
+      "same_session_contiguous_1501_snapshot_rows_required_per_window": true,
+      "snapshot_status_zero_and_backend_identity_required": true,
+      "raw_reference_interval_bounds_s": [0.8, 1.2],
+      "extended_endpoint_modulus_and_cumulative_raw_interval_equality_required": true,
+      "modulo_32_downcounter_interval_sum_must_equal_firmware_total": true,
+      "nominal_exact_1500_second_timer_span_required": false
+    },
+    "response_evidence_ack": {
+      "deadline_s_after_firmware_response": 30,
+      "acknowledges_exact_response_count_request_application_and_epoch": true,
+      "acknowledgement_releases_direct_hybrid_application": false,
+      "state_after_accepted_ack_and_TIGHT_reentry": "PHASE_QUALIFY",
+      "missing_late_or_inexact_ack": "fail_static"
+    },
+    "second_post_estimate_required": false,
+    "healthy_below_floor_passes": false,
+    "later_actuation_authority_released": "only_fresh_phase_qualification_not_direct_hybrid_application"
+  },
+  "null_replay": {
+    "fixture_path": "tests/fixtures/cx321_stage3_stable_interval_counts_v1.json",
+    "fixture_sha256": "e4d56d2434276abe34daa0624db6a2e89c97beb4b945ceaadc40c78d05a4a952",
+    "fixed_code_stable_interval_count": 43227,
+    "accepted_interval_gap_cases_per_exclusion": [900, 901],
+    "primary_reported_noncoincident_application_gap": 901,
+    "complete_timeline_placements": 36926,
+    "eligible_exact_equal_pre_placements": 18219,
+    "first_response_delta_count_histogram": {
+      "-2": 2,
+      "-1": 1102,
+      "0": 13785,
+      "1": 3149,
+      "2": 181
+    },
+    "positive_direction_false_detected_attributions": 0,
+    "negative_direction_false_detected_attributions": 0,
+    "synthetic_five_count_shift_passes_per_direction": 18219,
+    "exact_deadline_aligned_gap_900": {
+      "complete_timeline_placements": 36928,
+      "eligible_exact_equal_pre_placements": 18219,
+      "first_response_delta_count_histogram": {
+        "-2": 3,
+        "-1": 932,
+        "0": 14364,
+        "1": 2859,
+        "2": 61
+      },
+      "positive_direction_false_detected_attributions": 0,
+      "negative_direction_false_detected_attributions": 0,
+      "synthetic_five_count_shift_passes_per_direction": 18219
+    },
+    "interpretation": "finite_retained_record_separation_not_a_calibrated_future_false_positive_probability"
+  },
+  "finite_timing": {
+    "source_capture_clock_domain": "rp2040_timer0",
+    "lifecycle_evidence_clock_domain": "rp2040_timer0_extended",
+    "lifecycle_domain_derivation": "session_local_monotonic_extension_of_qualified_adjacent_D14_boundary_ticks_with_bounded_unambiguous_setup_application_and_ack_projection",
+    "origin_precision": "exact_firmware_extended_device_ticks_no_host_second_rounding",
+    "setup_settling_exclusion_deadline_s": 900,
+    "first_pre_stimulus_estimate_complete_lower_bound_s": 2400,
+    "second_pre_stimulus_estimate_and_identification_decision_lower_bound_s": 3900,
+    "identification_request_application_timestamp_rule": "response_timing_origin_is_the_exact_acknowledged_identification_application_tick_not_the_pre_window_close_or_request_tick",
+    "post_identification_settling_exclusion_deadline_s": 900,
+    "post_identification_response_complete_lower_bound_s": 2400,
+    "setup_application_to_response_complete_lower_bound_s_excluding_identification_transaction_latency": 6300,
+    "response_ack_deadline_s": 30,
+    "support_boundary_rule": "exclude_through_the_exact_deadline_and_start_with_the_first_complete_interval_whose_opening_D14_boundary_is_at_or_after_it_window_close_is_at_or_later_than_the_declared_lower_bound_and_is_recorded_exactly",
+    "extension": "forbidden"
+  },
+  "terminal_decisions": [
+    "bounded_response_observability_qualified",
+    "response_stimulus_not_exercised",
+    "response_below_floor",
+    "response_wrong_sign_or_excess",
+    "right_censored_incomplete",
+    "measurement_authority_or_platform_fault",
+    "operator_abort"
+  ],
+  "successor_gate": {
+    "pass_is_required_before_phase_qualification_inside_the_successor": true,
+    "pass_is_active_hybrid_qualification": false,
+    "pass_authorizes_later_physical_work": false,
+    "failure_repeats_automatically": false,
+    "next_state_after_pass": "fresh_1800s_phase_qualify_comparison_baseline_at_post_identification_code",
+    "next_decision_after_nonpass": "reassess_measurement_or_plant_response_before_any_hybrid_campaign"
+  },
+  "claims_not_made": [
+    "calibrated_false_positive_probability",
+    "guaranteed_future_detection",
+    "active_hybrid_control",
+    "phase_steering",
+    "absolute_phase",
+    "UTC_alignment",
+    "calibrated_frequency_accuracy",
+    "general_plant_model_control_readiness",
+    "later_physical_authority"
+  ],
+  "authority": {
+    "offline_preparation": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "command_fifo": false,
+    "setup_stimulus": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "exact_bundle_and_complete_rehearsal_required": true,
+    "separate_exact_bundle_operator_decision_required": true,
+    "consumed_by_first_physical_terminal": true
+  }
+}

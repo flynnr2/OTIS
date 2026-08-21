@@ -12,6 +12,7 @@ from typing import Any
 from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_evidence_audit import audit_predecessor
 from .active_hybrid_proposal import validate_proposal
+from .active_hybrid_programme_contract import programme_from_mapping
 from .programme_status import OFFLINE_PREPARATION, load_programme_status
 from .serial_commands import parse_serial_command
 
@@ -26,17 +27,24 @@ def _canonical_sha256(value: dict[str, Any]) -> str:
 
 
 def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
-    bundle = validate_bundle(bundle_path)
-    proposal = validate_proposal(proposal_path)
+    declared_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    if not isinstance(declared_bundle, dict):
+        raise ValueError("active-hybrid bundle root is not an object")
+    programme = programme_from_mapping(declared_bundle)
+    bundle = validate_bundle(bundle_path, programme)
+    proposal = validate_proposal(proposal_path, programme)
     predecessor = audit_predecessor()
     status = load_programme_status()
-    current = status["programmes"].get("cx320_bounded_active_hybrid", {})
+    current = status["programmes"].get(programme.status_programme_id, {})
     if (
-        status.get("active_programme") != "cx320_bounded_active_hybrid"
+        status.get("active_programme") != programme.status_programme_id
         or current.get("allowed_operations") != [OFFLINE_PREPARATION]
         or current.get("physical_authority_effective") is not False
     ):
-        raise ValueError("programme status does not permit only CX320 offline preparation")
+        raise ValueError(
+            f"programme status does not permit only {programme.key.upper()} "
+            "offline preparation"
+        )
     if proposal["exact_bundle"]["bundle_sha256"] != bundle["bundle_sha256"]:
         raise ValueError("preflight proposal and bundle identities differ")
     configuration_sha256 = bundle["firmware"]["configuration_sha256"]
@@ -48,7 +56,11 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         f"ACTIVE SETUP 1 1 1 100 1 0xA83C 1 {configuration_sha256}",
         "ACTIVE ARM 1 1 1",
         "ACTIVE EVIDENCE 1 1",
-        "ACTIVE EVIDENCE 1 4",
+        (
+            "ACTIVE EVIDENCE 1 4 5 -3 1 2 9000 " + "a" * 64
+            if programme.identification_required
+            else "ACTIVE EVIDENCE 1 4"
+        ),
         "ACTIVE ABORT",
     ]
     normalized = [parse_serial_command(command).normalized for command in commands]
@@ -62,14 +74,18 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "command_envelope_parses": len(normalized) == len(commands),
         "one_setup_code": "0xA83C" in normalized[4],
         "normal_and_abort_paths_distinct": bundle["topology"]["normal_and_priority_abort_fifos_distinct"],
+        "cx321_extended_phase4_envelope_parses": (
+            not programme.identification_required
+            or len(normalized[7].split()) == 10
+        ),
         "no_physical_actions_performed": True,
     }
     if not all(checks.values()):
         raise ValueError(f"CX320 structural preflight failed: {checks}")
     report: dict[str, Any] = {
         "schema_version": 1,
-        "report_type": "cx320_active_hybrid_structural_preflight_v1",
-        "tool": TOOL_ID,
+        "report_type": f"{programme.key}_active_hybrid_structural_preflight_v1",
+        "tool": f"{programme.key}_active_hybrid_structural_preflight_v1",
         "tool_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "created_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)

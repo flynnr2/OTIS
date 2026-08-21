@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
+from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 
 
 def _write(path: Path, value: dict[str, object]) -> None:
@@ -19,6 +20,174 @@ def _write(path: Path, value: dict[str, object]) -> None:
 
 def _semantic(value: dict[str, object], field: str) -> dict[str, object]:
     return {**value, field: activation._canonical_sha256(value)}
+
+
+def _cx321_rehearsal_receipt(tmp_path: Path) -> tuple[Path, dict, dict]:
+    digest = "a" * 64
+    extended = f"ACTIVE EVIDENCE 1 4 5 -5 1 2 6302 {digest}"
+    bundle = {
+        "programme_id": CX321_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    unsigned = {
+        "schema_version": 1,
+        "report_type": CX321_PROGRAMME.rehearsal_report_type,
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {
+            name: True for name in activation.REHEARSAL_COVERAGE
+        },
+        "tool_bindings": {},
+        "cx321_identification_ordering": {
+            "no_early_or_stale_identification_arm": True,
+            "one_exact_pre2_identification_arm": True,
+            "phase4_waited_for_matching_psq_after_act_split": True,
+        },
+        "real_process_topology": {
+            "cx321_real_transaction_path": {
+                "canonical_psq_field_count": 60,
+                "canonical_snp_rows_captured": 4502,
+                "canonical_act_field_count": 47,
+                "evidence_phase_commands": [
+                    "ACTIVE EVIDENCE 1 1",
+                    "ACTIVE EVIDENCE 1 2",
+                    "ACTIVE EVIDENCE 1 3",
+                    extended,
+                ],
+                "extended_phase4_command": extended,
+                "complete_evidence_chain_sha256": digest,
+                "raw_snapshot_proof_sha256": "d" * 64,
+                "act_response_join": {"exact": True},
+                "raw_timer_rollover_between_application_and_response": True,
+                "firmware_consumption_confirmed": True,
+                "response_ack_handoff_exact": True,
+                "first_natural_decision": {
+                    "request_sequence": 2,
+                    "global_correction_count_before": 1,
+                    "global_cumulative_movement_before_codes": 21,
+                    "natural_cumulative_movement_codes": 0,
+                    "natural_direction_count": 0,
+                    "plant_sign_handoff_first_consumer": True,
+                    "phase_materially_influenced": True,
+                },
+                "natural_evidence_phase_commands": [
+                    "ACTIVE EVIDENCE 2 1",
+                    "ACTIVE EVIDENCE 2 2",
+                    "ACTIVE EVIDENCE 2 3",
+                    "ACTIVE EVIDENCE 2 4",
+                ],
+                "natural_response_firmware_consumption_confirmed": True,
+                "natural_ahy_rows_captured": 2,
+            }
+        },
+    }
+    receipt = _semantic(unsigned, "rehearsal_sha256")
+    path = tmp_path / "cx321-rehearsal.json"
+    _write(path, receipt)
+    return path, bundle, proposal
+
+
+def test_cx321_activation_accepts_exact_real_process_transaction_receipt(
+    tmp_path: Path,
+) -> None:
+    path, bundle, proposal = _cx321_rehearsal_receipt(tmp_path)
+
+    result = activation.validate_operational_rehearsal(
+        path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=CX321_PROGRAMME,
+    )
+
+    assert result["rehearsal_sha256"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("evidence_phase_commands", ["ACTIVE EVIDENCE 1 1"]),
+        ("complete_evidence_chain_sha256", "0" * 63),
+        ("raw_timer_rollover_between_application_and_response", False),
+        ("firmware_consumption_confirmed", False),
+        ("response_ack_handoff_exact", False),
+        ("act_response_join", {"exact": False}),
+        ("natural_response_firmware_consumption_confirmed", False),
+        ("natural_evidence_phase_commands", ["ACTIVE EVIDENCE 2 1"]),
+        ("first_natural_decision", {"request_sequence": 2}),
+    ],
+)
+def test_cx321_activation_rejects_incomplete_real_process_transaction_receipt(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    path, bundle, proposal = _cx321_rehearsal_receipt(tmp_path)
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    transaction = receipt["real_process_topology"][
+        "cx321_real_transaction_path"
+    ]
+    transaction[field] = value
+    receipt.pop("rehearsal_sha256")
+    _write(path, _semantic(receipt, "rehearsal_sha256"))
+
+    with pytest.raises(ValueError, match="real-process plant-sign"):
+        activation.validate_operational_rehearsal(
+            path,
+            bundle=bundle,
+            proposal=proposal,
+            require_current_tools=False,
+            programme=CX321_PROGRAMME,
+        )
+
+
+def test_activation_cli_forwards_cx321_programme(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle_path = tmp_path / "cx321-bundle.json"
+    bundle_path.write_text(
+        json.dumps(
+            {
+                "programme_id": (
+                    "CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR_V2"
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+
+    def fake_create_activation(**kwargs):
+        observed.update(kwargs)
+        return {"status": "test"}
+
+    monkeypatch.setattr(activation, "create_activation", fake_create_activation)
+
+    assert (
+        activation.main(
+            [
+                "activate",
+                "--bundle",
+                str(bundle_path),
+                "--proposal",
+                str(tmp_path / "proposal.json"),
+                "--operational-rehearsal",
+                str(tmp_path / "rehearsal.json"),
+                "--serial-device",
+                "/dev/test-cx321",
+                "--operator-instruction-ref",
+                "test-authority",
+                "--output",
+                str(tmp_path / "activation.json"),
+            ]
+        )
+        == 0
+    )
+    assert getattr(observed["programme"], "key") == "cx321"
+    assert json.loads(capsys.readouterr().out)["status"] == "test"
 
 
 def _inputs(tmp_path: Path) -> tuple[Path, dict, Path, dict, Path, dict]:

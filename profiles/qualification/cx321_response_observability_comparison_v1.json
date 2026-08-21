@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "comparison_id": "CX321_RESPONSE_OBSERVABILITY_COMPARISON_V1",
+  "status": "offline_decision_complete_non_effective",
+  "question": "Which prospective identification gate best distinguishes a real bounded plant response from the observed fixed-code estimator behavior while preserving enough authority for the natural hybrid-control question?",
+  "historical_reproduction": {
+    "acquisition_revision": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "analysis_revision": "b4b3ca46019a740c77ea52267c8fb5e96998f00e",
+    "current_head_historical_reader_used": false,
+    "integer_count_domain_used": true,
+    "floating_frequency_subtraction_used_for_verdicts": false,
+    "exclusion_to_support_rule": "exclude_through_the_exact_900s_deadline_then_use_the_first_complete_PPS_interval_whose_opening_boundary_is_at_or_after_the_deadline",
+    "accepted_interval_gap_cases_per_exclusion": [900, 901],
+    "primary_reported_noncoincident_application_gap": 901
+  },
+  "selected_estimator": {
+    "path": "profiles/estimators/cx321_plant_sign_1500_v1.json",
+    "sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1"
+  },
+  "fixed_code_null_evidence": {
+    "run_id": "stage3_fixed_code_20260801T121709Z",
+    "stable_count_sequence_first": 2201,
+    "stable_count_sequence_last": 45427,
+    "stable_interval_count": 43227,
+    "invalid_interval_count": 0,
+    "dac_command_count": 0,
+    "derived_replay_fixture": {
+      "path": "tests/fixtures/cx321_stage3_stable_interval_counts_v1.json",
+      "sha256": "e4d56d2434276abe34daa0624db6a2e89c97beb4b945ceaadc40c78d05a4a952"
+    },
+    "source_paths_and_sha256": {
+      "evidence_manifest": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/evidence_manifest.json",
+        "sha256": "489d0b5812c99beaccce338f9d5d5fe68dccf11c1f7d09a92ace5774b57dcdad"
+      },
+      "run_manifest": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/run_manifest.json",
+        "sha256": "ddbb71efed0693baae08bb1b624e83cdb9ec9f1bd69679299b37f58ed41786ea"
+      },
+      "counts": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/csv/cnt.csv",
+        "sha256": "93167eddd7f6600b55a9c24b893a7032ed8a6fc14bbc578ee906b2a5d95c9f9e"
+      },
+      "snapshots": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/csv/snp.csv",
+        "sha256": "596bb0284f0d5c7061c7e26a31c41bd5ee057c932febc5684b81122d5f393958"
+      },
+      "references": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/csv/ref.csv",
+        "sha256": "4e4739d77545f95b6fa47d2e2a34cb69ea29fb99c7220e784f346058a0ebbcc8"
+      },
+      "health": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/csv/sts.csv",
+        "sha256": "0cdaab3fc50ce49367a921b34ef49d77e8aa08cd888c4984f7fb42bf69644496"
+      },
+      "sealed_analysis": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage3_fixed_code_20260801T121709Z/derived/pps_cumulative_snapshot_span_v1/fixed_code_baseline_analysis_v1.json",
+        "sha256": "00e401edb0854ddf50511e8898de64340baa7007128a20d23eda671660909c7a"
+      },
+      "stage4_evaluation": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage4_estimator_selection/estimator_candidate_evaluation_v1.json",
+        "sha256": "7968ef726fabb416c941aad009665e700f7fd6d8639217925e0d6777c1f4beb8"
+      }
+    }
+  },
+  "plant_parity_evidence": {
+    "run_id": "stage5_fresh_session_smoke_20260802T080043Z",
+    "source_paths_and_sha256": {
+      "run_manifest": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/run_manifest.json",
+        "sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c"
+      },
+      "references": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/ref.csv",
+        "sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5"
+      },
+      "counts": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/cnt.csv",
+        "sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264"
+      },
+      "snapshots": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/snp.csv",
+        "sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b"
+      },
+      "interval_policy": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/interval_policy_v1.json",
+        "sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3"
+      },
+      "sealed_600s_plant_analysis": {
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+        "sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7"
+      }
+    },
+    "dwell_s": 2400,
+    "settling_exclusion_s": 900,
+    "settled_support_minimum_s": 1501,
+    "settled_support_maximum_s": 1571
+  },
+  "common_plant_response": {
+    "gain_hz_per_code": {
+      "minimum_600s": 0.00016357422282453626,
+      "nominal_600s": 0.00017008467693813145,
+      "maximum_600s": 0.00017334010044578463,
+      "uncertainty_status": "finite_run_observed_range_not_calibrated_or_statistical_bound"
+    },
+    "six_code_expected_response_hz": {
+      "minimum": 0.0009814453369472176,
+      "maximum": 0.0010400406026747078
+    },
+    "twenty_one_code_expected_response_hz": {
+      "minimum": 0.0034350586793152614,
+      "maximum": 0.003640142109361477
+    }
+  },
+  "boundary_phase_replays": {
+    "900": {
+      "interpretation": "application_exactly_aligned_so_the_first_eligible_interval_opens_at_the_deadline",
+      "single_window_600": {
+        "complete_placements": 39028,
+        "eligible": 9564,
+        "false_positive_direction": 70,
+        "false_negative_direction": 4,
+        "synthetic_two_count_positive_passes": 8617,
+        "synthetic_two_count_negative_passes": 8619
+      },
+      "persistent_600_one_count": {
+        "false_positive_direction": 130,
+        "false_negative_direction": 91
+      },
+      "persistent_600_two_count": {
+        "false_positive_direction": 0,
+        "false_negative_direction": 0,
+        "synthetic_two_count_positive_passes": 4773,
+        "synthetic_two_count_negative_passes": 7599
+      },
+      "selected_1500": {
+        "complete_placements": 36928,
+        "eligible": 18219,
+        "histogram": {"-2": 3, "-1": 932, "0": 14364, "1": 2859, "2": 61},
+        "false_positive_direction": 0,
+        "false_negative_direction": 0
+      }
+    },
+    "901": {
+      "interpretation": "noncoincident_application_so_the_first_eligible_interval_opens_at_the_next_D14_boundary",
+      "single_window_600": {
+        "complete_placements": 39026,
+        "eligible": 9564,
+        "false_positive_direction": 39,
+        "false_negative_direction": 35,
+        "synthetic_two_count_positive_passes": 6733,
+        "synthetic_two_count_negative_passes": 8069
+      },
+      "persistent_600_one_count": {
+        "false_positive_direction": 208,
+        "false_negative_direction": 81
+      },
+      "persistent_600_two_count": {
+        "false_positive_direction": 0,
+        "false_negative_direction": 0,
+        "synthetic_two_count_positive_passes": 2893,
+        "synthetic_two_count_negative_passes": 7350
+      },
+      "selected_1500": {
+        "complete_placements": 36926,
+        "eligible": 18219,
+        "histogram": {"-2": 2, "-1": 1102, "0": 13785, "1": 3149, "2": 181},
+        "false_positive_direction": 0,
+        "false_negative_direction": 0
+      }
+    }
+  },
+  "candidates": {
+    "single_window_600_two_count": {
+      "identity": "cx321_v1_first_response_gate",
+      "reported_boundary_phase_gap": 901,
+      "span_s": 600,
+      "fixed_code_independent_output_count": 72,
+      "count_increment_hz": 0.0016666666666666668,
+      "fixed_code_range_counts": 1,
+      "floor_counts": 2,
+      "floor_hz": 0.0033333317438761396,
+      "timeline_faithful_null_placements": 39026,
+      "eligible_exact_stable_pre_placements": 9564,
+      "false_attributions": {
+        "positive_command_direction": 39,
+        "negative_command_direction": 35,
+        "either_direction_total": 74
+      },
+      "synthetic_two_count_shift_replay_passes": {
+        "positive_command_direction": 6733,
+        "negative_command_direction": 8069,
+        "eligible_per_direction": 9564
+      },
+      "twenty_one_code_expected_response_counts": {
+        "minimum": 2.061035207589157,
+        "maximum": 2.1840852656168863
+      },
+      "disposition": "rejected_first_response_only_has_observed_null_false_attributions_and_thin_modeled_margin"
+    },
+    "persistent_600_one_count": {
+      "reported_boundary_phase_gap": 901,
+      "span_s": 600,
+      "predicate": "both_post_outputs_have_commanded_sign_and_magnitude_at_least_one_exact_count",
+      "eligible_exact_stable_pre_placements": 9564,
+      "false_attributions": {
+        "positive_command_direction": 208,
+        "negative_command_direction": 81,
+        "either_direction_total": 289
+      },
+      "disposition": "rejected_fixed_code_record_contains_persistent_one_count_shifts"
+    },
+    "persistent_600_two_count": {
+      "reported_boundary_phase_gap": 901,
+      "span_s": 600,
+      "predicate": "both_post_outputs_independently_have_commanded_sign_and_magnitude_at_least_two_exact_counts",
+      "eligible_exact_stable_pre_placements": 9564,
+      "false_attributions": {
+        "positive_command_direction": 0,
+        "negative_command_direction": 0,
+        "either_direction_total": 0
+      },
+      "synthetic_two_count_shift_replay_passes": {
+        "positive_command_direction": 2893,
+        "negative_command_direction": 7350,
+        "eligible_per_direction": 9564
+      },
+      "twenty_one_code_minimum_margin_counts_over_each_floor": 0.061035207589156925,
+      "disposition": "not_selected_zero_observed_null_attribution_but_low_empirical_sensitivity_at_the_modeled_minimum"
+    },
+    "longer_window_screen": {
+      "floor_rule": "nonoverlapping_fixed_code_range_counts_plus_one_count",
+      "spans": [
+        {
+          "span_s": 1200,
+          "fixed_code_independent_output_count": 36,
+          "count_increment_hz": 0.0008333333333333334,
+          "population_stddev_hz": 0.00041666626930236816,
+          "fixed_code_range_counts": 2,
+          "floor_counts": 3,
+          "floor_hz": 0.0025,
+          "minimum_floor_clearing_step_codes_at_600s_Gmin": 16,
+          "twenty_one_code_expected_response_counts_minimum": 4.122070415178314,
+          "direct_existing_plant_dwell_parity": true
+        },
+        {
+          "span_s": 1500,
+          "fixed_code_independent_output_count": 28,
+          "count_increment_hz": 0.0006666666666666666,
+          "population_stddev_hz": 0.0003324814458103915,
+          "fixed_code_range_counts": 2,
+          "floor_counts": 3,
+          "floor_hz": 0.002,
+          "minimum_floor_clearing_step_codes_at_600s_Gmin": 13,
+          "twenty_one_code_expected_response_counts_minimum": 5.152588018972892,
+          "direct_existing_plant_dwell_parity": true
+        },
+        {
+          "span_s": 1800,
+          "fixed_code_independent_output_count": 24,
+          "count_increment_hz": 0.0005555555555555556,
+          "population_stddev_hz": 0.0003306217841703861,
+          "fixed_code_range_counts": 2,
+          "floor_counts": 3,
+          "floor_hz": 0.0016666666666666666,
+          "minimum_floor_clearing_step_codes_at_600s_Gmin": 11,
+          "twenty_one_code_expected_response_counts_minimum": 6.183105622767471,
+          "direct_existing_plant_dwell_parity": false
+        }
+      ],
+      "disposition": "select_1500s_for_identification_only_1200s_has_less_margin_1800s_lacks_direct_plant_dwell_support"
+    },
+    "selected_single_window_1500_three_count": {
+      "reported_boundary_phase_gap": 901,
+      "span_s": 1500,
+      "precondition": "two_contiguous_nonoverlapping_same_setup_epoch_1500s_estimates_have_exact_same_total_count_and_are_TIGHT_INSIDE",
+      "response": "first_complete_fresh_1500s_estimate_after_900s_exclusion_minus_second_pre_stimulus_1500s_estimate",
+      "threshold": "commanded_direction_response_counts_at_least_3",
+      "timeline_faithful_null_placements": 36926,
+      "eligible_exact_stable_pre_placements": 18219,
+      "false_attributions": {
+        "positive_command_direction": 0,
+        "negative_command_direction": 0,
+        "either_direction_total": 0
+      },
+      "first_response_delta_count_histogram": {
+        "-2": 2,
+        "-1": 1102,
+        "0": 13785,
+        "1": 3149,
+        "2": 181
+      },
+      "synthetic_five_count_shift_replay_passes": {
+        "positive_command_direction": 18219,
+        "negative_command_direction": 18219,
+        "eligible_per_direction": 18219
+      },
+      "twenty_one_code_expected_response_counts": {
+        "minimum": 5.152588018972892,
+        "maximum": 5.460213164042216
+      },
+      "minimum_modeled_margin_counts_over_floor": 2.152588018972892,
+      "null_replay_interpretation": "zero_observed_finite_record_outcomes_not_a_calibrated_future_false_positive_probability",
+      "disposition": "selected"
+    },
+    "two_direction_twenty_one_code_bracket": {
+      "sequence": "C0_to_C0_plus_d_then_return_to_C0_where_d_equals_minus_21_times_sign_pre_error",
+      "combined_contrast": "2*(D2*r1-D1*r2)/(D1+D2)",
+      "linear_drift_cancellation": true,
+      "identification_applications": 2,
+      "identification_movement_codes": 42,
+      "remaining_applications": 2,
+      "remaining_movement_codes": 42,
+      "spare_after_two_required_natural_material_applications": false,
+      "new_statistic_and_classifier_required": true,
+      "current_chatter_history_semantics_compatible": false,
+      "disposition": "rejected_for_current_successor_stronger_drift_rejection_but_no_spare_and_material_new_semantics"
+    }
+  },
+  "decision": {
+    "selected_candidate": "selected_single_window_1500_three_count",
+    "selected_step_codes": 21,
+    "natural_controller_estimator_changed": false,
+    "natural_controller_mathematics_changed": false,
+    "identification_estimator_changed": true,
+    "reason": "zero_observed_null_attributions_with_direct_existing_plant_dwell_parity_and_more_than_two_count_modeled_margin_while_preserving_one_application_and_one_spare",
+    "claims_not_made": [
+      "calibrated_false_positive_probability",
+      "guaranteed_future_detection",
+      "six_code_natural_response_observability",
+      "general_plant_model_control_readiness",
+      "physical_authority"
+    ]
+  },
+  "authority": {
+    "offline_analysis": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "dac_write": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false
+  }
+}

@@ -53,6 +53,10 @@ from host.otis_tools.serial_commands import (
         ("active evidence 2 2", "ACTIVE EVIDENCE 2 2"),
         ("active evidence 2 3", "ACTIVE EVIDENCE 2 3"),
         ("active evidence 2 4", "ACTIVE EVIDENCE 2 4"),
+        (
+            "active evidence 2 4 5 -3 1 2 9000 " + "a" * 64,
+            "ACTIVE EVIDENCE 2 4 5 -3 1 2 9000 " + "a" * 64,
+        ),
         ("active abort", "ACTIVE ABORT"),
     ],
 )
@@ -82,6 +86,8 @@ def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normali
         "ACTIVE ARM 1 0 3",
         "ACTIVE EVIDENCE 1",
         "ACTIVE EVIDENCE 1 5",
+        "ACTIVE EVIDENCE 1 3 5 -3 1 2 9000 " + "a" * 64,
+        "ACTIVE EVIDENCE 1 4 5 -3 1 2 9000 bad",
         "ACTIVE SET 0xA950",
     ],
 )

@@ -31,6 +31,9 @@ void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
 void otis_cx317_preview_live_on_dac_applied_epoch(uint16_t applied_code,
                                                  uint32_t dac_epoch,
                                                  uint32_t uptime_s);
+void otis_cx317_preview_live_on_dac_applied_epoch_exact(
+    uint16_t applied_code, uint32_t dac_epoch, uint32_t uptime_s,
+    uint64_t application_ticks, uint32_t capture_session);
 bool otis_cx317_preview_live_applied_epoch_exact(uint16_t applied_code,
                                                  uint32_t dac_epoch);
 void otis_cx317_preview_live_on_boundary(
@@ -48,5 +51,10 @@ bool otis_cx317_preview_live_transport_pending(void);
 void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context);
 void otis_cx317_preview_live_get_authority_state(
     OtisCx317PreviewAuthorityState *state);
+uint16_t otis_cx317_preview_live_plant_sign_accepted_intervals(void);
+bool otis_cx317_preview_live_extend_timer0_ticks(
+    uint64_t raw_ticks, uint64_t *extended_ticks);
+bool otis_cx317_preview_live_project_setup_timer0_ticks(
+    uint64_t raw_ticks, uint32_t capture_session, uint64_t *extended_ticks);
 
 #endif

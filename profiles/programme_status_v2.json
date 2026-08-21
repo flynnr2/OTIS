@@ -10,7 +10,7 @@
       "authority": "passed_completion_gate"
     },
     "cx321_bounded_active_hybrid_successor": {
-      "state": "offline_successor_design_selected_plant_sign_implementation_pending",
+      "state": "offline_implementation_release_verified_exact_bundle_pending",
       "allowed_operations": [
         "offline_preparation"
       ],
@@ -20,37 +20,55 @@
       "predecessor_programme": "cx320_bounded_active_hybrid",
       "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
       "plant_sign_gate": {
-        "path": "profiles/qualification/cx321_bounded_response_observability_v1.json",
-        "file_sha256": "84fdfd50e6dc050a625abd14cec3756b55bbd4309bafb0fd388bde5333438dd7",
-        "minimum_detectable_integer_step_codes": 21,
+        "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
+        "file_sha256": "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62",
+        "identification_estimator": "profiles/estimators/cx321_plant_sign_1500_v1.json",
+        "identification_estimator_file_sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1",
+        "identification_estimator_config": "profiles/estimators/cx321_plant_sign_1500_config_v1.json",
+        "identification_estimator_config_file_sha256": "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8",
+        "identification_estimator_config_hash": "da9d0851abacccecf7c866abbefc2d6ff2e917186fed43c192a29c3d08b77c7a",
+        "plant_parity_reconstruction": "profiles/qualification/cx321_plant_parity_1500_reconstruction_v1.json",
+        "plant_parity_reconstruction_file_sha256": "3c73a1de1a828ab947f0148e6ee589055d491602ac1eb086fe902fe3aee3903e",
+        "comparison": "profiles/qualification/cx321_response_observability_comparison_v1.json",
+        "comparison_file_sha256": "3a2e345ac9ba66129de3f3400d86dddadc1c2abb86c517090747e6f604a552b6",
+        "selected_step_codes": 21,
+        "identification_span_s": 1500,
+        "identification_floor_counts": 3,
         "characterization_style_dwell_s": 2400,
         "natural_hybrid_request_scaled": false,
         "counts_as_phase_material_application": false
       },
       "selected_policy": {
-        "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v1.json",
-        "file_sha256": "f5675bafd51122c120c9f5d42e6fa7d73c94f38c5db7f223aa848d217f1d6f23",
-        "natural_controller_semantic_change_from_cx320": "none",
+        "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json",
+        "file_sha256": "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4",
+        "natural_control_law_mathematics_change_from_cx320": "none",
+        "identification_natural_history_separation_required": true,
         "identification_consumes_application_count": 1,
         "identification_consumes_movement_codes": 21,
         "remaining_application_count": 3,
         "remaining_movement_codes": 63
       },
       "verification": {
-        "offline_design_contract_tests_passed": 7,
-        "firmware_implementation_pending": true,
+        "offline_design_contract_tests_passed": 9,
+        "current_tests_passed": 985,
+        "historical_tests_excluded": 27,
+        "measurement_semantics_inventory_check_passed": true,
+        "firmware_implementation_pending": false,
+        "affected_current_and_release_verification_passed": true,
+        "supported_firmware_profiles_passed": 8,
+        "expected_failure_guards_passed": 8,
+        "disposable_actual_process_rehearsal_passed": true,
+        "disposable_rehearsal_is_not_exact_bundle_entry_receipt": true,
         "complete_operational_rehearsal_pending": true,
         "exact_bundle_pending": true
       },
       "physical_authority_prerequisites": [
-        "firmware_host_replay_analyzer_and_supervisor_implementation",
-        "affected_current_and_release_verification",
         "exact_immutable_bundle",
         "structural_preflight",
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "implement_PLANT_SIGN_QUALIFY_and_deterministic_end_to_end_proof"
+      "next_gate": "freeze_exact_clean_source_bundle_preflight_and_same_bundle_rehearsal"
     },
     "cx320_bounded_active_hybrid": {
       "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",

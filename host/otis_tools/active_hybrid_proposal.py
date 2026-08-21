@@ -11,6 +11,13 @@ from pathlib import Path
 from typing import Any
 
 from .active_hybrid_bundle import REQUIRED_FALSE_AUTHORITY, validate_bundle
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    CX321_PROGRAMME,
+    get_active_hybrid_programme,
+    programme_from_mapping,
+)
 
 
 TOOL_ID = "cx320_active_hybrid_authority_proposal_validator_v1"
@@ -71,21 +78,51 @@ def _semantic_object(path: Path, field: str) -> dict[str, Any]:
     return value
 
 
-def _progressive_envelope() -> dict[str, Any]:
+def _progressive_envelope(
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
     return {
-        "maximum_total_automatic_applications": 4,
+        "maximum_total_automatic_applications": programme.maximum_applications,
         "first_phase_material_applications_before_checkpoint": 1,
-        "minimum_phase_material_applications_for_pass": 2,
-        "maximum_combined_step_codes": 21,
-        "maximum_cumulative_absolute_movement_codes": 84,
-        "minimum_applied_cadence_s": 1800,
-        "minimum_code": 43008,
-        "maximum_code": 43776,
-        "qualified_duration_s": 43200,
-        "absolute_wall_clock_limit_s": 57600,
+        "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
+        "maximum_combined_step_codes": programme.maximum_step_codes,
+        "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+        "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+        "minimum_code": programme.minimum_code,
+        "maximum_code": programme.maximum_code,
+        "qualified_duration_s": programme.qualified_duration_s,
+        "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
         "retry": False,
         "extension": False,
     }
+
+
+def _requested_authority() -> dict[str, Any]:
+    return {
+        "firmware_flash_limit": 1,
+        "reset_for_entry_or_bounded_recovery": True,
+        "serial_access": True,
+        "command_fifo": True,
+        "exact_setup_application_limit": 1,
+        "control_arm_limit": 1,
+        "physical_operational_rehearsal_limit": 1,
+        "live_acquisition_limit": 1,
+        "authority_consumed_by_first_physical_terminal": True,
+        "automatic_retry": False,
+        "automatic_restoration": False,
+    }
+
+
+def _non_effective_authority() -> dict[str, Any]:
+    value = {name: False for name in REQUIRED_FALSE_AUTHORITY}
+    value.update(
+        {
+            "offline_preparation": True,
+            "separate_exact_bundle_operator_decision_required": True,
+            "consumed": False,
+        }
+    )
+    return value
 
 
 def create_successor_proposal(
@@ -95,13 +132,18 @@ def create_successor_proposal(
     operator_authority_path: Path,
     output_path: Path,
     successor_reason: str = DEFAULT_SUCCESSOR_REASON,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
     """Create a non-effective successor under the already-authorized root."""
 
     bundle_path = bundle_path.resolve()
     parent_proposal_path = parent_proposal_path.resolve()
     operator_authority_path = operator_authority_path.resolve()
-    bundle = validate_bundle(bundle_path)
+    bundle = (
+        validate_bundle(bundle_path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(bundle_path, programme)
+    )
     successor_reason = successor_reason.strip()
     if not successor_reason:
         raise ValueError("CX320 successor proposal requires a concrete reason")
@@ -125,23 +167,20 @@ def create_successor_proposal(
         is not False
     ):
         raise ValueError("CX320 successor proposal authority lineage differs")
-    authority_fields = {name: False for name in REQUIRED_FALSE_AUTHORITY}
-    authority_fields.update(
-        {
-            "offline_preparation": True,
-            "separate_exact_bundle_operator_decision_required": True,
-            "consumed": False,
-        }
-    )
+    authority_fields = _non_effective_authority()
     unsigned: dict[str, Any] = {
         "schema_version": 1,
-        "proposal_id": PROPOSAL_ID,
+        "proposal_id": (
+            PROPOSAL_ID
+            if programme is CX320_PROGRAMME
+            else f"{programme.key}_active_hybrid_physical_authority_proposal_v1"
+        ),
         "created_utc": datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z"),
         "status": "non_effective_awaiting_separate_operator_decision",
-        "programme_id": PROGRAMME_ID,
+        "programme_id": programme.programme_id,
         "run_identity": bundle["run_identity"],
         "exact_bundle": {
             **_binding(bundle_path),
@@ -150,20 +189,8 @@ def create_successor_proposal(
         "policy_sha256": bundle["policy"]["policy_sha256"],
         "build_identity": bundle["firmware"]["build_identity"],
         "firmware_uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
-        "progressive_envelope": _progressive_envelope(),
-        "requested_after_separate_decision": {
-            "firmware_flash_limit": 1,
-            "reset_for_entry_or_bounded_recovery": True,
-            "serial_access": True,
-            "command_fifo": True,
-            "exact_setup_application_limit": 1,
-            "control_arm_limit": 1,
-            "physical_operational_rehearsal_limit": 1,
-            "live_acquisition_limit": 1,
-            "authority_consumed_by_first_physical_terminal": True,
-            "automatic_retry": False,
-            "automatic_restoration": False,
-        },
+        "progressive_envelope": _progressive_envelope(programme),
+        "requested_after_separate_decision": _requested_authority(),
         "authority": authority_fields,
         "claim_boundary": {
             "offline_replay_is_not_observed_physical_response": True,
@@ -180,11 +207,26 @@ def create_successor_proposal(
             },
             "operator_authority": _binding(operator_authority_path),
             "successor_reason": successor_reason,
-            "scientific_thresholds_criteria_and_duration_unchanged": True,
+            **(
+                {
+                    "scientific_thresholds_criteria_and_duration_unchanged": True,
+                }
+                if programme is CX320_PROGRAMME
+                else {
+                    "scientific_limits_and_duration_unchanged": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+            ),
             "automatic_controller_retry": False,
             "automatic_restoration": False,
         },
     }
+    if programme.identification_required:
+        unsigned["profile_identity"] = programme.profile_id
+        unsigned["programme_policy_sha256"] = bundle["programme_policy"][
+            "sha256"
+        ]
     proposal = {
         **unsigned,
         "proposal_sha256": _canonical_sha256(unsigned),
@@ -193,7 +235,10 @@ def create_successor_proposal(
     return proposal
 
 
-def validate_proposal(path: Path) -> dict[str, Any]:
+def validate_proposal(
+    path: Path,
+    programme: ActiveHybridProgramme | None = None,
+) -> dict[str, Any]:
     path = path.resolve()
     proposal = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(proposal, dict):
@@ -201,21 +246,37 @@ def validate_proposal(path: Path) -> dict[str, Any]:
     claimed = proposal.pop("proposal_sha256", None)
     observed = _canonical_sha256(proposal)
     proposal["proposal_sha256"] = claimed
+    programme = programme or programme_from_mapping(proposal)
+    expected_proposal_id = (
+        PROPOSAL_ID
+        if programme is CX320_PROGRAMME
+        else f"{programme.key}_active_hybrid_physical_authority_proposal_v1"
+    )
     if claimed != observed:
         raise ValueError("CX320 proposal semantic identity differs")
     if (
-        proposal.get("proposal_id") != PROPOSAL_ID
+        proposal.get("proposal_id") != expected_proposal_id
+        or proposal.get("programme_id") != programme.programme_id
+        or proposal.get("run_identity") != programme.runtime_run_identity
+        or (
+            programme.identification_required
+            and proposal.get("profile_identity") != programme.profile_id
+        )
         or proposal.get("status") != "non_effective_awaiting_separate_operator_decision"
     ):
         raise ValueError("unexpected CX320 proposal identity")
     authority = proposal.get("authority", {})
-    if any(authority.get(name) is not False for name in REQUIRED_FALSE_AUTHORITY):
+    if authority != _non_effective_authority():
         raise ValueError("CX320 proposal contains effective physical authority")
     bundle_binding = proposal.get("exact_bundle", {})
     bundle_path = Path(str(bundle_binding.get("path", "")))
     if not bundle_path.is_file() or _sha256_file(bundle_path) != bundle_binding.get("file_sha256"):
         raise ValueError("CX320 proposal exact bundle file binding differs")
-    bundle = validate_bundle(bundle_path)
+    bundle = (
+        validate_bundle(bundle_path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(bundle_path, programme)
+    )
     if bundle["bundle_sha256"] != bundle_binding.get("bundle_sha256"):
         raise ValueError("CX320 proposal exact bundle semantic identity differs")
     if proposal.get("run_identity") != bundle["run_identity"]:
@@ -224,9 +285,17 @@ def validate_proposal(path: Path) -> dict[str, Any]:
         raise ValueError("CX320 proposal policy identity differs")
     if proposal.get("build_identity") != bundle["firmware"]["build_identity"]:
         raise ValueError("CX320 proposal build identity differs")
-    if proposal.get("progressive_envelope") != _progressive_envelope():
+    if proposal.get("progressive_envelope") != _progressive_envelope(programme):
         raise ValueError("CX320 proposal progressive envelope differs")
+    if proposal.get("requested_after_separate_decision") != _requested_authority():
+        raise ValueError("active-hybrid requested authority envelope differs")
+    if programme.identification_required and proposal.get(
+        "programme_policy_sha256"
+    ) != bundle.get("programme_policy", {}).get("sha256"):
+        raise ValueError("CX321 proposal programme-policy identity differs")
     lineage = proposal.get("lineage")
+    if programme.identification_required and not isinstance(lineage, dict):
+        raise ValueError("CX321 proposal requires exact operator authority lineage")
     if lineage is not None:
         if not isinstance(lineage, dict):
             raise ValueError("CX320 proposal lineage is malformed")
@@ -251,11 +320,36 @@ def validate_proposal(path: Path) -> dict[str, Any]:
             != ROOT_BUNDLE_SHA256
             or authority_value.get("named_proposal_sha256")
             != ROOT_PROPOSAL_SHA256
+            or authority_value.get("authority_type")
+            != "cx320_explicit_operator_authority_v1"
             or authority_value.get("stage_5_effective") is not True
-            or lineage.get(
-                "scientific_thresholds_criteria_and_duration_unchanged"
+            or authority_value.get("expanded_recovery_authority", {}).get(
+                "effective"
             )
             is not True
+            or authority_value.get("frozen_scientific_boundary", {}).get(
+                "controller_thresholds_may_change_without_new_decision"
+            )
+            is not False
+            or (
+                programme is CX320_PROGRAMME
+                and lineage.get(
+                    "scientific_thresholds_criteria_and_duration_unchanged"
+                )
+                is not True
+            )
+            or (
+                programme.identification_required
+                and (
+                    lineage.get("scientific_limits_and_duration_unchanged")
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                )
+            )
             or lineage.get("automatic_controller_retry") is not False
             or lineage.get("automatic_restoration") is not False
             or not isinstance(lineage.get("successor_reason"), str)
@@ -274,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--operator-authority", type=Path)
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--programme", choices=("cx320", "cx321"), default="cx320")
     args = parser.parse_args(argv)
     if args.create:
         if None in (
@@ -292,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             operator_authority_path=args.operator_authority,
             output_path=args.output,
             successor_reason=args.successor_reason,
+            programme=get_active_hybrid_programme(args.programme),
         )
     else:
         if args.proposal is None:

@@ -131,15 +131,32 @@ def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> 
     )
     cx321 = status["programmes"]["cx321_bounded_active_hybrid_successor"]
     assert cx321["state"] == (
-        "offline_successor_design_selected_plant_sign_implementation_pending"
+        "offline_implementation_release_verified_exact_bundle_pending"
     )
     assert cx321["allowed_operations"] == [OFFLINE_PREPARATION]
     assert cx321["physical_authority_effective"] is False
     assert cx321["predecessor_programme"] == "cx320_bounded_active_hybrid"
-    assert cx321["plant_sign_gate"]["minimum_detectable_integer_step_codes"] == 21
+    assert cx321["plant_sign_gate"]["selected_step_codes"] == 21
+    assert cx321["plant_sign_gate"]["identification_span_s"] == 1500
+    assert cx321["plant_sign_gate"]["identification_floor_counts"] == 3
     assert cx321["plant_sign_gate"]["natural_hybrid_request_scaled"] is False
     assert cx321["selected_policy"]["remaining_application_count"] == 3
     assert cx321["selected_policy"]["remaining_movement_codes"] == 63
+    assert cx321["selected_policy"][
+        "natural_control_law_mathematics_change_from_cx320"
+    ] == "none"
+    assert cx321["selected_policy"][
+        "identification_natural_history_separation_required"
+    ] is True
+    assert cx321["verification"]["firmware_implementation_pending"] is False
+    assert cx321["verification"][
+        "affected_current_and_release_verification_passed"
+    ] is True
+    assert cx321["verification"]["current_tests_passed"] == 985
+    assert cx321["verification"]["supported_firmware_profiles_passed"] == 8
+    assert cx321["verification"]["expected_failure_guards_passed"] == 8
+    assert cx321["verification"]["complete_operational_rehearsal_pending"] is True
+    assert cx321["verification"]["exact_bundle_pending"] is True
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[

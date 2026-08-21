@@ -569,6 +569,50 @@ bool otis_cx317_active_acknowledge_application(
   return true;
 }
 
+bool otis_cx317_active_rebase_natural_history_after_identification(
+    OtisCx317ActiveTransaction *transaction, uint16_t expected_applied_code,
+    uint32_t expected_dac_epoch) {
+  if (transaction == nullptr ||
+      transaction->state != OtisCx317ActiveState::AwaitingResponse ||
+      !transaction->have_application || transaction->correction_count != 1u ||
+      transaction->cumulative_movement_codes != 21u ||
+      transaction->applied_code != expected_applied_code ||
+      transaction->dac_epoch != expected_dac_epoch) {
+    if (transaction != nullptr)
+      otis_cx317_active_fault(transaction,
+                             "invalid_identification_history_rebase");
+    return false;
+  }
+  memset(transaction->recent_applied_directions, 0,
+         sizeof(transaction->recent_applied_directions));
+  transaction->recent_applied_direction_count = 0u;
+  return true;
+}
+
+bool otis_cx317_active_complete_identification_response(
+    OtisCx317ActiveTransaction *transaction, uint16_t expected_applied_code,
+    uint32_t expected_dac_epoch) {
+  if (transaction == nullptr ||
+      transaction->state != OtisCx317ActiveState::AwaitingResponse ||
+      !transaction->have_request || !transaction->have_acceptance ||
+      !transaction->have_application ||
+      transaction->applied_code != expected_applied_code ||
+      transaction->dac_epoch != expected_dac_epoch ||
+      transaction->correction_count != 1u ||
+      transaction->cumulative_movement_codes != 21u ||
+      transaction->recent_applied_direction_count != 0u) {
+    if (transaction != nullptr)
+      otis_cx317_active_fault(transaction,
+                             "invalid_identification_response_completion");
+    return false;
+  }
+  transaction->have_request = false;
+  transaction->have_acceptance = false;
+  transaction->have_application = false;
+  disarm(transaction, "identification_response_accepted_new_arm_required");
+  return true;
+}
+
 bool otis_cx317_active_record_response(
     OtisCx317ActiveTransaction *transaction, double post_error_hz,
     bool measurement_healthy, bool control_eligible_after_response,

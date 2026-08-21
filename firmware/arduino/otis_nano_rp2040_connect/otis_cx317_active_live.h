@@ -4,11 +4,14 @@
 #include <stdint.h>
 
 #include "otis_cx317_active_transaction.h"
+#include "otis_cx321_plant_sign.h"
 #include "otis_dual_core_contract.h"
 #include "otis_status_emit.h"
 
-#define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT \
+#define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V1 \
   "cx317_active_status_snapshot_v1"
+#define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V2 \
+  "cx321_active_status_snapshot_v2"
 
 struct OtisCx317ActiveLiveHealth {
   uint32_t session_id;
@@ -65,6 +68,8 @@ struct OtisCx317ActiveLiveOutcome {
   uint16_t applied_code;
   uint32_t request_sequence;
   uint32_t dac_epoch;
+  uint64_t application_timestamp_ticks;
+  uint32_t capture_session;
   OtisCx317ResponseClass response_class;
   const char *reason;
 };
@@ -78,6 +83,10 @@ struct OtisCx317ActiveLiveStatus {
   const char *active_policy_sha256;
   const char *response_policy_sha256;
   const char *numerical_policy_sha256;
+  const char *plant_sign_gate_sha256;
+  const char *identification_estimator_sha256;
+  const char *identification_estimator_config_sha256;
+  const char *natural_frequency_estimator_sha256;
   const char *state;
   const char *reason;
   const char *evidence_state;
@@ -107,6 +116,10 @@ struct OtisCx317ActiveLiveStatus {
   uint16_t phase_material_application_count;
   uint16_t frequency_only_application_count;
   bool first_phase_checkpoint_passed;
+  const char *plant_sign_state;
+  uint16_t plant_sign_pre_window_count;
+  uint16_t plant_sign_accumulator_accepted_intervals;
+  bool plant_sign_arm_window_eligible;
 };
 
 typedef void (*OtisCx317ActiveStatusVisitor)(
@@ -137,9 +150,24 @@ void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
                                               uint32_t now_s);
 bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
                                                     uint32_t dac_epoch);
+bool otis_cx317_active_live_confirm_setup_consumers_exact(
+    uint16_t applied_code, uint32_t dac_epoch,
+    uint64_t setup_application_ticks, uint32_t capture_session);
 void otis_cx317_active_live_on_decision(
     const OtisCx317ActiveLiveDecision *decision,
     OtisCx317ActiveLiveOutcome *outcome);
+void otis_cx317_active_live_on_decision_at_ticks(
+    const OtisCx317ActiveLiveDecision *decision,
+    uint64_t decision_timestamp_ticks, OtisCx317ActiveLiveOutcome *outcome);
+void otis_cx317_active_live_on_plant_sign_estimate(
+    const OtisCx321PlantSignEstimate *estimate, uint16_t current_applied_code,
+    bool latest_natural_tight_inside, uint64_t event_timestamp_ticks,
+    uint32_t now_s, OtisCx317ActiveLiveOutcome *outcome);
+bool otis_cx317_active_live_acknowledge_plant_sign_response(
+    uint32_t request_sequence, uint32_t response_psq_record_sequence,
+    int64_t response_counts, uint32_t application_sequence,
+    uint32_t dac_epoch, uint32_t response_source_last_sequence,
+    const char *attestation_sha256, uint64_t acknowledgement_ticks);
 bool otis_cx317_active_live_take_application_outcome(
     OtisCx317ActiveLiveOutcome *outcome);
 bool otis_cx317_active_live_complete_application_evidence(

@@ -5,6 +5,10 @@ import csv
 import math
 import re
 
+from .cx321_plant_sign_evidence_guard import (
+    EVENTS as CX321_PLANT_SIGN_EVENTS,
+    PLANT_SIGN_QUALIFICATION_V1_FIELDS,
+)
 from .time_domains import forward_progress, time_domain
 
 
@@ -552,6 +556,9 @@ CONTRACT_FIELDS = {
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
     "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
     "tight_deadband_decisions_v1": TIGHT_DEADBAND_DECISION_V1_FIELDS,
+    "plant_sign_qualification_v1": list(
+        PLANT_SIGN_QUALIFICATION_V1_FIELDS
+    ),
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -573,6 +580,7 @@ CONTRACT_RECORD_TYPES = {
     "phase_estimator_outputs_v1": {"PHE"},
     "hybrid_preview_decisions_v1": {"HPR"},
     "tight_deadband_decisions_v1": {"TDB"},
+    "plant_sign_qualification_v1": {"PSQ"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -594,6 +602,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "phase_estimator_outputs_v1": 1,
     "hybrid_preview_decisions_v1": 1,
     "tight_deadband_decisions_v1": 1,
+    "plant_sign_qualification_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -615,6 +624,7 @@ SEQUENCE_FIELDS = {
     "phase_estimator_outputs_v1": "observation_sequence",
     "hybrid_preview_decisions_v1": "preview_sequence",
     "tight_deadband_decisions_v1": "decision_sequence",
+    "plant_sign_qualification_v1": "qualification_record_sequence",
 }
 
 TIMESTAMP_FIELDS = {
@@ -636,6 +646,7 @@ TIMESTAMP_FIELDS = {
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
     "tight_deadband_decisions_v1": ("decision_timestamp_ticks",),
+    "plant_sign_qualification_v1": ("event_timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -662,18 +673,21 @@ DOMAIN_FIELDS = {
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("time_domain",),
     "tight_deadband_decisions_v1": ("time_domain",),
+    "plant_sign_qualification_v1": (),
 }
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
     "pps_snapshots_v1": "rp2040_timer0",
     "association_loss_decisions_v1": "rp2040_timer0",
     "dac_steps_v1": "host_elapsed_ms",
+    "plant_sign_qualification_v1": "rp2040_timer0_extended",
 }
 
 SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
     "active_hybrid_decisions_v1": "capture_session",
+    "plant_sign_qualification_v1": "capture_session",
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
@@ -1004,6 +1018,13 @@ def _check_channel(context: CsvValidationContext, row: dict[str, str], row_numbe
 
 
 def _check_domains(context: CsvValidationContext, row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    if context.contract == "plant_sign_qualification_v1":
+        implicit = CONTRACT_IMPLICIT_TIME_DOMAINS[context.contract]
+        if context.known_domains and implicit not in context.known_domains:
+            errors.append(
+                f"row {row_number}: implicit time domain {implicit!r} "
+                "is not declared in manifest domains"
+            )
     for field_name in DOMAIN_FIELDS[context.contract]:
         domain = row.get(field_name, "")
         if not domain:
@@ -1982,6 +2003,49 @@ def _check_active_hybrid_decision_v1(
         errors.append(f"row {row_number}: limited active decision retained a non-zero delta")
 
 
+def _check_plant_sign_qualification_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "event",
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "capture_session",
+            "policy_sha256",
+            "plant_sign_gate_sha256",
+            "identification_estimator_sha256",
+            "identification_estimator_config_sha256",
+            "natural_frequency_estimator_sha256",
+            "state_before",
+            "state_after",
+            "reason",
+        ),
+    )
+    if row.get("event") not in CX321_PLANT_SIGN_EVENTS:
+        errors.append(
+            f"row {row_number}: invalid plant-sign qualification event"
+        )
+    _check_boolean_text(row, "actionable", row_number, errors)
+    if row.get("actionable") != "false":
+        errors.append(
+            f"row {row_number}: plant-sign evidence must never be actionable"
+        )
+    for field_name in (
+        "policy_sha256",
+        "plant_sign_gate_sha256",
+        "identification_estimator_sha256",
+        "identification_estimator_config_sha256",
+        "natural_frequency_estimator_sha256",
+    ):
+        if re.fullmatch(r"[0-9a-f]{64}", row.get(field_name, "")) is None:
+            errors.append(f"row {row_number}: {field_name} is not SHA-256")
+
+
 def _check_sha256(row: dict[str, str], field_name: str, row_number: int, errors: list[str]) -> None:
     value = row.get(field_name, "")
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
@@ -2532,6 +2596,10 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_active_transaction_v1(row, row_count, errors)
             if context.contract == "active_hybrid_decisions_v1":
                 _check_active_hybrid_decision_v1(row, row_count, errors)
+            if context.contract == "plant_sign_qualification_v1":
+                _check_plant_sign_qualification_v1(
+                    row, row_count, errors
+                )
             if context.contract == "relative_phase_observations_v1":
                 _check_relative_phase_observation_v1(row, row_count, errors)
             if context.contract == "phase_estimator_outputs_v1":

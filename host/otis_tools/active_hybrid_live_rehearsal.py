@@ -24,24 +24,46 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
+from types import SimpleNamespace
 from typing import Any, Callable
 
 from .abort_transport import send_abort
 from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_live_supervisor import (
+    ARM_LIFETIME_S,
     CORRECTION_RESPONSE_RESERVE_S,
+    PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS,
     QUALIFIED_DURATION_S,
+    QUERY_PERIOD_S,
     RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
     load_active_hybrid_spec,
 )
 from .active_hybrid_run import _wait_for_terminal_abort_delivery
+from .active_transactions import (
+    _await_cx321_plant_sign_response,
+    _join_cx321_psq_response_to_act,
+)
 from .active_hybrid_proposal import validate_proposal
-from .active_hybrid_rehearsal import run as run_accelerated_rehearsal
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    CX320_PROGRAMME,
+    programme_from_mapping,
+)
+from .active_hybrid_policy import ActiveHybridController, load_policy
+from .active_hybrid_rehearsal import (
+    _ahy_row,
+    _observation,
+    _transaction_rows,
+    run as run_accelerated_rehearsal,
+)
 from .active_status_contract import (
     ACTIVE_STATUS_KEYS,
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    CX321_ACTIVE_STATUS_KEYS,
+    CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
@@ -53,9 +75,22 @@ from .bounded_tight_deadband_prewrite_contract import (
 )
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
-from .contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS, CONTRACT_FIELDS
-from .run_paths import default_csv_files
+from .contracts import (
+    ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    ACTIVE_TRANSACTION_V1_FIELDS,
+    CONTRACT_FIELDS,
+    PPS_SNAPSHOT_FIELDS,
+)
+from .cx321_plant_sign_evidence_guard import (
+    PLANT_SIGN_QUALIFICATION_V1_FIELDS,
+    PlantSignReplayContext,
+    complete_plant_sign_evidence_chain,
+    replay_plant_sign_evidence,
+    replay_plant_sign_windows_against_snapshots,
+)
+from .run_paths import cx321_csv_files, default_csv_files
 from .serial_commands import send_timestamped_command_to_fifo
+from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,9 +200,36 @@ def _read_until(master: int, expected: bytes, timeout_s: float = 10.0) -> bytes:
     )
 
 
+def _selected_programme(
+    value: dict[str, Any],
+) -> ActiveHybridProgramme:
+    """Select a frozen programme, retaining CX320 fixture compatibility."""
+
+    try:
+        return programme_from_mapping(value)
+    except ValueError:
+        return CX320_PROGRAMME
+
+
 def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
-    policy = _read_object(Path(str(bundle["policy"]["path"])))
+    programme = _selected_programme(bundle)
+    active_binding = (
+        bundle["programme_policy"]
+        if programme.identification_required
+        else bundle["policy"]
+    )
+    policy = _read_object(Path(str(active_binding["path"])))
     bindings = policy["bindings"]
+    frequency_binding = (
+        "natural_frequency_estimator"
+        if programme.identification_required
+        else "frequency_estimator"
+    )
+    response_binding = (
+        "natural_response_classifier"
+        if programme.identification_required
+        else "response_policy"
+    )
     values = {field: "0" for field in ACTIVE_HYBRID_DECISION_V1_FIELDS}
     values.update(
         {
@@ -176,13 +238,13 @@ def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
             "hybrid_record_sequence": "1",
             "decision_sequence": "1",
             "decision_timestamp_s": "2401",
-            "run_identity": RUN_IDENTITY,
+            "run_identity": programme.runtime_run_identity,
             "build_identity": str(bundle["firmware"]["build_identity"]),
-            "profile_identity": PROFILE_ID,
+            "profile_identity": programme.profile_id,
             "capture_session": "1",
             "source_first_sequence": "1799",
             "source_last_sequence": "2399",
-            "frequency_estimator_sha256": bindings["frequency_estimator"][
+            "frequency_estimator_sha256": bindings[frequency_binding][
                 "sha256"
             ],
             "frequency_error_hz": "0.001666666940",
@@ -226,8 +288,12 @@ def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
             "actual_dac_epoch": "1",
             "downstream_epoch_exact": "true",
             "reason": "minimum_applied_cadence_hold",
-            "active_policy_sha256": bundle["policy"]["policy_sha256"],
-            "response_policy_sha256": bindings["response_policy"]["sha256"],
+            "active_policy_sha256": (
+                active_binding["sha256"]
+                if programme.identification_required
+                else active_binding["policy_sha256"]
+            ),
+            "response_policy_sha256": bindings[response_binding]["sha256"],
             "actionable": "false",
         }
     )
@@ -237,8 +303,27 @@ def _active_hybrid_wire_fixture(bundle: dict[str, Any]) -> bytes:
     ).encode()
 
 
-def _post_abort_active_status_wire_fixture(*, generation: int) -> bytes:
-    values = {key: "unavailable" for key in ACTIVE_STATUS_KEYS}
+def _post_abort_active_status_wire_fixture(
+    *,
+    generation: int,
+    bundle: dict[str, Any] | None = None,
+    applied_code: int | None = None,
+    dac_epoch: int | None = None,
+    correction_count: int | None = None,
+    cumulative_movement_codes: int | None = None,
+) -> bytes:
+    programme = _selected_programme(bundle or {})
+    keys = (
+        CX321_ACTIVE_STATUS_KEYS
+        if programme.identification_required
+        else ACTIVE_STATUS_KEYS
+    )
+    contract = (
+        CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        if programme.identification_required
+        else ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    )
+    values = {key: "unavailable" for key in keys}
     values.update(
         {
             "enabled": "true",
@@ -256,10 +341,45 @@ def _post_abort_active_status_wire_fixture(*, generation: int) -> bytes:
             "automatic_restore": "false",
         }
     )
+    if programme.identification_required and bundle is not None:
+        bindings = bundle["identification"]["bindings"]
+        applied_code = (
+            programme.setup_code - 21 if applied_code is None else applied_code
+        )
+        dac_epoch = 2 if dac_epoch is None else dac_epoch
+        correction_count = 1 if correction_count is None else correction_count
+        cumulative_movement_codes = (
+            21
+            if cumulative_movement_codes is None
+            else cumulative_movement_codes
+        )
+        values.update(
+            {
+                "confirmed_applied_code_known": "true",
+                "confirmed_applied_code": str(applied_code),
+                "correction_count": str(correction_count),
+                "cumulative_movement_codes": str(cumulative_movement_codes),
+                "dac_epoch": str(dac_epoch),
+                "plant_sign_state": "FAIL_STATIC",
+                "plant_sign_pre_window_count": "1",
+                "plant_sign_accumulator_accepted_intervals": "1400",
+                "plant_sign_arm_window_eligible": "false",
+                "plant_sign_gate_sha256": bindings["plant_sign_gate"]["sha256"],
+                "identification_estimator_sha256": bindings[
+                    "identification_estimator"
+                ]["sha256"],
+                "identification_estimator_config_sha256": bundle[
+                    "identification"
+                ]["estimator_runtime_config"]["sha256"],
+                "natural_frequency_estimator_sha256": bindings[
+                    "natural_frequency_estimator"
+                ]["sha256"],
+            }
+        )
     records = [
         (SNAPSHOT_BEGIN_KEY, str(generation)),
-        (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
-        *((key, values[key]) for key in ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_CONTRACT_KEY, contract),
+        *((key, values[key]) for key in keys),
         (SNAPSHOT_COMPLETE_KEY, str(generation)),
     ]
     return "".join(
@@ -267,6 +387,651 @@ def _post_abort_active_status_wire_fixture(*, generation: int) -> bytes:
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
+
+
+def _wire_rows(rows: list[dict[str, str]], fields: tuple[str, ...] | list[str]) -> bytes:
+    return "".join(
+        ",".join(row[field] for field in fields) + "\r\n" for row in rows
+    ).encode()
+
+
+def _write_all_fd(descriptor: int, payload: bytes) -> None:
+    """Write one complete PTY fixture without assuming full ``os.write``."""
+
+    view = memoryview(payload)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("short zero-byte PTY write")
+        view = view[written:]
+
+
+def _cx321_plant_sign_fixture(
+    bundle: dict[str, Any],
+) -> tuple[
+    PlantSignReplayContext,
+    list[dict[str, str]],
+    list[dict[str, str]],
+]:
+    """Return an exact response prefix and its canonical raw SNP support."""
+
+    programme = _selected_programme(bundle)
+    bindings = bundle["identification"]["bindings"]
+    context = PlantSignReplayContext(
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        profile_identity=programme.profile_id,
+        policy_sha256=str(bundle["programme_policy"]["sha256"]),
+        plant_sign_gate_sha256=str(bindings["plant_sign_gate"]["sha256"]),
+        identification_estimator_sha256=str(
+            bindings["identification_estimator"]["sha256"]
+        ),
+        identification_estimator_config_sha256=str(
+            bundle["identification"]["estimator_runtime_config"]["sha256"]
+        ),
+        natural_frequency_estimator_sha256=str(
+            bindings["natural_frequency_estimator"]["sha256"]
+        ),
+        capture_session=1,
+    )
+
+    def base(sequence: int, event: str) -> dict[str, str]:
+        row = {field: "" for field in PLANT_SIGN_QUALIFICATION_V1_FIELDS}
+        row.update(
+            {
+                "record_type": "PSQ",
+                "schema_version": "1",
+                "qualification_record_sequence": str(sequence),
+                "event": event,
+                "event_timestamp_ticks": "0",
+                "run_identity": context.run_identity,
+                "build_identity": context.build_identity,
+                "profile_identity": context.profile_identity,
+                "capture_session": str(context.capture_session),
+                "policy_sha256": context.policy_sha256,
+                "plant_sign_gate_sha256": context.plant_sign_gate_sha256,
+                "identification_estimator_sha256": (
+                    context.identification_estimator_sha256
+                ),
+                "identification_estimator_config_sha256": (
+                    context.identification_estimator_config_sha256
+                ),
+                "natural_frequency_estimator_sha256": (
+                    context.natural_frequency_estimator_sha256
+                ),
+                "setup_application_sequence": "1",
+                "setup_application_timestamp_ticks": str(context.timer_hz),
+                "setup_applied_code": str(context.setup_code),
+                "setup_dac_epoch": "1",
+                "state_before": "PLANT_SIGN_QUALIFY",
+                "state_after": "PLANT_SIGN_QUALIFY",
+                "reason": event,
+                "actionable": "false",
+            }
+        )
+        return row
+
+    def window(
+        row: dict[str, str], *, first: int, opened_s: int, total: int, epoch: int
+    ) -> None:
+        close_s = opened_s + 1500
+        row.update(
+            {
+                "event_timestamp_ticks": str(close_s * context.timer_hz),
+                "total_count": str(total),
+                "signed_error_counts": str(
+                    total - context.nominal_frequency_hz * 1500
+                ),
+                "open_ticks": str(opened_s * context.timer_hz),
+                "close_ticks": str(close_s * context.timer_hz),
+                "source_first_sequence": str(first),
+                "source_last_sequence": str(first + 1500),
+                "accepted_intervals": "1500",
+                "dac_epoch": str(epoch),
+                "tight_state": "TIGHT_INSIDE",
+            }
+        )
+
+    pre1 = base(1, "pre1")
+    window(pre1, first=901, opened_s=901, total=15_000_000_002, epoch=1)
+    pre1.update(
+        {
+            "state_before": "FREQUENCY_ACQUIRE",
+            "state_after": "FREQUENCY_ACQUIRE",
+            "reason": "first_pre_identification_window_accepted",
+        }
+    )
+    pre2 = base(2, "pre2")
+    window(pre2, first=2401, opened_s=2401, total=15_000_000_002, epoch=1)
+    pre2.update(
+        {
+            "state_before": "FREQUENCY_ACQUIRE",
+            "state_after": "PLANT_SIGN_QUALIFY",
+            "reason": "identification_request_ready",
+        }
+    )
+    request = base(3, "request")
+    request.update(
+        {
+            "event_timestamp_ticks": pre2["close_ticks"],
+            "pre_error_counts": "2",
+            "current_code": str(context.setup_code),
+            "request_sequence": "1",
+            "requested_delta_codes": "-21",
+            "requested_code": str(context.setup_code - 21),
+            "reason": "identification_request_created",
+        }
+    )
+    application = base(4, "application")
+    application.update(
+        {
+            "event_timestamp_ticks": str(3902 * context.timer_hz),
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+            "requested_delta_codes": "-21",
+            "requested_code": str(context.setup_code - 21),
+            "accepted_code": str(context.setup_code - 21),
+            "applied_code": str(context.setup_code - 21),
+            "application_timestamp_ticks": str(3902 * context.timer_hz),
+            "dac_epoch": "2",
+            "reason": "identification_applied_response_pending",
+        }
+    )
+    response = base(5, "response")
+    window(
+        response,
+        first=4802,
+        opened_s=4802,
+        total=14_999_999_997,
+        epoch=2,
+    )
+    for key in (
+        "request_sequence",
+        "acceptance_sequence",
+        "application_sequence",
+        "requested_delta_codes",
+        "requested_code",
+        "accepted_code",
+        "applied_code",
+        "application_timestamp_ticks",
+    ):
+        response[key] = application[key]
+    response.update(
+        {
+            "pre_total_count": "15000000002",
+            "post_total_count": "14999999997",
+            "response_counts": "-5",
+            "response_source_last_sequence": response["source_last_sequence"],
+            "sign_pass": "true",
+            "magnitude_pass": "true",
+            "exact_evidence_pass": "true",
+            "tight_reentry_pass": "true",
+            "passed": "true",
+            "state_after": "PLANT_SIGN_RESPONSE_ACK_PENDING",
+            "reason": "identification_response_exact_ack_pending",
+            "event_timestamp_ticks": response["close_ticks"],
+        }
+    )
+    prefix = [pre1, pre2, request, application, response]
+
+    snapshots: dict[int, dict[str, str]] = {}
+    next_origin = 3_000_000_000
+    for record in (pre1, pre2, response):
+        first = int(record["source_first_sequence"])
+        last = int(record["source_last_sequence"])
+        opened = int(record["open_ticks"])
+        total = int(record["total_count"])
+        if first in snapshots:
+            counter = int(snapshots[first]["cumulative_down_counter"])
+        else:
+            counter = next_origin
+            next_origin = (next_origin - 700_000_000) & 0xFFFFFFFF
+            snapshots[first] = {
+                "record_type": "SNP",
+                "schema_version": "1",
+                "session": "1",
+                "snapshot_sequence": str(first),
+                "cumulative_down_counter": str(counter),
+                "reference_sequence": str(first),
+                "reference_timestamp_ticks": str(
+                    opened % RP2040_TIMER0_MICROS_WRAP_TICKS
+                ),
+                "status": "0",
+                "backend": "pio_wait_cumulative_snapshot_dma_v1",
+            }
+        first_interval = total - 1499 * 10_000_000
+        for offset, sequence in enumerate(range(first + 1, last + 1), 1):
+            count = first_interval if offset == 1 else 10_000_000
+            counter = (counter - count) & 0xFFFFFFFF
+            item = {
+                "record_type": "SNP",
+                "schema_version": "1",
+                "session": "1",
+                "snapshot_sequence": str(sequence),
+                "cumulative_down_counter": str(counter),
+                "reference_sequence": str(sequence),
+                "reference_timestamp_ticks": str(
+                    (opened + offset * context.timer_hz)
+                    % RP2040_TIMER0_MICROS_WRAP_TICKS
+                ),
+                "status": "0",
+                "backend": "pio_wait_cumulative_snapshot_dma_v1",
+            }
+            existing = snapshots.get(sequence)
+            if existing is not None and existing != item:
+                raise RuntimeError("CX321 SNP fixture shared boundary differs")
+            snapshots[sequence] = item
+    return context, prefix, [snapshots[key] for key in sorted(snapshots)]
+
+
+def _cx321_transaction_fixture(
+    manifest: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Return one canonical dual-core identification ACT lifecycle."""
+
+    from .active_hybrid_rehearsal import _transaction_rows
+
+    spec, identities = load_active_hybrid_spec(manifest)
+    decision = SimpleNamespace(
+        decision_sequence=1,
+        source_first_sequence=2401,
+        source_last_sequence=3901,
+        timestamp_s=3901,
+        current_applied_code=spec.start_code,
+        requested_delta_codes=-21,
+        requested_code=spec.start_code - 21,
+        frequency_error_hz=2.0 / 1500.0,
+    )
+    phases = _transaction_rows(
+        decision,
+        record_sequence=2,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=21,
+        run_identity=spec.run_identity,
+        build_identity=str(manifest["firmware"]["build_identity"]),
+        policy_sha256=identities["active_policy_sha256"],
+        estimator_sha256=identities["estimator_sha256"],
+        model_sha256=identities["model_sha256"],
+        response_policy_sha256=identities["response_policy_sha256"],
+        numerical_policy_sha256=identities["numerical_policy_sha256"],
+        profile_identity=spec.profile,
+    )
+    # ACT carries Core 1's later acknowledgement-consumption second.  The PSQ
+    # fixture's exact Core 0 tick is 3902 s, deliberately exercising a legal
+    # cross-second join against this 3903 s ACT value.
+    manual = dict(phases[0])
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "decision_timestamp_s": "1",
+            "current_applied_code": str(spec.start_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(spec.start_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0.000000000000",
+            "accepted_code": str(spec.start_code),
+            "accepted_timestamp_s": "1",
+            "applied_code": str(spec.start_code),
+            "application_sequence": "0",
+            "application_timestamp_s": "1",
+            "i2c_ok": "true",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "post_error_hz": "0.000000000000",
+            "observed_response_hz": "0.000000000000",
+            "cumulative_response_hz": "0.000000000000",
+            "consecutive_indeterminate": "0",
+            "active_state": "DISARMED",
+            "response_class": "unavailable",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+    return [manual, *phases]
+
+
+def _cx321_first_natural_transaction_fixture(
+    bundle: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any]]:
+    """Build the first natural decision from the exact CX321 handoff state."""
+
+    programme = _selected_programme(bundle)
+    policy = load_policy(Path(str(bundle["policy"]["path"])))
+    controller = ActiveHybridController(policy, setup_application_s=1)
+    identification_application_s = 3902
+    qualification_started_s = 6304
+    first_natural_decision_s = 8402
+    controller.rebase_after_plant_sign(
+        applied_code=programme.setup_code - 21,
+        dac_epoch=2,
+        application_s=identification_application_s,
+        qualification_started_s=qualification_started_s,
+        attestation_id="psq:1:5:complete-chain",
+    )
+    # The identification transaction consumed decision/request identity 1.
+    # The first natural decision is therefore the next global decision.
+    controller.decision_sequence = 1
+    decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=first_natural_decision_s,
+            sequence=first_natural_decision_s,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+        )
+    )
+    if not (
+        decision.plant_sign_handoff_first_consumer
+        and decision.correction_count_before == 1
+        and decision.cumulative_movement_before_codes == 21
+        and decision.natural_chatter_origin_code == programme.setup_code - 21
+        and decision.natural_cumulative_movement_codes == 0
+        and decision.natural_direction_count == 0
+        and decision.phase_materially_influenced
+        and decision.requested_delta_codes != 0
+    ):
+        raise RuntimeError("CX321 first natural decision did not consume exact handoff")
+    ahy = _ahy_row(
+        decision,
+        record_sequence=1,
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["programme_policy"]["sha256"]),
+        response_policy_sha256=policy.response_policy_sha256,
+        profile_identity=programme.profile_id,
+    )
+    ahy.update(
+        {
+            "authority_state": "ARMED",
+            "request_sequence": "2",
+            "acceptance_sequence": "2",
+            "application_sequence": "2",
+        }
+    )
+    controller.note_application(
+        decision,
+        applied_code=decision.requested_code,
+        dac_epoch=3,
+        downstream_consumers_exact=True,
+    )
+    transactions = _transaction_rows(
+        decision,
+        record_sequence=6,
+        request_sequence=2,
+        application_sequence=2,
+        dac_epoch=3,
+        cumulative_movement=controller.cumulative_movement_codes,
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["programme_policy"]["sha256"]),
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+        numerical_policy_sha256=policy.policy_sha256,
+        profile_identity=programme.profile_id,
+    )
+    response = transactions[-1]
+    response_decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=int(transactions[2]["application_timestamp_s"]) + 1500,
+            sequence=int(transactions[2]["application_timestamp_s"]) + 1500,
+            frequency_error_hz=float(response["post_error_hz"]),
+            counts=round(float(response["post_error_hz"]) * 600),
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+            outstanding_response=True,
+        )
+    )
+    response_ahy = _ahy_row(
+        response_decision,
+        record_sequence=2,
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["programme_policy"]["sha256"]),
+        response_policy_sha256=policy.response_policy_sha256,
+        profile_identity=programme.profile_id,
+    )
+    response_ahy.update(
+        {
+            "authority_state": "AWAITING_RESPONSE",
+            "request_sequence": "2",
+            "acceptance_sequence": "2",
+            "application_sequence": "2",
+        }
+    )
+    return [ahy, response_ahy], transactions, {
+        "request_sequence": 2,
+        "decision_timestamp_s": decision.timestamp_s,
+        "identification_application_timestamp_s": identification_application_s,
+        "requested_delta_codes": decision.requested_delta_codes,
+        "requested_code": decision.requested_code,
+        "applied_dac_epoch": 3,
+        "global_correction_count_before": decision.correction_count_before,
+        "global_cumulative_movement_before_codes": (
+            decision.cumulative_movement_before_codes
+        ),
+        "natural_chatter_origin_code": decision.natural_chatter_origin_code,
+        "natural_cumulative_movement_codes": (
+            decision.natural_cumulative_movement_codes
+        ),
+        "natural_direction_count": decision.natural_direction_count,
+        "plant_sign_handoff_first_consumer": (
+            decision.plant_sign_handoff_first_consumer
+        ),
+        "phase_materially_influenced": decision.phase_materially_influenced,
+    }
+
+
+def _cx321_active_status_wire_fixture(
+    *,
+    generation: int,
+    query_nonce: str,
+    evidence_phase: str,
+    evidence_request_sequence: int,
+    bundle: dict[str, Any],
+    applied_code: int | None = None,
+    dac_epoch: int = 2,
+    correction_count: int = 1,
+    cumulative_movement_codes: int = 21,
+) -> bytes:
+    programme = _selected_programme(bundle)
+    policy = _read_object(Path(str(bundle["programme_policy"]["path"])))
+    bindings = policy["bindings"]
+    if applied_code is None:
+        applied_code = programme.setup_code - 21
+    identification_pending = evidence_request_sequence == 1
+    values = {key: "unavailable" for key in CX321_ACTIVE_STATUS_KEYS}
+    values.update(
+        {
+            "enabled": "true",
+            "run_identity": programme.runtime_run_identity,
+            "build_identity": str(bundle["firmware"]["build_identity"]),
+            "profile_identity": programme.profile_id,
+            "estimator_sha256": bindings["natural_frequency_estimator"][
+                "sha256"
+            ],
+            "model_sha256": bindings["plant_model"]["sha256"],
+            "active_policy_sha256": bundle["programme_policy"]["sha256"],
+            "response_policy_sha256": bindings[
+                "natural_response_classifier"
+            ]["sha256"],
+            "numerical_policy_sha256": bundle["policy"]["policy_sha256"],
+            "state": "ARMED",
+            "reason": "armed_one_shot_authorization",
+            "evidence_pending": str(evidence_phase != "evidence_clear").lower(),
+            "evidence_phase": evidence_phase,
+            "capture_lease_live": "true",
+            "manual_start_confirmed": "true",
+            "arm_eligible": "true",
+            "fail_static": "false",
+            "setup_gnss_eligible": "true",
+            "setup_reference_eligible": "true",
+            "setup_partition_healthy": "true",
+            "hybrid_state": (
+                "FREQUENCY_ACQUIRE"
+                if identification_pending
+                else "FIRST_PHASE_TRANSACTION"
+            ),
+            "hybrid_reason": (
+                "frequency_acquisition"
+                if identification_pending
+                else "first_phase_application_checkpoint_required"
+            ),
+            "first_phase_checkpoint_passed": "false",
+            "phase_nonzero_application_count": "0",
+            "phase_material_application_count": "0",
+            "frequency_only_application_count": "0",
+            "session_id": "1",
+            "query_nonce": query_nonce,
+            "uptime_s": "6303",
+            "evidence_request_sequence": str(evidence_request_sequence),
+            "expected_setup_code": f"0x{programme.setup_code:04X}",
+            "confirmed_applied_code_known": "true",
+            "confirmed_applied_code": str(applied_code),
+            "correction_count": str(correction_count),
+            "cumulative_movement_codes": str(cumulative_movement_codes),
+            "dac_epoch": str(dac_epoch),
+            "selected_interval_count": "0",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+            "plant_sign_state": (
+                "PLANT_SIGN_RESPONSE_ACK_PENDING"
+                if identification_pending
+                else "PHASE_QUALIFY"
+            ),
+            "plant_sign_pre_window_count": "2",
+            "plant_sign_accumulator_accepted_intervals": "1500",
+            "plant_sign_arm_window_eligible": "false",
+            "plant_sign_gate_sha256": bindings["plant_sign_gate"]["sha256"],
+            "identification_estimator_sha256": bindings[
+                "identification_estimator"
+            ]["sha256"],
+            "identification_estimator_config_sha256": bundle[
+                "identification"
+            ]["estimator_runtime_config"]["sha256"],
+            "natural_frequency_estimator_sha256": bindings[
+                "natural_frequency_estimator"
+            ]["sha256"],
+        }
+    )
+    records = [
+        (SNAPSHOT_BEGIN_KEY, str(generation)),
+        (SNAPSHOT_CONTRACT_KEY, CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+        *((key, values[key]) for key in CX321_ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_COMPLETE_KEY, str(generation)),
+    ]
+    return "".join(
+        f"STS,1,{generation * 1000 + sequence},"
+        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"cx317_active,{key},{value},INFO,0\r\n"
+        for sequence, (key, value) in enumerate(records, start=1)
+    ).encode()
+
+
+def _cx321_ack_handoff_fixture(
+    prefix: list[dict[str, str]], *, attestation_sha256: str
+) -> list[dict[str, str]]:
+    application = prefix[3]
+    response = prefix[4]
+    common_echo = {
+        key: application[key]
+        for key in (
+            "request_sequence",
+            "acceptance_sequence",
+            "application_sequence",
+            "requested_delta_codes",
+            "requested_code",
+            "accepted_code",
+            "applied_code",
+            "application_timestamp_ticks",
+            "dac_epoch",
+        )
+    }
+
+    def base(sequence: int, event: str) -> dict[str, str]:
+        row = {field: "" for field in PLANT_SIGN_QUALIFICATION_V1_FIELDS}
+        row.update(
+            {
+                key: prefix[0][key]
+                for key in (
+                    "record_type",
+                    "schema_version",
+                    "run_identity",
+                    "build_identity",
+                    "profile_identity",
+                    "capture_session",
+                    "policy_sha256",
+                    "plant_sign_gate_sha256",
+                    "identification_estimator_sha256",
+                    "identification_estimator_config_sha256",
+                    "natural_frequency_estimator_sha256",
+                    "setup_application_sequence",
+                    "setup_application_timestamp_ticks",
+                    "setup_applied_code",
+                    "setup_dac_epoch",
+                )
+            }
+        )
+        row.update(
+            {
+                "qualification_record_sequence": str(sequence),
+                "event": event,
+                "state_before": "PLANT_SIGN_RESPONSE_ACK_PENDING",
+                "state_after": "PHASE_QUALIFY",
+                "reason": "identification_response_acknowledged",
+                "actionable": "false",
+                **common_echo,
+                "response_counts": response["response_counts"],
+                "response_source_last_sequence": response[
+                    "response_source_last_sequence"
+                ],
+                "acknowledged_response_record_sequence": response[
+                    "qualification_record_sequence"
+                ],
+                "host_replay_exact": "true",
+                "replay_attestation_sha256": attestation_sha256,
+            }
+        )
+        return row
+
+    ack = base(6, "response_ack")
+    ack["event_timestamp_ticks"] = str(int(response["close_ticks"]) + 16_000_000)
+    handoff = base(7, "handoff")
+    handoff.update(
+        {
+            "event_timestamp_ticks": str(int(response["close_ticks"]) + 32_000_000),
+            "state_before": "PHASE_QUALIFY",
+            "reason": "plant_sign_first_natural_consumer_handoff_exact",
+            "global_correction_count": "1",
+            "global_cumulative_movement_codes": "21",
+            "global_last_application_timestamp_ticks": application[
+                "application_timestamp_ticks"
+            ],
+            "natural_chatter_origin_code": application["applied_code"],
+            "natural_cumulative_movement_codes": "0",
+            "natural_direction_count": "0",
+            "attested": "true",
+        }
+    )
+    return [ack, handoff]
 
 
 def _binding_matches(binding: object) -> bool:
@@ -298,19 +1063,27 @@ def _create_rehearsal_run_manifest(
     proposal: dict[str, Any],
     device: str,
 ) -> Path:
-    files = [dict(entry) for entry in default_csv_files()]
+    programme = _selected_programme(bundle)
+    files = [
+        dict(entry)
+        for entry in (
+            cx321_csv_files()
+            if programme.identification_required
+            else default_csv_files()
+        )
+    ]
     value: dict[str, Any] = {
         "schema_version": 1,
-        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
+        "compatibility_floor": programme.compatibility_floor,
         "template": False,
         "run_id": run_dir.name,
         "created_utc": _utc_now(),
         "started_at_utc": _utc_now(),
-        "stage": LIVE_STAGE,
-        "mode": MODE,
-        "programme_id": PROGRAMME_ID,
-        "run_identity": RUN_IDENTITY,
-        "profile_identity": PROFILE_ID,
+        "stage": programme.live_stage,
+        "mode": f"{programme.key}_accelerated_live_topology_rehearsal_pty",
+        "programme_id": programme.programme_id,
+        "run_identity": programme.runtime_run_identity,
+        "profile_identity": programme.profile_id,
         "board": "pty_no_physical_hardware",
         "capture_mode": "real_capture_device_process_over_pty",
         "qualification_evidence": False,
@@ -344,21 +1117,21 @@ def _create_rehearsal_run_manifest(
                 "host_abort": "control/host_abort.fifo",
             },
         },
-        "cx320": {
-            "profile_id": PROFILE_ID,
-            "run_identity": RUN_IDENTITY,
-            "setup": {"code": 0xA83C},
+        programme.manifest_section: {
+            "profile_id": programme.profile_id,
+            "run_identity": programme.runtime_run_identity,
+            "setup": {"code": programme.setup_code},
             "automatic_control": {
-                "maximum_total_applications": 4,
-                "maximum_step_codes": 21,
-                "maximum_cumulative_movement_codes": 84,
-                "minimum_applied_cadence_s": 1800,
-                "minimum_code": 0xA800,
-                "maximum_code": 0xAB00,
+                "maximum_total_applications": programme.maximum_applications,
+                "maximum_step_codes": programme.maximum_step_codes,
+                "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+                "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
+                "minimum_code": programme.minimum_code,
+                "maximum_code": programme.maximum_code,
             },
             "qualification": {
-                "qualified_duration_s": 43_200,
-                "absolute_wall_clock_limit_s": 57_600,
+                "qualified_duration_s": programme.qualified_duration_s,
+                "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
                 "no_extension": True,
             },
         },
@@ -401,6 +1174,20 @@ def _create_rehearsal_run_manifest(
             "reports/cx317_active_supervisor_events.jsonl",
         ],
     }
+    if programme.identification_required:
+        value["domains"].append(
+            {
+                "name": "rp2040_timer0_extended",
+                "nominal_hz": 16_000_000,
+            }
+        )
+        value["programme_policy"] = bundle["programme_policy"]
+        value["identification"] = bundle["identification"]
+        value[programme.manifest_section]["plant_sign_identification"] = {
+            "required": True,
+            "contract": "plant_sign_qualification_v1",
+            "programme_policy": bundle["programme_policy"],
+        }
     value["manifest_sha256"] = _canonical_sha256(value)
     path = run_dir / "run_manifest.json"
     _atomic_new_json(path, value)
@@ -418,22 +1205,32 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
     bundle_binding = value.get("bundle", {})
     proposal_binding = value.get("proposal", {})
     host = value.get("host", {})
-    cx320 = value.get("cx320", {})
-    if not isinstance(host, dict) or not isinstance(cx320, dict):
-        raise ValueError("CX320 rehearsal manifest host/programme is malformed")
+    programme = _selected_programme(value)
+    section = value.get(programme.manifest_section, {})
+    if not isinstance(host, dict) or not isinstance(section, dict):
+        raise ValueError("active-hybrid rehearsal manifest host/programme is malformed")
     bundle_path = Path(str(bundle_binding.get("path", ""))).resolve()
     proposal_path = Path(str(proposal_binding.get("path", ""))).resolve()
-    bundle = validate_bundle(bundle_path)
-    proposal = validate_proposal(proposal_path)
+    bundle = (
+        validate_bundle(bundle_path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(bundle_path, programme)
+    )
+    proposal = (
+        validate_proposal(proposal_path)
+        if programme is CX320_PROGRAMME
+        else validate_proposal(proposal_path, programme)
+    )
     device = str(host.get("serial_device", ""))
     if (
         path != path.parent / "run_manifest.json"
         or value.get("manifest_sha256") != _canonical_sha256(unsigned)
-        or value.get("mode") != MODE
-        or value.get("stage") != LIVE_STAGE
-        or value.get("programme_id") != PROGRAMME_ID
-        or value.get("run_identity") != RUN_IDENTITY
-        or value.get("profile_identity") != PROFILE_ID
+        or value.get("mode")
+        != f"{programme.key}_accelerated_live_topology_rehearsal_pty"
+        or value.get("stage") != programme.live_stage
+        or value.get("programme_id") != programme.programme_id
+        or value.get("run_identity") != programme.runtime_run_identity
+        or value.get("profile_identity") != programme.profile_id
         or value.get("qualification_evidence") is not False
         or value.get("physical_actions_performed") != 0
         or value.get("actionable") is not False
@@ -453,11 +1250,33 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         or value.get("firmware") != bundle["firmware"]
         or value.get("policy") != bundle["policy"]
         or host.get("tool_bindings") != bundle["host_tools"]
-        or cx320.get("profile_id") != PROFILE_ID
-        or cx320.get("run_identity") != RUN_IDENTITY
-        or cx320.get("setup", {}).get("code") != 0xA83C
+        or section.get("profile_id") != programme.profile_id
+        or section.get("run_identity") != programme.runtime_run_identity
+        or section.get("setup", {}).get("code") != programme.setup_code
     ):
-        raise ValueError("CX320 rehearsal manifest identity or no-I/O boundary differs")
+        raise ValueError(
+            f"{programme.key.upper()} rehearsal manifest identity or no-I/O boundary differs"
+        )
+    contracts = value.get("contracts", {})
+    if (
+        not isinstance(contracts, dict)
+        or (
+            "plant_sign_qualification_v1" in contracts
+        )
+        is not programme.identification_required
+        or (
+            programme.identification_required
+            and (
+                value.get("programme_policy") != bundle.get("programme_policy")
+                or value.get("identification") != bundle.get("identification")
+                or section.get("plant_sign_identification", {}).get("contract")
+                != "plant_sign_qualification_v1"
+            )
+        )
+    ):
+        raise ValueError(
+            f"{programme.key.upper()} rehearsal evidence contract selection differs"
+        )
     if not all(_binding_matches(item) for item in bundle["host_tools"].values()):
         raise ValueError("CX320 rehearsal current host-tool binding differs")
     return value
@@ -518,6 +1337,23 @@ def _prewrite_boundary_supervisor(
             ("cx317_active", "frequency_only_application_count"): "0",
         }
     )
+    if supervisor.programme.identification_required:
+        health.update(
+            {
+                ("cx317_active", "plant_sign_state"): "FREQUENCY_ACQUIRE",
+                ("cx317_active", "plant_sign_pre_window_count"): "0",
+                (
+                    "cx317_active",
+                    "plant_sign_accumulator_accepted_intervals",
+                ): "0",
+                ("cx317_active", "plant_sign_arm_window_eligible"): "false",
+                **{
+                    ("cx317_active", key): value
+                    for key, value in supervisor.plant_sign_identities.items()
+                    if key != "policy_sha256"
+                },
+            }
+        )
     return supervisor, health
 
 
@@ -548,6 +1384,13 @@ def _reduce_complete_active_health(
     for (component, key), value in sorted(health.items()):
         if component != "cx317_active":
             reducer.observe(row(component, key, value))
+    cx321 = ("cx317_active", "plant_sign_state") in health
+    contract = (
+        CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        if cx321
+        else ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    )
+    keys = CX321_ACTIVE_STATUS_KEYS if cx321 else ACTIVE_STATUS_KEYS
     latest = reducer.observe(
         row("cx317_active", SNAPSHOT_BEGIN_KEY, str(generation))
     )
@@ -555,10 +1398,10 @@ def _reduce_complete_active_health(
         row(
             "cx317_active",
             SNAPSHOT_CONTRACT_KEY,
-            ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+            contract,
         )
     )
-    for key in ACTIVE_STATUS_KEYS:
+    for key in keys:
         latest = reducer.observe(
             row("cx317_active", key, health[("cx317_active", key)])
         )
@@ -779,7 +1622,7 @@ def _exercise_qualified_device_time_boundaries(
     supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
     endpoint_closed_after_backward_utc_step = (
         (supervisor.state.get("terminal") or {}).get("reason")
-        == "cx320_12h_qualified_endpoint_complete"
+        == f"{supervisor.programme.key}_12h_qualified_endpoint_complete"
     )
 
     result = {
@@ -819,6 +1662,397 @@ def _exercise_qualified_device_time_boundaries(
     ):
         raise RuntimeError("CX320 qualified device-clock rehearsal failed")
     return result
+
+
+def _exercise_cx321_host_ordering(
+    *,
+    output_dir: Path,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    proposal_path: Path,
+    proposal: dict[str, Any],
+) -> dict[str, Any]:
+    """Exercise the pre2 arm window and ACT-before-PSQ split boundary."""
+
+    supervisor, health = _prewrite_boundary_supervisor(
+        run_dir=output_dir / "prearm",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+    supervisor.state["manual_start_sent"] = True
+    for key, expected in supervisor.plant_sign_identities.items():
+        if key != "policy_sha256":
+            health[("cx317_active", key)] = expected
+    health.update(
+        {
+            ("cx317_active", "manual_start_confirmed"): "true",
+            ("cx317_active", "state"): "DISARMED",
+            ("cx317_active", "arm_eligible"): "true",
+            ("cx317_active", "evidence_pending"): "false",
+            ("cx317_active", "evidence_phase"): "evidence_clear",
+            ("cx317_active", "hybrid_state"): "FREQUENCY_ACQUIRE",
+            ("cx317_active", "plant_sign_state"): "FREQUENCY_ACQUIRE",
+            ("cx317_active", "plant_sign_pre_window_count"): "1",
+            (
+                "cx317_active",
+                "plant_sign_accumulator_accepted_intervals",
+            ): "1399",
+            ("cx317_active", "plant_sign_arm_window_eligible"): "false",
+        }
+    )
+    supervisor._maybe_start_or_arm(health)
+    no_early_arm = not commands
+    health[("cx317_active", "plant_sign_accumulator_accepted_intervals")] = "1400"
+    health[("cx317_active", "plant_sign_arm_window_eligible")] = "true"
+    supervisor._maybe_start_or_arm(health)
+    one_exact_pre2_arm = (
+        len(commands) == 1
+        and commands[0].startswith("ACTIVE ARM 1 ")
+        and supervisor.state["plant_sign_prearm_sent"] is True
+    )
+
+    split_path = output_dir / "phase4_split" / "plant_sign_qualification_v1.csv"
+    split_path.parent.mkdir(parents=True)
+    split_path.write_text("event,request_sequence\n", encoding="utf-8")
+
+    def append_response() -> None:
+        time.sleep(0.05)
+        with split_path.open("a", encoding="utf-8") as handle:
+            handle.write("response,7\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    writer = threading.Thread(target=append_response)
+    writer.start()
+    _, response = _await_cx321_plant_sign_response(
+        split_path, request_sequence=7, timeout_s=0.5
+    )
+    writer.join()
+    phase4_waited_for_matching_psq = response == {
+        "event": "response",
+        "request_sequence": "7",
+    }
+    result = {
+        "prearm_minimum_accepted_intervals": (
+            PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS
+        ),
+        "arm_lifetime_s": ARM_LIFETIME_S,
+        "status_query_margin_s": QUERY_PERIOD_S,
+        "no_early_or_stale_identification_arm": no_early_arm,
+        "one_exact_pre2_identification_arm": one_exact_pre2_arm,
+        "phase4_waited_for_matching_psq_after_act_split": (
+            phase4_waited_for_matching_psq
+        ),
+        "physical_actions_performed": 0,
+    }
+    if not all(
+        result[key]
+        for key in (
+            "no_early_or_stale_identification_arm",
+            "one_exact_pre2_identification_arm",
+            "phase4_waited_for_matching_psq_after_act_split",
+        )
+    ):
+        raise RuntimeError("CX321 host ordering rehearsal failed")
+    return result
+
+
+def _exercise_cx321_real_transaction_path(
+    *,
+    master: int,
+    run_dir: Path,
+    manifest: dict[str, Any],
+    bundle: dict[str, Any],
+) -> dict[str, Any]:
+    """Drive the exact CX321 lifecycle through capture and live supervisor."""
+
+    context, prefix, snapshots = _cx321_plant_sign_fixture(bundle)
+    transactions = _cx321_transaction_fixture(manifest)
+    response_act = transactions[-1]
+    psq_replay = replay_plant_sign_evidence(prefix, context)
+    snapshot_proof = replay_plant_sign_windows_against_snapshots(
+        prefix, snapshots, context
+    )
+    act_join = _join_cx321_psq_response_to_act(
+        psq_response=prefix[-1],
+        act_response=response_act,
+        timer_hz=context.timer_hz,
+    )
+    chain = complete_plant_sign_evidence_chain(
+        psq_replay=psq_replay,
+        snapshot_window_proof=snapshot_proof,
+        act_response_join=act_join,
+    )
+    expected_phase4 = (
+        "ACTIVE EVIDENCE 1 4 5 -5 1 2 6302 "
+        f"{chain['attestation_sha256']}"
+    )
+
+    stop = threading.Event()
+    identification_phase4_observed = threading.Event()
+    natural_phase4_observed = threading.Event()
+    write_lock = threading.Lock()
+    observed_commands: list[str] = []
+    errors: list[str] = []
+    state = {
+        "generation": 0,
+        "evidence_phase": "request_pending",
+        "evidence_request_sequence": 1,
+        "applied_code": _selected_programme(bundle).setup_code - 21,
+        "dac_epoch": 2,
+        "correction_count": 1,
+        "cumulative_movement_codes": 21,
+    }
+
+    def emulate_firmware() -> None:
+        buffered = b""
+        try:
+            while not stop.is_set():
+                readable, _, _ = select.select([master], [], [], 0.05)
+                if not readable:
+                    continue
+                buffered += os.read(master, 4096)
+                while b"\n" in buffered:
+                    raw, buffered = buffered.split(b"\n", 1)
+                    command = raw.rstrip(b"\r").decode("ascii")
+                    observed_commands.append(command)
+                    if command.startswith("ACTIVE EVIDENCE 1 "):
+                        phase = int(command.split()[3])
+                        expected = {
+                            1: "request_pending",
+                            2: "acceptance_pending",
+                            3: "application_pending",
+                            4: "response_pending",
+                        }[phase]
+                        if state["evidence_phase"] != expected:
+                            raise RuntimeError(
+                                f"phase {phase} released from "
+                                f"{state['evidence_phase']}"
+                            )
+                        state["evidence_phase"] = {
+                            1: "acceptance_pending",
+                            2: "application_pending",
+                            3: "response_pending",
+                            4: "evidence_clear",
+                        }[phase]
+                        if phase == 4:
+                            if command != expected_phase4:
+                                raise RuntimeError(
+                                    "extended phase-4 command differs: "
+                                    f"{command!r}"
+                                )
+                            state["evidence_request_sequence"] = 0
+                            identification_phase4_observed.set()
+                    elif command.startswith("ACTIVE EVIDENCE 2 "):
+                        phase = int(command.split()[3])
+                        expected = {
+                            1: "request_pending",
+                            2: "acceptance_pending",
+                            3: "application_pending",
+                            4: "response_pending",
+                        }[phase]
+                        if state["evidence_phase"] != expected:
+                            raise RuntimeError(
+                                f"natural phase {phase} released from "
+                                f"{state['evidence_phase']}"
+                            )
+                        state["evidence_phase"] = {
+                            1: "acceptance_pending",
+                            2: "application_pending",
+                            3: "response_pending",
+                            4: "evidence_clear",
+                        }[phase]
+                        if phase == 3:
+                            natural = state["natural_summary"]
+                            state["applied_code"] = natural["requested_code"]
+                            state["dac_epoch"] = natural["applied_dac_epoch"]
+                            state["correction_count"] = 2
+                            state["cumulative_movement_codes"] = (
+                                21 + abs(natural["requested_delta_codes"])
+                            )
+                        if phase == 4:
+                            if command != "ACTIVE EVIDENCE 2 4":
+                                raise RuntimeError(
+                                    "natural phase-4 command differs: "
+                                    f"{command!r}"
+                                )
+                            state["evidence_request_sequence"] = 0
+                            natural_phase4_observed.set()
+                    if command.startswith("ACTIVE SNAPSHOT "):
+                        nonce = command.split()[2]
+                        state["generation"] += 1
+                        payload = _cx321_active_status_wire_fixture(
+                            generation=int(state["generation"]),
+                            query_nonce=nonce,
+                            evidence_phase=str(state["evidence_phase"]),
+                            evidence_request_sequence=int(
+                                state["evidence_request_sequence"]
+                            ),
+                            bundle=bundle,
+                            applied_code=int(state["applied_code"]),
+                            dac_epoch=int(state["dac_epoch"]),
+                            correction_count=int(state["correction_count"]),
+                            cumulative_movement_codes=int(
+                                state["cumulative_movement_codes"]
+                            ),
+                        )
+                        with write_lock:
+                            _write_all_fd(master, payload)
+        except (OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
+            errors.append(str(exc))
+            identification_phase4_observed.set()
+            natural_phase4_observed.set()
+
+    emulator = threading.Thread(target=emulate_firmware, daemon=True)
+    emulator.start()
+    try:
+        evidence_wire = b"".join(
+            (
+                _wire_rows(snapshots, PPS_SNAPSHOT_FIELDS),
+                _wire_rows(prefix, PLANT_SIGN_QUALIFICATION_V1_FIELDS),
+            )
+        )
+        with write_lock:
+            _write_all_fd(master, evidence_wire)
+        _wait_until(
+            lambda: _read_object(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            ).get("initial_session_id")
+            == 1,
+            10.0,
+            "CX321 initial complete status identity before ACT",
+        )
+        with write_lock:
+            _write_all_fd(
+                master,
+                _wire_rows(transactions, ACTIVE_TRANSACTION_V1_FIELDS),
+            )
+        if not identification_phase4_observed.wait(20.0):
+            raise TimeoutError("CX321 extended phase-4 ACK was not observed")
+        if errors:
+            raise RuntimeError("CX321 firmware emulator failed: " + errors[0])
+        ack_handoff = _cx321_ack_handoff_fixture(
+            prefix,
+            attestation_sha256=str(chain["attestation_sha256"]),
+        )
+        with write_lock:
+            _write_all_fd(
+                master,
+                _wire_rows(
+                    ack_handoff, PLANT_SIGN_QUALIFICATION_V1_FIELDS
+                ),
+            )
+        psq_path = run_dir / "csv/plant_sign_qualification_v1.csv"
+        _wait_until(
+            lambda: len(psq_path.read_text(encoding="utf-8").splitlines())
+            == 8,
+            10.0,
+            "captured CX321 response_ack and handoff",
+        )
+        _wait_until(
+            lambda: set(
+                _read_object(
+                    run_dir
+                    / "reports/cx317_active_supervisor_state.json"
+                ).get("acknowledged_record_sequences", [])
+            )
+            >= {2, 3, 4, 5},
+            10.0,
+            "live-supervisor phase-4 firmware-consumption confirmation",
+        )
+        natural_ahy, natural_transactions, natural_summary = (
+            _cx321_first_natural_transaction_fixture(bundle)
+        )
+        state.update(
+            {
+                "natural_summary": natural_summary,
+                "evidence_phase": "request_pending",
+                "evidence_request_sequence": 2,
+            }
+        )
+        with write_lock:
+            _write_all_fd(
+                master,
+                _wire_rows(
+                    natural_ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS
+                ),
+            )
+            _write_all_fd(
+                master,
+                _wire_rows(
+                    natural_transactions, ACTIVE_TRANSACTION_V1_FIELDS
+                ),
+            )
+        if not natural_phase4_observed.wait(30.0):
+            raise TimeoutError("CX321 natural phase-4 ACK was not observed")
+        if errors:
+            raise RuntimeError("CX321 firmware emulator failed: " + errors[0])
+        _wait_until(
+            lambda: set(
+                _read_object(
+                    run_dir
+                    / "reports/cx317_active_supervisor_state.json"
+                ).get("acknowledged_record_sequences", [])
+            )
+            >= {2, 3, 4, 5, 6, 7, 8, 9},
+            10.0,
+            "first natural response replay and firmware consumption",
+        )
+    finally:
+        stop.set()
+        emulator.join(timeout=2.0)
+    captured_psq = list(
+        csv.DictReader(psq_path.open("r", newline="", encoding="utf-8"))
+    )
+    replay = replay_plant_sign_evidence(
+        captured_psq,
+        context,
+        require_ack_handoff=True,
+        expected_ack_attestation_sha256=str(chain["attestation_sha256"]),
+    )
+    phases = [
+        command
+        for command in observed_commands
+        if command.startswith("ACTIVE EVIDENCE 1 ")
+    ]
+    natural_phases = [
+        command
+        for command in observed_commands
+        if command.startswith("ACTIVE EVIDENCE 2 ")
+    ]
+    return {
+        "canonical_psq_field_count": len(
+            PLANT_SIGN_QUALIFICATION_V1_FIELDS
+        ),
+        "canonical_snp_rows_captured": len(snapshots),
+        "canonical_act_field_count": len(ACTIVE_TRANSACTION_V1_FIELDS),
+        "evidence_phase_commands": phases,
+        "extended_phase4_command": expected_phase4,
+        "complete_evidence_chain_sha256": chain["attestation_sha256"],
+        "raw_snapshot_proof_sha256": snapshot_proof["proof_sha256"],
+        "act_response_join": act_join,
+        "raw_timer_rollover_between_application_and_response": (
+            int(prefix[3]["application_timestamp_ticks"])
+            < RP2040_TIMER0_MICROS_WRAP_TICKS
+            < int(prefix[4]["open_ticks"])
+        ),
+        "firmware_consumption_confirmed": len(phases) == 4,
+        "response_ack_handoff_exact": (
+            replay["ack_exact"] and replay["handoff_exact"]
+        ),
+        "first_natural_decision": natural_summary,
+        "natural_ahy_rows_captured": len(natural_ahy),
+        "natural_evidence_phase_commands": natural_phases,
+        "natural_response_firmware_consumption_confirmed": (
+            len(natural_phases) == 4
+        ),
+        "last_status_generation": int(state["generation"]),
+        "physical_actions_performed": 0,
+    }
 
 
 def _run_real_process_topology(
@@ -886,6 +2120,7 @@ def _run_real_process_topology(
     supervisor_stopped = False
     normal_fifo_queued = 0
     normal_fifo_saturated = False
+    cx321_transaction_path: dict[str, Any] | None = None
     try:
         _wait_until(
             lambda: (
@@ -948,22 +2183,36 @@ def _run_real_process_topology(
             10.0,
             "initial live-supervisor command acknowledgements",
         )
-        os.write(master, _active_hybrid_wire_fixture(bundle))
+        if _selected_programme(bundle).identification_required:
+            cx321_transaction_path = _exercise_cx321_real_transaction_path(
+                master=master,
+                run_dir=run_dir,
+                manifest=validate_rehearsal_run_manifest(manifest_path),
+                bundle=bundle,
+            )
+            # The dedicated emulator has now proved the complete command and
+            # status handoff. Stop the producer before removing that PTY
+            # reader so no normal command can become a rehearsal artifact.
+            os.kill(supervisor.pid, signal.SIGSTOP)
+            supervisor_stopped = True
+        if cx321_transaction_path is None:
+            _write_all_fd(master, _active_hybrid_wire_fixture(bundle))
         _wait_until(
             lambda: len(
                 (run_dir / "csv/active_hybrid_decisions_v1.csv")
                 .read_text(encoding="utf-8")
                 .splitlines()
             )
-            == 2,
+            == (2 if cx321_transaction_path is None else 3),
             10.0,
             "first exact 56-field active-hybrid wire record",
         )
         # Stop the producer only after its initial lease has reached the PTY,
         # then stop the consumer.  This avoids manufacturing a stale in-flight
         # command while constructing the deliberate normal-FIFO obstruction.
-        os.kill(supervisor.pid, signal.SIGSTOP)
-        supervisor_stopped = True
+        if not supervisor_stopped:
+            os.kill(supervisor.pid, signal.SIGSTOP)
+            supervisor_stopped = True
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
         for _ in range(100_000):
@@ -992,7 +2241,43 @@ def _run_real_process_topology(
             10.0,
             "priority abort delivery through sole owner",
         )
-        os.write(master, _post_abort_active_status_wire_fixture(generation=1))
+        post_abort_generation = (
+            1
+            if cx321_transaction_path is None
+            else int(cx321_transaction_path["last_status_generation"]) + 1
+        )
+        _write_all_fd(
+            master,
+            _post_abort_active_status_wire_fixture(
+                generation=post_abort_generation,
+                bundle=bundle,
+                applied_code=(
+                    None
+                    if cx321_transaction_path is None
+                    else int(
+                        cx321_transaction_path["first_natural_decision"][
+                            "requested_code"
+                        ]
+                    )
+                ),
+                dac_epoch=(3 if cx321_transaction_path is not None else None),
+                correction_count=(
+                    2 if cx321_transaction_path is not None else None
+                ),
+                cumulative_movement_codes=(
+                    None
+                    if cx321_transaction_path is None
+                    else 21
+                    + abs(
+                        int(
+                            cx321_transaction_path["first_natural_decision"][
+                                "requested_delta_codes"
+                            ]
+                        )
+                    )
+                ),
+            ),
+        )
         supervisor_output, _ = supervisor.communicate(timeout=15)
         if supervisor.returncode != 3:
             raise RuntimeError(
@@ -1064,6 +2349,7 @@ def _run_real_process_topology(
         "rotation": rotation,
         "capture_output_sha256": sha256(capture_output.encode()).hexdigest(),
         "supervisor_output_sha256": sha256(supervisor_output.encode()).hexdigest(),
+        "cx321_real_transaction_path": cx321_transaction_path,
     }
 
 
@@ -1072,8 +2358,17 @@ def run(
 ) -> dict[str, Any]:
     bundle_path = bundle_path.resolve()
     proposal_path = proposal_path.resolve()
-    bundle = validate_bundle(bundle_path)
-    proposal = validate_proposal(proposal_path)
+    programme = _selected_programme(_read_object(bundle_path))
+    bundle = (
+        validate_bundle(bundle_path)
+        if programme is CX320_PROGRAMME
+        else validate_bundle(bundle_path, programme)
+    )
+    proposal = (
+        validate_proposal(proposal_path)
+        if programme is CX320_PROGRAMME
+        else validate_proposal(proposal_path, programme)
+    )
     if proposal["exact_bundle"]["bundle_sha256"] != bundle["bundle_sha256"]:
         raise ValueError("CX320 rehearsal proposal and bundle differ")
     output_dir = output_dir.resolve()
@@ -1107,10 +2402,21 @@ def run(
         proposal_path=proposal_path,
         proposal=proposal,
     )
+    cx321_ordering = (
+        _exercise_cx321_host_ordering(
+            output_dir=output_dir / "cx321_ordering",
+            bundle_path=bundle_path,
+            bundle=bundle,
+            proposal_path=proposal_path,
+            proposal=proposal,
+        )
+        if programme.identification_required
+        else None
+    )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
     unsigned: dict[str, Any] = {
         "schema_version": 1,
-        "report_type": REPORT_TYPE,
+        "report_type": programme.rehearsal_report_type,
         "tool": TOOL_ID,
         "tool_sha256": _sha256_file(Path(__file__)),
         "created_utc": _utc_now(),
@@ -1124,6 +2430,7 @@ def run(
         "real_process_topology": topology,
         "accelerated_prewrite_boundary": prewrite_boundary,
         "accelerated_qualified_device_clock": qualified_device_clock,
+        "cx321_identification_ordering": cx321_ordering,
         "accelerated_boundary_result": {
             "status": accelerated["status"],
             "seal_sha256": accelerated["seal_sha256"],
@@ -1140,6 +2447,19 @@ def run(
                 "host_abort_fifo",
                 "live_supervisor_process",
                 "first_active_hybrid_wire_record",
+                *(
+                    [
+                        "cx321_psq_real_capture_split",
+                        "cx321_snp_real_capture_split",
+                        "cx321_act_psq_application_join",
+                        "cx321_extended_phase4_ack",
+                        "cx321_firmware_ack_consumption_confirmation",
+                        "cx321_response_ack_handoff_capture",
+                        "cx321_raw_timer_rollover_projection",
+                    ]
+                    if programme.identification_required
+                    else []
+                ),
                 "terminal_abort_delivery_before_capture_close",
                 "post_abort_complete_active_snapshot",
                 "logical_evidence_rotation",
@@ -1164,12 +2484,16 @@ def run(
             "physical D14 PPS and D8 oscillator capture",
         ],
     }
+    if programme.identification_required:
+        unsigned["accelerated_boundary_result"][
+            "cx321_natural_timing_bridge"
+        ] = accelerated["cx321_natural_timing_bridge"]
     report = {
         **unsigned,
         "rehearsal_sha256": _canonical_sha256(unsigned),
     }
     _atomic_new_json(
-        output_dir / "cx320_active_hybrid_live_topology_rehearsal_v1.json",
+        output_dir / f"{programme.rehearsal_report_type}.json",
         report,
     )
     return report

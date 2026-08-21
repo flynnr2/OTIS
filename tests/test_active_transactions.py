@@ -5,11 +5,16 @@ from dataclasses import replace
 import json
 import os
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
 from host.otis_tools.active_transactions import (
     ActiveTransactionSupervisor,
+    _await_cx321_plant_sign_response,
+    _cx321_response_is_plant_sign_identification,
+    _join_cx321_psq_response_to_act,
     validate_transaction_row,
 )
 from host.otis_tools.no_write_qualification_supervisor import (
@@ -64,6 +69,139 @@ def test_prewrite_request_capsule_validates_before_release() -> None:
     row = _row()
     spec, identities, _ = load_no_write_qualification_spec("A")
     validate_transaction_row(row, spec, identities, row["build_identity"])
+
+
+def test_cx321_phase4_waits_for_matching_psq_split_record(
+    tmp_path: Path,
+) -> None:
+    row = {
+        "correction_ordinal": "1",
+        "requested_delta_codes": "-21",
+        "cumulative_after_codes": "21",
+    }
+    assert _cx321_response_is_plant_sign_identification(row) is True
+    path = tmp_path / "plant_sign_qualification_v1.csv"
+    path.write_text("event,request_sequence\n", encoding="utf-8")
+
+    def append_response() -> None:
+        time.sleep(0.05)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("response,7\n")
+
+    writer = threading.Thread(target=append_response)
+    writer.start()
+    rows, response = _await_cx321_plant_sign_response(
+        path, request_sequence=7, timeout_s=0.5
+    )
+    writer.join()
+
+    assert rows[-1] == response
+    assert response == {"event": "response", "request_sequence": "7"}
+
+
+def test_cx321_first_phase4_never_silently_falls_back_to_natural() -> None:
+    with pytest.raises(ValueError, match="frozen plant-sign stimulus"):
+        _cx321_response_is_plant_sign_identification(
+            {
+                "correction_ordinal": "1",
+                "requested_delta_codes": "4",
+                "cumulative_after_codes": "4",
+            }
+        )
+
+
+def _cx321_psq_act_join_rows() -> tuple[dict[str, str], dict[str, str]]:
+    psq = {
+        "request_sequence": "7",
+        "application_sequence": "9",
+        "requested_delta_codes": "-21",
+        "requested_code": str(0xA827),
+        "accepted_code": str(0xA827),
+        "applied_code": str(0xA827),
+        "dac_epoch": "2",
+        "application_timestamp_ticks": str(3902 * 16_000_000 + 17),
+    }
+    act = {
+        "transaction_record_sequence": "44",
+        "event": "response",
+        "request_sequence": "7",
+        "application_sequence": "9",
+        "requested_delta_codes": "-21",
+        "requested_code": str(0xA827),
+        "accepted_code": str(0xA827),
+        "applied_code": str(0xA827),
+        "dac_epoch": "2",
+        "application_timestamp_s": "3902",
+    }
+    return psq, act
+
+
+def test_cx321_phase4_ack_joins_psq_to_exact_act_response() -> None:
+    psq, act = _cx321_psq_act_join_rows()
+
+    result = _join_cx321_psq_response_to_act(
+        psq_response=psq, act_response=act
+    )
+
+    assert result["exact"] is True
+    assert result["act_transaction_record_sequence"] == 44
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "request_sequence",
+        "application_sequence",
+        "requested_delta_codes",
+        "requested_code",
+        "accepted_code",
+        "applied_code",
+        "dac_epoch",
+    ),
+)
+def test_cx321_phase4_ack_rejects_each_psq_act_tuple_mismatch(
+    field: str,
+) -> None:
+    psq, act = _cx321_psq_act_join_rows()
+    act[field] = str(int(act[field]) + 1)
+
+    with pytest.raises(ValueError, match=field):
+        _join_cx321_psq_response_to_act(
+            psq_response=psq, act_response=act
+        )
+
+
+def test_cx321_phase4_ack_accepts_legitimate_core0_core1_second_crossing() -> None:
+    psq, act = _cx321_psq_act_join_rows()
+    psq["application_timestamp_ticks"] = str(3902 * 16_000_000 + 15_999_999)
+    act["application_timestamp_s"] = "3903"
+
+    result = _join_cx321_psq_response_to_act(
+        psq_response=psq, act_response=act
+    )
+
+    assert result["exact"] is True
+    assert result["acknowledgement_lag_lower_bound_ticks"] == 1
+
+
+def test_cx321_phase4_ack_rejects_core0_tick_after_core1_consumption_second() -> None:
+    psq, act = _cx321_psq_act_join_rows()
+    psq["application_timestamp_ticks"] = str(3903 * 16_000_000)
+
+    with pytest.raises(ValueError, match="follows its ACT Core1"):
+        _join_cx321_psq_response_to_act(
+            psq_response=psq, act_response=act
+        )
+
+
+def test_cx321_phase4_ack_rejects_cross_core_lag_beyond_actuator_deadline() -> None:
+    psq, act = _cx321_psq_act_join_rows()
+    act["application_timestamp_s"] = "3933"
+
+    with pytest.raises(ValueError, match="30-second actuator deadline"):
+        _join_cx321_psq_response_to_act(
+            psq_response=psq, act_response=act
+        )
 
 
 @pytest.mark.parametrize(

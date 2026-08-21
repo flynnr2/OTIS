@@ -89,6 +89,7 @@ def test_frequency_acquisition_and_phase_share_one_global_budget() -> None:
     )
     assert controller.correction_count == 1
     assert controller.cumulative_movement_codes == 21
+    assert controller.natural_cumulative_movement_codes == 21
     assert controller.frequency_only_application_count == 1
     _pass_response(controller)
 
@@ -285,3 +286,69 @@ def test_snapshot_contains_distinct_frequency_phase_and_material_counts() -> Non
     assert snapshot["frequency_only_application_count"] == 0
     assert snapshot["phase_nonzero_application_count"] == 0
     assert snapshot["phase_material_application_count"] == 0
+
+
+def test_cx321_plant_sign_rebase_consumes_global_not_natural_history() -> None:
+    controller = ActiveHybridController(load_policy())
+    controller.rebase_after_plant_sign(
+        applied_code=0xA827,
+        dac_epoch=2,
+        application_s=3_900,
+        qualification_started_s=6_300,
+        attestation_id="psq:1:response_ack",
+    )
+
+    assert controller.state is HybridState.PHASE_QUALIFY
+    assert controller.correction_count == 1
+    assert controller.cumulative_movement_codes == 21
+    assert controller.last_application_s == 3_900
+    assert controller.natural_chatter_origin_code == 0xA827
+    assert controller.natural_cumulative_movement_codes == 0
+    assert controller.direction_history == []
+
+    first = controller.decide(
+        _observation(
+            8_400,
+            code=0xA827,
+            dac_epoch=2,
+            phase_cycles=-24,
+            phase_sequence=2,
+        )
+    )
+    assert first.plant_sign_handoff_first_consumer is True
+    assert first.plant_sign_attestation_id == "psq:1:response_ack"
+    assert first.correction_count_before == 1
+    assert first.cumulative_movement_before_codes == 21
+    assert first.natural_chatter_origin_code == 0xA827
+    assert first.natural_cumulative_movement_codes == 0
+    assert first.natural_direction_count == 0
+    assert first.reason == "phase_material_request_ready"
+
+    controller.note_application(
+        first,
+        applied_code=first.requested_code,
+        dac_epoch=3,
+        downstream_consumers_exact=True,
+    )
+    assert controller.correction_count == 2
+    assert controller.cumulative_movement_codes == 21 + abs(
+        first.requested_delta_codes
+    )
+    assert controller.natural_cumulative_movement_codes == abs(
+        first.requested_delta_codes
+    )
+    assert controller.direction_history == [1]
+
+
+def test_cx321_plant_sign_rebase_rejects_non_21_code_handoff() -> None:
+    controller = ActiveHybridController(load_policy())
+
+    with pytest.raises(HybridPolicyError, match="plant_sign_handoff_movement_mismatch"):
+        controller.rebase_after_plant_sign(
+            applied_code=0xA828,
+            dac_epoch=2,
+            application_s=3_900,
+            qualification_started_s=6_300,
+            attestation_id="psq:1:response_ack",
+        )
+    assert controller.state is HybridState.FAIL_STATIC

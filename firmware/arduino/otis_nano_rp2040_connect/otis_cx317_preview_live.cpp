@@ -7,12 +7,14 @@
 #include "otis_config.h"
 #include "otis_cx317_active_live.h"
 #include "otis_cx317_i_only_engine.h"
+#include "otis_cx321_plant_sign.h"
 #include "otis_cx317_snapshot_estimator.h"
 #include "otis_decimal_format.h"
 #include "otis_dual_core_partition.h"
 #include "otis_phase_preview_live.h"
 #include "otis_protocol.h"
 #include "otis_spsc_queue.h"
+#include "otis_timer0_extension.h"
 #include "otis_transport_serial.h"
 
 namespace {
@@ -112,6 +114,15 @@ double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
 bool recovery_requested = false;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+OtisCx321PlantSignAccumulator plant_sign_accumulator = {};
+OtisTimer0Extension timer_extension = {};
+uint64_t previous_boundary_ticks = 0u;
+uint64_t previous_boundary_extended_ticks = 0u;
+uint32_t previous_boundary_session = 0u;
+bool previous_boundary_available = false;
+bool latest_natural_tight_inside = false;
+#endif
 
 bool enqueue(const char *data, size_t length);
 
@@ -419,6 +430,15 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   selected_estimator_valid = false;
   selected_model_applicable = false;
   recovery_requested = false;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  plant_sign_accumulator = {};
+  otis_timer0_extension_init(&timer_extension);
+  previous_boundary_ticks = 0u;
+  previous_boundary_extended_ticks = 0u;
+  previous_boundary_session = 0u;
+  previous_boundary_available = false;
+  latest_natural_tight_inside = false;
+#endif
   return true;
 #else
   (void)startup_uptime_s;
@@ -482,6 +502,24 @@ void otis_cx317_preview_live_on_dac_applied_epoch(uint16_t applied_code,
 #endif
 }
 
+void otis_cx317_preview_live_on_dac_applied_epoch_exact(
+    uint16_t applied_code, uint32_t dac_epoch, uint32_t uptime_s,
+    uint64_t application_ticks, uint32_t capture_session) {
+  otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
+                                               uptime_s);
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  if (!timer_extension.available ||
+      timer_extension.capture_session != capture_session)
+    otis_timer0_extension_seed(
+        &timer_extension, application_ticks, capture_session);
+  otis_cx321_plant_sign_accumulator_init(
+      &plant_sign_accumulator, application_ticks, dac_epoch, capture_session);
+#else
+  (void)application_ticks;
+  (void)capture_session;
+#endif
+}
+
 bool otis_cx317_preview_live_applied_epoch_exact(uint16_t applied_code,
                                                  uint32_t dac_epoch) {
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
@@ -502,6 +540,38 @@ void otis_cx317_preview_live_on_boundary(
   if (active_outcome != nullptr) *active_outcome = {};
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   if (!initialized || observation == nullptr) return;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  OtisCx321PlantSignEstimate plant_estimate = {};
+  bool plant_estimate_ready = false;
+  bool plant_estimate_delivered = false;
+  uint64_t current_boundary_extended_ticks = observation->pps_timestamp_ticks;
+  const bool boundary_extended = otis_timer0_extension_advance_boundary(
+      &timer_extension, observation->pps_timestamp_ticks,
+      observation->session, &current_boundary_extended_ticks);
+  if (previous_boundary_available &&
+      previous_boundary_session == observation->session &&
+      boundary_extended) {
+    plant_estimate_ready = otis_cx321_plant_sign_accumulator_on_interval(
+        &plant_sign_accumulator, previous_boundary_extended_ticks,
+        current_boundary_extended_ticks, observation->sequence,
+        interval_count, current_dac_epoch, observation->session,
+        interval_valid, &plant_estimate);
+  } else {
+    otis_cx321_plant_sign_accumulator_invalidate(&plant_sign_accumulator);
+  }
+  previous_boundary_ticks = observation->pps_timestamp_ticks;
+  previous_boundary_extended_ticks = current_boundary_extended_ticks;
+  previous_boundary_session = observation->session;
+  previous_boundary_available = true;
+  const auto deliver_plant_estimate = [&]() {
+    if (plant_estimate_ready && !plant_estimate_delivered) {
+      otis_cx317_active_live_on_plant_sign_estimate(
+          &plant_estimate, current_applied_code, latest_natural_tight_inside,
+          current_boundary_extended_ticks, uptime_s, active_outcome);
+      plant_estimate_delivered = true;
+    }
+  };
+#endif
   const uint32_t warmup_complete_s = startup_s + kStartupWarmupS;
   if (!warmup_boundary_seen && uptime_s >= warmup_complete_s) {
     warmup_boundary_seen = true;
@@ -517,6 +587,9 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  estimate_seq);
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    deliver_plant_estimate();
+#endif
     return;
   }
   // A boundary stamped exactly at settling_until_s closes the oscillator
@@ -527,6 +600,9 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    deliver_plant_estimate();
+#endif
     return;
   }
   if (recovery_requested && interval_valid) {
@@ -541,6 +617,9 @@ void otis_cx317_preview_live_on_boundary(
     recovery_requested = false;
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  estimate_seq);
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    deliver_plant_estimate();
+#endif
     return;
   }
   OtisCx317SpanEstimate span;
@@ -555,6 +634,9 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  estimate_seq);
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    deliver_plant_estimate();
+#endif
     return;
   }
   if (span.diagnostic_available)
@@ -578,11 +660,22 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx317_i_only_engine_evaluate(&controller, &input, &decision);
     selected_estimator_valid = true;
     selected_model_applicable = applicable;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    latest_natural_tight_inside =
+        decision.tight_deadband_decision_available &&
+        decision.tight_deadband.state_after ==
+            OTIS_INTEGER_COUNT_DEADBAND_TIGHT_INSIDE;
+#endif
 #if OTIS_ENABLE_TIGHT_DEADBAND_OBSERVATION
     const bool tight_evidence_queued = emit_tight_deadband(
         decision, selected_estimate_seq, observation->pps_timestamp_ticks,
         observation->session, current_dac_epoch,
         span.selected_accumulated_edge_error_counts);
+#endif
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    // A coincident 1,500/600 close must use this boundary's freshly evaluated
+    // natural tight state before the identification gate can decide.
+    deliver_plant_estimate();
 #endif
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
     OtisCx317ActiveLiveDecision active_decision = {
@@ -633,13 +726,25 @@ void otis_cx317_preview_live_on_boundary(
         phase_snapshot_available && phase_snapshot.recorder_published;
 #endif
     OtisCx317ActiveLiveOutcome local_active_outcome;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    otis_cx317_active_live_on_decision_at_ticks(
+        &active_decision, current_boundary_extended_ticks,
+        &local_active_outcome);
+#else
     otis_cx317_active_live_on_decision(&active_decision,
                                        &local_active_outcome);
-    if (active_outcome != nullptr) *active_outcome = local_active_outcome;
+#endif
+    if (active_outcome != nullptr &&
+        !(active_outcome->request_created || active_outcome->faulted ||
+          active_outcome->response_recorded))
+      *active_outcome = local_active_outcome;
 #endif
     emit_control(decision, static_code, observation->pps_timestamp_ticks,
                  selected_estimate_seq);
   }
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  deliver_plant_estimate();
+#endif
 #else
   (void)observation;
   (void)interval_count;
@@ -691,6 +796,51 @@ void otis_cx317_preview_live_get_authority_state(
   state->selected_interval_count = estimator.selected_count;
 #else
   *state = {};
+#endif
+}
+
+uint16_t otis_cx317_preview_live_plant_sign_accepted_intervals(void) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  return plant_sign_accumulator.configured
+             ? plant_sign_accumulator.accepted_intervals
+             : 0u;
+#else
+  return 0u;
+#endif
+}
+
+bool otis_cx317_preview_live_extend_timer0_ticks(
+    uint64_t raw_ticks, uint64_t *extended_ticks) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  constexpr uint64_t kMaximumProjectionTicks = 60ull * 16000000ull;
+  return otis_timer0_extension_project_nearest(
+      &timer_extension, raw_ticks, timer_extension.capture_session,
+      kMaximumProjectionTicks, extended_ticks);
+#else
+  (void)raw_ticks;
+  (void)extended_ticks;
+  return false;
+#endif
+}
+
+bool otis_cx317_preview_live_project_setup_timer0_ticks(
+    uint64_t raw_ticks, uint32_t capture_session, uint64_t *extended_ticks) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  constexpr uint64_t kTimer0ModulusTicks = (1ull << 32) * 16ull;
+  if (extended_ticks == nullptr || capture_session == 0u) return false;
+  const uint64_t normalized_raw_ticks = raw_ticks % kTimer0ModulusTicks;
+  if (!timer_extension.available) {
+    *extended_ticks = normalized_raw_ticks;
+    return true;
+  }
+  return otis_timer0_extension_project_nearest(
+      &timer_extension, normalized_raw_ticks, capture_session,
+      60ull * 16000000ull, extended_ticks);
+#else
+  (void)raw_ticks;
+  (void)capture_session;
+  (void)extended_ticks;
+  return false;
 #endif
 }
 

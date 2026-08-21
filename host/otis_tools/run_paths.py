@@ -22,6 +22,7 @@ ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
 ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
 ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v1.csv"
+PLANT_SIGN_QUALIFICATION_CSV = "plant_sign_qualification_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
 HYBRID_PREVIEW_DECISIONS_CSV = "hybrid_preview_decisions_v1.csv"
@@ -92,6 +93,10 @@ class RunPaths:
     @property
     def active_hybrid_decisions_csv(self) -> Path:
         return self.csv_dir / ACTIVE_HYBRID_DECISIONS_CSV
+
+    @property
+    def plant_sign_qualification_csv(self) -> Path:
+        return self.csv_dir / PLANT_SIGN_QUALIFICATION_CSV
 
     @property
     def relative_phase_observations_csv(self) -> Path:
@@ -174,6 +179,19 @@ def default_csv_files() -> list[dict[str, str]]:
             "optional": True,
         },
         {"path": f"{CSV_DIR}/{PSEUDO_PPS_TRUTH_CSV}", "contract": "pseudo_pps_truth_v1", "optional": True},
+    ]
+
+
+def cx321_csv_files() -> list[dict[str, str]]:
+    """Current capture files plus the dedicated CX321 lifecycle evidence."""
+
+    return [
+        *default_csv_files(),
+        {
+            "path": f"{CSV_DIR}/{PLANT_SIGN_QUALIFICATION_CSV}",
+            "contract": "plant_sign_qualification_v1",
+            "optional": True,
+        },
     ]
 
 

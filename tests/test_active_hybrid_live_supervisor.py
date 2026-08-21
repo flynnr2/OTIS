@@ -3,11 +3,13 @@ from __future__ import annotations
 import csv
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
 from pathlib import Path
 
 import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
+from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_control_supervisor import (
     _next_selected_interval_is_cadence_eligible,
 )
@@ -79,6 +81,62 @@ def _manifest(*, wall_origin_epoch: float = 1_800_000_000.0) -> dict:
             },
         },
     }
+
+
+def _cx321_manifest() -> dict:
+    manifest = _manifest()
+    programme_policy_path = (
+        ROOT
+        / "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json"
+    )
+    programme_policy = json.loads(
+        programme_policy_path.read_text(encoding="utf-8")
+    )
+    config_path = (
+        ROOT / "profiles/estimators/cx321_plant_sign_1500_config_v1.json"
+    )
+    manifest.update(
+        {
+            "programme_id": CX321_PROGRAMME.programme_id,
+            "stage": CX321_PROGRAMME.live_stage,
+            "run_identity": CX321_PROGRAMME.runtime_run_identity,
+            "profile_identity": CX321_PROGRAMME.profile_id,
+            "programme_policy": {
+                "path": str(programme_policy_path),
+                "sha256": sha256(programme_policy_path.read_bytes()).hexdigest(),
+                "size_bytes": programme_policy_path.stat().st_size,
+                "policy_id": CX321_PROGRAMME.policy_id,
+            },
+            "identification": {
+                "estimator_runtime_config": {
+                    "path": str(config_path),
+                    "sha256": sha256(config_path.read_bytes()).hexdigest(),
+                    "size_bytes": config_path.stat().st_size,
+                }
+            },
+        }
+    )
+    section = manifest.pop("cx320")
+    section["run_identity"] = CX321_PROGRAMME.runtime_run_identity
+    section["profile_id"] = CX321_PROGRAMME.profile_id
+    manifest["cx321"] = section
+    assert programme_policy["policy_id"] == CX321_PROGRAMME.policy_id
+    return manifest
+
+
+def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
+    manifest = _cx321_manifest()
+    _, identities = live.load_active_hybrid_spec(manifest)
+
+    assert identities["active_policy_sha256"] == manifest["programme_policy"][
+        "sha256"
+    ]
+    assert identities["numerical_policy_sha256"] == manifest["policy"][
+        "policy_sha256"
+    ]
+    assert identities["active_policy_sha256"] != identities[
+        "numerical_policy_sha256"
+    ]
 
 
 def _supervisor(
@@ -667,6 +725,46 @@ def test_phase_qualify_rearms_despite_continuous_frequency_preview(
     assert len(commands) == 1
     assert commands[0].startswith("ACTIVE ARM 1 ")
     assert supervisor.state["arm_pending"] is True
+
+
+def test_cx321_identification_prearm_uses_last_100_accepted_intervals(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX321_PROGRAMME
+    supervisor.state["manual_start_sent"] = True
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    health = _health(
+        supervisor,
+        hybrid_state="FREQUENCY_ACQUIRE",
+        selected_interval_count="0",
+    )
+    health.update(
+        {
+            ("cx317_active", "plant_sign_state"): "FREQUENCY_ACQUIRE",
+            ("cx317_active", "plant_sign_pre_window_count"): "1",
+            (
+                "cx317_active",
+                "plant_sign_accumulator_accepted_intervals",
+            ): "1399",
+            ("cx317_active", "plant_sign_arm_window_eligible"): "false",
+        }
+    )
+
+    supervisor._maybe_start_or_arm(health)
+    assert commands == []
+
+    health[("cx317_active", "plant_sign_accumulator_accepted_intervals")] = "1400"
+    health[("cx317_active", "plant_sign_arm_window_eligible")] = "true"
+    supervisor._maybe_start_or_arm(health)
+
+    assert len(commands) == 1
+    assert commands[0].startswith("ACTIVE ARM 1 ")
+    assert supervisor.state["plant_sign_prearm_sent"] is True
+    assert supervisor.state["plant_sign_prearm_accepted_intervals"] == 1400
+    event = supervisor.events_path.read_text(encoding="utf-8")
+    assert '"identification_prearm": true' in event
 
 
 def test_checkpoint_release_is_observed_only_from_firmware_state(

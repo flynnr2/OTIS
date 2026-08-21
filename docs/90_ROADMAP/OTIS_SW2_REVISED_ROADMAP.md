@@ -12,9 +12,10 @@ firmware-driven, phase-material combined correction, but the exact response was
 below the frozen empirical detection floor and failed its positive-sign
 checkpoint. It is a bounded non-pass with no remaining live authority. See
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The selected offline CX321 successor preserves the natural controller and adds
-a separate 21-code plant-sign qualification transaction. It has no physical
-authority; current details are in
+The selected offline CX321 v2 successor preserves the 600-second natural
+controller and adds a separate 21-code plant-sign qualification transaction
+using a dedicated 1,500-second estimator. Its implementation and release gate
+pass, but it has no exact-bundle physical authority; current details are in
 `../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop

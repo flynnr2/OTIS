@@ -35,10 +35,14 @@
   observation was therefore healthy but indeterminate and failed the separately
   required positive-sign checkpoint. This bounded non-pass cannot be repaired
   by reinterpreting the same evidence or repeating the consumed bundle.
-- CX321 selects a separate 21-code plant-sign qualification transaction before
-  natural hybrid control. The design is grounded in the existing plant envelope
-  and 600-second detector, but is not implemented, rehearsed, bundled,
-  physically authorized or qualified. It does not make the uncalibrated plant
-  model generally control-ready and does not turn an indeterminate material
-  response into observed sign.
+- CX321 v2 selects a separate 21-code plant-sign qualification transaction
+  using a dedicated 1,500-second, three-count estimator before unchanged
+  600-second natural hybrid control. Its zero observed null detections over
+  18,219 eligible fixed-code placements in both legal exclusion-boundary phases
+  are finite-record separation, not a
+  calibrated false-positive probability. The estimator and gate are not
+  implemented, rehearsed, bundled, physically authorized or qualified on a
+  future bundle. They do not make the uncalibrated plant model generally
+  control-ready or turn an indeterminate natural material response into
+  observed sign.
 - OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.

@@ -303,9 +303,9 @@ def test_dual_core_timing_paths_keep_full_formatters_out_of_automatic_storage() 
 
     assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in active
     assert "OtisEvidenceFrameMessage message = {};" not in active
-    # ACT request/application evidence plus the CX320 AHY decision record share
-    # one statically allocated evidence frame.
-    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 3
+    # ACT request/application evidence, the AHY decision record and the CX321
+    # plant-sign lifecycle share one statically allocated evidence frame.
+    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 4
 
     assert "OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};" in sketch
     association_start = sketch.index(

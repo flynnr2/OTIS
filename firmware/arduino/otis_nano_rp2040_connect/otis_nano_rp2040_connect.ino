@@ -158,6 +158,49 @@ bool parse_active_u32_fields(char *text, uint32_t *values, uint8_t count) {
   return *cursor == '\0';
 }
 
+bool parse_cx321_plant_sign_evidence_ack(
+    char *text, OtisRunControlMessage *message) {
+  if (text == nullptr || message == nullptr) return false;
+  char *cursor = text;
+  uint64_t unsigned_values[6] = {};
+  int64_t signed_response = 0;
+  for (uint8_t index = 0u; index < 7u; ++index) {
+    while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
+      cursor++;
+    errno = 0;
+    char *end = nullptr;
+    if (index == 3u) {
+      signed_response = strtoll(cursor, &end, 10);
+    } else {
+      const uint8_t destination = index < 3u ? index : index - 1u;
+      unsigned_values[destination] = strtoull(cursor, &end, 10);
+      if (unsigned_values[destination] > UINT32_MAX) return false;
+    }
+    if (end == cursor || errno == ERANGE) return false;
+    cursor = end;
+  }
+  while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
+    cursor++;
+  char *hash_begin = cursor;
+  while (isxdigit(static_cast<unsigned char>(*cursor))) cursor++;
+  if (cursor - hash_begin != 64) return false;
+  while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
+    cursor++;
+  if (*cursor != '\0' || unsigned_values[1] != 4u) return false;
+  message->request_sequence = static_cast<uint32_t>(unsigned_values[0]);
+  message->evidence_phase = 4u;
+  message->response_psq_record_sequence =
+      static_cast<uint32_t>(unsigned_values[2]);
+  message->response_counts = signed_response;
+  message->application_sequence = static_cast<uint32_t>(unsigned_values[3]);
+  message->dac_epoch = static_cast<uint32_t>(unsigned_values[4]);
+  message->response_source_last_sequence =
+      static_cast<uint32_t>(unsigned_values[5]);
+  memcpy(message->replay_attestation_sha256, hash_begin, 64u);
+  message->replay_attestation_sha256[64] = '\0';
+  return true;
+}
+
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
 bool queue_dual_core_active_control(OtisRunControlKind kind,
                                     uint32_t first = 0u,
@@ -184,6 +227,18 @@ bool queue_dual_core_active_control(OtisRunControlKind kind,
   } else if (kind == OtisRunControlKind::StatusQuery) {
     control.run_control.nonce = first;
   }
+  return otis_dual_core_publish_service(&control);
+}
+
+bool queue_dual_core_plant_sign_evidence_ack(
+    const OtisRunControlMessage &parsed) {
+  OtisServiceMessage control = {};
+  control.kind = OtisServiceMessageKind::RunControl;
+  control.run_control = parsed;
+  control.run_control.sequence = dual_core_service_sequence++;
+  control.run_control.published_ticks = otis_capture_ticks_now();
+  control.run_control.kind = OtisRunControlKind::PlantSignEvidenceRelease;
+  control.run_control.asserted = true;
   return otis_dual_core_publish_service(&control);
 }
 
@@ -754,6 +809,21 @@ void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
 #endif
 }
 
+void propagate_cx317_applied_epoch_to_previews_exact(
+    uint16_t applied_code, uint32_t dac_epoch, uint32_t now_s,
+    uint64_t application_ticks, uint32_t capture_session) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  otis_cx317_preview_live_on_dac_applied_epoch_exact(
+      applied_code, dac_epoch, now_s, application_ticks, capture_session);
+  if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
+    otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
+#else
+  (void)application_ticks;
+  (void)capture_session;
+  propagate_cx317_applied_epoch_to_previews(applied_code, dac_epoch, now_s);
+#endif
+}
+
 void service_dual_core_timing_inputs(void) {
   OtisServiceMessage message;
   for (uint32_t consumed = 0u;
@@ -886,11 +956,30 @@ void service_dual_core_timing_inputs(void) {
         otis_cx317_active_live_get_status(&active_status, millis() / 1000u);
         if (active_status.manual_start_confirmed &&
             active_status.dac_epoch != 0u) {
-          propagate_cx317_applied_epoch_to_previews(
-              ack.applied_code, active_status.dac_epoch, millis() / 1000u);
+          uint64_t setup_application_extended_ticks = 0u;
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+          if (!otis_cx317_preview_live_project_setup_timer0_ticks(
+                  ack.application_timestamp_ticks, ack.session_id,
+                  &setup_application_extended_ticks)) {
+            otis_dual_core_latch_fault(
+                OtisPartitionFault::ActuatorAcknowledgementMismatch);
+            continue;
+          }
+#else
+          setup_application_extended_ticks = ack.application_timestamp_ticks;
+#endif
+          propagate_cx317_applied_epoch_to_previews_exact(
+              ack.applied_code, active_status.dac_epoch, millis() / 1000u,
+              setup_application_extended_ticks, ack.session_id);
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+          if (!otis_cx317_active_live_confirm_setup_consumers_exact(
+                  ack.applied_code, active_status.dac_epoch,
+                  setup_application_extended_ticks, ack.session_id))
+#else
           if (!otis_cx317_active_live_confirm_setup_consumers(
                   ack.applied_code, active_status.dac_epoch))
+#endif
             otis_dual_core_latch_fault(
                 OtisPartitionFault::ActuatorAcknowledgementMismatch);
 #endif
@@ -1014,6 +1103,24 @@ void service_dual_core_timing_inputs(void) {
                           : "evidence_release_rejected_on_core1");
         otis_dual_core_publish_critical(&transition);
       } else if (message.run_control.kind ==
+                 OtisRunControlKind::PlantSignEvidenceRelease) {
+        const bool accepted =
+            otis_cx317_active_live_acknowledge_plant_sign_response(
+                message.run_control.request_sequence,
+                message.run_control.response_psq_record_sequence,
+                message.run_control.response_counts,
+                message.run_control.application_sequence,
+                message.run_control.dac_epoch,
+                message.run_control.response_source_last_sequence,
+                message.run_control.replay_attestation_sha256,
+                otis_capture_ticks_now());
+        snprintf(transition.component, sizeof(transition.component), "%s",
+                 "cx321_plant_sign");
+        snprintf(transition.reason, sizeof(transition.reason), "%s",
+                 accepted ? "plant_sign_evidence_ack_accepted_on_core1"
+                          : "plant_sign_evidence_ack_rejected_on_core1");
+        otis_dual_core_publish_critical(&transition);
+      } else if (message.run_control.kind ==
                  OtisRunControlKind::StatusQuery) {
         otis_cx317_active_live_set_status_query_nonce(
             message.run_control.nonce);
@@ -1135,6 +1242,9 @@ void service_dual_core_actuator_request(
       &actionable, &accepted, pending.correction_ordinal,
       static_cast<uint32_t>(acknowledgement.acknowledgement_ticks /
                             16000000ull));
+  // Replace the pre-write/acceptance tick with the first exact timer0 sample
+  // after the sole DAC write attempt returns.
+  acknowledgement.acknowledgement_ticks = otis_capture_ticks_now();
   acknowledgement.kind = OtisActuatorAckKind::Applied;
   acknowledgement.accepted_code = applied.accepted_code;
   acknowledgement.applied_code = applied.applied_code;
@@ -1231,6 +1341,7 @@ void service_dual_core_setup_transaction(
   // ambiguous I2C call is terminal for this boot and is never retried.
   dual_core_manual_start_consumed = true;
   const bool ok = otis_dac_ad5693r_set_raw(request.requested_code);
+  acknowledgement.application_timestamp_ticks = otis_capture_ticks_now();
   acknowledgement.kind = ok ? OtisSetupApplicationAck::Kind::Applied
                             : OtisSetupApplicationAck::Kind::Failed;
   acknowledgement.applied_code = ok ? request.requested_code : 0u;
@@ -1687,6 +1798,7 @@ void service_cx317_active_health(void) {
     otis_cx317_active_live_note_manual_start(
         dual_core_static_code.applied_code, true, now_ms / 1000u);
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if !OTIS_ENABLE_CX321_ACTIVE_HYBRID
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
     propagate_cx317_applied_epoch_to_previews(
@@ -1697,6 +1809,7 @@ void service_cx317_active_health(void) {
             dual_core_static_code.applied_code, active_status.dac_epoch))
       otis_dual_core_latch_fault(
           OtisPartitionFault::ActuatorAcknowledgementMismatch);
+#endif
 #endif
 #endif
   }
@@ -1847,9 +1960,16 @@ void service_cx317_active_application_outcome(void) {
 #endif
   if (active_outcome.applied) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+    propagate_cx317_applied_epoch_to_previews_exact(
+        active_outcome.applied_code, active_outcome.dac_epoch,
+        millis() / 1000u, active_outcome.application_timestamp_ticks,
+        active_outcome.capture_session);
+#else
     propagate_cx317_applied_epoch_to_previews(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u);
+#endif
 #else
     otis_cx317_preview_live_on_dac_applied(active_outcome.applied_code,
                                            millis() / 1000u);
@@ -4480,19 +4600,35 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 OTIS_FLAG_NONE);
 #endif
   } else if (command.kind == OtisSerialCommandKind::ActiveEvidence) {
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID && OTIS_ENABLE_DUAL_CORE_PARTITION
+    OtisRunControlMessage plant_sign_ack = {};
+    const bool plant_sign_parsed =
+        command.arguments_valid && parse_cx321_plant_sign_evidence_ack(
+                                       command.text_argument,
+                                       &plant_sign_ack);
+#endif
     uint32_t values[2];
     const bool parsed = command.arguments_valid &&
                         parse_active_u32_fields(command.text_argument, values,
                                                 2u);
-    const bool accepted = parsed &&
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
-                          queue_dual_core_active_control(
-                              OtisRunControlKind::EvidenceRelease, values[0],
-                              values[1]);
-#else
-                          otis_cx317_active_live_acknowledge_evidence(
-                              values[0], values[1], millis() / 1000u);
+    const bool accepted =
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID && OTIS_ENABLE_DUAL_CORE_PARTITION
+        (plant_sign_parsed
+             ? queue_dual_core_plant_sign_evidence_ack(plant_sign_ack)
+             :
 #endif
+        parsed &&
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+             queue_dual_core_active_control(
+                 OtisRunControlKind::EvidenceRelease, values[0], values[1])
+#else
+             otis_cx317_active_live_acknowledge_evidence(
+                 values[0], values[1], millis() / 1000u)
+#endif
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID && OTIS_ENABLE_DUAL_CORE_PARTITION
+        )
+#endif
+        ;
     emit_status("cx317_active", "evidence_ack",
                 accepted ? "accepted" : "rejected", accepted
                     ? OTIS_SEVERITY_INFO

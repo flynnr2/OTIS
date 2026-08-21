@@ -32,6 +32,12 @@ SUPERVISOR_EVENTS = Path("reports/cx317_active_supervisor_events.jsonl")
 ARM_PROGRESS_THRESHOLD = 520
 LEASE_PERIOD_S = 5.0
 QUERY_PERIOD_S = 10.0
+PLANT_SIGN_SPLIT_VISIBILITY_TIMEOUT_S = 2.0
+PLANT_SIGN_SPLIT_POLL_S = 0.02
+# Core 1 releases the exact request to Core 0 with this wrapping-monotonic
+# actuator deadline. Core 0 records the exact post-write capture tick; ACT
+# records the later Core 1 acknowledgement-consumption second.
+CROSS_CORE_ACTUATOR_ACK_MAXIMUM_AGE_S = 30
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,134 @@ def _latest_health(path: Path) -> dict[tuple[str, str], str]:
                 "status_value", ""
             )
     return latest
+
+
+def _cx321_response_is_plant_sign_identification(
+    row: dict[str, str]
+) -> bool:
+    """Classify the first frozen +/−21-code CX321 transaction explicitly."""
+
+    ordinal = int(row["correction_ordinal"])
+    delta = int(row["requested_delta_codes"])
+    cumulative = int(row["cumulative_after_codes"])
+    if ordinal == 1:
+        if abs(delta) != 21 or cumulative != 21:
+            raise ValueError(
+                "CX321 first phase-4 transaction is not the frozen plant-sign stimulus"
+            )
+        return True
+    return False
+
+
+def _await_cx321_plant_sign_response(
+    psq_path: Path,
+    *,
+    request_sequence: int,
+    timeout_s: float = PLANT_SIGN_SPLIT_VISIBILITY_TIMEOUT_S,
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Bound the serial-split race between ACT and matching PSQ response rows."""
+
+    deadline = time.monotonic() + timeout_s
+    while True:
+        if psq_path.exists():
+            _fsync_path(psq_path)
+            rows = _read_csv(psq_path)
+            matches = [
+                item
+                for item in rows
+                if item.get("event") == "response"
+                and item.get("request_sequence") == str(request_sequence)
+            ]
+            if matches:
+                return rows, matches[-1]
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                "CX321 identification ACT response became visible before its "
+                "matching PSQ response"
+            )
+        time.sleep(PLANT_SIGN_SPLIT_POLL_S)
+
+
+def _join_cx321_psq_response_to_act(
+    *,
+    psq_response: dict[str, str],
+    act_response: dict[str, str],
+    timer_hz: int = 16_000_000,
+) -> dict[str, object]:
+    """Bind the exact PSQ application tuple to its durable ACT response."""
+
+    if act_response.get("event") != "response":
+        raise ValueError("CX321 phase-4 acknowledgement requires an ACT response")
+    exact_fields = (
+        "request_sequence",
+        "application_sequence",
+        "requested_delta_codes",
+        "requested_code",
+        "accepted_code",
+        "applied_code",
+        "dac_epoch",
+    )
+    for field in exact_fields:
+        try:
+            psq_value = int(psq_response[field])
+            act_value = int(act_response[field])
+        except (KeyError, ValueError) as exc:
+            raise ValueError(
+                f"CX321 PSQ/ACT join lacks canonical {field}"
+            ) from exc
+        if psq_value != act_value:
+            raise ValueError(
+                f"CX321 PSQ/ACT {field} differs: {psq_value} != {act_value}"
+            )
+    try:
+        application_ticks = int(psq_response["application_timestamp_ticks"])
+        application_s = int(act_response["application_timestamp_s"])
+    except (KeyError, ValueError) as exc:
+        raise ValueError(
+            "CX321 PSQ/ACT application timestamp is not canonical"
+        ) from exc
+    if application_s < 0 or timer_hz <= 0 or application_ticks < 0:
+        raise ValueError(
+            "CX321 PSQ/ACT application timestamp is outside its domain"
+        )
+    # A legitimate cross-core acknowledgement can cross an integer-second
+    # boundary. The exact Core 0 write must precede the end of Core 1's
+    # consumption second, and their retained coarse-second separation remains
+    # bounded by the same 30-second actuator deadline enforced in firmware.
+    consumption_second_start = application_s * timer_hz
+    consumption_second_end = consumption_second_start + timer_hz
+    if application_ticks >= consumption_second_end:
+        raise ValueError(
+            "CX321 PSQ Core0 application tick follows its ACT Core1 "
+            "acknowledgement-consumption second"
+        )
+    acknowledgement_lag_lower_bound_ticks = max(
+        0, consumption_second_start - application_ticks
+    )
+    if acknowledgement_lag_lower_bound_ticks > (
+        CROSS_CORE_ACTUATOR_ACK_MAXIMUM_AGE_S * timer_hz
+    ):
+        raise ValueError(
+            "CX321 PSQ/ACT cross-core acknowledgement exceeds the frozen "
+            "30-second actuator deadline"
+        )
+    return {
+        "exact": True,
+        "act_transaction_record_sequence": int(
+            act_response["transaction_record_sequence"]
+        ),
+        "request_sequence": int(psq_response["request_sequence"]),
+        "application_sequence": int(psq_response["application_sequence"]),
+        "application_timestamp_s": application_s,
+        "application_timestamp_ticks": application_ticks,
+        "acknowledgement_lag_lower_bound_ticks": (
+            acknowledgement_lag_lower_bound_ticks
+        ),
+        "cross_core_actuator_ack_maximum_age_s": (
+            CROSS_CORE_ACTUATOR_ACK_MAXIMUM_AGE_S
+        ),
+        "timer_hz": timer_hz,
+    }
 
 
 def validate_transaction_row(
@@ -428,7 +562,117 @@ class ActiveTransactionSupervisor:
         active_csv = self.run_dir / ACTIVE_CSV
         _fsync_path(active_csv)
         _fsync_path(capsule)
-        if self.spec.profile == "cx320_active_hybrid" and phase == 4:
+        hybrid_profile = self.spec.profile in {
+            "cx320_active_hybrid",
+            "cx321_active_hybrid",
+        }
+        acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
+        plant_sign_response = False
+        identification_phase4 = (
+            self.spec.profile == "cx321_active_hybrid"
+            and phase == 4
+            and _cx321_response_is_plant_sign_identification(row)
+        )
+        if identification_phase4:
+            from .cx321_plant_sign_evidence_guard import (
+                PlantSignReplayContext,
+                complete_plant_sign_evidence_chain,
+                replay_plant_sign_evidence,
+                replay_plant_sign_windows_against_snapshots,
+            )
+
+            psq_path = self.run_dir / "csv/plant_sign_qualification_v1.csv"
+            psq_rows, response_psq = _await_cx321_plant_sign_response(
+                psq_path, request_sequence=request_sequence
+            )
+            if (
+                response_psq.get("run_identity") != self.spec.run_identity
+                or response_psq.get("build_identity")
+                != self.expected_build_identity
+                or response_psq.get("profile_identity") != self.spec.profile
+                or int(response_psq.get("capture_session", "0"))
+                != int(self.state.get("initial_session_id") or 0)
+            ):
+                raise ValueError(
+                    "CX321 plant-sign response identity differs from the active run"
+                )
+            expected_plant_sign = getattr(self, "plant_sign_identities", None)
+            if not isinstance(expected_plant_sign, dict) or any(
+                response_psq.get(field) != expected
+                for field, expected in expected_plant_sign.items()
+            ):
+                raise ValueError(
+                    "CX321 plant-sign response provenance differs from the frozen manifest"
+                )
+            response_index = psq_rows.index(response_psq)
+            prefix = psq_rows[: response_index + 1]
+            context = PlantSignReplayContext(
+                run_identity=response_psq["run_identity"],
+                build_identity=response_psq["build_identity"],
+                profile_identity=response_psq["profile_identity"],
+                policy_sha256=response_psq["policy_sha256"],
+                plant_sign_gate_sha256=response_psq["plant_sign_gate_sha256"],
+                identification_estimator_sha256=response_psq[
+                    "identification_estimator_sha256"
+                ],
+                identification_estimator_config_sha256=response_psq[
+                    "identification_estimator_config_sha256"
+                ],
+                natural_frequency_estimator_sha256=response_psq[
+                    "natural_frequency_estimator_sha256"
+                ],
+                capture_session=int(response_psq["capture_session"]),
+            )
+            attestation = replay_plant_sign_evidence(prefix, context)
+            if not attestation["passed"]:
+                raise ValueError(
+                    "CX321 plant-sign response did not pass exact replay"
+                )
+            snapshot_path = self.run_dir / "csv/pps_snapshots.csv"
+            _fsync_path(snapshot_path)
+            snapshot_proof = replay_plant_sign_windows_against_snapshots(
+                prefix,
+                _read_csv(snapshot_path),
+                context,
+            )
+            act_join = _join_cx321_psq_response_to_act(
+                psq_response=response_psq,
+                act_response=row,
+                timer_hz=context.timer_hz,
+            )
+            complete_chain = complete_plant_sign_evidence_chain(
+                psq_replay=attestation,
+                snapshot_window_proof=snapshot_proof,
+                act_response_join=act_join,
+            )
+            attestation["psq_replay_attestation_sha256"] = attestation[
+                "attestation_sha256"
+            ]
+            attestation["act_response_join"] = act_join
+            attestation["snapshot_window_proof"] = snapshot_proof
+            attestation["complete_evidence_chain"] = complete_chain
+            # This is the opaque digest consumed and echoed by firmware.  It
+            # now binds PSQ + raw SNP + ACT, while the PSQ-only digest remains
+            # explicit above for deterministic independent replay.
+            attestation["attestation_sha256"] = complete_chain[
+                "attestation_sha256"
+            ]
+            plant_sign_response = True
+            acknowledgement_command = (
+                f"ACTIVE EVIDENCE {request_sequence} 4 "
+                f"{attestation['response_record_sequence']} "
+                f"{attestation['response_counts']} "
+                f"{attestation['application_sequence']} "
+                f"{attestation['dac_epoch']} "
+                f"{attestation['response_source_last_sequence']} "
+                f"{attestation['attestation_sha256']}"
+            )
+            attestation_path = capsule_dir / (
+                f"record_{record_sequence:06d}_plant_sign_replay_attestation.json"
+            )
+            _atomic_json(attestation_path, attestation)
+            _fsync_path(attestation_path)
+        if hybrid_profile and phase == 4 and not plant_sign_response:
             from .active_hybrid_evidence_guard import (
                 replay_response_before_acknowledgement,
             )
@@ -441,13 +685,23 @@ class ActiveTransactionSupervisor:
                 active_hybrid_csv=active_hybrid_csv,
                 active_transactions_csv=active_csv,
                 response_row=row,
+                policy_path=getattr(self, "natural_policy_path", None),
+                expected_profile_identity=self.spec.profile,
+                expected_active_policy_sha256=getattr(
+                    self, "expected_active_policy_sha256", None
+                ),
+                plant_sign_csv=(
+                    self.run_dir / "csv/plant_sign_qualification_v1.csv"
+                    if self.spec.profile == "cx321_active_hybrid"
+                    else None
+                ),
             )
             attestation_path = capsule_dir / (
                 f"record_{record_sequence:06d}_response_replay_attestation.json"
             )
             _atomic_json(attestation_path, attestation)
             _fsync_path(attestation_path)
-        if self.spec.profile == "cx320_active_hybrid":
+        if hybrid_profile:
             inflight = self.state.get("inflight_evidence_acknowledgement")
             if inflight is None:
                 inflight = {
@@ -459,7 +713,7 @@ class ActiveTransactionSupervisor:
                 }
                 self.state["inflight_evidence_acknowledgement"] = inflight
                 self._save()
-                self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
+                self._command(acknowledgement_command)
                 inflight["host_write_confirmed"] = True
                 self._save()
             elif (
@@ -468,11 +722,11 @@ class ActiveTransactionSupervisor:
                 or int(inflight.get("phase", -1)) != phase
             ):
                 raise ValueError(
-                    "a different CX320 evidence acknowledgement is already inflight"
+                    "a different active-hybrid evidence acknowledgement is already inflight"
                 )
             if not self._confirm_evidence_acknowledgement(inflight):
                 raise ValueError(
-                    "CX320 evidence acknowledgement reached the host serial write "
+                    "active-hybrid evidence acknowledgement reached the host serial write "
                     "boundary but firmware consumption is unconfirmed"
                 )
         else:

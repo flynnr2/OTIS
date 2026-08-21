@@ -15,6 +15,12 @@ constexpr uint16_t kMaximumCode = 0xAB00u;
 constexpr uint16_t kStartCode = 0xA83Cu;
 constexpr uint32_t kMinimumCadenceS = 1800u;
 constexpr uint32_t kPhaseQualificationResidenceS = 1800u;
+constexpr uint64_t kTimer0TicksPerSecond = 16000000ull;
+constexpr uint64_t kMinimumCadenceTicks =
+    static_cast<uint64_t>(kMinimumCadenceS) * kTimer0TicksPerSecond;
+constexpr uint64_t kPhaseQualificationResidenceTicks =
+    static_cast<uint64_t>(kPhaseQualificationResidenceS) *
+    kTimer0TicksPerSecond;
 constexpr uint16_t kMaximumApplications = 4u;
 constexpr uint16_t kMaximumCumulativeMovementCodes = 84u;
 
@@ -84,9 +90,9 @@ const char *chatter_reason(const OtisActiveHybridEngine *engine,
   const uint16_t movement =
       static_cast<uint16_t>(delta < 0 ? -delta : delta);
   const uint16_t path =
-      static_cast<uint16_t>(engine->cumulative_movement_codes + movement);
+      static_cast<uint16_t>(engine->natural_cumulative_movement_codes + movement);
   const int32_t net = static_cast<int32_t>(engine->applied_code) + delta -
-                      static_cast<int32_t>(kStartCode);
+                      static_cast<int32_t>(engine->natural_chatter_origin_code);
   if (path >= 42u && abs(net) <= 0.25 * path)
     return "prospective_low_efficiency_path";
   return nullptr;
@@ -101,14 +107,55 @@ void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
   engine->state = OtisActiveHybridState::FrequencyAcquire;
   engine->reason = "initialized_frequency_acquire";
   engine->applied_code = kStartCode;
+  engine->natural_chatter_origin_code = kStartCode;
   engine->dac_epoch = 1u;
   engine->last_application_available = true;
   engine->last_application_s = setup_application_s;
 }
 
-bool otis_active_hybrid_engine_decide(
+bool otis_active_hybrid_engine_rebase_after_plant_sign(
+    OtisActiveHybridEngine *engine, uint16_t applied_code, uint32_t dac_epoch,
+    uint16_t global_correction_count,
+    uint16_t global_cumulative_movement_codes,
+    uint64_t identification_application_ticks,
+    uint64_t response_acknowledgement_ticks) {
+  if (engine == nullptr || applied_code < kMinimumCode ||
+      applied_code > kMaximumCode || dac_epoch == 0u ||
+      global_correction_count != 1u ||
+      global_cumulative_movement_codes != 21u ||
+      identification_application_ticks == 0u ||
+      response_acknowledgement_ticks < identification_application_ticks) {
+    if (engine != nullptr) fault(engine, "invalid_plant_sign_handoff");
+    return false;
+  }
+  *engine = {};
+  engine->state = OtisActiveHybridState::PhaseQualify;
+  engine->reason = "plant_sign_acknowledged_phase_qualification_started";
+  engine->applied_code = applied_code;
+  engine->dac_epoch = dac_epoch;
+  engine->correction_count = global_correction_count;
+  engine->cumulative_movement_codes = global_cumulative_movement_codes;
+  engine->natural_chatter_origin_code = applied_code;
+  engine->natural_cumulative_movement_codes = 0u;
+  engine->last_application_available = true;
+  engine->last_application_s = static_cast<uint32_t>(
+      identification_application_ticks / kTimer0TicksPerSecond);
+  engine->exact_tick_timing_required = true;
+  engine->last_application_ticks = identification_application_ticks;
+  engine->phase_qualification_started = true;
+  engine->phase_qualification_started_s = static_cast<uint32_t>(
+      response_acknowledgement_ticks / kTimer0TicksPerSecond);
+  engine->phase_qualification_started_ticks =
+      response_acknowledgement_ticks;
+  return true;
+}
+
+namespace {
+
+bool decide_impl(
     OtisActiveHybridEngine *engine,
     const OtisActiveHybridObservation *observation,
+    bool observation_ticks_available, uint64_t observation_ticks,
     OtisActiveHybridDecision *decision) {
   if (engine == nullptr || observation == nullptr || decision == nullptr ||
       !isfinite(observation->frequency_error_hz))
@@ -129,6 +176,14 @@ bool otis_active_hybrid_engine_decide(
   if (engine->state == OtisActiveHybridState::FailStatic) {
     reason = engine->fault_reason == nullptr ? "fail_static_latched"
                                              : engine->fault_reason;
+  } else if (engine->exact_tick_timing_required &&
+             (!observation_ticks_available ||
+              observation_ticks < engine->last_application_ticks ||
+              (engine->phase_qualification_started &&
+               observation_ticks <
+                   engine->phase_qualification_started_ticks))) {
+    fault(engine, "cx321_exact_tick_timing_missing_or_backward");
+    reason = engine->reason;
   } else if (!observation->identity_exact ||
              !observation->common_health_clean) {
     fault(engine, "measurement_authority_or_common_health_fault");
@@ -208,8 +263,13 @@ bool otis_active_hybrid_engine_decide(
         !progressive_release_transition &&
         (engine->state == OtisActiveHybridState::HybridTracking ||
          (engine->phase_qualification_started &&
-          observation->timestamp_s - engine->phase_qualification_started_s >=
-              kPhaseQualificationResidenceS));
+          (engine->exact_tick_timing_required
+               ? observation_ticks -
+                         engine->phase_qualification_started_ticks >=
+                     kPhaseQualificationResidenceTicks
+               : observation->timestamp_s -
+                         engine->phase_qualification_started_s >=
+                     kPhaseQualificationResidenceS)));
     const bool frequency_authorized =
         !tight_inside(observation) &&
         (engine->state == OtisActiveHybridState::FrequencyAcquire ||
@@ -227,9 +287,14 @@ bool otis_active_hybrid_engine_decide(
     }
 
     if (phase_authorized || frequency_authorized) {
-      if (engine->last_application_available &&
-          observation->timestamp_s - engine->last_application_s <
-              kMinimumCadenceS) {
+      const bool cadence_pending =
+          engine->last_application_available &&
+          (engine->exact_tick_timing_required
+               ? observation_ticks - engine->last_application_ticks <
+                     kMinimumCadenceTicks
+               : observation->timestamp_s - engine->last_application_s <
+                     kMinimumCadenceS);
+      if (cadence_pending) {
         decision->cadence_limited = true;
         reason = "minimum_applied_cadence_hold";
       } else {
@@ -305,15 +370,19 @@ bool otis_active_hybrid_engine_decide(
   return true;
 }
 
-bool otis_active_hybrid_engine_note_application(
+bool note_application_impl(
     OtisActiveHybridEngine *engine,
     const OtisActiveHybridDecision *decision,
     uint16_t applied_code, uint32_t dac_epoch,
+    bool application_ticks_available, uint64_t application_ticks,
     bool downstream_consumers_exact) {
   if (engine == nullptr || decision == nullptr ||
       engine->state == OtisActiveHybridState::FailStatic ||
       engine->transaction_outstanding ||
-      decision->requested_delta_codes == 0) {
+      decision->requested_delta_codes == 0 ||
+      (engine != nullptr && engine->exact_tick_timing_required &&
+       (!application_ticks_available || application_ticks == 0u ||
+        application_ticks < engine->last_application_ticks))) {
     if (engine != nullptr) fault(engine, "invalid_or_overlapping_application");
     return false;
   }
@@ -330,8 +399,16 @@ bool otis_active_hybrid_engine_note_application(
                                           : decision->requested_delta_codes);
   engine->cumulative_movement_codes = static_cast<uint16_t>(
       engine->cumulative_movement_codes + movement);
+  engine->natural_cumulative_movement_codes = static_cast<uint16_t>(
+      engine->natural_cumulative_movement_codes + movement);
   engine->last_application_available = true;
-  engine->last_application_s = decision->timestamp_s;
+  if (engine->exact_tick_timing_required) {
+    engine->last_application_ticks = application_ticks;
+    engine->last_application_s = static_cast<uint32_t>(
+        application_ticks / kTimer0TicksPerSecond);
+  } else {
+    engine->last_application_s = decision->timestamp_s;
+  }
   engine->transaction_outstanding = true;
   engine->outstanding_phase_material =
       decision->phase_materially_influenced;
@@ -352,6 +429,41 @@ bool otis_active_hybrid_engine_note_application(
     engine->reason = "application_confirmed_response_required";
   }
   return true;
+}
+
+}  // namespace
+
+bool otis_active_hybrid_engine_decide(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridObservation *observation,
+    OtisActiveHybridDecision *decision) {
+  return decide_impl(engine, observation, false, 0u, decision);
+}
+
+bool otis_active_hybrid_engine_decide_at_ticks(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridObservation *observation,
+    uint64_t observation_ticks, OtisActiveHybridDecision *decision) {
+  return decide_impl(engine, observation, true, observation_ticks, decision);
+}
+
+bool otis_active_hybrid_engine_note_application(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridDecision *decision,
+    uint16_t applied_code, uint32_t dac_epoch,
+    bool downstream_consumers_exact) {
+  return note_application_impl(engine, decision, applied_code, dac_epoch,
+                               false, 0u, downstream_consumers_exact);
+}
+
+bool otis_active_hybrid_engine_note_application_at_ticks(
+    OtisActiveHybridEngine *engine,
+    const OtisActiveHybridDecision *decision,
+    uint16_t applied_code, uint32_t dac_epoch, uint64_t application_ticks,
+    bool downstream_consumers_exact) {
+  return note_application_impl(engine, decision, applied_code, dac_epoch,
+                               true, application_ticks,
+                               downstream_consumers_exact);
 }
 
 bool otis_active_hybrid_engine_note_response(
