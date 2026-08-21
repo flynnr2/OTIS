@@ -9,6 +9,7 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _cx320_commands_exact,
     _frequency_metrics,
     _legacy_checkpoint_terminal_misclassified,
+    _legacy_plant_terminal_decision,
     _metric_contract,
     _phase_metrics,
     _replay_ahy,
@@ -348,6 +349,48 @@ def test_legacy_checkpoint_override_does_not_hide_other_platform_faults() -> Non
     assert not _legacy_checkpoint_terminal_misclassified(
         terminal, checkpoint_rejection_evidence_exact=False
     )
+
+
+def test_legacy_plant_terminal_override_is_exact_and_narrow() -> None:
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "reason": "cx321_live_supervisor_fault:live active_fail_static asserted",
+    }
+    rows = [
+        {
+            "event": "pre2",
+            "state_after": "PLANT_SIGN_NOT_EXERCISED",
+            "reason": "second_pre_window_not_equal_and_tight",
+        }
+    ]
+    assert _legacy_plant_terminal_decision(terminal, rows) == (
+        "plant_sign_qualification_not_exercised"
+    )
+    assert _legacy_plant_terminal_decision(
+        {**terminal, "reason": "cx321_live_supervisor_fault:capture owner lost"},
+        rows,
+    ) is None
+
+
+def test_ahy_replay_accepts_exact_pre_handoff_scientific_terminal() -> None:
+    replay = _replay_ahy(
+        [],
+        [{"event": "manual_start"}],
+        policy_path=POLICY_PATH,
+        expected_run_identity="cx321_active_hybrid:3210001",
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        expected_profile_identity="cx321_active_hybrid",
+        plant_sign_records=[
+            {
+                "event": "pre2",
+                "state_after": "PLANT_SIGN_NOT_EXERCISED",
+                "reason": "second_pre_window_not_equal_and_tight",
+            }
+        ],
+    )
+    assert replay["exact"] is True
+    assert replay["natural_controller_not_reached"] is True
 
 
 def test_partial_prewrite_terminal_is_sealed_as_platform_fault(

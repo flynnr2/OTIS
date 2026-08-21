@@ -40,6 +40,9 @@ from .active_transactions import (
     _utc_now,
 )
 from .contracts import CsvValidationContext, validate_csv
+from .cx321_plant_sign_evidence_guard import (
+    plant_sign_terminal_decision_from_record,
+)
 from .bounded_tight_deadband_prewrite_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     PrewriteReadiness,
@@ -65,6 +68,7 @@ PROGRAMME_ID = "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1"
 PROFILE_ID = "cx320_active_hybrid"
 RUNTIME_RUN_IDENTITY = "cx320_active_hybrid:3200001"
 ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v1.csv")
+PLANT_SIGN_CSV = Path("csv/plant_sign_qualification_v1.csv")
 
 SETUP_CODE = 0xA83C
 MAXIMUM_APPLICATIONS = 4
@@ -707,6 +711,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # FrequencyControlSupervisor additionally requires every phase/hybrid
         # preview stream to remain zero-authority.  That condition is correct
         # for CX319 but contradicts CX320's intended combined controller.
+        if (
+            self.programme.identification_required
+            and health.get(("cx317_active", "fail_static")) == "true"
+        ):
+            rows = _read_csv(self.run_dir / PLANT_SIGN_CSV)
+            last = rows[-1] if rows else {}
+            decision = plant_sign_terminal_decision_from_record(last)
+            if decision is not None:
+                self.state["arm_pending"] = False
+                self.state["arm_sent_at_utc"] = None
+                self._abort(decision)
+                return
         ControlSupervisorBase._check_fail_static_health(self, health)
         integrity = self._runtime_health_integrity(health)
         if integrity.mismatches or (

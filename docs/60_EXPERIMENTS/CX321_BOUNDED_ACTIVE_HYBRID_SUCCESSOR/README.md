@@ -1,8 +1,12 @@
 # CX321 Bounded Active-Hybrid Successor
 
-Status: two prewrite platform terminals are sealed with no setup or DAC write;
-the narrow host status-key correction, exact refreeze and same-bundle
-rehearsal passed, and predecessor-bound attempt 3 is authorized for entry.
+Status: Stage 5 attempt 3 reached the frozen plant-sign entry gate and is a
+sealed bounded non-pass, `plant_sign_qualification_not_exercised`. The two
+contiguous 1,500-second fixed-code windows were individually `TIGHT_INSIDE`
+but differed by one exact count (`+3`, then `+2`), so firmware correctly made
+no identification or natural-controller application. The activation is
+consumed and no automatic retry is authorized. See
+[`04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md`](04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md).
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -255,4 +259,11 @@ bundle `ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072`,
 proposal `5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567`
 and activation
 `ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4`
-retain the exact original UF2 and all scientific criteria.
+retain the exact original UF2 and all scientific criteria. Attempt 3 passed
+flash, sole ownership, setup propagation and qualified-origin entry with zero
+parser errors. Its exact pre-window totals were `15,000,000,003` and
+`15,000,000,002`; the prospective equality precondition rejected the
+identification transaction before any automatic DAC write. The superseding
+offline seal replays the unchanged physical evidence exactly and records the
+bounded non-pass. The next useful gate is an offline successor-design decision,
+not repetition of the consumed bundle.

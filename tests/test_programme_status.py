@@ -130,12 +130,9 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
         "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
     cx321 = status["programmes"]["cx321_bounded_active_hybrid_successor"]
-    assert cx321["state"] == "stage5_attempt3_authorized_live_entry_pending"
-    assert cx321["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        "cx321_stage5_bounded_active_hybrid_live",
-    ]
-    assert cx321["physical_authority_effective"] is True
+    assert cx321["state"] == "stage5_bounded_nonpass_plant_sign_not_exercised"
+    assert cx321["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx321["physical_authority_effective"] is False
     assert cx321["predecessor_programme"] == "cx320_bounded_active_hybrid"
     assert cx321["plant_sign_gate"]["selected_step_codes"] == 21
     assert cx321["plant_sign_gate"]["identification_span_s"] == 1500
@@ -168,8 +165,11 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
         "ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4"
     )
     assert cx321["effective_activation"]["attempt_ordinal"] == 3
-    assert cx321["effective_activation"]["effective"] is True
-    assert cx321["effective_activation"]["consumed"] is False
+    assert cx321["effective_activation"]["effective"] is False
+    assert cx321["effective_activation"]["consumed"] is True
+    assert cx321["effective_activation"]["consumed_by_run_id"] == (
+        "stage5_live_attempt3_20260821T1543Z"
+    )
     assert cx321["stage5_attempts"][0]["capture_started"] is False
     assert cx321["stage5_attempts"][0]["setup_applications"] == 0
     assert cx321["stage5_attempts"][0]["automatic_applications"] == 0
@@ -183,6 +183,12 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
     assert cx321["stage5_attempts"][1]["scientific_result"] == (
         "none_prewrite_status_transport_alias_required"
     )
+    assert cx321["stage5_attempts"][2]["terminal"] == (
+        "plant_sign_qualification_not_exercised"
+    )
+    assert cx321["stage5_attempts"][2]["pre1_total_count"] == 15_000_000_003
+    assert cx321["stage5_attempts"][2]["pre2_total_count"] == 15_000_000_002
+    assert cx321["stage5_attempts"][2]["identification_applications"] == 0
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1162,10 +1168,11 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
     assert require_programme_operation_allowed(
         "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION
     ) == cx321
-    assert require_programme_operation_allowed(
-        "cx321_bounded_active_hybrid_successor",
-        "cx321_stage5_bounded_active_hybrid_live",
-    ) == cx321
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "cx321_bounded_active_hybrid_successor",
+            "cx321_stage5_bounded_active_hybrid_live",
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx320_bounded_active_hybrid",

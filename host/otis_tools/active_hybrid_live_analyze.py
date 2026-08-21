@@ -62,6 +62,7 @@ from .control_evidence_replay import (
 from .cx321_plant_sign_evidence_guard import (
     PlantSignReplayContext,
     complete_plant_sign_evidence_chain,
+    plant_sign_terminal_decision_from_record,
     replay_plant_sign_evidence,
     replay_plant_sign_leading_prefix,
     replay_plant_sign_terminal_prefix,
@@ -591,6 +592,27 @@ def _replay_ahy(
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
+    if plant_sign_records is not None:
+        handoffs = [
+            row for row in plant_sign_records if row.get("event") == "handoff"
+        ]
+        terminal_prefix = bool(plant_sign_records) and (
+            plant_sign_terminal_decision_from_record(plant_sign_records[-1])
+            is not None
+        )
+        if not handoffs and terminal_prefix and not decisions:
+            return {
+                "exact": True,
+                "decision_count": 0,
+                "phase_nonzero_decision_count": 0,
+                "phase_material_decision_count": 0,
+                "unmatched_request_decision_sequences": [],
+                "completed_response_decision_sequences": [],
+                "all_response_checkpoints_passed": True,
+                "comparisons": [],
+                "natural_controller_not_reached": True,
+            }
+
     return replay_active_hybrid_history(
         decisions,
         transactions,
@@ -1015,6 +1037,23 @@ def _legacy_checkpoint_terminal_misclassified(
     )
 
 
+def _legacy_plant_terminal_decision(
+    terminal: dict[str, Any], rows: list[dict[str, str]]
+) -> str | None:
+    """Recover CX321's exact early science terminal from its retained PSQ row."""
+
+    if not (
+        rows
+        and terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and terminal.get("reason")
+        == "cx321_live_supervisor_fault:live active_fail_static asserted"
+    ):
+        return None
+    return plant_sign_terminal_decision_from_record(rows[-1])
+
+
 def _source_hashes(
     run_dir: Path,
     manifest: RunManifest,
@@ -1080,6 +1119,9 @@ def _cx321_plant_sign_replay(
     decision = terminal.get("primary_decision") or terminal.get(
         "preliminary_decision"
     )
+    corrected_decision = _legacy_plant_terminal_decision(terminal, rows)
+    if corrected_decision is not None:
+        decision = corrected_decision
     if not rows:
         if not isinstance(decision, str) or not decision:
             raise ValueError(
@@ -1170,9 +1212,14 @@ def _cx321_plant_sign_replay(
         "plant_sign_qualification_failed",
     }:
         return with_complete_proof(
-            replay_plant_sign_terminal_prefix(
-                rows, context, terminal_decision=str(decision)
-            )
+            {
+                **replay_plant_sign_terminal_prefix(
+                    rows, context, terminal_decision=str(decision)
+                ),
+                "legacy_supervisor_terminal_misclassification_corrected": (
+                    corrected_decision is not None
+                ),
+            }
         )
     if tuple(row.get("event") for row in rows) == (
         "pre1",
@@ -1264,7 +1311,11 @@ def analyze(
     identities = {
         "estimator_sha256": policy.frequency_estimator_sha256,
         "model_sha256": policy.plant_model_sha256,
-        "active_policy_sha256": policy.policy_sha256,
+        "active_policy_sha256": (
+            str(manifest_value["programme_policy"]["sha256"])
+            if programme.identification_required
+            else policy.policy_sha256
+        ),
         "response_policy_sha256": policy.response_policy_sha256,
         "numerical_policy_sha256": policy.policy_sha256,
     }
@@ -1421,6 +1472,11 @@ def analyze(
                 "scientific_terminal_exact": False,
                 "error": str(exc),
             }
+    legacy_plant_terminal_misclassified = bool(
+        plant_sign_replay.get(
+            "legacy_supervisor_terminal_misclassification_corrected"
+        )
+    )
     operator_abort = terminal.get("primary_decision") == "operator_abort"
     response_rows = [row for row in active_rows if row.get("event") == "response"]
     terminal_rejected_response_exact = (
@@ -1457,6 +1513,7 @@ def analyze(
         terminal.get("primary_decision")
         == "measurement_authority_or_platform_fault"
         and not legacy_checkpoint_terminal_misclassified
+        and not legacy_plant_terminal_misclassified
     )
     terminal_requires_abort = (
         terminal.get("result") in {"aborted", "nonpass"}
@@ -1629,7 +1686,10 @@ def analyze(
             and health.get(("cx317_active", "evidence_pending")) == "false"
             and health.get(("cx317_active", "evidence_request_sequence"), "0")
             == "0"
-            and supervisor_state.get("arm_pending") is False
+            and (
+                supervisor_state.get("arm_pending") is False
+                or legacy_plant_terminal_misclassified
+            )
             and terminal_static_code is not None
             and int(terminal_static_code) == last_applied_code
         )
@@ -1753,7 +1813,11 @@ def analyze(
         ),
     )
     preliminary_decision = terminal.get("preliminary_decision")
-    plant_terminal_decision = terminal.get("primary_decision")
+    plant_terminal_decision = (
+        plant_sign_replay.get("terminal_decision")
+        if plant_sign_replay.get("scientific_terminal_exact") is True
+        else terminal.get("primary_decision")
+    )
     if (
         programme.identification_required
         and (plant_terminal_decision or preliminary_decision)
@@ -1879,10 +1943,14 @@ def analyze(
             "supervisor_terminal": terminal,
             "legacy_supervisor_terminal_misclassification_corrected": (
                 legacy_checkpoint_terminal_misclassified
+                or legacy_plant_terminal_misclassified
             ),
             "offline_corrected_primary_decision": (
                 primary_decision
-                if legacy_checkpoint_terminal_misclassified
+                if (
+                    legacy_checkpoint_terminal_misclassified
+                    or legacy_plant_terminal_misclassified
+                )
                 else None
             ),
             "frozen_checkpoint_rejection_exact": (

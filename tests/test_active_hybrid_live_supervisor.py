@@ -767,6 +767,38 @@ def test_cx321_identification_prearm_uses_last_100_accepted_intervals(
     assert '"identification_prearm": true' in event
 
 
+def test_cx321_terminal_psq_is_classified_before_generic_fail_static(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX321_PROGRAMME
+    supervisor.state["arm_pending"] = True
+    supervisor.state["arm_sent_at_utc"] = "2026-08-21T16:57:34Z"
+    path = supervisor.run_dir / live.PLANT_SIGN_CSV
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=("event", "state_after", "reason")
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "event": "pre2",
+                "state_after": "PLANT_SIGN_NOT_EXERCISED",
+                "reason": "second_pre_window_not_equal_and_tight",
+            }
+        )
+
+    supervisor._check_fail_static_health(
+        {("cx317_active", "fail_static"): "true"}
+    )
+
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "plant_sign_qualification_not_exercised"
+    )
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["arm_sent_at_utc"] is None
+
+
 def test_checkpoint_release_is_observed_only_from_firmware_state(
     tmp_path: Path,
 ) -> None:

@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx321_bounded_active_hybrid_successor": {
-      "state": "stage5_attempt3_authorized_live_entry_pending",
+      "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
       "allowed_operations": [
-        "offline_preparation",
-        "cx321_stage5_bounded_active_hybrid_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-21",
-      "authority": "expanded_remediation_authority_host_corrected_exact_activation_effective",
-      "physical_authority_effective": true,
+      "authority": "attempt3_consumed_bounded_nonpass_no_live_retry_authorized",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx320_bounded_active_hybrid",
       "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
       "plant_sign_gate": {
@@ -107,8 +106,9 @@
         "activation_sha256": "ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4",
         "attempt_ordinal": 3,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt3_20260821T1543Z"
       },
       "stage5_attempts": [
         {
@@ -151,6 +151,31 @@
           "seal_file_sha256": "963273813f8d3c3f99ffeae21af82f776ee4a6aae1243f6e2e7e624230e54d7a",
           "evidence_content_sha256": "d0f2ad315ee17c8aa161391be4f783b2c4f00635121aad79c474f9f0bed12aa6",
           "scientific_result": "none_prewrite_status_transport_alias_required"
+        },
+        {
+          "ordinal": 3,
+          "run_id": "stage5_live_attempt3_20260821T1543Z",
+          "classification": "completed_campaign_bounded_nonpass",
+          "terminal": "plant_sign_qualification_not_exercised",
+          "terminal_reason": "adjacent_exact_1500_interval_pre_totals_differed_by_one_count",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_applications": 1,
+          "identification_applications": 0,
+          "natural_automatic_applications": 0,
+          "pre1_total_count": 15000000003,
+          "pre2_total_count": 15000000002,
+          "pre1_tight_state": "TIGHT_INSIDE",
+          "pre2_tight_state": "TIGHT_INSIDE",
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "original_seal_sha256": "6c998caaa8a042c46f03c6ad1dab92792700c72fd1892221172cf487297ae684",
+          "superseding_seal_sha256": "dcea9b4077781fed352c47607c4017595d88764735ed5bb72439333bac2d2694",
+          "superseding_seal_file_sha256": "50df6312fd4616802a070a8f699e83e22fe3ddfcae7f224e8f6475450db1536c",
+          "evidence_content_sha256": "5601b3de7cdedc6fee686790652246c78c65eeb43afc6e4de1547fb86b6cd3bb",
+          "scientific_result": "bounded_nonpass_exact_pre_window_equality_not_satisfied"
         }
       ],
       "physical_authority_prerequisites": [
@@ -159,7 +184,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "cx321_stage5_attempt3_physical_entry"
+      "next_gate": "offline_successor_design_decision"
     },
     "cx320_bounded_active_hybrid": {
       "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",
