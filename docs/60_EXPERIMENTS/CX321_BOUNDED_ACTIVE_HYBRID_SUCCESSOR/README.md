@@ -1,7 +1,8 @@
 # CX321 Bounded Active-Hybrid Successor
 
-Status: offline v2 implementation and release verification passed; exact
-clean-source bundle and physical authority absent.
+Status: exact clean-source bundle, structural preflight and same-bundle
+rehearsal passed; the operator-authorized single-use Stage 5 activation is
+effective and physical entry is pending.
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -15,10 +16,11 @@ continues to use the selected 600-second estimator. Global authority accounting
 includes the identification move, while natural-controller chatter history is
 explicitly rebased at the post-identification code.
 
-The implementation now covers firmware, host replay, supervision, analysis and
-the exact first natural consumer after identification. Current authority still
-does not authorize activation, flash, reset, physical serial access, setup
-stimulus, DAC write, control arm, physical rehearsal or live acquisition.
+The implementation covers firmware, host replay, supervision, analysis and the
+exact first natural consumer after identification. Physical authority is now
+limited to the frozen bundle and progressive envelope recorded below; it does
+not authorize criterion changes, live extension, automatic retry or automatic
+restoration.
 
 ## Why v1 was superseded
 
@@ -223,9 +225,14 @@ eight expected-failure guards. A disposable actual-process PTY rehearsal also
 passed the identification and natural response paths, obstruction, abort,
 rotation, analysis, sealing and registration with zero parser errors.
 
-That rehearsal is preparation evidence, not the final entry receipt: its build
-manifest predates the final source revision. The remaining gate is one exact
-clean-source CX321 build and immutable bundle, structural preflight, repetition
-of the same complete rehearsal against that bundle, and a separate explicit
-operator decision naming it. Current authority remains offline preparation
-only.
+The exact clean-source entry bundle is
+`f83d78d5213716c3c21e4823cf0fb533946c11206ec81a3f96223a392bcb3641`,
+the proposal is
+`6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30`,
+and the frozen UF2 is
+`c5fb2887c291f640543c3d27bb03dafea9cb5d77fd65c0c47a97b2edb38a2ef9`.
+Structural preflight and the complete same-bundle actual-process rehearsal
+passed with zero parser errors. The operator authorized that exact bundle and
+proposal on 2026-08-21; activation
+`7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea`
+is effective for one finite Stage 5 physical terminal.

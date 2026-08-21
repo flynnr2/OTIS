@@ -16,7 +16,7 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> None:
+def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == "cx321_bounded_active_hybrid_successor"
@@ -130,11 +130,12 @@ def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> 
         "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
     cx321 = status["programmes"]["cx321_bounded_active_hybrid_successor"]
-    assert cx321["state"] == (
-        "offline_implementation_release_verified_exact_bundle_pending"
-    )
-    assert cx321["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert cx321["physical_authority_effective"] is False
+    assert cx321["state"] == "stage5_authorized_live_entry_pending"
+    assert cx321["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        "cx321_stage5_bounded_active_hybrid_live",
+    ]
+    assert cx321["physical_authority_effective"] is True
     assert cx321["predecessor_programme"] == "cx320_bounded_active_hybrid"
     assert cx321["plant_sign_gate"]["selected_step_codes"] == 21
     assert cx321["plant_sign_gate"]["identification_span_s"] == 1500
@@ -155,8 +156,19 @@ def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> 
     assert cx321["verification"]["current_tests_passed"] == 985
     assert cx321["verification"]["supported_firmware_profiles_passed"] == 8
     assert cx321["verification"]["expected_failure_guards_passed"] == 8
-    assert cx321["verification"]["complete_operational_rehearsal_pending"] is True
-    assert cx321["verification"]["exact_bundle_pending"] is True
+    assert cx321["verification"]["complete_operational_rehearsal_pending"] is False
+    assert cx321["verification"]["exact_bundle_pending"] is False
+    assert cx321["exact_bundle"]["bundle_sha256"] == (
+        "f83d78d5213716c3c21e4823cf0fb533946c11206ec81a3f96223a392bcb3641"
+    )
+    assert cx321["authority_proposal"]["proposal_sha256"] == (
+        "6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30"
+    )
+    assert cx321["effective_activation"]["activation_sha256"] == (
+        "7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea"
+    )
+    assert cx321["effective_activation"]["effective"] is True
+    assert cx321["effective_activation"]["consumed"] is False
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1135,6 +1147,10 @@ def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> 
 
     assert require_programme_operation_allowed(
         "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION
+    ) == cx321
+    assert require_programme_operation_allowed(
+        "cx321_bounded_active_hybrid_successor",
+        "cx321_stage5_bounded_active_hybrid_live",
     ) == cx321
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
