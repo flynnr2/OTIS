@@ -233,6 +233,13 @@ and the frozen UF2 is
 `c5fb2887c291f640543c3d27bb03dafea9cb5d77fd65c0c47a97b2edb38a2ef9`.
 Structural preflight and the complete same-bundle actual-process rehearsal
 passed with zero parser errors. The operator authorized that exact bundle and
-proposal on 2026-08-21; activation
+proposal on 2026-08-21. Initial activation
 `7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea`
-is effective for one finite Stage 5 physical terminal.
+reached a prewrite platform terminal because the runner was invoked outside
+the rehearsed Python environment: the UF2 flashed, but capture never opened and
+there was no setup request, DAC write or control arm. That terminal is sealed
+as `f8e3bb8a1b887ed10c303e93d871eeb369cb19e05700d149708d38b370edadc5`.
+The operator's expanded remediation authority permits the exact predecessor-
+bound attempt-2 activation
+`9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac`;
+the firmware, bundle and scientific criteria remain unchanged.

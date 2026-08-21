@@ -130,7 +130,7 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
         "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
     cx321 = status["programmes"]["cx321_bounded_active_hybrid_successor"]
-    assert cx321["state"] == "stage5_authorized_live_entry_pending"
+    assert cx321["state"] == "stage5_attempt2_authorized_live_entry_pending"
     assert cx321["allowed_operations"] == [
         OFFLINE_PREPARATION,
         "cx321_stage5_bounded_active_hybrid_live",
@@ -165,10 +165,17 @@ def test_tracked_status_records_terminal_cx320_and_authorized_cx321_successor() 
         "6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30"
     )
     assert cx321["effective_activation"]["activation_sha256"] == (
-        "7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea"
+        "9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac"
     )
+    assert cx321["effective_activation"]["attempt_ordinal"] == 2
     assert cx321["effective_activation"]["effective"] is True
     assert cx321["effective_activation"]["consumed"] is False
+    assert cx321["stage5_attempts"][0]["capture_started"] is False
+    assert cx321["stage5_attempts"][0]["setup_applications"] == 0
+    assert cx321["stage5_attempts"][0]["automatic_applications"] == 0
+    assert cx321["stage5_attempts"][0]["scientific_result"] == (
+        "none_prewrite_no_capture_setup_dac_write_or_control_arm"
+    )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[

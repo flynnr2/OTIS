@@ -10,7 +10,7 @@
       "authority": "passed_completion_gate"
     },
     "cx321_bounded_active_hybrid_successor": {
-      "state": "stage5_authorized_live_entry_pending",
+      "state": "stage5_attempt2_authorized_live_entry_pending",
       "allowed_operations": [
         "offline_preparation",
         "cx321_stage5_bounded_active_hybrid_live"
@@ -102,21 +102,41 @@
         "expanded_remediation_authority_effective": true
       },
       "effective_activation": {
-        "path": "runs/cx321_active_hybrid/operator_authority_20260821/cx321_active_hybrid_live_activation_v1.json",
-        "file_sha256": "73a7194140831f85a766c0826d57cd1ec4a0e2e3a0e6fb5f1fa3e6dd36a01d8d",
-        "activation_sha256": "7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea",
-        "attempt_ordinal": 1,
+        "path": "runs/cx321_active_hybrid/operator_authority_20260821/cx321_active_hybrid_live_activation_attempt2_v1.json",
+        "file_sha256": "9286caa02ee350746c234846bb46a9998903c34a93cedb33834be9d3d860f1c5",
+        "activation_sha256": "9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac",
+        "attempt_ordinal": 2,
         "automatic_retry": false,
         "effective": true,
         "consumed": false
       },
+      "stage5_attempts": [
+        {
+          "ordinal": 1,
+          "run_id": "stage5_live_attempt1_20260821T1527Z",
+          "classification": "platform_escape_into_campaign_prewrite",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "runner_launched_with_system_python_without_rehearsed_pyserial_dependency",
+          "firmware_flash_count": 1,
+          "capture_started": false,
+          "setup_requests": 0,
+          "setup_applications": 0,
+          "automatic_applications": 0,
+          "dac_value_writes": 0,
+          "control_arms": 0,
+          "seal_sha256": "f8e3bb8a1b887ed10c303e93d871eeb369cb19e05700d149708d38b370edadc5",
+          "seal_file_sha256": "e762bcb28cc8b25ce2b9160f5baee7ecda549ab637cbae5c744162229152a88c",
+          "evidence_content_sha256": "31c76bcec112c1dd57bc30a48bb4c9b836f1f512e20edcf24b3280ad389f42b8",
+          "scientific_result": "none_prewrite_no_capture_setup_dac_write_or_control_arm"
+        }
+      ],
       "physical_authority_prerequisites": [
         "exact_immutable_bundle",
         "structural_preflight",
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "cx321_stage5_physical_entry"
+      "next_gate": "cx321_stage5_attempt2_physical_entry"
     },
     "cx320_bounded_active_hybrid": {
       "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",
