@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx320_bounded_active_hybrid",
+  "active_programme": "cx321_bounded_active_hybrid_successor",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -9,13 +9,56 @@
       "effective_date": "2026-08-11",
       "authority": "passed_completion_gate"
     },
-    "cx320_bounded_active_hybrid": {
-      "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",
+    "cx321_bounded_active_hybrid_successor": {
+      "state": "offline_successor_design_selected_plant_sign_implementation_pending",
       "allowed_operations": [
         "offline_preparation"
       ],
+      "effective_date": "2026-08-21",
+      "authority": "offline_preparation_only_no_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "cx320_bounded_active_hybrid",
+      "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
+      "plant_sign_gate": {
+        "path": "profiles/qualification/cx321_bounded_response_observability_v1.json",
+        "file_sha256": "84fdfd50e6dc050a625abd14cec3756b55bbd4309bafb0fd388bde5333438dd7",
+        "minimum_detectable_integer_step_codes": 21,
+        "characterization_style_dwell_s": 2400,
+        "natural_hybrid_request_scaled": false,
+        "counts_as_phase_material_application": false
+      },
+      "selected_policy": {
+        "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v1.json",
+        "file_sha256": "f5675bafd51122c120c9f5d42e6fa7d73c94f38c5db7f223aa848d217f1d6f23",
+        "natural_controller_semantic_change_from_cx320": "none",
+        "identification_consumes_application_count": 1,
+        "identification_consumes_movement_codes": 21,
+        "remaining_application_count": 3,
+        "remaining_movement_codes": 63
+      },
+      "verification": {
+        "offline_design_contract_tests_passed": 7,
+        "firmware_implementation_pending": true,
+        "complete_operational_rehearsal_pending": true,
+        "exact_bundle_pending": true
+      },
+      "physical_authority_prerequisites": [
+        "firmware_host_replay_analyzer_and_supervisor_implementation",
+        "affected_current_and_release_verification",
+        "exact_immutable_bundle",
+        "structural_preflight",
+        "complete_live_topology_rehearsal",
+        "separate_explicit_exact_bundle_operator_decision"
+      ],
+      "next_gate": "implement_PLANT_SIGN_QUALIFY_and_deterministic_end_to_end_proof"
+    },
+    "cx320_bounded_active_hybrid": {
+      "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",
+      "allowed_operations": [
+        "historical_validation"
+      ],
       "effective_date": "2026-08-20",
-      "authority": "consumed_stage5_operator_authority_offline_only",
+      "authority": "completed_bounded_nonpass_consumed_authority_no_live_execution",
       "physical_authority_effective": false,
       "predecessor_programme": "cx319_stabilized_tight_deadband",
       "policy": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
@@ -366,7 +409,8 @@
         "attempt9_superseding_offline_finalization_passed": true
       },
       "readiness_report": "docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md",
-      "next_gate": "prospective_successor_response_observability_design_then_separate_exact_bundle_authority"
+      "successor_design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
+      "next_gate": "cx321_bounded_active_hybrid_successor_offline_preparation"
     },
     "cx319_stabilized_tight_deadband": {
       "state": "completed_mapping_informed_part_b_frozen",

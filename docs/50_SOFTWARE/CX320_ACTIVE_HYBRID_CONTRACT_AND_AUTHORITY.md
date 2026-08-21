@@ -242,3 +242,9 @@ predicate was false. CX320 therefore terminated
 at `0xA836`. The reviewed evidence and superseding host-only interpretation are
 recorded in
 `docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
+
+CX320 remains frozen. Its selected offline successor is separately identified
+as CX321 and is documented in
+`docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`. CX321's
+plant-sign gate does not reinterpret CX320 evidence or change the natural
+CX320 controller mathematics.

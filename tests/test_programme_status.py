@@ -16,10 +16,10 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_frozen_cx319_and_terminal_cx320_result() -> None:
+def test_tracked_status_records_terminal_cx320_and_offline_cx321_successor() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] == "cx320_bounded_active_hybrid"
+    assert status["active_programme"] == "cx321_bounded_active_hybrid_successor"
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
         "allowed_operations": [],
@@ -35,7 +35,7 @@ def test_tracked_status_records_frozen_cx319_and_terminal_cx320_result() -> None
     assert cx320["state"] == (
         "stage5_bounded_nonpass_successor_design_requires_new_authority"
     )
-    assert cx320["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx320["allowed_operations"] == ["historical_validation"]
     assert cx320["physical_authority_effective"] is False
     assert cx320["exact_bundle"]["bundle_sha256"] == (
         "824860d845855a378a7ca77ff238d13be63d41c983f3ba6796a844df6dd36c54"
@@ -129,6 +129,17 @@ def test_tracked_status_records_frozen_cx319_and_terminal_cx320_result() -> None
     assert cx320["effective_activation"]["activation_sha256"] == (
         "126b7901ab7653d96628a127aa2fa879e11b3f37bb0d566c19700db463eb18db"
     )
+    cx321 = status["programmes"]["cx321_bounded_active_hybrid_successor"]
+    assert cx321["state"] == (
+        "offline_successor_design_selected_plant_sign_implementation_pending"
+    )
+    assert cx321["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx321["physical_authority_effective"] is False
+    assert cx321["predecessor_programme"] == "cx320_bounded_active_hybrid"
+    assert cx321["plant_sign_gate"]["minimum_detectable_integer_step_codes"] == 21
+    assert cx321["plant_sign_gate"]["natural_hybrid_request_scaled"] is False
+    assert cx321["selected_policy"]["remaining_application_count"] == 3
+    assert cx321["selected_policy"]["remaining_movement_codes"] == 63
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1106,12 +1117,16 @@ def test_tracked_status_records_frozen_cx319_and_terminal_cx320_result() -> None
         require_programme_execution_allowed("platform_stabilization")
 
     assert require_programme_operation_allowed(
-        "cx320_bounded_active_hybrid", OFFLINE_PREPARATION
-    ) == cx320
+        "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION
+    ) == cx321
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx320_bounded_active_hybrid",
             "cx320_stage5_bounded_active_hybrid_live",
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "cx320_bounded_active_hybrid", OFFLINE_PREPARATION
         )
     for blocked_operation in (
         OFFLINE_PREPARATION,

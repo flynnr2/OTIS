@@ -1,6 +1,6 @@
 # SW2 GPSDO Control Loop Readiness
 
-**Lifecycle note (updated 2026-08-20):** this document records the completed CX317
+**Lifecycle note (updated 2026-08-21):** this document records the completed CX317
 readiness decision and its precursor evidence. The later CX318 Stage 5 work is
 suspended incomplete and unsealed. Platform stabilization subsequently passed;
 CX319 subsequently completed its range map and mapping-informed frequency-only
@@ -9,6 +9,10 @@ phase-material combined correction, but its exact response was below the frozen
 observability floor and failed the positive-sign checkpoint. The programme is a
 bounded non-pass with no remaining live authority. Current details are in
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
+The offline CX321 successor selects a separate 21-code plant-sign transaction
+before unchanged natural hybrid requests. It is not implemented or physically
+authorized; see
+`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Decision
 

@@ -21,10 +21,12 @@ activation is consumed, later authority remained blocked, the instrument is
 
 The superseding offline seal preserves the original terminal record while
 correcting its host-side classification. The frozen scientific policy,
-thresholds and criteria were not changed after observation. Any successor must
-prospectively resolve the mismatch between a six-code expected plant response
-and the larger empirical detection floor, freeze a new bundle, and receive
-separate authority.
+thresholds and criteria were not changed after observation. The selected CX321
+offline successor design resolves the observability precondition with a
+separately identified 21-code plant-sign transaction while leaving natural
+hybrid controller requests unchanged. It remains non-effective and requires
+implementation, a new bundle, rehearsal and separate authority. See the
+[`CX321 design decision`](../CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md).
 
 - [`01_OFFLINE_REPLAY_AND_SELECTION.md`](01_OFFLINE_REPLAY_AND_SELECTION.md)
 - [`02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`](02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md)

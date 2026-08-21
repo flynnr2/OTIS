@@ -1,6 +1,6 @@
 # OTIS SW2 — Repository-Context Roadmap
 
-**Lifecycle note (updated 2026-08-20):** this is a historical roadmap through the
+**Lifecycle note (updated 2026-08-21):** this is a historical roadmap through the
 sealed CX317 result. The subsequent CX318 Stage 5 programme remains suspended,
 incomplete, and unsealed. The platform-stabilization programme in
 `../60_EXPERIMENTS/OTIS_PLATFORM_STABILIZATION_PROGRAMME.md` passed its
@@ -12,6 +12,10 @@ firmware-driven, phase-material combined correction, but the exact response was
 below the frozen empirical detection floor and failed its positive-sign
 checkpoint. It is a bounded non-pass with no remaining live authority. See
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
+The selected offline CX321 successor preserves the natural controller and adds
+a separate 21-code plant-sign qualification transaction. It has no physical
+authority; current details are in
+`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
@@ -92,7 +96,7 @@ The recommended path is now:
 5. preserve the sealed 24-hour bounded dual-core frequency-control endurance result — **complete**;
 6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority — **complete**;
 7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics — **complete as zero-authority evidence**;
-8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 bounded non-pass: one physical phase-material correction observed, but its response was below the frozen sign-detection floor**;
+8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 bounded non-pass; CX321 offline successor selected with a separate 21-code plant-sign gate before unchanged natural hybrid requests**;
 9. add reference-loss holdover and controlled recovery;
 10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic or the DAC driver.
 
