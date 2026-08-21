@@ -1,0 +1,83 @@
+# CX320 Stage 5 Attempt 5 Serialization Terminal and Attempt 6 Recovery
+
+## Attempt 5 terminal
+
+Attempt 5 (`stage5_live_attempt5_20260820T1231Z`) flashed the exact attempt-5
+image and crossed the previously missing firmware handoff. Startup qualification
+completed, one setup request applied `0xA83C` at DAC epoch 1 with `i2c_ok=true`,
+and the hybrid controller entered `FREQUENCY_ACQUIRE`. The selected 600-second
+frequency estimate was bound to the live DAC epoch. The first firmware hybrid
+decision was a zero-delta `minimum_applied_cadence_hold`; it requested and
+applied no automatic correction.
+
+The firmware wire formatter emitted 55 of the frozen 56 `AHY` fields, omitting
+the final `actionable=false` field. Capture rejected that record rather than
+silently changing its meaning. The supervisor detected one parser error and
+submitted the independent priority abort, which firmware accepted on core 1
+before capture closed. The applied code remained 43068. This is a platform
+escape into the campaign, not a controller or scientific rejection.
+
+The unchanged retained acquisition was replayed after two deterministic
+analyzer binding corrections. The superseding seal has semantic SHA-256
+`bacd6e65be6838515476fa833e6f6fb54888ec48335bbddfc189e36856abfbfa`
+and file SHA-256
+`e389c3fc561044e8812208f02a8e4e223963adca5a55f553111fe2a912b1a920`.
+All declared CSV contracts validate, 546 selected and diagnostic estimates
+replay exactly, tight-deadband replay is exact, setup/DAC epoch/budgets are
+exact, and no automatic application occurred. The seal remains a failed
+physical result because the parser fault closed capture before a complete
+post-abort firmware snapshot; replay does not waive that acquisition gate.
+
+## Bounded corrections
+
+The production `AHY` path now uses one independently executable formatter. A
+compiled C++ harness validates that the exact production formatter emits all
+56 fields, including the final false `actionable` value. The analyzer accepts
+the bundle's CX320 frequency-estimator binding and uses the frozen
+tight-deadband predecessor policy binding. These changes repair serialization
+and deterministic interpretation without changing controller mathematics or a
+scientific criterion.
+
+Firmware now publishes a complete active-status snapshot after core 1 accepts
+an abort. The runner retains sole serial ownership until it observes the exact
+post-abort state: `ABORTED`, fail-static, no outstanding request or evidence,
+and the last confirmed applied code. The real-process PTY rehearsal now passes
+an exact 56-field hybrid record through capture and carries that post-abort
+snapshot through the first dependent runner decision before capture closes.
+
+Seventy focused serialization, analyzer, runner and live-topology tests pass.
+The affected exact firmware profile builds successfully. No scientific
+policy, threshold, acceptance criterion, duration, topology, setup code,
+command envelope or progressive-authority limit changed.
+
+## Attempt 6 exact entry gate
+
+Attempt 6 is a separately identified successor under the operator's expanded
+bounded-recovery authority. It is not an automatic controller retry or
+restoration. Before a new physical run, the exact successor must pass its
+structural preflight and complete operational-path rehearsal, then receive an
+immutable activation bound to those results. Those first two gates now pass.
+The real-process path accepted an exact 56-field hybrid record with all frozen
+estimator and policy identities, saturated the normal FIFO, delivered one
+independent priority abort, retained a complete post-abort snapshot, preserved
+sole serial ownership through rotation, and completed analysis, sealing and
+registration with zero parser errors. It performed no physical action and
+supplies no physical qualification evidence.
+
+- firmware source/configuration identity:
+  `5a97de4d0fd9681a7af5cd31ffd38c2cfcfc2fda45894640a5982df4c2072d7b:f800a4b7725992b01682e6d2c9e2be6fa15c956e23662622a928cdd4abe40990`;
+- exact UF2 SHA-256:
+  `9e301e276d08544b52fd4829a86bf32bb5acf0e2a01efb48991b80964b582d1f`;
+- bundle semantic SHA-256:
+  `3785d1bb42ba64f4b75d0729a8124f7f61e839bf0a3e60ccae4e840706e13979`;
+- successor proposal semantic SHA-256:
+  `e1037858183c5efa726fb34c804bcc4dbeda8aee641d23e840cd0d923b2f033f`;
+- structural preflight semantic SHA-256:
+  `6edc15abb80ab829a45ce2fed3333545b0d8ff8f73c1d82911aed68aee923034`;
+- operational rehearsal semantic SHA-256:
+  `111af538e29dc67b0ce91272bb8a1f0fca6a11460870cb02d8f6f3db5e0d5328`;
+- effective activation semantic SHA-256:
+  `df6a697749f6939dbff8a9c9ebc4c21d50bbb63b3886fd54ce254fdac6381803`.
+
+The immutable activation binds this exact gate under the recorded operator
+authority lineage. Exact physical Stage 5 attempt 6 is the next gate.

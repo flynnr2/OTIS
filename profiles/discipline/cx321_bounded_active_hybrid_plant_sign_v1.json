@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX321_BOUNDED_ACTIVE_HYBRID_PLANT_SIGN_V1",
+  "status": "offline_successor_design_selected_non_effective",
+  "programme_id": "CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR_V1",
+  "question": "After the existing measurement path observes a same-run bounded plant-sign identification response, can the unchanged natural hybrid controller produce at least two material applications, improve the frozen relative-phase metric and preserve authoritative frequency performance?",
+  "bindings": {
+    "cx320_policy": {
+      "path": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
+      "sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
+      "disposition": "sealed_bounded_nonpass_natural_controller_semantics_reused_without_reinterpreting_result"
+    },
+    "plant_sign_gate": {
+      "path": "profiles/qualification/cx321_bounded_response_observability_v1.json",
+      "sha256": "84fdfd50e6dc050a625abd14cec3756b55bbd4309bafb0fd388bde5333438dd7"
+    },
+    "frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "response_classifier": {
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+    }
+  },
+  "topology": {
+    "reference_input": "D14_authoritative_pps",
+    "oscillator_count_input": "D8_cx317_oscillator_count",
+    "independent_external_event_input": "D10_external_event_not_reference_or_control_authority",
+    "gnss_role": "qualification_metadata_from_same_receiver_as_D14_not_timing_replacement",
+    "D9_GPOUT0_output": "deferred_not_modified_not_claimed"
+  },
+  "natural_hybrid_controller": {
+    "semantic_change_from_cx320": "none",
+    "frequency_term": "negative_authoritative_600s_frequency_error_hz",
+    "phase_term": "clamp_negative_D8_cycle_movement_relative_to_D14_divided_by_pull_in_time",
+    "phase_pull_in_time_s": 21600,
+    "absolute_phase_bias_cap_hz": 0.0016666666666666668,
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "maximum_combined_step_codes": 21,
+    "rounding": "half_away_from_zero_after_step_limit",
+    "anti_windup": "no_hidden_persistent_integrator_demand_recomputed_from_current_evidence_after_every_application_or_hold",
+    "identification_stimulus_never_enters_controller_demand_or_counterfactual_materiality": true
+  },
+  "progressive_authority": {
+    "states": [
+      "FREQUENCY_ACQUIRE",
+      "PLANT_SIGN_QUALIFY",
+      "PLANT_SIGN_CONFIRM",
+      "PHASE_QUALIFY",
+      "FIRST_PHASE_TRANSACTION",
+      "HYBRID_TRACKING",
+      "PHASE_DEGRADED_FREQUENCY_ONLY",
+      "FAIL_STATIC"
+    ],
+    "frequency_acquire": "observation_only_at_exact_setup_code_with_phase_term_zero_and_no_automatic_application_until_two_contiguous_exact_same_signed_nonzero_integer_one_or_two_count_TIGHT_INSIDE_estimates_otherwise_plant_sign_not_exercised",
+    "plant_sign_qualify": "one_separately_identified_21_code_toward_nominal_stimulus_then_existing_first_fresh_600s_response_at_1500s_with_exact_host_replay_ack_within_30s",
+    "plant_sign_confirm": "accepted_first_response_ack_does_not_release_authority_second_600s_output_confirms_same_epoch_continuity_health_and_tight_reentry_at_2100s_and_no_transition_before_2400s",
+    "phase_qualify": "only_after_plant_sign_pass_and_tight_reentry_then_fresh_1800s_frequency_only_comparison_residence_at_post_identification_code",
+    "first_phase_transaction": "first_natural_phase_material_application_then_exact_response_replay_and_tight_reacquisition_checkpoint",
+    "hybrid_tracking": "remaining_natural_authority_only_after_first_material_checkpoint",
+    "shared_or_inflight_fault": "fail_static_at_last_confirmed_code",
+    "plant_sign_failure": "fail_static_without_phase_authority_or_automatic_retry"
+  },
+  "global_authority_limits": {
+    "maximum_total_automatic_applications": 4,
+    "maximum_combined_step_codes": 21,
+    "maximum_cumulative_absolute_movement_codes": 84,
+    "minimum_applied_cadence_s": 1800,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_outstanding_requests": 1,
+    "automatic_retry": false,
+    "automatic_restoration": false,
+    "pre_identification_automatic_applications_allowed": 0,
+    "identification_requires_current_code_exact_setup": true,
+    "plant_sign_identification_consumes_application_count": 1,
+    "plant_sign_identification_consumes_movement_codes": 21,
+    "maximum_applications_remaining_after_identification": 3,
+    "maximum_movement_remaining_after_identification_codes": 63,
+    "minimum_natural_phase_material_applications": 2
+  },
+  "natural_material_response_checkpoint": {
+    "same_run_plant_sign_attestation_exact_and_current_required": true,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "response_support_total_s": 1500,
+    "measurement_valid_and_applied_epoch_exact_required": true,
+    "firmware_host_replay_exact_required": true,
+    "tight_inside_reentry_required": true,
+    "accepted_response_classes": [
+      "healthy_detected",
+      "healthy_indeterminate_near_resolution",
+      "inside_deadband"
+    ],
+    "detected_wrong_sign_or_excess_fails_static": true,
+    "healthy_indeterminate_requires_response_below_frozen_detection_floor": true,
+    "healthy_indeterminate_is_not_relabelled_as_signed": true,
+    "material_response_sign_reported_separately_as_observed_or_unresolved": true,
+    "later_authority_before_checkpoint": "forbidden"
+  },
+  "plant_sign_attestation_currentness": {
+    "identity_tuple": [
+      "run_identity",
+      "capture_session",
+      "firmware_build_identity",
+      "policy_sha256",
+      "plant_sign_gate_sha256",
+      "frequency_estimator_identity",
+      "D14_reference_identity",
+      "D8_oscillator_path_identity",
+      "plant_and_DAC_topology_identity",
+      "setup_request_accept_application_and_epoch",
+      "identification_request_accept_application_and_epoch",
+      "first_response_record_and_exact_host_replay_ack",
+      "second_output_confirmation_record"
+    ],
+    "validity_horizon": "same_finite_run_only_until_terminal_or_invalidation",
+    "invalidated_by": [
+      "firmware_reset_or_reflash",
+      "capture_or_firmware_session_change",
+      "build_policy_gate_estimator_or_topology_identity_change",
+      "D14_or_D8_measurement_discontinuity_or_common_health_fault",
+      "ownerless_or_unproven_capture_handoff",
+      "manual_external_unacknowledged_or_cross_epoch_DAC_change",
+      "wrong_sign_excess_growing_error_or_measurement_actuator_fault_response",
+      "exact_replay_or_downstream_epoch_propagation_failure"
+    ],
+    "preserved_across": [
+      "continuous_capture_file_rotation_with_same_session_and_exact_sequence",
+      "healthy_exact_acknowledged_natural_DAC_epoch_transition_inside_the_frozen_range_with_noncontradictory_response"
+    ],
+    "sub_floor_opposite_or_zero_natural_response": "unresolved_not_contradictory_only_when_existing_classifier_remains_healthy_indeterminate_or_inside_deadband",
+    "invalidation_action": "fail_static_no_later_authority"
+  },
+  "prospective_metrics": {
+    "identification_stimulus_excluded_from_phase_material_count": true,
+    "identification_stimulus_excluded_from_phase_performance_segments": true,
+    "comparison_segment": "fresh_1800s_continuous_frequency_only_PHASE_QUALIFY_residence_after_plant_sign_pass_immediately_before_first_natural_material_application",
+    "active_segment": "from_first_natural_phase_material_application_until_terminal_or_qualified_endpoint",
+    "primary_phase_metric": "absolute_OLS_slope_of_raw_relative_phase_cycles_per_second_within_each_unjoined_phase_epoch",
+    "phase_improvement_minimum_fraction": 0.1,
+    "phase_improvement_minimum_cycles_over_matched_1800s": 1,
+    "maximum_frequency_RMS_degradation_hz": 0.0016666666666666668,
+    "maximum_tight_occupancy_fraction_degradation": 0.1,
+    "minimum_natural_material_phase_applications": 2
+  },
+  "finite_timing": {
+    "timing_domain": "rp2040_timer0_exact_recorded_ticks",
+    "qualified_duration_s": 43200,
+    "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
+    "absolute_wall_clock_limit_s": 57600,
+    "wall_clock_origin": "sole_capture_owner_records_exact_run_identity_before_setup",
+    "setup_application_to_identification_earliest_s": 2100,
+    "identification_to_earliest_natural_material_application_s": 4200,
+    "setup_application_to_earliest_natural_material_application_s": 6300,
+    "minimum_corrections_reserved_response_s": 1500,
+    "extension": "forbidden"
+  },
+  "terminal_decisions": [
+    "bounded_active_hybrid_control_passed",
+    "plant_sign_qualification_not_exercised",
+    "plant_sign_qualification_failed",
+    "phase_influence_not_exercised",
+    "first_phase_transaction_passed_sustained_result_incomplete",
+    "phase_channel_degraded_frequency_control_retained",
+    "hybrid_response_wrong_or_frequency_not_reacquired",
+    "hybrid_policy_chatter_or_budget_nonpass",
+    "frequency_performance_materially_degraded",
+    "right_censored_incomplete",
+    "measurement_authority_or_platform_fault",
+    "operator_abort"
+  ],
+  "claims_not_made": [
+    "cx320_pass",
+    "signed_response_for_an_indeterminate_natural_material_transaction",
+    "absolute_phase",
+    "UTC_alignment",
+    "calibrated_frequency_accuracy",
+    "general_plant_model_control_readiness",
+    "D9_GPOUT0_public_output",
+    "physical_authority"
+  ],
+  "authority": {
+    "offline_preparation": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "command_fifo": false,
+    "setup_stimulus": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "exact_bundle_and_complete_live_topology_rehearsal_required": true,
+    "separate_exact_bundle_operator_decision_required": true,
+    "consumed_by_first_physical_terminal": true
+  }
+}

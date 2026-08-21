@@ -337,10 +337,21 @@ class ActiveTransactionSupervisor:
             "manual_start_sent": False,
             "arm_pending": False,
             "acknowledged_record_sequences": [],
+            "inflight_evidence_acknowledgement": None,
             "observed_manual_record_sequences": [],
             "initial_session_id": None,
             "terminal": None,
         }
+
+    def _prepare_evidence_acknowledgement(
+        self, row: dict[str, str], phase: int
+    ) -> dict[str, object]:
+        return {}
+
+    def _confirm_evidence_acknowledgement(
+        self, acknowledgement: dict[str, object]
+    ) -> bool:
+        return True
 
     def _save(self) -> None:
         _atomic_json(self.state_path, self.state)
@@ -436,11 +447,41 @@ class ActiveTransactionSupervisor:
             )
             _atomic_json(attestation_path, attestation)
             _fsync_path(attestation_path)
-        self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
+        if self.spec.profile == "cx320_active_hybrid":
+            inflight = self.state.get("inflight_evidence_acknowledgement")
+            if inflight is None:
+                inflight = {
+                    "record_sequence": record_sequence,
+                    "request_sequence": request_sequence,
+                    "phase": phase,
+                    "host_write_confirmed": False,
+                    **self._prepare_evidence_acknowledgement(row, phase),
+                }
+                self.state["inflight_evidence_acknowledgement"] = inflight
+                self._save()
+                self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
+                inflight["host_write_confirmed"] = True
+                self._save()
+            elif (
+                int(inflight.get("record_sequence", -1)) != record_sequence
+                or int(inflight.get("request_sequence", -1)) != request_sequence
+                or int(inflight.get("phase", -1)) != phase
+            ):
+                raise ValueError(
+                    "a different CX320 evidence acknowledgement is already inflight"
+                )
+            if not self._confirm_evidence_acknowledgement(inflight):
+                raise ValueError(
+                    "CX320 evidence acknowledgement reached the host serial write "
+                    "boundary but firmware consumption is unconfirmed"
+                )
+        else:
+            self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
         acknowledged = self.state["acknowledged_record_sequences"]
         if record_sequence not in acknowledged:
             acknowledged.append(record_sequence)
             acknowledged.sort()
+        self.state["inflight_evidence_acknowledgement"] = None
         self._save()
         self._event(
             "transaction_phase_acknowledged",

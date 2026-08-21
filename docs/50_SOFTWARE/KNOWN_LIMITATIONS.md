@@ -25,10 +25,20 @@
   acquisition. Its original upper traversal is a right-censored bounded
   non-pass; a separate upper completion and host-only finalizer supersession do
   not erase that terminal.
-- The last confirmed predecessor state is `TIGHT_INSIDE` at `0xA83C`, DAC epoch
-  1. A flash or reset makes the physical code unknown until a new exact setup
+- The last confirmed CX320 state is `FAIL_STATIC` at `0xA836`, DAC epoch 2. A
+  flash or reset makes the physical code unknown until a new exact setup
   acknowledgement propagates through all consumers.
-- Active-hybrid behavior remains physically unqualified. The CX319 hybrid
-  corpus is counterfactual and zero-authority; CX320 implementation, replay and
-  offline rehearsal do not constitute observed phase steering.
+- CX320 physically demonstrated one firmware-driven, phase-material combined
+  correction, but did not qualify active-hybrid control. The six-code step's
+  modeled response (`0.000981445..0.001040041 Hz`) lies below the frozen
+  `0.003333332 Hz` empirical response-detection floor. The exact 1,500-second
+  observation was therefore healthy but indeterminate and failed the separately
+  required positive-sign checkpoint. This bounded non-pass cannot be repaired
+  by reinterpreting the same evidence or repeating the consumed bundle.
+- CX321 selects a separate 21-code plant-sign qualification transaction before
+  natural hybrid control. The design is grounded in the existing plant envelope
+  and 600-second detector, but is not implemented, rehearsed, bundled,
+  physically authorized or qualified. It does not make the uncalibrated plant
+  model generally control-ready and does not turn an indeterminate material
+  response into observed sign.
 - OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.

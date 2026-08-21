@@ -291,7 +291,7 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
   int used = snprintf(
       frame, frame_capacity,
       "EST,2,%lu,est:cx317:%s:%06lu,%llu,%s,%lu,live:CNT:%lu,%lu,%lu,"
-      "live:STS:pps_gate,live:DAC:static,firmware_config:%s,%s,%s,"
+      "live:STS:pps_gate,live:DAC:%lu,firmware_config:%s,%s,%s,"
       "valid,contiguous_snapshot_span,valid,0,true,valid,0,true,healthy,"
       "diagnostic_healthy,%s,%lu,unavailable,%s,%s,,unavailable,"
       "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
@@ -303,7 +303,8 @@ void emit_estimate(bool selected, const OtisCx317SpanEstimate &span,
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(span.last_sequence),
       static_cast<unsigned long>(first),
-      static_cast<unsigned long>(span.last_sequence), OTIS_FIRMWARE_CONFIG_ID,
+      static_cast<unsigned long>(span.last_sequence),
+      static_cast<unsigned long>(current_dac_epoch), OTIS_FIRMWARE_CONFIG_ID,
       selected ? kSelectedEstimatorVersion
                : "cx317_diagnostic_60s_overlap_v1",
       kSelectedEstimatorHash, frequency_text,
@@ -518,7 +519,11 @@ void otis_cx317_preview_live_on_boundary(
                  estimate_seq);
     return;
   }
-  if (uptime_s < warmup_complete_s || uptime_s < settling_until_s) {
+  // A boundary stamped exactly at settling_until_s closes the oscillator
+  // interval that began one second earlier, so it still straddles the
+  // excluded settling window.  Admit only boundaries strictly after it; the
+  // 600th accepted interval then closes after the full 900 + 600 seconds.
+  if (uptime_s < warmup_complete_s || uptime_s <= settling_until_s) {
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;

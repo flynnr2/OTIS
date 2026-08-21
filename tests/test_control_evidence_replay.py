@@ -8,6 +8,7 @@ from host.otis_tools.control_evidence_replay import (
     _commands_exact,
     _controller_replay,
     _response_replay,
+    _selected_frequency_estimator_sha256,
     _selected_windows_nonoverlap,
 )
 from host.otis_tools.frequency_control_replay import load_current_replay_policy
@@ -74,6 +75,22 @@ def test_selected_windows_allow_reset_gaps_but_reject_overlap() -> None:
     assert not _selected_windows_nonoverlap([(0, 600), (599, 1199)])
 
 
+def test_measurement_replay_resolves_current_and_legacy_estimator_bindings() -> None:
+    identity = "a" * 64
+    assert _selected_frequency_estimator_sha256(
+        {"policy": {"bindings": {"frequency_estimator": {"sha256": identity}}}}
+    ) == identity
+    assert _selected_frequency_estimator_sha256(
+        {
+            "policy": {
+                "bindings": {
+                    "selected_frequency_estimator": {"sha256": identity}
+                }
+            }
+        }
+    ) == identity
+
+
 def test_required_direction_is_bound_to_its_own_healthy_response() -> None:
     rows = _response_group()
     assert healthy_required_direction_applications(rows, 1) == [rows[2]]
@@ -116,6 +133,11 @@ def test_live_capsules_require_every_nonmanual_row_and_phase_ack(tmp_path: Path)
             int(row["transaction_record_sequence"]) for row in rows
         ]
     }
+    (
+        tmp_path
+        / "reports/step_001"
+        / "record_000005_response_replay_attestation.json"
+    ).write_text("{}\n", encoding="utf-8")
     exact, hashes = _capsules_exact(tmp_path, rows, events, state)
     assert exact is True
     assert len(hashes) == 4
@@ -123,6 +145,54 @@ def test_live_capsules_require_every_nonmanual_row_and_phase_ack(tmp_path: Path)
     events.pop()
     exact, _ = _capsules_exact(tmp_path, rows, events, state)
     assert exact is False
+
+
+def test_live_capsules_allow_only_declared_terminal_checkpoint_rejection(
+    tmp_path: Path,
+) -> None:
+    rows = _response_group(post_error_hz="0.001")
+    phases = {
+        "request_created": 1,
+        "core0_accepted": 2,
+        "application": 3,
+        "response": 4,
+    }
+    response_sequence = int(rows[-1]["transaction_record_sequence"])
+    events = []
+    for row in rows:
+        sequence = int(row["transaction_record_sequence"])
+        path = (
+            tmp_path
+            / "reports/step_001"
+            / f"record_{sequence:06d}_{row['event']}.json"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row), encoding="utf-8")
+        if sequence != response_sequence:
+            events.append(
+                {
+                    "event": "transaction_phase_acknowledged",
+                    "record_sequence": sequence,
+                    "phase": phases[row["event"]],
+                }
+            )
+    state = {
+        "acknowledged_record_sequences": [
+            int(row["transaction_record_sequence"]) for row in rows[:-1]
+        ]
+    }
+
+    exact, hashes = _capsules_exact(
+        tmp_path,
+        rows,
+        events,
+        state,
+        permitted_unacknowledged_sequences=frozenset({response_sequence}),
+    )
+
+    assert exact is True
+    assert len(hashes) == 4
+    assert not _capsules_exact(tmp_path, rows, events, state)[0]
 
 
 def test_live_command_stream_must_match_supervisor_submission_order() -> None:

@@ -155,6 +155,41 @@ def test_first_material_transaction_blocks_later_authority_until_checkpoint() ->
     assert repeated.requested_delta_codes > 0
 
 
+def test_materiality_uses_the_final_nonzero_frequency_only_request() -> None:
+    controller = ActiveHybridController(load_policy())
+    controller.decide(_observation(1800))
+
+    material = controller.decide(
+        _observation(
+            3600,
+            frequency_hz=-0.001,
+            phase_cycles=-24,
+            phase_sequence=2,
+        )
+    )
+    assert material.counterfactual_frequency_only_delta_codes == 3
+    assert material.requested_delta_codes == 6
+    assert material.phase_materially_influenced is True
+
+
+def test_same_final_integer_request_is_not_material_phase_influence() -> None:
+    controller = ActiveHybridController(load_policy())
+    controller.decide(_observation(1800))
+
+    nonmaterial = controller.decide(
+        _observation(
+            3600,
+            frequency_hz=-0.001,
+            phase_cycles=-1,
+            phase_sequence=2,
+        )
+    )
+    assert nonmaterial.counterfactual_frequency_only_delta_codes == 3
+    assert nonmaterial.requested_delta_codes == 3
+    assert nonmaterial.phase_materially_influenced is False
+    assert nonmaterial.reason == "combined_nonmaterial_request_ready"
+
+
 def test_phase_invalidation_degrades_only_at_a_clean_boundary() -> None:
     controller = ActiveHybridController(load_policy())
     controller.decide(_observation(1800))

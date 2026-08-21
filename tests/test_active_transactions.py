@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -218,13 +219,80 @@ def test_supervisor_abort_uses_separate_priority_fifo(
         supervisor._abort("test_fault")
         assert emergency_reader.poll() == ["ACTIVE ABORT"]
         assert normal_reader.poll() == []
-
     assert supervisor.state["terminal"]["result"] == "aborted"
     events = (run_dir / "reports/cx317_active_supervisor_events.jsonl").read_text(
         encoding="utf-8"
     )
     assert "emergency_device_abort_submitted" in events
 
+
+def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
+    tmp_path: Path, monkeypatch
+) -> None:
+    inherited, identities, _ = load_no_write_qualification_spec("A")
+    spec = replace(inherited, profile="cx320_active_hybrid")
+    run_dir = tmp_path / "run"
+    active_csv = run_dir / "csv" / "active_transactions_v1.csv"
+    active_csv.parent.mkdir(parents=True)
+    active_csv.write_text("fixture\n", encoding="utf-8")
+    row = {
+        "transaction_record_sequence": "2",
+        "request_sequence": "1",
+        "event": "request_created",
+    }
+
+    def supervisor() -> ActiveTransactionSupervisor:
+        return ActiveTransactionSupervisor(
+            run_dir=run_dir,
+            command_fifo=tmp_path / "commands.fifo",
+            abort_fifo=tmp_path / "abort.fifo",
+            spec=spec,
+            identities=identities,
+            expected_build_identity="b" * 64 + ":" + "c" * 64,
+            allow_manual_start=False,
+            allow_arm=False,
+            duration_s=None,
+            dual_core_transactions=True,
+        )
+
+    first = supervisor()
+    submitted: list[str] = []
+    monkeypatch.setattr(
+        first,
+        "_prepare_evidence_acknowledgement",
+        lambda _row, _phase: {"pre_submit_snapshot_generation": 7},
+    )
+    monkeypatch.setattr(first, "_command", submitted.append)
+    monkeypatch.setattr(
+        first, "_confirm_evidence_acknowledgement", lambda _value: False
+    )
+
+    with pytest.raises(ValueError, match="firmware consumption is unconfirmed"):
+        first._preserve_and_acknowledge(row, 1)
+
+    assert submitted == ["ACTIVE EVIDENCE 1 1"]
+    assert first.state["acknowledged_record_sequences"] == []
+    assert first.state["inflight_evidence_acknowledgement"] == {
+        "record_sequence": 2,
+        "request_sequence": 1,
+        "phase": 1,
+        "host_write_confirmed": True,
+        "pre_submit_snapshot_generation": 7,
+    }
+
+    restarted = supervisor()
+    monkeypatch.setattr(
+        restarted,
+        "_command",
+        lambda _command: pytest.fail("ambiguous evidence ACK was resent"),
+    )
+    monkeypatch.setattr(
+        restarted, "_confirm_evidence_acknowledgement", lambda _value: True
+    )
+    restarted._preserve_and_acknowledge(row, 1)
+
+    assert restarted.state["acknowledged_record_sequences"] == [2]
+    assert restarted.state["inflight_evidence_acknowledgement"] is None
 
 def test_saturated_normal_fifo_cannot_block_priority_abort(
     tmp_path: Path,

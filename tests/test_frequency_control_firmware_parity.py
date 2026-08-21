@@ -236,6 +236,7 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
     selected = [row for row in estimates if "selected600" in row["estimate_id"]]
     assert len(selected) == 1
     assert float(selected[0]["frequency_estimate_hz"]) == pytest.approx(10_000_000.0)
+    assert selected[0]["source_dac_ref"] == "live:DAC:0"
     assert controls
     assert all(row["preview_only"] == "true" for row in controls)
     assert all(row["actuation_authorized"] == "false" for row in controls)
@@ -255,6 +256,49 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
             ),
         )
         assert result.errors == ()
+
+
+def test_first_post_application_selected_estimate_closes_after_full_response_window(
+    cx317_live_harness: Path,
+) -> None:
+    application_timestamp_s = 2_401
+    policy = load_current_replay_policy()
+    completed = subprocess.run(
+        [str(cx317_live_harness), "response_window"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    lines = completed.stdout.splitlines()
+    estimates = list(
+        csv.DictReader(
+            [lines[0], *[line for line in lines[2:] if line.startswith("EST,")]]
+        )
+    )
+    post_application_selected = [
+        row
+        for row in estimates
+        if "selected600" in row["estimate_id"]
+        and row["source_dac_ref"] == "live:DAC:2"
+    ]
+
+    assert len(post_application_selected) == 1
+    assert int(post_application_selected[0]["accepted_sample_count"]) == (
+        policy.fresh_support_s
+    )
+    assert int(post_application_selected[0]["source_reference_first_seq"]) == (
+        application_timestamp_s + policy.settling_exclusion_s
+    )
+    assert int(post_application_selected[0]["source_reference_last_seq"]) == (
+        application_timestamp_s
+        + policy.settling_exclusion_s
+        + policy.fresh_support_s
+    )
+    assert int(post_application_selected[0]["estimator_timestamp_ticks"]) == (
+        application_timestamp_s
+        + policy.settling_exclusion_s
+        + policy.fresh_support_s
+    ) * 16_000_000
 
 
 def test_live_preview_reference_fault_requalifies_without_explicit_recovery(

@@ -8,11 +8,10 @@ passes one integer delta through the existing request, authority, acceptance,
 application and response transaction. It adds no second DAC writer or hidden
 integrator.
 
-Current authority is offline preparation only. The policy, firmware profile,
-host tools, builds, preflight, simulated operational-path rehearsal and a
-non-effective proposal may be created and validated. No flash, reset, serial
-device access, command FIFO, setup stimulus, DAC write, arm, physical rehearsal
-or live acquisition is authorized by this document.
+This document is descriptive and grants no physical authority. Current
+programme state and allowed operations are recorded in
+`profiles/programme_status_v2.json`; a live run additionally requires an exact
+immutable activation descended from explicit operator authority.
 
 ## Timing and topology
 
@@ -57,6 +56,110 @@ different interpretations and are never conflated.
 Phase is materially influential only when removing the phase term while
 holding the same input, state and limits changes the final rounded requested
 delta. A nonzero floating term alone is not material influence.
+
+## Controller mathematics and intuition
+
+Frequency is the slope of phase; phase is the accumulated position. The
+frequency term stops present drift, while the deliberately weaker phase term
+slowly returns accumulated D8-cycle displacement toward the arbitrary opening
+level of the current continuous phase epoch. It does not align an output to UTC
+or to an absolute D14 edge, and it never joins separate phase epochs.
+
+For one authoritative decision, define:
+
+- `e_f = f_hat_D8_given_D14 - 10,000,000 Hz`, the signed authoritative
+  600-second frequency error;
+- `phi`, the signed accumulated D8-cycle displacement from the current phase
+  epoch origin;
+- `T_phi = 21,600 s`, the phase pull-in horizon;
+- `B_phi = 1/600 Hz`, the absolute phase-bias cap; and
+- `K = 2884.5027706464516 codes/Hz/decision`, the controller gain.
+
+The frequency and phase demands are expressed in the same frequency unit:
+
+```text
+u_f   = -e_f
+u_phi = clamp(-phi / T_phi, -B_phi, +B_phi)
+```
+
+When phase authority is qualified, the one controller demand is:
+
+```text
+u_combined = u_f + u_phi
+```
+
+Otherwise `u_phi` is exactly zero. A state may also authorize no request even
+when a diagnostic term is nonzero.
+
+The single integer actuator path is:
+
+```text
+delta_raw  = K * u_combined
+delta_step = round_half_away_from_zero(clamp(delta_raw, -21, +21))
+code_req   = clamp(code_applied + delta_step, 0xA800, 0xAB00)
+delta_final = code_req - code_applied
+```
+
+Cadence, application-count, cumulative-movement, chatter, progressive-state
+and outstanding-transaction gates may still replace `delta_final` with a hold
+or fail-static transition. The controller recomputes demand from current
+evidence after every application or hold; there is no unrecorded integrator
+state accumulating behind a limit.
+
+The exact frequency-only counterfactual repeats the same integer path with
+`u_phi = 0`. Phase is materially influential only when its final integer delta
+differs from that counterfactual after identical limiting and rounding.
+
+The sign convention gives the intended physical intuition:
+
+- positive frequency error produces a negative frequency demand;
+- positive accumulated phase displacement produces a small negative frequency
+  bias, so future D8 cycles accumulate more slowly; and
+- negative accumulated phase displacement produces the opposite bias.
+
+For example, `phi = +18` cycles represents `+1.8 us` at 10 MHz. Returning
+18 cycles over 21,600 seconds calls for `u_phi = -0.000833333... Hz`, or
+approximately `-2.404` raw controller codes before combination and rounding.
+At `phi = +36` cycles the requested phase bias reaches the frozen
+`-1/600 Hz` cap, approximately `-4.8075` raw controller codes. Thus phase
+steering cannot dominate the overall 21-code step authority.
+
+With measured plant gain `G` in the frozen range
+`0.00016357422282453626..0.00017334010044578463 Hz/code`, the nominal physical
+response model is:
+
+```text
+delta_f_predicted = G * delta_final
+```
+
+The response checkpoint does not accept this model as observation. It requires
+fresh post-settling physical evidence and, for an accepted signed response,
+`delta_f_observed * delta_final > 0` in the exact applied DAC epoch.
+
+Response health and checkpoint passage are deliberately separate. A response
+may be complete, correctly bound and free of contradictory evidence while its
+magnitude remains below the empirical detection floor. Such evidence is
+classified `healthy_indeterminate_near_resolution`; it is valid scientific
+evidence, but it does not satisfy the frozen positive-sign predicate and cannot
+release later progressive authority.
+
+The attempt-9 result exposed the quantitative observability boundary. For its
+six-code correction, the frozen plant envelope predicts
+
+```text
+6 * G = 0.0009814453369472176 .. 0.0010400406026747078 Hz
+```
+
+while the frozen empirical response-detection floor is
+`0.0033333317438761396 Hz`. At the lower plant-gain bound, 20 codes still
+predict only `0.003271484456490725 Hz`; 21 codes are the smallest integer step
+whose lower-bound prediction, `0.0034350586793152614 Hz`, exceeds the floor.
+This does not retrospectively change the controller, step limit, classifier or
+checkpoint. It means that a small legitimate hybrid correction can be healthy
+yet incapable of producing the frozen sign evidence in one response window.
+Any successor must prospectively improve response observability or define a
+different evidence-bearing checkpoint, freeze it before acquisition, and
+receive new authority.
 
 ## Progressive states
 
@@ -108,6 +211,12 @@ The proposed physical run has a 43,200-second qualified limit starting at the
 first complete fresh authoritative 600-second estimate after exact setup
 support, and a 57,600-second wall-clock limit starting when the sole capture
 owner records the exact run identity before setup. Neither may be extended.
+The qualified origin and elapsed interval are measured in the estimate's
+`rp2040_timer0` device domain and remain bound to the same capture session;
+host UTC records only when the supervisor observed the origin. Host clock
+steps or service latency must not move the 41,400-second correction-admission
+close or the 43,200-second qualified endpoint. The independent 57,600-second
+absolute endpoint retains its declared wall-clock origin.
 
 The prospective baseline is the final continuous 1,800 seconds of
 `PHASE_QUALIFY` immediately before the first material application. The primary
@@ -121,3 +230,21 @@ occupancy degradation, all common-health gates and an exact static terminal.
 The complete primary decision vocabulary is frozen in the policy. An honest
 non-pass remains decision-bearing and cannot be tuned, extended or retried
 after observation.
+
+## Physical qualification result
+
+Attempt 9 applied one phase-material correction and reached the exact
+1,500-second response boundary. Independent replay matched the firmware,
+capture and response classifier. The observed response was `0 Hz`, correctly
+classified `healthy_indeterminate_near_resolution`; the positive-sign
+predicate was false. CX320 therefore terminated
+`hybrid_response_wrong_or_frequency_not_reacquired` and remained `FAIL_STATIC`
+at `0xA836`. The reviewed evidence and superseding host-only interpretation are
+recorded in
+`docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
+
+CX320 remains frozen. Its selected offline successor is separately identified
+as CX321 and is documented in
+`docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`. CX321's
+plant-sign gate does not reinterpret CX320 evidence or change the natural
+CX320 controller mathematics.

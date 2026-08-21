@@ -69,6 +69,7 @@ def _observation(
     tight_state: str,
     relative_phase_cycles: int,
     phase_valid: bool = True,
+    outstanding_response: bool = False,
 ) -> HybridObservation:
     return HybridObservation(
         timestamp_s=timestamp_s,
@@ -88,6 +89,8 @@ def _observation(
         phase_continuous=phase_valid,
         phase_current=phase_valid,
         phase_consumers_exact=True,
+        outstanding_request=controller.transaction_outstanding,
+        outstanding_response=outstanding_response,
     )
 
 
@@ -180,6 +183,11 @@ def _transaction_rows(
     model_sha256: str,
     response_policy_sha256: str,
 ) -> list[dict[str, str]]:
+    observed_response_hz = (
+        decision.requested_delta_codes * 0.00017008467693813145
+    )
+    post_error_hz = decision.frequency_error_hz + observed_response_hz
+    inside_deadband = abs(post_error_hz) <= 0.006249995628992717
     common = {
         "record_type": "ACT",
         "schema_version": "1",
@@ -293,12 +301,18 @@ def _transaction_rows(
             "estimator_history_reset": "true",
             "correction_count": str(application_sequence),
             "cumulative_movement_codes": str(cumulative_movement),
-            "post_error_hz": "0.000000000000",
-            "observed_response_hz": f"{decision.requested_delta_codes * 0.00017008467693813145:.12f}",
-            "cumulative_response_hz": f"{decision.requested_delta_codes * 0.00017008467693813145:.12f}",
+            "post_error_hz": f"{post_error_hz:.12f}",
+            "observed_response_hz": f"{observed_response_hz:.12f}",
+            "cumulative_response_hz": f"{observed_response_hz:.12f}",
             "active_state": "ARMED",
-            "response_class": "healthy_detected",
-            "reason": "response_detected_with_commanded_sign",
+            "response_class": (
+                "inside_deadband" if inside_deadband else "healthy_detected"
+            ),
+            "reason": (
+                "post_error_inside_frozen_deadband"
+                if inside_deadband
+                else "response_detected_with_commanded_sign"
+            ),
             "evidence_state": "response_pending",
         },
     )
@@ -342,7 +356,7 @@ def _modeled_transaction(
     bundle: dict[str, Any]
 ) -> tuple[dict[str, Any], list[dict[str, str]], list[dict[str, str]]]:
     policy = load_policy()
-    controller = ActiveHybridController(policy)
+    controller = ActiveHybridController(policy, setup_application_s=0)
     supervisor = _prepared_supervisor(bundle, owner="capture_owner_3201")
     ahy_rows: list[dict[str, str]] = []
     transaction_rows: list[dict[str, str]] = []
@@ -350,13 +364,14 @@ def _modeled_transaction(
     transaction_record_sequence = 1
     response_attestations = []
     observations = (
-        (600, 600, -0.010, -6, "OUTSIDE", 0),
-        (2400, 2400, 0.0, 0, "TIGHT_INSIDE", 0),
-        (4200, 4200, 0.0, 0, "TIGHT_INSIDE", 36),
-        (6000, 6000, 0.0, 0, "TIGHT_INSIDE", 28),
-        (7800, 7800, 0.0, 0, "TIGHT_INSIDE", 18),
+        (1800, 1800, -0.010, -6, "OUTSIDE", 0),
+        (3600, 3600, 0.0, 0, "TIGHT_INSIDE", 0),
+        (5400, 5400, 0.0, 0, "TIGHT_INSIDE", 36),
+        (7200, 7200, 0.0, 0, "TIGHT_INSIDE", 28),
+        (9000, 9000, 0.0, 0, "TIGHT_INSIDE", 18),
     )
-    for record_sequence, item in enumerate(observations, start=1):
+    hybrid_record_sequence = 0
+    for item in observations:
         decision = controller.decide(
             _observation(
                 controller,
@@ -368,10 +383,11 @@ def _modeled_transaction(
                 relative_phase_cycles=item[5],
             )
         )
+        hybrid_record_sequence += 1
         ahy_rows.append(
             _ahy_row(
                 decision,
-                record_sequence=record_sequence,
+                record_sequence=hybrid_record_sequence,
                 run_identity=bundle["run_identity"],
                 build_identity=bundle["firmware"]["build_identity"],
                 policy_sha256=policy.policy_sha256,
@@ -420,8 +436,47 @@ def _modeled_transaction(
         )
         transaction_rows.extend(new_rows)
         transaction_record_sequence += 4
+        response_row = new_rows[-1]
+        response_timestamp_s = int(new_rows[2]["application_timestamp_s"]) + (
+            policy.settling_exclusion_s + policy.fresh_support_s
+        )
+        response_decision = controller.decide(
+            _observation(
+                controller,
+                timestamp_s=response_timestamp_s,
+                sequence=response_timestamp_s,
+                frequency_error_hz=float(response_row["post_error_hz"]),
+                counts=round(float(response_row["post_error_hz"]) * 600),
+                tight_state=(
+                    "TIGHT_INSIDE"
+                    if abs(float(response_row["post_error_hz"]))
+                    <= 2.0 / 600.0
+                    else "OUTSIDE"
+                ),
+                relative_phase_cycles=item[5],
+                outstanding_response=True,
+            )
+        )
+        hybrid_record_sequence += 1
+        response_ahy = _ahy_row(
+            response_decision,
+            record_sequence=hybrid_record_sequence,
+            run_identity=bundle["run_identity"],
+            build_identity=bundle["firmware"]["build_identity"],
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        )
+        response_ahy.update(
+            {
+                "authority_state": "AWAITING_RESPONSE",
+                "request_sequence": str(request_sequence),
+                "acceptance_sequence": str(request_sequence),
+                "application_sequence": str(controller.correction_count),
+            }
+        )
+        ahy_rows.append(response_ahy)
         controller.note_response(
-            classification="healthy_detected",
+            classification=response_row["response_class"],
             predicted_sign_observed=True,
             exact_replay=True,
             support_fresh=True,
@@ -429,7 +484,7 @@ def _modeled_transaction(
         )
         supervisor.response_replayed_and_acknowledged(
             request_sequence=request_sequence,
-            response_class="healthy_detected",
+            response_class=response_row["response_class"],
             support_fresh=True,
             sign_healthy=True,
             replay_exact=True,

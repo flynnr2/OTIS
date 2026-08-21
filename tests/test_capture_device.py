@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from hashlib import sha256
+import csv
+import io
 import json
 import os
 import signal
@@ -11,6 +13,14 @@ import time
 import pytest
 
 import host.otis_tools.capture_device as capture_device_module
+from host.otis_tools.active_status_contract import (
+    ACTIVE_STATUS_KEYS,
+    ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+)
+from host.otis_tools.active_status_live_state import read_live_health_state
 from host.otis_tools.capture_device import (
     CaptureDeviceConfig,
     CaptureDeviceRunner,
@@ -447,6 +457,119 @@ def test_sigint_shutdown_drains_exactly_one_partial_device_line(
     assert b"REF,1,1001" not in raw
     assert b"graceful_shutdown_complete" in raw
     assert b"partial_line_dropped" not in raw
+
+
+def test_sigint_shutdown_drains_active_status_generation_not_only_current_line(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    runner: CaptureDeviceRunner
+
+    def status_line(sequence: int, key: str, value: str) -> bytes:
+        output = io.StringIO(newline="")
+        csv.writer(output, lineterminator="\n").writerow(
+            (
+                "STS",
+                1,
+                sequence,
+                sequence,
+                "rp2040_timer0",
+                "cx317_active",
+                key,
+                value,
+                "INFO",
+                0,
+            )
+        )
+        return output.getvalue().encode()
+
+    generation = 7
+    rows = [
+        status_line(1, SNAPSHOT_BEGIN_KEY, str(generation)),
+        status_line(2, SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+        *(
+            status_line(sequence, key, f"value:{key}")
+            for sequence, key in enumerate(ACTIVE_STATUS_KEYS, start=3)
+        ),
+        status_line(
+            len(ACTIVE_STATUS_KEYS) + 3,
+            SNAPSHOT_COMPLETE_KEY,
+            str(generation),
+        ),
+    ]
+    trailing = b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"
+
+    class SignalAfterSnapshotBegin(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([rows[0], b"".join(rows[1:]), trailing])
+            self.first_read = True
+
+        def read(self, size: int) -> bytes:
+            data = super().read(size)
+            if self.first_read:
+                self.first_read = False
+                runner.request_stop(signal.SIGINT)
+            return data
+
+    serial = SignalAfterSnapshotBegin()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    live = read_live_health_state(
+        config.run_dir / "reports/cx317_active_status_live_state_v1.json"
+    )
+    assert live.state == "complete"
+    assert live.generation == generation
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert rows[-1] in raw
+    assert trailing not in raw
+
+
+def test_second_sigint_bounds_a_stuck_active_status_generation(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    runner: CaptureDeviceRunner
+    begin = (
+        "STS,1,1,1,rp2040_timer0,cx317_active,"
+        f"{SNAPSHOT_BEGIN_KEY},7,INFO,0\n"
+    ).encode()
+
+    class StuckAfterSnapshotBegin(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([begin])
+            self.read_count = 0
+
+        def read(self, size: int) -> bytes:
+            self.read_count += 1
+            data = super().read(size)
+            if self.read_count == 1:
+                runner.request_stop(signal.SIGINT)
+            elif self.read_count == 2:
+                # This models active_hybrid_run's bounded second SIGINT after
+                # its graceful capture wait expires.
+                runner.request_stop(signal.SIGINT)
+            return data
+
+    serial = StuckAfterSnapshotBegin()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+    )
+
+    assert runner.run() == 0
+
+    live_state = read_live_health_state(
+        config.run_dir / "reports/cx317_active_status_live_state_v1.json"
+    )
+    assert live_state.state == "in_progress"
+    raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
+    assert b"graceful_shutdown_complete" not in raw
+    assert b"capture_stopped" in raw
 
 
 def test_planned_duration_stops_after_completing_partial_device_line(

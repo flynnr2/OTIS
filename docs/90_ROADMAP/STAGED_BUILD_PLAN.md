@@ -1,12 +1,16 @@
 # Staged Build Plan
 
-Current status (2026-08-20): this long-horizon plan retains historical stage
+Current status (2026-08-21): this long-horizon plan retains historical stage
 context; it is not execution authority. CX319 completed its range map and
-mapping-informed Part B programme and is frozen. The CX320 bounded active-hybrid
-exact offline bundle and operational rehearsal pass; physical phase steering
-remains unauthorized and unqualified pending a separate exact-bundle decision.
-See
-`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/02_OFFLINE_READINESS_AND_AUTHORITY_PROPOSAL.md`.
+mapping-informed Part B programme and is frozen. CX320 then physically applied
+one firmware-driven, phase-material combined correction, but its exact response
+was below the frozen observability floor and failed the positive-sign
+checkpoint. CX320 is a bounded non-pass with no remaining live authority. See
+`../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
+The selected offline CX321 successor adds a separate 21-code plant-sign gate
+before the unchanged natural hybrid controller; implementation, bundle,
+rehearsal and physical authority remain pending. See
+`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Stage 0 — Foundations
 

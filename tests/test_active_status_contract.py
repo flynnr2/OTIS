@@ -52,6 +52,17 @@ def test_only_a_complete_generation_is_eligible() -> None:
     assert status == {}
 
 
+def test_active_snapshot_contract_carries_cx320_first_consumer_state() -> None:
+    assert {
+        "hybrid_state",
+        "hybrid_reason",
+        "first_phase_checkpoint_passed",
+        "phase_nonzero_application_count",
+        "phase_material_application_count",
+        "frequency_only_application_count",
+    } <= set(ACTIVE_STATUS_KEYS)
+
+
 def test_newer_incomplete_or_duplicate_burst_cannot_mix_with_older_state() -> None:
     duplicate = _burst(2)
     duplicate.insert(5, _row("cx317_active", "state", "duplicate"))

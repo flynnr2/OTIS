@@ -5,14 +5,22 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.active_hybrid_evidence_guard import (
+    FROZEN_AHY_HALF_SERIALIZATION_QUANTUM,
+    ResponseCheckpointRejected,
+    _ahy_act_frequency_close,
+    _raw_code_close,
+    replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
-from host.otis_tools.active_hybrid_policy import load_policy
+from host.otis_tools.active_hybrid_policy import ActiveHybridController, load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
+    _ahy_row,
     _modeled_transaction,
+    _observation,
     _scenario_abort_failure,
     _scenario_clean_degradation,
     _scenario_shared_fault,
+    _transaction_rows,
     _write_csv,
 )
 from host.otis_tools.active_hybrid_supervisor import (
@@ -30,7 +38,7 @@ from host.otis_tools.contracts import (
 def _bundle() -> dict[str, object]:
     policy = load_policy()
     return {
-        "run_identity": "cx320_active_hybrid_12h_v1:3200001",
+        "run_identity": "cx320_active_hybrid:3200001",
         "bundle_sha256": "b" * 64,
         "policy": {"policy_sha256": policy.policy_sha256},
         "firmware": {"build_identity": "a" * 64 + ":" + "c" * 64},
@@ -87,6 +95,8 @@ def test_accelerated_path_exercises_material_checkpoint_and_shared_budget(
     )
     assert attestation["exact_replay"] is True
     assert attestation["phase_materially_influenced"] is True
+    assert attestation["response_class"] == "inside_deadband"
+    assert attestation["predicted_sign_observed"] is True
 
 
 def test_phase_degradation_and_transport_faults_are_distinct() -> None:
@@ -135,6 +145,364 @@ def test_response_guard_rejects_changed_firmware_delta(tmp_path: Path) -> None:
         if row["event"] == "response"
         and row["decision_sequence"] == material["decision_sequence"]
     )
+    with pytest.raises(ValueError, match="independent host replay differs"):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=response,
+        )
+
+
+def test_response_guard_scales_12_decimal_hz_quantization_into_raw_codes() -> None:
+    policy = load_policy()
+    firmware_raw_codes = -5.875839765254
+    replayed_raw_codes = -5.875839765673529
+    tolerance_codes = FROZEN_AHY_HALF_SERIALIZATION_QUANTUM * (
+        policy.integrator_gain_codes_per_hz_per_decision + 1.0
+    )
+
+    assert abs(firmware_raw_codes - replayed_raw_codes) == pytest.approx(
+        4.1952930018851475e-10
+    )
+    assert tolerance_codes == pytest.approx(1.4427513853232257e-9)
+    assert _raw_code_close(
+        firmware_raw_codes,
+        replayed_raw_codes,
+        gain_codes_per_hz=policy.integrator_gain_codes_per_hz_per_decision,
+    )
+    assert not _raw_code_close(
+        replayed_raw_codes + tolerance_codes * 1.01,
+        replayed_raw_codes,
+        gain_codes_per_hz=policy.integrator_gain_codes_per_hz_per_decision,
+    )
+
+
+def test_response_guard_separates_exact_replay_from_failed_sign_checkpoint(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle()
+    _, ahy_rows, transaction_rows = _modeled_transaction(bundle)
+    material = next(
+        row for row in ahy_rows if row["phase_materially_influenced"] == "true"
+    )
+    decision_sequence = material["decision_sequence"]
+    response_index = next(
+        index
+        for index, row in enumerate(transaction_rows)
+        if row["event"] == "response"
+        and row["decision_sequence"] == decision_sequence
+    )
+    response = transaction_rows[response_index]
+    response.update(
+        {
+            "post_error_hz": "0.000000000",
+            "observed_response_hz": "0.000000000",
+            "cumulative_response_hz": "0.000000000",
+            "consecutive_indeterminate": "1",
+            "response_class": "healthy_indeterminate_near_resolution",
+            "reason": "healthy_evidence_below_empirical_detection_floor",
+        }
+    )
+    response_horizon_index = next(
+        index
+        for index, row in enumerate(ahy_rows)
+        if int(row["decision_sequence"]) > int(decision_sequence)
+        and row["authority_state"] == "AWAITING_RESPONSE"
+    )
+    response_horizon = ahy_rows[response_horizon_index]
+    response_horizon["frequency_error_hz"] = "0.000000000000"
+    response_horizon["frequency_term_hz"] = "-0.000000000000"
+    ahy_rows = ahy_rows[: response_horizon_index + 1]
+    transaction_rows = transaction_rows[: response_index + 1]
+
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transaction_rows)
+    replay = replay_active_hybrid_history(
+        ahy_rows,
+        transaction_rows,
+        expected_run_identity=str(bundle["run_identity"]),
+        expected_build_identity=str(bundle["firmware"]["build_identity"]),
+        expected_profile_identity="cx320_active_hybrid",
+    )
+    assert replay["exact"] is True
+    assert replay["all_response_checkpoints_passed"] is False
+    assert replay["comparisons"][-1]["response_evidence_exact"] is True
+    assert replay["comparisons"][-1]["response_checkpoint_exact"] is True
+    assert replay["comparisons"][-1]["predicted_sign_observed"] is False
+    assert replay["comparisons"][-1]["response_checkpoint_passed"] is False
+    with pytest.raises(
+        ResponseCheckpointRejected, match="response-sign checkpoint did not pass"
+    ):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=response,
+        )
+
+
+def test_response_guard_compares_ahy_and_act_frequency_serialization_domains() -> None:
+    assert _ahy_act_frequency_close(0.001666666940, 0.001666667)
+    assert not _ahy_act_frequency_close(0.001666666940, 0.001666668)
+
+
+def test_response_guard_replays_nonzero_frequency_only_counterfactual(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy()
+    controller = ActiveHybridController(policy)
+    first = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=1800,
+            sequence=1800,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+        )
+    )
+    decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=3600,
+            sequence=3600,
+            frequency_error_hz=-0.001,
+            counts=-1,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+        )
+    )
+    run_identity = "cx320_active_hybrid:3200001"
+    build_identity = "a" * 64 + ":" + "c" * 64
+    ahy_rows = [
+        _ahy_row(
+            first,
+            record_sequence=1,
+            run_identity=run_identity,
+            build_identity=build_identity,
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        ),
+        _ahy_row(
+            decision,
+            record_sequence=2,
+            run_identity=run_identity,
+            build_identity=build_identity,
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        )
+    ]
+    transaction_rows = _transaction_rows(
+        decision,
+        record_sequence=1,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=abs(decision.requested_delta_codes),
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    controller.note_application(
+        decision,
+        applied_code=int(transaction_rows[2]["applied_code"]),
+        dac_epoch=int(transaction_rows[2]["dac_epoch"]),
+        downstream_consumers_exact=True,
+    )
+    response_timestamp = int(transaction_rows[2]["application_timestamp_s"]) + (
+        policy.settling_exclusion_s + policy.fresh_support_s
+    )
+    response_decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=response_timestamp,
+            sequence=response_timestamp,
+            frequency_error_hz=float(transaction_rows[-1]["post_error_hz"]),
+            counts=round(float(transaction_rows[-1]["post_error_hz"]) * 600),
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=-24,
+            outstanding_response=True,
+        )
+    )
+    response_ahy = _ahy_row(
+        response_decision,
+        record_sequence=3,
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    response_ahy.update(
+        {
+            "authority_state": "AWAITING_RESPONSE",
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+        }
+    )
+    ahy_rows.append(response_ahy)
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transaction_rows)
+    response = transaction_rows[-1]
+
+    attestation = replay_response_before_acknowledgement(
+        active_hybrid_csv=ahy_path,
+        active_transactions_csv=act_path,
+        response_row=response,
+    )
+    assert attestation["counterfactual_frequency_only_delta_codes"] == 3
+    assert attestation["requested_delta_codes"] == 6
+
+    ahy_rows[1]["counterfactual_frequency_only_delta_codes"] = "0"
+    ahy_path.unlink()
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    with pytest.raises(ValueError, match="independent host replay differs"):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=response,
+        )
+
+
+def test_response_guard_replays_tight_loss_as_frequency_only(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy()
+    controller = ActiveHybridController(policy)
+    first = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=1800,
+            sequence=1800,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=720,
+        )
+    )
+    decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=3600,
+            sequence=3600,
+            frequency_error_hz=0.01,
+            counts=6,
+            tight_state="OUTSIDE",
+            relative_phase_cycles=720,
+        )
+    )
+    assert (decision.state_before, decision.state_after) == (
+        "PHASE_QUALIFY",
+        "FREQUENCY_ACQUIRE",
+    )
+    assert decision.phase_term_hz == 0.0
+    assert decision.requested_delta_codes == -21
+
+    run_identity = "cx320_active_hybrid:3200001"
+    build_identity = "a" * 64 + ":" + "c" * 64
+    rows = [
+        _ahy_row(
+            item,
+            record_sequence=index,
+            run_identity=run_identity,
+            build_identity=build_identity,
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        )
+        for index, item in enumerate((first, decision), start=1)
+    ]
+    transactions = _transaction_rows(
+        decision,
+        record_sequence=1,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=21,
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    controller.note_application(
+        decision,
+        applied_code=int(transactions[2]["applied_code"]),
+        dac_epoch=2,
+        downstream_consumers_exact=True,
+    )
+    response_timestamp = int(transactions[2]["application_timestamp_s"]) + (
+        policy.settling_exclusion_s + policy.fresh_support_s
+    )
+    response_decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=response_timestamp,
+            sequence=response_timestamp,
+            frequency_error_hz=float(transactions[-1]["post_error_hz"]),
+            counts=round(float(transactions[-1]["post_error_hz"]) * 600),
+            tight_state="OUTSIDE",
+            relative_phase_cycles=720,
+            outstanding_response=True,
+        )
+    )
+    response_ahy = _ahy_row(
+        response_decision,
+        record_sequence=3,
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    response_ahy.update(
+        {
+            "authority_state": "AWAITING_RESPONSE",
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+        }
+    )
+    rows.append(response_ahy)
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transactions)
+
+    attestation = replay_response_before_acknowledgement(
+        active_hybrid_csv=ahy_path,
+        active_transactions_csv=act_path,
+        response_row=transactions[-1],
+    )
+    assert attestation["exact_replay"] is True
+    assert attestation["phase_materially_influenced"] is False
+    assert attestation["requested_delta_codes"] == -21
+
+
+def test_inside_deadband_checkpoint_still_requires_observed_command_sign(
+    tmp_path: Path,
+) -> None:
+    _, rows, transactions = _modeled_transaction(_bundle())
+    material = next(row for row in rows if row["phase_materially_influenced"] == "true")
+    response = next(
+        row
+        for row in transactions
+        if row["event"] == "response"
+        and row["decision_sequence"] == material["decision_sequence"]
+    )
+    assert response["response_class"] == "inside_deadband"
+    response["observed_response_hz"] = "0.000000000000"
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transactions)
+
     with pytest.raises(ValueError, match="independent host replay differs"):
         replay_response_before_acknowledgement(
             active_hybrid_csv=ahy_path,

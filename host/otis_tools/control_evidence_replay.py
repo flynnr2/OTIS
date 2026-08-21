@@ -62,6 +62,23 @@ def _selected_windows_nonoverlap(windows: list[tuple[int, int]]) -> bool:
     )
 
 
+def _selected_frequency_estimator_sha256(manifest_value: dict[str, Any]) -> str:
+    """Resolve the selected estimator across the current programme schemas."""
+
+    bindings = manifest_value.get("policy", {}).get("bindings", {})
+    if not isinstance(bindings, dict):
+        raise ValueError("policy estimator bindings are unavailable")
+    binding = bindings.get("selected_frequency_estimator")
+    if binding is None:
+        binding = bindings.get("frequency_estimator")
+    if not isinstance(binding, dict):
+        raise ValueError("selected frequency estimator binding is unavailable")
+    identity = binding.get("sha256")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise ValueError("selected frequency estimator identity is malformed")
+    return identity
+
+
 def _measurement_replay(
     manifest: Any,
     manifest_value: dict[str, Any],
@@ -76,9 +93,7 @@ def _measurement_replay(
         return False, {"reason": "measurement replay source is empty"}, {}
     continuity, count_by_seq = check_continuity(counts, snapshots, references)
     continuity_exact = all(item.passed for item in continuity)
-    expected_estimator_hash = manifest_value["policy"]["bindings"][
-        "selected_frequency_estimator"
-    ]["sha256"]
+    expected_estimator_hash = _selected_frequency_estimator_sha256(manifest_value)
     sequences = [int(row["estimate_seq"]) for row in estimates]
     sequence_exact = sequences == list(range(sequences[0], sequences[-1] + 1))
     identifiers: set[str] = set()
@@ -453,6 +468,8 @@ def _capsules_exact(
     rows: list[dict[str, str]],
     events: list[dict[str, Any]],
     supervisor_state: dict[str, Any],
+    *,
+    permitted_unacknowledged_sequences: frozenset[int] = frozenset(),
 ) -> tuple[bool, dict[str, str]]:
     expected_rows = [row for row in rows if row.get("event") != "manual_start"]
     hashes: dict[str, str] = {}
@@ -482,14 +499,25 @@ def _capsules_exact(
             exact = False
             continue
         hashes[str(relative)] = _sha256_file(path)
-        if (record_sequence, phase_by_event[row["event"]]) not in acknowledgements:
+        acknowledged = (
+            record_sequence,
+            phase_by_event[row["event"]],
+        ) in acknowledgements
+        should_be_acknowledged = (
+            record_sequence not in permitted_unacknowledged_sequences
+        )
+        if acknowledged != should_be_acknowledged:
             exact = False
     actual_paths = {
         path.relative_to(run_dir)
         for path in (run_dir / "reports").glob("step_*/record_*_*.json")
+        if not path.name.endswith("_response_replay_attestation.json")
     }
     expected_sequences = sorted(
-        int(row["transaction_record_sequence"]) for row in expected_rows
+        int(row["transaction_record_sequence"])
+        for row in expected_rows
+        if int(row["transaction_record_sequence"])
+        not in permitted_unacknowledged_sequences
     )
     exact &= actual_paths == expected_paths
     exact &= sorted(supervisor_state.get("acknowledged_record_sequences", [])) == expected_sequences

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <utility>
 
 #include "otis_active_hybrid_policy_engine.h"
 
@@ -64,7 +65,7 @@ void decide_and_emit(const char *scenario, uint32_t step,
 
 void simple_phase_case(const char *name, int64_t phase_cycles) {
   OtisActiveHybridEngine engine;
-  otis_active_hybrid_engine_init(&engine);
+  otis_active_hybrid_engine_init(&engine, 0u);
   OtisActiveHybridDecision decision;
   auto first = observation(1800u);
   decide_and_emit(name, 1u, &engine, &first, &decision);
@@ -83,23 +84,46 @@ int main() {
   simple_phase_case("phase_small_zero", -1);
   simple_phase_case("phase_cap", -1000);
 
+  for (const auto &item : {
+           std::pair<const char *, int64_t>{"phase_frequency_material", -24},
+           std::pair<const char *, int64_t>{"phase_frequency_nonmaterial", -1},
+       }) {
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init(&engine, 0u);
+    OtisActiveHybridDecision decision;
+    auto input = observation(1800u);
+    decide_and_emit(item.first, 1u, &engine, &input, &decision);
+    input = observation(3600u, 0xA83Cu, 1u, -0.001, "TIGHT_INSIDE",
+                        item.second, 2u);
+    decide_and_emit(item.first, 2u, &engine, &input, &decision);
+  }
+
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
     decide_and_emit("frequency_negative", 1u, &engine, &input, &decision);
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xA83Cu, 1u, -0.01, "OUTSIDE");
     decide_and_emit("frequency_positive", 1u, &engine, &input, &decision);
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 611u);
+    OtisActiveHybridDecision decision;
+    auto input = observation(2400u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
+    decide_and_emit("setup_cadence_611", 1u, &engine, &input, &decision);
+    input = observation(2411u, 0xA83Cu, 1u, 0.01, "OUTSIDE", -24, 2u);
+    decide_and_emit("setup_cadence_611", 2u, &engine, &input, &decision);
+  }
+  {
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u);
     decide_and_emit("progressive", 1u, &engine, &input, &decision);
@@ -122,7 +146,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     engine.last_application_available = true;
     engine.last_application_s = 1000u;
     OtisActiveHybridDecision decision;
@@ -131,7 +155,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     engine.correction_count = 4u;
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
@@ -139,7 +163,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     engine.cumulative_movement_codes = 80u;
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
@@ -147,7 +171,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     engine.applied_code = 0xAB00u;
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xAB00u, 1u, -0.01, "OUTSIDE");
@@ -156,7 +180,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u);
     decide_and_emit("direction_hold", 1u, &engine, &input, &decision);
@@ -166,7 +190,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     engine.direction_history[0] = 1;
     engine.direction_history[1] = -1;
     engine.direction_history[2] = 1;
@@ -177,7 +201,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u);
     decide_and_emit("phase_degrade", 1u, &engine, &input, &decision);
@@ -187,7 +211,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u);
     decide_and_emit("identity_fault", 1u, &engine, &input, &decision);
@@ -197,7 +221,7 @@ int main() {
   }
   {
     OtisActiveHybridEngine engine;
-    otis_active_hybrid_engine_init(&engine);
+    otis_active_hybrid_engine_init(&engine, 0u);
     OtisActiveHybridDecision decision;
     auto input = observation(1800u, 0xA83Cu, 2u);
     decide_and_emit("epoch_fault", 1u, &engine, &input, &decision);

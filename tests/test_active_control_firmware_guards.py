@@ -277,7 +277,24 @@ def test_setup_ack_survives_one_in_flight_pre_setup_health_sample() -> None:
     assert confirmation < loss_gate < fault
 
 
-def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> None:
+def test_pre_setup_session_does_not_apply_post_setup_integrity_predicate() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    integrity = live[
+        live.index("void update_active_reference_and_integrity") :
+        live.index("}  // namespace")
+    ]
+
+    pre_setup_return = integrity.index(
+        "if (!transaction_bound || !manual_start_confirmed) return;"
+    )
+    state_checks = integrity.index("const bool inactive")
+    strict_integrity = integrity.index("!active_integrity_healthy(now_s)")
+    assert pre_setup_return < state_checks < strict_integrity
+
+
+def test_setup_ack_propagates_the_new_dac_epoch_to_all_hybrid_consumers() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
@@ -297,11 +314,80 @@ def test_setup_ack_propagates_the_new_dac_epoch_to_both_preview_engines() -> Non
     propagation = setup_ack.index(
         "propagate_cx317_applied_epoch_to_previews", manual_start
     )
-    assert manual_start < propagation
+    confirmation = setup_ack.index(
+        "otis_cx317_active_live_confirm_setup_consumers", propagation
+    )
+    assert manual_start < propagation < confirmation
     assert "active_status.manual_start_confirmed" in setup_ack
     assert "active_status.dac_epoch != 0u" in setup_ack
     assert "otis_cx317_preview_live_on_dac_applied_epoch" in helper
     assert "otis_phase_preview_live_update_applied_code" in helper
+
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    confirm_consumers = live[
+        live.index("bool otis_cx317_active_live_confirm_setup_consumers") :
+        live.index("void otis_cx317_active_live_on_decision")
+    ]
+    frequency_consumer = confirm_consumers.index(
+        "otis_cx317_preview_live_applied_epoch_exact"
+    )
+    phase_consumer = confirm_consumers.index(
+        "otis_phase_preview_live_get_status"
+    )
+    engine_initialization = confirm_consumers.index(
+        "otis_active_hybrid_engine_init"
+    )
+    state_release = confirm_consumers.index("hybrid_engine_ready = true")
+    assert frequency_consumer < phase_consumer < engine_initialization < state_release
+    assert "transaction.have_last_application" in confirm_consumers
+    assert "transaction.last_application_s" in confirm_consumers
+
+    status = live[live.index("void otis_cx317_active_live_get_status") :]
+    assert "hybrid_engine_ready" in status
+    assert "otis_active_hybrid_state_name(hybrid_engine.state)" in status
+
+
+def test_hybrid_response_checkpoint_uses_observed_sign_not_class_name() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    response_record = live[
+        live.index("if (transaction.state == OtisCx317ActiveState::AwaitingResponse)") :
+        live.index("if (transaction.state != OtisCx317ActiveState::Armed)")
+    ]
+    acknowledgement = live[
+        live.index("if (evidence_phase == EvidencePhase::Response)") :
+        live.index("evidence_phase = EvidencePhase::None;", live.index(
+            "if (evidence_phase == EvidencePhase::Response)"
+        ))
+    ]
+
+    assert "response.observed_response_hz" in response_record
+    assert "transaction.request.requested_delta_codes" in response_record
+    assert "pending_hybrid_predicted_sign_observed" in response_record
+    assert "predicted_sign_observed" in acknowledgement
+    assert (
+        "&hybrid_engine, healthy_classification, predicted_sign_observed"
+        in acknowledgement
+    )
+
+
+def test_abort_consumption_publishes_complete_resulting_active_snapshot() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    start = sketch.index(
+        "message.run_control.kind == OtisRunControlKind::Abort"
+    )
+    branch = sketch[
+        start : sketch.index("OtisRunControlKind::EvidenceRelease", start)
+    ]
+    abort = branch.index("otis_cx317_active_live_abort")
+    accepted = branch.index("abort_accepted_on_core1", abort)
+    snapshot = branch.index("publish_dual_core_active_status", accepted)
+    assert abort < accepted < snapshot
 
 
 def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:
