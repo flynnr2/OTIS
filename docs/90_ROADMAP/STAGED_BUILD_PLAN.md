@@ -7,11 +7,13 @@ one firmware-driven, phase-material combined correction, but its exact response
 was below the frozen observability floor and failed the positive-sign
 checkpoint. CX320 is a bounded non-pass with no remaining live authority. See
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The selected offline CX321 v2 successor adds a separate 21-code plant-sign gate
-using a dedicated 1,500-second estimator before the unchanged 600-second
-natural hybrid controller. Implementation and release verification pass;
-exact-bundle rehearsal and physical authority remain pending. See
-`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
+CX321 implemented that design, but its two healthy physical pre-estimates
+differed by one count and the frozen exact-equality gate correctly made no DAC
+application. It is a sealed bounded non-pass. The selected offline CX322
+successor uses a one-count pre-envelope gate and a 25-code identification step
+before the unchanged 600-second natural hybrid controller. Implementation and
+physical authority remain pending. See
+`../60_EXPERIMENTS/CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Stage 0 — Foundations
 

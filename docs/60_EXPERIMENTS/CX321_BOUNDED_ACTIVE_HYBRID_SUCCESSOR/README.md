@@ -7,6 +7,11 @@ but differed by one exact count (`+3`, then `+2`), so firmware correctly made
 no identification or natural-controller application. The activation is
 consumed and no automatic retry is authorized. See
 [`04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md`](04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md).
+The prospective offline CX322 decision now replaces exact equality with a
+one-count pre-envelope gate and selects the minimum full-replay 25-code
+identification step. It does not alter this terminal or create physical
+authority; see the
+[`CX322 design decision`](../CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md).
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -265,5 +270,6 @@ parser errors. Its exact pre-window totals were `15,000,000,003` and
 `15,000,000,002`; the prospective equality precondition rejected the
 identification transaction before any automatic DAC write. The superseding
 offline seal replays the unchanged physical evidence exactly and records the
-bounded non-pass. The next useful gate is an offline successor-design decision,
-not repetition of the consumed bundle.
+bounded non-pass. The offline successor-design decision is now complete as
+CX322; the next useful gate is implementation and deterministic integration
+verification, not repetition of the consumed bundle.
