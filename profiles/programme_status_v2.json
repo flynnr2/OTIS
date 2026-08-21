@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx321_bounded_active_hybrid_successor": {
-      "state": "stage5_attempt2_platform_terminal_refreeze_pending",
+      "state": "stage5_attempt3_authorized_live_entry_pending",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx321_stage5_bounded_active_hybrid_live"
       ],
       "effective_date": "2026-08-21",
-      "authority": "expanded_remediation_authority_exact_refreeze_pending",
-      "physical_authority_effective": false,
+      "authority": "expanded_remediation_authority_host_corrected_exact_activation_effective",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx320_bounded_active_hybrid",
       "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
       "plant_sign_gate": {
@@ -63,53 +64,51 @@
         "exact_bundle_pending": false
       },
       "exact_bundle": {
-        "path": "runs/cx321_active_hybrid/preentry_a5c73c2_20260821/cx321_active_hybrid_exact_bundle_v1.json",
-        "file_sha256": "dcecbcc4d27911e16f7c3556b1f64a592f0110cde09af6bccd0577599ab508e8",
-        "bundle_sha256": "f83d78d5213716c3c21e4823cf0fb533946c11206ec81a3f96223a392bcb3641",
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_exact_bundle_v2.json",
+        "file_sha256": "37a6d9911247313f42806e0821e326eb0183af393c47c87a699e51cfcaf7b269",
+        "bundle_sha256": "ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072",
         "firmware_source_revision": "a5c73c24bfc4dcbd0f7735a1df0ad05a2d1c99c5",
         "firmware_source_sha256": "7a05e5bbe1a0c1db219e0ee3b44c57e60d7cabe8c8930928a7237b93a5b7b06d",
         "configuration_sha256": "5ebbe81fc4ec857cfba385d9c932c93154206b0a9546a4b3d6ffa7ceeadfe783",
         "firmware_uf2_sha256": "c5fb2887c291f640543c3d27bb03dafea9cb5d77fd65c0c47a97b2edb38a2ef9"
       },
       "authority_proposal": {
-        "path": "runs/cx321_active_hybrid/preentry_a5c73c2_20260821/cx321_active_hybrid_authority_proposal_v1.json",
-        "file_sha256": "7cee7481e193880c1bb77f50150c994b0ebff6ef54aa63017b3a8e353f12dbf4",
-        "proposal_sha256": "6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30"
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_authority_proposal_v2.json",
+        "file_sha256": "61ccad027359172cbf0c93f89c72a377eb249915d64fca92595fc5637ef4866e",
+        "proposal_sha256": "5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567"
       },
       "structural_preflight": {
-        "path": "runs/cx321_active_hybrid/preentry_a5c73c2_20260821/cx321_active_hybrid_structural_preflight_v1.json",
-        "file_sha256": "a994a8c9add13264a32ff59dce5734926adc29343eb37aa4dc124dfbefdefb87",
-        "preflight_sha256": "3cf24a9bb926a78142bdd27f9d46b4d7978f91a707a530a01c088a874b916333",
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_structural_preflight_v2.json",
+        "file_sha256": "8e770ecc88e052c49a403976ccf554edb449d0d0a2d83562ed6946592963821e",
+        "preflight_sha256": "4e7d3143df81b1fdb41b56fae737def380327ea1baf72f305f57a8085bf106f1",
         "status": "passed",
         "physical_actions_performed": 0
       },
       "operational_rehearsal": {
-        "path": "runs/cx321_active_hybrid/preentry_a5c73c2_20260821/exact_bundle_rehearsal/cx321_active_hybrid_live_topology_rehearsal_v1.json",
-        "file_sha256": "4903308fa6acbfc7ba0d9e1937232f8fa82ad41354e942cc971ddf0cb5a8fa64",
-        "rehearsal_sha256": "a5148662ef2be97763479e52b8044c4e7ff0410f15942ffeebb1392b6fc362b2",
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/exact_bundle_rehearsal/cx321_active_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "31b75ddd206bde6780e378782084ba4d84655fc62f7137061163bc5f0b51066d",
+        "rehearsal_sha256": "d1027c92f3aac4588e377f961807912068d75d679af53bd019df359736075909",
         "status": "passed",
         "capture_parser_errors": 0,
         "qualification_evidence": false,
         "physical_actions_performed": 0
       },
       "operator_authority": {
-        "path": "runs/cx321_active_hybrid/operator_authority_20260821/explicit_operator_authority_v1.json",
-        "file_sha256": "729f9544fb6da3ff7bb1e4601c47ca973572f1254a3ad337ece2428af1df5a89",
-        "bundle_sha256": "f83d78d5213716c3c21e4823cf0fb533946c11206ec81a3f96223a392bcb3641",
-        "proposal_sha256": "6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30",
+        "path": "runs/cx321_active_hybrid/operator_authority_20260821/host_key_remediation_authority_continuation_v1.json",
+        "file_sha256": "26aa017e71f63b259701238b2b6cffc9b6ff3755d66f9d394cfe8a2f21d8761a",
+        "bundle_sha256": "ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072",
+        "proposal_sha256": "5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567",
         "physical_execution_effective": true,
         "expanded_remediation_authority_effective": true
       },
       "effective_activation": {
-        "path": "runs/cx321_active_hybrid/operator_authority_20260821/cx321_active_hybrid_live_activation_attempt2_v1.json",
-        "file_sha256": "9286caa02ee350746c234846bb46a9998903c34a93cedb33834be9d3d860f1c5",
-        "activation_sha256": "9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac",
-        "attempt_ordinal": 2,
+        "path": "runs/cx321_active_hybrid/operator_authority_20260821/cx321_active_hybrid_live_activation_attempt3_v1.json",
+        "file_sha256": "834303cd95fb3cf676e6dfe766f7e2337ee60f4d0a2a583886c9853d40c8b736",
+        "activation_sha256": "ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4",
+        "attempt_ordinal": 3,
         "automatic_retry": false,
-        "effective": false,
-        "consumed": true,
-        "consumed_by_run_id": "stage5_live_attempt2_20260821T1533Z",
-        "terminal_primary_decision": "measurement_authority_or_platform_fault"
+        "effective": true,
+        "consumed": false
       },
       "stage5_attempts": [
         {
@@ -160,7 +159,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "refreeze_host_corrected_exact_bundle_and_repeat_shortest_affected_rehearsal"
+      "next_gate": "cx321_stage5_attempt3_physical_entry"
     },
     "cx320_bounded_active_hybrid": {
       "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",

@@ -1,8 +1,8 @@
 # CX321 Bounded Active-Hybrid Successor
 
 Status: two prewrite platform terminals are sealed with no setup or DAC write;
-the narrow host status-key correction is verified and exact refreeze is
-pending under the operator's expanded remediation authority.
+the narrow host status-key correction, exact refreeze and same-bundle
+rehearsal passed, and predecessor-bound attempt 3 is authorized for entry.
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -250,5 +250,9 @@ core status-key field emitted the 41-character
 spelling `plant_sign_accumulator_accepted_interva`. The priority abort was
 delivered; no setup, DAC write or control arm occurred. The retained raw CSV is
 unchanged. Host-derived live status now canonicalizes that one frozen spelling,
-and exact bundle refreeze plus the shortest affected rehearsal are pending;
-scientific criteria remain unchanged.
+and exact bundle refreeze plus the shortest affected rehearsal passed. Derived
+bundle `ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072`,
+proposal `5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567`
+and activation
+`ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4`
+retain the exact original UF2 and all scientific criteria.
