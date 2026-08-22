@@ -17,6 +17,7 @@ from host.otis_tools.active_hybrid_programme_contract import (
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json"
+FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
 
 def test_cx322_freezes_observational_response_semantics() -> None:
@@ -34,6 +35,31 @@ def test_cx322_freezes_observational_response_semantics() -> None:
         is True
     )
     assert "minimum_phase_material_applications_for_pass" not in progressive
+
+
+def test_cx322_compiles_the_exact_timer_projection_path() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "OtisTimer0Extension timer_extension = {};"
+    ) in preview
+    for function in (
+        "bool otis_cx317_preview_live_extend_timer0_ticks",
+        "bool otis_cx317_preview_live_project_setup_timer0_ticks",
+    ):
+        body = preview[preview.index(function) :]
+        assert body.index("#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING") < body.index(
+            "#else"
+        )
+    boundary = preview[
+        preview.index("void otis_cx317_preview_live_on_boundary") :
+    ]
+    assert boundary.index("otis_timer0_extension_advance_boundary") < boundary.index(
+        "#if OTIS_ENABLE_CX321_ACTIVE_HYBRID"
+    )
 
 
 def test_cx322_real_process_fixture_connects_response_to_later_authority() -> None:
