@@ -61,6 +61,27 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
     assert boundary.index("otis_timer0_extension_advance_boundary") < boundary.index(
         "#if OTIS_ENABLE_CX321_ACTIVE_HYBRID"
     )
+    decision_dispatch = boundary[
+        boundary.index("OtisCx317ActiveLiveOutcome local_active_outcome") :
+    ]
+    assert (
+        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "    otis_cx317_active_live_on_decision_at_ticks("
+    ) in decision_dispatch
+
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    setup = active[
+        active.index("bool otis_cx317_active_live_confirm_setup_consumers_exact") :
+    ]
+    assert "otis_active_hybrid_engine_init_at_ticks" in setup
+
+    policy = (FIRMWARE / "otis_active_hybrid_policy_engine.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert 'fault(engine, "exact_tick_timing_missing_or_backward")' in policy
+    assert "cx321_exact_tick_timing_missing_or_backward" not in policy
 
 
 def test_active_hybrid_bundle_binds_the_current_package_loader() -> None:

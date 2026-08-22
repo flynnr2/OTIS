@@ -734,7 +734,7 @@ void otis_cx317_preview_live_on_boundary(
         phase_snapshot_available && phase_snapshot.recorder_published;
 #endif
     OtisCx317ActiveLiveOutcome local_active_outcome;
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
     otis_cx317_active_live_on_decision_at_ticks(
         &active_decision, current_boundary_extended_ticks,
         &local_active_outcome);

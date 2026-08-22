@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt2_authorized_live_entry_pending",
+      "state": "stage5_attempt2_first_decision_integration_remediation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-22",
-      "authority": "remediated_exact_bundle_operator_authorized_single_use_activation_effective",
-      "physical_authority_effective": true,
+      "authority": "attempt2_consumed_platform_remediation_only",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -102,8 +101,9 @@
         "activation_sha256": "7ce8b323cd1f9a03d214a6c5e2674fa0fd7593cd585788f57ecd08c4e306403e",
         "attempt_ordinal": 2,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt2_20260822T1029Z",
         "predecessor_seal_sha256": "1b0898b0ec88c0845b57299406cfd78e20df6d787af0681d225411e1d6f70fe7"
       },
       "stage5_attempts": [
@@ -130,6 +130,31 @@
           "evidence_content_sha256": "5c997ad6e3ded50a23770e2563cf902bf24d6c9fe1b6964f0144c4d35f1856f2",
           "offline_finalization_recovered_without_physical_io": true,
           "scientific_result": "none_before_qualified_origin_or_automatic_hybrid_decision"
+        },
+        {
+          "ordinal": 2,
+          "run_id": "stage5_live_attempt2_20260822T1029Z",
+          "classification": "firmware_defect_under_intended_first_decision_integration",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "cx322_exact_decision_timestamp_dispatch_compiled_under_cx321_only_guard",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 0,
+          "dac_value_writes": 1,
+          "last_observed_applied_code": 43068,
+          "last_observed_dac_epoch": 1,
+          "selected_estimate_boundaries": 1,
+          "active_hybrid_decisions_recorded": 0,
+          "qualified_origin_established": false,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "782469d35567ad80d30e7d8af9212526e8157bdf946fbc5e8dabf7642be5eb61",
+          "evidence_content_sha256": "14ff8aba0c17f0026de9466250f61179f95f4a49d1debc72696bdf3a9612ebb0",
+          "scientific_result": "none_before_qualified_origin_or_recorded_natural_hybrid_decision"
         }
       ],
       "physical_authority_prerequisites": [
@@ -138,7 +163,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "cx322_stage5_attempt2_physical_entry"
+      "next_gate": "build_and_rehearse_exact_decision_dispatch_remediation"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

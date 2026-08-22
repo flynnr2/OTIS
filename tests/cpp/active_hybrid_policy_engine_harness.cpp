@@ -249,5 +249,23 @@ int main() {
     auto input = observation(1800u, 0xA83Cu, 2u);
     decide_and_emit("epoch_fault", 1u, &engine, &input, &decision);
   }
+  {
+    constexpr uint64_t kTicksPerSecond = 16000000ull;
+    constexpr uint64_t kSetupTicks = 611ull * kTicksPerSecond + 12345ull;
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init_at_ticks(&engine, kSetupTicks);
+    assert(engine.exact_tick_timing_required);
+    assert(engine.last_application_ticks == kSetupTicks);
+    OtisActiveHybridDecision decision;
+    auto input = observation(2411u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kSetupTicks + 1800ull * kTicksPerSecond - 1ull,
+        &decision));
+    assert(decision.cadence_limited);
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kSetupTicks + 1800ull * kTicksPerSecond,
+        &decision));
+    assert(!decision.cadence_limited);
+  }
   return 0;
 }
