@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "offline_exact_entry_ready_awaiting_operator_authorization",
+      "state": "stage5_authorized_live_entry_pending",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx322_stage5_bounded_hybrid_fact_gathering_live"
       ],
       "effective_date": "2026-08-22",
-      "authority": "exact_bundle_rehearsed_no_physical_authority",
-      "physical_authority_effective": false,
+      "authority": "exact_bundle_operator_authorized_single_use_activation_effective",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -87,13 +88,30 @@
         "qualification_evidence": false,
         "physical_actions_performed": 0
       },
+      "operator_authority": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_authority_v1.json",
+        "file_sha256": "d1f32a7842b1eec94d3025a9ae0bf29baeffd2a420de47e547b2c08ec8e555d6",
+        "bundle_sha256": "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f",
+        "proposal_sha256": "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab",
+        "physical_execution_effective": true,
+        "expanded_remediation_authority_effective": true
+      },
+      "effective_activation": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt1_v1.json",
+        "file_sha256": "f78ae0b9d5ce957462e4cc3db7759668a59be120323e1c33319ec55383e47bcf",
+        "activation_sha256": "9bab8e0d406ce427d2f08479468e7d507c25f2df8062ac1246f2d32c2339b929",
+        "attempt_ordinal": 1,
+        "automatic_retry": false,
+        "effective": true,
+        "consumed": false
+      },
       "physical_authority_prerequisites": [
         "exact_immutable_bundle",
         "structural_preflight",
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "separate_explicit_exact_bundle_operator_decision"
+      "next_gate": "cx322_stage5_physical_entry"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
