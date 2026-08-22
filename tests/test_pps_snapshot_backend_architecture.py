@@ -167,6 +167,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx319_range_part_b_upper_completion",
             "cx320_active_hybrid",
             "cx321_active_hybrid",
+            "cx322_direct_hybrid",
         ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"

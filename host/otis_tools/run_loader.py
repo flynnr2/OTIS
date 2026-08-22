@@ -19,6 +19,8 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx319_range_part_b_upper",
         "cx319_range_part_b_upper_completion",
         "cx320_active_hybrid",
+        "cx321_active_hybrid",
+        "cx322_direct_hybrid",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (
@@ -159,16 +161,17 @@ def find_manifest_path(run_dir: Path) -> Path | None:
 def _require_current_epoch(data: dict) -> None:
     stage = str(data.get("stage", ""))
     run_id = str(data.get("run_id", ""))
-    programme = (
-        data.get("cx320")
-        if str(data.get("stage", "")).startswith("CX320_")
-        else data.get("cx319")
-    )
+    if stage.startswith("CX321_"):
+        programme = data.get("cx321")
+    elif stage.startswith("CX320_"):
+        programme = data.get("cx320")
+    else:
+        programme = data.get("cx319")
     current_profile = (
         isinstance(programme, dict)
         and programme.get("profile_id") in CURRENT_PACKAGE_PROFILE_IDENTITIES
     )
-    if stage.startswith(("CX319_", "CX320_")) and current_profile:
+    if stage.startswith(("CX319_", "CX320_", "CX321_")) and current_profile:
         return
     if (
         stage == "CX318_STAGE5_TRANSITION_SPOOL"

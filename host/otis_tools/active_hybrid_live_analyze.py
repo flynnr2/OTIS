@@ -16,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import re
+import statistics
 import tempfile
 from typing import Any
 
@@ -62,6 +63,7 @@ from .control_evidence_replay import (
 from .cx321_plant_sign_evidence_guard import (
     PlantSignReplayContext,
     complete_plant_sign_evidence_chain,
+    plant_sign_terminal_decision_from_record,
     replay_plant_sign_evidence,
     replay_plant_sign_leading_prefix,
     replay_plant_sign_terminal_prefix,
@@ -591,6 +593,27 @@ def _replay_ahy(
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
+    if plant_sign_records is not None:
+        handoffs = [
+            row for row in plant_sign_records if row.get("event") == "handoff"
+        ]
+        terminal_prefix = bool(plant_sign_records) and (
+            plant_sign_terminal_decision_from_record(plant_sign_records[-1])
+            is not None
+        )
+        if not handoffs and terminal_prefix and not decisions:
+            return {
+                "exact": True,
+                "decision_count": 0,
+                "phase_nonzero_decision_count": 0,
+                "phase_material_decision_count": 0,
+                "unmatched_request_decision_sequences": [],
+                "completed_response_decision_sequences": [],
+                "all_response_checkpoints_passed": True,
+                "comparisons": [],
+                "natural_controller_not_reached": True,
+            }
+
     return replay_active_hybrid_history(
         decisions,
         transactions,
@@ -813,6 +836,7 @@ def _application_contract(
     maximum_applications: int,
     maximum_cumulative: int,
     minimum_cadence_s: int,
+    response_checkpoint_observational: bool = False,
 ) -> dict[str, Any]:
     manual = [row for row in active_rows if row.get("event") == "manual_start"]
     applications = [row for row in active_rows if row.get("event") == "application"]
@@ -823,6 +847,8 @@ def _application_contract(
         if row.get("phase_materially_influenced") == "true"
         and int(row.get("requested_delta_codes", "0")) != 0
     }
+
+
     material_applications = [
         row
         for row in applications
@@ -883,20 +909,35 @@ def _application_contract(
         )
         and all(row.get("clamped") == "false" for row in applications)
     )
+    observational_classes = {
+        "healthy_detected",
+        "healthy_indeterminate_near_resolution",
+        "inside_deadband",
+        "limit_reached",
+        "wrong_sign",
+        "excess_response",
+        "growing_error",
+    }
+    gated_classes = {
+        "healthy_detected",
+        "healthy_indeterminate_near_resolution",
+        "inside_deadband",
+    }
+    admissible_classes = (
+        observational_classes if response_checkpoint_observational else gated_classes
+    )
     first_checkpoint = (
         bool(material_applications)
         and any(
             int(response["request_sequence"])
             == int(material_applications[0]["request_sequence"])
-            and response.get("response_class")
-            in {
-                "healthy_detected",
-                "healthy_indeterminate_near_resolution",
-                "inside_deadband",
-            }
-            and float(response["observed_response_hz"])
-            * int(response["requested_delta_codes"])
-            > 0.0
+            and response.get("response_class") in admissible_classes
+            and (
+                response_checkpoint_observational
+                or float(response["observed_response_hz"])
+                * int(response["requested_delta_codes"])
+                > 0.0
+            )
             for response in responses
         )
     )
@@ -909,13 +950,10 @@ def _application_contract(
         )
     )
     response_classes_healthy = all(
-        row.get("response_class")
-        in {
-            "healthy_detected",
-            "healthy_indeterminate_near_resolution",
-            "inside_deadband",
-        }
-        for row in responses
+        row.get("response_class") in gated_classes for row in responses
+    )
+    response_observations_exact = all(
+        row.get("response_class") in admissible_classes for row in responses
     )
     response_signs_observed = all(
         float(row["observed_response_hz"])
@@ -938,11 +976,20 @@ def _application_contract(
         ),
         "phase_material_application_count": len(material_applications),
         "first_phase_checkpoint_passed": first_checkpoint,
+        "first_phase_observation_checkpoint_exact": (
+            first_checkpoint if response_checkpoint_observational else None
+        ),
         "later_authority_gated_by_first_checkpoint": later_authority_gated,
         "all_response_classes_healthy": response_classes_healthy,
         "all_response_predicted_signs_observed": response_signs_observed,
         "all_response_checkpoints_passed": (
-            response_classes_healthy and response_signs_observed
+            response_observations_exact
+            and (response_checkpoint_observational or response_signs_observed)
+        ),
+        "response_checkpoint_mode": (
+            "observational_non_terminal"
+            if response_checkpoint_observational
+            else "admission_gate"
         ),
         "application_epochs_exact": epochs_exact,
         "dac_application_exact": dac_exact,
@@ -950,6 +997,143 @@ def _application_contract(
         "cumulative_movement_codes": sum(movements),
         "maximum_application_budget": maximum_applications,
         "maximum_cumulative_movement_codes": maximum_cumulative,
+    }
+
+
+def _response_horizon_facts(
+    active_rows: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    *,
+    horizons_s: list[int],
+    settling_exclusion_s: int,
+) -> dict[str, Any]:
+    applications = [row for row in active_rows if row.get("event") == "application"]
+    responses = {
+        int(row["request_sequence"]): row
+        for row in active_rows
+        if row.get("event") == "response"
+    }
+    decision_rows = sorted(
+        decisions, key=lambda row: int(row["decision_timestamp_s"])
+    )
+    terminal_timestamp_s = max(
+        (int(row["decision_timestamp_s"]) for row in decision_rows), default=None
+    )
+    per_application: list[dict[str, Any]] = []
+    pooled: dict[int, list[float]] = {horizon: [] for horizon in horizons_s}
+    directions: dict[int, list[bool]] = {horizon: [] for horizon in horizons_s}
+    for application in applications:
+        request_sequence = int(application["request_sequence"])
+        applied_s = int(application["application_timestamp_s"])
+        epoch = int(application["dac_epoch"])
+        code = int(application["applied_code"])
+        delta = int(application["requested_delta_codes"])
+        pre_error = float(application["pre_error_hz"])
+        next_application = next(
+            (
+                row
+                for row in applications
+                if int(row["application_timestamp_s"]) > applied_s
+            ),
+            None,
+        )
+        horizon_facts: list[dict[str, Any]] = []
+        for horizon in horizons_s:
+            target_s = applied_s + horizon
+            source = "AHY_selected_estimate"
+            candidate: dict[str, str] | None = next(
+                (
+                    row
+                    for row in decision_rows
+                    if int(row["decision_timestamp_s"]) >= target_s
+                    and int(row["dac_epoch"]) == epoch
+                    and int(row["current_applied_code"]) == code
+                ),
+                None,
+            )
+            if horizon == 1500 and request_sequence in responses:
+                response = responses[request_sequence]
+                actual_s = int(response["application_timestamp_s"]) + 1500
+                observed = float(response["observed_response_hz"])
+                post_error = float(response["post_error_hz"])
+                source = "ACT_exact_response_checkpoint"
+            elif candidate is not None:
+                post_error = float(candidate["frequency_error_hz"])
+                observed = post_error - pre_error
+                actual_s = int(candidate["decision_timestamp_s"])
+            else:
+                censor_reason = (
+                    "right_censored_by_subsequent_application"
+                    if next_application is not None
+                    and int(next_application["application_timestamp_s"]) <= target_s
+                    else "right_censored_at_terminal"
+                    if terminal_timestamp_s is not None
+                    and terminal_timestamp_s < target_s
+                    else "no_exact_same_epoch_estimate_available"
+                )
+                horizon_facts.append(
+                    {
+                        "horizon_s": horizon,
+                        "available": False,
+                        "censor_reason": censor_reason,
+                        "target_timestamp_s": target_s,
+                    }
+                )
+                continue
+            signed = observed * delta
+            gain = observed / delta
+            pooled[horizon].append(gain)
+            directions[horizon].append(signed > 0.0)
+            horizon_facts.append(
+                {
+                    "horizon_s": horizon,
+                    "available": True,
+                    "source": source,
+                    "target_timestamp_s": target_s,
+                    "actual_timestamp_s": actual_s,
+                    "actual_elapsed_s": actual_s - applied_s,
+                    "settling_exclusion_complete": horizon >= settling_exclusion_s,
+                    "pre_error_hz": pre_error,
+                    "post_error_hz": post_error,
+                    "observed_response_hz": observed,
+                    "signed_response_with_command_hz_codes": signed,
+                    "direction_matches_positive_gain_prior": signed > 0.0,
+                    "observed_gain_hz_per_code": gain,
+                    "dac_epoch": epoch,
+                    "applied_code": code,
+                }
+            )
+        per_application.append(
+            {
+                "request_sequence": request_sequence,
+                "decision_sequence": int(application["decision_sequence"]),
+                "application_timestamp_s": applied_s,
+                "requested_delta_codes": delta,
+                "applied_code": code,
+                "dac_epoch": epoch,
+                "horizons": horizon_facts,
+            }
+        )
+    pooled_by_horizon: dict[str, Any] = {}
+    for horizon in horizons_s:
+        gains = pooled[horizon]
+        signs = directions[horizon]
+        pooled_by_horizon[str(horizon)] = {
+            "available_application_count": len(gains),
+            "positive_direction_count": sum(signs),
+            "nonpositive_direction_count": len(signs) - sum(signs),
+            "positive_direction_fraction": sum(signs) / len(signs) if signs else None,
+            "observed_gain_hz_per_code_minimum": min(gains) if gains else None,
+            "observed_gain_hz_per_code_median": (
+                statistics.median(gains) if gains else None
+            ),
+            "observed_gain_hz_per_code_maximum": max(gains) if gains else None,
+        }
+    return {
+        "horizons_s": horizons_s,
+        "per_application": per_application,
+        "pooled_by_horizon": pooled_by_horizon,
+        "missing_horizons_are_explicitly_right_censored_not_zero": True,
     }
 
 
@@ -968,11 +1152,21 @@ def _classify_decision(
     phase_pass: bool,
     frequency_pass: bool,
     minimum_material_applications: int,
+    fact_gathering: bool = False,
+    early_safety_terminal: bool = False,
 ) -> tuple[str, str]:
     if operator_abort:
         return "bounded_nonpass", "operator_abort"
+    if fact_gathering and early_safety_terminal:
+        return "bounded_nonpass", "bounded_direct_hybrid_early_safety_stop"
     if platform_terminal or not integrity_exact:
         return "failed", "measurement_authority_or_platform_fault"
+    if fact_gathering:
+        if not policy_limits_exact:
+            return "failed", "measurement_authority_or_platform_fault"
+        if not endpoint_complete:
+            return "bounded_nonpass", "right_censored_incomplete"
+        return "passed", "bounded_direct_hybrid_evidence_acquired"
     if phase_degraded:
         return "bounded_nonpass", "phase_channel_degraded_frequency_control_retained"
     if not policy_limits_exact:
@@ -1013,6 +1207,23 @@ def _legacy_checkpoint_terminal_misclassified(
             "differs from the firmware decision"
         )
     )
+
+
+def _legacy_plant_terminal_decision(
+    terminal: dict[str, Any], rows: list[dict[str, str]]
+) -> str | None:
+    """Recover CX321's exact early science terminal from its retained PSQ row."""
+
+    if not (
+        rows
+        and terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and terminal.get("reason")
+        == "cx321_live_supervisor_fault:live active_fail_static asserted"
+    ):
+        return None
+    return plant_sign_terminal_decision_from_record(rows[-1])
 
 
 def _source_hashes(
@@ -1080,6 +1291,9 @@ def _cx321_plant_sign_replay(
     decision = terminal.get("primary_decision") or terminal.get(
         "preliminary_decision"
     )
+    corrected_decision = _legacy_plant_terminal_decision(terminal, rows)
+    if corrected_decision is not None:
+        decision = corrected_decision
     if not rows:
         if not isinstance(decision, str) or not decision:
             raise ValueError(
@@ -1170,9 +1384,14 @@ def _cx321_plant_sign_replay(
         "plant_sign_qualification_failed",
     }:
         return with_complete_proof(
-            replay_plant_sign_terminal_prefix(
-                rows, context, terminal_decision=str(decision)
-            )
+            {
+                **replay_plant_sign_terminal_prefix(
+                    rows, context, terminal_decision=str(decision)
+                ),
+                "legacy_supervisor_terminal_misclassification_corrected": (
+                    corrected_decision is not None
+                ),
+            }
         )
     if tuple(row.get("event") for row in rows) == (
         "pre1",
@@ -1264,7 +1483,11 @@ def analyze(
     identities = {
         "estimator_sha256": policy.frequency_estimator_sha256,
         "model_sha256": policy.plant_model_sha256,
-        "active_policy_sha256": policy.policy_sha256,
+        "active_policy_sha256": (
+            str(manifest_value["programme_policy"]["sha256"])
+            if programme.identification_required
+            else policy.policy_sha256
+        ),
         "response_policy_sha256": policy.response_policy_sha256,
         "numerical_policy_sha256": policy.policy_sha256,
     }
@@ -1314,7 +1537,12 @@ def analyze(
 
     try:
         response_exact, response_replay = _response_replay(
-            active_rows, spec.minimum_code, spec.maximum_code
+            active_rows,
+            spec.minimum_code,
+            spec.maximum_code,
+            response_classification_observational=(
+                policy.response_checkpoint_observational
+            ),
         )
     except (KeyError, TypeError, ValueError) as exc:
         response_exact = False
@@ -1334,20 +1562,24 @@ def analyze(
         if programme.identification_required
         else None
     )
-    ahy_replay = _replay_ahy(
-        decision_rows,
-        active_rows,
-        policy_path=policy_path,
-        expected_run_identity=spec.run_identity,
-        expected_build_identity=build_identity,
-        expected_profile_identity=spec.profile,
-        expected_active_policy_sha256=(
-            str(manifest_value["programme_policy"]["sha256"])
-            if programme.identification_required
-            else policy.policy_sha256
-        ),
-        plant_sign_records=plant_sign_records,
-    )
+    try:
+        ahy_replay = _replay_ahy(
+            decision_rows,
+            active_rows,
+            policy_path=policy_path,
+            expected_run_identity=spec.run_identity,
+            expected_build_identity=build_identity,
+            expected_profile_identity=spec.profile,
+            expected_active_policy_sha256=(
+                str(manifest_value["programme_policy"]["sha256"])
+                if programme.identification_required
+                else policy.policy_sha256
+            ),
+            plant_sign_records=plant_sign_records,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        retained_input_failures.append(f"active-hybrid replay: {exc}")
+        ahy_replay = {"exact": False, "error": str(exc)}
 
     supervisor_state = _read_object_or_empty(
         run_dir / SUPERVISOR_STATE,
@@ -1417,6 +1649,11 @@ def analyze(
                 "scientific_terminal_exact": False,
                 "error": str(exc),
             }
+    legacy_plant_terminal_misclassified = bool(
+        plant_sign_replay.get(
+            "legacy_supervisor_terminal_misclassification_corrected"
+        )
+    )
     operator_abort = terminal.get("primary_decision") == "operator_abort"
     response_rows = [row for row in active_rows if row.get("event") == "response"]
     terminal_rejected_response_exact = (
@@ -1453,6 +1690,7 @@ def analyze(
         terminal.get("primary_decision")
         == "measurement_authority_or_platform_fault"
         and not legacy_checkpoint_terminal_misclassified
+        and not legacy_plant_terminal_misclassified
     )
     terminal_requires_abort = (
         terminal.get("result") in {"aborted", "nonpass"}
@@ -1530,6 +1768,9 @@ def analyze(
             maximum_applications=spec.correction_limit,
             maximum_cumulative=spec.cumulative_limit,
             minimum_cadence_s=int(control["minimum_applied_cadence_s"]),
+            response_checkpoint_observational=(
+                programme.response_checkpoint_observational
+            ),
         )
     except (KeyError, TypeError, ValueError) as exc:
         retained_input_failures.append(f"application history: {exc}")
@@ -1551,6 +1792,23 @@ def analyze(
             "cumulative_movement_codes": 0,
             "error": str(exc),
         }
+
+    response_horizon_facts: dict[str, Any] | None = None
+    if programme.response_checkpoint_observational:
+        try:
+            fact_outputs = policy_document.get("fact_gathering_outputs", {})
+            horizons = fact_outputs.get("response_horizons_s")
+            if horizons != [600, 1500, 3600, 7200]:
+                raise ValueError("CX322 response horizons differ from the frozen set")
+            response_horizon_facts = _response_horizon_facts(
+                active_rows,
+                decision_rows,
+                horizons_s=[int(value) for value in horizons],
+                settling_exclusion_s=policy.settling_exclusion_s,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            retained_input_failures.append(f"response horizon facts: {exc}")
+            response_horizon_facts = {"exact": False, "error": str(exc)}
 
     try:
         tdb_replay = replay_tight_deadband(
@@ -1625,7 +1883,10 @@ def analyze(
             and health.get(("cx317_active", "evidence_pending")) == "false"
             and health.get(("cx317_active", "evidence_request_sequence"), "0")
             == "0"
-            and supervisor_state.get("arm_pending") is False
+            and (
+                supervisor_state.get("arm_pending") is False
+                or legacy_plant_terminal_misclassified
+            )
             and terminal_static_code is not None
             and int(terminal_static_code) == last_applied_code
         )
@@ -1668,7 +1929,14 @@ def analyze(
     ) == "TIGHT_INSIDE"
     first_checkpoint_exact = (
         applications["first_phase_checkpoint_passed"] is True
-        and supervisor_state.get("first_phase_checkpoint_passed") is True
+        and supervisor_state.get(
+            (
+                "first_phase_observation_checkpoint_exact"
+                if programme.response_checkpoint_observational
+                else "first_phase_checkpoint_passed"
+            )
+        )
+        is True
     )
     progressive_authority_exact = (
         applications["later_authority_gated_by_first_checkpoint"] is True
@@ -1747,9 +2015,18 @@ def analyze(
         minimum_material_applications=int(
             metric_contract["minimum_material_phase_applications"]
         ),
+        fact_gathering=programme.response_checkpoint_observational,
+        early_safety_terminal=(
+            terminal.get("primary_decision")
+            == "bounded_direct_hybrid_early_safety_stop"
+        ),
     )
     preliminary_decision = terminal.get("preliminary_decision")
-    plant_terminal_decision = terminal.get("primary_decision")
+    plant_terminal_decision = (
+        plant_sign_replay.get("terminal_decision")
+        if plant_sign_replay.get("scientific_terminal_exact") is True
+        else terminal.get("primary_decision")
+    )
     if (
         programme.identification_required
         and (plant_terminal_decision or preliminary_decision)
@@ -1789,6 +2066,11 @@ def analyze(
         "qualified_12h_endpoint_complete": endpoint_complete,
         "terminal_static_without_outstanding_authority": static_terminal_exact,
     }
+    descriptive_prior_comparisons = (
+        scientific_acceptance_checks
+        if programme.response_checkpoint_observational
+        else None
+    )
 
     supersession: dict[str, Any] | None = None
     if supersedes_seal is not None:
@@ -1831,7 +2113,14 @@ def analyze(
         "status": status,
         "primary_decision": primary_decision,
         "checks": common_checks,
-        "scientific_acceptance_checks": scientific_acceptance_checks,
+        **(
+            {
+                "descriptive_prior_comparisons": descriptive_prior_comparisons,
+                "scientific_acceptance_checks": {},
+            }
+            if programme.response_checkpoint_observational
+            else {"scientific_acceptance_checks": scientific_acceptance_checks}
+        ),
         "acquisition_gate": {
             "passed": acquisition_gate_passed,
             "checks": {
@@ -1866,6 +2155,11 @@ def analyze(
         },
         "active_hybrid_replay": ahy_replay,
         "application_counts_and_budgets": applications,
+        **(
+            {"response_horizon_facts": response_horizon_facts}
+            if programme.response_checkpoint_observational
+            else {}
+        ),
         "frozen_metric_contract": metric_contract,
         "phase_performance": phase_metrics,
         "frequency_performance": frequency_metrics,
@@ -1875,10 +2169,14 @@ def analyze(
             "supervisor_terminal": terminal,
             "legacy_supervisor_terminal_misclassification_corrected": (
                 legacy_checkpoint_terminal_misclassified
+                or legacy_plant_terminal_misclassified
             ),
             "offline_corrected_primary_decision": (
                 primary_decision
-                if legacy_checkpoint_terminal_misclassified
+                if (
+                    legacy_checkpoint_terminal_misclassified
+                    or legacy_plant_terminal_misclassified
+                )
                 else None
             ),
             "frozen_checkpoint_rejection_exact": (

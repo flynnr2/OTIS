@@ -19,6 +19,7 @@ from .active_status_contract import (
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
     active_status_wire_keys,
+    canonical_active_status_key,
 )
 
 
@@ -37,7 +38,7 @@ def _positive_int(value: object) -> int | None:
 
 
 def _record(row: Mapping[str, str]) -> dict[str, str]:
-    return {
+    record = {
         key: row.get(key, "")
         for key in (
             "record_type",
@@ -52,6 +53,10 @@ def _record(row: Mapping[str, str]) -> dict[str, str]:
             "flags",
         )
     }
+    record["status_key"] = canonical_active_status_key(
+        record["status_key"]
+    )
+    return record
 
 
 class ActiveStatusLiveReducer:
@@ -110,7 +115,7 @@ class ActiveStatusLiveReducer:
         if row.get("record_type") != "STS":
             return None
         component = row.get("component", "")
-        key = row.get("status_key", "")
+        key = canonical_active_status_key(row.get("status_key", ""))
         if component != ACTIVE_STATUS_COMPONENT:
             if component and key:
                 self.latest_nonactive[(component, key)] = _record(row)

@@ -167,6 +167,39 @@ def test_cx321_v2_atomic_state_requires_and_returns_plant_fields(
     )
 
 
+def test_cx321_atomic_state_canonicalizes_frozen_truncated_wire_key(
+    tmp_path: Path,
+) -> None:
+    rows = _burst(
+        13,
+        nonce=322,
+        contract=CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    )
+    target = next(
+        row
+        for row in rows
+        if row["status_key"]
+        == "plant_sign_accumulator_accepted_intervals"
+    )
+    target["status_key"] = "plant_sign_accumulator_accepted_interva"
+    reducer = ActiveStatusLiveReducer()
+    latest = None
+    for row in rows:
+        update = reducer.observe(row)
+        if update is not None:
+            latest = update
+    assert latest is not None and latest["state"] == "complete"
+    path = tmp_path / "cx321_truncated_state.json"
+    path.write_text(json.dumps(_published(latest)), encoding="utf-8")
+
+    selected = read_live_health_state(path, required_query_nonce=322)
+
+    assert selected.state == "complete"
+    assert selected.health[
+        ("cx317_active", "plant_sign_accumulator_accepted_intervals")
+    ] == "value:plant_sign_accumulator_accepted_intervals"
+
+
 def test_duplicate_missing_and_interrupted_generations_are_invalid() -> None:
     duplicate = _burst(1)
     duplicate.insert(5, duplicate[5].copy())

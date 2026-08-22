@@ -9,11 +9,13 @@ phase-material combined correction, but its exact response was below the frozen
 observability floor and failed the positive-sign checkpoint. The programme is a
 bounded non-pass with no remaining live authority. Current details are in
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The offline CX321 v2 successor selects a separate 21-code plant-sign transaction
-using a dedicated 1,500-second estimator before unchanged 600-second natural
-hybrid requests. It is implemented and release-verified but has no exact-bundle
-physical authority; see
-`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
+CX321 implemented that successor, but its two healthy physical pre-estimates
+differed by one count and the frozen exact-equality gate correctly made no DAC
+application. It is a sealed bounded non-pass. The selected offline CX322
+successor uses a one-count pre-envelope gate and a 25-code identification step
+before unchanged 600-second natural hybrid requests. Implementation and
+physical authority remain pending; see
+`../60_EXPERIMENTS/CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 ## Decision
 

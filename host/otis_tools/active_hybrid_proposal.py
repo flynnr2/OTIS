@@ -16,6 +16,7 @@ from .active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     CX321_PROGRAMME,
     get_active_hybrid_programme,
+    progressive_checkpoint_contract,
     programme_from_mapping,
 )
 
@@ -83,8 +84,7 @@ def _progressive_envelope(
 ) -> dict[str, Any]:
     return {
         "maximum_total_automatic_applications": programme.maximum_applications,
-        "first_phase_material_applications_before_checkpoint": 1,
-        "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
+        **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
         "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
@@ -368,7 +368,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--operator-authority", type=Path)
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--programme", choices=("cx320", "cx321"), default="cx320")
+    parser.add_argument(
+        "--programme", choices=("cx320", "cx321", "cx322"), default="cx320"
+    )
     args = parser.parse_args(argv)
     if args.create:
         if None in (

@@ -229,7 +229,9 @@ bool decide_impl(
           tight_inside(observation)) {
         engine->state = OtisActiveHybridState::HybridTracking;
         engine->reason =
-            "first_phase_checkpoint_passed_and_tight_reacquired";
+            engine->first_checkpoint_observation_only
+                ? "first_phase_observation_recorded_and_tight_reacquired"
+                : "first_phase_checkpoint_passed_and_tight_reacquired";
         reason = engine->reason;
         progressive_release_transition = true;
       } else {
@@ -422,6 +424,7 @@ bool note_application_impl(
     if (engine->phase_material_application_count == 1u) {
       engine->state = OtisActiveHybridState::FirstPhaseTransaction;
       engine->first_checkpoint_response_passed = false;
+      engine->first_checkpoint_observation_only = false;
       engine->reason = "first_phase_application_checkpoint_required";
     }
   } else {
@@ -469,7 +472,8 @@ bool otis_active_hybrid_engine_note_application_at_ticks(
 bool otis_active_hybrid_engine_note_response(
     OtisActiveHybridEngine *engine,
     bool healthy_classification, bool predicted_sign_observed,
-    bool exact_replay, bool support_fresh, bool applied_epoch_exact) {
+    bool exact_replay, bool support_fresh, bool applied_epoch_exact,
+    bool observation_only) {
   if (engine == nullptr || !engine->transaction_outstanding) {
     if (engine != nullptr) fault(engine, "response_without_outstanding_application");
     return false;
@@ -477,17 +481,21 @@ bool otis_active_hybrid_engine_note_response(
   const bool was_phase_material = engine->outstanding_phase_material;
   engine->transaction_outstanding = false;
   engine->outstanding_phase_material = false;
-  if (!(healthy_classification && predicted_sign_observed && exact_replay &&
-        support_fresh && applied_epoch_exact)) {
+  if (!(healthy_classification &&
+        (observation_only || predicted_sign_observed) &&
+        exact_replay && support_fresh && applied_epoch_exact)) {
     fault(engine, "hybrid_response_wrong_or_checkpoint_evidence_invalid");
     return false;
   }
   if (was_phase_material && engine->phase_material_application_count == 1u) {
     engine->first_checkpoint_response_passed = true;
-    engine->reason =
-        "first_phase_response_passed_tight_reacquisition_required";
+    engine->first_checkpoint_observation_only = observation_only;
+    engine->reason = observation_only
+                         ? "first_phase_observation_recorded_tight_reacquisition_required"
+                         : "first_phase_response_passed_tight_reacquisition_required";
   } else {
-    engine->reason = "response_passed";
+    engine->reason = observation_only ? "response_observation_recorded"
+                                      : "response_passed";
   }
   return true;
 }

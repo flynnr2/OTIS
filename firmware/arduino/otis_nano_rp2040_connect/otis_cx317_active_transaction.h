@@ -48,6 +48,10 @@ struct OtisCx317ActiveBinding {
   // a zero-authority shadow and tight integer-count residence is owned by the
   // separate Stage 5 state machine.
   bool legacy_response_deadband_enabled;
+  // CX322 retains every valid response classification as an observation.
+  // Scientific class/sign/magnitude do not become transaction failures;
+  // malformed measurement or actuator evidence still fails closed.
+  bool response_classification_observational;
 };
 
 struct OtisCx317ActiveEligibility {

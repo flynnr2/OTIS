@@ -12,11 +12,13 @@ firmware-driven, phase-material combined correction, but the exact response was
 below the frozen empirical detection floor and failed its positive-sign
 checkpoint. It is a bounded non-pass with no remaining live authority. See
 `../60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md`.
-The selected offline CX321 v2 successor preserves the 600-second natural
-controller and adds a separate 21-code plant-sign qualification transaction
-using a dedicated 1,500-second estimator. Its implementation and release gate
-pass, but it has no exact-bundle physical authority; current details are in
-`../60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md`.
+CX321 implemented that design, but its two healthy physical pre-estimates
+differed by one count and the frozen exact-equality gate correctly made no DAC
+application. It is a sealed bounded non-pass. The selected offline CX322
+successor uses a one-count pre-envelope gate and a 25-code identification step
+before the unchanged 600-second natural controller. Implementation and
+physical authority remain pending; current details are in
+`../60_EXPERIMENTS/CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
@@ -97,7 +99,7 @@ The recommended path is now:
 5. preserve the sealed 24-hour bounded dual-core frequency-control endurance result — **complete**;
 6. define a replayable phase estimator and bounded hybrid phase/frequency preview with zero actuation authority — **complete**;
 7. qualify that preview against recorded evidence and explicit phase/reference-loss diagnostics — **complete as zero-authority evidence**;
-8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 bounded non-pass; CX321 offline successor selected with a separate 21-code plant-sign gate before unchanged natural hybrid requests**;
+8. qualify hybrid phase steering only under a separate programme after its estimator, limits and abort behavior are sealed — **CX320 and CX321 bounded non-passes; CX322 offline successor selected with a one-count pre-envelope gate and 25-code plant-sign transaction before unchanged natural hybrid requests**;
 9. add reference-loss holdover and controlled recovery;
 10. prove that the timing engine can accept another reference adapter without changing capture semantics, control logic or the DAC driver.
 

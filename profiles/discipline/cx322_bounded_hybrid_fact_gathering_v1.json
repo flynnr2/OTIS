@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+  "programme_id": "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+  "status": "offline_candidate_non_effective",
+  "question": "What does the unchanged natural firmware hybrid controller actually do over a bounded long horizon, and what do its exact application epochs reveal about phase improvement, frequency preservation, plant direction, gain and response observability?",
+  "supersedes": {
+    "path": "profiles/qualification/cx322_pre_envelope_response_observability_v1.json",
+    "sha256": "355b91fa296bcdc877712e5d85b7953311cb862f59615997b8413e41413dced4",
+    "reason": "the_artificial_single_response_gate_became_the_experiment_and_its_one_count_admission_and_minimum_step_margins_were_brittle"
+  },
+  "bindings": {
+    "natural_policy_predecessor": {
+      "path": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
+      "sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d"
+    },
+    "frequency_policy_predecessor": {
+      "path": "profiles/discipline/cx319_stabilized_tight_deadband_v1.json",
+      "sha256": "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
+    },
+    "frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "response_policy": {
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+    }
+  },
+  "topology": {
+    "reference_input": "D14_authoritative_pps",
+    "oscillator_count_input": "D8_cx317_oscillator_count",
+    "independent_external_event_input": "D10_external_event_not_reference_or_control_authority",
+    "gnss_role": "qualification_metadata_from_same_receiver_as_D14_not_timing_replacement",
+    "D9_GPOUT0_output": "deferred_not_modified_not_claimed"
+  },
+  "setup": {
+    "exact_start_code": 43068,
+    "exact_start_code_hex": "0xA83C",
+    "new_exact_setup_acknowledgement_required": true,
+    "new_dac_epoch_required": true,
+    "same_code_reapplication_opens_new_epoch": true,
+    "all_consumer_epoch_propagation_required_before_arm": true
+  },
+  "numerical_policy": {
+    "controller_type": "one_incremental_combined_frequency_phase_output",
+    "change_from_CX320": "none",
+    "frequency_term": "negative_authoritative_600s_frequency_error_hz",
+    "phase_term": "clamp_negative_D8_cycle_movement_relative_to_D14_divided_by_pull_in_time",
+    "phase_pull_in_time_s": 21600,
+    "absolute_phase_bias_cap_hz": 0.0016666666666666668,
+    "integrator_gain_codes_per_hz_per_decision": 2884.5027706464516,
+    "plant_gain_hz_per_code": {
+      "minimum": 0.00016357422282453626,
+      "nominal": 0.00017008467693813145,
+      "maximum": 0.00017334010044578463,
+      "role": "prior_and_analysis_comparator_not_a_per_transaction_pass_gate"
+    },
+    "rounding": "half_away_from_zero_after_step_limit",
+    "anti_windup": "no_hidden_persistent_integrator_demand_recomputed_from_current_evidence_after_every_application_or_hold",
+    "phase_direction_coherence": "hold_a_nonzero_delta_that_opposes_the_nonzero_phase_term_while_tight",
+    "settling_exclusion_s": 900,
+    "fresh_support_after_settling_s": 600,
+    "response_support_total_s": 1500,
+    "phase_qualification_residence_s": 1800,
+    "phase_zero": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch",
+    "phase_unit": "D8_oscillator_cycles_relative_to_qualified_D14_PPS",
+    "phase_epoch_join": "forbidden_no_guessed_offset"
+  },
+  "tight_hysteretic_band": {
+    "initial_and_rearm_state": "REQUALIFY_OUTSIDE",
+    "inside_state": "TIGHT_INSIDE",
+    "entry_absolute_counts_lte": 2,
+    "entry_consecutive_fresh_estimates": 2,
+    "release_absolute_counts_gte": 4,
+    "release_consecutive_fresh_estimates": 2,
+    "three_count_rule": "retain_previous_state",
+    "phase_influence_requires_inside_state": true
+  },
+  "progressive_authority": {
+    "entry": "two_fresh_TIGHT_INSIDE_estimates_then_1800s_continuous_frequency_only_phase_residence",
+    "first_phase_transaction": "one_natural_phase_material_application_then_exact_response_capture_host_replay_and_TIGHT_reentry",
+    "response_role": "observation_and_provenance_checkpoint_not_sign_magnitude_or_gain_admission_gate",
+    "later_authority": "released_after_exact_response_capture_and_TIGHT_reentry_regardless_of_low_or_absent_detected_movement",
+    "phase_loss": "degrade_to_frequency_only_without_erasing_evidence",
+    "shared_or_inflight_fault": "fail_static_at_last_confirmed_code"
+  },
+  "response_checkpoint": {
+    "mode": "observational_non_terminal",
+    "settling_and_fresh_support_required": true,
+    "firmware_host_replay_exact_required": true,
+    "exact_applied_code_and_epoch_required": true,
+    "tight_inside_reentry_required_before_later_phase_authority": true,
+    "predicted_positive_plant_gain_sign_is_prior_not_gate": true,
+    "healthy_low_or_no_detected_movement_is_terminal": false,
+    "wrong_sign_growing_error_or_excess_response_class_is_terminal_by_itself": false,
+    "invalid_measurement_actuator_identity_or_replay_is_terminal": true,
+    "all_response_classes_retained_unchanged": true
+  },
+  "global_authority_limits": {
+    "maximum_total_automatic_applications": 4,
+    "maximum_combined_step_codes": 21,
+    "maximum_cumulative_absolute_movement_codes": 84,
+    "minimum_applied_cadence_s": 1800,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_outstanding_requests": 1,
+    "automatic_retry": false,
+    "automatic_restoration": false,
+    "all_applications_are_unchanged_natural_controller_outputs": true
+  },
+  "finite_timing": {
+    "qualified_duration_s": 43200,
+    "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
+    "absolute_wall_clock_limit_s": 57600,
+    "wall_clock_origin": "capture_owner_records_exact_run_identity_before_setup_submission",
+    "minimum_final_response_reserve_s": 1500,
+    "extension": "forbidden"
+  },
+  "fact_gathering_outputs": {
+    "primary_outcome": "complete_provenance_exact_bounded_acquisition_not_threshold_satisfaction",
+    "response_horizons_s": [600, 1500, 3600, 7200],
+    "per_application": [
+      "requested_and_applied_code_and_epoch",
+      "frequency_and_phase_terms_and_frequency_only_counterfactual",
+      "response_class_and_signed_response_at_each_available_horizon",
+      "pre_and_post_TIGHT_state",
+      "environment_and_health_context"
+    ],
+    "whole_run": [
+      "phase_material_application_count_and_control_envelope",
+      "phase_slope_and_excursion_before_and_after_first_material_application",
+      "frequency_residual_RMS_tail_quantiles_and_TIGHT_occupancy",
+      "pooled_signed_code_to_frequency_response_and_direction_consistency",
+      "observed_null_and_actuated_response_distributions_by_horizon",
+      "counterfactual_frequency_only_request_differences"
+    ],
+    "priors_reported_not_enforced": [
+      "positive_DAC_to_frequency_direction",
+      "retained_plant_gain_range",
+      "historical_response_detection_floors",
+      "ten_percent_phase_slope_improvement",
+      "one_count_frequency_RMS_and_ten_percent_TIGHT_occupancy_degradation"
+    ]
+  },
+  "prospective_metrics": {
+    "comparison_segment": "last_1800s_continuous_frequency_only_PHASE_QUALIFY_residence_immediately_before_first_phase_material_application",
+    "active_segment": "from_first_phase_material_application_until_terminal_or_qualified_endpoint",
+    "primary_phase_metric": "absolute_OLS_slope_of_raw_relative_phase_cycles_per_second_within_each_unjoined_phase_epoch",
+    "secondary_phase_metrics": ["cumulative_absolute_D8_cycle_movement_within_each_phase_epoch", "maximum_absolute_excursion_from_segment_opening_cycles"],
+    "phase_improvement_minimum_fraction": 0.1,
+    "phase_improvement_minimum_cycles_over_matched_1800s": 1,
+    "frequency_metrics": ["authoritative_600s_residual_RMS_hz", "absolute_tail_quantiles_hz", "TIGHT_INSIDE_occupancy"],
+    "maximum_frequency_RMS_degradation_hz": 0.0016666666666666668,
+    "maximum_tight_occupancy_fraction_degradation": 0.1,
+    "minimum_material_phase_applications": 2,
+    "disposition": "descriptive_priors_and_decision_aids_not_acquisition_pass_fail_thresholds"
+  },
+  "terminal_decisions": [
+    "bounded_direct_hybrid_evidence_acquired",
+    "bounded_direct_hybrid_early_safety_stop",
+    "right_censored_incomplete",
+    "measurement_authority_or_platform_fault",
+    "operator_abort"
+  ],
+  "terminal_semantics": {
+    "bounded_direct_hybrid_early_safety_stop_reasons": [
+      "prospective_repeated_alternation",
+      "prospective_low_efficiency_path"
+    ],
+    "all_other_firmware_fail_static_reasons": "measurement_authority_or_platform_fault",
+    "scientific_response_class_sign_or_magnitude_alone_never_selects_early_safety_stop": true
+  },
+  "authority": {
+    "offline_preparation": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "command_fifo": false,
+    "setup_stimulus": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "separate_exact_bundle_operator_decision_required": true,
+    "consumed_by_first_physical_terminal": true
+  },
+  "claims_not_made": [
+    "calibrated_future_false_positive_probability",
+    "guaranteed_minimum_response_per_application",
+    "plant_direction_failure_from_one_response",
+    "controller_failure_from_no_or_low_phase_materiality",
+    "physical_authority"
+  ]
+}

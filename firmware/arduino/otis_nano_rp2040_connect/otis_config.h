@@ -78,6 +78,16 @@
 #define OTIS_ENABLE_CX321_ACTIVE_HYBRID 0
 #endif
 
+// CX322 runs the unchanged natural hybrid controller directly. Valid response
+// classifications are retained as observations rather than sign/magnitude
+// admission gates; exact evidence and all physical bounds still fail closed.
+#ifndef OTIS_ENABLE_CX322_DIRECT_HYBRID
+#define OTIS_ENABLE_CX322_DIRECT_HYBRID 0
+#endif
+
+#define OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING \
+  (OTIS_ENABLE_CX321_ACTIVE_HYBRID || OTIS_ENABLE_CX322_DIRECT_HYBRID)
+
 // CX319 Part A keeps the selected frequency, relative-phase and hybrid
 // engines live while an externally precommitted DAC scan owns every write.
 // It has no automatic-control authority and is a distinct identity from the
@@ -180,6 +190,7 @@
 #define OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_UPPER_COMPLETION 12
 #define OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID 13
 #define OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID 14
+#define OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID 15
 
 #ifndef OTIS_CX317_ACTIVE_CAMPAIGN
 #define OTIS_CX317_ACTIVE_CAMPAIGN OTIS_CX317_ACTIVE_CAMPAIGN_NONE
@@ -332,6 +343,8 @@
 #ifndef OTIS_FIRMWARE_VERSION
 #if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
 #define OTIS_FIRMWARE_VERSION "CX318_STAGE4_SINGLE_WRITE_PREMISE_SETUP_V1"
+#elif OTIS_ENABLE_CX322_DIRECT_HYBRID
+#define OTIS_FIRMWARE_VERSION "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
 #elif OTIS_ENABLE_CX321_ACTIVE_HYBRID
 #define OTIS_FIRMWARE_VERSION "CX321_BOUNDED_ACTIVE_HYBRID_PLANT_SIGN_V2"
 #elif OTIS_ENABLE_CX320_ACTIVE_HYBRID
@@ -905,6 +918,11 @@
 #error "OTIS_ENABLE_CX321_ACTIVE_HYBRID must be 0 or 1."
 #endif
 
+#if OTIS_ENABLE_CX322_DIRECT_HYBRID != 0 && \
+    OTIS_ENABLE_CX322_DIRECT_HYBRID != 1
+#error "OTIS_ENABLE_CX322_DIRECT_HYBRID must be 0 or 1."
+#endif
+
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID && \
     (!OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW || \
      !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW || \
@@ -913,7 +931,9 @@
      (OTIS_CX317_ACTIVE_CAMPAIGN != \
           OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
       OTIS_CX317_ACTIVE_CAMPAIGN != \
-          OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID))
+          OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID && \
+      OTIS_CX317_ACTIVE_CAMPAIGN != \
+          OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID))
 #error "CX320 active hybrid requires its exact dual-core tight-band campaign identity."
 #endif
 
@@ -1053,7 +1073,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
 #error "CX319 tight preview requires an exact successor leg identity."
 #endif
 
@@ -1091,7 +1113,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
 #error "Dual-core bounded authority is restricted to exact historical or current programme profiles."
 #endif
 
@@ -1275,11 +1299,27 @@
 #error "CX321 active-hybrid parameters differ from the frozen candidate."
 #endif
 
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
+    (OTIS_CX317_ACTIVE_START_CODE != 0xA83Cu || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 4u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 84u)
+#error "CX322 direct-hybrid parameters differ from the frozen candidate."
+#endif
+
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID && \
     (!OTIS_ENABLE_CX320_ACTIVE_HYBRID || \
      OTIS_CX317_ACTIVE_CAMPAIGN != \
          OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID)
 #error "CX321 plant-sign authority requires its exact CX320-derived profile."
+#endif
+
+#if OTIS_ENABLE_CX322_DIRECT_HYBRID && \
+    (!OTIS_ENABLE_CX320_ACTIVE_HYBRID || OTIS_ENABLE_CX321_ACTIVE_HYBRID || \
+     OTIS_CX317_ACTIVE_CAMPAIGN != \
+         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID)
+#error "CX322 direct hybrid requires its exact CX320-derived profile without CX321 identification."
 #endif
 
 #if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED && \
@@ -1292,8 +1332,10 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
-#error "External DAC-epoch candidate reseed is restricted to conditional Part B, CX320 and CX321."
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
+#error "External DAC-epoch candidate reseed is restricted to conditional Part B and active-hybrid profiles."
 #endif
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
@@ -1335,7 +1377,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
 #error "Bounded active control requires an exact programme campaign identity."
 #endif
 

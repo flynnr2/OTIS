@@ -17,6 +17,7 @@ from .active_hybrid_evidence_audit import PROGRAMME_SEAL, audit_predecessor
 from .active_hybrid_policy import (
     ActiveHybridController,
     ActiveHybridPolicy,
+    DEFAULT_POLICY,
     HybridObservation,
     HybridState,
     load_policy,
@@ -370,9 +371,9 @@ def _replay_one(
     return result
 
 
-def create_replay_report() -> dict[str, Any]:
+def create_replay_report(policy_path: Path = DEFAULT_POLICY) -> dict[str, Any]:
     predecessor = audit_predecessor()
-    base = load_policy()
+    base = load_policy(policy_path)
     candidates = (
         "p21600_cap1_tight_active_v1",
         "p10800_cap1_tight_active_v1",
@@ -445,7 +446,11 @@ def create_replay_report() -> dict[str, Any]:
 
     report: dict[str, Any] = {
         "schema_version": 1,
-        "report_type": "cx320_active_hybrid_frozen_evidence_replay_v1",
+        "report_type": (
+            "cx322_direct_hybrid_frozen_evidence_replay_v1"
+            if base.response_checkpoint_observational
+            else "cx320_active_hybrid_frozen_evidence_replay_v1"
+        ),
         "tool": TOOL_ID,
         "tool_sha256": sha256_file(Path(__file__)),
         "created_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -481,8 +486,9 @@ def create_replay_report() -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
     args = parser.parse_args(argv)
-    report = create_replay_report()
+    report = create_replay_report(args.policy)
     rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

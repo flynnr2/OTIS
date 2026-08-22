@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx321_bounded_active_hybrid_successor",
+  "active_programme": "cx322_bounded_hybrid_fact_gathering",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -9,13 +9,99 @@
       "effective_date": "2026-08-11",
       "authority": "passed_completion_gate"
     },
+    "cx322_bounded_hybrid_fact_gathering": {
+      "state": "offline_exact_entry_ready_awaiting_operator_authorization",
+      "allowed_operations": [
+        "offline_preparation"
+      ],
+      "effective_date": "2026-08-22",
+      "authority": "exact_bundle_rehearsed_no_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "cx321_bounded_active_hybrid_successor",
+      "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
+      "selected_policy": {
+        "path": "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+        "file_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+        "natural_control_law_mathematics_change_from_cx320": "none",
+        "response_checkpoint_mode": "observational_non_terminal",
+        "phase_response_sign_magnitude_or_materiality_are_acquisition_gates": false
+      },
+      "finite_envelope": {
+        "qualified_duration_s": 43200,
+        "absolute_wall_clock_limit_s": 57600,
+        "maximum_total_automatic_applications": 4,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 84,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "extension": false
+      },
+      "verification": {
+        "firmware_and_host_implementation_pending": false,
+        "affected_current_release_tests_passed": true,
+        "historical_programme_tests_excluded": true,
+        "measurement_semantics_inventory_check_passed": true,
+        "exact_firmware_build_pending": false,
+        "exact_bundle_pending": false,
+        "structural_preflight_pending": false,
+        "complete_operational_rehearsal_pending": false
+      },
+      "exact_bundle": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_exact_bundle_v4.json",
+        "file_sha256": "8080667130daa4c3a4882046022f5e62f2251b8c1ab50a944b7e9281ffc9708b",
+        "bundle_sha256": "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f",
+        "firmware_source_revision": "dabe4e953429814c71dcbbbea16702ceb5356516",
+        "firmware_source_sha256": "52467e265f0c3698d4ab850d52b969bff0b54cbb5946f162079b6fa136423f77",
+        "configuration_sha256": "99d55df144d2984d16a7610d077d737644375cfb6731e2345cad73739b8763d8",
+        "firmware_uf2_sha256": "a5a7c48702c3b54d48d8055c99ed882293ea84d74b62a585c7f15a9b66dc51ac"
+      },
+      "authority_proposal": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_authority_proposal_v4.json",
+        "file_sha256": "0f6064521d1a8f5afa3dd124b83d155e782642606a888affa54cb10d704e1481",
+        "proposal_sha256": "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab",
+        "status": "non_effective_awaiting_separate_operator_decision"
+      },
+      "structural_preflight": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_structural_preflight_v4.json",
+        "file_sha256": "0fb230bef6f94ff3d8e55358bce9324fd110bcc9735d36fee6db314a554a123f",
+        "preflight_sha256": "1a8d0067eb7ba2a801ed332752ad810a8fbad689b4d5bf809b77ac4ede626a75",
+        "status": "passed",
+        "physical_actions_performed": 0
+      },
+      "operational_rehearsal": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/exact_bundle_rehearsal_v4/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "fe1651951c03a0d92fbebcf8a7e652587f16d5428cb7f89cbdb46dda3433f303",
+        "rehearsal_sha256": "d2de2eabea73ac765563363e89503d9de383881282e371d5d5410a93da82f205",
+        "status": "passed",
+        "capture_parser_errors": 0,
+        "priority_abort_observed": true,
+        "post_abort_complete_active_snapshot": true,
+        "firmware_phase4_consumption_confirmed": true,
+        "first_phase_observation_checkpoint_exact": true,
+        "response_retained_nonterminal": true,
+        "later_authority_release_observed": true,
+        "analysis_seal_registration_passed": true,
+        "qualification_evidence": false,
+        "physical_actions_performed": 0
+      },
+      "physical_authority_prerequisites": [
+        "exact_immutable_bundle",
+        "structural_preflight",
+        "complete_live_topology_rehearsal",
+        "separate_explicit_exact_bundle_operator_decision"
+      ],
+      "next_gate": "separate_explicit_exact_bundle_operator_decision"
+    },
     "cx321_bounded_active_hybrid_successor": {
-      "state": "offline_implementation_release_verified_exact_bundle_pending",
+      "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
       "allowed_operations": [
         "offline_preparation"
       ],
       "effective_date": "2026-08-21",
-      "authority": "offline_preparation_only_no_physical_authority",
+      "authority": "attempt3_consumed_bounded_nonpass_no_live_retry_authorized",
       "physical_authority_effective": false,
       "predecessor_programme": "cx320_bounded_active_hybrid",
       "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
@@ -59,16 +145,132 @@
         "expected_failure_guards_passed": 8,
         "disposable_actual_process_rehearsal_passed": true,
         "disposable_rehearsal_is_not_exact_bundle_entry_receipt": true,
-        "complete_operational_rehearsal_pending": true,
-        "exact_bundle_pending": true
+        "complete_operational_rehearsal_pending": false,
+        "exact_bundle_pending": false
       },
+      "exact_bundle": {
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_exact_bundle_v2.json",
+        "file_sha256": "37a6d9911247313f42806e0821e326eb0183af393c47c87a699e51cfcaf7b269",
+        "bundle_sha256": "ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072",
+        "firmware_source_revision": "a5c73c24bfc4dcbd0f7735a1df0ad05a2d1c99c5",
+        "firmware_source_sha256": "7a05e5bbe1a0c1db219e0ee3b44c57e60d7cabe8c8930928a7237b93a5b7b06d",
+        "configuration_sha256": "5ebbe81fc4ec857cfba385d9c932c93154206b0a9546a4b3d6ffa7ceeadfe783",
+        "firmware_uf2_sha256": "c5fb2887c291f640543c3d27bb03dafea9cb5d77fd65c0c47a97b2edb38a2ef9"
+      },
+      "authority_proposal": {
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_authority_proposal_v2.json",
+        "file_sha256": "61ccad027359172cbf0c93f89c72a377eb249915d64fca92595fc5637ef4866e",
+        "proposal_sha256": "5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567"
+      },
+      "structural_preflight": {
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/cx321_active_hybrid_structural_preflight_v2.json",
+        "file_sha256": "8e770ecc88e052c49a403976ccf554edb449d0d0a2d83562ed6946592963821e",
+        "preflight_sha256": "4e7d3143df81b1fdb41b56fae737def380327ea1baf72f305f57a8085bf106f1",
+        "status": "passed",
+        "physical_actions_performed": 0
+      },
+      "operational_rehearsal": {
+        "path": "runs/cx321_active_hybrid/host_key_remediation_0da4596_20260821/exact_bundle_rehearsal/cx321_active_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "31b75ddd206bde6780e378782084ba4d84655fc62f7137061163bc5f0b51066d",
+        "rehearsal_sha256": "d1027c92f3aac4588e377f961807912068d75d679af53bd019df359736075909",
+        "status": "passed",
+        "capture_parser_errors": 0,
+        "qualification_evidence": false,
+        "physical_actions_performed": 0
+      },
+      "operator_authority": {
+        "path": "runs/cx321_active_hybrid/operator_authority_20260821/host_key_remediation_authority_continuation_v1.json",
+        "file_sha256": "26aa017e71f63b259701238b2b6cffc9b6ff3755d66f9d394cfe8a2f21d8761a",
+        "bundle_sha256": "ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072",
+        "proposal_sha256": "5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567",
+        "physical_execution_effective": true,
+        "expanded_remediation_authority_effective": true
+      },
+      "effective_activation": {
+        "path": "runs/cx321_active_hybrid/operator_authority_20260821/cx321_active_hybrid_live_activation_attempt3_v1.json",
+        "file_sha256": "834303cd95fb3cf676e6dfe766f7e2337ee60f4d0a2a583886c9853d40c8b736",
+        "activation_sha256": "ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4",
+        "attempt_ordinal": 3,
+        "automatic_retry": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt3_20260821T1543Z"
+      },
+      "stage5_attempts": [
+        {
+          "ordinal": 1,
+          "run_id": "stage5_live_attempt1_20260821T1527Z",
+          "classification": "platform_escape_into_campaign_prewrite",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "runner_launched_with_system_python_without_rehearsed_pyserial_dependency",
+          "firmware_flash_count": 1,
+          "capture_started": false,
+          "setup_requests": 0,
+          "setup_applications": 0,
+          "automatic_applications": 0,
+          "dac_value_writes": 0,
+          "control_arms": 0,
+          "seal_sha256": "f8e3bb8a1b887ed10c303e93d871eeb369cb19e05700d149708d38b370edadc5",
+          "seal_file_sha256": "e762bcb28cc8b25ce2b9160f5baee7ecda549ab637cbae5c744162229152a88c",
+          "evidence_content_sha256": "31c76bcec112c1dd57bc30a48bb4c9b836f1f512e20edcf24b3280ad389f42b8",
+          "scientific_result": "none_prewrite_no_capture_setup_dac_write_or_control_arm"
+        },
+        {
+          "ordinal": 2,
+          "run_id": "stage5_live_attempt2_20260821T1533Z",
+          "classification": "platform_escape_into_campaign_prewrite",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "frozen_firmware_truncated_41_character_plant_sign_status_key_at_39_characters",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "identity_queries_completed": true,
+          "setup_requests": 0,
+          "setup_applications": 0,
+          "automatic_applications": 0,
+          "dac_value_writes": 0,
+          "control_arms": 0,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "ebcc929bf83cf9ac24d8bfeed7181e1c62968333033062a606e8e25614d0e6a6",
+          "seal_file_sha256": "963273813f8d3c3f99ffeae21af82f776ee4a6aae1243f6e2e7e624230e54d7a",
+          "evidence_content_sha256": "d0f2ad315ee17c8aa161391be4f783b2c4f00635121aad79c474f9f0bed12aa6",
+          "scientific_result": "none_prewrite_status_transport_alias_required"
+        },
+        {
+          "ordinal": 3,
+          "run_id": "stage5_live_attempt3_20260821T1543Z",
+          "classification": "completed_campaign_bounded_nonpass",
+          "terminal": "plant_sign_qualification_not_exercised",
+          "terminal_reason": "adjacent_exact_1500_interval_pre_totals_differed_by_one_count",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_applications": 1,
+          "identification_applications": 0,
+          "natural_automatic_applications": 0,
+          "pre1_total_count": 15000000003,
+          "pre2_total_count": 15000000002,
+          "pre1_tight_state": "TIGHT_INSIDE",
+          "pre2_tight_state": "TIGHT_INSIDE",
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "original_seal_sha256": "6c998caaa8a042c46f03c6ad1dab92792700c72fd1892221172cf487297ae684",
+          "superseding_seal_sha256": "dcea9b4077781fed352c47607c4017595d88764735ed5bb72439333bac2d2694",
+          "superseding_seal_file_sha256": "50df6312fd4616802a070a8f699e83e22fe3ddfcae7f224e8f6475450db1536c",
+          "evidence_content_sha256": "5601b3de7cdedc6fee686790652246c78c65eeb43afc6e4de1547fb86b6cd3bb",
+          "scientific_result": "bounded_nonpass_exact_pre_window_equality_not_satisfied"
+        }
+      ],
       "physical_authority_prerequisites": [
         "exact_immutable_bundle",
         "structural_preflight",
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "freeze_exact_clean_source_bundle_preflight_and_same_bundle_rehearsal"
+      "next_gate": "offline_successor_design_decision"
     },
     "cx320_bounded_active_hybrid": {
       "state": "stage5_bounded_nonpass_successor_design_requires_new_authority",

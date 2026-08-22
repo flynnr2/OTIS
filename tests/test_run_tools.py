@@ -92,6 +92,22 @@ def test_cx320_active_hybrid_is_a_current_evidence_package(
     assert load_manifest(run_dir).data == value
 
 
+def test_cx321_active_hybrid_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx321"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="CX321_EVIDENCE_EPOCH_1",
+        run_id="cx321_active_hybrid_live_fixture",
+        stage="CX321_BOUNDED_ACTIVE_HYBRID_PLANT_SIGN_LIVE",
+        cx319=None,
+        cx321={"profile_id": "cx321_active_hybrid"},
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_legacy_manifest_filename_is_rejected_with_revision_guidance(
     tmp_path: Path,
 ) -> None:

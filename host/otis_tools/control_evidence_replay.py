@@ -399,9 +399,15 @@ def _controller_replay(
 
 
 def _response_replay(
-    rows: list[dict[str, str]], minimum_code: int, maximum_code: int
+    rows: list[dict[str, str]], minimum_code: int, maximum_code: int,
+    *, response_classification_observational: bool = False,
 ) -> tuple[bool, list[dict[str, Any]]]:
-    classifier = ResponseClassifier(legacy_response_deadband_enabled=False)
+    classifier = ResponseClassifier(
+        legacy_response_deadband_enabled=False,
+        response_classification_observational=(
+            response_classification_observational
+        ),
+    )
     grouped: dict[int, list[dict[str, str]]] = {}
     for row in rows:
         if row.get("event") != "manual_start":

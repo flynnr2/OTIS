@@ -93,6 +93,24 @@ def test_cx321_v2_requires_and_retains_plant_sign_state() -> None:
     ) == {}
 
 
+def test_cx321_frozen_wire_truncation_is_canonicalized_without_changing_raw() -> None:
+    rows = _burst(5, contract=CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT)
+    target = next(
+        row
+        for row in rows
+        if row["status_key"]
+        == "plant_sign_accumulator_accepted_intervals"
+    )
+    target["status_key"] = "plant_sign_accumulator_accepted_interva"
+
+    status = latest_complete_active_status(rows)
+
+    assert target["status_key"] == "plant_sign_accumulator_accepted_interva"
+    assert status["plant_sign_accumulator_accepted_intervals"] == (
+        "5:plant_sign_accumulator_accepted_intervals"
+    )
+
+
 def test_newer_incomplete_or_duplicate_burst_cannot_mix_with_older_state() -> None:
     duplicate = _burst(2)
     duplicate.insert(5, _row("cx317_active", "state", "duplicate"))

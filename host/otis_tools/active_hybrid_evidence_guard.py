@@ -307,6 +307,23 @@ def replay_active_hybrid_history(
                 predicted_sign_observed = (
                     float(response["observed_response_hz"]) * requested_delta > 0.0
                 )
+                admissible_response_classes = (
+                    {
+                        "healthy_detected",
+                        "healthy_indeterminate_near_resolution",
+                        "inside_deadband",
+                        "limit_reached",
+                        "wrong_sign",
+                        "excess_response",
+                        "growing_error",
+                    }
+                    if policy.response_checkpoint_observational
+                    else {
+                        "healthy_detected",
+                        "healthy_indeterminate_near_resolution",
+                        "inside_deadband",
+                    }
+                )
                 response_exact = (
                     int(row["request_sequence"])
                     == int(response["request_sequence"])
@@ -323,15 +340,14 @@ def replay_active_hybrid_history(
                     and int(row["decision_timestamp_s"])
                     - int(application["application_timestamp_s"])
                     >= policy.settling_exclusion_s + policy.fresh_support_s
-                    and response["response_class"]
-                    in {
-                        "healthy_detected",
-                        "healthy_indeterminate_near_resolution",
-                        "inside_deadband",
-                    }
+                    and response["response_class"] in admissible_response_classes
                 )
                 response_checkpoint_passed = (
-                    response_exact and predicted_sign_observed
+                    response_exact
+                    and (
+                        policy.response_checkpoint_observational
+                        or predicted_sign_observed
+                    )
                 )
                 all_response_checkpoints_passed &= response_checkpoint_passed
                 controller.note_response(
@@ -523,19 +539,31 @@ def replay_response_before_acknowledgement(
         * int(response["requested_delta_codes"])
         > 0.0
     )
-    if (
-        int(application["applied_code"]) != replayed_code
-        or int(application["dac_epoch"]) <= int(decision["dac_epoch"])
-        or int(response["applied_code"]) != replayed_code
-        or response["response_class"]
-        not in {
+    admissible_response_classes = (
+        {
+            "healthy_detected",
+            "healthy_indeterminate_near_resolution",
+            "inside_deadband",
+            "limit_reached",
+            "wrong_sign",
+            "excess_response",
+            "growing_error",
+        }
+        if policy.response_checkpoint_observational
+        else {
             "healthy_detected",
             "healthy_indeterminate_near_resolution",
             "inside_deadband",
         }
+    )
+    if (
+        int(application["applied_code"]) != replayed_code
+        or int(application["dac_epoch"]) <= int(decision["dac_epoch"])
+        or int(response["applied_code"]) != replayed_code
+        or response["response_class"] not in admissible_response_classes
     ):
         raise ValueError("CX320 applied code, epoch, or response evidence differs")
-    if not predicted_sign_observed:
+    if not predicted_sign_observed and not policy.response_checkpoint_observational:
         raise ResponseCheckpointRejected(
             "CX320 frozen response-sign checkpoint did not pass"
         )
@@ -559,6 +587,11 @@ def replay_response_before_acknowledgement(
         "dac_epoch": int(application["dac_epoch"]),
         "response_class": response["response_class"],
         "predicted_sign_observed": predicted_sign_observed,
+        "response_checkpoint_mode": (
+            "observational_non_terminal"
+            if policy.response_checkpoint_observational
+            else "admission_gate"
+        ),
         "exact_replay": True,
     }
     result["attestation_sha256"] = sha256(

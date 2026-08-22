@@ -21,6 +21,7 @@ from typing import Any
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    progressive_checkpoint_contract,
     programme_from_mapping,
 )
 
@@ -399,10 +400,7 @@ def _authority(
         "control_arm": True,
         "live_acquisition_limit": 1,
         "maximum_total_automatic_applications": programme.maximum_applications,
-        "first_phase_material_applications_before_checkpoint": 1,
-        "minimum_phase_material_applications_for_pass": (
-            programme.minimum_natural_phase_material_applications
-        ),
+        **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
         "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
@@ -888,11 +886,7 @@ def create_run_manifest(
                 "automatic_restore": False,
             },
             "progressive_authority": {
-                "first_phase_material_applications_before_checkpoint": 1,
-                "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
-                "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
-                "first_response_acknowledgement_requires_exact_host_replay": True,
-                "later_authority_requires_healthy_response_and_tight_reacquisition": True,
+                **progressive_checkpoint_contract(programme),
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
@@ -1062,13 +1056,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
             "automatic_restore": False,
         }
         or progressive
-        != {
-            "first_phase_material_applications_before_checkpoint": 1,
-            "minimum_phase_material_applications_for_pass": programme.minimum_natural_phase_material_applications,
-            "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
-            "first_response_acknowledgement_requires_exact_host_replay": True,
-            "later_authority_requires_healthy_response_and_tight_reacquisition": True,
-        }
+        != progressive_checkpoint_contract(programme)
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
         or qualification.get("absolute_wall_clock_limit_s")

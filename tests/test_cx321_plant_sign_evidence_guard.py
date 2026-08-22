@@ -322,6 +322,40 @@ def test_analyzer_strictly_replays_right_censored_prefix(tmp_path) -> None:
     assert result["scientific_terminal_exact"] is False
 
 
+def test_analyzer_corrects_exact_legacy_pre2_scientific_terminal(tmp_path) -> None:
+    rows = deepcopy(_records()[:2])
+    rows[1]["total_count"] = "15000000003"
+    rows[1]["signed_error_counts"] = "3"
+    rows[1].update(
+        {
+            "state_after": "PLANT_SIGN_NOT_EXERCISED",
+            "reason": "second_pre_window_not_equal_and_tight",
+        }
+    )
+    manifest, value = _analyzer_fixture(tmp_path, rows)
+
+    result = _cx321_plant_sign_replay(
+        tmp_path,
+        manifest,
+        value,
+        {
+            "result": "aborted",
+            "primary_decision": "measurement_authority_or_platform_fault",
+            "reason": (
+                "cx321_live_supervisor_fault:live active_fail_static asserted"
+            ),
+        },
+    )
+
+    assert result["scientific_terminal_exact"] is True
+    assert result["terminal_decision"] == (
+        "plant_sign_qualification_not_exercised"
+    )
+    assert result[
+        "legacy_supervisor_terminal_misclassification_corrected"
+    ] is True
+
+
 def test_analyzer_malformed_right_censored_prefix_is_platform_failure(
     tmp_path,
 ) -> None:
@@ -520,6 +554,7 @@ def test_exact_partial_not_exercised_is_scientific() -> None:
     )
 
     assert result["scientific_terminal_exact"] is True
+    assert result["exact_replay"] is True
     assert result["scientific_rejection_predicates"] == [
         "pre_totals_not_equal"
     ]

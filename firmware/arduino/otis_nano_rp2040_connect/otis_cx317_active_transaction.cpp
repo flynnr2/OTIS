@@ -49,7 +49,9 @@ bool binding_equal(const OtisCx317ActiveBinding &left,
          left.prospective_dither_stop_enabled ==
              right.prospective_dither_stop_enabled &&
          left.legacy_response_deadband_enabled ==
-             right.legacy_response_deadband_enabled;
+             right.legacy_response_deadband_enabled &&
+         left.response_classification_observational ==
+             right.response_classification_observational;
 }
 
 bool request_equal(const OtisCx317ActionableRequest &left,
@@ -80,7 +82,8 @@ OtisCx317ResponseResult classify_response(
     OtisCx317ResponseClassifier *classifier, double pre_error_hz,
     double post_error_hz, int32_t applied_delta_codes, uint16_t current_code,
     uint16_t minimum_code, uint16_t maximum_code, bool evidence_healthy,
-    bool legacy_response_deadband_enabled) {
+    bool legacy_response_deadband_enabled,
+    bool response_classification_observational) {
   OtisCx317ResponseResult result = {
       OtisCx317ResponseClass::MeasurementOrActuatorFault,
       "invalid_response_evidence", 0.0, 0.0,
@@ -144,7 +147,8 @@ OtisCx317ResponseResult classify_response(
     const double expected =
         fabs(static_cast<double>(classifier->cumulative_delta_codes)) *
         kGainMinimumHzPerCode;
-    if (classifier->consecutive_indeterminate >
+    if (!response_classification_observational &&
+        classifier->consecutive_indeterminate >
             kMaximumConsecutiveIndeterminate &&
         expected >= 2.0 * kDetectionFloorHz) {
       result.classification =
@@ -629,10 +633,23 @@ bool otis_cx317_active_record_response(
       post_error_hz, transaction->request.requested_delta_codes,
       transaction->applied_code, transaction->expected_binding.minimum_code,
       transaction->expected_binding.maximum_code, measurement_healthy,
-      transaction->expected_binding.legacy_response_deadband_enabled);
+      transaction->expected_binding.legacy_response_deadband_enabled,
+      transaction->expected_binding.response_classification_observational);
   transaction->have_request = false;
   transaction->have_acceptance = false;
   transaction->have_application = false;
+  if (transaction->expected_binding.response_classification_observational &&
+      result->classification !=
+          OtisCx317ResponseClass::MeasurementOrActuatorFault) {
+    if (!control_eligible_after_response) {
+      transaction->state = OtisCx317ActiveState::OutOfModelHold;
+      transaction->reason = "response_observed_out_of_model_hold";
+      transaction->have_arm = false;
+      return true;
+    }
+    disarm(transaction, "response_observation_recorded_new_arm_required");
+    return true;
+  }
   switch (result->classification) {
     case OtisCx317ResponseClass::WrongSign:
     case OtisCx317ResponseClass::ExcessResponse:

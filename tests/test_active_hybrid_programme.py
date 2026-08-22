@@ -27,7 +27,10 @@ from host.otis_tools.active_hybrid_rehearsal import (
     run as run_accelerated_rehearsal,
 )
 from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
-from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX321_PROGRAMME,
+    CX322_PROGRAMME,
+)
 from host.otis_tools.active_hybrid_supervisor import (
     ActiveHybridSupervisor,
     SupervisorContractError,
@@ -223,6 +226,67 @@ def test_cx321_accelerated_rehearsal_produces_complete_successor_receipt(
     )
     assert receipt["receipt_type"] == (
         "cx321_active_hybrid_rehearsal_registration_receipt_v1"
+    )
+
+
+def test_cx322_accelerated_rehearsal_seals_observational_response_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy_path = CX322_PROGRAMME.policy_path
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    bundle = {
+        **_bundle(),
+        "programme_id": CX322_PROGRAMME.programme_id,
+        "run_identity": CX322_PROGRAMME.runtime_run_identity,
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": policy_sha256,
+        },
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "c" * 64,
+            "source_revision": "frozen-test-revision",
+        },
+        "finite_limits": {
+            "qualified_duration_s": 43_200,
+            "absolute_wall_clock_limit_s": 57_600,
+        },
+    }
+    proposal = {
+        "proposal_sha256": "d" * 64,
+        "exact_bundle": {"bundle_sha256": bundle["bundle_sha256"]},
+    }
+    bundle_path = tmp_path / "bundle.json"
+    proposal_path = tmp_path / "proposal.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal_tool, "validate_bundle", lambda path, *args: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal_tool, "validate_proposal", lambda path, *args: proposal
+    )
+
+    result = run_accelerated_rehearsal(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        output_dir=tmp_path / "rehearsal",
+    )
+
+    assert result["status"] == "passed"
+    analysis = json.loads(
+        (
+            tmp_path
+            / "rehearsal/evidence/reports/active_hybrid_analysis_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert analysis["report_type"] == (
+        "cx322_active_hybrid_operational_rehearsal_analysis_v1"
+    )
+    assert analysis["checks"][
+        "observational_response_classes_are_nonterminal"
+    ] is True
+    assert set(analysis["scenario_terminal_classifications"].values()) <= (
+        CX322_PROGRAMME.terminal_decisions
     )
 
 

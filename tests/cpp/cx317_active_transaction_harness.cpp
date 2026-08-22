@@ -14,7 +14,7 @@ OtisCx317ActiveBinding binding(uint16_t start = 0xA950u,
           start, 0xA800u, 0xAB00u, 21u,
           static_cast<uint16_t>(dither_stop ? 32u : 16u),
           static_cast<uint16_t>(dither_stop ? 672u : 336u), dither_stop,
-          true};
+          true, false};
 }
 
 OtisCx317ActiveEligibility healthy() {
@@ -417,6 +417,61 @@ void prospective_dither_guards_stop_before_write() {
                 "prospective_low_net_excess_path_dither_stop") == 0);
 }
 
+void observational_responses_remain_nonterminal() {
+  auto expected = binding(0xA900u, false);
+  expected.legacy_response_deadband_enabled = false;
+  expected.response_classification_observational = true;
+  auto eligibility = healthy();
+  OtisCx317ActiveTransaction transaction;
+  otis_cx317_active_transaction_init(&transaction, &expected);
+  for (uint32_t sequence = 1u; sequence <= 3u; ++sequence) {
+    const uint32_t now_s = 2400u + (sequence - 1u) * 1800u;
+    auto authorization = arm(expected, sequence, now_s);
+    assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                                 now_s));
+    auto numerical = decision(transaction.applied_code, sequence, now_s, 21);
+    numerical.pre_error_hz = 0.0;
+    OtisCx317ActionableRequest request;
+    assert(otis_cx317_active_make_request(&transaction, &numerical,
+                                          &eligibility, now_s, &request));
+    OtisCx317AcceptedRequest accepted;
+    assert(otis_cx317_active_accept(&transaction, &request, now_s, &accepted));
+    OtisCx317AppliedAck applied = {
+        request.request_sequence, request.authorization_sequence, request.nonce,
+        request.requested_code, accepted.accepted_code, request.requested_code,
+        static_cast<uint16_t>(sequence), now_s, true, false, false};
+    assert(otis_cx317_active_acknowledge_application(&transaction, &applied));
+    OtisCx317ResponseResult response;
+    assert(otis_cx317_active_record_response(&transaction, 0.0, true, true,
+                                             &response));
+    assert(response.classification ==
+           OtisCx317ResponseClass::HealthyIndeterminateNearResolution);
+    assert(transaction.state == OtisCx317ActiveState::Disarmed);
+  }
+
+  otis_cx317_active_transaction_init(&transaction, &expected);
+  auto authorization = arm(expected, 1u, 2400u);
+  assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                               2400u));
+  auto numerical = decision(transaction.applied_code, 1u, 2400u, 21);
+  numerical.pre_error_hz = 0.0;
+  OtisCx317ActionableRequest request;
+  assert(otis_cx317_active_make_request(&transaction, &numerical,
+                                        &eligibility, 2400u, &request));
+  OtisCx317AcceptedRequest accepted;
+  assert(otis_cx317_active_accept(&transaction, &request, 2400u, &accepted));
+  OtisCx317AppliedAck applied = {
+      request.request_sequence, request.authorization_sequence, request.nonce,
+      request.requested_code, accepted.accepted_code, request.requested_code,
+      1u, 2400u, true, false, false};
+  assert(otis_cx317_active_acknowledge_application(&transaction, &applied));
+  OtisCx317ResponseResult response;
+  assert(otis_cx317_active_record_response(&transaction, -0.005, true, true,
+                                           &response));
+  assert(response.classification == OtisCx317ResponseClass::WrongSign);
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+}
+
 }  // namespace
 
 int main() {
@@ -429,5 +484,6 @@ int main() {
   temperature_covariate_and_out_of_model_hold();
   stage5_response_ignores_legacy_v2_shadow_deadband();
   prospective_dither_guards_stop_before_write();
+  observational_responses_remain_nonterminal();
   return 0;
 }

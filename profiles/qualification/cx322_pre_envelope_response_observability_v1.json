@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "programme_id": "CX322_PRE_ENVELOPE_RESPONSE_OBSERVABILITY_V1",
+  "status": "superseded_before_implementation",
+  "question": "Can the CX321 plant-sign entry admit the observed one-count movement between two healthy 1500-second pre-stimulus estimates without weakening the three-count response floor or changing the natural hybrid controller?",
+  "supersedes": {
+    "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
+    "sha256": "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62"
+  },
+  "trigger_evidence": {
+    "path": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md",
+    "sha256": "0632ebc39c5707ab7f341a76e66260377ca96a1b21861b123f34d2b1c2e476dd",
+    "pre1_total_counts": 15000000003,
+    "pre2_total_counts": 15000000002,
+    "pre1_error_counts": 3,
+    "pre2_error_counts": 2,
+    "difference_counts": -1,
+    "classification": "scientifically_healthy_entry_rejected_only_by_exact_equality"
+  },
+  "bindings": {
+    "cx321_comparison": {
+      "path": "profiles/qualification/cx321_response_observability_comparison_v1.json",
+      "sha256": "3a2e345ac9ba66129de3f3400d86dddadc1c2abb86c517090747e6f604a552b6"
+    },
+    "fixed_code_fixture": {
+      "path": "tests/fixtures/cx321_stage3_stable_interval_counts_v1.json",
+      "sha256": "e4d56d2434276abe34daa0624db6a2e89c97beb4b945ceaadc40c78d05a4a952"
+    },
+    "plant_reconstruction": {
+      "path": "profiles/qualification/cx321_plant_parity_1500_reconstruction_v1.json",
+      "sha256": "3c73a1de1a828ab947f0148e6ee589055d491602ac1eb086fe902fe3aee3903e"
+    },
+    "unchanged_natural_controller": {
+      "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json",
+      "sha256": "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4"
+    }
+  },
+  "selected_pre_stimulus_gate": {
+    "estimate_count": 2,
+    "estimate_span_s": 1500,
+    "contiguous_nonoverlapping_same_setup_epoch_required": true,
+    "both_signed_frequency_errors_nonzero_and_same_sign_required": true,
+    "eligible_absolute_1500s_error_counts": [2, 3, 4, 5],
+    "maximum_absolute_pre_difference_counts": 1,
+    "exact_equality_required": false,
+    "natural_600s_TIGHT_INSIDE_state_also_required": true,
+    "no_prior_automatic_application": true,
+    "reason_for_two_count_lower_entry_bound": "a_25_code_response_can_overshoot_a_one_count_pre_error_beyond_the_existing_600s_TIGHT_entry_bound_but_the_worst_modeled_overshoot_from_two_counts_remains_inside",
+    "observed_attempt3_entry_passes": true
+  },
+  "selected_response_gate": {
+    "fresh_1500s_support_after_900s_exclusion_required": true,
+    "positive_command_baseline_formula": "max(pre1_total_counts,pre2_total_counts)",
+    "negative_command_baseline_formula": "min(pre1_total_counts,pre2_total_counts)",
+    "signed_response_formula": "sign(requested_delta_codes) * (post_total_counts - directional_pre_envelope_baseline_counts)",
+    "detected_floor_counts": 3,
+    "maximum_absolute_response_counts": 14,
+    "pass_formula": "all_identity_health_support_epoch_and_replay_gates && 3<=signed_response_counts && abs(post_total_counts-pre2_total_counts)<=14 && TIGHT_INSIDE_reentry",
+    "interpretation": "the_post_window_must_clear_the_entire_observed_two_pre_window_envelope_by_the_existing_three_count_floor_in_the_commanded_direction",
+    "second_post_estimate_required": false
+  },
+  "stimulus_derivation": {
+    "plant_gain_hz_per_code": {
+      "minimum_conservative_600s": 0.00016357422282453626,
+      "nominal_600s": 0.00017008467693813145,
+      "maximum_600s": 0.00017334010044578463,
+      "uncertainty_status": "finite_run_observed_range_not_calibrated_or_statistical_bound"
+    },
+    "retained_null_signed_response_minimum_counts": -3,
+    "detected_floor_counts": 3,
+    "conservative_integer_shift_required_for_full_replay_sensitivity_counts": 6,
+    "step_formula": "ceil((detected_floor_counts-retained_null_signed_response_minimum_counts)/(1500*minimum_conservative_600s_gain_hz_per_code))",
+    "minimum_full_replay_step_codes": 25,
+    "twenty_four_code_expected_response_counts_minimum": 5.888672021683305,
+    "twenty_four_code_disposition": "rejected_below_the_six_count_conservative_replay_shift",
+    "selected_step_codes": 25,
+    "twenty_five_code_expected_response_hz": {
+      "minimum": 0.004089355570613407,
+      "nominal": 0.004252116923453286,
+      "maximum": 0.004333502511144616
+    },
+    "twenty_five_code_expected_response_counts": {
+      "minimum": 6.13403335592011,
+      "nominal": 6.378175385179929,
+      "maximum": 6.500253766716924
+    },
+    "requested_delta_formula": "-25 * sign(pre2_frequency_error_counts)",
+    "negative_direction_code": 43043,
+    "negative_direction_code_hex": "0xA823",
+    "positive_direction_code": 43093,
+    "positive_direction_code_hex": "0xA855",
+    "characterized_code_range": [43008, 43776],
+    "retained_gain_sample_code_differences": [80, 176, 256],
+    "local_linearity_assumption": "the_conservative_per_code_gain_is_scaled_to_25_codes_as_it_was_to_21_codes_but_no_direct_25_code_plant_measurement_exists",
+    "worst_modeled_post_stimulus_absolute_1500s_error_counts": 4.500253766716924,
+    "worst_modeled_post_stimulus_absolute_frequency_error_hz": 0.0030001691778112827,
+    "existing_600s_TIGHT_entry_absolute_frequency_hz": 0.0033333333333333335,
+    "worst_modeled_post_stimulus_error_inside_existing_TIGHT_entry_bound": true,
+    "observed_two_estimate_TIGHT_reentry_still_required": true
+  },
+  "fixed_code_null_replay": {
+    "fixture_stable_interval_count": 43227,
+    "absolute_live_frequency_entry_not_replayed": "the_historical_fixed_code_level_differs_but_all_selected_count_difference_and_envelope_statistics_are_shift_invariant",
+    "noncoincident_gap_901": {
+      "complete_timeline_placements": 36926,
+      "eligible_pre_difference_placements": 35598,
+      "eligible_fraction": 0.9640361804690462,
+      "pre_difference_histogram": {"-1": 8213, "0": 18219, "1": 9166},
+      "positive_signed_response_histogram": {"-2": 858, "-1": 9394, "0": 20439, "1": 4621, "2": 286},
+      "negative_signed_response_histogram": {"-3": 105, "-2": 1653, "-1": 9803, "0": 22077, "1": 1958, "2": 2},
+      "positive_false_attributions_at_three_counts": 0,
+      "negative_false_attributions_at_three_counts": 0,
+      "synthetic_five_count_shift_passes": {"positive": 35598, "negative": 35493},
+      "synthetic_six_count_shift_passes": {"positive": 35598, "negative": 35598}
+    },
+    "aligned_gap_900": {
+      "complete_timeline_placements": 36928,
+      "eligible_pre_difference_placements": 35600,
+      "eligible_fraction": 0.9640381282495667,
+      "pre_difference_histogram": {"-1": 8214, "0": 18219, "1": 9167},
+      "positive_signed_response_histogram": {"-2": 573, "-1": 9179, "0": 21472, "1": 4090, "2": 286},
+      "negative_signed_response_histogram": {"-3": 225, "-2": 1292, "-1": 9967, "0": 22611, "1": 1502, "2": 3},
+      "positive_false_attributions_at_three_counts": 0,
+      "negative_false_attributions_at_three_counts": 0,
+      "synthetic_five_count_shift_passes": {"positive": 35600, "negative": 35375},
+      "synthetic_six_count_shift_passes": {"positive": 35600, "negative": 35600}
+    },
+    "cx321_exact_equality_reference": {
+      "eligible_noncoincident_placements": 18219,
+      "eligible_fraction": 0.49339218978497534
+    },
+    "interpretation": "zero_observed_finite_record_attributions_and_full_six_count_replay_sensitivity_are_not_a_calibrated_future_false_positive_or_detection_probability"
+  },
+  "candidate_dispositions": {
+    "relaxed_pre2_baseline_at_twenty_one_codes": "rejected_59_positive_null_attributions_in_gap_901_and_170_in_gap_900",
+    "pre_envelope_at_twenty_one_codes": "rejected_zero_null_attributions_but_105_and_225_negative_direction_five_count_replay_misses",
+    "linear_drift_extrapolation": "rejected_quantization_amplifies_false_attribution_and_requires_transaction_latency_modeling",
+    "persistent_two_post_window_at_twenty_one_codes": "rejected_adds_1500s_but_retains_five_count_replay_misses",
+    "two_direction_bracket": "rejected_consumes_an_additional_application_and_movement_authority_and_requires_new_chatter_semantics",
+    "pre_envelope_at_twenty_five_codes": "selected"
+  },
+  "prospective_campaign_budget": {
+    "maximum_total_automatic_applications": 4,
+    "maximum_cumulative_absolute_movement_codes": 84,
+    "identification_applications": 1,
+    "identification_movement_codes": 25,
+    "maximum_identification_step_codes": 25,
+    "maximum_any_automatic_step_codes": 25,
+    "maximum_natural_application_step_codes_unchanged": 21,
+    "applications_remaining_after_identification": 3,
+    "movement_codes_remaining_after_identification": 59,
+    "two_required_maximum_natural_applications_movement_codes": 42,
+    "movement_codes_remaining_after_two_required_maximum_natural_applications": 17,
+    "spare_application_slot_remains": true,
+    "full_twenty_one_code_spare_application_not_guaranteed": true,
+    "budget_decision": "retain_the_existing_84_code_global_limit_because_two_required_natural_transactions_remain_fully_authorized_and_do_not_expand_physical_authority_to_preserve_an_optional_full_size_spare"
+  },
+  "decision": {
+    "selected": false,
+    "natural_controller_estimator_changed": false,
+    "natural_controller_mathematics_changed": false,
+    "identification_estimator_changed": false,
+    "pre_stimulus_admission_changed": true,
+    "identification_stimulus_changed_from_codes": 21,
+    "identification_stimulus_changed_to_codes": 25,
+    "physical_repeat_of_cx321_bundle_warranted": false,
+    "next_milestone": "superseded_by_CX322_bounded_direct_hybrid_fact_gathering_before_firmware_implementation"
+  },
+  "authority": {
+    "offline_analysis": true,
+    "effective": false,
+    "firmware_flash": false,
+    "reset": false,
+    "serial_access": false,
+    "setup_stimulus": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "separate_exact_bundle_operator_authority_required": true
+  },
+  "claims_not_made": [
+    "calibrated_false_positive_probability",
+    "guaranteed_future_detection",
+    "direct_25_code_plant_gain_measurement",
+    "plant_gain_outside_retained_characterization",
+    "changed_natural_hybrid_performance",
+    "physical_authority"
+  ]
+}

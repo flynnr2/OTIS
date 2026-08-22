@@ -25,6 +25,7 @@ class ActiveHybridSupervisor:
     policy_sha256: str
     build_identity: str
     profile_identity: str = "cx320_active_hybrid"
+    response_checkpoint_observational: bool = False
     state: str = "CREATED"
     serial_owner: str | None = None
     setup_code: int | None = None
@@ -207,21 +208,33 @@ class ActiveHybridSupervisor:
         if not self.response_outstanding:
             self.fail_static("response_without_outstanding_application")
             raise SupervisorContractError(self.terminal_reason or "missing response")
-        healthy = (
+        admissible = (
             response_class
-            in {
-                "healthy_detected",
-                "healthy_indeterminate_near_resolution",
-                "inside_deadband",
-            }
+            in (
+                {
+                    "healthy_detected",
+                    "healthy_indeterminate_near_resolution",
+                    "inside_deadband",
+                    "limit_reached",
+                    "wrong_sign",
+                    "excess_response",
+                    "growing_error",
+                }
+                if self.response_checkpoint_observational
+                else {
+                    "healthy_detected",
+                    "healthy_indeterminate_near_resolution",
+                    "inside_deadband",
+                }
+            )
             and support_fresh
-            and sign_healthy
+            and (self.response_checkpoint_observational or sign_healthy)
             and replay_exact
             and tight_reacquired
             and durable_decision_record
             and durable_transaction_record
         )
-        if not healthy:
+        if not admissible:
             self.fail_static("first_phase_response_checkpoint_failed")
             return
         self.response_outstanding = False
@@ -232,6 +245,11 @@ class ActiveHybridSupervisor:
             "response_replayed_before_acknowledgement",
             request_sequence=request_sequence,
             response_class=response_class,
+            checkpoint_mode=(
+                "observational_non_terminal"
+                if self.response_checkpoint_observational
+                else "admission_gate"
+            ),
             later_authority_released=self.later_authority_released,
         )
 

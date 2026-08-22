@@ -352,7 +352,7 @@ OtisCx317ActiveBinding active_binding() {
   return {
       "q2_run", "q2_build", "q2_profile", "estimator", "model",
       "policy", "response", "numerical", 7u, 0xA808u, 0xA808u,
-      0xAB00u, 21u, 2u, 42u, false, true,
+      0xAB00u, 21u, 2u, 42u, false, true, false,
   };
 }
 

@@ -100,6 +100,29 @@ class PlantSignEvidenceError(ValueError):
     """A PSQ record or cross-record invariant was not exact."""
 
 
+def plant_sign_terminal_decision_from_record(
+    row: Mapping[str, str],
+) -> str | None:
+    """Map one exact terminal PSQ shape to its programme decision."""
+
+    if (
+        row.get("state_after") == "PLANT_SIGN_NOT_EXERCISED"
+        and row.get("reason")
+        in {
+            "pre_identification_scientific_entry_band_not_satisfied",
+            "second_pre_window_not_equal_and_tight",
+        }
+    ):
+        return "plant_sign_qualification_not_exercised"
+    if (
+        row.get("event") == "response"
+        and row.get("state_after") == "FAIL_STATIC"
+        and row.get("reason") == "identification_response_failed"
+    ):
+        return "plant_sign_qualification_failed"
+    return None
+
+
 @dataclass(frozen=True)
 class PlantSignReplayContext:
     run_identity: str
@@ -1182,6 +1205,7 @@ def replay_plant_sign_terminal_prefix(
     return {
         "schema_version": 1,
         "tool": TOOL_ID,
+        "exact_replay": True,
         "terminal_decision": terminal_decision,
         "scientific_terminal_exact": True,
         "record_count": len(rows),

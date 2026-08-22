@@ -1,7 +1,17 @@
 # CX321 Bounded Active-Hybrid Successor
 
-Status: offline v2 implementation and release verification passed; exact
-clean-source bundle and physical authority absent.
+Status: Stage 5 attempt 3 reached the frozen plant-sign entry gate and is a
+sealed bounded non-pass, `plant_sign_qualification_not_exercised`. The two
+contiguous 1,500-second fixed-code windows were individually `TIGHT_INSIDE`
+but differed by one exact count (`+3`, then `+2`), so firmware correctly made
+no identification or natural-controller application. The activation is
+consumed and no automatic retry is authorized. See
+[`04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md`](04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md).
+The prospective offline CX322 decision now replaces exact equality with a
+one-count pre-envelope gate and selects the minimum full-replay 25-code
+identification step. It does not alter this terminal or create physical
+authority; see the
+[`CX322 design decision`](../CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md).
 
 CX321 is the selected successor to the sealed CX320 bounded non-pass. Its
 purpose is still to test the unchanged natural firmware hybrid control law, not
@@ -15,10 +25,11 @@ continues to use the selected 600-second estimator. Global authority accounting
 includes the identification move, while natural-controller chatter history is
 explicitly rebased at the post-identification code.
 
-The implementation now covers firmware, host replay, supervision, analysis and
-the exact first natural consumer after identification. Current authority still
-does not authorize activation, flash, reset, physical serial access, setup
-stimulus, DAC write, control arm, physical rehearsal or live acquisition.
+The implementation covers firmware, host replay, supervision, analysis and the
+exact first natural consumer after identification. Physical authority is now
+limited to the frozen bundle and progressive envelope recorded below; it does
+not authorize criterion changes, live extension, automatic retry or automatic
+restoration.
 
 ## Why v1 was superseded
 
@@ -223,9 +234,42 @@ eight expected-failure guards. A disposable actual-process PTY rehearsal also
 passed the identification and natural response paths, obstruction, abort,
 rotation, analysis, sealing and registration with zero parser errors.
 
-That rehearsal is preparation evidence, not the final entry receipt: its build
-manifest predates the final source revision. The remaining gate is one exact
-clean-source CX321 build and immutable bundle, structural preflight, repetition
-of the same complete rehearsal against that bundle, and a separate explicit
-operator decision naming it. Current authority remains offline preparation
-only.
+The exact clean-source entry bundle is
+`f83d78d5213716c3c21e4823cf0fb533946c11206ec81a3f96223a392bcb3641`,
+the proposal is
+`6de6d81ce6cb49ad47fa5b746a03821ba0404c55ccd3c1ca66c575111eccfa30`,
+and the frozen UF2 is
+`c5fb2887c291f640543c3d27bb03dafea9cb5d77fd65c0c47a97b2edb38a2ef9`.
+Structural preflight and the complete same-bundle actual-process rehearsal
+passed with zero parser errors. The operator authorized that exact bundle and
+proposal on 2026-08-21. Initial activation
+`7046a9ca58eb2a764b2da799acf89b5b649ebd044d88f0f4bad1b83cd72442ea`
+reached a prewrite platform terminal because the runner was invoked outside
+the rehearsed Python environment: the UF2 flashed, but capture never opened and
+there was no setup request, DAC write or control arm. That terminal is sealed
+as `f8e3bb8a1b887ed10c303e93d871eeb369cb19e05700d149708d38b370edadc5`.
+The operator's expanded remediation authority permits the exact predecessor-
+bound attempt-2 activation
+`9013d24a92c35f5af65d5b7124915ab885ca8beda2862e3d4ef12bc72adf96ac`;
+the firmware, bundle and scientific criteria remained unchanged. Attempt 2
+passed flash, sole serial ownership, capture and identity queries with zero
+parser loss, then stopped before setup because the firmware's 40-byte cross-
+core status-key field emitted the 41-character
+`plant_sign_accumulator_accepted_intervals` key as the unique truncated wire
+spelling `plant_sign_accumulator_accepted_interva`. The priority abort was
+delivered; no setup, DAC write or control arm occurred. The retained raw CSV is
+unchanged. Host-derived live status now canonicalizes that one frozen spelling,
+and exact bundle refreeze plus the shortest affected rehearsal passed. Derived
+bundle `ee62a069fbd574b5043c0bc3fd55506d6375b03bfca9dadd981088c168161072`,
+proposal `5fd21276a830c81eb032ed88cb5998093d558239d5f482ee9d9c725f11b2c567`
+and activation
+`ec73aa3da9b86a3cb4ab697afcbc6bd69954053600578526ea3981d3021672a4`
+retain the exact original UF2 and all scientific criteria. Attempt 3 passed
+flash, sole ownership, setup propagation and qualified-origin entry with zero
+parser errors. Its exact pre-window totals were `15,000,000,003` and
+`15,000,000,002`; the prospective equality precondition rejected the
+identification transaction before any automatic DAC write. The superseding
+offline seal replays the unchanged physical evidence exactly and records the
+bounded non-pass. The offline successor-design decision is now complete as
+CX322; the next useful gate is implementation and deterministic integration
+verification, not repetition of the consumed bundle.

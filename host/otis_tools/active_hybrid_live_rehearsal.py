@@ -355,11 +355,6 @@ def _post_abort_active_status_wire_fixture(
         )
         values.update(
             {
-                "confirmed_applied_code_known": "true",
-                "confirmed_applied_code": str(applied_code),
-                "correction_count": str(correction_count),
-                "cumulative_movement_codes": str(cumulative_movement_codes),
-                "dac_epoch": str(dac_epoch),
                 "plant_sign_state": "FAIL_STATIC",
                 "plant_sign_pre_window_count": "1",
                 "plant_sign_accumulator_accepted_intervals": "1400",
@@ -376,6 +371,19 @@ def _post_abort_active_status_wire_fixture(
                 ]["sha256"],
             }
         )
+    if applied_code is not None:
+        values.update(
+            {
+                "confirmed_applied_code_known": "true",
+                "confirmed_applied_code": str(applied_code),
+            }
+        )
+    if correction_count is not None:
+        values["correction_count"] = str(correction_count)
+    if cumulative_movement_codes is not None:
+        values["cumulative_movement_codes"] = str(cumulative_movement_codes)
+    if dac_epoch is not None:
+        values["dac_epoch"] = str(dac_epoch)
     records = [
         (SNAPSHOT_BEGIN_KEY, str(generation)),
         (SNAPSHOT_CONTRACT_KEY, contract),
@@ -838,6 +846,295 @@ def _cx321_first_natural_transaction_fixture(
         ),
         "phase_materially_influenced": decision.phase_materially_influenced,
     }
+
+
+def _cx322_first_observational_transaction_fixture(
+    bundle: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any]]:
+    """Build one exact first-phase observation and its later-authority release.
+
+    The response lands inside the retained response deadband.  CX320 would
+    treat that response as an endpoint; CX322 must retain it as a non-terminal
+    observation, acknowledge the exact durable evidence, and release later
+    authority only after the following fresh TIGHT estimate.
+    """
+
+    programme = _selected_programme(bundle)
+    if not programme.response_checkpoint_observational:
+        raise ValueError("CX322 observational transaction fixture selected elsewhere")
+    policy = load_policy(Path(str(bundle["policy"]["path"])))
+    controller = ActiveHybridController(policy, setup_application_s=1)
+    ahy: list[dict[str, str]] = []
+    decision = None
+    for timestamp_s, relative_phase_cycles in (
+        (600, 0),
+        (1200, 0),
+        (1800, 0),
+        (2400, 36),
+    ):
+        decision = controller.decide(
+            _observation(
+                controller,
+                timestamp_s=timestamp_s,
+                sequence=timestamp_s,
+                frequency_error_hz=0.0,
+                counts=0,
+                tight_state="TIGHT_INSIDE",
+                relative_phase_cycles=relative_phase_cycles,
+            )
+        )
+        ahy.append(
+            _ahy_row(
+                decision,
+                record_sequence=len(ahy) + 1,
+                run_identity=programme.runtime_run_identity,
+                build_identity=str(bundle["firmware"]["build_identity"]),
+                policy_sha256=str(bundle["policy"]["policy_sha256"]),
+                response_policy_sha256=policy.response_policy_sha256,
+                profile_identity=programme.profile_id,
+            )
+        )
+    if decision is None or not (
+        decision.phase_materially_influenced
+        and decision.requested_delta_codes != 0
+    ):
+        raise RuntimeError("CX322 fixture did not reach a first material request")
+
+    controller.note_application(
+        decision,
+        applied_code=decision.requested_code,
+        dac_epoch=2,
+        downstream_consumers_exact=True,
+    )
+    transactions = _transaction_rows(
+        decision,
+        record_sequence=2,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=abs(decision.requested_delta_codes),
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["policy"]["policy_sha256"]),
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+        numerical_policy_sha256=policy.policy_sha256,
+        profile_identity=programme.profile_id,
+    )
+    first = transactions[0]
+    manual = dict(first)
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "decision_timestamp_s": "1",
+            "current_applied_code": str(programme.setup_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(programme.setup_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0.000000000000",
+            "accepted_code": str(programme.setup_code),
+            "accepted_timestamp_s": "1",
+            "applied_code": str(programme.setup_code),
+            "application_sequence": "0",
+            "application_timestamp_s": "1",
+            "i2c_ok": "true",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "post_error_hz": "0.000000000000",
+            "observed_response_hz": "0.000000000000",
+            "cumulative_response_hz": "0.000000000000",
+            "consecutive_indeterminate": "0",
+            "active_state": "DISARMED",
+            "response_class": "unavailable",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+
+    response = transactions[-1]
+    if response["response_class"] != "inside_deadband":
+        raise RuntimeError("CX322 fixture response did not exercise endpoint retention")
+    response_timestamp_s = int(transactions[2]["application_timestamp_s"]) + (
+        policy.settling_exclusion_s + policy.fresh_support_s
+    )
+    response_decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=response_timestamp_s,
+            sequence=response_timestamp_s,
+            frequency_error_hz=float(response["post_error_hz"]),
+            counts=round(float(response["post_error_hz"]) * 600),
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=36,
+            outstanding_response=True,
+        )
+    )
+    response_ahy = _ahy_row(
+        response_decision,
+        record_sequence=len(ahy) + 1,
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["policy"]["policy_sha256"]),
+        response_policy_sha256=policy.response_policy_sha256,
+        profile_identity=programme.profile_id,
+    )
+    response_ahy.update(
+        {
+            "authority_state": "AWAITING_RESPONSE",
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+        }
+    )
+    ahy.append(response_ahy)
+    controller.note_response(
+        classification=response["response_class"],
+        predicted_sign_observed=True,
+        exact_replay=True,
+        support_fresh=True,
+        applied_epoch_exact=True,
+    )
+    release = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=response_timestamp_s + 600,
+            sequence=response_timestamp_s + 600,
+            frequency_error_hz=float(response["post_error_hz"]),
+            counts=round(float(response["post_error_hz"]) * 600),
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=36,
+        )
+    )
+    if not (
+        release.state_after == "HYBRID_TRACKING"
+        and release.reason
+        == "first_phase_observation_recorded_and_tight_reacquired"
+        and release.requested_delta_codes == 0
+    ):
+        raise RuntimeError("CX322 fixture did not release later authority exactly")
+    ahy.append(
+        _ahy_row(
+            release,
+            record_sequence=len(ahy) + 1,
+            run_identity=programme.runtime_run_identity,
+            build_identity=str(bundle["firmware"]["build_identity"]),
+            policy_sha256=str(bundle["policy"]["policy_sha256"]),
+            response_policy_sha256=policy.response_policy_sha256,
+            profile_identity=programme.profile_id,
+        )
+    )
+    return ahy, [manual, *transactions], {
+        "request_sequence": 1,
+        "requested_delta_codes": decision.requested_delta_codes,
+        "requested_code": decision.requested_code,
+        "applied_dac_epoch": 2,
+        "response_class": response["response_class"],
+        "later_authority_release_reason": release.reason,
+    }
+
+
+def _cx322_active_status_wire_fixture(
+    *,
+    generation: int,
+    query_nonce: str,
+    evidence_phase: str,
+    bundle: dict[str, Any],
+    applied: bool,
+    checkpoint_passed: bool,
+) -> bytes:
+    """Return one complete CX322 status snapshot for a phase frontier."""
+
+    programme = _selected_programme(bundle)
+    policy = _read_object(Path(str(bundle["policy"]["path"])))
+    bindings = policy["bindings"]
+    requested_code = programme.setup_code - 5
+    values = {key: "unavailable" for key in ACTIVE_STATUS_KEYS}
+    values.update(
+        {
+            "enabled": "true",
+            "run_identity": programme.runtime_run_identity,
+            "build_identity": str(bundle["firmware"]["build_identity"]),
+            "profile_identity": programme.profile_id,
+            "estimator_sha256": bindings["frequency_estimator"]["sha256"],
+            "model_sha256": bindings["plant_model"]["sha256"],
+            "active_policy_sha256": bundle["policy"]["policy_sha256"],
+            "response_policy_sha256": bindings["response_policy"]["sha256"],
+            "numerical_policy_sha256": bundle["policy"]["policy_sha256"],
+            "state": (
+                "DISARMED"
+                if checkpoint_passed
+                else ("AWAITING_RESPONSE" if applied else "ARMED")
+            ),
+            "reason": (
+                "response_accepted_new_arm_required"
+                if checkpoint_passed
+                else "armed_one_shot_authorization"
+            ),
+            "evidence_pending": str(evidence_phase != "evidence_clear").lower(),
+            "evidence_phase": evidence_phase,
+            "capture_lease_live": "true",
+            "manual_start_confirmed": "true",
+            "arm_eligible": "false",
+            "fail_static": "false",
+            "setup_gnss_eligible": "true",
+            "setup_reference_eligible": "true",
+            "setup_partition_healthy": "true",
+            "hybrid_state": (
+                "HYBRID_TRACKING" if checkpoint_passed else "FIRST_PHASE_TRANSACTION"
+            ),
+            "hybrid_reason": (
+                "first_phase_observation_recorded_and_tight_reacquired"
+                if checkpoint_passed
+                else "first_phase_application_checkpoint_required"
+            ),
+            "first_phase_checkpoint_passed": str(checkpoint_passed).lower(),
+            "phase_nonzero_application_count": str(int(applied)),
+            "phase_material_application_count": str(int(applied)),
+            "frequency_only_application_count": "0",
+            "session_id": "1",
+            "query_nonce": query_nonce,
+            "uptime_s": "4502",
+            "evidence_request_sequence": (
+                "0" if evidence_phase == "evidence_clear" else "1"
+            ),
+            "expected_setup_code": f"0x{programme.setup_code:04X}",
+            "confirmed_applied_code_known": "true",
+            "confirmed_applied_code": str(
+                requested_code if applied else programme.setup_code
+            ),
+            "correction_count": str(int(applied)),
+            "cumulative_movement_codes": str(5 if applied else 0),
+            "dac_epoch": str(2 if applied else 1),
+            "selected_interval_count": "0",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+        }
+    )
+    records = [
+        (SNAPSHOT_BEGIN_KEY, str(generation)),
+        (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+        *((key, values[key]) for key in ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_COMPLETE_KEY, str(generation)),
+    ]
+    return "".join(
+        f"STS,1,{generation * 1000 + sequence},"
+        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"cx317_active,{key},{value},INFO,0\r\n"
+        for sequence, (key, value) in enumerate(records, start=1)
+    ).encode()
 
 
 def _cx321_active_status_wire_fixture(
@@ -2055,6 +2352,167 @@ def _exercise_cx321_real_transaction_path(
     }
 
 
+def _exercise_cx322_real_transaction_path(
+    *,
+    master: int,
+    run_dir: Path,
+    bundle: dict[str, Any],
+) -> dict[str, Any]:
+    """Drive the changed CX322 response semantics through real host processes."""
+
+    ahy, transactions, summary = _cx322_first_observational_transaction_fixture(
+        bundle
+    )
+    stop = threading.Event()
+    phase4_observed = threading.Event()
+    write_lock = threading.Lock()
+    observed_commands: list[str] = []
+    errors: list[str] = []
+    state: dict[str, Any] = {
+        "generation": 0,
+        "evidence_phase": "request_pending",
+        "applied": False,
+        "checkpoint_passed": False,
+    }
+
+    def emulate_firmware() -> None:
+        buffered = b""
+        try:
+            while not stop.is_set():
+                readable, _, _ = select.select([master], [], [], 0.05)
+                if not readable:
+                    continue
+                buffered += os.read(master, 4096)
+                while b"\n" in buffered:
+                    raw, buffered = buffered.split(b"\n", 1)
+                    command = raw.rstrip(b"\r").decode("ascii")
+                    observed_commands.append(command)
+                    if command.startswith("ACTIVE EVIDENCE 1 "):
+                        phase = int(command.split()[3])
+                        expected = {
+                            1: "request_pending",
+                            2: "acceptance_pending",
+                            3: "application_pending",
+                            4: "response_pending",
+                        }[phase]
+                        if state["evidence_phase"] != expected:
+                            raise RuntimeError(
+                                f"CX322 phase {phase} released from "
+                                f"{state['evidence_phase']}"
+                            )
+                        state["evidence_phase"] = {
+                            1: "acceptance_pending",
+                            2: "application_pending",
+                            3: "response_pending",
+                            4: "evidence_clear",
+                        }[phase]
+                        if phase >= 2:
+                            state["applied"] = True
+                        if phase == 4:
+                            state["checkpoint_passed"] = True
+                            phase4_observed.set()
+                    if command.startswith("ACTIVE SNAPSHOT "):
+                        nonce = command.split()[2]
+                        state["generation"] += 1
+                        payload = _cx322_active_status_wire_fixture(
+                            generation=int(state["generation"]),
+                            query_nonce=nonce,
+                            evidence_phase=str(state["evidence_phase"]),
+                            bundle=bundle,
+                            applied=bool(state["applied"]),
+                            checkpoint_passed=bool(state["checkpoint_passed"]),
+                        )
+                        with write_lock:
+                            _write_all_fd(master, payload)
+        except (OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
+            errors.append(str(exc))
+            phase4_observed.set()
+
+    emulator = threading.Thread(target=emulate_firmware, daemon=True)
+    emulator.start()
+    try:
+        _wait_until(
+            lambda: _read_object(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            ).get("initial_session_id")
+            == 1,
+            15.0,
+            "CX322 initial complete status identity before ACT",
+        )
+        with write_lock:
+            _write_all_fd(master, _wire_rows(ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS))
+            _write_all_fd(
+                master,
+                _wire_rows(transactions, ACTIVE_TRANSACTION_V1_FIELDS),
+            )
+        if not phase4_observed.wait(30.0):
+            raise TimeoutError("CX322 observational phase-4 ACK was not observed")
+        if errors:
+            raise RuntimeError("CX322 firmware emulator failed: " + errors[0])
+        _wait_until(
+            lambda: set(
+                _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("acknowledged_record_sequences", [])
+            )
+            >= {2, 3, 4, 5},
+            10.0,
+            "CX322 response replay and firmware consumption",
+        )
+        _wait_until(
+            lambda: bool(
+                _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("first_phase_observation_checkpoint_exact")
+            ),
+            10.0,
+            "CX322 exact observation checkpoint and later-authority release",
+        )
+    finally:
+        stop.set()
+        emulator.join(timeout=2.0)
+
+    events_path = run_dir / "reports/cx317_active_supervisor_events.jsonl"
+    events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    evidence_commands = [
+        command
+        for command in observed_commands
+        if command.startswith("ACTIVE EVIDENCE 1 ")
+    ]
+    result = {
+        "active_hybrid_rows_captured": len(ahy),
+        "active_transaction_rows_captured": len(transactions),
+        "evidence_phase_commands": evidence_commands,
+        "response_class": summary["response_class"],
+        "response_retained_nonterminal": any(
+            event.get("event") == "response_retained_as_nonterminal_observation"
+            and event.get("response_class") == summary["response_class"]
+            for event in events
+        ),
+        "firmware_consumption_confirmed": len(evidence_commands) == 4,
+        "first_phase_observation_checkpoint_exact": True,
+        "later_authority_release_reason": summary[
+            "later_authority_release_reason"
+        ],
+        "last_status_generation": int(state["generation"]),
+        "applied_code": summary["requested_code"],
+        "applied_dac_epoch": summary["applied_dac_epoch"],
+        "cumulative_movement_codes": abs(summary["requested_delta_codes"]),
+        "physical_actions_performed": 0,
+    }
+    if not (
+        result["response_retained_nonterminal"]
+        and result["firmware_consumption_confirmed"]
+        and result["first_phase_observation_checkpoint_exact"]
+    ):
+        raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
+    return result
+
+
 def _run_real_process_topology(
     *,
     output_dir: Path,
@@ -2120,7 +2578,7 @@ def _run_real_process_topology(
     supervisor_stopped = False
     normal_fifo_queued = 0
     normal_fifo_saturated = False
-    cx321_transaction_path: dict[str, Any] | None = None
+    real_transaction_path: dict[str, Any] | None = None
     try:
         _wait_until(
             lambda: (
@@ -2184,7 +2642,7 @@ def _run_real_process_topology(
             "initial live-supervisor command acknowledgements",
         )
         if _selected_programme(bundle).identification_required:
-            cx321_transaction_path = _exercise_cx321_real_transaction_path(
+            real_transaction_path = _exercise_cx321_real_transaction_path(
                 master=master,
                 run_dir=run_dir,
                 manifest=validate_rehearsal_run_manifest(manifest_path),
@@ -2195,7 +2653,15 @@ def _run_real_process_topology(
             # reader so no normal command can become a rehearsal artifact.
             os.kill(supervisor.pid, signal.SIGSTOP)
             supervisor_stopped = True
-        if cx321_transaction_path is None:
+        elif _selected_programme(bundle).response_checkpoint_observational:
+            real_transaction_path = _exercise_cx322_real_transaction_path(
+                master=master,
+                run_dir=run_dir,
+                bundle=bundle,
+            )
+            os.kill(supervisor.pid, signal.SIGSTOP)
+            supervisor_stopped = True
+        if real_transaction_path is None:
             _write_all_fd(master, _active_hybrid_wire_fixture(bundle))
         _wait_until(
             lambda: len(
@@ -2203,7 +2669,18 @@ def _run_real_process_topology(
                 .read_text(encoding="utf-8")
                 .splitlines()
             )
-            == (2 if cx321_transaction_path is None else 3),
+            == (
+                2
+                if real_transaction_path is None
+                else (
+                    3
+                    if _selected_programme(bundle).identification_required
+                    else int(
+                        real_transaction_path["active_hybrid_rows_captured"]
+                    )
+                    + 1
+                )
+            ),
             10.0,
             "first exact 56-field active-hybrid wire record",
         )
@@ -2243,8 +2720,8 @@ def _run_real_process_topology(
         )
         post_abort_generation = (
             1
-            if cx321_transaction_path is None
-            else int(cx321_transaction_path["last_status_generation"]) + 1
+            if real_transaction_path is None
+            else int(real_transaction_path["last_status_generation"]) + 1
         )
         _write_all_fd(
             master,
@@ -2253,25 +2730,45 @@ def _run_real_process_topology(
                 bundle=bundle,
                 applied_code=(
                     None
-                    if cx321_transaction_path is None
-                    else int(
-                        cx321_transaction_path["first_natural_decision"][
-                            "requested_code"
-                        ]
+                    if real_transaction_path is None
+                    else (
+                        int(
+                            real_transaction_path["first_natural_decision"][
+                                "requested_code"
+                            ]
+                        )
+                        if _selected_programme(bundle).identification_required
+                        else int(real_transaction_path["applied_code"])
                     )
                 ),
-                dac_epoch=(3 if cx321_transaction_path is not None else None),
+                dac_epoch=(
+                    None
+                    if real_transaction_path is None
+                    else int(
+                        real_transaction_path.get("applied_dac_epoch", 3)
+                    )
+                ),
                 correction_count=(
-                    2 if cx321_transaction_path is not None else None
+                    2
+                    if _selected_programme(bundle).identification_required
+                    else (1 if real_transaction_path is not None else None)
                 ),
                 cumulative_movement_codes=(
                     None
-                    if cx321_transaction_path is None
-                    else 21
-                    + abs(
-                        int(
-                            cx321_transaction_path["first_natural_decision"][
-                                "requested_delta_codes"
+                    if real_transaction_path is None
+                    else (
+                        21
+                        + abs(
+                            int(
+                                real_transaction_path[
+                                    "first_natural_decision"
+                                ]["requested_delta_codes"]
+                            )
+                        )
+                        if _selected_programme(bundle).identification_required
+                        else int(
+                            real_transaction_path[
+                                "cumulative_movement_codes"
                             ]
                         )
                     )
@@ -2349,7 +2846,17 @@ def _run_real_process_topology(
         "rotation": rotation,
         "capture_output_sha256": sha256(capture_output.encode()).hexdigest(),
         "supervisor_output_sha256": sha256(supervisor_output.encode()).hexdigest(),
-        "cx321_real_transaction_path": cx321_transaction_path,
+        "real_transaction_path": real_transaction_path,
+        "cx321_real_transaction_path": (
+            real_transaction_path
+            if _selected_programme(bundle).identification_required
+            else None
+        ),
+        "cx322_real_transaction_path": (
+            real_transaction_path
+            if _selected_programme(bundle).response_checkpoint_observational
+            else None
+        ),
     }
 
 
@@ -2458,6 +2965,17 @@ def run(
                         "cx321_raw_timer_rollover_projection",
                     ]
                     if programme.identification_required
+                    else []
+                ),
+                *(
+                    [
+                        "cx322_AHY_ACT_real_capture",
+                        "cx322_response_replay_before_phase4",
+                        "cx322_inside_deadband_retained_nonterminal",
+                        "cx322_firmware_ack_consumption_confirmation",
+                        "cx322_observation_checkpoint_later_authority_release",
+                    ]
+                    if programme.response_checkpoint_observational
                     else []
                 ),
                 "terminal_abort_delivery_before_capture_close",

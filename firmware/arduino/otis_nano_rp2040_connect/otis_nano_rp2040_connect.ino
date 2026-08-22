@@ -812,7 +812,7 @@ void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
 void propagate_cx317_applied_epoch_to_previews_exact(
     uint16_t applied_code, uint32_t dac_epoch, uint32_t now_s,
     uint64_t application_ticks, uint32_t capture_session) {
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
   otis_cx317_preview_live_on_dac_applied_epoch_exact(
       applied_code, dac_epoch, now_s, application_ticks, capture_session);
   if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
@@ -957,7 +957,7 @@ void service_dual_core_timing_inputs(void) {
         if (active_status.manual_start_confirmed &&
             active_status.dac_epoch != 0u) {
           uint64_t setup_application_extended_ticks = 0u;
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
           if (!otis_cx317_preview_live_project_setup_timer0_ticks(
                   ack.application_timestamp_ticks, ack.session_id,
                   &setup_application_extended_ticks)) {
@@ -972,7 +972,7 @@ void service_dual_core_timing_inputs(void) {
               ack.applied_code, active_status.dac_epoch, millis() / 1000u,
               setup_application_extended_ticks, ack.session_id);
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
           if (!otis_cx317_active_live_confirm_setup_consumers_exact(
                   ack.applied_code, active_status.dac_epoch,
                   setup_application_extended_ticks, ack.session_id))
@@ -1798,7 +1798,7 @@ void service_cx317_active_health(void) {
     otis_cx317_active_live_note_manual_start(
         dual_core_static_code.applied_code, true, now_ms / 1000u);
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-#if !OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if !OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
     propagate_cx317_applied_epoch_to_previews(
@@ -1960,7 +1960,7 @@ void service_cx317_active_application_outcome(void) {
 #endif
   if (active_outcome.applied) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
     propagate_cx317_applied_epoch_to_previews_exact(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u, active_outcome.application_timestamp_ticks,
