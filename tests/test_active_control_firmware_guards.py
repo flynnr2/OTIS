@@ -627,6 +627,7 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx319_range_part_b_upper_completion",
         "cx320_active_hybrid",
         "cx321_active_hybrid",
+        "cx322_direct_hybrid",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

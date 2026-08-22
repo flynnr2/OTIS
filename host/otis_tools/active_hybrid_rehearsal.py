@@ -349,6 +349,9 @@ def _prepared_supervisor(
         policy_sha256=active_policy_sha256,
         build_identity=bundle["firmware"]["build_identity"],
         profile_identity=programme.profile_id,
+        response_checkpoint_observational=(
+            programme.response_checkpoint_observational
+        ),
     )
     supervisor.establish_capture(owner=owner)
     supervisor.confirm_identity(
@@ -652,6 +655,97 @@ def _scenario_abort_failure(
     return result
 
 
+def _scenario_observational_response_classes(
+    bundle: dict[str, Any], programme: ActiveHybridProgramme
+) -> dict[str, Any]:
+    if not programme.response_checkpoint_observational:
+        return {"applicable": False}
+    results: dict[str, Any] = {"applicable": True, "classes": {}}
+    for ordinal, (response_class, sign_healthy) in enumerate(
+        (
+            ("healthy_indeterminate_near_resolution", False),
+            ("wrong_sign", False),
+            ("growing_error", False),
+            ("excess_response", False),
+        ),
+        start=1,
+    ):
+        supervisor = _prepared_supervisor(
+            bundle,
+            owner=f"capture_owner_322_observation_{ordinal}",
+            programme=programme,
+        )
+        supervisor.request_created(
+            decision_sequence=ordinal,
+            request_sequence=ordinal,
+            requested_code=0xA83C + ordinal,
+            phase_material=True,
+        )
+        supervisor.application_propagated(
+            request_sequence=ordinal,
+            acceptance_sequence=ordinal,
+            application_sequence=1,
+            applied_code=0xA83C + ordinal,
+            dac_epoch=2,
+            consumer_epochs={
+                name: 2
+                for name in bundle["setup"][
+                    "consumer_epoch_propagation_required"
+                ]
+            },
+        )
+        supervisor.response_replayed_and_acknowledged(
+            request_sequence=ordinal,
+            response_class=response_class,
+            support_fresh=True,
+            sign_healthy=sign_healthy,
+            replay_exact=True,
+            tight_reacquired=True,
+            durable_decision_record=True,
+            durable_transaction_record=True,
+        )
+        results["classes"][response_class] = {
+            "state": supervisor.state,
+            "later_authority_released": supervisor.later_authority_released,
+            "terminal_reason": supervisor.terminal_reason,
+        }
+    invalid = _prepared_supervisor(
+        bundle, owner="capture_owner_322_invalid", programme=programme
+    )
+    invalid.request_created(
+        decision_sequence=99,
+        request_sequence=99,
+        requested_code=0xA83D,
+        phase_material=True,
+    )
+    invalid.application_propagated(
+        request_sequence=99,
+        acceptance_sequence=99,
+        application_sequence=1,
+        applied_code=0xA83D,
+        dac_epoch=2,
+        consumer_epochs={
+            name: 2
+            for name in bundle["setup"]["consumer_epoch_propagation_required"]
+        },
+    )
+    invalid.response_replayed_and_acknowledged(
+        request_sequence=99,
+        response_class="measurement_or_actuator_fault",
+        support_fresh=True,
+        sign_healthy=False,
+        replay_exact=True,
+        tight_reacquired=True,
+        durable_decision_record=True,
+        durable_transaction_record=True,
+    )
+    results["invalid_measurement_fails_static"] = (
+        invalid.state == "FAIL_STATIC"
+        and invalid.terminal_reason == "first_phase_response_checkpoint_failed"
+    )
+    return results
+
+
 def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
     raw_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     if not isinstance(raw_bundle, dict):
@@ -777,6 +871,9 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         "clean_phase_degradation": _scenario_clean_degradation(bundle, programme),
         "shared_fail_static_transport_obstruction": _scenario_shared_fault(bundle, programme),
         "abort_delivery_failure": _scenario_abort_failure(bundle, programme),
+        "observational_response_classification": (
+            _scenario_observational_response_classes(bundle, programme)
+        ),
     }
     _write_new_json(evidence_dir / "reports/operational_trace_v1.json", trace)
     seal = finalize(evidence_dir)

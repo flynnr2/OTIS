@@ -442,6 +442,7 @@ class ActiveTransactionSupervisor:
         emergency_command_fifo: Path | None = None,
         console_events: bool = False,
         dual_core_transactions: bool = False,
+        observational_responses: bool = False,
     ) -> None:
         self.run_dir = run_dir
         self.command_fifo = command_fifo
@@ -455,6 +456,7 @@ class ActiveTransactionSupervisor:
         self.emergency_command_fifo = emergency_command_fifo
         self.console_events = console_events
         self.dual_core_transactions = dual_core_transactions
+        self.observational_responses = observational_responses
         self.state_path = run_dir / SUPERVISOR_STATE
         self.events_path = run_dir / SUPERVISOR_EVENTS
         self.state = self._load_state()
@@ -565,6 +567,7 @@ class ActiveTransactionSupervisor:
         hybrid_profile = self.spec.profile in {
             "cx320_active_hybrid",
             "cx321_active_hybrid",
+            "cx322_direct_hybrid",
         }
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
         plant_sign_response = False
@@ -865,6 +868,14 @@ class ActiveTransactionSupervisor:
                         "response_class": classification,
                         "utc": _utc_now(),
                     }
+                elif self.observational_responses and classification != (
+                    "measurement_or_actuator_fault"
+                ):
+                    self._event(
+                        "response_retained_as_nonterminal_observation",
+                        request_sequence=int(row["request_sequence"]),
+                        response_class=classification,
+                    )
                 elif classification in {"inside_deadband", "limit_reached"}:
                     self.state["terminal"] = {
                         "result": "healthy_stop",

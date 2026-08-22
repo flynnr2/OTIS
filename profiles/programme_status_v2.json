@@ -1,13 +1,61 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx321_bounded_active_hybrid_successor",
+  "active_programme": "cx322_bounded_hybrid_fact_gathering",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
       "allowed_operations": [],
       "effective_date": "2026-08-11",
       "authority": "passed_completion_gate"
+    },
+    "cx322_bounded_hybrid_fact_gathering": {
+      "state": "offline_exact_entry_preparation",
+      "allowed_operations": [
+        "offline_preparation"
+      ],
+      "effective_date": "2026-08-22",
+      "authority": "operator_directed_bounded_fact_gathering_design_no_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "cx321_bounded_active_hybrid_successor",
+      "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
+      "selected_policy": {
+        "path": "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+        "file_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+        "natural_control_law_mathematics_change_from_cx320": "none",
+        "response_checkpoint_mode": "observational_non_terminal",
+        "phase_response_sign_magnitude_or_materiality_are_acquisition_gates": false
+      },
+      "finite_envelope": {
+        "qualified_duration_s": 43200,
+        "absolute_wall_clock_limit_s": 57600,
+        "maximum_total_automatic_applications": 4,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 84,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "extension": false
+      },
+      "verification": {
+        "firmware_and_host_implementation_pending": false,
+        "affected_current_release_tests_passed": true,
+        "historical_programme_tests_excluded": true,
+        "measurement_semantics_inventory_check_passed": true,
+        "exact_firmware_build_pending": true,
+        "exact_bundle_pending": true,
+        "structural_preflight_pending": true,
+        "complete_operational_rehearsal_pending": true
+      },
+      "physical_authority_prerequisites": [
+        "exact_immutable_bundle",
+        "structural_preflight",
+        "complete_live_topology_rehearsal",
+        "separate_explicit_exact_bundle_operator_decision"
+      ],
+      "next_gate": "freeze_exact_bundle_then_complete_preflight_and_operational_rehearsal"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

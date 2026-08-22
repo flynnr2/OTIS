@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <assert.h>
+#include <string.h>
 #include <utility>
 
 #include "otis_active_hybrid_policy_engine.h"
@@ -143,6 +145,27 @@ int main() {
     input = observation(6000u, engine.applied_code, 2u, 0.0,
                         "TIGHT_INSIDE", -21, 5u);
     decide_and_emit("progressive", 5u, &engine, &input, &decision);
+  }
+  {
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init(&engine, 0u);
+    OtisActiveHybridDecision decision;
+    auto input = observation(1800u);
+    assert(otis_active_hybrid_engine_decide(&engine, &input, &decision));
+    input = observation(3600u, 0xA83Cu, 1u, 0.0, "TIGHT_INSIDE", -24,
+                        2u);
+    assert(otis_active_hybrid_engine_decide(&engine, &input, &decision));
+    assert(otis_active_hybrid_engine_note_application(
+        &engine, &decision, decision.requested_code, 2u, true));
+    assert(otis_active_hybrid_engine_note_response(
+        &engine, true, false, true, true, true, true));
+    input = observation(5400u, engine.applied_code, 2u, 0.0,
+                        "TIGHT_INSIDE", -22, 3u);
+    assert(otis_active_hybrid_engine_decide(&engine, &input, &decision));
+    assert(engine.state == OtisActiveHybridState::HybridTracking);
+    assert(strcmp(engine.reason,
+                  "first_phase_observation_recorded_and_tight_reacquired") ==
+           0);
   }
   {
     OtisActiveHybridEngine engine;

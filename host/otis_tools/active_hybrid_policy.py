@@ -22,6 +22,10 @@ DEFAULT_POLICY = (
     REPO_ROOT / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"
 )
 POLICY_ID = "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
+SUPPORTED_POLICY_IDS = {
+    POLICY_ID,
+    "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+}
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
 
@@ -71,6 +75,7 @@ class ActiveHybridPolicy:
     phase_release_consecutive_estimates: int
     phase_release_absolute_counts_gte: int
     start_code: int
+    response_checkpoint_observational: bool
 
 
 def _sha256_file(path: Path) -> str:
@@ -86,7 +91,8 @@ def _read_object(path: Path) -> dict[str, Any]:
 
 def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
     value = _read_object(path)
-    if value.get("schema_version") != 1 or value.get("policy_id") != POLICY_ID:
+    policy_id = value.get("policy_id")
+    if value.get("schema_version") != 1 or policy_id not in SUPPORTED_POLICY_IDS:
         raise ValueError("unsupported active-hybrid policy identity")
     if value.get("status") != "offline_candidate_non_effective":
         raise ValueError("active-hybrid policy must remain non-effective before authority")
@@ -98,6 +104,7 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
     tight = value.get("tight_hysteretic_band")
     setup = value.get("setup")
     authority = value.get("authority")
+    response_checkpoint = value.get("response_checkpoint", {})
     if not all(
         isinstance(section, dict)
         for section in (bindings, numerical, limits, timing, tight, setup, authority)
@@ -142,8 +149,71 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
     plant = _read_object(REPO_ROOT / bindings["plant_model"]["path"])
     gains = numerical["plant_gain_hz_per_code"]
 
+    if (
+        isinstance(response_checkpoint, dict)
+        and response_checkpoint.get("mode") == "observational_non_terminal"
+    ):
+        predecessor_binding = bindings.get("natural_policy_predecessor")
+        if not isinstance(predecessor_binding, dict):
+            raise ValueError("observational policy lacks its natural-policy predecessor")
+        predecessor = _read_object(
+            REPO_ROOT / str(predecessor_binding.get("path", ""))
+        )
+        predecessor_numerical = predecessor.get("numerical_policy", {})
+        predecessor_limits = predecessor.get("global_authority_limits", {})
+        predecessor_gains = predecessor_numerical.get(
+            "plant_gain_hz_per_code", {}
+        )
+        numerical_fields = {
+            "controller_type",
+            "frequency_term",
+            "phase_term",
+            "phase_pull_in_time_s",
+            "absolute_phase_bias_cap_hz",
+            "integrator_gain_codes_per_hz_per_decision",
+            "rounding",
+            "anti_windup",
+            "phase_direction_coherence",
+            "settling_exclusion_s",
+            "fresh_support_after_settling_s",
+            "response_support_total_s",
+            "phase_qualification_residence_s",
+            "phase_zero",
+            "phase_unit",
+            "phase_epoch_join",
+        }
+        limit_fields = {
+            "maximum_total_automatic_applications",
+            "maximum_combined_step_codes",
+            "maximum_cumulative_absolute_movement_codes",
+            "minimum_applied_cadence_s",
+            "minimum_code",
+            "maximum_code",
+            "maximum_outstanding_requests",
+            "automatic_retry",
+            "automatic_restoration",
+        }
+        if (
+            any(
+                numerical.get(name) != predecessor_numerical.get(name)
+                for name in numerical_fields
+            )
+            or any(
+                gains.get(name) != predecessor_gains.get(name)
+                for name in {"minimum", "nominal", "maximum"}
+            )
+            or tight != predecessor.get("tight_hysteretic_band")
+            or any(
+                limits.get(name) != predecessor_limits.get(name)
+                for name in limit_fields
+            )
+        ):
+            raise ValueError(
+                "observational policy changes the frozen natural controller"
+            )
+
     policy = ActiveHybridPolicy(
-        policy_id=POLICY_ID,
+        policy_id=str(policy_id),
         policy_sha256=_sha256_file(path),
         frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
         frequency_estimator_sha256=str(bindings["frequency_estimator"]["sha256"]),
@@ -184,6 +254,10 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
         ),
         phase_release_absolute_counts_gte=int(tight["release_absolute_counts_gte"]),
         start_code=int(setup["exact_start_code"]),
+        response_checkpoint_observational=(
+            isinstance(response_checkpoint, dict)
+            and response_checkpoint.get("mode") == "observational_non_terminal"
+        ),
     )
     if (
         policy.pull_in_time_s != 21_600
@@ -540,7 +614,11 @@ class ActiveHybridController:
             if self.state is HybridState.FIRST_PHASE_TRANSACTION:
                 if self.first_checkpoint_response_passed and observation.tight_state == "TIGHT_INSIDE":
                     self.state = HybridState.HYBRID_TRACKING
-                    self.reason = "first_phase_checkpoint_passed_and_tight_reacquired"
+                    self.reason = (
+                        "first_phase_observation_recorded_and_tight_reacquired"
+                        if self.policy.response_checkpoint_observational
+                        else "first_phase_checkpoint_passed_and_tight_reacquired"
+                    )
                     reason = self.reason
                     progressive_release_transition = True
                 else:
@@ -742,17 +820,33 @@ class ActiveHybridController:
         if not self.transaction_outstanding:
             self._fault("response_without_outstanding_application")
             raise HybridPolicyError(self.reason)
+        recognized = classification in {
+            "healthy_detected",
+            "healthy_indeterminate_near_resolution",
+            "inside_deadband",
+            "limit_reached",
+            "wrong_sign",
+            "excess_response",
+            "growing_error",
+            "measurement_or_actuator_fault",
+        }
+        evidence_exact = exact_replay and support_fresh and applied_epoch_exact
         healthy = (
-            classification
-            in {
-                "healthy_detected",
-                "healthy_indeterminate_near_resolution",
-                "inside_deadband",
-            }
-            and predicted_sign_observed
-            and exact_replay
-            and support_fresh
-            and applied_epoch_exact
+            recognized
+            and classification != "measurement_or_actuator_fault"
+            and evidence_exact
+            and (
+                self.policy.response_checkpoint_observational
+                or (
+                    classification
+                    in {
+                        "healthy_detected",
+                        "healthy_indeterminate_near_resolution",
+                        "inside_deadband",
+                    }
+                    and predicted_sign_observed
+                )
+            )
         )
         was_phase_material = self.outstanding_phase_material
         self.transaction_outstanding = False
@@ -762,9 +856,17 @@ class ActiveHybridController:
             return
         if was_phase_material and self.phase_material_application_count == 1:
             self.first_checkpoint_response_passed = True
-            self.reason = "first_phase_response_passed_tight_reacquisition_required"
+            self.reason = (
+                "first_phase_observation_recorded_tight_reacquisition_required"
+                if self.policy.response_checkpoint_observational
+                else "first_phase_response_passed_tight_reacquisition_required"
+            )
         else:
-            self.reason = "response_passed"
+            self.reason = (
+                "response_observation_recorded"
+                if self.policy.response_checkpoint_observational
+                else "response_passed"
+            )
 
     def degrade_phase(self, reason: str = "phase_channel_degraded") -> None:
         if self.transaction_outstanding:

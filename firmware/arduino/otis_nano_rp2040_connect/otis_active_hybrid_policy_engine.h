@@ -90,6 +90,7 @@ struct OtisActiveHybridEngine {
   bool transaction_outstanding;
   bool outstanding_phase_material;
   bool first_checkpoint_response_passed;
+  bool first_checkpoint_observation_only;
   uint16_t phase_material_application_count;
   uint16_t frequency_only_application_count;
   uint16_t phase_nonzero_application_count;
@@ -130,7 +131,8 @@ bool otis_active_hybrid_engine_note_application_at_ticks(
 bool otis_active_hybrid_engine_note_response(
     OtisActiveHybridEngine *engine,
     bool healthy_classification, bool predicted_sign_observed,
-    bool exact_replay, bool support_fresh, bool applied_epoch_exact);
+    bool exact_replay, bool support_fresh, bool applied_epoch_exact,
+    bool observation_only = false);
 void otis_active_hybrid_engine_degrade_phase(
     OtisActiveHybridEngine *engine, const char *reason);
 const char *otis_active_hybrid_state_name(OtisActiveHybridState state);

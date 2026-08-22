@@ -14,6 +14,7 @@ from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
     get_active_hybrid_programme,
+    progressive_checkpoint_contract,
     programme_from_mapping,
 )
 
@@ -129,6 +130,8 @@ def _validate_build(
         "OTIS_CX317_ACTIVE_CAMPAIGN": (
             "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
             if programme.identification_required
+            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
+            if programme.response_checkpoint_observational
             else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
         ),
         "OTIS_CX317_ACTIVE_START_CODE": "0xA83Cu",
@@ -141,6 +144,8 @@ def _validate_build(
     }
     if programme.identification_required:
         expected_defines["OTIS_ENABLE_CX321_ACTIVE_HYBRID"] = "1"
+    if programme.response_checkpoint_observational:
+        expected_defines["OTIS_ENABLE_CX322_DIRECT_HYBRID"] = "1"
     if any(defines.get(name) != value for name, value in expected_defines.items()):
         raise ValueError(
             f"firmware build {programme.key.upper()} compile-time envelope differs"
@@ -302,10 +307,10 @@ def create_bundle(
                 if programme is CX320_PROGRAMME
                 else sorted(programme.hybrid_states - {"SETUP_PENDING"})
             ),
-            "first_phase_application_limit_before_checkpoint": 1,
-            "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
-            "first_response_acknowledgement_requires_exact_host_replay": True,
-            "later_authority_requires_healthy_response_and_tight_reacquisition": True,
+            **progressive_checkpoint_contract(programme),
+            "response_class_sign_and_magnitude_are_admission_gates": (
+                not programme.response_checkpoint_observational
+            ),
         },
         "command_envelope": {
             "identity_queries_before_setup": ["CONFIG?", "DUALCORE?", "DAC?", "ACTIVE?"],
@@ -321,12 +326,20 @@ def create_bundle(
         "stop_conditions": [
             "qualified_duration_complete",
             "absolute_wall_clock_limit",
-            "phase_only_degradation_active_hybrid_nonpass",
+            (
+                "phase_degradation_recorded_frequency_only_continues"
+                if programme.response_checkpoint_observational
+                else "phase_only_degradation_active_hybrid_nonpass"
+            ),
             "shared_D14_or_D8_qualification_loss",
             "ambiguous_DAC_epoch_or_identity",
             "capture_or_evidence_discontinuity",
             "transaction_or_acknowledgement_fault",
-            "wrong_absent_late_or_right_censored_response",
+            (
+                "missing_late_or_invalid_response_evidence"
+                if programme.response_checkpoint_observational
+                else "wrong_absent_late_or_right_censored_response"
+            ),
             "range_cadence_count_or_cumulative_budget_breach",
             "serial_owner_loss_or_transport_obstruction",
             "priority_abort_delivery_failure",
@@ -563,7 +576,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--replay", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate", type=Path)
-    parser.add_argument("--programme", choices=("cx320", "cx321"), default="cx320")
+    parser.add_argument(
+        "--programme", choices=("cx320", "cx321", "cx322"), default="cx320"
+    )
     args = parser.parse_args(argv)
     programme = get_active_hybrid_programme(args.programme)
     if args.validate is not None:

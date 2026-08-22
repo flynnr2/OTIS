@@ -54,6 +54,7 @@ class ActiveHybridProgramme:
     hybrid_states: frozenset[str]
     armable_hybrid_states: frozenset[str]
     identification_required: bool = False
+    response_checkpoint_observational: bool = False
 
     @property
     def campaign_name(self) -> str:
@@ -66,7 +67,6 @@ class ActiveHybridProgramme:
     @property
     def supervisor_duration_s(self) -> int:
         return self.absolute_wall_limit_s + 120
-
 
 _COMMON_TERMINALS = frozenset(
     {
@@ -192,9 +192,68 @@ CX321_PROGRAMME = ActiveHybridProgramme(
 )
 
 
+CX322_PROGRAMME = ActiveHybridProgramme(
+    key="cx322",
+    programme_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    profile_id="cx322_direct_hybrid",
+    runtime_run_identity="cx322_direct_hybrid:3220001",
+    status_programme_id="cx322_bounded_hybrid_fact_gathering",
+    operation="cx322_stage5_bounded_hybrid_fact_gathering_live",
+    live_stage="CX322_BOUNDED_HYBRID_FACT_GATHERING_LIVE",
+    compatibility_floor="CX322_EVIDENCE_EPOCH_1",
+    manifest_section="cx322",
+    policy_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    policy_path=REPO_ROOT
+    / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+    natural_policy_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    natural_policy_path=REPO_ROOT
+    / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+    setup_code=0xA83C,
+    maximum_applications=4,
+    maximum_cumulative_movement_codes=84,
+    maximum_step_codes=21,
+    minimum_code=0xA800,
+    maximum_code=0xAB00,
+    minimum_applied_cadence_s=1800,
+    qualified_duration_s=43_200,
+    absolute_wall_limit_s=57_600,
+    minimum_natural_phase_material_applications=2,
+    bundle_id="cx322_direct_hybrid_12h_qualified_16h_wall_bundle_v1",
+    activation_id="cx322_direct_hybrid_12h_live_activation_v1",
+    rehearsal_report_type="cx322_direct_hybrid_live_topology_rehearsal_v1",
+    run_bundle_path=Path("cx322_direct_hybrid_exact_bundle_v1.json"),
+    run_proposal_path=Path("cx322_direct_hybrid_authority_proposal_v1.json"),
+    run_activation_path=Path("cx322_direct_hybrid_live_activation_v1.json"),
+    physical_seal_path=Path("reports/cx322_direct_hybrid_physical_seal_v1.json"),
+    terminal_decisions=frozenset(
+        {
+            "bounded_direct_hybrid_evidence_acquired",
+            "bounded_direct_hybrid_early_safety_stop",
+            "right_censored_incomplete",
+            "measurement_authority_or_platform_fault",
+            "operator_abort",
+        }
+    ),
+    healthy_preliminary_decisions=frozenset(
+        {"pending_offline_scientific_analysis"}
+    ),
+    hybrid_states=_COMMON_STATES,
+    armable_hybrid_states=frozenset(
+        {
+            "FREQUENCY_ACQUIRE",
+            "PHASE_QUALIFY",
+            "HYBRID_TRACKING",
+            "PHASE_DEGRADED_FREQUENCY_ONLY",
+        }
+    ),
+    response_checkpoint_observational=True,
+)
+
+
 PROGRAMMES = {
     CX320_PROGRAMME.key: CX320_PROGRAMME,
     CX321_PROGRAMME.key: CX321_PROGRAMME,
+    CX322_PROGRAMME.key: CX322_PROGRAMME,
 }
 
 
@@ -226,3 +285,29 @@ def programme_from_mapping(value: Mapping[str, Any]) -> ActiveHybridProgramme:
             except ValueError:
                 pass
     raise ValueError("active-hybrid artifact does not identify a supported programme")
+
+
+def progressive_checkpoint_contract(
+    programme: ActiveHybridProgramme,
+) -> dict[str, Any]:
+    common = {
+        "first_phase_material_applications_before_checkpoint": 1,
+        "first_response_acknowledgement_requires_durable_AHY_and_ACT": True,
+        "first_response_acknowledgement_requires_exact_host_replay": True,
+    }
+    if programme.response_checkpoint_observational:
+        return {
+            **common,
+            "descriptive_minimum_phase_material_applications": (
+                programme.minimum_natural_phase_material_applications
+            ),
+            "phase_material_application_count_is_acquisition_pass_gate": False,
+            "later_authority_requires_exact_response_observation_and_tight_reacquisition": True,
+        }
+    return {
+        **common,
+        "minimum_phase_material_applications_for_pass": (
+            programme.minimum_natural_phase_material_applications
+        ),
+        "later_authority_requires_healthy_response_and_tight_reacquisition": True,
+    }

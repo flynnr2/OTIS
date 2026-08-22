@@ -390,6 +390,7 @@ class ResponseClassifier:
         response_path: Path | None = None,
         *,
         legacy_response_deadband_enabled: bool = True,
+        response_classification_observational: bool = False,
     ) -> None:
         response_path = response_path or (
             REPO_ROOT / "profiles/discipline/cx317_response_classification_v2.json"
@@ -410,6 +411,9 @@ class ResponseClassifier:
         self.excess_margin = float(p["excess_response_additive_margin_hz"])
         self.maximum_indeterminate = int(p["maximum_consecutive_indeterminate"])
         self.legacy_response_deadband_enabled = legacy_response_deadband_enabled
+        self.response_classification_observational = (
+            response_classification_observational
+        )
         self.baseline_error_hz: float | None = None
         self.cumulative_delta_codes = 0
         self.consecutive_indeterminate = 0
@@ -522,6 +526,8 @@ class ResponseClassifier:
         self.consecutive_indeterminate += 1
         cumulative_expected = abs(self.cumulative_delta_codes) * self.gain_min
         if (
+            not self.response_classification_observational
+            and
             self.consecutive_indeterminate > self.maximum_indeterminate
             and cumulative_expected >= 2.0 * self.floor
         ):

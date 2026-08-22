@@ -249,7 +249,12 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     numerical = natural_policy.get("numerical_policy", {})
     authority = natural_policy.get("global_authority_limits", {})
     if (
-        natural_policy.get("programme_id") != CX320_PROGRAMME.programme_id
+        natural_policy.get("programme_id")
+        != (
+            programme.programme_id
+            if programme.response_checkpoint_observational
+            else CX320_PROGRAMME.programme_id
+        )
         or natural_policy.get("policy_id") != programme.natural_policy_id
         or natural_policy.get("setup", {}).get("exact_start_code")
         != programme.setup_code
@@ -286,6 +291,15 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or active_authority.get("maximum_code") != programme.maximum_code
         ):
             raise ValueError("current CX321 programme policy envelope differs")
+    if programme.response_checkpoint_observational:
+        terminal_semantics = policy.get("terminal_semantics", {})
+        if terminal_semantics.get(
+            "bounded_direct_hybrid_early_safety_stop_reasons"
+        ) != [
+            "prospective_repeated_alternation",
+            "prospective_low_efficiency_path",
+        ]:
+            raise ValueError("CX322 prospective early-safety reasons differ")
 
     bindings = policy.get("bindings", {})
     if not isinstance(bindings, dict):
@@ -432,6 +446,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
             qualified_timeout_s=self.programme.qualified_duration_s,
+            observational_responses=(
+                self.programme.response_checkpoint_observational
+            ),
             **kwargs,
         )
         self.manifest = manifest
@@ -465,6 +482,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_origin_session_id", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
+        self.state.setdefault("first_phase_observation_checkpoint_exact", False)
         self.state.setdefault("later_authority_released", False)
         self.state.setdefault("phase_material_application_count", 0)
         self.state.setdefault("terminal_static_code", None)
@@ -711,6 +729,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # FrequencyControlSupervisor additionally requires every phase/hybrid
         # preview stream to remain zero-authority.  That condition is correct
         # for CX319 but contradicts CX320's intended combined controller.
+        hybrid_state = health.get(("cx317_active", "hybrid_state"))
+        hybrid_reason = health.get(("cx317_active", "hybrid_reason"), "unknown")
+        if (
+            self.programme.response_checkpoint_observational
+            and hybrid_state == "FAIL_STATIC"
+            and hybrid_reason
+            in {"prospective_repeated_alternation", "prospective_low_efficiency_path"}
+        ):
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
+            self._abort(hybrid_reason)
+            return
         if (
             self.programme.identification_required
             and health.get(("cx317_active", "fail_static")) == "true"
@@ -749,7 +779,6 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     + ", ".join(unhealthy)
                 )
 
-        hybrid_state = health.get(("cx317_active", "hybrid_state"))
         if hybrid_state is None:
             if self.state["manual_start_sent"]:
                 raise ValueError("CX320 hybrid firmware state is absent")
@@ -757,8 +786,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if hybrid_state not in self.programme.hybrid_states:
             raise ValueError(f"unexpected CX320 hybrid state: {hybrid_state!r}")
         if hybrid_state == "FAIL_STATIC":
-            reason = health.get(("cx317_active", "hybrid_reason"), "unknown")
-            raise ValueError(f"CX320 firmware entered FAIL_STATIC: {reason}")
+            raise ValueError(f"CX320 firmware entered FAIL_STATIC: {hybrid_reason}")
 
         corrections = int(
             health.get(("cx317_active", "correction_count"), "0")
@@ -816,13 +844,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             dirty = True
         if checkpoint and not self.state["first_phase_checkpoint_passed"]:
             self.state["first_phase_checkpoint_passed"] = True
+            if self.programme.response_checkpoint_observational:
+                self.state["first_phase_observation_checkpoint_exact"] = True
             dirty = True
         if hybrid_state == "HYBRID_TRACKING" and checkpoint:
             if not self.state["later_authority_released"]:
                 self.state["later_authority_released"] = True
                 dirty = True
                 self._programme_event(
-                    "first_phase_checkpoint_release_observed",
+                    (
+                        "first_phase_observation_checkpoint_release_observed"
+                        if self.programme.response_checkpoint_observational
+                        else "first_phase_checkpoint_release_observed"
+                    ),
                     hybrid_state=hybrid_state,
                     phase_material_application_count=material,
                 )
@@ -1055,9 +1089,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 raise ValueError(
                     "CX321 firmware plant-sign arm window contradicts retained progress"
                 )
-        # FIRST_PHASE_TRANSACTION stays unarmed until firmware has both passed
-        # the durable response checkpoint and observed tight reacquisition.
-        # PHASE_DEGRADED and FAIL_STATIC are terminal paths, not arm states.
+        # FIRST_PHASE_TRANSACTION stays unarmed until firmware has durably
+        # recorded the response checkpoint and observed tight reacquisition.
         if (
             hybrid_state not in self.programme.armable_hybrid_states
             and not identification_prearm
@@ -1158,7 +1191,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         )
         checkpoint = _truth(health, "first_phase_checkpoint_passed")
-        if self.programme.identification_required and corrections == 0:
+        if self.programme.response_checkpoint_observational:
+            preliminary = "pending_offline_scientific_analysis"
+        elif self.programme.identification_required and corrections == 0:
             preliminary = "plant_sign_qualification_not_exercised"
         elif material == 0:
             preliminary = "phase_influence_not_exercised"
@@ -1187,7 +1222,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if self.state["terminal"] is not None:
             return
         hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
-        if hybrid_state == "PHASE_DEGRADED_FREQUENCY_ONLY":
+        if (
+            hybrid_state == "PHASE_DEGRADED_FREQUENCY_ONLY"
+            and not self.programme.response_checkpoint_observational
+        ):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
@@ -1256,6 +1294,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         elif reason.startswith(f"{self.programme.key}_wall_endpoint"):
             terminal["primary_decision"] = "right_censored_incomplete"
+        elif (
+            self.programme.response_checkpoint_observational
+            and reason
+            in {"prospective_repeated_alternation", "prospective_low_efficiency_path"}
+        ):
+            terminal["primary_decision"] = "bounded_direct_hybrid_early_safety_stop"
         else:
             terminal["primary_decision"] = "measurement_authority_or_platform_fault"
         static_code = self.state.get("terminal_static_code")

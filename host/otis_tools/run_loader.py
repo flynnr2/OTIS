@@ -20,6 +20,7 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx319_range_part_b_upper_completion",
         "cx320_active_hybrid",
         "cx321_active_hybrid",
+        "cx322_direct_hybrid",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (

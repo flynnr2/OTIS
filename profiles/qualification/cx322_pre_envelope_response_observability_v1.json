@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "programme_id": "CX322_PRE_ENVELOPE_RESPONSE_OBSERVABILITY_V1",
-  "status": "offline_design_selected_non_effective",
+  "status": "superseded_before_implementation",
   "question": "Can the CX321 plant-sign entry admit the observed one-count movement between two healthy 1500-second pre-stimulus estimates without weakening the three-count response floor or changing the natural hybrid controller?",
   "supersedes": {
     "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
@@ -156,7 +156,7 @@
     "budget_decision": "retain_the_existing_84_code_global_limit_because_two_required_natural_transactions_remain_fully_authorized_and_do_not_expand_physical_authority_to_preserve_an_optional_full_size_spare"
   },
   "decision": {
-    "selected": true,
+    "selected": false,
     "natural_controller_estimator_changed": false,
     "natural_controller_mathematics_changed": false,
     "identification_estimator_changed": false,
@@ -164,7 +164,7 @@
     "identification_stimulus_changed_from_codes": 21,
     "identification_stimulus_changed_to_codes": 25,
     "physical_repeat_of_cx321_bundle_warranted": false,
-    "next_milestone": "implement_CX322_firmware_host_policy_and_deterministic_cross_boundary_regressions_then_freeze_and_rehearse_a_new_exact_bundle"
+    "next_milestone": "superseded_by_CX322_bounded_direct_hybrid_fact_gathering_before_firmware_implementation"
   },
   "authority": {
     "offline_analysis": true,
