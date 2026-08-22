@@ -10,13 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt5_exact_time_host_replay_remediation",
+      "state": "stage5_attempt6_authorized",
       "allowed_operations": [
-        "offline_preparation"
+        "cx322_stage5_bounded_hybrid_fact_gathering_live"
       ],
       "effective_date": "2026-08-22",
-      "authority": "attempt5_consumed_host_remediation_only",
-      "physical_authority_effective": false,
+      "authority": "attempt6_exact_bundle_authority_effective",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -46,35 +46,35 @@
         "measurement_semantics_inventory_check_passed": true,
         "exact_firmware_build_pending": false,
         "exact_bundle_pending": false,
-        "structural_preflight_pending": true,
-        "complete_operational_rehearsal_pending": true
+        "structural_preflight_pending": false,
+        "complete_operational_rehearsal_pending": false
       },
       "exact_bundle": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_2c6c608_20260822/cx322_direct_hybrid_exact_bundle_v10.json",
-        "file_sha256": "fc27536eb7a0c37ac909a3a0fb18b550112f00971e0eedbef6911263842a8ad7",
-        "bundle_sha256": "38a83890b33a692a8c93452d549da29c79509f0011b538e44f0f82bd95ce9cd3",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/cx322_direct_hybrid_exact_bundle_v11.json",
+        "file_sha256": "973f97b2facc0565b83f83d526c2cc3f50228d07a62e5d0d433b79b4ef4b2b70",
+        "bundle_sha256": "55214280d4c4a766e9349473923462a4eb6ab9d4b0505343301bf0cf3a3014bf",
         "firmware_source_revision": "b6d936ca935a44c8b90a05aa7e47977c0b468f29",
         "firmware_source_sha256": "f508c58e734e62b1050e787efce2fce7c27e519a35d4663860b7d857cacdd9b5",
         "configuration_sha256": "99d55df144d2984d16a7610d077d737644375cfb6731e2345cad73739b8763d8",
         "firmware_uf2_sha256": "94bbc1e9ad8e7008ca1dab135e1f2fcfbae31d4a23bf868009e4994d8972267f"
       },
       "authority_proposal": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_2c6c608_20260822/cx322_direct_hybrid_authority_proposal_v10.json",
-        "file_sha256": "cbda002cca2a1621fa0f3607f26fe90966d78be034b968d4700212061caef978",
-        "proposal_sha256": "87edff4c6e489bdc69a2361adb71a514d61524db24a18dbf7fc6b39c1c881bf7",
-        "status": "non_effective_awaiting_attempt6_exact_gates"
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/cx322_direct_hybrid_authority_proposal_v11.json",
+        "file_sha256": "eaf7f976aa119e1709f81fc6e60ea8687bd413bea28e0fef894adb45626b8deb",
+        "proposal_sha256": "3d9385789bd578a7af673a313a150365f83c205cae63e009a581ba05c63b1929",
+        "status": "activated_for_attempt6"
       },
       "structural_preflight": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_6fae77f_20260822/cx322_direct_hybrid_structural_preflight_v9.json",
-        "file_sha256": "fb9f86419d3b90659fd2d54a2424fddb697223ba87dca059928ad5b4f39d0ed5",
-        "preflight_sha256": "55bc7347218e7d8bd013905f97ed9954516e77bbc76c5aa4422a5a2fc22d0c01",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/cx322_direct_hybrid_structural_preflight_v11.json",
+        "file_sha256": "6d0c16415a6c2ae9af56b20d6e26d0c89f0673a8a7894cb85730959fe80e64a5",
+        "preflight_sha256": "d386b4f36a0f82da210631d445d095daad412cbe90af43b2c2aa8c6c6c2aa77b",
         "status": "passed",
         "physical_actions_performed": 0
       },
       "operational_rehearsal": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_6fae77f_20260822/exact_bundle_rehearsal_v9/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
-        "file_sha256": "17304770501d22e835d09bf560f9f0f29c62760e1bd146297dd55a618cfa4c26",
-        "rehearsal_sha256": "e836d4954f13ebbeb1a2eac5e0d95aea020370a946a0af69399da28e87e31724",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/exact_bundle_rehearsal_v11/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "393446dd8844ba71aa86c79429b8a57f44e22219a71565266c066424c14c45ef",
+        "rehearsal_sha256": "da4cab3f2417c5e399fbfb8bff14ce29dfd6da1fe9ed40fd189bb8b4e2617239",
         "status": "passed",
         "capture_parser_errors": 0,
         "priority_abort_observed": true,
@@ -88,23 +88,22 @@
         "physical_actions_performed": 0
       },
       "operator_authority": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_remediation_authority_attempt5_v2.json",
-        "file_sha256": "389e1ba96b9eb550b96925aa0f1d85f03afbe7fa24700fedc324bc5fafab9562",
-        "bundle_sha256": "95c654ac80c7e7e7f68a25af317d2717b32ba7648daa19acb75bccc093cbea58",
-        "proposal_sha256": "cf12b50522ca7a93a2261f383d89d7ceebdc986af1c57e30be22ceb451fc151e",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_remediation_authority_attempt6_v1.json",
+        "file_sha256": "750723419b7ec9b432ee99a0228241223e991b18704a62535b243c39c61142b7",
+        "bundle_sha256": "55214280d4c4a766e9349473923462a4eb6ab9d4b0505343301bf0cf3a3014bf",
+        "proposal_sha256": "3d9385789bd578a7af673a313a150365f83c205cae63e009a581ba05c63b1929",
         "physical_execution_effective": true,
         "expanded_remediation_authority_effective": true
       },
       "effective_activation": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt5_v1.json",
-        "file_sha256": "663f34ce437ddcf38df7b1618495773ece4afd2909c7b8ca8baa8d09b08af471",
-        "activation_sha256": "38effd3154bcb143764f052bcc8b2a312077191f71b0d329bfb9761a908f8ab4",
-        "attempt_ordinal": 5,
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt6_v1.json",
+        "file_sha256": "b8271d0467735ba759665b10c9fba9bb72682aad4bccacb8e79a991197a3e5b5",
+        "activation_sha256": "bf7a75e0076e5aa7aa9b1aed788db8288d895801c3c837f7591a2111f7f3dbba",
+        "attempt_ordinal": 6,
         "automatic_retry": false,
-        "effective": false,
-        "consumed": true,
-        "consumed_by_run_id": "stage5_live_attempt5_20260822T1437Z",
-        "predecessor_seal_sha256": "39f288838e794569a9b9307158748c76945e66fd8f46421f28f6b15d24daadf2"
+        "effective": true,
+        "consumed": false,
+        "predecessor_seal_sha256": "a40bdcfd24f583c99fa837c46bbda5fdd2bd175e4831a27864d2cbc0546a4b03"
       },
       "stage5_attempts": [
         {
@@ -258,7 +257,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "complete_v10_structural_preflight_and_operational_rehearsal_for_attempt6"
+      "next_gate": "attempt6_physical_terminal"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
