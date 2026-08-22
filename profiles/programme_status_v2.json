@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_authorized_live_entry_pending",
+      "state": "stage5_attempt1_setup_integration_remediation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-22",
-      "authority": "exact_bundle_operator_authorized_single_use_activation_effective",
-      "physical_authority_effective": true,
+      "authority": "attempt1_consumed_platform_remediation_only",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -102,16 +101,43 @@
         "activation_sha256": "9bab8e0d406ce427d2f08479468e7d507c25f2df8062ac1246f2d32c2339b929",
         "attempt_ordinal": 1,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt1_20260822T1000Z"
       },
+      "stage5_attempts": [
+        {
+          "ordinal": 1,
+          "run_id": "stage5_live_attempt1_20260822T1000Z",
+          "classification": "firmware_defect_under_intended_setup_integration",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "cx322_exact_timer_projection_compiled_out_by_cx321_only_guard",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 0,
+          "dac_value_writes": 1,
+          "last_observed_applied_code": 43068,
+          "last_observed_dac_epoch": 1,
+          "qualified_origin_established": false,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "1b0898b0ec88c0845b57299406cfd78e20df6d787af0681d225411e1d6f70fe7",
+          "evidence_content_sha256": "5c997ad6e3ded50a23770e2563cf902bf24d6c9fe1b6964f0144c4d35f1856f2",
+          "offline_finalization_recovered_without_physical_io": true,
+          "scientific_result": "none_before_qualified_origin_or_automatic_hybrid_decision"
+        }
+      ],
       "physical_authority_prerequisites": [
         "exact_immutable_bundle",
         "structural_preflight",
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "cx322_stage5_physical_entry"
+      "next_gate": "freeze_and_rehearse_remediated_exact_bundle"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
