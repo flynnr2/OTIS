@@ -124,6 +124,35 @@ def analyze(run_dir: Path) -> dict[str, Any]:
     _validate_scenario(
         abort_failure, expected_terminal_reason="failed_priority_abort_delivery"
     )
+    observational_responses = trace.get("observational_response_classification")
+    if programme.response_checkpoint_observational:
+        if not isinstance(observational_responses, dict) or (
+            observational_responses.get("applicable") is not True
+        ):
+            raise ValueError(
+                "CX322 rehearsal lacks observational response scenarios"
+            )
+        classes = observational_responses.get("classes")
+        expected_classes = {
+            "healthy_indeterminate_near_resolution",
+            "wrong_sign",
+            "growing_error",
+            "excess_response",
+        }
+        if not isinstance(classes, dict) or set(classes) != expected_classes:
+            raise ValueError("CX322 rehearsal response-class coverage differs")
+        if any(
+            not isinstance(item, dict)
+            or item.get("state") == "FAIL_STATIC"
+            or item.get("later_authority_released") is not True
+            or item.get("terminal_reason") is not None
+            for item in classes.values()
+        ):
+            raise ValueError(
+                "CX322 admissible response became terminal or blocked later authority"
+            )
+        if observational_responses.get("invalid_measurement_fails_static") is not True:
+            raise ValueError("CX322 invalid measurement did not remain fail-static")
 
     primary_events = primary["events"]
     _event_positions(
@@ -190,6 +219,10 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "priority_abort_submission_and_delivery_distinct": submitted < delivered,
         "failed_abort_delivery_holds_owner_open": True,
         "sole_serial_owner_and_logical_rotation": True,
+        "observational_response_classes_are_nonterminal": (
+            not programme.response_checkpoint_observational
+            or isinstance(observational_responses, dict)
+        ),
         "no_physical_io": True,
     }
     if not all(checks.values()):
@@ -215,12 +248,21 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "phase_nonzero_decision_count": len(nonzero),
         "phase_material_decision_count": len(material),
         "checks": checks,
-        "scenario_terminal_classifications": {
-            "modeled_phase_transaction": "first_phase_transaction_passed_sustained_result_incomplete",
-            "clean_phase_degradation": "phase_channel_degraded_frequency_control_retained",
-            "shared_fail_static_transport_obstruction": "measurement_authority_or_platform_fault",
-            "abort_delivery_failure": "measurement_authority_or_platform_fault",
-        },
+        "scenario_terminal_classifications": (
+            {
+                "modeled_phase_transaction": "bounded_direct_hybrid_evidence_acquired",
+                "clean_phase_degradation": "right_censored_incomplete",
+                "shared_fail_static_transport_obstruction": "measurement_authority_or_platform_fault",
+                "abort_delivery_failure": "measurement_authority_or_platform_fault",
+            }
+            if programme.response_checkpoint_observational
+            else {
+                "modeled_phase_transaction": "first_phase_transaction_passed_sustained_result_incomplete",
+                "clean_phase_degradation": "phase_channel_degraded_frequency_control_retained",
+                "shared_fail_static_transport_obstruction": "measurement_authority_or_platform_fault",
+                "abort_delivery_failure": "measurement_authority_or_platform_fault",
+            }
+        ),
         "limitations": [
             "Accelerated deterministic observations exercise host and policy state transitions but do not reproduce the physical plant.",
             "Serialized AHY records are non-actionable evidence; no command FIFO or serial device was opened.",
