@@ -355,11 +355,6 @@ def _post_abort_active_status_wire_fixture(
         )
         values.update(
             {
-                "confirmed_applied_code_known": "true",
-                "confirmed_applied_code": str(applied_code),
-                "correction_count": str(correction_count),
-                "cumulative_movement_codes": str(cumulative_movement_codes),
-                "dac_epoch": str(dac_epoch),
                 "plant_sign_state": "FAIL_STATIC",
                 "plant_sign_pre_window_count": "1",
                 "plant_sign_accumulator_accepted_intervals": "1400",
@@ -376,6 +371,19 @@ def _post_abort_active_status_wire_fixture(
                 ]["sha256"],
             }
         )
+    if applied_code is not None:
+        values.update(
+            {
+                "confirmed_applied_code_known": "true",
+                "confirmed_applied_code": str(applied_code),
+            }
+        )
+    if correction_count is not None:
+        values["correction_count"] = str(correction_count)
+    if cumulative_movement_codes is not None:
+        values["cumulative_movement_codes"] = str(cumulative_movement_codes)
+    if dac_epoch is not None:
+        values["dac_epoch"] = str(dac_epoch)
     records = [
         (SNAPSHOT_BEGIN_KEY, str(generation)),
         (SNAPSHOT_CONTRACT_KEY, contract),

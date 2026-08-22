@@ -8,6 +8,7 @@ import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
+from host.otis_tools.active_hybrid_programme_contract import CX322_PROGRAMME
 from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
 
 
@@ -48,6 +49,25 @@ def _fixture(tmp_path: Path) -> tuple[Path, dict, Path, dict]:
     bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
     proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
     return bundle_path, bundle, proposal_path, proposal
+
+
+def test_cx322_post_abort_snapshot_preserves_confirmed_static_state() -> None:
+    payload = rehearsal._post_abort_active_status_wire_fixture(
+        generation=12,
+        bundle={"programme_id": CX322_PROGRAMME.programme_id},
+        applied_code=0xA837,
+        dac_epoch=2,
+        correction_count=1,
+        cumulative_movement_codes=5,
+    ).decode("ascii")
+
+    assert ",cx317_active,state,ABORTED," in payload
+    assert ",cx317_active,fail_static,true," in payload
+    assert ",cx317_active,confirmed_applied_code_known,true," in payload
+    assert f",cx317_active,confirmed_applied_code,{0xA837}," in payload
+    assert ",cx317_active,correction_count,1," in payload
+    assert ",cx317_active,cumulative_movement_codes,5," in payload
+    assert ",cx317_active,dac_epoch,2," in payload
 
 
 def test_rehearsal_manifest_is_strictly_non_authorizing_and_pty_only(
