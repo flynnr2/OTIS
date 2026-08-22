@@ -460,6 +460,19 @@ def _attempt_descriptor(
             )
             is False
         )
+        failed_post_acquisition_gate = (
+            seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "measurement_authority_or_platform_fault"
+            and acquisition_gate.get("passed") is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("static_terminal_exact") is True
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") == "operator_abort"
@@ -476,7 +489,11 @@ def _attempt_descriptor(
         )
         if (
             not (run_dir / "COMPLETE").is_file()
-            or not (failed_physical_gate or bounded_operator_abort)
+            or not (
+                failed_physical_gate
+                or failed_post_acquisition_gate
+                or bounded_operator_abort
+            )
         ):
             raise ValueError(
                 "CX320 predecessor does not establish an incomplete physical gate "

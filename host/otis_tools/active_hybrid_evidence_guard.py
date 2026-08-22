@@ -28,6 +28,10 @@ class ResponseCheckpointRejected(ValueError):
     """The evidence replayed exactly but failed a frozen response predicate."""
 
 
+class IndependentReplayMismatch(ValueError):
+    """Host replay disagrees with retained firmware evidence."""
+
+
 def _rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
@@ -516,7 +520,9 @@ def replay_response_before_acknowledgement(
         plant_sign_handoff=plant_sign_handoff,
     )
     if not replay["exact"]:
-        raise ValueError("CX320 independent host replay differs from the firmware decision")
+        raise IndependentReplayMismatch(
+            "CX320 independent host replay differs from the firmware decision"
+        )
 
     application = transactions[2]
     response = transactions[3]

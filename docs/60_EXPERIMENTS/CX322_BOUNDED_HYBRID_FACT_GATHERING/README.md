@@ -66,6 +66,17 @@ and `excess_response` are retained without becoming terminal by themselves.
 Malformed measurement, actuator, identity, epoch, or replay evidence remains
 fail-closed.
 
+An independent host-verifier disagreement is first treated as a diagnostic
+quarantine, not as proof that the firmware or physical evidence is invalid.
+The supervisor withholds phase-4 acknowledgement, clears any pending arm,
+issues no further control authority, retains the last confirmed DAC code, and
+continues capture while the discrepancy is classified. A confirmed firmware
+policy violation, ambiguous actuator state, measurement-authority loss, or
+physical-envelope breach still disqualifies and aborts the run. A defect
+confined to non-authoritative host bookkeeping or reporting may instead be
+replayed from the unchanged retained evidence. Any actuation, code, epoch, or
+budget change while quarantined is itself an immediate abort condition.
+
 The wire-compatible firmware field `first_phase_checkpoint_passed` means
 “exact checkpoint recorded” in CX322. CX322 host state and analysis expose the
 unambiguous alias `first_phase_observation_checkpoint_exact`; neither name is a

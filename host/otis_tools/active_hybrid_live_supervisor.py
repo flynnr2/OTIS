@@ -19,7 +19,10 @@ import time
 from typing import Any
 
 from .abort_transport import AbortFifo
-from .active_hybrid_evidence_guard import ResponseCheckpointRejected
+from .active_hybrid_evidence_guard import (
+    IndependentReplayMismatch,
+    ResponseCheckpointRejected,
+)
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
@@ -489,6 +492,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("latest_plant_sign_state", None)
         self.state.setdefault("plant_sign_prearm_sent", False)
         self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
+        self.state.setdefault("host_verification_hold", None)
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -707,9 +711,42 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     )
 
     def _process_transactions(self) -> None:
+        if self.state.get("host_verification_hold") is not None:
+            self._validate_hybrid_decisions()
+            return
         prior_terminal = self.state.get("terminal")
         try:
             super()._process_transactions()
+        except IndependentReplayMismatch as exc:
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+            response = next(
+                (row for row in reversed(rows) if row.get("event") == "response"),
+                {},
+            )
+            hold = {
+                "entered_utc": _utc_now(),
+                "error": str(exc),
+                "record_sequence": int(
+                    response.get("transaction_record_sequence", "0")
+                ),
+                "request_sequence": int(response.get("request_sequence", "0")),
+                "response_class": response.get(
+                    "response_class", "unavailable"
+                ),
+                "applied_code": int(response.get("applied_code", "0")),
+                "dac_epoch": int(response.get("dac_epoch", "0")),
+                "correction_count": int(response.get("correction_count", "0")),
+                "cumulative_movement_codes": int(
+                    response.get("cumulative_movement_codes", "0")
+                ),
+            }
+            self.state["host_verification_hold"] = hold
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
+            self._save()
+            self._programme_event("host_verification_hold_entered", **hold)
+            self._validate_hybrid_decisions()
+            return
         except ResponseCheckpointRejected as exc:
             rows = _read_csv(self.run_dir / ACTIVE_CSV)
             response = next(
@@ -868,6 +905,17 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 later material authority preceded its checkpoint")
         if hybrid_state == "HYBRID_TRACKING" and not checkpoint:
             raise ValueError("CX320 HYBRID_TRACKING lacks the first checkpoint")
+        hold = self.state.get("host_verification_hold")
+        if isinstance(hold, dict) and (
+            corrections != hold.get("correction_count")
+            or movement != hold.get("cumulative_movement_codes")
+            or (
+                _truth(health, "confirmed_applied_code_known")
+                and self.state.get("terminal_static_code")
+                != hold.get("applied_code")
+            )
+        ):
+            raise ValueError("CX320 actuation changed during host verification hold")
 
         changed = hybrid_state != self.state.get("latest_hybrid_state")
         dirty = changed or confirmed_applied_changed
@@ -1037,6 +1085,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _maybe_start_or_arm(
         self, health: dict[tuple[str, str], str]
     ) -> None:
+        if self.state.get("host_verification_hold") is not None:
+            return
         if not self._identity_ready(health):
             return
         state = health.get(("cx317_active", "state"), "")
@@ -1269,6 +1319,35 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
 
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        hold = self.state.get("host_verification_hold")
+        if (
+            qualified_elapsed_ticks is not None
+            and qualified_elapsed_ticks
+            >= self.programme.qualified_duration_s
+            * RP2040_TIMER0_TICKS_PER_SECOND
+            and isinstance(hold, dict)
+        ):
+            if (
+                health.get(("cx317_active", "state")) != "DISARMED"
+                or self.state.get("arm_pending")
+                or not _truth(health, "confirmed_applied_code_known")
+                or int(health[("cx317_active", "confirmed_applied_code")], 0)
+                != hold.get("applied_code")
+            ):
+                self._abort(
+                    f"{self.programme.key}_host_verification_hold_not_static_at_endpoint"
+                )
+                return
+            self.state["terminal_static_code"] = hold["applied_code"]
+            self.state["terminal"] = {
+                "result": "nonpass",
+                "reason": f"{self.programme.key}_host_verification_hold_endpoint",
+                "primary_decision": "host_verification_hold_incomplete",
+                "last_confirmed_code": hold["applied_code"],
+                "utc": _utc_now(),
+            }
+            self._save()
+            return
         if (
             qualified_elapsed_ticks is not None
             and qualified_elapsed_ticks
