@@ -834,11 +834,34 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         )
         checkpoint = _truth(health, "first_phase_checkpoint_passed")
+
+        # Preserve the latest confirmed physical state before evaluating any
+        # post-application accounting invariant that can terminate the run.
+        # Otherwise an accounting fault can leave the abort-delivery gate
+        # waiting for the pre-application code even though firmware has
+        # already durably reported the new applied code and DAC epoch.
+        confirmed_applied_changed = False
+        if _truth(health, "confirmed_applied_code_known"):
+            applied = int(health[("cx317_active", "confirmed_applied_code")], 0)
+            if not self.programme.minimum_code <= applied <= self.programme.maximum_code:
+                raise ValueError("CX320 confirmed code is outside the frozen range")
+            if self.state.get("terminal_static_code") != applied:
+                self.state["terminal_static_code"] = applied
+                confirmed_applied_changed = True
+
+        # phase_nonzero is an overlapping descriptive count: a combined
+        # request can contain a non-zero phase term yet round to the same DAC
+        # delta as the frequency-only counterfactual. Such an application is
+        # both phase_nonzero and frequency_only, but is not phase-material.
+        # The mutually exclusive partition is phase_material versus
+        # frequency_only; each individual count must remain bounded by the
+        # global correction count.
         if (
             corrections > self.programme.maximum_applications
             or movement > self.programme.maximum_cumulative_movement_codes
             or material > phase_nonzero
-            or phase_nonzero + frequency_only > corrections
+            or phase_nonzero > corrections
+            or material + frequency_only > corrections
         ):
             raise ValueError("CX320 firmware exceeded the frozen global authority")
         if material > 1 and not checkpoint:
@@ -847,15 +870,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 HYBRID_TRACKING lacks the first checkpoint")
 
         changed = hybrid_state != self.state.get("latest_hybrid_state")
-        dirty = changed
-        if _truth(health, "confirmed_applied_code_known"):
-            applied = int(health[("cx317_active", "confirmed_applied_code")], 0)
-            if not self.programme.minimum_code <= applied <= self.programme.maximum_code:
-                raise ValueError("CX320 confirmed code is outside the frozen range")
-            if self.state.get("terminal_static_code") != applied:
-                self.state["terminal_static_code"] = applied
-                dirty = True
-
+        dirty = changed or confirmed_applied_changed
         if changed:
             self.state["latest_hybrid_state"] = hybrid_state
         if self.programme.identification_required:

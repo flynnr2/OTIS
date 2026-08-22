@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt3_authorized_live_entry_pending",
+      "state": "stage5_attempt3_host_counter_partition_remediation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-22",
-      "authority": "remediated_exact_bundle_operator_authorized_single_use_activation_effective",
-      "physical_authority_effective": true,
+      "authority": "attempt3_consumed_platform_remediation_only",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -102,8 +101,9 @@
         "activation_sha256": "5af707da570b5e269e41b378acc60e3d6cf87c34acf15f743271626f5fb5aefb",
         "attempt_ordinal": 3,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt3_20260822T1121Z",
         "predecessor_seal_sha256": "782469d35567ad80d30e7d8af9212526e8157bdf946fbc5e8dabf7642be5eb61"
       },
       "stage5_attempts": [
@@ -155,6 +155,34 @@
           "seal_sha256": "782469d35567ad80d30e7d8af9212526e8157bdf946fbc5e8dabf7642be5eb61",
           "evidence_content_sha256": "14ff8aba0c17f0026de9466250f61179f95f4a49d1debc72696bdf3a9612ebb0",
           "scientific_result": "none_before_qualified_origin_or_recorded_natural_hybrid_decision"
+        },
+        {
+          "ordinal": 3,
+          "run_id": "stage5_live_attempt3_20260822T1121Z",
+          "classification": "platform_escape_into_campaign",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "host_supervisor_treated_overlapping_phase_nonzero_and_frequency_only_counts_as_mutually_exclusive",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 1,
+          "dac_value_writes": 2,
+          "last_observed_applied_code": 43063,
+          "last_observed_dac_epoch": 2,
+          "selected_estimate_boundaries": 5,
+          "active_hybrid_decisions_recorded": 5,
+          "qualified_origin_established": true,
+          "frequency_only_applications": 1,
+          "phase_nonzero_applications": 1,
+          "phase_material_applications": 0,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "52ad383a67ca9620e3db022bb9852a56361cc810dccfe1153b22fc839086ab73",
+          "evidence_content_sha256": "006ae65d6ad4717fb7b4eb2481de1d7f64ea9acce3b32d2432889b59901b0f9e",
+          "scientific_result": "one_nonmaterial_combined_minus5_code_application_observed_but_response_horizon_interrupted_by_host_false_positive"
         }
       ],
       "physical_authority_prerequisites": [
@@ -163,7 +191,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "cx322_stage5_attempt3_physical_entry"
+      "next_gate": "repair_and_rehearse_host_counter_partition_and_terminal_code_ordering"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

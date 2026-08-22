@@ -824,6 +824,50 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     )
 
 
+def test_nonmaterial_combined_application_allows_overlapping_phase_count(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    supervisor.state["terminal_static_code"] = live.SETUP_CODE
+    applied_code = live.SETUP_CODE - 5
+    applied = _health(
+        supervisor,
+        hybrid_state="PHASE_QUALIFY",
+        correction_count="1",
+        cumulative_movement_codes="5",
+        phase_nonzero_application_count="1",
+        phase_material_application_count="0",
+        frequency_only_application_count="1",
+        confirmed_applied_code=str(applied_code),
+    )
+
+    supervisor._check_fail_static_health(applied)
+
+    assert supervisor.state["terminal_static_code"] == applied_code
+
+
+def test_global_authority_fault_retains_latest_confirmed_applied_code(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    supervisor.state["terminal_static_code"] = live.SETUP_CODE
+    applied_code = live.SETUP_CODE - 5
+    exceeded = _health(
+        supervisor,
+        hybrid_state="PHASE_QUALIFY",
+        correction_count=str(supervisor.programme.maximum_applications + 1),
+        cumulative_movement_codes="5",
+        confirmed_applied_code=str(applied_code),
+    )
+
+    with pytest.raises(ValueError, match="exceeded the frozen global authority"):
+        supervisor._check_fail_static_health(exceeded)
+
+    assert supervisor.state["terminal_static_code"] == applied_code
+
+
 def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:
