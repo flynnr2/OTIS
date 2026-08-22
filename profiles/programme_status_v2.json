@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt4_authorized_live_entry_pending",
+      "state": "stage5_attempt4_exact_phase_residence_remediation",
       "allowed_operations": [
-        "offline_preparation",
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-22",
-      "authority": "attempt4_effective_exact_bundle_authority",
-      "physical_authority_effective": true,
+      "authority": "attempt4_consumed_firmware_remediation_only",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -45,10 +44,10 @@
         "affected_current_release_tests_passed": true,
         "historical_programme_tests_excluded": true,
         "measurement_semantics_inventory_check_passed": true,
-        "exact_firmware_build_pending": false,
-        "exact_bundle_pending": false,
-        "structural_preflight_pending": false,
-        "complete_operational_rehearsal_pending": false
+        "exact_firmware_build_pending": true,
+        "exact_bundle_pending": true,
+        "structural_preflight_pending": true,
+        "complete_operational_rehearsal_pending": true
       },
       "exact_bundle": {
         "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_ee6dcca_20260822/cx322_direct_hybrid_exact_bundle_v7.json",
@@ -102,9 +101,9 @@
         "activation_sha256": "86255b75a96e49839f258165f94c15399ee3522b0d84f7e2834f75c632f10229",
         "attempt_ordinal": 4,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false,
-        "consumed_by_run_id": null,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt4_20260822T1252Z",
         "predecessor_seal_sha256": "52ad383a67ca9620e3db022bb9852a56361cc810dccfe1153b22fc839086ab73"
       },
       "stage5_attempts": [
@@ -184,6 +183,38 @@
           "seal_sha256": "52ad383a67ca9620e3db022bb9852a56361cc810dccfe1153b22fc839086ab73",
           "evidence_content_sha256": "006ae65d6ad4717fb7b4eb2481de1d7f64ea9acce3b32d2432889b59901b0f9e",
           "scientific_result": "one_nonmaterial_combined_minus5_code_application_observed_but_response_horizon_interrupted_by_host_false_positive"
+        },
+        {
+          "ordinal": 4,
+          "run_id": "stage5_live_attempt4_20260822T1252Z",
+          "classification": "firmware_defect_under_intended_phase_residence_integration",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "exact_tick_phase_qualification_origin_was_not_recorded_on_frequency_acquire_transition",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 1,
+          "dac_value_writes": 2,
+          "last_observed_applied_code": 43063,
+          "last_observed_dac_epoch": 2,
+          "selected_estimate_boundaries": 4,
+          "active_hybrid_decisions_recorded": 4,
+          "qualified_origin_established": true,
+          "frequency_only_applications": 1,
+          "phase_nonzero_applications": 1,
+          "phase_material_applications": 0,
+          "completed_response_observations": 1,
+          "response_class": "healthy_indeterminate_near_resolution",
+          "observed_response_hz": 0.0,
+          "acquisition_gate_passed": true,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "seal_sha256": "39f288838e794569a9b9307158748c76945e66fd8f46421f28f6b15d24daadf2",
+          "evidence_content_sha256": "525eb8625fe8a6ee5bbf1c81d1c70f8c2b95de769be479f36eba0e225ab5edb9",
+          "scientific_result": "one_early_nonmaterial_minus5_code_application_had_zero_observed_1500s_response_but_did_not_follow_the_frozen_1800s_phase_residence"
         }
       ],
       "physical_authority_prerequisites": [
@@ -192,7 +223,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "attempt4_physical_entry"
+      "next_gate": "correct_exact_tick_phase_residence_then_rebuild_and_rehearse"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

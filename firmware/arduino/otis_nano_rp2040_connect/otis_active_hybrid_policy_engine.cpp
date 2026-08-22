@@ -252,12 +252,15 @@ bool decide_impl(
       engine->state = OtisActiveHybridState::PhaseQualify;
       engine->phase_qualification_started = true;
       engine->phase_qualification_started_s = observation->timestamp_s;
+      if (engine->exact_tick_timing_required)
+        engine->phase_qualification_started_ticks = observation_ticks;
       engine->reason = "two_fresh_tight_estimates_enter_phase_qualification";
       reason = engine->reason;
     } else if (engine->state == OtisActiveHybridState::PhaseQualify) {
       if (!tight_inside(observation)) {
         engine->state = OtisActiveHybridState::FrequencyAcquire;
         engine->phase_qualification_started = false;
+        engine->phase_qualification_started_ticks = 0u;
         engine->reason = "tight_frequency_residence_lost";
         reason = engine->reason;
       } else if (phase_qualified) {
