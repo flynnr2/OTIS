@@ -190,9 +190,12 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx321["stage5_attempts"][2]["pre2_total_count"] == 15_000_000_002
     assert cx321["stage5_attempts"][2]["identification_applications"] == 0
     cx322 = status["programmes"]["cx322_bounded_hybrid_fact_gathering"]
-    assert cx322["state"] == "stage5_attempt3_host_counter_partition_remediation"
-    assert cx322["allowed_operations"] == [OFFLINE_PREPARATION]
-    assert cx322["physical_authority_effective"] is False
+    assert cx322["state"] == "stage5_attempt4_authorized_live_entry_pending"
+    assert cx322["allowed_operations"] == [
+        OFFLINE_PREPARATION,
+        "cx322_stage5_bounded_hybrid_fact_gathering_live",
+    ]
+    assert cx322["physical_authority_effective"] is True
     assert cx322["selected_policy"][
         "natural_control_law_mathematics_change_from_cx320"
     ] == "none"
@@ -204,10 +207,10 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["verification"]["structural_preflight_pending"] is False
     assert cx322["verification"]["complete_operational_rehearsal_pending"] is False
     assert cx322["exact_bundle"]["bundle_sha256"] == (
-        "29ac2e51f63f44e32561d3a0d2701bf82c602ed691844ea216f375d2690be015"
+        "c3e7a1db41908b1e5cd929a3fbd5e2be3ec119983120a3c22c0e9c1daa6ac118"
     )
     assert cx322["authority_proposal"]["proposal_sha256"] == (
-        "6f6fd402e6152c799ff4afa05547089d4caa069688d0ba52c74329a07bc1b6cd"
+        "774736b12d15f7b472a4daaf1f0d8505aa9b8a97546ac178cc16587ac743b277"
     )
     assert cx322["structural_preflight"]["status"] == "passed"
     assert cx322["operational_rehearsal"]["status"] == "passed"
@@ -219,19 +222,17 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     ] is True
     assert cx322["operational_rehearsal"]["physical_actions_performed"] == 0
     assert cx322["operator_authority"]["bundle_sha256"] == (
-        "29ac2e51f63f44e32561d3a0d2701bf82c602ed691844ea216f375d2690be015"
+        "c3e7a1db41908b1e5cd929a3fbd5e2be3ec119983120a3c22c0e9c1daa6ac118"
     )
     assert cx322["effective_activation"]["activation_sha256"] == (
-        "5af707da570b5e269e41b378acc60e3d6cf87c34acf15f743271626f5fb5aefb"
+        "86255b75a96e49839f258165f94c15399ee3522b0d84f7e2834f75c632f10229"
     )
-    assert cx322["effective_activation"]["attempt_ordinal"] == 3
-    assert cx322["effective_activation"]["effective"] is False
-    assert cx322["effective_activation"]["consumed"] is True
-    assert cx322["effective_activation"]["consumed_by_run_id"] == (
-        "stage5_live_attempt3_20260822T1121Z"
-    )
+    assert cx322["effective_activation"]["attempt_ordinal"] == 4
+    assert cx322["effective_activation"]["effective"] is True
+    assert cx322["effective_activation"]["consumed"] is False
+    assert cx322["effective_activation"]["consumed_by_run_id"] is None
     assert cx322["effective_activation"]["predecessor_seal_sha256"] == (
-        "782469d35567ad80d30e7d8af9212526e8157bdf946fbc5e8dabf7642be5eb61"
+        "52ad383a67ca9620e3db022bb9852a56361cc810dccfe1153b22fc839086ab73"
     )
     assert cx322["stage5_attempts"][0]["setup_applications"] == 1
     assert cx322["stage5_attempts"][0]["automatic_applications"] == 0
@@ -247,9 +248,7 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["stage5_attempts"][2]["frequency_only_applications"] == 1
     assert cx322["stage5_attempts"][2]["phase_nonzero_applications"] == 1
     assert cx322["stage5_attempts"][2]["phase_material_applications"] == 0
-    assert cx322["next_gate"] == (
-        "repair_and_rehearse_host_counter_partition_and_terminal_code_ordering"
-    )
+    assert cx322["next_gate"] == "attempt4_physical_entry"
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1229,11 +1228,10 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert require_programme_operation_allowed(
         "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
     ) == cx322
-    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
-        require_programme_operation_allowed(
-            "cx322_bounded_hybrid_fact_gathering",
-            "cx322_stage5_bounded_hybrid_fact_gathering_live",
-        )
+    assert require_programme_operation_allowed(
+        "cx322_bounded_hybrid_fact_gathering",
+        "cx322_stage5_bounded_hybrid_fact_gathering_live",
+    ) == cx322
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION
