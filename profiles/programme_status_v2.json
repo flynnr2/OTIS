@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt1_setup_integration_remediation",
+      "state": "stage5_attempt2_authorized_live_entry_pending",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "cx322_stage5_bounded_hybrid_fact_gathering_live"
       ],
       "effective_date": "2026-08-22",
-      "authority": "attempt1_consumed_platform_remediation_only",
-      "physical_authority_effective": false,
+      "authority": "remediated_exact_bundle_operator_authorized_single_use_activation_effective",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -50,31 +51,31 @@
         "complete_operational_rehearsal_pending": false
       },
       "exact_bundle": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_exact_bundle_v4.json",
-        "file_sha256": "8080667130daa4c3a4882046022f5e62f2251b8c1ab50a944b7e9281ffc9708b",
-        "bundle_sha256": "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f",
-        "firmware_source_revision": "dabe4e953429814c71dcbbbea16702ceb5356516",
-        "firmware_source_sha256": "52467e265f0c3698d4ab850d52b969bff0b54cbb5946f162079b6fa136423f77",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_df75cfb_20260822/cx322_direct_hybrid_exact_bundle_v5.json",
+        "file_sha256": "9d9405ccbae2f4919b2d59cff443d575e82e51a771b9043d78623097bb35c24b",
+        "bundle_sha256": "6be81bc12f3f5c276cc3cd50bb6e3bdb7e4f9d741f4cd84f117ff5d9da326149",
+        "firmware_source_revision": "df75cfb3ab7892015e386a15015ac6d0586a1262",
+        "firmware_source_sha256": "62f877f830d013b99ca439d38e161c7d7e3eddcfb8968b85531c5b63103bdb97",
         "configuration_sha256": "99d55df144d2984d16a7610d077d737644375cfb6731e2345cad73739b8763d8",
-        "firmware_uf2_sha256": "a5a7c48702c3b54d48d8055c99ed882293ea84d74b62a585c7f15a9b66dc51ac"
+        "firmware_uf2_sha256": "3cd956a96f7428961a5a9d90c52dbcb8a9e420ebd593e9053ab12b4a049d764a"
       },
       "authority_proposal": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_authority_proposal_v4.json",
-        "file_sha256": "0f6064521d1a8f5afa3dd124b83d155e782642606a888affa54cb10d704e1481",
-        "proposal_sha256": "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_df75cfb_20260822/cx322_direct_hybrid_authority_proposal_v5.json",
+        "file_sha256": "11466ebbc4534b4da17d0abfad75c8221b3cc9c92e97acd6c0cccc360e147717",
+        "proposal_sha256": "462389a8445e8d9ee525c1faaef0e5c3f6087f5ddf68c19108580463f4ca1d1b",
         "status": "non_effective_awaiting_separate_operator_decision"
       },
       "structural_preflight": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_structural_preflight_v4.json",
-        "file_sha256": "0fb230bef6f94ff3d8e55358bce9324fd110bcc9735d36fee6db314a554a123f",
-        "preflight_sha256": "1a8d0067eb7ba2a801ed332752ad810a8fbad689b4d5bf809b77ac4ede626a75",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_df75cfb_20260822/cx322_direct_hybrid_structural_preflight_v5.json",
+        "file_sha256": "b29c506fa77b7f5a8422afcf9d414da4ee48a75d08c015a802526f1a21bfc5de",
+        "preflight_sha256": "c50e2120516b2bf503a190aa01d063923727ed90cf06a73abc115338d0327778",
         "status": "passed",
         "physical_actions_performed": 0
       },
       "operational_rehearsal": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/exact_bundle_rehearsal_v4/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
-        "file_sha256": "fe1651951c03a0d92fbebcf8a7e652587f16d5428cb7f89cbdb46dda3433f303",
-        "rehearsal_sha256": "d2de2eabea73ac765563363e89503d9de383881282e371d5d5410a93da82f205",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_df75cfb_20260822/exact_bundle_rehearsal_v5/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "d5e4db653a8d7f05071d2131ce1a200b029eb78cf58e24a552caef41a0a15f2c",
+        "rehearsal_sha256": "82d38a6eb033d89f33398c290204732da917571b5556b87f69dce8254e3bf8ad",
         "status": "passed",
         "capture_parser_errors": 0,
         "priority_abort_observed": true,
@@ -88,22 +89,22 @@
         "physical_actions_performed": 0
       },
       "operator_authority": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_authority_v1.json",
-        "file_sha256": "d1f32a7842b1eec94d3025a9ae0bf29baeffd2a420de47e547b2c08ec8e555d6",
-        "bundle_sha256": "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f",
-        "proposal_sha256": "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_remediation_authority_attempt2_v1.json",
+        "file_sha256": "b4ce31fae447dc30743bb62868d05f5badedff1b9b31de528e7cbeb1d1a7e6aa",
+        "bundle_sha256": "6be81bc12f3f5c276cc3cd50bb6e3bdb7e4f9d741f4cd84f117ff5d9da326149",
+        "proposal_sha256": "462389a8445e8d9ee525c1faaef0e5c3f6087f5ddf68c19108580463f4ca1d1b",
         "physical_execution_effective": true,
         "expanded_remediation_authority_effective": true
       },
       "effective_activation": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt1_v1.json",
-        "file_sha256": "f78ae0b9d5ce957462e4cc3db7759668a59be120323e1c33319ec55383e47bcf",
-        "activation_sha256": "9bab8e0d406ce427d2f08479468e7d507c25f2df8062ac1246f2d32c2339b929",
-        "attempt_ordinal": 1,
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt2_v1.json",
+        "file_sha256": "6729e46240901709ab4bc7281baef370de5438ac180beadbd35c177f3d9649bc",
+        "activation_sha256": "7ce8b323cd1f9a03d214a6c5e2674fa0fd7593cd585788f57ecd08c4e306403e",
+        "attempt_ordinal": 2,
         "automatic_retry": false,
-        "effective": false,
-        "consumed": true,
-        "consumed_by_run_id": "stage5_live_attempt1_20260822T1000Z"
+        "effective": true,
+        "consumed": false,
+        "predecessor_seal_sha256": "1b0898b0ec88c0845b57299406cfd78e20df6d787af0681d225411e1d6f70fe7"
       },
       "stage5_attempts": [
         {
@@ -137,7 +138,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "freeze_and_rehearse_remediated_exact_bundle"
+      "next_gate": "cx322_stage5_attempt2_physical_entry"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
