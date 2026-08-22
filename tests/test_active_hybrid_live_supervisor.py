@@ -979,6 +979,64 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 
+def test_evidence_prepare_waits_through_causally_stale_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    clear = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        evidence_phase="evidence_clear",
+        evidence_request_sequence="0",
+    )
+    pending = _health(
+        supervisor,
+        snapshot_generation_begin="9",
+        snapshot_generation_complete="9",
+        evidence_phase="request_pending",
+        evidence_request_sequence="2",
+    )
+    monkeypatch.setattr(supervisor, "_current_health", lambda: _health(supervisor))
+    snapshots = iter((clear, pending))
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: next(snapshots),
+    )
+
+    prepared = supervisor._prepare_evidence_acknowledgement(
+        {"request_sequence": "2"}, 1
+    )
+
+    assert prepared == {
+        "pre_submit_snapshot_generation": 9,
+        "pre_submit_evidence_phase": "request_pending",
+    }
+
+
+def test_evidence_prepare_rejects_contradictory_request_identity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    contradictory = _health(
+        supervisor,
+        evidence_phase="request_pending",
+        evidence_request_sequence="3",
+    )
+    monkeypatch.setattr(supervisor, "_current_health", lambda: _health(supervisor))
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: contradictory,
+    )
+
+    with pytest.raises(ValueError, match="observed_request=3"):
+        supervisor._prepare_evidence_acknowledgement(
+            {"request_sequence": "2"}, 1
+        )
+
+
 def test_phase_degradation_stops_as_active_hybrid_nonpass(
     tmp_path: Path, monkeypatch
 ) -> None:

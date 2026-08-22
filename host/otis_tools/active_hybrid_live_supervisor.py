@@ -548,23 +548,61 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             4: "response_pending",
         }[phase]
         request_sequence = int(row["request_sequence"])
-        if (
-            health.get(("cx317_active", "evidence_phase")) != expected_phase
-            or int(
+        stale_phases = {
+            1: (),
+            2: ("request_pending",),
+            3: ("request_pending", "acceptance_pending"),
+            4: (
+                "request_pending",
+                "acceptance_pending",
+                "application_pending",
+            ),
+        }[phase]
+        # A periodic query can already be in flight when the ACT record arrives.
+        # Its completion is generation-fresh but causally precedes the record.
+        # Wait through that bounded stale frontier instead of aborting a valid
+        # transaction.  Four queries remain inside the firmware's frozen
+        # 30-second evidence-acknowledgement deadline.
+        for _ in range(4):
+            observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+            observed_request = int(
                 health.get(("cx317_active", "evidence_request_sequence"), "0")
             )
-            != request_sequence
-        ):
-            raise ValueError(
-                "CX320 firmware evidence frontier differs before acknowledgement: "
-                f"request={request_sequence} phase={expected_phase}"
-            )
-        return {
-            "pre_submit_snapshot_generation": int(
+            if (
+                observed_phase == expected_phase
+                and observed_request == request_sequence
+            ):
+                return {
+                    "pre_submit_snapshot_generation": int(
+                        health[("cx317_active", "snapshot_generation_complete")]
+                    ),
+                    "pre_submit_evidence_phase": expected_phase,
+                }
+            if observed_phase == "evidence_clear" and observed_request == 0:
+                pass
+            elif (
+                observed_phase in stale_phases
+                and observed_request == request_sequence
+            ):
+                pass
+            else:
+                raise ValueError(
+                    "CX320 firmware evidence frontier differs before "
+                    "acknowledgement: "
+                    f"expected_request={request_sequence} "
+                    f"expected_phase={expected_phase} "
+                    f"observed_request={observed_request} "
+                    f"observed_phase={observed_phase}"
+                )
+            generation = int(
                 health[("cx317_active", "snapshot_generation_complete")]
-            ),
-            "pre_submit_evidence_phase": expected_phase,
-        }
+            )
+            health = self._fresh_active_snapshot_after(generation)
+        raise TimeoutError(
+            "CX320 firmware evidence frontier did not reach the expected "
+            "pre-acknowledgement state: "
+            f"request={request_sequence} phase={expected_phase}"
+        )
 
     def _confirm_evidence_acknowledgement(
         self, acknowledgement: dict[str, object]
