@@ -11,6 +11,7 @@ from typing import Any
 
 from .active_hybrid_policy import ActiveHybridController, HybridObservation, load_policy
 from .contracts import CsvValidationContext, validate_csv
+from .time_domains import time_domain, unwrap_domain_ticks
 
 
 TOOL_ID = "cx320_active_hybrid_response_evidence_guard_v1"
@@ -35,6 +36,51 @@ class IndependentReplayMismatch(ValueError):
 def _rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _exact_decision_timestamps_s(
+    decisions: list[dict[str, str]],
+    estimates: list[dict[str, str]] | None,
+    *,
+    estimator_id: str,
+) -> dict[int, float]:
+    """Join each AHY source boundary to its exact estimator timer coordinate."""
+
+    if estimates is None:
+        return {}
+    selected: dict[int, list[dict[str, str]]] = {}
+    for row in estimates:
+        if (
+            row.get("estimator_version") == estimator_id
+            and row.get("observation_validity") == "valid"
+            and row.get("reference_validity") == "valid"
+            and row.get("count_validity") == "valid"
+        ):
+            selected.setdefault(int(row["source_count_seq"]), []).append(row)
+    matched: list[dict[str, str]] = []
+    sequences: list[int] = []
+    for decision in decisions:
+        decision_sequence = int(decision["decision_sequence"])
+        candidates = selected.get(int(decision["source_last_sequence"]), [])
+        if len(candidates) != 1:
+            raise ValueError(
+                "CX320 AHY decision lacks one exact selected-estimate timestamp"
+            )
+        matched.append(candidates[0])
+        sequences.append(decision_sequence)
+    domains = {row.get("time_domain", "") for row in matched}
+    if len(domains) != 1:
+        raise ValueError("CX320 exact decision timestamps cross clock domains")
+    domain = next(iter(domains))
+    ticks, _ = unwrap_domain_ticks(
+        [int(row["estimator_timestamp_ticks"]) for row in matched],
+        domain=domain,
+    )
+    hz = time_domain(domain).nominal_hz
+    return {
+        decision_sequence: tick / hz
+        for decision_sequence, tick in zip(sequences, ticks)
+    }
 
 
 def _close(observed: float, expected: float) -> bool:
@@ -128,6 +174,7 @@ def replay_active_hybrid_history(
     expected_profile_identity: str,
     expected_active_policy_sha256: str | None = None,
     plant_sign_handoff: dict[str, Any] | None = None,
+    estimate_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Replay the real request/application/response chronology exactly.
 
@@ -148,6 +195,9 @@ def replay_active_hybrid_history(
     )
     controller = ActiveHybridController(
         policy, setup_application_s=setup_application_s
+    )
+    exact_timestamps_s = _exact_decision_timestamps_s(
+        decisions, estimate_rows, estimator_id=policy.frequency_estimator_id
     )
     identification_request_sequence: int | None = None
     if plant_sign_handoff is not None:
@@ -216,7 +266,9 @@ def replay_active_hybrid_history(
                 and row.get("authority_state") == "AWAITING_RESPONSE"
             )
             observation = HybridObservation(
-                timestamp_s=int(row["decision_timestamp_s"]),
+                timestamp_s=exact_timestamps_s.get(
+                    decision_sequence, int(row["decision_timestamp_s"])
+                ),
                 capture_session=int(row["capture_session"]),
                 source_first_sequence=int(row["source_first_sequence"]),
                 source_last_sequence=int(row["source_last_sequence"]),
@@ -463,6 +515,7 @@ def replay_response_before_acknowledgement(
     expected_profile_identity: str = "cx320_active_hybrid",
     expected_active_policy_sha256: str | None = None,
     plant_sign_csv: Path | None = None,
+    estimates_csv: Path | None = None,
 ) -> dict[str, Any]:
     validation = validate_csv(
         active_hybrid_csv,
@@ -518,6 +571,7 @@ def replay_response_before_acknowledgement(
         expected_profile_identity=decision["profile_identity"],
         expected_active_policy_sha256=active_policy_sha256,
         plant_sign_handoff=plant_sign_handoff,
+        estimate_rows=(None if estimates_csv is None else _rows(estimates_csv)),
     )
     if not replay["exact"]:
         raise IndependentReplayMismatch(

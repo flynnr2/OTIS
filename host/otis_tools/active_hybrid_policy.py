@@ -279,7 +279,7 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
 
 @dataclass(frozen=True)
 class HybridObservation:
-    timestamp_s: int
+    timestamp_s: float
     capture_session: int
     source_first_sequence: int
     source_last_sequence: int
@@ -309,7 +309,7 @@ class HybridDecision:
     state_before: str
     state_after: str
     reason: str
-    timestamp_s: int
+    timestamp_s: float
     capture_session: int
     source_first_sequence: int
     source_last_sequence: int
@@ -409,7 +409,7 @@ class ActiveHybridController:
         self.phase_nonzero_application_count = 0
         self.phase_epoch: int | None = None
         self.phase_session: int | None = None
-        self.phase_qualification_started_s: int | None = None
+        self.phase_qualification_started_s: float | None = None
         self.fault_reason: str | None = None
         self.plant_sign_attestation_id: str | None = None
         self._plant_sign_handoff_first_consumer_pending = False

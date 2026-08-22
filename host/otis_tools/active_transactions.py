@@ -698,6 +698,7 @@ class ActiveTransactionSupervisor:
                     if self.spec.profile == "cx321_active_hybrid"
                     else None
                 ),
+                estimates_csv=self.run_dir / "csv/estimates_v2.csv",
             )
             attestation_path = capsule_dir / (
                 f"record_{record_sequence:06d}_response_replay_attestation.json"

@@ -66,16 +66,24 @@ and `excess_response` are retained without becoming terminal by themselves.
 Malformed measurement, actuator, identity, epoch, or replay evidence remains
 fail-closed.
 
-An independent host-verifier disagreement is first treated as a diagnostic
-quarantine, not as proof that the firmware or physical evidence is invalid.
-The supervisor withholds phase-4 acknowledgement, clears any pending arm,
-issues no further control authority, retains the last confirmed DAC code, and
-continues capture while the discrepancy is classified. A confirmed firmware
-policy violation, ambiguous actuator state, measurement-authority loss, or
-physical-envelope breach still disqualifies and aborts the run. A defect
-confined to non-authoritative host bookkeeping or reporting may instead be
-replayed from the unchanged retained evidence. Any actuation, code, epoch, or
-budget change while quarantined is itself an immediate abort condition.
+An independent host-verifier disagreement first enters a bounded diagnostic
+quarantine; it is not by itself proof that the firmware or physical evidence
+is invalid. The supervisor withholds phase-4 acknowledgement, clears pending
+arm state, issues no further authority, and retains the last confirmed DAC
+code while the discrepancy is classified. This interval is bounded by the
+firmware's evidence-acknowledgement timeout: it is a short classification
+window, not permission to leave a live controller indefinitely unacknowledged.
+The independent replay therefore joins each AHY decision boundary to the exact
+selected-estimator `rp2040_timer0` coordinate, including canonical 36-bit
+rollover, rather than using the lossy integer-second AHY display field for
+phase-residence or cadence decisions. If the discrepancy is not resolved and
+acknowledged before the firmware deadline, firmware correctly enters
+fail-static and the run terminates. A confirmed firmware policy violation,
+ambiguous actuator state, measurement-authority loss, or physical-envelope
+breach also disqualifies and aborts the run. A defect confined to
+non-authoritative offline bookkeeping or reporting may instead be replayed
+from unchanged retained evidence. Any actuation, code, epoch, or budget change
+while quarantined is itself an immediate abort condition.
 
 The wire-compatible firmware field `first_phase_checkpoint_passed` means
 “exact checkpoint recorded” in CX322. CX322 host state and analysis expose the
