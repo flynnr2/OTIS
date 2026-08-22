@@ -125,3 +125,30 @@ PTY or fixtures exercised the physical plant.
 The prior CX320/CX321 bundle and proposal hashes cannot authorize CX322. A new
 exact bundle hash requires an explicit operator decision before flash, reset,
 serial ownership, setup, or live acquisition.
+
+## Entry result (2026-08-22)
+
+The exact offline entry sequence passed:
+
+- firmware UF2 SHA-256:
+  `a5a7c48702c3b54d48d8055c99ed882293ea84d74b62a585c7f15a9b66dc51ac`;
+- exact bundle SHA-256:
+  `ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f`;
+- non-effective proposal SHA-256:
+  `6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab`;
+- structural-preflight SHA-256:
+  `1a8d0067eb7ba2a801ed332752ad810a8fbad689b4d5bf809b77ac4ede626a75`;
+- live-topology rehearsal SHA-256:
+  `d2de2eabea73ac765563363e89503d9de383881282e371d5d5410a93da82f205`.
+
+The PTY rehearsal used the real capture and live-supervisor processes and
+confirmed durable phases 1--4, exact firmware consumption of phase 4,
+nonterminal response retention, TIGHT reacquisition before later authority,
+independent abort delivery through a saturated normal-command path, a complete
+ABORTED/fail-static snapshot preserving the last confirmed DAC code, logical
+rotation under the same sole serial owner, and successful analysis, sealing,
+and registration. Capture recorded zero parser errors. It performed zero
+physical actions and supplies no physical qualification evidence.
+
+CX322 remains offline-only. The next gate is a separate operator decision that
+names the exact bundle and proposal hashes above.

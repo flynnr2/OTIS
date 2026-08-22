@@ -10,12 +10,12 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "offline_exact_entry_preparation",
+      "state": "offline_exact_entry_ready_awaiting_operator_authorization",
       "allowed_operations": [
         "offline_preparation"
       ],
       "effective_date": "2026-08-22",
-      "authority": "operator_directed_bounded_fact_gathering_design_no_physical_authority",
+      "authority": "exact_bundle_rehearsed_no_physical_authority",
       "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
@@ -44,10 +44,48 @@
         "affected_current_release_tests_passed": true,
         "historical_programme_tests_excluded": true,
         "measurement_semantics_inventory_check_passed": true,
-        "exact_firmware_build_pending": true,
-        "exact_bundle_pending": true,
-        "structural_preflight_pending": true,
-        "complete_operational_rehearsal_pending": true
+        "exact_firmware_build_pending": false,
+        "exact_bundle_pending": false,
+        "structural_preflight_pending": false,
+        "complete_operational_rehearsal_pending": false
+      },
+      "exact_bundle": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_exact_bundle_v4.json",
+        "file_sha256": "8080667130daa4c3a4882046022f5e62f2251b8c1ab50a944b7e9281ffc9708b",
+        "bundle_sha256": "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f",
+        "firmware_source_revision": "dabe4e953429814c71dcbbbea16702ceb5356516",
+        "firmware_source_sha256": "52467e265f0c3698d4ab850d52b969bff0b54cbb5946f162079b6fa136423f77",
+        "configuration_sha256": "99d55df144d2984d16a7610d077d737644375cfb6731e2345cad73739b8763d8",
+        "firmware_uf2_sha256": "a5a7c48702c3b54d48d8055c99ed882293ea84d74b62a585c7f15a9b66dc51ac"
+      },
+      "authority_proposal": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_authority_proposal_v4.json",
+        "file_sha256": "0f6064521d1a8f5afa3dd124b83d155e782642606a888affa54cb10d704e1481",
+        "proposal_sha256": "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab",
+        "status": "non_effective_awaiting_separate_operator_decision"
+      },
+      "structural_preflight": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/cx322_direct_hybrid_structural_preflight_v4.json",
+        "file_sha256": "0fb230bef6f94ff3d8e55358bce9324fd110bcc9735d36fee6db314a554a123f",
+        "preflight_sha256": "1a8d0067eb7ba2a801ed332752ad810a8fbad689b4d5bf809b77ac4ede626a75",
+        "status": "passed",
+        "physical_actions_performed": 0
+      },
+      "operational_rehearsal": {
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/preentry_dabe4e9_20260822/exact_bundle_rehearsal_v4/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "fe1651951c03a0d92fbebcf8a7e652587f16d5428cb7f89cbdb46dda3433f303",
+        "rehearsal_sha256": "d2de2eabea73ac765563363e89503d9de383881282e371d5d5410a93da82f205",
+        "status": "passed",
+        "capture_parser_errors": 0,
+        "priority_abort_observed": true,
+        "post_abort_complete_active_snapshot": true,
+        "firmware_phase4_consumption_confirmed": true,
+        "first_phase_observation_checkpoint_exact": true,
+        "response_retained_nonterminal": true,
+        "later_authority_release_observed": true,
+        "analysis_seal_registration_passed": true,
+        "qualification_evidence": false,
+        "physical_actions_performed": 0
       },
       "physical_authority_prerequisites": [
         "exact_immutable_bundle",
@@ -55,7 +93,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "freeze_exact_bundle_then_complete_preflight_and_operational_rehearsal"
+      "next_gate": "separate_explicit_exact_bundle_operator_decision"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

@@ -190,7 +190,9 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx321["stage5_attempts"][2]["pre2_total_count"] == 15_000_000_002
     assert cx321["stage5_attempts"][2]["identification_applications"] == 0
     cx322 = status["programmes"]["cx322_bounded_hybrid_fact_gathering"]
-    assert cx322["state"] == "offline_exact_entry_preparation"
+    assert cx322["state"] == (
+        "offline_exact_entry_ready_awaiting_operator_authorization"
+    )
     assert cx322["allowed_operations"] == [OFFLINE_PREPARATION]
     assert cx322["physical_authority_effective"] is False
     assert cx322["selected_policy"][
@@ -199,8 +201,28 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["selected_policy"]["response_checkpoint_mode"] == (
         "observational_non_terminal"
     )
-    assert cx322["verification"]["exact_bundle_pending"] is True
-    assert cx322["verification"]["complete_operational_rehearsal_pending"] is True
+    assert cx322["verification"]["exact_firmware_build_pending"] is False
+    assert cx322["verification"]["exact_bundle_pending"] is False
+    assert cx322["verification"]["structural_preflight_pending"] is False
+    assert cx322["verification"]["complete_operational_rehearsal_pending"] is False
+    assert cx322["exact_bundle"]["bundle_sha256"] == (
+        "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f"
+    )
+    assert cx322["authority_proposal"]["proposal_sha256"] == (
+        "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab"
+    )
+    assert cx322["structural_preflight"]["status"] == "passed"
+    assert cx322["operational_rehearsal"]["status"] == "passed"
+    assert cx322["operational_rehearsal"][
+        "firmware_phase4_consumption_confirmed"
+    ] is True
+    assert cx322["operational_rehearsal"][
+        "later_authority_release_observed"
+    ] is True
+    assert cx322["operational_rehearsal"]["physical_actions_performed"] == 0
+    assert cx322["next_gate"] == (
+        "separate_explicit_exact_bundle_operator_decision"
+    )
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
