@@ -860,6 +860,14 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
     )
     assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is True
 
+    stale_then_advanced = iter((pending, advanced))
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: next(stale_then_advanced),
+    )
+    assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is True
+
     contradictory = dict(advanced)
     contradictory[("cx317_active", "evidence_request_sequence")] = "2"
     monkeypatch.setattr(

@@ -568,11 +568,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         phase = int(acknowledgement["phase"])
         request_sequence = int(acknowledgement["request_sequence"])
         baseline = int(acknowledgement["pre_submit_snapshot_generation"])
-        health = self._fresh_active_snapshot_after(baseline)
-        observed_phase = health.get(("cx317_active", "evidence_phase"), "")
-        observed_request = int(
-            health.get(("cx317_active", "evidence_request_sequence"), "0")
-        )
+        pre_submit_phase = str(acknowledgement["pre_submit_evidence_phase"])
         permitted = {
             1: {
                 "evidence_clear",
@@ -584,19 +580,47 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             3: {"evidence_clear", "response_pending"},
             4: {"evidence_clear"},
         }[phase]
-        if observed_phase not in permitted:
-            return False
-        if (
-            observed_phase == "evidence_clear"
-            and observed_request != 0
-        ) or (
-            observed_phase != "evidence_clear"
-            and observed_request != request_sequence
-        ):
-            raise ValueError(
-                "CX320 evidence acknowledgement advanced to a contradictory "
-                "request identity"
+        # A periodic status query submitted immediately before the evidence
+        # command can arrive after the pre-submit baseline and is therefore
+        # generation-fresh but causally stale.  Retry a bounded number of
+        # complete snapshots while the exact pre-submit frontier persists.
+        # Four five-second queries remain inside the frozen 30-second host
+        # replay/acknowledgement deadline.
+        health: dict[tuple[str, str], str] | None = None
+        observed_phase = ""
+        for _ in range(4):
+            health = self._fresh_active_snapshot_after(baseline)
+            baseline = int(
+                health[("cx317_active", "snapshot_generation_complete")]
             )
+            observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+            observed_request = int(
+                health.get(("cx317_active", "evidence_request_sequence"), "0")
+            )
+            if observed_phase == pre_submit_phase:
+                if observed_request != request_sequence:
+                    raise ValueError(
+                        "CX320 evidence acknowledgement retained a contradictory "
+                        "request identity"
+                    )
+                continue
+            if (
+                observed_phase == "evidence_clear"
+                and observed_request != 0
+            ) or (
+                observed_phase != "evidence_clear"
+                and observed_request != request_sequence
+            ):
+                raise ValueError(
+                    "CX320 evidence acknowledgement advanced to a contradictory "
+                    "request identity"
+                )
+            if observed_phase not in permitted:
+                return False
+            break
+        else:
+            return False
+        assert health is not None
         self._programme_event(
             "firmware_evidence_acknowledgement_confirmed",
             request_sequence=request_sequence,
