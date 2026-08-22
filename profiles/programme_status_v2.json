@@ -10,13 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt6_causal_snapshot_host_remediation",
+      "state": "stage5_attempt7_authorized",
       "allowed_operations": [
-        "offline_preparation"
+        "cx322_stage5_bounded_hybrid_fact_gathering_live"
       ],
       "effective_date": "2026-08-22",
-      "authority": "attempt6_consumed_host_remediation_only",
-      "physical_authority_effective": false,
+      "authority": "attempt7_exact_bundle_authority_effective",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -46,8 +46,8 @@
         "measurement_semantics_inventory_check_passed": true,
         "exact_firmware_build_pending": false,
         "exact_bundle_pending": false,
-        "structural_preflight_pending": true,
-        "complete_operational_rehearsal_pending": true
+        "structural_preflight_pending": false,
+        "complete_operational_rehearsal_pending": false
       },
       "exact_bundle": {
         "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/cx322_direct_hybrid_exact_bundle_v12.json",
@@ -65,16 +65,16 @@
         "status": "non_effective_awaiting_attempt7_exact_gates"
       },
       "structural_preflight": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/cx322_direct_hybrid_structural_preflight_v11.json",
-        "file_sha256": "6d0c16415a6c2ae9af56b20d6e26d0c89f0673a8a7894cb85730959fe80e64a5",
-        "preflight_sha256": "d386b4f36a0f82da210631d445d095daad412cbe90af43b2c2aa8c6c6c2aa77b",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/cx322_direct_hybrid_structural_preflight_v12.json",
+        "file_sha256": "d3d7ee39fd363cb9f6c071a273a4ae8c3edcdfb53486ccabcc425e213ded30e6",
+        "preflight_sha256": "f13f33eeb7b3df6f093230b87cebf33273c4cf500101bb072c6a7efda664b3b6",
         "status": "passed",
         "physical_actions_performed": 0
       },
       "operational_rehearsal": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_9cf2baa_20260822/exact_bundle_rehearsal_v11/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
-        "file_sha256": "393446dd8844ba71aa86c79429b8a57f44e22219a71565266c066424c14c45ef",
-        "rehearsal_sha256": "da4cab3f2417c5e399fbfb8bff14ce29dfd6da1fe9ed40fd189bb8b4e2617239",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/exact_bundle_rehearsal_v12/cx322_direct_hybrid_live_topology_rehearsal_v1.json",
+        "file_sha256": "c02d8dce28ece069fdedb71fba7765b7b354622a3c34c29a4254dfe2a9a77ec9",
+        "rehearsal_sha256": "fdb3d1991b22fca0449c827a232d510faed4775282995d250e792dd89a3fbe3c",
         "status": "passed",
         "capture_parser_errors": 0,
         "priority_abort_observed": true,
@@ -88,23 +88,22 @@
         "physical_actions_performed": 0
       },
       "operator_authority": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_remediation_authority_attempt6_v1.json",
-        "file_sha256": "750723419b7ec9b432ee99a0228241223e991b18704a62535b243c39c61142b7",
-        "bundle_sha256": "55214280d4c4a766e9349473923462a4eb6ab9d4b0505343301bf0cf3a3014bf",
-        "proposal_sha256": "3d9385789bd578a7af673a313a150365f83c205cae63e009a581ba05c63b1929",
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/explicit_operator_remediation_authority_attempt7_v1.json",
+        "file_sha256": "24b63ff3b61e3c358e3b93c15df32d54c58b3ac4c5f7f8a39e574f3567254887",
+        "bundle_sha256": "79d064f03be1e1de1df8b3e3972a291c09aed5f2df638a69c7ca1beac39d4fcb",
+        "proposal_sha256": "ddd6fe825e73c0ec06ee31f1b6a0146d5e334b2eb459d1ad026ec0cb52be066c",
         "physical_execution_effective": true,
         "expanded_remediation_authority_effective": true
       },
       "effective_activation": {
-        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt6_v1.json",
-        "file_sha256": "b8271d0467735ba759665b10c9fba9bb72682aad4bccacb8e79a991197a3e5b5",
-        "activation_sha256": "bf7a75e0076e5aa7aa9b1aed788db8288d895801c3c837f7591a2111f7f3dbba",
-        "attempt_ordinal": 6,
+        "path": "runs/cx322_bounded_hybrid_fact_gathering/operator_authority_20260822/cx322_direct_hybrid_live_activation_attempt7_v1.json",
+        "file_sha256": "b3a2cc3bfbd3a7ca04f3de7d87c219bff6a8efa14ec47f41da90e2825fd22e69",
+        "activation_sha256": "62a0740605343ebabbefe640f0ef574a0bae1e0c4dfb927fe6c5ea5419b89b65",
+        "attempt_ordinal": 7,
         "automatic_retry": false,
-        "effective": false,
-        "consumed": true,
-        "consumed_by_run_id": "stage5_live_attempt6_20260822T1657Z",
-        "predecessor_seal_sha256": "a40bdcfd24f583c99fa837c46bbda5fdd2bd175e4831a27864d2cbc0546a4b03"
+        "effective": true,
+        "consumed": false,
+        "predecessor_seal_sha256": "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
       },
       "stage5_attempts": [
         {
@@ -292,7 +291,7 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "complete_v12_structural_preflight_and_operational_rehearsal_for_attempt7"
+      "next_gate": "attempt7_physical_terminal"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",
