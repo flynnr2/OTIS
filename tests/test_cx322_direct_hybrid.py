@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_live_rehearsal
+from host.otis_tools.active_hybrid_bundle import TOOL_PATHS
 from host.otis_tools.active_control_policy import ResponseClass, ResponseClassifier
 from host.otis_tools.active_hybrid_live_analyze import (
     _classify_decision,
@@ -60,6 +61,10 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
     assert boundary.index("otis_timer0_extension_advance_boundary") < boundary.index(
         "#if OTIS_ENABLE_CX321_ACTIVE_HYBRID"
     )
+
+
+def test_active_hybrid_bundle_binds_the_current_package_loader() -> None:
+    assert TOOL_PATHS["run_loader"].name == "run_loader.py"
 
 
 def test_cx322_real_process_fixture_connects_response_to_later_authority() -> None:
