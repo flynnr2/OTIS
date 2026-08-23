@@ -14,6 +14,7 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _phase_metrics,
     _replay_ahy,
     _response_attestations,
+    _response_dependent_consumer_propagation,
     _sustained_regulation_outcome,
     _tight_deadband_policy_sha256,
     _wall_origin_and_setup_order_exact,
@@ -186,6 +187,71 @@ def test_sustained_outcome_uses_exact_raw_phase_window_and_counter_time() -> Non
     assert facts["final_phase_window_contiguous"] is True
     assert facts["final_phase_OLS_slope_exact_numerator"] == 0
     assert facts["final_phase_slope_pass"] is True
+
+
+def test_response_identity_reaches_first_dependent_decision_exactly() -> None:
+    response = {
+        "event": "response",
+        "request_sequence": "2",
+        "transaction_record_sequence": "9",
+        "decision_sequence": "9",
+        "application_sequence": "2",
+        "applied_code": "43062",
+        "dac_epoch": "3",
+        "response_class": "healthy_indeterminate_near_resolution",
+    }
+    boundary = {
+        "decision_sequence": "10",
+        "authority_state": "AWAITING_RESPONSE",
+        "request_sequence": "2",
+    }
+    consumer = {
+        "decision_sequence": "11",
+        "authority_state": "DISARMED",
+        "request_sequence": "2",
+        "application_sequence": "2",
+        "response_class": "healthy_indeterminate_near_resolution",
+        "actual_applied_code": "43062",
+        "actual_dac_epoch": "3",
+        "downstream_epoch_exact": "true",
+        "reason": "first_phase_observation_recorded_and_tight_reacquired",
+    }
+
+    result = _response_dependent_consumer_propagation(
+        [response], [boundary, consumer]
+    )
+    assert result["exact"] is True
+    assert result["comparisons"][0]["consumer_decision_sequence"] == 11
+
+    consumer["response_class"] = "unavailable"
+    assert _response_dependent_consumer_propagation(
+        [response], [boundary, consumer]
+    )["exact"] is False
+
+
+def test_sustained_platform_integrity_fault_precedes_operator_abort_label() -> None:
+    status, decision, _ = _sustained_regulation_outcome(
+        integrity_exact=False,
+        operator_abort=True,
+        platform_terminal=False,
+        endpoint_complete=False,
+        terminal={"primary_decision": "operator_abort"},
+        supervisor_state={},
+        active_rows=[],
+        decision_rows=[],
+        phase_rows=[],
+        applications={
+            "automatic_application_count": 0,
+            "physical_control_application_count": 0,
+            "deliberate_challenge_application_count": 0,
+            "cumulative_movement_codes": 0,
+        },
+        no_fault_or_chatter=True,
+        frequency_pass=False,
+        qualified_duration_s=86_400,
+    )
+    assert status == "failed"
+    assert decision == "measurement_authority_or_platform_fault"
 
 
 def test_command_and_wall_origin_setup_order_are_exact() -> None:

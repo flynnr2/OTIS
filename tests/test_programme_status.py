@@ -236,7 +236,16 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
         "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
     )
     sustained = status["programmes"]["otis_sustained_hybrid_regulation_v1"]
-    assert sustained["physical_authority_effective"] is True
+    assert sustained["physical_authority_effective"] is False
+    assert sustained["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert sustained["attempts"][0]["classification"] == (
+        "platform_escape_into_campaign"
+    )
+    assert sustained["attempts"][0]["terminal_reason"] == (
+        "response_identity_not_propagated_through_first_dependent_decision"
+    )
+    assert sustained["attempts"][0]["abort_deliveries"] == 1
+    assert sustained["attempts"][0]["last_confirmed_code"] == 0xA836
     assert sustained["selected_policy"][
         "characterization_is_an_entry_or_terminal_failure_gate"
     ] is False
@@ -1274,10 +1283,11 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
     assert require_programme_operation_allowed(
         "otis_sustained_hybrid_regulation_v1", OFFLINE_PREPARATION
     ) == sustained
-    assert require_programme_operation_allowed(
-        "otis_sustained_hybrid_regulation_v1",
-        "otis_sustained_hybrid_regulation_live",
-    ) == sustained
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_regulation_v1",
+            "otis_sustained_hybrid_regulation_live",
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION

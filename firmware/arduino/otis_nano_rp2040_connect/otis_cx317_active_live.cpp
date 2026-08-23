@@ -8,6 +8,7 @@
 #include "otis_active_hybrid_policy_engine.h"
 #include "otis_cx317_active_actuator.h"
 #include "otis_decimal_format.h"
+#include "otis_dependent_response_identity.h"
 #include "otis_dual_core_partition.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_cx321_plant_sign.h"
@@ -217,6 +218,7 @@ OtisCx317ResponseClass pending_hybrid_response_class =
     OtisCx317ResponseClass::MeasurementOrActuatorFault;
 bool pending_hybrid_response_valid = false;
 bool pending_hybrid_predicted_sign_observed = false;
+OtisDependentResponseIdentity dependent_response_identity = {};
 uint32_t hybrid_record_sequence = 0u;
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
 OtisCx321PlantSignEngine plant_sign_engine = {};
@@ -598,7 +600,7 @@ bool queue_active_hybrid_decision(
     const OtisCx317ActiveLiveDecision &source,
     const OtisActiveHybridDecision &decision) {
   const uint32_t next_sequence = hybrid_record_sequence + 1u;
-  const OtisActiveHybridDecisionRecordContext context = {
+  OtisActiveHybridDecisionRecordContext context = {
       next_sequence,
       kRunIdentity,
       kBuildIdentity,
@@ -620,6 +622,9 @@ bool queue_active_hybrid_decision(
       kResponsePolicyHash,
       false,
   };
+  const bool carries_dependent_response =
+      otis_dependent_response_identity_apply(&dependent_response_identity,
+                                             &context);
   const int used = otis_format_active_hybrid_decision_v1(
       frame.data, sizeof(frame.data), &source, &decision, &context);
   if (used <= 0 || static_cast<size_t>(used) >= sizeof(frame.data)) {
@@ -640,6 +645,8 @@ bool queue_active_hybrid_decision(
   frame = {};
 #endif
   hybrid_record_sequence = next_sequence;
+  if (carries_dependent_response)
+    otis_dependent_response_identity_consume(&dependent_response_identity);
   return true;
 }
 #endif
@@ -804,6 +811,7 @@ bool otis_cx317_active_live_begin(void) {
       OtisCx317ResponseClass::MeasurementOrActuatorFault;
   pending_hybrid_response_valid = false;
   pending_hybrid_predicted_sign_observed = false;
+  otis_dependent_response_identity_reset(&dependent_response_identity);
   hybrid_record_sequence = 0u;
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   otis_cx321_plant_sign_engine_init(&plant_sign_engine);
@@ -954,6 +962,7 @@ void otis_cx317_active_live_abort(const char *reason) {
   evidence_phase = EvidencePhase::None;
   evidence_request_sequence = 0u;
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  otis_dependent_response_identity_reset(&dependent_response_identity);
   if (hybrid_engine_ready)
     hybrid_fail_static(reason == nullptr ? "operator_abort" : reason);
 #endif
@@ -1088,9 +1097,16 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
         &hybrid_engine, healthy_classification, predicted_sign_observed,
         true, latest_health.estimator_valid, applied_epoch_exact,
         OTIS_ENABLE_CX322_DIRECT_HYBRID);
+    const bool response_identity_retained =
+        noted && otis_dependent_response_identity_retain(
+                     &dependent_response_identity,
+                     transaction.request.request_sequence,
+                     transaction.applied.application_sequence,
+                     otis_cx317_response_class_name(
+                         pending_hybrid_response_class));
     pending_hybrid_response_valid = false;
     pending_hybrid_predicted_sign_observed = false;
-    if (!noted ||
+    if (!noted || !response_identity_retained ||
         hybrid_engine.state == OtisActiveHybridState::FailStatic)
       otis_cx317_active_fault(
           &transaction, "active_hybrid_response_checkpoint_failed");

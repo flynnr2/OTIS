@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,6 +14,9 @@ from host.otis_tools.active_hybrid_analyze import (
 from host.otis_tools.active_hybrid_live_rehearsal import (
     _sustained_multi_transaction_fixture,
 )
+from host.otis_tools.active_hybrid_live_analyze import (
+    _response_dependent_consumer_propagation,
+)
 from host.otis_tools.active_hybrid_programme_contract import (
     SUSTAINED_HYBRID_PROGRAMME,
 )
@@ -20,6 +24,7 @@ from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_CONTRACT_KEYS,
     SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
 )
+from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
 from host.otis_tools.sustained_hybrid_synthesis import synthesize
 
 
@@ -88,6 +93,10 @@ def test_full_multi_transaction_sequence_reaches_first_recovery_consumer() -> No
     assert int(ahy[-1]["decision_sequence"]) == summary[
         "first_post_recovery_consumer_decision_sequence"
     ]
+    propagation = _response_dependent_consumer_propagation(transactions, ahy)
+    assert propagation["exact"] is True
+    assert len(propagation["comparisons"]) == 4
+    assert all(item["exact"] for item in propagation["comparisons"])
 
 
 def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
@@ -159,6 +168,64 @@ def test_firmware_executes_challenge_and_first_recovery_consumer(tmp_path: Path)
         cwd=ROOT,
     )
     subprocess.run([str(executable)], check=True)
+
+
+def test_firmware_serializes_each_retained_response_through_first_consumer(
+    tmp_path: Path,
+) -> None:
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("host C++ compiler is unavailable")
+    executable = tmp_path / "dependent_response_identity"
+    subprocess.run(
+        [
+            compiler,
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            str(ROOT / "tests/cpp/dependent_response_identity_harness.cpp"),
+            str(FIRMWARE / "otis_active_hybrid_decision_format.cpp"),
+            str(FIRMWARE / "otis_active_hybrid_policy_engine.cpp"),
+            str(FIRMWARE / "otis_decimal_format.cpp"),
+            "-I",
+            str(FIRMWARE),
+            "-o",
+            str(executable),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    completed = subprocess.run(
+        [str(executable)], check=True, text=True, capture_output=True
+    )
+    rows = list(
+        csv.DictReader(
+            completed.stdout.splitlines(),
+            fieldnames=ACTIVE_HYBRID_DECISION_V1_FIELDS,
+        )
+    )
+    assert len(rows) == 4
+    assert [row["request_sequence"] for row in rows] == ["1", "2", "3", "4"]
+    assert [row["application_sequence"] for row in rows] == [
+        "11",
+        "12",
+        "13",
+        "14",
+    ]
+    assert [row["response_class"] for row in rows] == [
+        "healthy_indeterminate_near_resolution",
+        "healthy_indeterminate_near_resolution",
+        "inside_deadband",
+        "healthy_indeterminate_near_resolution",
+    ]
+    assert [row["actual_applied_code"] for row in rows] == [
+        "43063",
+        "43062",
+        "43061",
+        "43060",
+    ]
+    assert [row["actual_dac_epoch"] for row in rows] == ["2", "3", "4", "5"]
 
 
 def test_firmware_natural_direction_history_remains_sliding() -> None:

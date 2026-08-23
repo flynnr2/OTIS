@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "otis_sustained_hybrid_regulation_v1": {
-      "state": "authorized_exact_bundle_entry_gates_pending",
+      "state": "attempt1_failed_response_identity_propagation_new_live_authority_required",
       "allowed_operations": [
-        "offline_preparation",
-        "otis_sustained_hybrid_regulation_live"
+        "offline_preparation"
       ],
       "effective_date": "2026-08-23",
-      "authority": "explicit_operator_authority_in_sustained_hybrid_programme_task",
-      "physical_authority_effective": true,
+      "authority": "attempt1_consumed_by_first_physical_terminal_new_exact_bundle_and_operator_authority_required",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
       "design_prompt": "docs/60_EXPERIMENTS/SUSTAINED_HYBRID_REGULATION_PROGRAMME_PROMPT.md",
       "design_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/README.md",
@@ -45,11 +44,14 @@
         "extension": false
       },
       "verification": {
-        "exact_firmware_build_pending": true,
-        "exact_bundle_pending": true,
-        "structural_preflight_pending": true,
-        "complete_multi_transaction_operational_rehearsal_pending": true,
-        "physical_acquisition_gate_pending": true
+        "attempt1_exact_firmware_build_passed": true,
+        "attempt1_exact_bundle_passed": true,
+        "attempt1_structural_preflight_passed": true,
+        "attempt1_operational_rehearsal_passed_but_missed_response_consumer_identity": true,
+        "attempt1_physical_acquisition_gate_passed": false,
+        "attempt1_offline_finalization_recovered": true,
+        "attempt1_superseding_analysis_sealed": true,
+        "attempt1_evidence_registration_passed": true
       },
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -61,7 +63,32 @@
         "consumed_by_first_physical_terminal": true,
         "automatic_retry": false,
         "criteria_change_after_evidence": false
-      }
+      },
+      "attempts": [
+        {
+          "ordinal": 1,
+          "run_id": "live_attempt1_20260823T1214Z",
+          "classification": "platform_escape_into_campaign",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "response_identity_not_propagated_through_first_dependent_decision",
+          "qualified_origin_established": true,
+          "automatic_applications": 2,
+          "phase_material_applications": 1,
+          "last_confirmed_code": 43062,
+          "last_confirmed_dac_epoch": 3,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "capture_closed_cleanly": true,
+          "parser_errors": 0,
+          "reconnects": 0,
+          "commands_rejected": 0,
+          "physical_rerun_required_for_finalization": false,
+          "superseding_seal_sha256": "2b6e8c6a4f48eb483ce2c206e4d6d0210145163a3636e20f501aa151ed56258a",
+          "evidence_content_sha256": "7fb8cfa407c2adfd6d69aeb1378e43ef666692af4b4f37440effc75fad9b60ee",
+          "scientific_result": "none_incomplete_before_sustained_duration_reversal_or_recovery_boundaries"
+        }
+      ],
+      "next_gate": "new_exact_bundle_complete_multi_transaction_rehearsal_and_explicit_operator_authority"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",

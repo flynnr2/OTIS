@@ -1080,8 +1080,10 @@ def _sustained_multi_transaction_fixture(
     ahy: list[dict[str, str]] = []
     transactions: list[dict[str, str]] = []
     applications: list[dict[str, Any]] = []
+    dependent_response: dict[str, str] | None = None
 
     def append_decision(decision: Any, *, request_sequence: int = 0) -> None:
+        nonlocal dependent_response
         row = _ahy_row(
             decision,
             record_sequence=len(ahy) + 1,
@@ -1091,7 +1093,24 @@ def _sustained_multi_transaction_fixture(
             response_policy_sha256=policy.response_policy_sha256,
             profile_identity=programme.profile_id,
         )
-        if request_sequence:
+        if dependent_response is not None:
+            row.update(
+                {
+                    "request_sequence": dependent_response["request_sequence"],
+                    "acceptance_sequence": dependent_response[
+                        "request_sequence"
+                    ],
+                    "application_sequence": dependent_response[
+                        "application_sequence"
+                    ],
+                    "response_class": dependent_response["response_class"],
+                    "actual_applied_code": dependent_response["applied_code"],
+                    "actual_dac_epoch": dependent_response["dac_epoch"],
+                    "downstream_epoch_exact": "true",
+                }
+            )
+            dependent_response = None
+        elif request_sequence:
             row.update(
                 {
                     "authority_state": "ARMED",
@@ -1114,6 +1133,19 @@ def _sustained_multi_transaction_fixture(
                 relative_phase_cycles=phase_cycles,
                 outstanding_response=response,
             )
+        )
+
+    def append_response_boundary(
+        decision: Any, response: dict[str, str]
+    ) -> None:
+        append_decision(decision)
+        ahy[-1].update(
+            {
+                "authority_state": "AWAITING_RESPONSE",
+                "request_sequence": response["request_sequence"],
+                "acceptance_sequence": response["request_sequence"],
+                "application_sequence": response["application_sequence"],
+            }
         )
 
     def transact(decision: Any, *, request_sequence: int) -> dict[str, str]:
@@ -1163,7 +1195,7 @@ def _sustained_multi_transaction_fixture(
     response = transact(observe(2400, 36), request_sequence=1)
     response_timestamp_s = 2402 + policy.settling_exclusion_s + policy.fresh_support_s
     response_decision = observe(response_timestamp_s, 36, response=True)
-    append_decision(response_decision)
+    append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
         predicted_sign_observed=True,
@@ -1171,6 +1203,7 @@ def _sustained_multi_transaction_fixture(
         support_fresh=True,
         applied_epoch_exact=True,
     )
+    dependent_response = response
     release = observe(response_timestamp_s + 600, 36)
     append_decision(release)
     if release.reason != "first_phase_observation_recorded_and_tight_reacquired":
@@ -1178,7 +1211,7 @@ def _sustained_multi_transaction_fixture(
 
     response = transact(observe(4800, 30), request_sequence=2)
     response_decision = observe(6302, 30, response=True)
-    append_decision(response_decision)
+    append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
         predicted_sign_observed=True,
@@ -1186,13 +1219,14 @@ def _sustained_multi_transaction_fixture(
         support_fresh=True,
         applied_epoch_exact=True,
     )
+    dependent_response = response
 
     challenge = observe(43_800, 30)
     if challenge.reason != "deliberate_reversal_challenge_request_ready":
         raise RuntimeError("sustained fixture did not reach the frozen challenge")
     response = transact(challenge, request_sequence=3)
     response_decision = observe(45_302, 30, response=True)
-    append_decision(response_decision)
+    append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
         predicted_sign_observed=True,
@@ -1200,13 +1234,14 @@ def _sustained_multi_transaction_fixture(
         support_fresh=True,
         applied_epoch_exact=True,
     )
+    dependent_response = response
 
     recovery = observe(45_600, -36)
     if recovery.reason != "deliberate_reversal_challenge_recovery_request_ready":
         raise RuntimeError("sustained fixture did not reach challenge recovery")
     response = transact(recovery, request_sequence=4)
     response_decision = observe(47_102, -36, response=True)
-    append_decision(response_decision)
+    append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
         predicted_sign_observed=True,
@@ -1214,6 +1249,7 @@ def _sustained_multi_transaction_fixture(
         support_fresh=True,
         applied_epoch_exact=True,
     )
+    dependent_response = response
     first_post_recovery_consumer = observe(47_702, 0)
     append_decision(first_post_recovery_consumer)
 

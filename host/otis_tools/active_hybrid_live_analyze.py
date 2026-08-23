@@ -1047,6 +1047,89 @@ def _application_contract(
     }
 
 
+def _response_dependent_consumer_propagation(
+    active_rows: list[dict[str, str]],
+    decision_rows: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Verify each response identity through its first dependent AHY decision."""
+
+    comparisons: list[dict[str, Any]] = []
+    exact = True
+    ordered_decisions = sorted(
+        decision_rows, key=lambda row: int(row["decision_sequence"])
+    )
+    for response in (row for row in active_rows if row.get("event") == "response"):
+        request_sequence = int(response["request_sequence"])
+        source_decision_sequence = int(response["decision_sequence"])
+        consumer = next(
+            (
+                row
+                for row in ordered_decisions
+                if int(row["decision_sequence"]) > source_decision_sequence
+                and not (
+                    row.get("authority_state") == "AWAITING_RESPONSE"
+                    and int(row.get("request_sequence", "0")) == request_sequence
+                )
+            ),
+            None,
+        )
+        row_exact = bool(
+            consumer is not None
+            and int(consumer.get("request_sequence", "0")) == request_sequence
+            and int(consumer.get("application_sequence", "0"))
+            == int(response["application_sequence"])
+            and consumer.get("response_class") == response.get("response_class")
+            and int(consumer.get("actual_applied_code", "-1"))
+            == int(response["applied_code"])
+            and int(consumer.get("actual_dac_epoch", "-1"))
+            == int(response["dac_epoch"])
+            and consumer.get("downstream_epoch_exact") == "true"
+        )
+        exact &= row_exact
+        comparisons.append(
+            {
+                "request_sequence": request_sequence,
+                "response_record_sequence": int(
+                    response["transaction_record_sequence"]
+                ),
+                "expected_response_class": response.get("response_class"),
+                "expected_applied_code": int(response["applied_code"]),
+                "expected_dac_epoch": int(response["dac_epoch"]),
+                "consumer_decision_sequence": (
+                    None if consumer is None else int(consumer["decision_sequence"])
+                ),
+                "consumer_response_class": (
+                    None if consumer is None else consumer.get("response_class")
+                ),
+                "consumer_request_sequence": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("request_sequence", "0"))
+                ),
+                "consumer_application_sequence": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("application_sequence", "0"))
+                ),
+                "consumer_applied_code": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("actual_applied_code", "-1"))
+                ),
+                "consumer_dac_epoch": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("actual_dac_epoch", "-1"))
+                ),
+                "consumer_reason": (
+                    None if consumer is None else consumer.get("reason")
+                ),
+                "exact": row_exact,
+            }
+        )
+    return {"exact": exact, "comparisons": comparisons}
+
+
 def _response_horizon_facts(
     active_rows: list[dict[str, str]],
     decisions: list[dict[str, str]],
@@ -1429,10 +1512,10 @@ def _sustained_regulation_outcome(
         "no_chatter_or_path_exhaustion": no_fault_or_chatter,
     }
     terminal_primary = terminal.get("primary_decision")
-    if operator_abort:
-        return "bounded_nonpass", "operator_abort", facts
     if platform_terminal or not integrity_exact:
         return "failed", "measurement_authority_or_platform_fault", facts
+    if operator_abort:
+        return "bounded_nonpass", "operator_abort", facts
     if terminal_primary == "hybrid_policy_chatter_or_path_exhaustion" or not no_fault_or_chatter:
         return "bounded_nonpass", "hybrid_policy_chatter_or_path_exhaustion", facts
     if not physical_accounting_exact:
@@ -2070,6 +2153,12 @@ def analyze(
             "error": str(exc),
         }
 
+    response_consumer_propagation = (
+        _response_dependent_consumer_propagation(active_rows, decision_rows)
+        if programme.sustained_regulation
+        else {"exact": True, "comparisons": []}
+    )
+
     response_horizon_facts: dict[str, Any] | None = None
     if programme.response_checkpoint_observational:
         try:
@@ -2256,6 +2345,9 @@ def analyze(
         "tight_deadband_replay_exact": tdb_replay_exact,
         "setup_dac_epoch_application_and_budget_exact": applications["exact"],
         "progressive_first_checkpoint_and_later_authority_exact": progressive_authority_exact,
+        "response_identity_through_first_dependent_decision_exact": (
+            response_consumer_propagation["exact"]
+        ),
         "capture_closed_cleanly_with_one_owner": capture_closure["ok"],
         "command_stream_exact": command_exact,
         "wall_origin_capture_identity_and_setup_order_exact": wall_origin_exact,
@@ -2274,6 +2366,7 @@ def analyze(
         "wall_origin_capture_identity_and_setup_order_exact",
         "abort_submission_delivery_and_close_order_exact",
         "terminal_disarmed_evidence_clear_no_outstanding_static_code",
+        "response_identity_through_first_dependent_decision_exact",
     }
     acquisition_gate_passed = all(
         common_checks[name] for name in acquisition_check_names
@@ -2448,6 +2541,9 @@ def analyze(
             ),
             "unacknowledged_rejected_response_record_sequences": sorted(
                 rejected_response_record_sequences
+            ),
+            "response_dependent_consumer_propagation": (
+                response_consumer_propagation
             ),
         },
         "measurement_replay": {

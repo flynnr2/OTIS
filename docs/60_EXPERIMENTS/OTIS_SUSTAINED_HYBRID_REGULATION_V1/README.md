@@ -96,3 +96,22 @@ device-time origin. The relative milestones are:
 Only state transitions, these milestones, faults, and actions are reported.
 The authoritative supervisor state and retained records are monitored more
 frequently than the shortest material interval throughout an active attempt.
+
+## Attempt 1 result
+
+Attempt 1 terminated fail-static on 2026-08-23 with an actual platform
+identity/integrity failure. It did not fail because of response magnitude,
+phase materiality, or any other allowed characterization. The response ACKs
+were durable and healthy-characterization records, but the exact completed
+response identity did not reach the first later controller decision before
+wider authority was released.
+
+The activation was consumed by that first physical terminal. There is no
+remaining live, flash, reset, serial, DAC, setup, or control authority under
+Attempt 1. Offline repair and preparation remain allowed; any later physical
+attempt requires a new exact bundle, a complete multi-transaction rehearsal,
+and explicit operator authority.
+
+The terminal timeline, exact evidence identities, superseding analysis, and
+narrow repair are recorded in
+[`01_ATTEMPT1_RESPONSE_IDENTITY_PROPAGATION_TERMINAL.md`](01_ATTEMPT1_RESPONSE_IDENTITY_PROPAGATION_TERMINAL.md).

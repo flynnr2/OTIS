@@ -9,6 +9,9 @@ CANONICAL_MANIFEST = "run_manifest.json"
 CAPTURE_IN_PROGRESS_FLAG = "capture_in_progress.flag"
 COMPLETE_MARKER = "COMPLETE"
 CURRENT_EVIDENCE_EPOCH = "CX319_EVIDENCE_EPOCH_1"
+SUSTAINED_HYBRID_EVIDENCE_EPOCH = "OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1"
+SUSTAINED_HYBRID_STAGE = "OTIS_SUSTAINED_HYBRID_REGULATION_LIVE"
+SUSTAINED_HYBRID_PROFILE_ID = "otis_sustained_hybrid_regulation_v1"
 CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
     {
         "cx319_tight_lower",
@@ -161,6 +164,18 @@ def find_manifest_path(run_dir: Path) -> Path | None:
 def _require_current_epoch(data: dict) -> None:
     stage = str(data.get("stage", ""))
     run_id = str(data.get("run_id", ""))
+    if stage == SUSTAINED_HYBRID_STAGE:
+        programme = data.get("sustained_hybrid")
+        if (
+            data.get("compatibility_floor") == SUSTAINED_HYBRID_EVIDENCE_EPOCH
+            and isinstance(programme, dict)
+            and programme.get("profile_id") == SUSTAINED_HYBRID_PROFILE_ID
+        ):
+            return
+        raise ValueError(
+            f"manifest does not satisfy {SUSTAINED_HYBRID_EVIDENCE_EPOCH}; "
+            f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
+        )
     if stage.startswith("CX322_"):
         programme = data.get("cx322")
     elif stage.startswith("CX321_"):

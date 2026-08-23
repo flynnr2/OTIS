@@ -428,6 +428,31 @@ def test_completed_response_is_not_gated_by_preview_actionability() -> None:
     assert "decision->control_eligible" in live[live.index(response) + len(response) :]
 
 
+def test_response_identity_is_retained_until_first_dependent_decision() -> None:
+    live = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    response_ack = live[
+        live.index("const bool noted = otis_active_hybrid_engine_note_response") :
+        live.index("pending_hybrid_response_valid = false", live.index(
+            "const bool noted = otis_active_hybrid_engine_note_response"
+        ))
+    ]
+    decision_queue = live[
+        live.index("bool queue_active_hybrid_decision(") :
+        live.index("bool queue_plant_sign_frame(")
+    ]
+
+    assert "otis_dependent_response_identity_retain" in response_ack
+    assert "transaction.request.request_sequence" in response_ack
+    assert "transaction.applied.application_sequence" in response_ack
+    assert "pending_hybrid_response_class" in response_ack
+    assert "otis_dependent_response_identity_apply" in decision_queue
+    assert decision_queue.index("otis_format_active_hybrid_decision_v1") < (
+        decision_queue.index("otis_dependent_response_identity_consume")
+    )
+
+
 def test_status_formatting_cannot_mutate_controller_state() -> None:
     source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
         encoding="utf-8"
