@@ -148,6 +148,55 @@ void accepted_authority_is_exact_and_i2c_is_one_shot() {
   assert(authority_guard.state == OtisSetupAuthorityState::Applied);
 }
 
+void later_observation_generation_preserves_exact_current_authority() {
+  OtisSetupAuthorityGuard authority_guard = {};
+  otis_setup_authority_guard_init(&authority_guard);
+  const OtisSetupAuthorityRequest candidate = request();
+  OtisSetupAuthorityContext current = context();
+  current.status_generation = candidate.status_generation + 1u;
+  OtisSetupAuthorization authorization = {};
+  assert(otis_setup_authorize(&authority_guard, &candidate, &current,
+                              &authorization));
+  assert(authorization.request.status_generation ==
+         candidate.status_generation);
+
+  OtisSetupApplicationAck accepted = {};
+  accepted.command_sequence = candidate.command_sequence;
+  accepted.authorization_sequence = candidate.authorization_sequence;
+  accepted.status_generation = candidate.status_generation;
+  accepted.query_nonce = candidate.query_nonce;
+  accepted.session_id = candidate.session_id;
+  accepted.requested_code = candidate.requested_code;
+  accepted.one_shot_ordinal = candidate.one_shot_ordinal;
+  accepted.kind = OtisSetupApplicationAck::Kind::Core0Accepted;
+  accepted.i2c_ok = true;
+  assert(otis_setup_authority_acknowledge(&authority_guard, &accepted));
+
+  current.status_generation++;
+  OtisSetupAuthorization released = {};
+  assert(otis_setup_authority_release_execution(
+      &authority_guard, &current, &released));
+  assert(released.request.status_generation == candidate.status_generation);
+
+  OtisSetupAuthorityGuard future_guard = {};
+  otis_setup_authority_guard_init(&future_guard);
+  OtisSetupAuthorityContext behind = context();
+  behind.status_generation = candidate.status_generation - 1u;
+  OtisSetupAuthorization rejected = {};
+  assert(!otis_setup_authorize(&future_guard, &candidate, &behind,
+                               &rejected));
+
+  OtisSetupAuthorityRequest rollover = candidate;
+  rollover.status_generation = UINT32_MAX;
+  OtisSetupAuthorityContext after_rollover = context();
+  after_rollover.status_generation = 1u;
+  OtisSetupAuthorityGuard rollover_guard = {};
+  otis_setup_authority_guard_init(&rollover_guard);
+  assert(otis_setup_authorize(&rollover_guard, &rollover,
+                              &after_rollover, &authorization));
+  assert(authorization.request.status_generation == UINT32_MAX);
+}
+
 void execution_rechecks_expiry_partition_config_and_actuator() {
   const OtisSetupAuthorityRequest candidate = request();
   const OtisSetupAuthorityContext current = context();
@@ -304,6 +353,7 @@ int main() {
   parser_rejects_noncanonical_or_out_of_range_wire_values();
   every_authority_regression_rejects_before_execution();
   accepted_authority_is_exact_and_i2c_is_one_shot();
+  later_observation_generation_preserves_exact_current_authority();
   execution_rechecks_expiry_partition_config_and_actuator();
   interruption_at_each_transaction_phase_is_safe_and_one_shot();
   failed_i2c_ack_is_terminal_and_not_retryable();

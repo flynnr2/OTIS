@@ -92,7 +92,7 @@ void mutate_initial(uint16_t index, OtisSetupAuthorityRequest *request,
 
 const char *stale_case_name(uint16_t index) {
   static const char *const names[] = {
-      "stale_status_generation",
+      "later_observation_generation_preserved",
       "stale_query_nonce",
       "stale_session",
       "stale_expiry",
@@ -203,7 +203,9 @@ bool run_stale_rejection(uint16_t index, OtisQ2CaseResult *result) {
   OtisSetupAuthorization authorization = {};
   result->case_name = stale_case_name(index);
   result->transaction = "setup";
-  result->disposition = "rejected_before_release";
+  result->disposition = index == 0u
+                            ? "released_with_exact_retained_generation"
+                            : "rejected_before_release";
   result->phase_mask = OTIS_Q2_PHASE_RECEIVED;
   if (!otis_setup_authorize(&authority_guard, &request, &current,
                             &authorization))
@@ -219,13 +221,21 @@ bool run_stale_rejection(uint16_t index, OtisQ2CaseResult *result) {
   result->phase_mask |= OTIS_Q2_PHASE_CORE0_ACCEPTED;
   mutate_current(index, request, &current);
   OtisSetupAuthorization released = {};
-  const bool rejected = !otis_setup_authority_release_execution(
+  const bool release_accepted = otis_setup_authority_release_execution(
       &authority_guard, &current, &released);
+  if (index == 0u) {
+    if (!release_accepted ||
+        released.request.status_generation != request.status_generation)
+      return false;
+    result->phase_mask |= OTIS_Q2_PHASE_RELEASED;
+    return authority_guard.state ==
+           OtisSetupAuthorityState::ExecutionReleased;
+  }
   result->phase_mask |= OTIS_Q2_PHASE_FAILED;
   OtisSetupAuthorization retry = {};
   result->retry_rejected =
       !otis_setup_authorize(&authority_guard, &request, &current, &retry);
-  return rejected && result->retry_rejected &&
+  return !release_accepted && result->retry_rejected &&
          authority_guard.state == OtisSetupAuthorityState::Failed;
 }
 

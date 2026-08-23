@@ -244,6 +244,9 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
     assert sustained["attempt2_operator_authority"]["attempt_ordinal"] == 2
     assert sustained["attempt2_operator_authority"]["physical_live_run_limit"] == 1
     assert sustained["attempt2_operator_authority"]["automatic_retry"] is False
+    assert sustained["attempt3_operator_authority"]["attempt_ordinal"] == 3
+    assert sustained["attempt3_operator_authority"]["physical_live_run_limit"] == 1
+    assert sustained["attempt3_operator_authority"]["automatic_retry"] is False
     assert sustained["attempts"][0]["classification"] == (
         "platform_escape_into_campaign"
     )
@@ -252,6 +255,17 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
     )
     assert sustained["attempts"][0]["abort_deliveries"] == 1
     assert sustained["attempts"][0]["last_confirmed_code"] == 0xA836
+    assert sustained["attempts"][1]["classification"] == (
+        "firmware_defect_under_intended_setup_integration"
+    )
+    assert sustained["attempts"][1]["terminal_reason"] == (
+        "setup_status_generation_advanced_during_current_authority_handoff"
+    )
+    assert sustained["attempts"][1]["setup_status_generation"] == 122
+    assert sustained["attempts"][1]["core1_current_status_generation"] == 123
+    assert sustained["attempts"][1]["setup_applications"] == 0
+    assert sustained["attempts"][1]["qualified_origin_established"] is False
+    assert sustained["attempts"][1]["abort_deliveries"] == 1
     assert sustained["selected_policy"][
         "characterization_is_an_entry_or_terminal_failure_gate"
     ] is False

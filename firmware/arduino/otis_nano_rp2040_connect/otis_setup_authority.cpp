@@ -69,10 +69,21 @@ bool authorization_equal(const OtisSetupAuthorization &left,
                         b.configuration_identity);
 }
 
+bool generation_is_current_or_later(uint32_t observed,
+                                    uint32_t retained) {
+  if (observed == 0u || retained == 0u) return false;
+  // Status generation identifies the retained observation used by the host;
+  // publishing a later observation does not itself change setup authority.
+  // Modular ordering preserves the declared uint32 rollover behavior while
+  // rejecting a context that is behind or ambiguously distant from the
+  // retained generation.
+  return static_cast<int32_t>(observed - retained) >= 0;
+}
+
 bool authority_matches_context(const OtisSetupAuthorityRequest &request,
                                const OtisSetupAuthorityContext &context) {
-  return request.status_generation == context.status_generation &&
-         request.status_generation != 0u &&
+  return generation_is_current_or_later(context.status_generation,
+                                        request.status_generation) &&
          request.query_nonce == context.query_nonce &&
          request.query_nonce != 0u && request.session_id == context.session_id &&
          request.session_id != 0u &&

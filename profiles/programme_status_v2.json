@@ -10,13 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "otis_sustained_hybrid_regulation_v1": {
-      "state": "attempt2_authorized_exact_bundle_entry_gates_pending",
+      "state": "attempt3_authorized_setup_authority_handoff_repair_gates_pending",
       "allowed_operations": [
         "offline_preparation",
         "otis_sustained_hybrid_regulation_live"
       ],
       "effective_date": "2026-08-23",
-      "authority": "explicit_operator_authority_continue_with_attempt2",
+      "authority": "explicit_operator_unattended_continue_solving_issues_and_moving_forward",
       "physical_authority_effective": true,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
       "design_prompt": "docs/60_EXPERIMENTS/SUSTAINED_HYBRID_REGULATION_PROGRAMME_PROMPT.md",
@@ -54,11 +54,19 @@
         "attempt1_superseding_analysis_sealed": true,
         "attempt1_evidence_registration_passed": true,
         "attempt2_response_identity_regression_passed": true,
-        "attempt2_exact_firmware_build_pending": true,
-        "attempt2_exact_bundle_pending": true,
-        "attempt2_structural_preflight_pending": true,
-        "attempt2_complete_operational_rehearsal_pending": true,
-        "attempt2_physical_acquisition_pending": true
+        "attempt2_exact_firmware_build_passed": true,
+        "attempt2_exact_bundle_passed": true,
+        "attempt2_structural_preflight_passed": true,
+        "attempt2_complete_operational_rehearsal_passed_but_missed_setup_generation_advance": true,
+        "attempt2_physical_acquisition_gate_passed": false,
+        "attempt2_offline_finalization_passed": true,
+        "attempt2_evidence_registration_passed": true,
+        "attempt3_setup_generation_advance_regression_passed": true,
+        "attempt3_exact_firmware_build_pending": true,
+        "attempt3_exact_bundle_pending": true,
+        "attempt3_structural_preflight_pending": true,
+        "attempt3_complete_operational_rehearsal_pending": true,
+        "attempt3_physical_acquisition_pending": true
       },
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -68,6 +76,7 @@
       },
       "authority_consumption": {
         "consumed_by_first_physical_terminal": true,
+        "latest_consumed_attempt": 2,
         "automatic_retry": false,
         "criteria_change_after_evidence": false
       },
@@ -83,6 +92,20 @@
         "requires_new_clean_exact_bundle": true,
         "requires_complete_multi_transaction_rehearsal": true,
         "predecessor_terminal_required": true
+      },
+      "attempt3_operator_authority": {
+        "operator_instruction": "You should be running unattended mode - keep solving the issues & moving forward",
+        "received_date": "2026-08-23",
+        "attempt_ordinal": 3,
+        "physical_live_run_limit": 1,
+        "firmware_flash_limit": 1,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "criteria_relaxation": false,
+        "requires_attempt2_terminal_lineage": true,
+        "requires_new_clean_exact_bundle": true,
+        "requires_setup_generation_advance_regression": true,
+        "requires_complete_multi_transaction_rehearsal": true
       },
       "attempts": [
         {
@@ -106,9 +129,36 @@
           "superseding_seal_sha256": "2b6e8c6a4f48eb483ce2c206e4d6d0210145163a3636e20f501aa151ed56258a",
           "evidence_content_sha256": "7fb8cfa407c2adfd6d69aeb1378e43ef666692af4b4f37440effc75fad9b60ee",
           "scientific_result": "none_incomplete_before_sustained_duration_reversal_or_recovery_boundaries"
+        },
+        {
+          "ordinal": 2,
+          "run_id": "live_attempt2_20260823T1559Z",
+          "classification": "firmware_defect_under_intended_setup_integration",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "setup_status_generation_advanced_during_current_authority_handoff",
+          "setup_status_generation": 122,
+          "core1_current_status_generation": 123,
+          "setup_confirmed": false,
+          "setup_applications": 0,
+          "retained_dac_steps": 0,
+          "automatic_applications": 0,
+          "qualified_origin_established": false,
+          "terminal_static_code": null,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "capture_closed_cleanly": true,
+          "parser_errors": 0,
+          "reconnects": 0,
+          "commands_rejected": 0,
+          "activation_sha256": "0363c73efdcbac28fbd512bf4a6cdad8bf0424dd7f4dab73d85365cd458a2c1c",
+          "bundle_sha256": "0607f0845fb5f27d31e23cd29bcf43704900e5cfcedae2f2f25452b36e81c227",
+          "firmware_uf2_sha256": "aeea82c276d5c5f536e00b1246dee003d00e44673210112fe3e0af0228cc9e7c",
+          "seal_sha256": "74d37d1afa834806b00817acac8e56ef657ceb67b35069017eb225c7348d3836",
+          "evidence_content_sha256": "72eba172056c71cfa3f602e772d10eee9dc1ee958b04884fa2bd87088a4b1b7e",
+          "scientific_result": "none_before_setup_application_or_qualified_origin"
         }
       ],
-      "next_gate": "attempt2_clean_exact_bundle_preflight_rehearsal_activation_and_single_live_execution"
+      "next_gate": "attempt3_clean_exact_bundle_setup_generation_advance_regression_preflight_rehearsal_activation_and_single_live_execution"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",
