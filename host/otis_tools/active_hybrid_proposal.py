@@ -215,6 +215,13 @@ def create_successor_proposal(
                 }
                 if programme is CX320_PROGRAMME
                 else {
+                    "natural_controller_mathematics_unchanged": True,
+                    "scientific_limits_and_duration_changed_by_current_prospectively_frozen_programme": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+                if programme.sustained_regulation
+                else {
                     "scientific_limits_and_duration_unchanged": True,
                     "successor_qualification_criterion_prospectively_frozen": True,
                     "inherits_physical_authority": False,
@@ -344,6 +351,22 @@ def validate_proposal(
                 programme.identification_required
                 and (
                     lineage.get("scientific_limits_and_duration_unchanged")
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                )
+            )
+            or (
+                programme.sustained_regulation
+                and (
+                    lineage.get("natural_controller_mathematics_unchanged")
+                    is not True
+                    or lineage.get(
+                        "scientific_limits_and_duration_changed_by_current_prospectively_frozen_programme"
+                    )
                     is not True
                     or lineage.get(
                         "successor_qualification_criterion_prospectively_frozen"

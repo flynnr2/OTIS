@@ -108,6 +108,17 @@ def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
     )
 
 
+def test_sustained_proposal_does_not_claim_duration_is_unchanged() -> None:
+    source = (ROOT / "host/otis_tools/active_hybrid_proposal.py").read_text(
+        encoding="utf-8"
+    )
+    assert "natural_controller_mathematics_unchanged" in source
+    assert (
+        "scientific_limits_and_duration_changed_by_current_"
+        "prospectively_frozen_programme"
+    ) in source
+
+
 def test_firmware_executes_challenge_and_first_recovery_consumer(tmp_path: Path) -> None:
     compiler = shutil.which("c++")
     if compiler is None:
