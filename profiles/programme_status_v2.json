@@ -10,13 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "cx322_bounded_hybrid_fact_gathering": {
-      "state": "stage5_attempt7_authorized",
+      "state": "stage5_evidence_acquired_successor_decision_pending",
       "allowed_operations": [
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
+        "offline_preparation"
       ],
-      "effective_date": "2026-08-22",
-      "authority": "attempt7_exact_bundle_authority_effective",
-      "physical_authority_effective": true,
+      "effective_date": "2026-08-23",
+      "authority": "attempt7_consumed_healthy_terminal_no_live_retry_authorized",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx321_bounded_active_hybrid_successor",
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
@@ -47,7 +47,10 @@
         "exact_firmware_build_pending": false,
         "exact_bundle_pending": false,
         "structural_preflight_pending": false,
-        "complete_operational_rehearsal_pending": false
+        "complete_operational_rehearsal_pending": false,
+        "physical_acquisition_gate_passed": true,
+        "offline_finalization_gate_passed": true,
+        "evidence_registration_passed": true
       },
       "exact_bundle": {
         "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/cx322_direct_hybrid_exact_bundle_v12.json",
@@ -62,7 +65,7 @@
         "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/cx322_direct_hybrid_authority_proposal_v12.json",
         "file_sha256": "9f01a88e48c8ebb10391e43b5657fefa44763f31a82db30e772dc07f7bc47a61",
         "proposal_sha256": "ddd6fe825e73c0ec06ee31f1b6a0146d5e334b2eb459d1ad026ec0cb52be066c",
-        "status": "non_effective_awaiting_attempt7_exact_gates"
+        "status": "consumed_by_attempt7_healthy_terminal"
       },
       "structural_preflight": {
         "path": "runs/cx322_bounded_hybrid_fact_gathering/remediation_d0513b4_20260822/cx322_direct_hybrid_structural_preflight_v12.json",
@@ -101,8 +104,10 @@
         "activation_sha256": "62a0740605343ebabbefe640f0ef574a0bae1e0c4dfb927fe6c5ea5419b89b65",
         "attempt_ordinal": 7,
         "automatic_retry": false,
-        "effective": true,
-        "consumed": false,
+        "effective": false,
+        "consumed": true,
+        "consumed_by_run_id": "stage5_live_attempt7_20260822T1921Z",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired",
         "predecessor_seal_sha256": "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
       },
       "stage5_attempts": [
@@ -283,6 +288,59 @@
           "abort_submissions": 1,
           "abort_deliveries": 1,
           "scientific_result": "one_minus6_code_application produced a one-count response in the commanded direction; a natural second minus7-code request was preserved but not acknowledged or applied"
+        },
+        {
+          "ordinal": 7,
+          "run_id": "stage5_live_attempt7_20260822T1921Z",
+          "classification": "completed_decision_bearing_physical_campaign",
+          "terminal": "bounded_direct_hybrid_evidence_acquired",
+          "terminal_reason": "cx322_12h_qualified_endpoint_complete",
+          "firmware_flash_count": 1,
+          "capture_started": true,
+          "capture_closed_cleanly": true,
+          "serial_owner_exact": true,
+          "parser_errors": 0,
+          "reconnect_count": 0,
+          "setup_requests": 1,
+          "setup_applications": 1,
+          "automatic_applications": 4,
+          "dac_value_writes": 5,
+          "last_observed_applied_code": 43054,
+          "last_observed_dac_epoch": 5,
+          "qualified_origin_established": true,
+          "qualified_duration_s": 43200,
+          "qualified_endpoint_complete": true,
+          "active_hybrid_decisions_recorded": 66,
+          "phase_nonzero_decisions": 54,
+          "frequency_only_applications": 0,
+          "phase_nonzero_applications": 4,
+          "phase_material_applications": 4,
+          "cumulative_movement_codes": 14,
+          "completed_response_observations": 4,
+          "healthy_indeterminate_response_count": 3,
+          "healthy_detected_response_count": 1,
+          "predicted_direction_response_count": 3,
+          "response_count": 4,
+          "application_budget_exhausted": true,
+          "terminal_relative_phase_cycles": -26,
+          "terminal_raw_combined_delta_codes": 8.279592074126,
+          "terminal_request_held_by_global_application_budget": true,
+          "baseline_phase_absolute_ols_slope_cycles_per_s": 0.0019370571822192948,
+          "active_phase_absolute_ols_slope_cycles_per_s": 0.0009482274894984787,
+          "matched_phase_improvement_fraction": 0.5150590683437972,
+          "baseline_frequency_residual_rms_hz": 0.0016666669399999997,
+          "active_frequency_residual_rms_hz": 0.00130880232457574,
+          "active_tight_inside_occupancy_fraction": 0.9333333333333333,
+          "acquisition_gate_passed": true,
+          "offline_finalization_gate_passed": true,
+          "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+          "seal_file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+          "evidence_snapshot_sha256": "a860badcd121273ca2a71945ef4ad2ad489b55c962dbbab2ec8d2dec8072c498",
+          "evidence_content_sha256": "f71ddb6479c0a140e8f8377998bc37d3556f1e554853ed6476c626fe1400fddf",
+          "evidence_registration_valid": true,
+          "abort_submissions": 0,
+          "abort_deliveries": 0,
+          "scientific_result": "four phase-material applications reduced matched phase slope and preserved frequency performance, but exhausted the bounded application count before sustained phase regulation; later bidirectional requests were held and response-gain observations remained quantized near the estimator resolution"
         }
       ],
       "physical_authority_prerequisites": [
@@ -291,7 +349,8 @@
         "complete_live_topology_rehearsal",
         "separate_explicit_exact_bundle_operator_decision"
       ],
-      "next_gate": "attempt7_physical_terminal"
+      "next_gate": "offline_successor_design_decision",
+      "terminal_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/01_STAGE5_ATTEMPT7_TERMINAL.md"
     },
     "cx321_bounded_active_hybrid_successor": {
       "state": "stage5_bounded_nonpass_plant_sign_not_exercised",

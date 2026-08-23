@@ -217,5 +217,10 @@ rotation under the same sole serial owner, and successful analysis, sealing,
 and registration. Capture recorded zero parser errors. It performed zero
 physical actions and supplies no physical qualification evidence.
 
-CX322 remains offline-only. The next gate is a separate operator decision that
-names the exact bundle and proposal hashes above.
+That entry statement is retained as the historical pre-live record. Operator
+authority was subsequently granted for the exact attempt-7 successor bundle,
+and the 12-hour physical campaign completed successfully. The terminal result,
+scientific interpretation, evidence identities, and successor-design boundary
+are recorded in
+`01_STAGE5_ATTEMPT7_TERMINAL.md`. No additional CX322 physical attempt is
+authorized; the next gate is an offline successor-design decision.

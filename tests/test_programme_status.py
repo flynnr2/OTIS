@@ -190,11 +190,11 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx321["stage5_attempts"][2]["pre2_total_count"] == 15_000_000_002
     assert cx321["stage5_attempts"][2]["identification_applications"] == 0
     cx322 = status["programmes"]["cx322_bounded_hybrid_fact_gathering"]
-    assert cx322["state"] == "stage5_attempt7_authorized"
-    assert cx322["allowed_operations"] == [
-        "cx322_stage5_bounded_hybrid_fact_gathering_live"
-    ]
-    assert cx322["physical_authority_effective"] is True
+    assert cx322["state"] == (
+        "stage5_evidence_acquired_successor_decision_pending"
+    )
+    assert cx322["allowed_operations"] == [OFFLINE_PREPARATION]
+    assert cx322["physical_authority_effective"] is False
     assert cx322["selected_policy"][
         "natural_control_law_mathematics_change_from_cx320"
     ] == "none"
@@ -227,8 +227,11 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
         "62a0740605343ebabbefe640f0ef574a0bae1e0c4dfb927fe6c5ea5419b89b65"
     )
     assert cx322["effective_activation"]["attempt_ordinal"] == 7
-    assert cx322["effective_activation"]["effective"] is True
-    assert cx322["effective_activation"]["consumed"] is False
+    assert cx322["effective_activation"]["effective"] is False
+    assert cx322["effective_activation"]["consumed"] is True
+    assert cx322["effective_activation"]["consumed_by_run_id"] == (
+        "stage5_live_attempt7_20260822T1921Z"
+    )
     assert cx322["effective_activation"]["predecessor_seal_sha256"] == (
         "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
     )
@@ -258,7 +261,19 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["stage5_attempts"][4]["exact_timer_replay_after_host_repair"] is True
     assert cx322["stage5_attempts"][5]["second_application_released"] is False
     assert cx322["stage5_attempts"][5]["predicted_direction_observed"] is True
-    assert cx322["next_gate"] == "attempt7_physical_terminal"
+    attempt7 = cx322["stage5_attempts"][6]
+    assert attempt7["terminal"] == "bounded_direct_hybrid_evidence_acquired"
+    assert attempt7["qualified_endpoint_complete"] is True
+    assert attempt7["automatic_applications"] == 4
+    assert attempt7["phase_material_applications"] == 4
+    assert attempt7["cumulative_movement_codes"] == 14
+    assert attempt7["application_budget_exhausted"] is True
+    assert attempt7["terminal_relative_phase_cycles"] == -26
+    assert attempt7["terminal_request_held_by_global_application_budget"] is True
+    assert attempt7["acquisition_gate_passed"] is True
+    assert attempt7["offline_finalization_gate_passed"] is True
+    assert attempt7["evidence_registration_valid"] is True
+    assert cx322["next_gate"] == "offline_successor_design_decision"
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1235,15 +1250,14 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("platform_stabilization")
 
-    assert require_programme_operation_allowed(
-        "cx322_bounded_hybrid_fact_gathering",
-        "cx322_stage5_bounded_hybrid_fact_gathering_live",
-    ) == cx322
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx322_bounded_hybrid_fact_gathering",
-            OFFLINE_PREPARATION,
+            "cx322_stage5_bounded_hybrid_fact_gathering_live",
         )
+    assert require_programme_operation_allowed(
+        "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
+    ) == cx322
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION
