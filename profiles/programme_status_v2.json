@@ -10,13 +10,14 @@
       "authority": "passed_completion_gate"
     },
     "otis_sustained_hybrid_regulation_v1": {
-      "state": "attempt1_failed_response_identity_propagation_new_live_authority_required",
+      "state": "attempt2_authorized_exact_bundle_entry_gates_pending",
       "allowed_operations": [
-        "offline_preparation"
+        "offline_preparation",
+        "otis_sustained_hybrid_regulation_live"
       ],
       "effective_date": "2026-08-23",
-      "authority": "attempt1_consumed_by_first_physical_terminal_new_exact_bundle_and_operator_authority_required",
-      "physical_authority_effective": false,
+      "authority": "explicit_operator_authority_continue_with_attempt2",
+      "physical_authority_effective": true,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
       "design_prompt": "docs/60_EXPERIMENTS/SUSTAINED_HYBRID_REGULATION_PROGRAMME_PROMPT.md",
       "design_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/README.md",
@@ -51,7 +52,13 @@
         "attempt1_physical_acquisition_gate_passed": false,
         "attempt1_offline_finalization_recovered": true,
         "attempt1_superseding_analysis_sealed": true,
-        "attempt1_evidence_registration_passed": true
+        "attempt1_evidence_registration_passed": true,
+        "attempt2_response_identity_regression_passed": true,
+        "attempt2_exact_firmware_build_pending": true,
+        "attempt2_exact_bundle_pending": true,
+        "attempt2_structural_preflight_pending": true,
+        "attempt2_complete_operational_rehearsal_pending": true,
+        "attempt2_physical_acquisition_pending": true
       },
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -63,6 +70,19 @@
         "consumed_by_first_physical_terminal": true,
         "automatic_retry": false,
         "criteria_change_after_evidence": false
+      },
+      "attempt2_operator_authority": {
+        "operator_instruction": "Continue with attempt 2",
+        "received_date": "2026-08-23",
+        "attempt_ordinal": 2,
+        "physical_live_run_limit": 1,
+        "firmware_flash_limit": 1,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "criteria_relaxation": false,
+        "requires_new_clean_exact_bundle": true,
+        "requires_complete_multi_transaction_rehearsal": true,
+        "predecessor_terminal_required": true
       },
       "attempts": [
         {
@@ -88,7 +108,7 @@
           "scientific_result": "none_incomplete_before_sustained_duration_reversal_or_recovery_boundaries"
         }
       ],
-      "next_gate": "new_exact_bundle_complete_multi_transaction_rehearsal_and_explicit_operator_authority"
+      "next_gate": "attempt2_clean_exact_bundle_preflight_rehearsal_activation_and_single_live_execution"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",
