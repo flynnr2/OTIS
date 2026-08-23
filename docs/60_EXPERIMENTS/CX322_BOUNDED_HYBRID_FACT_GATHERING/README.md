@@ -145,6 +145,54 @@ The prior CX320/CX321 bundle and proposal hashes cannot authorize CX322. A new
 exact bundle hash requires an explicit operator decision before flash, reset,
 serial ownership, setup, or live acquisition.
 
+## Integration-escape review (attempts 1--6)
+
+The first six physical starts did not reject the CX322 controller science.
+They exposed three firmware integration defects and three host-platform
+escapes:
+
+1. The CX322 exact timer projection was compiled out by a CX321-only source
+   guard.
+2. Exact decision-timestamp dispatch was independently compiled under a
+   CX321-only guard.
+3. The supervisor incorrectly treated overlapping `phase_nonzero` and
+   `frequency_only` counts as mutually exclusive.
+4. Firmware did not record the exact phase-qualification origin on the
+   frequency-acquire transition.
+5. Host replay replaced an exact timer coordinate with lossy integer seconds
+   at the phase-residence boundary, disagreed with firmware, and withheld the
+   acknowledgement until firmware correctly timed out fail-static.
+6. The host pre-acknowledgement check accepted a generation-fresh but causally
+   stale status snapshot and aborted before acknowledging a valid second
+   request.
+
+Attempts 1, 2, and 4 are classified as firmware defects under intended
+integration. Attempts 3 and 5 are testing/supervisor harness escapes. Attempt
+6 is a host orchestration escape. Secondary offline finalization or abort-
+reporting defects were recovered from retained evidence and did not themselves
+justify another physical acquisition.
+
+The durable entry requirements are therefore:
+
+- build and exercise the exact frozen firmware profile, with source-guard
+  checks proving that every required timestamp and wire field is present;
+- retain exact counter-domain coordinates end to end and compare exact tick
+  deltas directly with exact tick thresholds;
+- derive harness predicates from the frozen contract, including every legal
+  overlap and repetition;
+- bind live queries to causal identity and frontier, not generation freshness
+  alone, and use bounded retry/hold for coherent older snapshots;
+- rehearse the complete progressive path through at least the second request,
+  acknowledgement, retained response, later-authority release, and first
+  dependent decision; and
+- attribute fixture coverage honestly: host fixtures do not prove firmware
+  compile guards, cross-core propagation, device-driver behavior, or the
+  physical plant.
+
+These rules are also retained in the repository-root `AGENTS.md` so that they
+apply before future OTIS campaign work, rather than depending on this campaign
+document being rediscovered.
+
 ## Entry result (2026-08-22)
 
 The exact offline entry sequence passed:
