@@ -4,7 +4,28 @@ import json
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_preflight as preflight_tool
-from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX321_PROGRAMME,
+    SUSTAINED_HYBRID_PROGRAMME,
+)
+
+
+def test_structural_preflight_accepts_exact_declared_live_authority_state() -> None:
+    programme = SUSTAINED_HYBRID_PROGRAMME
+    status = {
+        "active_programme": programme.status_programme_id,
+        "programmes": {
+            programme.status_programme_id: {
+                "allowed_operations": [
+                    "offline_preparation",
+                    programme.operation,
+                ],
+                "physical_authority_effective": True,
+            }
+        },
+    }
+
+    assert preflight_tool._programme_status_allows_preflight(status, programme)
 
 
 def test_cx321_structural_preflight_exercises_extended_phase4_envelope(
