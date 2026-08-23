@@ -2757,7 +2757,63 @@ def _exercise_cx322_real_transaction_path(
         "correction_count": 0,
         "automatic_application_count": 0,
         "cumulative_movement_codes": 0,
+        "query_nonce": "0",
     }
+
+    def emit_active_status() -> None:
+        state["generation"] += 1
+        payload = _cx322_active_status_wire_fixture(
+            generation=int(state["generation"]),
+            query_nonce=str(state["query_nonce"]),
+            evidence_phase=str(state["evidence_phase"]),
+            bundle=bundle,
+            applied=bool(state["applied"]),
+            checkpoint_passed=bool(state["checkpoint_passed"]),
+            evidence_request_sequence=int(
+                state["evidence_request_sequence"]
+            ),
+            applied_code=int(state["applied_code"]),
+            dac_epoch=int(state["dac_epoch"]),
+            correction_count=int(state["correction_count"]),
+            automatic_application_count=int(
+                state["automatic_application_count"]
+            ),
+            cumulative_movement_codes=int(
+                state["cumulative_movement_codes"]
+            ),
+            natural_reversal_observed=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 4
+            ),
+            deliberate_challenge_applied=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 3
+            ),
+            deliberate_challenge_recovery_applied=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 4
+            ),
+            deliberate_challenge_direction=(
+                -1 if programme.sustained_regulation else 0
+            ),
+            deliberate_challenge_code=(
+                int(applications[3]["requested_code"])
+                if programme.sustained_regulation
+                else 0
+            ),
+            deliberate_challenge_dac_epoch=(
+                int(applications[3]["dac_epoch"])
+                if programme.sustained_regulation
+                else 0
+            ),
+            deliberate_challenge_application_ticks=(
+                43_800 * RP2040_TIMER0_TICKS_PER_SECOND
+                if programme.sustained_regulation
+                else 0
+            ),
+        )
+        with write_lock:
+            _write_all_fd(master, payload)
 
     def emulate_firmware() -> None:
         buffered = b""
@@ -2824,63 +2880,18 @@ def _exercise_cx322_real_transaction_path(
                         if phase == 4:
                             if request_sequence == 1:
                                 state["checkpoint_passed"] = True
+                            if programme.sustained_regulation:
+                                # Sustained rehearsal spans more than one
+                                # live-health freshness interval.  Mirror the
+                                # firmware's periodic status publication after
+                                # each complete transaction so downstream
+                                # identity checks remain exercised, not waived.
+                                emit_active_status()
                             if request_sequence == len(applications):
                                 phase4_observed.set()
                     if command.startswith("ACTIVE SNAPSHOT "):
-                        nonce = command.split()[2]
-                        state["generation"] += 1
-                        payload = _cx322_active_status_wire_fixture(
-                            generation=int(state["generation"]),
-                            query_nonce=nonce,
-                            evidence_phase=str(state["evidence_phase"]),
-                            bundle=bundle,
-                            applied=bool(state["applied"]),
-                            checkpoint_passed=bool(state["checkpoint_passed"]),
-                            evidence_request_sequence=int(
-                                state["evidence_request_sequence"]
-                            ),
-                            applied_code=int(state["applied_code"]),
-                            dac_epoch=int(state["dac_epoch"]),
-                            correction_count=int(state["correction_count"]),
-                            automatic_application_count=int(
-                                state["automatic_application_count"]
-                            ),
-                            cumulative_movement_codes=int(
-                                state["cumulative_movement_codes"]
-                            ),
-                            natural_reversal_observed=(
-                                programme.sustained_regulation
-                                and int(state["correction_count"]) >= 4
-                            ),
-                            deliberate_challenge_applied=(
-                                programme.sustained_regulation
-                                and int(state["correction_count"]) >= 3
-                            ),
-                            deliberate_challenge_recovery_applied=(
-                                programme.sustained_regulation
-                                and int(state["correction_count"]) >= 4
-                            ),
-                            deliberate_challenge_direction=(
-                                -1 if programme.sustained_regulation else 0
-                            ),
-                            deliberate_challenge_code=(
-                                int(applications[3]["requested_code"])
-                                if programme.sustained_regulation
-                                else 0
-                            ),
-                            deliberate_challenge_dac_epoch=(
-                                int(applications[3]["dac_epoch"])
-                                if programme.sustained_regulation
-                                else 0
-                            ),
-                            deliberate_challenge_application_ticks=(
-                                43_800 * RP2040_TIMER0_TICKS_PER_SECOND
-                                if programme.sustained_regulation
-                                else 0
-                            ),
-                        )
-                        with write_lock:
-                            _write_all_fd(master, payload)
+                        state["query_nonce"] = command.split()[2]
+                        emit_active_status()
         except (OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
             errors.append(str(exc))
             phase4_observed.set()
