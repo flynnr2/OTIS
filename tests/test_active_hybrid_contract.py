@@ -113,6 +113,33 @@ def test_active_hybrid_contract_validates_materiality_and_epoch_propagation(
     assert "lacks exact downstream DAC epoch" in " ".join(result.errors)
 
 
+def test_deliberate_challenge_is_physical_but_not_phase_materiality(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "active_hybrid_decisions_v1.csv"
+    row = _row()
+    row.update(
+        {
+            "requested_delta_codes": "-21",
+            "requested_code": "43047",
+            "phase_materially_influenced": "false",
+            "reason": "deliberate_reversal_challenge_request_ready",
+        }
+    )
+    _write(path, row)
+    context = CsvValidationContext(
+        "active_hybrid_decisions_v1", frozenset(), frozenset()
+    )
+
+    assert validate_csv(path, context).ok
+
+    row["phase_materially_influenced"] = "true"
+    _write(path, row)
+    result = validate_csv(path, context)
+    assert not result.ok
+    assert "phase materiality counterfactual differs" in " ".join(result.errors)
+
+
 def test_firmware_header_and_capture_splitter_use_the_exact_contract(
     tmp_path: Path,
 ) -> None:
