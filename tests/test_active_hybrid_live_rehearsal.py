@@ -177,6 +177,40 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     )
 
 
+def test_obstruction_requires_the_exact_final_status_generation(
+    tmp_path: Path,
+) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    path = reports / "cx317_active_status_live_state_v1.json"
+    path.write_text(
+        json.dumps(
+            {
+                "state": "in_progress",
+                "generation": 7,
+                "newest_started_generation": 7,
+                "newest_complete_generation": 6,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert not rehearsal._active_status_generation_complete(tmp_path, 7)
+
+    path.write_text(
+        json.dumps(
+            {
+                "state": "complete",
+                "generation": 7,
+                "newest_started_generation": 7,
+                "newest_complete_generation": 7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert rehearsal._active_status_generation_complete(tmp_path, 7)
+    assert not rehearsal._active_status_generation_complete(tmp_path, 6)
+
+
 def test_wire_fixture_uses_frozen_supervisor_identities() -> None:
     policy_path = (
         Path(__file__).resolve().parents[1]

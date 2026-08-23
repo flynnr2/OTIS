@@ -161,6 +161,21 @@ def _read_object(path: Path) -> dict[str, Any]:
     return value
 
 
+def _active_status_generation_complete(
+    run_dir: Path, expected_generation: int
+) -> bool:
+    path = run_dir / "reports/cx317_active_status_live_state_v1.json"
+    if not path.is_file() or expected_generation <= 0:
+        return False
+    value = _read_object(path)
+    return (
+        value.get("state") == "complete"
+        and value.get("generation") == expected_generation
+        and value.get("newest_started_generation") == expected_generation
+        and value.get("newest_complete_generation") == expected_generation
+    )
+
+
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = (
@@ -3195,6 +3210,20 @@ def _run_real_process_topology(
         if not supervisor_stopped:
             os.kill(supervisor.pid, signal.SIGSTOP)
             supervisor_stopped = True
+        if real_transaction_path is not None:
+            # The producer can finish a complete status payload before the
+            # capture process has reduced every row.  Drain through the exact
+            # final generation before freezing capture; otherwise the
+            # obstruction fixture manufactures an unrelated partial-snapshot
+            # wait in front of the independent abort poll.
+            _wait_until(
+                lambda: _active_status_generation_complete(
+                    run_dir,
+                    int(real_transaction_path["last_status_generation"]),
+                ),
+                5.0,
+                "final real-process status generation before obstruction",
+            )
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
         for _ in range(100_000):
