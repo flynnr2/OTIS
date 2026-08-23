@@ -191,7 +191,7 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx321["stage5_attempts"][2]["identification_applications"] == 0
     cx322 = status["programmes"]["cx322_bounded_hybrid_fact_gathering"]
     assert cx322["state"] == (
-        "offline_exact_entry_ready_awaiting_operator_authorization"
+        "stage5_evidence_acquired_successor_decision_pending"
     )
     assert cx322["allowed_operations"] == [OFFLINE_PREPARATION]
     assert cx322["physical_authority_effective"] is False
@@ -206,10 +206,10 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["verification"]["structural_preflight_pending"] is False
     assert cx322["verification"]["complete_operational_rehearsal_pending"] is False
     assert cx322["exact_bundle"]["bundle_sha256"] == (
-        "ebe9e446f0445cbe5cae741f729b5e0af480ca6088484ccdf1df357568a2158f"
+        "79d064f03be1e1de1df8b3e3972a291c09aed5f2df638a69c7ca1beac39d4fcb"
     )
     assert cx322["authority_proposal"]["proposal_sha256"] == (
-        "6bd897c1a6fb60924001e62d73bf5177ec2fbb38f1bfde46eeceb87d1aa423ab"
+        "ddd6fe825e73c0ec06ee31f1b6a0146d5e334b2eb459d1ad026ec0cb52be066c"
     )
     assert cx322["structural_preflight"]["status"] == "passed"
     assert cx322["operational_rehearsal"]["status"] == "passed"
@@ -220,9 +220,60 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
         "later_authority_release_observed"
     ] is True
     assert cx322["operational_rehearsal"]["physical_actions_performed"] == 0
-    assert cx322["next_gate"] == (
-        "separate_explicit_exact_bundle_operator_decision"
+    assert cx322["operator_authority"]["bundle_sha256"] == (
+        "79d064f03be1e1de1df8b3e3972a291c09aed5f2df638a69c7ca1beac39d4fcb"
     )
+    assert cx322["effective_activation"]["activation_sha256"] == (
+        "62a0740605343ebabbefe640f0ef574a0bae1e0c4dfb927fe6c5ea5419b89b65"
+    )
+    assert cx322["effective_activation"]["attempt_ordinal"] == 7
+    assert cx322["effective_activation"]["effective"] is False
+    assert cx322["effective_activation"]["consumed"] is True
+    assert cx322["effective_activation"]["consumed_by_run_id"] == (
+        "stage5_live_attempt7_20260822T1921Z"
+    )
+    assert cx322["effective_activation"]["predecessor_seal_sha256"] == (
+        "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
+    )
+    assert cx322["stage5_attempts"][0]["setup_applications"] == 1
+    assert cx322["stage5_attempts"][0]["automatic_applications"] == 0
+    assert cx322["stage5_attempts"][0]["qualified_origin_established"] is False
+    assert cx322["stage5_attempts"][0]["offline_finalization_recovered_without_physical_io"] is True
+    assert cx322["stage5_attempts"][1]["selected_estimate_boundaries"] == 1
+    assert cx322["stage5_attempts"][1]["active_hybrid_decisions_recorded"] == 0
+    assert cx322["stage5_attempts"][1]["automatic_applications"] == 0
+    assert cx322["stage5_attempts"][1]["qualified_origin_established"] is False
+    assert cx322["stage5_attempts"][2]["automatic_applications"] == 1
+    assert cx322["stage5_attempts"][2]["last_observed_applied_code"] == 43063
+    assert cx322["stage5_attempts"][2]["qualified_origin_established"] is True
+    assert cx322["stage5_attempts"][2]["frequency_only_applications"] == 1
+    assert cx322["stage5_attempts"][2]["phase_nonzero_applications"] == 1
+    assert cx322["stage5_attempts"][2]["phase_material_applications"] == 0
+    assert cx322["stage5_attempts"][3]["completed_response_observations"] == 1
+    assert cx322["stage5_attempts"][3]["response_class"] == (
+        "healthy_indeterminate_near_resolution"
+    )
+    assert cx322["stage5_attempts"][3]["observed_response_hz"] == 0.0
+    assert cx322["stage5_attempts"][3]["acquisition_gate_passed"] is True
+    assert cx322["stage5_attempts"][4]["automatic_applications"] == 1
+    assert cx322["stage5_attempts"][4]["last_observed_applied_code"] == 43062
+    assert cx322["stage5_attempts"][4]["phase_material_applications"] == 1
+    assert cx322["stage5_attempts"][4]["exact_timer_replay_after_host_repair"] is True
+    assert cx322["stage5_attempts"][5]["second_application_released"] is False
+    assert cx322["stage5_attempts"][5]["predicted_direction_observed"] is True
+    attempt7 = cx322["stage5_attempts"][6]
+    assert attempt7["terminal"] == "bounded_direct_hybrid_evidence_acquired"
+    assert attempt7["qualified_endpoint_complete"] is True
+    assert attempt7["automatic_applications"] == 4
+    assert attempt7["phase_material_applications"] == 4
+    assert attempt7["cumulative_movement_codes"] == 14
+    assert attempt7["application_budget_exhausted"] is True
+    assert attempt7["terminal_relative_phase_cycles"] == -26
+    assert attempt7["terminal_request_held_by_global_application_budget"] is True
+    assert attempt7["acquisition_gate_passed"] is True
+    assert attempt7["offline_finalization_gate_passed"] is True
+    assert attempt7["evidence_registration_valid"] is True
+    assert cx322["next_gate"] == "offline_successor_design_decision"
     range_authority = successor["range_spanning_operator_authority"]
     assert range_authority["requires_exact_bundle_before_physical_action"] is True
     assert range_authority[
@@ -1199,6 +1250,11 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     with pytest.raises(ProgrammeExecutionBlocked, match="operational_execution"):
         require_programme_execution_allowed("platform_stabilization")
 
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "cx322_bounded_hybrid_fact_gathering",
+            "cx322_stage5_bounded_hybrid_fact_gathering_live",
+        )
     assert require_programme_operation_allowed(
         "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
     ) == cx322

@@ -125,6 +125,16 @@ predicates from one frozen contract or manifest wherever practical. Runners,
 supervisors, analyzers, recovery tools, and test harnesses must not invent
 conflicting operational semantics.
 
+Derive harness relationships from that contract as well. Do not infer that
+counters, classifications, or flags are mutually exclusive merely because
+their names appear different. Exercise every legal overlap, repetition, and
+ordering that can reach an authority or terminal decision.
+
+Keep decision-bearing elapsed-time comparisons in the declared exact counter
+domain from producer through replay and verification. Compare counter deltas
+with thresholds expressed in the same domain; do not pass through floored
+seconds, rounded wall time, binary floating point, or display-only fields.
+
 When a record declares its clock or counter domain, validators and replay
 tools must derive legal rollover behavior from that declared domain. Do not
 make canonical wrap handling depend on a caller remembering an optional
@@ -164,6 +174,26 @@ physical propagation claim merely because its synthetic records are coherent.
 Cover an unexercised boundary with the cheapest deterministic firmware or
 integration regression available, and retain the live pre-actuation gate for
 the remaining physical integration risk.
+
+Before bench entry, prove that the exact frozen firmware profile compiles,
+emits, and propagates every field required by the campaign. Include source-
+guard or build-matrix checks for campaign-specific feature gates; a successful
+host fixture cannot prove that the selected firmware profile compiled those
+paths in.
+
+Rehearse the complete progressive transaction sequence needed by the decision,
+including repeated requests and the first dependent decision after each
+acknowledgement. Do not stop at the first successful application when later
+authority, rearm, response retention, or a second acknowledgement uses a
+different path.
+
+Treat snapshot freshness and causal sufficiency as separate properties. A
+recent generation may still precede the request or evidence frontier being
+verified. Bind decision-bearing queries to session, request sequence, evidence
+sequence, applied code, DAC epoch, and expected protocol phase. Retry or hold
+within a bounded deadline when an otherwise coherent snapshot is merely
+behind; abort for contradictory identity, impossible ordering, safety breach,
+or deadline expiry, not for observation latency alone.
 
 ## Serial and process invariants
 

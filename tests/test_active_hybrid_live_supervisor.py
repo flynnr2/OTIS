@@ -407,6 +407,62 @@ def test_failed_response_sign_checkpoint_maps_to_scientific_terminal(
     assert events[0][0] == "cx320_first_phase_response_checkpoint_rejected"
 
 
+def test_host_replay_disagreement_holds_authority_without_aborting(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    reasons: list[str] = []
+    commands: list[str] = []
+    events: list[tuple[str, dict[str, object]]] = []
+    response = {
+        "event": "response",
+        "transaction_record_sequence": "5",
+        "request_sequence": "1",
+        "response_class": "healthy_indeterminate_near_resolution",
+        "applied_code": "43063",
+        "dac_epoch": "2",
+        "correction_count": "1",
+        "cumulative_movement_codes": "5",
+    }
+
+    def disagree(_self: object) -> None:
+        raise live.IndependentReplayMismatch(
+            "CX320 independent host replay differs from the firmware decision"
+        )
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor, "_process_transactions", disagree
+    )
+    monkeypatch.setattr(supervisor, "_abort", reasons.append)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        supervisor,
+        "_event",
+        lambda name, **values: events.append((name, values)),
+    )
+    monkeypatch.setattr(supervisor, "_validate_hybrid_decisions", lambda: None)
+    monkeypatch.setattr(live, "_read_csv", lambda _path: [response])
+
+    supervisor._process_transactions()
+    supervisor._maybe_start_or_arm(_health(supervisor))
+
+    assert reasons == []
+    assert commands == []
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["host_verification_hold"] == {
+        "entered_utc": supervisor.state["host_verification_hold"]["entered_utc"],
+        "error": "CX320 independent host replay differs from the firmware decision",
+        "record_sequence": 5,
+        "request_sequence": 1,
+        "response_class": "healthy_indeterminate_near_resolution",
+        "applied_code": 43063,
+        "dac_epoch": 2,
+        "correction_count": 1,
+        "cumulative_movement_codes": 5,
+    }
+    assert events[0][0] == "cx320_host_verification_hold_entered"
+
+
 def test_cx320_uses_observed_raw_pps_qualification_deadline(
     tmp_path: Path,
 ) -> None:
@@ -824,6 +880,50 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     )
 
 
+def test_nonmaterial_combined_application_allows_overlapping_phase_count(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    supervisor.state["terminal_static_code"] = live.SETUP_CODE
+    applied_code = live.SETUP_CODE - 5
+    applied = _health(
+        supervisor,
+        hybrid_state="PHASE_QUALIFY",
+        correction_count="1",
+        cumulative_movement_codes="5",
+        phase_nonzero_application_count="1",
+        phase_material_application_count="0",
+        frequency_only_application_count="1",
+        confirmed_applied_code=str(applied_code),
+    )
+
+    supervisor._check_fail_static_health(applied)
+
+    assert supervisor.state["terminal_static_code"] == applied_code
+
+
+def test_global_authority_fault_retains_latest_confirmed_applied_code(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    supervisor.state["terminal_static_code"] = live.SETUP_CODE
+    applied_code = live.SETUP_CODE - 5
+    exceeded = _health(
+        supervisor,
+        hybrid_state="PHASE_QUALIFY",
+        correction_count=str(supervisor.programme.maximum_applications + 1),
+        cumulative_movement_codes="5",
+        confirmed_applied_code=str(applied_code),
+    )
+
+    with pytest.raises(ValueError, match="exceeded the frozen global authority"):
+        supervisor._check_fail_static_health(exceeded)
+
+    assert supervisor.state["terminal_static_code"] == applied_code
+
+
 def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -879,6 +979,64 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 
+def test_evidence_prepare_waits_through_causally_stale_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    clear = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        evidence_phase="evidence_clear",
+        evidence_request_sequence="0",
+    )
+    pending = _health(
+        supervisor,
+        snapshot_generation_begin="9",
+        snapshot_generation_complete="9",
+        evidence_phase="request_pending",
+        evidence_request_sequence="2",
+    )
+    monkeypatch.setattr(supervisor, "_current_health", lambda: _health(supervisor))
+    snapshots = iter((clear, pending))
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: next(snapshots),
+    )
+
+    prepared = supervisor._prepare_evidence_acknowledgement(
+        {"request_sequence": "2"}, 1
+    )
+
+    assert prepared == {
+        "pre_submit_snapshot_generation": 9,
+        "pre_submit_evidence_phase": "request_pending",
+    }
+
+
+def test_evidence_prepare_rejects_contradictory_request_identity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    contradictory = _health(
+        supervisor,
+        evidence_phase="request_pending",
+        evidence_request_sequence="3",
+    )
+    monkeypatch.setattr(supervisor, "_current_health", lambda: _health(supervisor))
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: contradictory,
+    )
+
+    with pytest.raises(ValueError, match="observed_request=3"):
+        supervisor._prepare_evidence_acknowledgement(
+            {"request_sequence": "2"}, 1
+        )
+
+
 def test_phase_degradation_stops_as_active_hybrid_nonpass(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -928,6 +1086,41 @@ def test_qualified_endpoint_requires_clear_static_terminal(tmp_path: Path) -> No
         "last_confirmed_code": live.SETUP_CODE,
         "utc": supervisor.state["terminal"]["utc"],
     }
+
+
+def test_host_verification_hold_reaches_nonpass_static_endpoint(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["qualified_origin_timestamp_ticks"] = (
+        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    supervisor.state["qualified_origin_session_id"] = 1
+    supervisor.state["host_verification_hold"] = {
+        "applied_code": 43063,
+        "dac_epoch": 2,
+        "correction_count": 1,
+        "cumulative_movement_codes": 5,
+    }
+    health = _health(
+        supervisor,
+        uptime_s=str(4000 + live.QUALIFIED_DURATION_S),
+        evidence_pending="true",
+        evidence_phase="response",
+        evidence_request_sequence="1",
+        confirmed_applied_code="43063",
+        correction_count="1",
+        cumulative_movement_codes="5",
+        dac_epoch="2",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_000.0, 0.0)
+
+    assert supervisor.state["terminal"]["result"] == "nonpass"
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "host_verification_hold_incomplete"
+    )
+    assert supervisor.state["terminal"]["last_confirmed_code"] == 43063
 
 
 def test_qualified_boundaries_use_device_time_despite_host_utc_steps(

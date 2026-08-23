@@ -108,6 +108,22 @@ def test_cx321_active_hybrid_is_a_current_evidence_package(
     assert load_manifest(run_dir).data == value
 
 
+def test_cx322_direct_hybrid_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx322"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="CX322_EVIDENCE_EPOCH_1",
+        run_id="cx322_direct_hybrid_live_fixture",
+        stage="CX322_BOUNDED_HYBRID_FACT_GATHERING_LIVE",
+        cx319=None,
+        cx322={"profile_id": "cx322_direct_hybrid"},
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_legacy_manifest_filename_is_rejected_with_revision_guidance(
     tmp_path: Path,
 ) -> None:

@@ -58,6 +58,7 @@ TOOL_PATHS = {
     "finalizer_and_sealer": Path(__file__).with_name("active_hybrid_finalize.py"),
     "capture": Path(__file__).with_name("capture_device.py"),
     "capture_splitter": Path(__file__).with_name("capture_serial.py"),
+    "run_loader": Path(__file__).with_name("run_loader.py"),
     "run_paths": Path(__file__).with_name("run_paths.py"),
     "serial_commands": Path(__file__).with_name("serial_commands.py"),
     "active_transaction_supervisor": Path(__file__).with_name("active_transactions.py"),

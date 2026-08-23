@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_live_rehearsal
+from host.otis_tools.active_hybrid_bundle import TOOL_PATHS
 from host.otis_tools.active_control_policy import ResponseClass, ResponseClassifier
 from host.otis_tools.active_hybrid_live_analyze import (
     _classify_decision,
@@ -17,6 +18,7 @@ from host.otis_tools.active_hybrid_programme_contract import (
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json"
+FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
 
 def test_cx322_freezes_observational_response_semantics() -> None:
@@ -34,6 +36,56 @@ def test_cx322_freezes_observational_response_semantics() -> None:
         is True
     )
     assert "minimum_phase_material_applications_for_pass" not in progressive
+
+
+def test_cx322_compiles_the_exact_timer_projection_path() -> None:
+    preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "OtisTimer0Extension timer_extension = {};"
+    ) in preview
+    for function in (
+        "bool otis_cx317_preview_live_extend_timer0_ticks",
+        "bool otis_cx317_preview_live_project_setup_timer0_ticks",
+    ):
+        body = preview[preview.index(function) :]
+        assert body.index("#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING") < body.index(
+            "#else"
+        )
+    boundary = preview[
+        preview.index("void otis_cx317_preview_live_on_boundary") :
+    ]
+    assert boundary.index("otis_timer0_extension_advance_boundary") < boundary.index(
+        "#if OTIS_ENABLE_CX321_ACTIVE_HYBRID"
+    )
+    decision_dispatch = boundary[
+        boundary.index("OtisCx317ActiveLiveOutcome local_active_outcome") :
+    ]
+    assert (
+        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "    otis_cx317_active_live_on_decision_at_ticks("
+    ) in decision_dispatch
+
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    setup = active[
+        active.index("bool otis_cx317_active_live_confirm_setup_consumers_exact") :
+    ]
+    assert "otis_active_hybrid_engine_init_at_ticks" in setup
+
+    policy = (FIRMWARE / "otis_active_hybrid_policy_engine.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert 'fault(engine, "exact_tick_timing_missing_or_backward")' in policy
+    assert "cx321_exact_tick_timing_missing_or_backward" not in policy
+
+
+def test_active_hybrid_bundle_binds_the_current_package_loader() -> None:
+    assert TOOL_PATHS["run_loader"].name == "run_loader.py"
 
 
 def test_cx322_real_process_fixture_connects_response_to_later_authority() -> None:

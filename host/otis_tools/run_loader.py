@@ -161,7 +161,9 @@ def find_manifest_path(run_dir: Path) -> Path | None:
 def _require_current_epoch(data: dict) -> None:
     stage = str(data.get("stage", ""))
     run_id = str(data.get("run_id", ""))
-    if stage.startswith("CX321_"):
+    if stage.startswith("CX322_"):
+        programme = data.get("cx322")
+    elif stage.startswith("CX321_"):
         programme = data.get("cx321")
     elif stage.startswith("CX320_"):
         programme = data.get("cx320")
@@ -171,7 +173,7 @@ def _require_current_epoch(data: dict) -> None:
         isinstance(programme, dict)
         and programme.get("profile_id") in CURRENT_PACKAGE_PROFILE_IDENTITIES
     )
-    if stage.startswith(("CX319_", "CX320_", "CX321_")) and current_profile:
+    if stage.startswith(("CX319_", "CX320_", "CX321_", "CX322_")) and current_profile:
         return
     if (
         stage == "CX318_STAGE5_TRANSITION_SPOOL"

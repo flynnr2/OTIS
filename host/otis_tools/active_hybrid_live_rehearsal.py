@@ -1046,6 +1046,68 @@ def _cx322_first_observational_transaction_fixture(
     }
 
 
+def _cx322_selected_estimate_fixture(
+    ahy: list[dict[str, str]], bundle: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Provide the exact timer coordinates consumed by the live replay guard."""
+
+    policy = load_policy(Path(str(bundle["policy"]["path"])))
+    rows: list[dict[str, str]] = []
+    for index, decision in enumerate(ahy, start=1):
+        frequency_error_hz = float(decision["frequency_error_hz"])
+        frequency_hz = 10_000_000.0 + frequency_error_hz
+        values = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
+        values.update(
+            {
+                "record_type": "EST",
+                "schema_version": "2",
+                "estimate_seq": str(index),
+                "estimate_id": f"est:cx317:selected600:rehearsal:{index:06d}",
+                "estimator_timestamp_ticks": str(
+                    (
+                        int(decision["decision_timestamp_s"])
+                        * RP2040_TIMER0_TICKS_PER_SECOND
+                    )
+                    % RP2040_TIMER0_MICROS_WRAP_TICKS
+                ),
+                "time_domain": "rp2040_timer0",
+                "source_count_seq": decision["source_last_sequence"],
+                "source_count_ref": f"live:CNT:{decision['source_last_sequence']}",
+                "source_reference_first_seq": decision["source_first_sequence"],
+                "source_reference_last_seq": decision["source_last_sequence"],
+                "source_status_refs": "live:STS:pps_gate",
+                "source_dac_ref": f"live:DAC:{decision['dac_epoch']}",
+                "manifest_ref": "firmware_config:cx322_direct_hybrid",
+                "estimator_version": policy.frequency_estimator_id,
+                "config_hash": policy.frequency_estimator_sha256,
+                "observation_validity": "valid",
+                "observation_reason_codes": "contiguous_snapshot_span",
+                "reference_validity": "valid",
+                "reference_age_s": "0",
+                "reference_continuity": "true",
+                "count_validity": "valid",
+                "count_age_s": "0",
+                "count_continuity": "true",
+                "diagnostic_health": "healthy",
+                "diagnostic_reason_codes": "diagnostic_healthy",
+                "frequency_observation_hz": f"{frequency_hz:.12f}",
+                "accepted_sample_count": "600",
+                "estimator_confidence": "unavailable",
+                "frequency_estimate_hz": f"{frequency_hz:.12f}",
+                "frequency_error_hz": f"{frequency_error_hz:.12f}",
+                "uncertainty_status": "unavailable",
+                "uncertainty_reason_codes": "fixture_unavailable",
+                "correlation_policy": "not_combined_missing_components",
+                "uncertainty_model_ref": "unavailable:combined_uncertainty",
+                "drift_enabled": "false",
+                "preview_eligibility": "true",
+                "eligibility_reason_codes": "preview_input_observe_only",
+            }
+        )
+        rows.append(values)
+    return rows
+
+
 def _cx322_active_status_wire_fixture(
     *,
     generation: int,
@@ -2363,6 +2425,7 @@ def _exercise_cx322_real_transaction_path(
     ahy, transactions, summary = _cx322_first_observational_transaction_fixture(
         bundle
     )
+    estimates = _cx322_selected_estimate_fixture(ahy, bundle)
     stop = threading.Event()
     phase4_observed = threading.Event()
     write_lock = threading.Lock()
@@ -2438,6 +2501,19 @@ def _exercise_cx322_real_transaction_path(
             == 1,
             15.0,
             "CX322 initial complete status identity before ACT",
+        )
+        with write_lock:
+            _write_all_fd(
+                master,
+                _wire_rows(estimates, CONTRACT_FIELDS["estimates_v2"]),
+            )
+        estimate_path = run_dir / "csv/estimates_v2.csv"
+        _wait_until(
+            lambda: estimate_path.is_file()
+            and sum(1 for _ in estimate_path.open(encoding="utf-8"))
+            >= len(estimates) + 1,
+            10.0,
+            "CX322 exact selected-estimate timestamps before AHY replay",
         )
         with write_lock:
             _write_all_fd(master, _wire_rows(ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS))

@@ -590,6 +590,7 @@ def _replay_ahy(
     expected_profile_identity: str,
     expected_active_policy_sha256: str | None = None,
     plant_sign_records: list[dict[str, str]] | None = None,
+    estimate_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
@@ -629,6 +630,7 @@ def _replay_ahy(
                 plant_sign_records, transactions
             )
         ),
+        estimate_rows=estimate_rows,
     )
 
 
@@ -654,6 +656,7 @@ def _response_attestations(
                 f"record_{record_sequence:06d}_response_replay_attestation.json"
             )
             path = run_dir / relative
+            estimates_path = run_dir / "csv/estimates_v2.csv"
             replayed = replay_response_before_acknowledgement(
                 active_hybrid_csv=run_dir / ACTIVE_HYBRID_CSV,
                 active_transactions_csv=run_dir / ACTIVE_CSV,
@@ -666,9 +669,24 @@ def _response_attestations(
                     if programme.identification_required
                     else None
                 ),
+                estimates_csv=(estimates_path if estimates_path.is_file() else None),
             )
-            retained = _read_object(path)
-            row_exact = retained == replayed
+            retained = _read_object(path) if path.is_file() else {}
+            phase_acknowledged = any(
+                item.get("event") == "transaction_phase_acknowledged"
+                and int(item.get("record_sequence", -1)) == record_sequence
+                and int(item.get("phase", -1)) == 4
+                for item in supervisor_events
+            )
+            recovered_host_hold = any(
+                item.get("event") == f"{programme.key}_host_verification_hold_entered"
+                and int(item.get("record_sequence", -1)) == record_sequence
+                and int(item.get("request_sequence", -1)) == request_sequence
+                for item in supervisor_events
+            )
+            row_exact = retained == replayed or (
+                not path.exists() and not phase_acknowledged and recovered_host_hold
+            )
             if path.is_file():
                 hashes[str(relative)] = _sha256_file(path)
             checkpoint_passed = True
@@ -1563,6 +1581,12 @@ def analyze(
         else None
     )
     try:
+        try:
+            exact_estimate_rows = _read_csv(
+                _contract_path(manifest, "estimates_v2")
+            )
+        except (KeyError, OSError, TypeError, ValueError):
+            exact_estimate_rows = None
         ahy_replay = _replay_ahy(
             decision_rows,
             active_rows,
@@ -1576,6 +1600,7 @@ def analyze(
                 else policy.policy_sha256
             ),
             plant_sign_records=plant_sign_records,
+            estimate_rows=exact_estimate_rows,
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         retained_input_failures.append(f"active-hybrid replay: {exc}")

@@ -410,6 +410,59 @@ def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
     ] == "operator_abort"
 
 
+def test_later_activation_accepts_failed_post_acquisition_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-4"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "attempt-4",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": "cx322_live_supervisor_fault",
+            },
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation.create_activation(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        operational_rehearsal_path=rehearsal_path,
+        serial_device="/dev/cu.usbmodem-test",
+        operator_instruction_ref="expanded bounded recovery authority",
+        output_path=tmp_path / "activation-5.json",
+        attempt_ordinal=5,
+        attempt_reason="repair exact phase-residence timing",
+        predecessor_terminal_path=predecessor_path,
+    )
+
+    assert observed["attempt"]["ordinal"] == 5
+    assert observed["attempt"]["predecessor_physical_terminal"][
+        "primary_decision"
+    ] == "measurement_authority_or_platform_fault"
+
+
 def test_later_activation_rejects_unconfirmed_operator_abort_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

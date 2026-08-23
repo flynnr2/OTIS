@@ -104,6 +104,8 @@ struct OtisActiveHybridEngine {
 
 void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
                                     uint32_t setup_application_s);
+void otis_active_hybrid_engine_init_at_ticks(
+    OtisActiveHybridEngine *engine, uint64_t setup_application_ticks);
 bool otis_active_hybrid_engine_rebase_after_plant_sign(
     OtisActiveHybridEngine *engine, uint16_t applied_code, uint32_t dac_epoch,
     uint16_t global_correction_count,

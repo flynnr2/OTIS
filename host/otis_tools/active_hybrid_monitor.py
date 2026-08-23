@@ -241,6 +241,9 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "phase_material_application_count": (
                 0 if supervisor is None else supervisor.get("phase_material_application_count", 0)
             ),
+            "host_verification_hold": (
+                None if supervisor is None else supervisor.get("host_verification_hold")
+            ),
             "estimates": estimates,
             "active_transactions": transactions,
             "active_hybrid_decisions": hybrid,

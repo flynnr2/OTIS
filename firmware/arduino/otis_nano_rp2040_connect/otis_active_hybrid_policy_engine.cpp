@@ -113,6 +113,16 @@ void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
   engine->last_application_s = setup_application_s;
 }
 
+void otis_active_hybrid_engine_init_at_ticks(
+    OtisActiveHybridEngine *engine, uint64_t setup_application_ticks) {
+  if (engine == nullptr || setup_application_ticks == 0u) return;
+  otis_active_hybrid_engine_init(
+      engine, static_cast<uint32_t>(setup_application_ticks /
+                                    kTimer0TicksPerSecond));
+  engine->exact_tick_timing_required = true;
+  engine->last_application_ticks = setup_application_ticks;
+}
+
 bool otis_active_hybrid_engine_rebase_after_plant_sign(
     OtisActiveHybridEngine *engine, uint16_t applied_code, uint32_t dac_epoch,
     uint16_t global_correction_count,
@@ -182,7 +192,7 @@ bool decide_impl(
               (engine->phase_qualification_started &&
                observation_ticks <
                    engine->phase_qualification_started_ticks))) {
-    fault(engine, "cx321_exact_tick_timing_missing_or_backward");
+    fault(engine, "exact_tick_timing_missing_or_backward");
     reason = engine->reason;
   } else if (!observation->identity_exact ||
              !observation->common_health_clean) {
@@ -242,12 +252,15 @@ bool decide_impl(
       engine->state = OtisActiveHybridState::PhaseQualify;
       engine->phase_qualification_started = true;
       engine->phase_qualification_started_s = observation->timestamp_s;
+      if (engine->exact_tick_timing_required)
+        engine->phase_qualification_started_ticks = observation_ticks;
       engine->reason = "two_fresh_tight_estimates_enter_phase_qualification";
       reason = engine->reason;
     } else if (engine->state == OtisActiveHybridState::PhaseQualify) {
       if (!tight_inside(observation)) {
         engine->state = OtisActiveHybridState::FrequencyAcquire;
         engine->phase_qualification_started = false;
+        engine->phase_qualification_started_ticks = 0u;
         engine->reason = "tight_frequency_residence_lost";
         reason = engine->reason;
       } else if (phase_qualified) {

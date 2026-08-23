@@ -10,6 +10,7 @@ from host.otis_tools.active_hybrid_evidence_guard import (
     FROZEN_AHY_HALF_SERIALIZATION_QUANTUM,
     ResponseCheckpointRejected,
     _ahy_act_frequency_close,
+    _exact_decision_timestamps_s,
     _raw_code_close,
     replay_active_hybrid_history,
     replay_response_before_acknowledgement,
@@ -41,6 +42,53 @@ from host.otis_tools.contracts import (
     CsvValidationContext,
     validate_csv,
 )
+
+
+def test_exact_decision_timestamps_preserve_fractional_residence_across_wrap() -> None:
+    decisions = [
+        {"decision_sequence": "1", "source_last_sequence": "2999"},
+        {"decision_sequence": "2", "source_last_sequence": "4799"},
+        {"decision_sequence": "3", "source_last_sequence": "5399"},
+    ]
+    estimates = [
+        {
+            "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+            "observation_validity": "valid",
+            "reference_validity": "valid",
+            "count_validity": "valid",
+            "source_count_seq": "2999",
+            "estimator_timestamp_ticks": "48027750112",
+            "time_domain": "rp2040_timer0",
+        },
+        {
+            "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+            "observation_validity": "valid",
+            "reference_validity": "valid",
+            "count_validity": "valid",
+            "source_count_seq": "4799",
+            "estimator_timestamp_ticks": "8108107616",
+            "time_domain": "rp2040_timer0",
+        },
+        {
+            "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+            "observation_validity": "valid",
+            "reference_validity": "valid",
+            "count_validity": "valid",
+            "source_count_seq": "5399",
+            "estimator_timestamp_ticks": "17708050816",
+            "time_domain": "rp2040_timer0",
+        },
+    ]
+
+    timestamps = _exact_decision_timestamps_s(
+        decisions,
+        estimates,
+        estimator_id="cx317_selected_600s_nonoverlap_v1",
+    )
+
+    assert timestamps[2] - timestamps[1] == pytest.approx(1799.98964)
+    assert timestamps[2] - timestamps[1] < 1800
+    assert timestamps[3] - timestamps[1] > 1800
 
 
 def _bundle() -> dict[str, object]:

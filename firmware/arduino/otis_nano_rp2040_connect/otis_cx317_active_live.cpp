@@ -1318,8 +1318,8 @@ bool otis_cx317_active_live_confirm_setup_consumers_exact(
   hybrid_engine = {};
   hybrid_engine_ready = false;
 #else
-  otis_active_hybrid_engine_init(&hybrid_engine,
-                                 transaction.last_application_s);
+  otis_active_hybrid_engine_init_at_ticks(&hybrid_engine,
+                                          setup_application_ticks);
   hybrid_engine_ready = true;
 #endif
   return true;
@@ -1412,8 +1412,15 @@ static void active_live_on_decision_impl(
       otis_active_hybrid_engine_decide(
           &hybrid_engine, &hybrid_input, &hybrid_decision);
 #endif
-  if (!hybrid_decided ||
-      !queue_active_hybrid_decision(*decision, hybrid_decision)) {
+  if (!hybrid_decided) {
+    hybrid_fail_static("active_hybrid_decision_timing_or_input_fault");
+    otis_cx317_active_fault(
+        &transaction, "active_hybrid_decision_timing_or_input_fault");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+    return;
+  }
+  if (!queue_active_hybrid_decision(*decision, hybrid_decision)) {
     hybrid_fail_static("active_hybrid_decision_evidence_queue_fault");
     otis_cx317_active_fault(
         &transaction, "active_hybrid_decision_evidence_queue_fault");

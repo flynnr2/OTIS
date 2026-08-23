@@ -19,7 +19,10 @@ import time
 from typing import Any
 
 from .abort_transport import AbortFifo
-from .active_hybrid_evidence_guard import ResponseCheckpointRejected
+from .active_hybrid_evidence_guard import (
+    IndependentReplayMismatch,
+    ResponseCheckpointRejected,
+)
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
@@ -489,6 +492,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("latest_plant_sign_state", None)
         self.state.setdefault("plant_sign_prearm_sent", False)
         self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
+        self.state.setdefault("host_verification_hold", None)
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -544,23 +548,61 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             4: "response_pending",
         }[phase]
         request_sequence = int(row["request_sequence"])
-        if (
-            health.get(("cx317_active", "evidence_phase")) != expected_phase
-            or int(
+        stale_phases = {
+            1: (),
+            2: ("request_pending",),
+            3: ("request_pending", "acceptance_pending"),
+            4: (
+                "request_pending",
+                "acceptance_pending",
+                "application_pending",
+            ),
+        }[phase]
+        # A periodic query can already be in flight when the ACT record arrives.
+        # Its completion is generation-fresh but causally precedes the record.
+        # Wait through that bounded stale frontier instead of aborting a valid
+        # transaction.  Four queries remain inside the firmware's frozen
+        # 30-second evidence-acknowledgement deadline.
+        for _ in range(4):
+            observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+            observed_request = int(
                 health.get(("cx317_active", "evidence_request_sequence"), "0")
             )
-            != request_sequence
-        ):
-            raise ValueError(
-                "CX320 firmware evidence frontier differs before acknowledgement: "
-                f"request={request_sequence} phase={expected_phase}"
-            )
-        return {
-            "pre_submit_snapshot_generation": int(
+            if (
+                observed_phase == expected_phase
+                and observed_request == request_sequence
+            ):
+                return {
+                    "pre_submit_snapshot_generation": int(
+                        health[("cx317_active", "snapshot_generation_complete")]
+                    ),
+                    "pre_submit_evidence_phase": expected_phase,
+                }
+            if observed_phase == "evidence_clear" and observed_request == 0:
+                pass
+            elif (
+                observed_phase in stale_phases
+                and observed_request == request_sequence
+            ):
+                pass
+            else:
+                raise ValueError(
+                    "CX320 firmware evidence frontier differs before "
+                    "acknowledgement: "
+                    f"expected_request={request_sequence} "
+                    f"expected_phase={expected_phase} "
+                    f"observed_request={observed_request} "
+                    f"observed_phase={observed_phase}"
+                )
+            generation = int(
                 health[("cx317_active", "snapshot_generation_complete")]
-            ),
-            "pre_submit_evidence_phase": expected_phase,
-        }
+            )
+            health = self._fresh_active_snapshot_after(generation)
+        raise TimeoutError(
+            "CX320 firmware evidence frontier did not reach the expected "
+            "pre-acknowledgement state: "
+            f"request={request_sequence} phase={expected_phase}"
+        )
 
     def _confirm_evidence_acknowledgement(
         self, acknowledgement: dict[str, object]
@@ -707,9 +749,42 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     )
 
     def _process_transactions(self) -> None:
+        if self.state.get("host_verification_hold") is not None:
+            self._validate_hybrid_decisions()
+            return
         prior_terminal = self.state.get("terminal")
         try:
             super()._process_transactions()
+        except IndependentReplayMismatch as exc:
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+            response = next(
+                (row for row in reversed(rows) if row.get("event") == "response"),
+                {},
+            )
+            hold = {
+                "entered_utc": _utc_now(),
+                "error": str(exc),
+                "record_sequence": int(
+                    response.get("transaction_record_sequence", "0")
+                ),
+                "request_sequence": int(response.get("request_sequence", "0")),
+                "response_class": response.get(
+                    "response_class", "unavailable"
+                ),
+                "applied_code": int(response.get("applied_code", "0")),
+                "dac_epoch": int(response.get("dac_epoch", "0")),
+                "correction_count": int(response.get("correction_count", "0")),
+                "cumulative_movement_codes": int(
+                    response.get("cumulative_movement_codes", "0")
+                ),
+            }
+            self.state["host_verification_hold"] = hold
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
+            self._save()
+            self._programme_event("host_verification_hold_entered", **hold)
+            self._validate_hybrid_decisions()
+            return
         except ResponseCheckpointRejected as exc:
             rows = _read_csv(self.run_dir / ACTIVE_CSV)
             response = next(
@@ -834,28 +909,54 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         )
         checkpoint = _truth(health, "first_phase_checkpoint_passed")
-        if (
-            corrections > self.programme.maximum_applications
-            or movement > self.programme.maximum_cumulative_movement_codes
-            or material > phase_nonzero
-            or phase_nonzero + frequency_only > corrections
-        ):
-            raise ValueError("CX320 firmware exceeded the frozen global authority")
-        if material > 1 and not checkpoint:
-            raise ValueError("CX320 later material authority preceded its checkpoint")
-        if hybrid_state == "HYBRID_TRACKING" and not checkpoint:
-            raise ValueError("CX320 HYBRID_TRACKING lacks the first checkpoint")
 
-        changed = hybrid_state != self.state.get("latest_hybrid_state")
-        dirty = changed
+        # Preserve the latest confirmed physical state before evaluating any
+        # post-application accounting invariant that can terminate the run.
+        # Otherwise an accounting fault can leave the abort-delivery gate
+        # waiting for the pre-application code even though firmware has
+        # already durably reported the new applied code and DAC epoch.
+        confirmed_applied_changed = False
         if _truth(health, "confirmed_applied_code_known"):
             applied = int(health[("cx317_active", "confirmed_applied_code")], 0)
             if not self.programme.minimum_code <= applied <= self.programme.maximum_code:
                 raise ValueError("CX320 confirmed code is outside the frozen range")
             if self.state.get("terminal_static_code") != applied:
                 self.state["terminal_static_code"] = applied
-                dirty = True
+                confirmed_applied_changed = True
 
+        # phase_nonzero is an overlapping descriptive count: a combined
+        # request can contain a non-zero phase term yet round to the same DAC
+        # delta as the frequency-only counterfactual. Such an application is
+        # both phase_nonzero and frequency_only, but is not phase-material.
+        # The mutually exclusive partition is phase_material versus
+        # frequency_only; each individual count must remain bounded by the
+        # global correction count.
+        if (
+            corrections > self.programme.maximum_applications
+            or movement > self.programme.maximum_cumulative_movement_codes
+            or material > phase_nonzero
+            or phase_nonzero > corrections
+            or material + frequency_only > corrections
+        ):
+            raise ValueError("CX320 firmware exceeded the frozen global authority")
+        if material > 1 and not checkpoint:
+            raise ValueError("CX320 later material authority preceded its checkpoint")
+        if hybrid_state == "HYBRID_TRACKING" and not checkpoint:
+            raise ValueError("CX320 HYBRID_TRACKING lacks the first checkpoint")
+        hold = self.state.get("host_verification_hold")
+        if isinstance(hold, dict) and (
+            corrections != hold.get("correction_count")
+            or movement != hold.get("cumulative_movement_codes")
+            or (
+                _truth(health, "confirmed_applied_code_known")
+                and self.state.get("terminal_static_code")
+                != hold.get("applied_code")
+            )
+        ):
+            raise ValueError("CX320 actuation changed during host verification hold")
+
+        changed = hybrid_state != self.state.get("latest_hybrid_state")
+        dirty = changed or confirmed_applied_changed
         if changed:
             self.state["latest_hybrid_state"] = hybrid_state
         if self.programme.identification_required:
@@ -1022,6 +1123,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _maybe_start_or_arm(
         self, health: dict[tuple[str, str], str]
     ) -> None:
+        if self.state.get("host_verification_hold") is not None:
+            return
         if not self._identity_ready(health):
             return
         state = health.get(("cx317_active", "state"), "")
@@ -1254,6 +1357,35 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
 
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        hold = self.state.get("host_verification_hold")
+        if (
+            qualified_elapsed_ticks is not None
+            and qualified_elapsed_ticks
+            >= self.programme.qualified_duration_s
+            * RP2040_TIMER0_TICKS_PER_SECOND
+            and isinstance(hold, dict)
+        ):
+            if (
+                health.get(("cx317_active", "state")) != "DISARMED"
+                or self.state.get("arm_pending")
+                or not _truth(health, "confirmed_applied_code_known")
+                or int(health[("cx317_active", "confirmed_applied_code")], 0)
+                != hold.get("applied_code")
+            ):
+                self._abort(
+                    f"{self.programme.key}_host_verification_hold_not_static_at_endpoint"
+                )
+                return
+            self.state["terminal_static_code"] = hold["applied_code"]
+            self.state["terminal"] = {
+                "result": "nonpass",
+                "reason": f"{self.programme.key}_host_verification_hold_endpoint",
+                "primary_decision": "host_verification_hold_incomplete",
+                "last_confirmed_code": hold["applied_code"],
+                "utc": _utc_now(),
+            }
+            self._save()
+            return
         if (
             qualified_elapsed_ticks is not None
             and qualified_elapsed_ticks

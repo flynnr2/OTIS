@@ -249,5 +249,48 @@ int main() {
     auto input = observation(1800u, 0xA83Cu, 2u);
     decide_and_emit("epoch_fault", 1u, &engine, &input, &decision);
   }
+  {
+    constexpr uint64_t kTicksPerSecond = 16000000ull;
+    constexpr uint64_t kSetupTicks = 611ull * kTicksPerSecond + 12345ull;
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init_at_ticks(&engine, kSetupTicks);
+    assert(engine.exact_tick_timing_required);
+    assert(engine.last_application_ticks == kSetupTicks);
+    OtisActiveHybridDecision decision;
+    auto input = observation(2411u, 0xA83Cu, 1u, 0.01, "OUTSIDE");
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kSetupTicks + 1800ull * kTicksPerSecond - 1ull,
+        &decision));
+    assert(decision.cadence_limited);
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kSetupTicks + 1800ull * kTicksPerSecond,
+        &decision));
+    assert(!decision.cadence_limited);
+  }
+  {
+    constexpr uint64_t kTicksPerSecond = 16000000ull;
+    constexpr uint64_t kSetupTicks = 613ull * kTicksPerSecond + 12345ull;
+    constexpr uint64_t kPhaseEntryTicks =
+        3001ull * kTicksPerSecond + 45678ull;
+    constexpr uint64_t kPhaseResidenceTicks = 1800ull * kTicksPerSecond;
+    OtisActiveHybridEngine engine;
+    otis_active_hybrid_engine_init_at_ticks(&engine, kSetupTicks);
+    OtisActiveHybridDecision decision;
+    auto input = observation(3001u, 0xA83Cu, 1u, 0.001, "TIGHT_INSIDE",
+                             1, 1u);
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kPhaseEntryTicks, &decision));
+    assert(engine.phase_qualification_started_ticks == kPhaseEntryTicks);
+    assert(decision.requested_delta_codes == 0);
+    input = observation(4801u, 0xA83Cu, 1u, 0.001, "TIGHT_INSIDE", 1,
+                        2u);
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kPhaseEntryTicks + kPhaseResidenceTicks - 1u,
+        &decision));
+    assert(decision.requested_delta_codes == 0);
+    assert(otis_active_hybrid_engine_decide_at_ticks(
+        &engine, &input, kPhaseEntryTicks + kPhaseResidenceTicks, &decision));
+    assert(decision.requested_delta_codes != 0);
+  }
   return 0;
 }
