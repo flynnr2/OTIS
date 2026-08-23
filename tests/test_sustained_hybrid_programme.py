@@ -7,6 +7,9 @@ import subprocess
 import pytest
 
 from host.otis_tools.active_hybrid_policy import load_policy
+from host.otis_tools.active_hybrid_analyze import (
+    _scenario_terminal_classifications,
+)
 from host.otis_tools.active_hybrid_live_rehearsal import (
     _sustained_multi_transaction_fixture,
 )
@@ -105,6 +108,18 @@ def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
         abs(case["final_21600s_OLS_phase_slope_cycles_per_s"]) > 1.0 / 3600.0
         for case in report["sensitivity_matrix"]["cases"]
         if case["final_21600s_OLS_phase_slope_cycles_per_s"] is not None
+    )
+
+
+def test_accelerated_sustained_scenarios_do_not_claim_physical_success() -> None:
+    classifications = _scenario_terminal_classifications(
+        SUSTAINED_HYBRID_PROGRAMME
+    )
+    assert classifications["modeled_phase_transaction"] == (
+        "right_censored_incomplete"
+    )
+    assert set(classifications.values()) <= (
+        SUSTAINED_HYBRID_PROGRAMME.terminal_decisions
     )
 
 
