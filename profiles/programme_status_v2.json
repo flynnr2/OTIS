@@ -10,7 +10,7 @@
       "authority": "passed_completion_gate"
     },
     "otis_sustained_hybrid_regulation_v1": {
-      "state": "attempt3_authorized_setup_authority_handoff_repair_gates_pending",
+      "state": "attempt4_authorized_command_ingress_latency_repair_gates_pending",
       "allowed_operations": [
         "offline_preparation",
         "otis_sustained_hybrid_regulation_live"
@@ -62,11 +62,19 @@
         "attempt2_offline_finalization_passed": true,
         "attempt2_evidence_registration_passed": true,
         "attempt3_setup_generation_advance_regression_passed": true,
-        "attempt3_exact_firmware_build_pending": true,
-        "attempt3_exact_bundle_pending": true,
-        "attempt3_structural_preflight_pending": true,
-        "attempt3_complete_operational_rehearsal_pending": true,
-        "attempt3_physical_acquisition_pending": true
+        "attempt3_exact_firmware_build_passed": true,
+        "attempt3_exact_bundle_passed": true,
+        "attempt3_structural_preflight_passed": true,
+        "attempt3_complete_operational_rehearsal_passed_but_missed_sustained_command_ingress_latency": true,
+        "attempt3_physical_acquisition_gate_passed": false,
+        "attempt3_offline_finalization_completed": true,
+        "attempt3_evidence_registration_passed": true,
+        "attempt4_command_ingress_producer_to_serial_regression_passed": true,
+        "attempt4_exact_firmware_build_pending": true,
+        "attempt4_exact_bundle_pending": true,
+        "attempt4_structural_preflight_pending": true,
+        "attempt4_complete_operational_rehearsal_pending": true,
+        "attempt4_physical_acquisition_pending": true
       },
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -76,7 +84,7 @@
       },
       "authority_consumption": {
         "consumed_by_first_physical_terminal": true,
-        "latest_consumed_attempt": 2,
+        "latest_consumed_attempt": 3,
         "automatic_retry": false,
         "criteria_change_after_evidence": false
       },
@@ -105,6 +113,20 @@
         "requires_attempt2_terminal_lineage": true,
         "requires_new_clean_exact_bundle": true,
         "requires_setup_generation_advance_regression": true,
+        "requires_complete_multi_transaction_rehearsal": true
+      },
+      "attempt4_operator_authority": {
+        "operator_instruction": "Monitor and, after a terminal failure, continue the OTIS sustained-hybrid regulation programme unattended",
+        "received_date": "2026-08-23",
+        "attempt_ordinal": 4,
+        "physical_live_run_limit": 1,
+        "firmware_flash_limit": 1,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "criteria_relaxation": false,
+        "requires_attempt3_terminal_lineage": true,
+        "requires_new_clean_exact_bundle": true,
+        "requires_command_ingress_producer_to_serial_regression": true,
         "requires_complete_multi_transaction_rehearsal": true
       },
       "attempts": [
@@ -156,9 +178,38 @@
           "seal_sha256": "74d37d1afa834806b00817acac8e56ef657ceb67b35069017eb225c7348d3836",
           "evidence_content_sha256": "72eba172056c71cfa3f602e772d10eee9dc1ee958b04884fa2bd87088a4b1b7e",
           "scientific_result": "none_before_setup_application_or_qualified_origin"
+        },
+        {
+          "ordinal": 3,
+          "run_id": "live_attempt3_20260823T1657Z",
+          "classification": "platform_escape_into_campaign",
+          "terminal": "measurement_authority_or_platform_fault",
+          "terminal_reason": "fresh_normal_command_not_forwarded_before_acknowledgement_deadline_during_status_batch_consumption",
+          "setup_status_generation": 122,
+          "setup_confirmed": true,
+          "qualified_origin_established": true,
+          "qualified_origin_estimate_id": "est:cx317:selected600:000541",
+          "qualified_origin_timestamp_ticks": 38416611536,
+          "automatic_applications": 5,
+          "phase_material_applications": 5,
+          "complete_response_consumers": 4,
+          "last_confirmed_code": 43058,
+          "last_confirmed_dac_epoch": 6,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "capture_closed_cleanly": true,
+          "parser_errors": 0,
+          "reconnects": 0,
+          "commands_rejected": 0,
+          "activation_sha256": "acfba2e0a381fdce172489811170ef10e9dd93f8d70a86a1f2082dde825d8a93",
+          "bundle_sha256": "4afb7bc23ed63873b32f6d720a58f83dad4fb8180c6a06da287eb53af685b683",
+          "firmware_uf2_sha256": "673c9296165e04480d149f1456088af34ec6220ea556e62b5650e384777bb1cb",
+          "seal_sha256": "d5ebf5987f8fc3795319cc88bb733bbdb740449a10dc76af964d7ff95636db55",
+          "evidence_content_sha256": "7cbfda0d1fca1b1e1be63607864cda313321d7b90af3dd4f6d7bdd10d42ab38f",
+          "scientific_result": "none_incomplete_before_sustained_duration_reversal_or_recovery_boundaries"
         }
       ],
-      "next_gate": "attempt3_clean_exact_bundle_setup_generation_advance_regression_preflight_rehearsal_activation_and_single_live_execution"
+      "next_gate": "attempt4_clean_exact_bundle_command_ingress_regression_preflight_rehearsal_activation_and_single_live_execution"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",

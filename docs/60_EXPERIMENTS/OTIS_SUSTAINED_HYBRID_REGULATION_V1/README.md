@@ -115,3 +115,18 @@ and explicit operator authority.
 The terminal timeline, exact evidence identities, superseding analysis, and
 narrow repair are recorded in
 [`01_ATTEMPT1_RESPONSE_IDENTITY_PROPAGATION_TERMINAL.md`](01_ATTEMPT1_RESPONSE_IDENTITY_PROPAGATION_TERMINAL.md).
+
+## Attempts 2 and 3
+
+Attempt 2 verified the prior response-consumer repair but terminated before
+setup application when firmware confused a later observation publication with
+a changed setup authority. Its terminal and generation-aware repair are in
+[`02_ATTEMPT2_SETUP_AUTHORITY_HANDOFF_TERMINAL.md`](02_ATTEMPT2_SETUP_AUTHORITY_HANDOFF_TERMINAL.md).
+
+Attempt 3 physically verified that setup repair and completed four exact
+natural transaction/response/consumer paths. It later terminated on a host
+command-ingress latency escape: a fresh lease queued during a large status
+batch did not reach the serial writer before its acknowledgement deadline.
+Abort, capture close, analysis, sealing, and registration completed exactly.
+The evidence and bounded consumer-latency repair are in
+[`03_ATTEMPT3_COMMAND_INGRESS_LATENCY_TERMINAL.md`](03_ATTEMPT3_COMMAND_INGRESS_LATENCY_TERMINAL.md).
