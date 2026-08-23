@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
-from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX321_PROGRAMME,
+    SUSTAINED_HYBRID_PROGRAMME,
+)
 
 
 def _write(path: Path, value: dict[str, object]) -> None:
@@ -106,6 +109,77 @@ def test_cx321_activation_accepts_exact_real_process_transaction_receipt(
     )
 
     assert result["rehearsal_sha256"]
+
+
+def test_sustained_activation_accepts_exact_multi_transaction_coverage(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        "programme_id": SUSTAINED_HYBRID_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    expected_coverage = (
+        set(activation.REHEARSAL_COVERAGE)
+        | set(activation.SUSTAINED_REHEARSAL_COVERAGE)
+    )
+    unsigned = {
+        "schema_version": 1,
+        "report_type": SUSTAINED_HYBRID_PROGRAMME.rehearsal_report_type,
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {name: True for name in expected_coverage},
+        "tool_bindings": {},
+    }
+    path = tmp_path / "sustained-rehearsal.json"
+    _write(path, _semantic(unsigned, "rehearsal_sha256"))
+
+    result = activation.validate_operational_rehearsal(
+        path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=SUSTAINED_HYBRID_PROGRAMME,
+    )
+
+    assert result["rehearsal_sha256"]
+
+
+def test_sustained_activation_rejects_missing_multi_transaction_coverage(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        "programme_id": SUSTAINED_HYBRID_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    unsigned = {
+        "schema_version": 1,
+        "report_type": SUSTAINED_HYBRID_PROGRAMME.rehearsal_report_type,
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {name: True for name in activation.REHEARSAL_COVERAGE},
+        "tool_bindings": {},
+    }
+    path = tmp_path / "incomplete-sustained-rehearsal.json"
+    _write(path, _semantic(unsigned, "rehearsal_sha256"))
+
+    with pytest.raises(ValueError, match="rehearsal receipt"):
+        activation.validate_operational_rehearsal(
+            path,
+            bundle=bundle,
+            proposal=proposal,
+            require_current_tools=False,
+            programme=SUSTAINED_HYBRID_PROGRAMME,
+        )
 
 
 @pytest.mark.parametrize(
