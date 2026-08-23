@@ -34,6 +34,8 @@ class ActiveHybridProgramme:
     natural_policy_path: Path
     setup_code: int
     maximum_applications: int
+    maximum_physical_applications: int
+    maximum_deliberate_challenges: int
     maximum_cumulative_movement_codes: int
     maximum_step_codes: int
     minimum_code: int
@@ -55,6 +57,7 @@ class ActiveHybridProgramme:
     armable_hybrid_states: frozenset[str]
     identification_required: bool = False
     response_checkpoint_observational: bool = False
+    sustained_regulation: bool = False
 
     @property
     def campaign_name(self) -> str:
@@ -123,6 +126,8 @@ CX320_PROGRAMME = ActiveHybridProgramme(
     / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
     setup_code=0xA83C,
     maximum_applications=4,
+    maximum_physical_applications=4,
+    maximum_deliberate_challenges=0,
     maximum_cumulative_movement_codes=84,
     maximum_step_codes=21,
     minimum_code=0xA800,
@@ -165,6 +170,8 @@ CX321_PROGRAMME = ActiveHybridProgramme(
     / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
     setup_code=0xA83C,
     maximum_applications=4,
+    maximum_physical_applications=4,
+    maximum_deliberate_challenges=0,
     maximum_cumulative_movement_codes=84,
     maximum_step_codes=21,
     minimum_code=0xA800,
@@ -210,6 +217,8 @@ CX322_PROGRAMME = ActiveHybridProgramme(
     / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
     setup_code=0xA83C,
     maximum_applications=4,
+    maximum_physical_applications=4,
+    maximum_deliberate_challenges=0,
     maximum_cumulative_movement_codes=84,
     maximum_step_codes=21,
     minimum_code=0xA800,
@@ -250,10 +259,76 @@ CX322_PROGRAMME = ActiveHybridProgramme(
 )
 
 
+SUSTAINED_HYBRID_PROGRAMME = ActiveHybridProgramme(
+    key="sustained_hybrid",
+    programme_id="OTIS_SUSTAINED_HYBRID_REGULATION_V1",
+    profile_id="otis_sustained_hybrid_regulation_v1",
+    runtime_run_identity="otis_sustained_hybrid_regulation_v1:1",
+    status_programme_id="otis_sustained_hybrid_regulation_v1",
+    operation="otis_sustained_hybrid_regulation_live",
+    live_stage="OTIS_SUSTAINED_HYBRID_REGULATION_LIVE",
+    compatibility_floor="OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1",
+    manifest_section="sustained_hybrid",
+    policy_id="OTIS_SUSTAINED_HYBRID_REGULATION_V1",
+    policy_path=REPO_ROOT
+    / "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+    natural_policy_id="OTIS_SUSTAINED_HYBRID_REGULATION_V1",
+    natural_policy_path=REPO_ROOT
+    / "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+    setup_code=0xA83C,
+    maximum_applications=12,
+    maximum_physical_applications=13,
+    maximum_deliberate_challenges=1,
+    maximum_cumulative_movement_codes=84,
+    maximum_step_codes=21,
+    minimum_code=0xA800,
+    maximum_code=0xAB00,
+    minimum_applied_cadence_s=1800,
+    qualified_duration_s=86_400,
+    absolute_wall_limit_s=108_000,
+    minimum_natural_phase_material_applications=2,
+    bundle_id="otis_sustained_hybrid_24h_qualified_30h_wall_bundle_v1",
+    activation_id="otis_sustained_hybrid_24h_live_activation_v1",
+    rehearsal_report_type="otis_sustained_hybrid_live_topology_rehearsal_v1",
+    run_bundle_path=Path("otis_sustained_hybrid_exact_bundle_v1.json"),
+    run_proposal_path=Path("otis_sustained_hybrid_authority_proposal_v1.json"),
+    run_activation_path=Path("otis_sustained_hybrid_live_activation_v1.json"),
+    physical_seal_path=Path("reports/otis_sustained_hybrid_physical_seal_v1.json"),
+    terminal_decisions=frozenset(
+        {
+            "sustained_hybrid_regulation_demonstrated_natural_reversal",
+            "sustained_hybrid_regulation_demonstrated_challenge_reversal",
+            "reversal_not_observed_within_authorized_window",
+            "deliberate_reversal_recovery_not_demonstrated",
+            "phase_or_frequency_regulation_not_sustained",
+            "hybrid_policy_chatter_or_path_exhaustion",
+            "right_censored_incomplete",
+            "measurement_authority_or_platform_fault",
+            "operator_abort",
+        }
+    ),
+    healthy_preliminary_decisions=frozenset(
+        {"pending_offline_scientific_analysis"}
+    ),
+    hybrid_states=_COMMON_STATES,
+    armable_hybrid_states=frozenset(
+        {
+            "FREQUENCY_ACQUIRE",
+            "PHASE_QUALIFY",
+            "HYBRID_TRACKING",
+            "PHASE_DEGRADED_FREQUENCY_ONLY",
+        }
+    ),
+    response_checkpoint_observational=True,
+    sustained_regulation=True,
+)
+
+
 PROGRAMMES = {
     CX320_PROGRAMME.key: CX320_PROGRAMME,
     CX321_PROGRAMME.key: CX321_PROGRAMME,
     CX322_PROGRAMME.key: CX322_PROGRAMME,
+    SUSTAINED_HYBRID_PROGRAMME.key: SUSTAINED_HYBRID_PROGRAMME,
 }
 
 

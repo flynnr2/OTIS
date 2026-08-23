@@ -12,6 +12,8 @@
   "cx317_active_status_snapshot_v1"
 #define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V2 \
   "cx321_active_status_snapshot_v2"
+#define OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V3 \
+  "otis_sustained_hybrid_active_status_snapshot_v1"
 
 struct OtisCx317ActiveLiveHealth {
   uint32_t session_id;
@@ -116,6 +118,16 @@ struct OtisCx317ActiveLiveStatus {
   uint16_t phase_material_application_count;
   uint16_t frequency_only_application_count;
   bool first_phase_checkpoint_passed;
+  uint16_t automatic_application_count;
+  bool natural_reversal_observed;
+  bool deliberate_challenge_applied;
+  bool deliberate_challenge_cancelled;
+  bool deliberate_challenge_unexercised;
+  bool deliberate_challenge_recovery_applied;
+  int8_t deliberate_challenge_direction;
+  uint16_t deliberate_challenge_code;
+  uint32_t deliberate_challenge_dac_epoch;
+  uint64_t deliberate_challenge_application_ticks;
   const char *plant_sign_state;
   uint16_t plant_sign_pre_window_count;
   uint16_t plant_sign_accumulator_accepted_intervals;

@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+from host.otis_tools.active_hybrid_policy import load_policy
+from host.otis_tools.active_hybrid_live_rehearsal import (
+    _sustained_multi_transaction_fixture,
+)
+from host.otis_tools.active_hybrid_programme_contract import (
+    SUSTAINED_HYBRID_PROGRAMME,
+)
+from host.otis_tools.active_status_contract import (
+    ACTIVE_STATUS_CONTRACT_KEYS,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+)
+from host.otis_tools.sustained_hybrid_synthesis import synthesize
+
+
+ROOT = Path(__file__).resolve().parents[1]
+FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
+POLICY = ROOT / "profiles/discipline/otis_sustained_hybrid_regulation_v1.json"
+
+
+def test_sustained_policy_freezes_separate_natural_and_physical_budgets() -> None:
+    policy = load_policy(POLICY)
+    assert policy.policy_id == SUSTAINED_HYBRID_PROGRAMME.programme_id
+    assert policy.maximum_applications == 12
+    assert policy.maximum_physical_applications == 13
+    assert policy.maximum_cumulative_movement_codes == 84
+    assert policy.reversal_challenge_enabled
+    assert policy.natural_reversal_window_s == 43_200
+    assert policy.challenge_latest_s == 50_400
+    assert policy.challenge_step_codes == 21
+
+
+def test_sustained_snapshot_contract_requires_every_decision_identity() -> None:
+    required = ACTIVE_STATUS_CONTRACT_KEYS[
+        SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    ]
+    assert {
+        "automatic_application_count",
+        "natural_reversal_observed",
+        "deliberate_challenge_applied",
+        "deliberate_challenge_recovery_applied",
+        "deliberate_challenge_code",
+        "deliberate_challenge_dac_epoch",
+        "deliberate_challenge_application_ticks",
+    } <= set(required)
+
+
+def test_full_multi_transaction_sequence_reaches_first_recovery_consumer() -> None:
+    policy = load_policy(POLICY)
+    bundle = {
+        "programme_id": SUSTAINED_HYBRID_PROGRAMME.programme_id,
+        "firmware": {"build_identity": "test-build-identity"},
+        "policy": {
+            "path": str(POLICY),
+            "policy_sha256": policy.policy_sha256,
+        },
+    }
+    ahy, transactions, summary = _sustained_multi_transaction_fixture(bundle)
+    assert len(transactions) == 17  # setup plus four complete ACT transactions
+    assert [item["request_sequence"] for item in summary["applications"]] == [
+        1,
+        2,
+        3,
+        4,
+    ]
+    assert [item["reason"] for item in summary["applications"]] == [
+        "phase_material_request_ready",
+        "phase_material_request_ready",
+        "deliberate_reversal_challenge_request_ready",
+        "deliberate_reversal_challenge_recovery_request_ready",
+    ]
+    assert summary["final_snapshot"]["correction_count"] == 4
+    assert summary["final_snapshot"]["automatic_application_count"] == 3
+    assert summary["final_snapshot"]["natural_reversal_observed"] is True
+    assert summary["final_snapshot"][
+        "deliberate_challenge_recovery_applied"
+    ] is True
+    assert int(ahy[-1]["decision_sequence"]) == summary[
+        "first_post_recovery_consumer_decision_sequence"
+    ]
+
+
+def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "synthesis.json"
+    report = synthesize(
+        predecessor_run=(
+            ROOT
+            / "runs/cx322_bounded_hybrid_fact_gathering"
+            / "stage5_live_attempt7_20260822T1921Z"
+        ),
+        policy_path=POLICY,
+        output_path=output,
+    )
+    assert report["status"] == "passed"
+    assert any(
+        abs(case["final_21600s_OLS_phase_slope_cycles_per_s"]) > 1.0 / 3600.0
+        for case in report["sensitivity_matrix"]["cases"]
+        if case["final_21600s_OLS_phase_slope_cycles_per_s"] is not None
+    )
+
+
+def test_firmware_executes_challenge_and_first_recovery_consumer(tmp_path: Path) -> None:
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("host C++ compiler is unavailable")
+    executable = tmp_path / "sustained_hybrid"
+    subprocess.run(
+        [
+            compiler,
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-DOTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS=12u",
+            "-DOTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE=1",
+            str(ROOT / "tests/cpp/sustained_hybrid_policy_engine_harness.cpp"),
+            str(FIRMWARE / "otis_active_hybrid_policy_engine.cpp"),
+            "-I",
+            str(FIRMWARE),
+            "-o",
+            str(executable),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    subprocess.run([str(executable)], check=True)
+
+
+def test_firmware_natural_direction_history_remains_sliding() -> None:
+    source = (
+        FIRMWARE / "otis_active_hybrid_policy_engine.cpp"
+    ).read_text(encoding="utf-8")
+    assert "engine->direction_history[0] = engine->direction_history[1]" in source
+    assert "engine->direction_history[3] = direction" in source
+
+
+def test_campaign_selector_and_authority_limits_are_source_guarded() -> None:
+    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
+    assert "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION must be 0 or 1" in config
+    assert "OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 13u" in config
+    assert "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS != 12u" in config
+    assert "OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE != 1" in config
+    assert (
+        "Sustained hybrid regulation requires its exact descriptive "
+        "CX322-derived profile"
+    ) in config

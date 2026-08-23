@@ -400,6 +400,8 @@ def _authority(
         "control_arm": True,
         "live_acquisition_limit": 1,
         "maximum_total_automatic_applications": programme.maximum_applications,
+        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
@@ -892,7 +894,15 @@ def create_run_manifest(
             },
             "automatic_control": {
                 "authorized": True,
-                "maximum_total_applications": programme.maximum_applications,
+                "maximum_total_applications": programme.maximum_physical_applications,
+                **(
+                    {
+                        "maximum_total_automatic_applications": programme.maximum_applications,
+                        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
+                    }
+                    if programme.sustained_regulation
+                    else {}
+                ),
                 "maximum_step_codes": programme.maximum_step_codes,
                 "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
                 "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
@@ -1062,7 +1072,15 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or control
         != {
             "authorized": True,
-            "maximum_total_applications": programme.maximum_applications,
+            "maximum_total_applications": programme.maximum_physical_applications,
+            **(
+                {
+                    "maximum_total_automatic_applications": programme.maximum_applications,
+                    "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
+                }
+                if programme.sustained_regulation
+                else {}
+            ),
             "maximum_step_codes": programme.maximum_step_codes,
             "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,

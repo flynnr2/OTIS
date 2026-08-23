@@ -521,6 +521,16 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "phase_nonzero_application_count",
         "phase_material_application_count",
         "frequency_only_application_count",
+        "automatic_application_count",
+        "natural_reversal_observed",
+        "deliberate_challenge_applied",
+        "deliberate_challenge_cancelled",
+        "deliberate_challenge_unexercised",
+        "deliberate_challenge_recovery_applied",
+        "deliberate_challenge_direction",
+        "deliberate_challenge_code",
+        "deliberate_challenge_dac_epoch",
+        "deliberate_challenge_application_ticks",
         "session_id",
         "query_nonce",
         "uptime_s",
@@ -628,6 +638,7 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx320_active_hybrid",
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
+        "otis_sustained_hybrid_regulation_v1",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

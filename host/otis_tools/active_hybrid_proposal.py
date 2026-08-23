@@ -84,6 +84,8 @@ def _progressive_envelope(
 ) -> dict[str, Any]:
     return {
         "maximum_total_automatic_applications": programme.maximum_applications,
+        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
@@ -369,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322"), default="cx320"
+        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
     )
     args = parser.parse_args(argv)
     if args.create:

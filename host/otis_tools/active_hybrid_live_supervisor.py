@@ -233,7 +233,14 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or section.get("profile_id") != programme.profile_id
         or setup.get("code") != programme.setup_code
         or control.get("maximum_total_applications")
+        != programme.maximum_physical_applications
+        or control.get(
+            "maximum_total_automatic_applications",
+            control.get("maximum_total_applications"),
+        )
         != programme.maximum_applications
+        or control.get("maximum_deliberate_challenges", 0)
+        != programme.maximum_deliberate_challenges
         or control.get("maximum_cumulative_movement_codes")
         != programme.maximum_cumulative_movement_codes
         or control.get("maximum_step_codes") != programme.maximum_step_codes
@@ -294,7 +301,7 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or active_authority.get("maximum_code") != programme.maximum_code
         ):
             raise ValueError("current CX321 programme policy envelope differs")
-    if programme.response_checkpoint_observational:
+    if programme.response_checkpoint_observational and not programme.sustained_regulation:
         terminal_semantics = policy.get("terminal_semantics", {})
         if terminal_semantics.get(
             "bounded_direct_hybrid_early_safety_stop_reasons"
@@ -303,6 +310,23 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             "prospective_low_efficiency_path",
         ]:
             raise ValueError("CX322 prospective early-safety reasons differ")
+    if programme.sustained_regulation:
+        challenge = policy.get("reversal_challenge", {})
+        if (
+            not isinstance(challenge, dict)
+            or challenge.get("maximum_count") != 1
+            or challenge.get("natural_reversal_window_qualified_s") != 43_200
+            or challenge.get(
+                "first_eligible_challenge_no_later_than_qualified_s"
+            )
+            != 50_400
+            or challenge.get("minimum_post_reversal_qualified_s") != 21_600
+            or challenge.get("default_step_codes") != 21
+            or challenge.get("automatic_application_counted") is not False
+            or challenge.get("physical_and_cumulative_authority_counted")
+            is not True
+        ):
+            raise ValueError("sustained-hybrid reversal challenge differs")
 
     bindings = policy.get("bindings", {})
     if not isinstance(bindings, dict):
@@ -399,7 +423,7 @@ def load_active_hybrid_spec(
             profile=programme.profile_id,
             run_identity=programme.runtime_run_identity,
             start_code=programme.setup_code,
-            correction_limit=programme.maximum_applications,
+            correction_limit=programme.maximum_physical_applications,
             cumulative_limit=programme.maximum_cumulative_movement_codes,
             minimum_code=programme.minimum_code,
             maximum_code=programme.maximum_code,
@@ -493,6 +517,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("plant_sign_prearm_sent", False)
         self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
         self.state.setdefault("host_verification_hold", None)
+        self.state.setdefault("persistent_wrong_direction_terminal", False)
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -813,6 +838,48 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ) in {"inside_deadband", "limit_reached", "correction_limit_reached"}:
             self.state["terminal"] = None
             self._save()
+        if self.programme.sustained_regulation and self.state["terminal"] is None:
+            responses = [
+                row
+                for row in _read_csv(self.run_dir / ACTIVE_CSV)
+                if row.get("event") == "response"
+            ]
+            applications = {
+                row.get("request_sequence"): row
+                for row in _read_csv(self.run_dir / ACTIVE_CSV)
+                if row.get("event") == "application"
+            }
+            phase_by_decision = {
+                row.get("decision_sequence"): row.get("phase_epoch")
+                for row in _read_csv(self.run_dir / ACTIVE_HYBRID_CSV)
+                if row.get("phase_epoch") not in {None, "", "0"}
+            }
+            if len(responses) >= 2:
+                last_two = responses[-2:]
+                classes = [row.get("response_class") for row in last_two]
+                phase_epochs = [
+                    phase_by_decision.get(
+                        applications.get(row.get("request_sequence"), {}).get(
+                            "decision_sequence"
+                        )
+                    )
+                    for row in last_two
+                ]
+                if (
+                    all(value in {"wrong_sign", "growing_error"} for value in classes)
+                    and phase_epochs[0] is not None
+                    and phase_epochs[0] == phase_epochs[1]
+                ):
+                    self.state["persistent_wrong_direction_terminal"] = True
+                    self._programme_event(
+                        "persistent_wrong_direction_response_terminal",
+                        request_sequences=[
+                            int(row["request_sequence"]) for row in last_two
+                        ],
+                        response_classes=classes,
+                        phase_epoch=int(phase_epochs[0]),
+                    )
+                    self._abort("phase_or_frequency_regulation_not_sustained")
         self._validate_hybrid_decisions()
 
     def _runtime_health_integrity(
@@ -890,6 +957,14 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         corrections = int(
             health.get(("cx317_active", "correction_count"), "0")
         )
+        automatic_applications = int(
+            health.get(
+                ("cx317_active", "automatic_application_count"),
+                str(corrections),
+            )
+            if self.programme.sustained_regulation
+            else corrections
+        )
         movement = int(
             health.get(("cx317_active", "cumulative_movement_codes"), "0")
         )
@@ -932,7 +1007,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # frequency_only; each individual count must remain bounded by the
         # global correction count.
         if (
-            corrections > self.programme.maximum_applications
+            corrections > self.programme.maximum_physical_applications
+            or automatic_applications > self.programme.maximum_applications
             or movement > self.programme.maximum_cumulative_movement_codes
             or material > phase_nonzero
             or phase_nonzero > corrections
@@ -1230,7 +1306,25 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         correction_count = int(
             health.get(("cx317_active", "correction_count"), "0")
         )
-        if correction_count >= self.programme.maximum_applications:
+        automatic_count = int(
+            health.get(
+                ("cx317_active", "automatic_application_count"),
+                str(correction_count),
+            )
+            if self.programme.sustained_regulation
+            else correction_count
+        )
+        challenge_pending = (
+            self.programme.sustained_regulation
+            and not _truth(health, "natural_reversal_observed")
+            and not _truth(health, "deliberate_challenge_applied")
+            and not _truth(health, "deliberate_challenge_cancelled")
+            and not _truth(health, "deliberate_challenge_unexercised")
+        )
+        if (
+            automatic_count >= self.programme.maximum_applications
+            and not challenge_pending
+        ):
             return
         progress = int(
             health.get(("cx317_active", "selected_interval_count"), "0")
@@ -1395,7 +1489,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ):
             self._set_healthy_endpoint(
                 health,
-                endpoint=f"{self.programme.key}_12h_qualified_endpoint_complete",
+                endpoint=(
+                    f"{self.programme.key}_"
+                    f"{self.programme.qualified_duration_s // 3600}h_qualified_endpoint_complete"
+                    if self.programme.sustained_regulation
+                    else f"{self.programme.key}_12h_qualified_endpoint_complete"
+                ),
             )
             return
 
@@ -1409,7 +1508,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if self._healthy_terminal_ready(health):
                 self.state["terminal"] = {
                     "result": "nonpass",
-                    "reason": f"{self.programme.key}_16h_absolute_wall_endpoint",
+                    "reason": (
+                        f"{self.programme.key}_"
+                        f"{self.programme.absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
+                        if self.programme.sustained_regulation
+                        else f"{self.programme.key}_16h_absolute_wall_endpoint"
+                    ),
                     "primary_decision": "right_censored_incomplete",
                     "last_confirmed_code": self.state["terminal_static_code"],
                     "utc": _utc_now(),
@@ -1433,6 +1537,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             terminal["primary_decision"] = (
                 "hybrid_response_wrong_or_frequency_not_reacquired"
             )
+        elif reason == "phase_or_frequency_regulation_not_sustained":
+            terminal["primary_decision"] = reason
+        elif self.programme.sustained_regulation and reason in {
+            "prospective_repeated_alternation",
+            "prospective_low_efficiency_path",
+        }:
+            terminal["primary_decision"] = "hybrid_policy_chatter_or_path_exhaustion"
         elif self.programme.identification_required and any(
             decision in reason
             for decision in (
@@ -1448,7 +1559,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 )
                 if decision in reason
             )
-        elif reason.startswith(f"{self.programme.key}_wall_endpoint"):
+        elif "absolute_wall_endpoint" in reason or reason.startswith(
+            f"{self.programme.key}_wall_endpoint"
+        ):
             terminal["primary_decision"] = "right_censored_incomplete"
         elif (
             self.programme.response_checkpoint_observational

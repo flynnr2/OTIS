@@ -16,10 +16,10 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None:
+def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] == "cx322_bounded_hybrid_fact_gathering"
+    assert status["active_programme"] == "otis_sustained_hybrid_regulation_v1"
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
         "allowed_operations": [],
@@ -235,6 +235,15 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
     assert cx322["effective_activation"]["predecessor_seal_sha256"] == (
         "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
     )
+    sustained = status["programmes"]["otis_sustained_hybrid_regulation_v1"]
+    assert sustained["physical_authority_effective"] is True
+    assert sustained["selected_policy"][
+        "characterization_is_an_entry_or_terminal_failure_gate"
+    ] is False
+    assert sustained["finite_envelope"]["maximum_automatic_applications"] == 12
+    assert sustained["finite_envelope"][
+        "maximum_physical_applications_including_challenge"
+    ] == 13
     assert cx322["stage5_attempts"][0]["setup_applications"] == 1
     assert cx322["stage5_attempts"][0]["automatic_applications"] == 0
     assert cx322["stage5_attempts"][0]["qualified_origin_established"] is False
@@ -1255,9 +1264,20 @@ def test_tracked_status_records_terminal_predecessors_and_active_cx322() -> None
             "cx322_bounded_hybrid_fact_gathering",
             "cx322_stage5_bounded_hybrid_fact_gathering_live",
         )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
+        )
+    sustained = load_programme_status()["programmes"][
+        "otis_sustained_hybrid_regulation_v1"
+    ]
     assert require_programme_operation_allowed(
-        "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
-    ) == cx322
+        "otis_sustained_hybrid_regulation_v1", OFFLINE_PREPARATION
+    ) == sustained
+    assert require_programme_operation_allowed(
+        "otis_sustained_hybrid_regulation_v1",
+        "otis_sustained_hybrid_regulation_live",
+    ) == sustained
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION

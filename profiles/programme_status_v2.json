@@ -1,13 +1,67 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx322_bounded_hybrid_fact_gathering",
+  "active_programme": "otis_sustained_hybrid_regulation_v1",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
       "allowed_operations": [],
       "effective_date": "2026-08-11",
       "authority": "passed_completion_gate"
+    },
+    "otis_sustained_hybrid_regulation_v1": {
+      "state": "authorized_exact_bundle_entry_gates_pending",
+      "allowed_operations": [
+        "offline_preparation",
+        "otis_sustained_hybrid_regulation_live"
+      ],
+      "effective_date": "2026-08-23",
+      "authority": "explicit_operator_authority_in_sustained_hybrid_programme_task",
+      "physical_authority_effective": true,
+      "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "design_prompt": "docs/60_EXPERIMENTS/SUSTAINED_HYBRID_REGULATION_PROGRAMME_PROMPT.md",
+      "design_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/README.md",
+      "selected_policy": {
+        "path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+        "file_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+        "natural_control_law_mathematics_change_from_cx322": "none",
+        "response_checkpoint_mode": "observational_non_terminal",
+        "characterization_is_an_entry_or_terminal_failure_gate": false,
+        "failure_requires_frozen_criterion_violation_by_real_evidence": true
+      },
+      "finite_envelope": {
+        "qualified_duration_s": 86400,
+        "absolute_wall_clock_limit_s": 108000,
+        "maximum_automatic_applications": 12,
+        "maximum_physical_applications_including_challenge": 13,
+        "maximum_deliberate_reversal_challenges": 1,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 84,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "extension": false
+      },
+      "verification": {
+        "exact_firmware_build_pending": true,
+        "exact_bundle_pending": true,
+        "structural_preflight_pending": true,
+        "complete_multi_transaction_operational_rehearsal_pending": true,
+        "physical_acquisition_gate_pending": true
+      },
+      "predecessor_evidence": {
+        "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired",
+        "seal_sha256": "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30",
+        "firmware_uf2_sha256": "94bbc1e9ad8e7008ca1dab135e1f2fcfbae31d4a23bf868009e4994d8972267f"
+      },
+      "authority_consumption": {
+        "consumed_by_first_physical_terminal": true,
+        "automatic_retry": false,
+        "criteria_change_after_evidence": false
+      }
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",
