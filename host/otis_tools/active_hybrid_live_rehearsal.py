@@ -1121,14 +1121,20 @@ def _sustained_multi_transaction_fixture(
             )
         ahy.append(row)
 
-    def observe(timestamp_s: int, phase_cycles: int, *, response: bool = False):
+    def observe(
+        timestamp_s: int,
+        phase_cycles: int,
+        *,
+        response: bool = False,
+        frequency_error_hz: float = 0.0,
+    ):
         return controller.decide(
             _observation(
                 controller,
                 timestamp_s=timestamp_s,
                 sequence=timestamp_s,
-                frequency_error_hz=0.0,
-                counts=0,
+                frequency_error_hz=frequency_error_hz,
+                counts=round(frequency_error_hz * policy.fresh_support_s),
                 tight_state="TIGHT_INSIDE",
                 relative_phase_cycles=phase_cycles,
                 outstanding_response=response,
@@ -1194,7 +1200,12 @@ def _sustained_multi_transaction_fixture(
 
     response = transact(observe(2400, 36), request_sequence=1)
     response_timestamp_s = 2402 + policy.settling_exclusion_s + policy.fresh_support_s
-    response_decision = observe(response_timestamp_s, 36, response=True)
+    response_decision = observe(
+        response_timestamp_s,
+        36,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
     append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
@@ -1210,7 +1221,12 @@ def _sustained_multi_transaction_fixture(
         raise RuntimeError("sustained fixture did not consume first response exactly")
 
     response = transact(observe(4800, 30), request_sequence=2)
-    response_decision = observe(6302, 30, response=True)
+    response_decision = observe(
+        6302,
+        30,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
     append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
@@ -1237,7 +1253,12 @@ def _sustained_multi_transaction_fixture(
     if challenge.reason != "deliberate_reversal_challenge_request_ready":
         raise RuntimeError("sustained fixture did not reach the frozen challenge")
     response = transact(challenge, request_sequence=3)
-    response_decision = observe(45_302, 30, response=True)
+    response_decision = observe(
+        45_302,
+        30,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
     append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],
@@ -1252,7 +1273,12 @@ def _sustained_multi_transaction_fixture(
     if recovery.reason != "deliberate_reversal_challenge_recovery_request_ready":
         raise RuntimeError("sustained fixture did not reach challenge recovery")
     response = transact(recovery, request_sequence=4)
-    response_decision = observe(47_102, -36, response=True)
+    response_decision = observe(
+        47_102,
+        -36,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
     append_response_boundary(response_decision, response)
     controller.note_response(
         classification=response["response_class"],

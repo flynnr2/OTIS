@@ -11,6 +11,9 @@ from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_analyze import (
     _scenario_terminal_classifications,
 )
+from host.otis_tools.active_hybrid_evidence_guard import (
+    replay_active_hybrid_history,
+)
 from host.otis_tools.active_hybrid_live_rehearsal import (
     _sustained_multi_transaction_fixture,
 )
@@ -97,6 +100,21 @@ def test_full_multi_transaction_sequence_reaches_first_recovery_consumer() -> No
     assert propagation["exact"] is True
     assert len(propagation["comparisons"]) == 4
     assert all(item["exact"] for item in propagation["comparisons"])
+    replay = replay_active_hybrid_history(
+        ahy,
+        transactions,
+        policy_path=POLICY,
+        expected_run_identity=SUSTAINED_HYBRID_PROGRAMME.runtime_run_identity,
+        expected_build_identity="test-build-identity",
+        expected_profile_identity=SUSTAINED_HYBRID_PROGRAMME.profile_id,
+        expected_active_policy_sha256=policy.policy_sha256,
+    )
+    assert replay["exact"] is True
+    assert all(
+        comparison["response_evidence_exact"]
+        for comparison in replay["comparisons"]
+        if comparison["response_horizon"]
+    )
 
 
 def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
