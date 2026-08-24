@@ -21,7 +21,7 @@ import time
 
 from .contracts import CsvValidationContext, validate_csv
 from .abort_transport import AbortFifo
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, SUSTAINED_HYBRID_PROFILE_ID
 from .serial_commands import send_command_to_fifo
 
 
@@ -568,6 +568,7 @@ class ActiveTransactionSupervisor:
             "cx320_active_hybrid",
             "cx321_active_hybrid",
             "cx322_direct_hybrid",
+            SUSTAINED_HYBRID_PROFILE_ID,
         }
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
         plant_sign_response = False

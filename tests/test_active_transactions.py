@@ -432,6 +432,80 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
     assert restarted.state["acknowledged_record_sequences"] == [2]
     assert restarted.state["inflight_evidence_acknowledgement"] is None
 
+
+def test_sustained_phase4_retains_replay_before_acknowledgement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    inherited, identities, _ = load_no_write_qualification_spec("A")
+    spec = replace(inherited, profile="otis_sustained_hybrid_regulation_v1")
+    run_dir = tmp_path / "run"
+    active_csv = run_dir / "csv" / "active_transactions_v1.csv"
+    active_csv.parent.mkdir(parents=True)
+    active_csv.write_text("fixture\n", encoding="utf-8")
+    (run_dir / "csv/active_hybrid_decisions_v1.csv").write_text(
+        "fixture\n", encoding="utf-8"
+    )
+    row = {
+        "transaction_record_sequence": "5",
+        "request_sequence": "1",
+        "event": "response",
+    }
+    attestation = {
+        "attestation_type": "cx320_response_replayed_before_acknowledgement_v1",
+        "attestation_sha256": "a" * 64,
+    }
+    replay_calls: list[dict[str, object]] = []
+
+    def replay_response_before_acknowledgement(**kwargs):
+        replay_calls.append(kwargs)
+        return attestation
+
+    monkeypatch.setattr(
+        "host.otis_tools.active_hybrid_evidence_guard."
+        "replay_response_before_acknowledgement",
+        replay_response_before_acknowledgement,
+    )
+    supervisor = ActiveTransactionSupervisor(
+        run_dir=run_dir,
+        command_fifo=tmp_path / "commands.fifo",
+        abort_fifo=tmp_path / "abort.fifo",
+        spec=spec,
+        identities=identities,
+        expected_build_identity="b" * 64 + ":" + "c" * 64,
+        allow_manual_start=False,
+        allow_arm=False,
+        duration_s=None,
+        dual_core_transactions=True,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_prepare_evidence_acknowledgement",
+        lambda _row, _phase: {"pre_submit_snapshot_generation": 9},
+    )
+    monkeypatch.setattr(
+        supervisor, "_confirm_evidence_acknowledgement", lambda _value: True
+    )
+    submitted: list[str] = []
+    attestation_path = (
+        run_dir
+        / "reports/step_001/record_000005_response_replay_attestation.json"
+    )
+
+    def submit(command: str) -> None:
+        assert attestation_path.is_file()
+        assert json.loads(attestation_path.read_text(encoding="utf-8")) == attestation
+        submitted.append(command)
+
+    monkeypatch.setattr(supervisor, "_command", submit)
+
+    supervisor._preserve_and_acknowledge(row, 4)
+
+    assert len(replay_calls) == 1
+    assert replay_calls[0]["active_transactions_csv"] == active_csv
+    assert submitted == ["ACTIVE EVIDENCE 1 4"]
+    assert supervisor.state["acknowledged_record_sequences"] == [5]
+
+
 def test_saturated_normal_fifo_cannot_block_priority_abort(
     tmp_path: Path,
 ) -> None:
