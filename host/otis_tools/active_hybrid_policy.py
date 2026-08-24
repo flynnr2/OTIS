@@ -25,6 +25,7 @@ POLICY_ID = "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
 SUPPORTED_POLICY_IDS = {
     POLICY_ID,
     "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    "OTIS_SUSTAINED_HYBRID_REGULATION_V1",
 }
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
@@ -67,6 +68,7 @@ class ActiveHybridPolicy:
     fresh_support_s: int
     phase_qualification_residence_s: int
     maximum_applications: int
+    maximum_physical_applications: int
     maximum_cumulative_movement_codes: int
     qualified_duration_s: int
     wall_clock_limit_s: int
@@ -76,6 +78,10 @@ class ActiveHybridPolicy:
     phase_release_absolute_counts_gte: int
     start_code: int
     response_checkpoint_observational: bool
+    reversal_challenge_enabled: bool
+    natural_reversal_window_s: int
+    challenge_latest_s: int
+    challenge_step_codes: int
 
 
 def _sha256_file(path: Path) -> str:
@@ -193,6 +199,8 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
             "automatic_retry",
             "automatic_restoration",
         }
+        if policy_id == "OTIS_SUSTAINED_HYBRID_REGULATION_V1":
+            limit_fields.remove("maximum_total_automatic_applications")
         if (
             any(
                 numerical.get(name) != predecessor_numerical.get(name)
@@ -212,6 +220,9 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
                 "observational policy changes the frozen natural controller"
             )
 
+    challenge = value.get("reversal_challenge", {})
+    if not isinstance(challenge, dict):
+        raise ValueError("active-hybrid reversal challenge must be an object")
     policy = ActiveHybridPolicy(
         policy_id=str(policy_id),
         policy_sha256=_sha256_file(path),
@@ -240,6 +251,12 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
             numerical["phase_qualification_residence_s"]
         ),
         maximum_applications=int(limits["maximum_total_automatic_applications"]),
+        maximum_physical_applications=int(
+            limits.get(
+                "maximum_total_physical_control_applications_including_challenge",
+                limits["maximum_total_automatic_applications"],
+            )
+        ),
         maximum_cumulative_movement_codes=int(
             limits["maximum_cumulative_absolute_movement_codes"]
         ),
@@ -258,7 +275,16 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
             isinstance(response_checkpoint, dict)
             and response_checkpoint.get("mode") == "observational_non_terminal"
         ),
+        reversal_challenge_enabled=bool(challenge),
+        natural_reversal_window_s=int(
+            challenge.get("natural_reversal_window_qualified_s", 0)
+        ),
+        challenge_latest_s=int(
+            challenge.get("first_eligible_challenge_no_later_than_qualified_s", 0)
+        ),
+        challenge_step_codes=int(challenge.get("default_step_codes", 0)),
     )
+    sustained = policy.policy_id == "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
     if (
         policy.pull_in_time_s != 21_600
         or not math.isclose(policy.phase_bias_cap_hz, 1 / 600, rel_tol=0, abs_tol=1e-18)
@@ -267,11 +293,16 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
         or policy.maximum_code != 0xAB00
         or policy.minimum_cadence_s != 1_800
         or policy.phase_qualification_residence_s != 1_800
-        or policy.maximum_applications != 4
+        or policy.maximum_applications != (12 if sustained else 4)
+        or policy.maximum_physical_applications != (13 if sustained else 4)
         or policy.maximum_cumulative_movement_codes != 84
-        or policy.qualified_duration_s != 43_200
-        or policy.wall_clock_limit_s != 57_600
+        or policy.qualified_duration_s != (86_400 if sustained else 43_200)
+        or policy.wall_clock_limit_s != (108_000 if sustained else 57_600)
         or policy.start_code != 0xA83C
+        or policy.reversal_challenge_enabled is not sustained
+        or (sustained and policy.natural_reversal_window_s != 43_200)
+        or (sustained and policy.challenge_latest_s != 50_400)
+        or (sustained and policy.challenge_step_codes != 21)
     ):
         raise ValueError("active-hybrid frozen envelope differs")
     return policy
@@ -392,6 +423,7 @@ class ActiveHybridController:
         # controller is initialized only after that epoch has propagated.
         self.dac_epoch = 1
         self.correction_count = 0
+        self.automatic_application_count = 0
         self.cumulative_movement_codes = 0
         self.last_application_s = setup_application_s
         # CX320 starts its natural-controller path at the setup code, so these
@@ -403,6 +435,7 @@ class ActiveHybridController:
         self.direction_history: list[int] = []
         self.transaction_outstanding = False
         self.outstanding_phase_material = False
+        self.outstanding_deliberate_challenge = False
         self.first_checkpoint_response_passed = False
         self.phase_material_application_count = 0
         self.frequency_only_application_count = 0
@@ -413,6 +446,17 @@ class ActiveHybridController:
         self.fault_reason: str | None = None
         self.plant_sign_attestation_id: str | None = None
         self._plant_sign_handoff_first_consumer_pending = False
+        self.qualified_origin_s: float | None = None
+        self.natural_initial_direction: int | None = None
+        self.natural_reversal_observed = False
+        self.deliberate_challenge_applied = False
+        self.deliberate_challenge_cancelled = False
+        self.deliberate_challenge_unexercised = False
+        self.deliberate_challenge_recovery_applied = False
+        self.deliberate_challenge_direction: int | None = None
+        self.deliberate_challenge_code: int | None = None
+        self.deliberate_challenge_dac_epoch: int | None = None
+        self.deliberate_challenge_application_s: float | None = None
 
     def rebase_after_plant_sign(
         self,
@@ -455,6 +499,7 @@ class ActiveHybridController:
         self.applied_code = applied_code
         self.dac_epoch = dac_epoch
         self.correction_count = 1
+        self.automatic_application_count = 1
         self.cumulative_movement_codes = movement
         self.last_application_s = application_s
         self.natural_chatter_origin_code = applied_code
@@ -528,7 +573,12 @@ class ActiveHybridController:
         _, delta, _, _ = self._limited_delta(frequency_term_hz, current_code)
         if delta == 0:
             return 0
-        if self.correction_count + 1 > self.policy.maximum_applications:
+        automatic_count = (
+            self.automatic_application_count
+            if self.policy.reversal_challenge_enabled
+            else self.correction_count
+        )
+        if automatic_count + 1 > self.policy.maximum_applications:
             return 0
         if (
             self.cumulative_movement_codes + abs(delta)
@@ -556,6 +606,7 @@ class ActiveHybridController:
         counterfactual_delta = 0
         reason = self.reason
         handoff_first_consumer = self._plant_sign_handoff_first_consumer_pending
+        deliberate_challenge_decision = False
 
         if handoff_first_consumer:
             if (
@@ -591,6 +642,8 @@ class ActiveHybridController:
         elif self.transaction_outstanding or observation.outstanding_response:
             reason = "request_or_response_checkpoint_outstanding"
         else:
+            if self.policy.reversal_challenge_enabled and self.qualified_origin_s is None:
+                self.qualified_origin_s = observation.timestamp_s
             phase_exact = phase_exact_now
             if phase_exact:
                 if self.phase_session is None:
@@ -688,12 +741,62 @@ class ActiveHybridController:
                     counterfactual_delta = self._frequency_only_counterfactual_delta(
                         frequency_term, observation.applied_code
                     )
-                    if delta != 0 and phase_authorized and delta * phase_term < 0:
+                    natural_direction = 1 if delta > 0 else -1 if delta < 0 else 0
+                    natural_reversal_ready = (
+                        natural_direction != 0
+                        and self.natural_initial_direction is not None
+                        and natural_direction != self.natural_initial_direction
+                    )
+                    qualified_elapsed_s = (
+                        observation.timestamp_s - self.qualified_origin_s
+                        if self.qualified_origin_s is not None
+                        else 0.0
+                    )
+                    challenge_due = (
+                        self.policy.reversal_challenge_enabled
+                        and self.policy.natural_reversal_window_s
+                        <= qualified_elapsed_s
+                        <= self.policy.challenge_latest_s
+                        and not natural_reversal_ready
+                        and not self.natural_reversal_observed
+                        and not self.deliberate_challenge_applied
+                        and not self.deliberate_challenge_cancelled
+                        and not self.deliberate_challenge_unexercised
+                    )
+                    if challenge_due:
+                        challenge_direction = self.natural_initial_direction or -1
+                        challenge_code = (
+                            observation.applied_code
+                            + challenge_direction * self.policy.challenge_step_codes
+                        )
+                        if (
+                            not self.policy.minimum_code
+                            <= challenge_code
+                            <= self.policy.maximum_code
+                            or self.cumulative_movement_codes
+                            + self.policy.challenge_step_codes
+                            > self.policy.maximum_cumulative_movement_codes
+                        ):
+                            self.deliberate_challenge_unexercised = True
+                            delta = 0
+                            reason = "deliberate_reversal_challenge_budget_or_range_unavailable"
+                        else:
+                            delta = challenge_direction * self.policy.challenge_step_codes
+                            raw_delta = float(delta)
+                            step_limited = False
+                            range_clamped = False
+                            deliberate_challenge_decision = True
+                            reason = "deliberate_reversal_challenge_request_ready"
+                    elif delta != 0 and phase_authorized and delta * phase_term < 0:
                         delta = 0
                         reason = "phase_direction_coherence_hold"
                     elif delta == 0:
                         reason = "zero_rounded_or_range_hold"
-                    elif self.correction_count + 1 > self.policy.maximum_applications:
+                    elif (
+                        self.automatic_application_count
+                        if self.policy.reversal_challenge_enabled
+                        else self.correction_count
+                    ) + 1 > self.policy.maximum_applications:
                         count_limited = True
                         delta = 0
                         reason = "global_application_budget_hold"
@@ -704,7 +807,7 @@ class ActiveHybridController:
                         cumulative_limited = True
                         delta = 0
                         reason = "global_cumulative_movement_budget_hold"
-                    else:
+                    elif not deliberate_challenge_decision:
                         chatter = self._chatter_reason(delta)
                         if chatter is not None:
                             self._fault(chatter)
@@ -718,8 +821,31 @@ class ActiveHybridController:
                                 if phase_authorized
                                 else "frequency_acquisition_request_ready"
                             )
+                    if (
+                        delta != 0
+                        and not deliberate_challenge_decision
+                        and self.deliberate_challenge_applied
+                        and (1 if delta > 0 else -1)
+                        == -self.deliberate_challenge_direction
+                    ):
+                        reason = "deliberate_reversal_challenge_recovery_request_ready"
 
-        material = phase_term != 0.0 and delta != counterfactual_delta
+            if (
+                self.policy.reversal_challenge_enabled
+                and self.qualified_origin_s is not None
+                and observation.timestamp_s - self.qualified_origin_s
+                > self.policy.challenge_latest_s
+                and not self.natural_reversal_observed
+                and not self.deliberate_challenge_applied
+                and not self.deliberate_challenge_cancelled
+            ):
+                self.deliberate_challenge_unexercised = True
+
+        material = (
+            not deliberate_challenge_decision
+            and phase_term != 0.0
+            and delta != counterfactual_delta
+        )
         return HybridDecision(
             decision_sequence=self.decision_sequence,
             state_before=before.value,
@@ -788,23 +914,51 @@ class ActiveHybridController:
         self.applied_code = applied_code
         self.dac_epoch = dac_epoch
         self.correction_count += 1
-        self.cumulative_movement_codes += abs(decision.requested_delta_codes)
-        self.natural_cumulative_movement_codes += abs(
-            decision.requested_delta_codes
+        deliberate_challenge = (
+            decision.reason == "deliberate_reversal_challenge_request_ready"
         )
+        if not deliberate_challenge:
+            self.automatic_application_count += 1
+        self.cumulative_movement_codes += abs(decision.requested_delta_codes)
+        if not deliberate_challenge:
+            self.natural_cumulative_movement_codes += abs(
+                decision.requested_delta_codes
+            )
         self.last_application_s = decision.timestamp_s
-        self.direction_history.append(1 if decision.requested_delta_codes > 0 else -1)
+        direction = 1 if decision.requested_delta_codes > 0 else -1
+        if deliberate_challenge:
+            self.deliberate_challenge_applied = True
+            self.deliberate_challenge_direction = direction
+            self.deliberate_challenge_code = applied_code
+            self.deliberate_challenge_dac_epoch = dac_epoch
+            self.deliberate_challenge_application_s = decision.timestamp_s
+        else:
+            if self.natural_initial_direction is None:
+                self.natural_initial_direction = direction
+            elif direction != self.natural_initial_direction:
+                self.natural_reversal_observed = True
+                if not self.deliberate_challenge_applied:
+                    self.deliberate_challenge_cancelled = True
+            if (
+                self.deliberate_challenge_applied
+                and direction == -self.deliberate_challenge_direction
+            ):
+                self.deliberate_challenge_recovery_applied = True
+            self.direction_history.append(direction)
         self.transaction_outstanding = True
-        self.outstanding_phase_material = decision.phase_materially_influenced
-        if decision.phase_term_hz != 0.0:
+        self.outstanding_deliberate_challenge = deliberate_challenge
+        self.outstanding_phase_material = (
+            deliberate_challenge or decision.phase_materially_influenced
+        )
+        if not deliberate_challenge and decision.phase_term_hz != 0.0:
             self.phase_nonzero_application_count += 1
-        if decision.phase_materially_influenced:
+        if not deliberate_challenge and decision.phase_materially_influenced:
             self.phase_material_application_count += 1
             if self.phase_material_application_count == 1:
                 self.state = HybridState.FIRST_PHASE_TRANSACTION
                 self.first_checkpoint_response_passed = False
                 self.reason = "first_phase_application_checkpoint_required"
-        else:
+        elif not deliberate_challenge:
             self.frequency_only_application_count += 1
             self.reason = "application_confirmed_response_required"
 
@@ -849,12 +1003,16 @@ class ActiveHybridController:
             )
         )
         was_phase_material = self.outstanding_phase_material
+        was_deliberate_challenge = self.outstanding_deliberate_challenge
         self.transaction_outstanding = False
         self.outstanding_phase_material = False
+        self.outstanding_deliberate_challenge = False
         if not healthy:
             self._fault("hybrid_response_wrong_or_checkpoint_evidence_invalid")
             return
-        if was_phase_material and self.phase_material_application_count == 1:
+        if was_deliberate_challenge:
+            self.reason = "deliberate_reversal_challenge_response_observation_recorded"
+        elif was_phase_material and self.phase_material_application_count == 1:
             self.first_checkpoint_response_passed = True
             self.reason = (
                 "first_phase_observation_recorded_tight_reacquisition_required"
@@ -888,6 +1046,7 @@ class ActiveHybridController:
             "applied_code": self.applied_code,
             "dac_epoch": self.dac_epoch,
             "correction_count": self.correction_count,
+            "automatic_application_count": self.automatic_application_count,
             "cumulative_movement_codes": self.cumulative_movement_codes,
             "global_last_application_s": self.last_application_s,
             "natural_chatter_origin_code": self.natural_chatter_origin_code,
@@ -899,6 +1058,17 @@ class ActiveHybridController:
             "frequency_only_application_count": self.frequency_only_application_count,
             "transaction_outstanding": self.transaction_outstanding,
             "first_checkpoint_response_passed": self.first_checkpoint_response_passed,
+            "qualified_origin_s": self.qualified_origin_s,
+            "natural_initial_direction": self.natural_initial_direction,
+            "natural_reversal_observed": self.natural_reversal_observed,
+            "deliberate_challenge_applied": self.deliberate_challenge_applied,
+            "deliberate_challenge_cancelled": self.deliberate_challenge_cancelled,
+            "deliberate_challenge_unexercised": self.deliberate_challenge_unexercised,
+            "deliberate_challenge_recovery_applied": self.deliberate_challenge_recovery_applied,
+            "deliberate_challenge_direction": self.deliberate_challenge_direction,
+            "deliberate_challenge_code": self.deliberate_challenge_code,
+            "deliberate_challenge_dac_epoch": self.deliberate_challenge_dac_epoch,
+            "deliberate_challenge_application_s": self.deliberate_challenge_application_s,
         }
 
 

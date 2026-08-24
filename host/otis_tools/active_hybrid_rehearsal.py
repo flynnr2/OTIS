@@ -841,7 +841,19 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
             "600s_estimator_interval",
             "1800s_phase_qualification_residence",
             "900s_settling_plus_600s_fresh_response_support",
-            "43200s_qualified_and_57600s_wall_deadlines",
+            (
+                f"{programme.qualified_duration_s}s_qualified_and_"
+                f"{programme.absolute_wall_limit_s}s_wall_deadlines"
+            ),
+            *(
+                [
+                    "43200s_natural_reversal_window",
+                    "50400s_latest_deliberate_challenge",
+                    "21600s_minimum_post_reversal_support",
+                ]
+                if programme.sustained_regulation
+                else []
+            ),
         ],
         "real_components_exercised": [
             "host_reference_controller",

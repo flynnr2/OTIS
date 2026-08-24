@@ -124,6 +124,40 @@ def test_cx322_direct_hybrid_is_a_current_evidence_package(
     assert load_manifest(run_dir).data == value
 
 
+def test_sustained_hybrid_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "sustained_hybrid"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1",
+        run_id="otis_sustained_hybrid_live_fixture",
+        stage="OTIS_SUSTAINED_HYBRID_REGULATION_LIVE",
+        cx319=None,
+        sustained_hybrid={"profile_id": "otis_sustained_hybrid_regulation_v1"},
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
+def test_sustained_hybrid_requires_exact_profile_identity(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "wrong_sustained_hybrid"
+    _write_manifest(
+        run_dir,
+        compatibility_floor="OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1",
+        stage="OTIS_SUSTAINED_HYBRID_REGULATION_LIVE",
+        cx319=None,
+        sustained_hybrid={"profile_id": "wrong_profile"},
+    )
+
+    with pytest.raises(
+        ValueError, match="OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1"
+    ):
+        load_manifest(run_dir)
+
+
 def test_legacy_manifest_filename_is_rejected_with_revision_guidance(
     tmp_path: Path,
 ) -> None:

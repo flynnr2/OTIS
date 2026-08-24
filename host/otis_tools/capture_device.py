@@ -708,6 +708,7 @@ class CaptureDeviceRunner:
         splitter: CsvRecordSplitter,
         raw_writer: RawEvidenceWriter,
         active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
+        before_line_processing: Callable[[], None] | None = None,
     ) -> None:
         raw_writer.write_device(data)
         self.bytes_written += len(data)
@@ -715,6 +716,12 @@ class CaptureDeviceRunner:
         for event in events:
             _log_event(logging.WARNING, event)
             _write_marker(raw_writer, event)
+        # A full serial read can contain many telemetry rows.  Service command
+        # ingress after the bytes are durably ordered in raw evidence but
+        # before CSV/status consumers process the batch, so consumer latency
+        # cannot exhaust the command freshness and acknowledgement bounds.
+        if before_line_processing is not None:
+            before_line_processing()
         for line in lines:
             self._process_line(
                 line,
@@ -775,6 +782,24 @@ class CaptureDeviceRunner:
             return
         for raw_command in command_fifo.poll(max_lines=1):
             self._send_command(raw_command, serial_handle, raw_writer)
+
+    def _poll_command_ingress(
+        self,
+        emergency_fifo: CommandFifo | None,
+        command_fifo: CommandFifo | None,
+        serial_handle,
+        raw_writer: RawEvidenceWriter,
+    ) -> None:
+        if self.graceful_stop_requested:
+            return
+        self._poll_emergency_command(
+            emergency_fifo,
+            command_fifo,
+            serial_handle,
+            raw_writer,
+        )
+        if not self.emergency_abort_latched:
+            self._poll_commands(command_fifo, serial_handle, raw_writer)
 
     def _poll_emergency_command(
         self,
@@ -1266,6 +1291,12 @@ class CaptureDeviceRunner:
                                     splitter,
                                     raw_writer,
                                     sink.active_status_live_publisher,
+                                    before_line_processing=lambda: self._poll_command_ingress(
+                                        emergency_fifo,
+                                        command_fifo,
+                                        serial_handle,
+                                        raw_writer,
+                                    ),
                                 )
                             # A prepared rotation is applied at this complete
                             # device-record boundary before polling either old
@@ -1278,26 +1309,16 @@ class CaptureDeviceRunner:
                                 splitter = sink.splitter
                                 command_fifo = sink.command_fifo
                                 emergency_fifo = sink.emergency_fifo
-                            if (
-                                not self.graceful_stop_requested
-                                and not self.emergency_abort_latched
-                            ):
-                                # Abort may arrive while the serial read is
-                                # blocked.  Recheck the priority path at the
-                                # final boundary before any normal command.
-                                self._poll_emergency_command(
-                                    emergency_fifo,
-                                    command_fifo,
-                                    serial_handle,
-                                    raw_writer,
-                                )
-                            if (
-                                not self.graceful_stop_requested
-                                and not self.emergency_abort_latched
-                            ):
-                                self._poll_commands(
-                                    command_fifo, serial_handle, raw_writer
-                                )
+                            # Abort may arrive while the serial read or a
+                            # downstream consumer is blocked.  Recheck the
+                            # priority path at the final boundary before any
+                            # normal command.
+                            self._poll_command_ingress(
+                                emergency_fifo,
+                                command_fifo,
+                                serial_handle,
+                                raw_writer,
+                            )
                             now = time.monotonic()
                             schedule = self.config.intentional_detach_schedule
                             if (

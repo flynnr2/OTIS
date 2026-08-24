@@ -35,7 +35,6 @@ from .active_hybrid_live_supervisor import (
     ARM_LIFETIME_S,
     CORRECTION_RESPONSE_RESERVE_S,
     PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS,
-    QUALIFIED_DURATION_S,
     QUERY_PERIOD_S,
     RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
@@ -64,6 +63,8 @@ from .active_status_contract import (
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     CX321_ACTIVE_STATUS_KEYS,
     CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
@@ -158,6 +159,21 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"JSON root must be an object: {path}")
     return value
+
+
+def _active_status_generation_complete(
+    run_dir: Path, expected_generation: int
+) -> bool:
+    path = run_dir / "reports/cx317_active_status_live_state_v1.json"
+    if not path.is_file() or expected_generation <= 0:
+        return False
+    value = _read_object(path)
+    return (
+        value.get("state") == "complete"
+        and value.get("generation") == expected_generation
+        and value.get("newest_started_generation") == expected_generation
+        and value.get("newest_complete_generation") == expected_generation
+    )
 
 
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
@@ -313,16 +329,15 @@ def _post_abort_active_status_wire_fixture(
     cumulative_movement_codes: int | None = None,
 ) -> bytes:
     programme = _selected_programme(bundle or {})
-    keys = (
-        CX321_ACTIVE_STATUS_KEYS
-        if programme.identification_required
-        else ACTIVE_STATUS_KEYS
-    )
-    contract = (
-        CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
-        if programme.identification_required
-        else ACTIVE_STATUS_SNAPSHOT_CONTRACT
-    )
+    if programme.identification_required:
+        keys = CX321_ACTIVE_STATUS_KEYS
+        contract = CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    elif programme.sustained_regulation:
+        keys = SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
+        contract = SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    else:
+        keys = ACTIVE_STATUS_KEYS
+        contract = ACTIVE_STATUS_SNAPSHOT_CONTRACT
     values = {key: "unavailable" for key in keys}
     values.update(
         {
@@ -1046,6 +1061,298 @@ def _cx322_first_observational_transaction_fixture(
     }
 
 
+def _sustained_multi_transaction_fixture(
+    bundle: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any]]:
+    """Exercise natural repetition, challenge, recovery, and first consumers.
+
+    This is deliberately a progressive sequence rather than a set of isolated
+    component examples.  Each application is followed by its response record,
+    response-bearing controller decision, acknowledgement consumption, and the
+    first subsequent decision that depends on that acknowledgement.
+    """
+
+    programme = _selected_programme(bundle)
+    if not programme.sustained_regulation:
+        raise ValueError("sustained transaction fixture selected elsewhere")
+    policy = load_policy(Path(str(bundle["policy"]["path"])))
+    controller = ActiveHybridController(policy, setup_application_s=1)
+    ahy: list[dict[str, str]] = []
+    transactions: list[dict[str, str]] = []
+    applications: list[dict[str, Any]] = []
+    dependent_response: dict[str, str] | None = None
+
+    def append_decision(decision: Any, *, request_sequence: int = 0) -> None:
+        nonlocal dependent_response
+        row = _ahy_row(
+            decision,
+            record_sequence=len(ahy) + 1,
+            run_identity=programme.runtime_run_identity,
+            build_identity=str(bundle["firmware"]["build_identity"]),
+            policy_sha256=str(bundle["policy"]["policy_sha256"]),
+            response_policy_sha256=policy.response_policy_sha256,
+            profile_identity=programme.profile_id,
+        )
+        if dependent_response is not None:
+            row.update(
+                {
+                    "request_sequence": dependent_response["request_sequence"],
+                    "acceptance_sequence": dependent_response[
+                        "request_sequence"
+                    ],
+                    "application_sequence": dependent_response[
+                        "application_sequence"
+                    ],
+                    "response_class": dependent_response["response_class"],
+                    "actual_applied_code": dependent_response["applied_code"],
+                    "actual_dac_epoch": dependent_response["dac_epoch"],
+                    "downstream_epoch_exact": "true",
+                }
+            )
+            dependent_response = None
+        elif request_sequence:
+            row.update(
+                {
+                    "authority_state": "ARMED",
+                    "request_sequence": str(request_sequence),
+                    "acceptance_sequence": str(request_sequence),
+                    "application_sequence": str(request_sequence),
+                }
+            )
+        ahy.append(row)
+
+    def observe(
+        timestamp_s: int,
+        phase_cycles: int,
+        *,
+        response: bool = False,
+        frequency_error_hz: float = 0.0,
+    ):
+        return controller.decide(
+            _observation(
+                controller,
+                timestamp_s=timestamp_s,
+                sequence=timestamp_s,
+                frequency_error_hz=frequency_error_hz,
+                counts=round(frequency_error_hz * policy.fresh_support_s),
+                tight_state="TIGHT_INSIDE",
+                relative_phase_cycles=phase_cycles,
+                outstanding_response=response,
+            )
+        )
+
+    def append_response_boundary(
+        decision: Any, response: dict[str, str]
+    ) -> None:
+        append_decision(decision)
+        ahy[-1].update(
+            {
+                "authority_state": "AWAITING_RESPONSE",
+                "request_sequence": response["request_sequence"],
+                "acceptance_sequence": response["request_sequence"],
+                "application_sequence": response["application_sequence"],
+            }
+        )
+
+    def transact(decision: Any, *, request_sequence: int) -> dict[str, str]:
+        append_decision(decision, request_sequence=request_sequence)
+        controller.note_application(
+            decision,
+            applied_code=decision.requested_code,
+            dac_epoch=controller.dac_epoch + 1,
+            downstream_consumers_exact=True,
+        )
+        rows = _transaction_rows(
+            decision,
+            record_sequence=2 + len(transactions),
+            request_sequence=request_sequence,
+            application_sequence=request_sequence,
+            dac_epoch=controller.dac_epoch,
+            cumulative_movement=controller.cumulative_movement_codes,
+            run_identity=programme.runtime_run_identity,
+            build_identity=str(bundle["firmware"]["build_identity"]),
+            policy_sha256=str(bundle["policy"]["policy_sha256"]),
+            estimator_sha256=policy.frequency_estimator_sha256,
+            model_sha256=policy.plant_model_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+            numerical_policy_sha256=policy.policy_sha256,
+            profile_identity=programme.profile_id,
+        )
+        transactions.extend(rows)
+        application = {
+            "request_sequence": request_sequence,
+            "decision_sequence": decision.decision_sequence,
+            "reason": decision.reason,
+            "requested_delta_codes": decision.requested_delta_codes,
+            "requested_code": decision.requested_code,
+            "dac_epoch": controller.dac_epoch,
+            "correction_count": controller.correction_count,
+            "automatic_application_count": controller.automatic_application_count,
+            "cumulative_movement_codes": controller.cumulative_movement_codes,
+            "application_timestamp_s": int(rows[2]["application_timestamp_s"]),
+        }
+        applications.append(application)
+        return rows[-1]
+
+    # Establish the exact qualified origin and first phase residence.
+    for timestamp_s, phase_cycles in ((600, 0), (1200, 0), (1800, 0)):
+        append_decision(observe(timestamp_s, phase_cycles))
+
+    response = transact(observe(2400, 36), request_sequence=1)
+    response_timestamp_s = 2402 + policy.settling_exclusion_s + policy.fresh_support_s
+    response_decision = observe(
+        response_timestamp_s,
+        36,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
+    append_response_boundary(response_decision, response)
+    controller.note_response(
+        classification=response["response_class"],
+        predicted_sign_observed=True,
+        exact_replay=True,
+        support_fresh=True,
+        applied_epoch_exact=True,
+    )
+    dependent_response = response
+    release = observe(response_timestamp_s + 600, 36)
+    append_decision(release)
+    if release.reason != "first_phase_observation_recorded_and_tight_reacquired":
+        raise RuntimeError("sustained fixture did not consume first response exactly")
+
+    response = transact(observe(4800, 30), request_sequence=2)
+    response_decision = observe(
+        6302,
+        30,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
+    append_response_boundary(response_decision, response)
+    controller.note_response(
+        classification=response["response_class"],
+        predicted_sign_observed=True,
+        exact_replay=True,
+        support_fresh=True,
+        applied_epoch_exact=True,
+    )
+    dependent_response = response
+
+    # Keep the declared wrapping TIMER0 domain causally reconstructable while
+    # accelerating across the natural-reversal window.  These are ordinary
+    # zero-code decisions, and the first also consumes request 2's retained
+    # response identity through the real downstream replay path.
+    for timestamp_s in range(6902, 43_800, 1800):
+        bridge = observe(timestamp_s, 0)
+        if bridge.requested_delta_codes != 0:
+            raise RuntimeError(
+                "sustained wrap bridge unexpectedly requested physical control"
+            )
+        append_decision(bridge)
+
+    challenge = observe(43_800, 30)
+    if challenge.reason != "deliberate_reversal_challenge_request_ready":
+        raise RuntimeError("sustained fixture did not reach the frozen challenge")
+    response = transact(challenge, request_sequence=3)
+    response_decision = observe(
+        45_302,
+        30,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
+    append_response_boundary(response_decision, response)
+    controller.note_response(
+        classification=response["response_class"],
+        predicted_sign_observed=True,
+        exact_replay=True,
+        support_fresh=True,
+        applied_epoch_exact=True,
+    )
+    dependent_response = response
+
+    recovery = observe(45_600, -36)
+    if recovery.reason != "deliberate_reversal_challenge_recovery_request_ready":
+        raise RuntimeError("sustained fixture did not reach challenge recovery")
+    response = transact(recovery, request_sequence=4)
+    response_decision = observe(
+        47_102,
+        -36,
+        response=True,
+        frequency_error_hz=float(response["post_error_hz"]),
+    )
+    append_response_boundary(response_decision, response)
+    controller.note_response(
+        classification=response["response_class"],
+        predicted_sign_observed=True,
+        exact_replay=True,
+        support_fresh=True,
+        applied_epoch_exact=True,
+    )
+    dependent_response = response
+    first_post_recovery_consumer = observe(47_702, 0)
+    append_decision(first_post_recovery_consumer)
+
+    first = transactions[0]
+    manual = dict(first)
+    manual.update(
+        {
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "decision_timestamp_s": "1",
+            "current_applied_code": str(programme.setup_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(programme.setup_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0.000000000000",
+            "accepted_code": str(programme.setup_code),
+            "accepted_timestamp_s": "1",
+            "applied_code": str(programme.setup_code),
+            "application_sequence": "0",
+            "application_timestamp_s": "1",
+            "i2c_ok": "true",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "post_error_hz": "0.000000000000",
+            "observed_response_hz": "0.000000000000",
+            "cumulative_response_hz": "0.000000000000",
+            "consecutive_indeterminate": "0",
+            "active_state": "DISARMED",
+            "response_class": "unavailable",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+    )
+    snapshot = controller.snapshot()
+    if not (
+        snapshot["correction_count"] == 4
+        and snapshot["automatic_application_count"] == 3
+        and snapshot["deliberate_challenge_applied"]
+        and snapshot["deliberate_challenge_recovery_applied"]
+        and snapshot["natural_reversal_observed"]
+        and not snapshot["transaction_outstanding"]
+        and first_post_recovery_consumer.requested_delta_codes == 0
+    ):
+        raise RuntimeError("sustained fixture final identity/accounting mismatch")
+    return ahy, [manual, *transactions], {
+        "applications": applications,
+        "final_snapshot": snapshot,
+        "first_response_consumer_reason": release.reason,
+        "first_post_recovery_consumer_decision_sequence": (
+            first_post_recovery_consumer.decision_sequence
+        ),
+    }
+
+
 def _cx322_selected_estimate_fixture(
     ahy: list[dict[str, str]], bundle: dict[str, Any]
 ) -> list[dict[str, str]]:
@@ -1116,14 +1423,47 @@ def _cx322_active_status_wire_fixture(
     bundle: dict[str, Any],
     applied: bool,
     checkpoint_passed: bool,
+    evidence_request_sequence: int = 1,
+    applied_code: int | None = None,
+    dac_epoch: int | None = None,
+    correction_count: int | None = None,
+    automatic_application_count: int | None = None,
+    cumulative_movement_codes: int | None = None,
+    natural_reversal_observed: bool = False,
+    deliberate_challenge_applied: bool = False,
+    deliberate_challenge_recovery_applied: bool = False,
+    deliberate_challenge_direction: int = 0,
+    deliberate_challenge_code: int = 0,
+    deliberate_challenge_dac_epoch: int = 0,
+    deliberate_challenge_application_ticks: int = 0,
 ) -> bytes:
     """Return one complete CX322 status snapshot for a phase frontier."""
 
     programme = _selected_programme(bundle)
     policy = _read_object(Path(str(bundle["policy"]["path"])))
     bindings = policy["bindings"]
-    requested_code = programme.setup_code - 5
-    values = {key: "unavailable" for key in ACTIVE_STATUS_KEYS}
+    requested_code = programme.setup_code - 5 if applied_code is None else applied_code
+    keys = (
+        SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
+        if programme.sustained_regulation
+        else ACTIVE_STATUS_KEYS
+    )
+    contract = (
+        SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        if programme.sustained_regulation
+        else ACTIVE_STATUS_SNAPSHOT_CONTRACT
+    )
+    physical_count = int(applied) if correction_count is None else correction_count
+    automatic_count = (
+        physical_count
+        if automatic_application_count is None
+        else automatic_application_count
+    )
+    movement = 5 if applied else 0
+    if cumulative_movement_codes is not None:
+        movement = cumulative_movement_codes
+    current_epoch = (2 if applied else 1) if dac_epoch is None else dac_epoch
+    values = {key: "unavailable" for key in keys}
     values.update(
         {
             "enabled": "true",
@@ -1170,25 +1510,50 @@ def _cx322_active_status_wire_fixture(
             "query_nonce": query_nonce,
             "uptime_s": "4502",
             "evidence_request_sequence": (
-                "0" if evidence_phase == "evidence_clear" else "1"
+                "0"
+                if evidence_phase == "evidence_clear"
+                else str(evidence_request_sequence)
             ),
             "expected_setup_code": f"0x{programme.setup_code:04X}",
             "confirmed_applied_code_known": "true",
             "confirmed_applied_code": str(
                 requested_code if applied else programme.setup_code
             ),
-            "correction_count": str(int(applied)),
-            "cumulative_movement_codes": str(5 if applied else 0),
-            "dac_epoch": str(2 if applied else 1),
+            "correction_count": str(physical_count),
+            "cumulative_movement_codes": str(movement),
+            "dac_epoch": str(current_epoch),
             "selected_interval_count": "0",
             "automatic_retry": "false",
             "automatic_restore": "false",
         }
     )
+    if programme.sustained_regulation:
+        values.update(
+            {
+                "automatic_application_count": str(automatic_count),
+                "natural_reversal_observed": str(natural_reversal_observed).lower(),
+                "deliberate_challenge_applied": str(deliberate_challenge_applied).lower(),
+                "deliberate_challenge_cancelled": "false",
+                "deliberate_challenge_unexercised": "false",
+                "deliberate_challenge_recovery_applied": str(
+                    deliberate_challenge_recovery_applied
+                ).lower(),
+                "deliberate_challenge_direction": str(
+                    deliberate_challenge_direction
+                ),
+                "deliberate_challenge_code": str(deliberate_challenge_code),
+                "deliberate_challenge_dac_epoch": str(
+                    deliberate_challenge_dac_epoch
+                ),
+                "deliberate_challenge_application_ticks": str(
+                    deliberate_challenge_application_ticks
+                ),
+            }
+        )
     records = [
         (SNAPSHOT_BEGIN_KEY, str(generation)),
-        (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
-        *((key, values[key]) for key in ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_CONTRACT_KEY, contract),
+        *((key, values[key]) for key in keys),
         (SNAPSHOT_COMPLETE_KEY, str(generation)),
     ]
     return "".join(
@@ -1481,12 +1846,26 @@ def _create_rehearsal_run_manifest(
             "run_identity": programme.runtime_run_identity,
             "setup": {"code": programme.setup_code},
             "automatic_control": {
-                "maximum_total_applications": programme.maximum_applications,
+                "maximum_total_applications": (
+                    programme.maximum_physical_applications
+                ),
                 "maximum_step_codes": programme.maximum_step_codes,
                 "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
                 "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
                 "minimum_code": programme.minimum_code,
                 "maximum_code": programme.maximum_code,
+                **(
+                    {
+                        "maximum_total_automatic_applications": (
+                            programme.maximum_applications
+                        ),
+                        "maximum_deliberate_challenges": (
+                            programme.maximum_deliberate_challenges
+                        ),
+                    }
+                    if programme.sustained_regulation
+                    else {}
+                ),
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
@@ -1953,7 +2332,8 @@ def _exercise_qualified_device_time_boundaries(
         and supervisor.state["qualified_origin_session_id"] == 1
     )
 
-    admission_elapsed_s = QUALIFIED_DURATION_S - CORRECTION_RESPONSE_RESERVE_S
+    qualified_duration_s = supervisor.programme.qualified_duration_s
+    admission_elapsed_s = qualified_duration_s - CORRECTION_RESPONSE_RESERVE_S
     health[("cx317_active", "uptime_s")] = str(
         origin_uptime_s + admission_elapsed_s
     )
@@ -1971,17 +2351,21 @@ def _exercise_qualified_device_time_boundaries(
         supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
     ).timestamp()
     health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + QUALIFIED_DURATION_S
+        origin_uptime_s + qualified_duration_s
     )
     supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
     endpoint_open_after_forward_utc_step = supervisor.state["terminal"] is None
     health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + QUALIFIED_DURATION_S + 1
+        origin_uptime_s + qualified_duration_s + 1
     )
     supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
     endpoint_closed_after_backward_utc_step = (
         (supervisor.state.get("terminal") or {}).get("reason")
-        == f"{supervisor.programme.key}_12h_qualified_endpoint_complete"
+        == (
+            f"{supervisor.programme.key}_"
+            f"{supervisor.programme.qualified_duration_s // 3600}h_"
+            "qualified_endpoint_complete"
+        )
     )
 
     result = {
@@ -1993,7 +2377,7 @@ def _exercise_qualified_device_time_boundaries(
         ),
         "exact_fractional_origin_established": exact_origin_established,
         "correction_admission_close_elapsed_s": admission_elapsed_s,
-        "qualified_endpoint_elapsed_s": QUALIFIED_DURATION_S,
+        "qualified_endpoint_elapsed_s": qualified_duration_s,
         "admission_open_at_floor_before_exact_boundary": (
             admission_open_at_floor
         ),
@@ -2420,11 +2804,31 @@ def _exercise_cx322_real_transaction_path(
     run_dir: Path,
     bundle: dict[str, Any],
 ) -> dict[str, Any]:
-    """Drive the changed CX322 response semantics through real host processes."""
+    """Drive observational responses through the actual host process path."""
 
-    ahy, transactions, summary = _cx322_first_observational_transaction_fixture(
-        bundle
-    )
+    programme = _selected_programme(bundle)
+    if programme.sustained_regulation:
+        ahy, transactions, summary = _sustained_multi_transaction_fixture(bundle)
+        applications = {
+            int(item["request_sequence"]): item
+            for item in summary["applications"]
+        }
+    else:
+        ahy, transactions, summary = _cx322_first_observational_transaction_fixture(
+            bundle
+        )
+        applications = {
+            1: {
+                "request_sequence": 1,
+                "requested_code": summary["requested_code"],
+                "dac_epoch": summary["applied_dac_epoch"],
+                "correction_count": 1,
+                "automatic_application_count": 1,
+                "cumulative_movement_codes": abs(
+                    summary["requested_delta_codes"]
+                ),
+            }
+        }
     estimates = _cx322_selected_estimate_fixture(ahy, bundle)
     stop = threading.Event()
     phase4_observed = threading.Event()
@@ -2433,10 +2837,72 @@ def _exercise_cx322_real_transaction_path(
     errors: list[str] = []
     state: dict[str, Any] = {
         "generation": 0,
-        "evidence_phase": "request_pending",
+        "evidence_phase": "evidence_clear",
+        "evidence_request_sequence": 0,
         "applied": False,
         "checkpoint_passed": False,
+        "applied_code": programme.setup_code,
+        "dac_epoch": 1,
+        "correction_count": 0,
+        "automatic_application_count": 0,
+        "cumulative_movement_codes": 0,
+        "query_nonce": "0",
     }
+
+    def emit_active_status() -> None:
+        state["generation"] += 1
+        payload = _cx322_active_status_wire_fixture(
+            generation=int(state["generation"]),
+            query_nonce=str(state["query_nonce"]),
+            evidence_phase=str(state["evidence_phase"]),
+            bundle=bundle,
+            applied=bool(state["applied"]),
+            checkpoint_passed=bool(state["checkpoint_passed"]),
+            evidence_request_sequence=int(
+                state["evidence_request_sequence"]
+            ),
+            applied_code=int(state["applied_code"]),
+            dac_epoch=int(state["dac_epoch"]),
+            correction_count=int(state["correction_count"]),
+            automatic_application_count=int(
+                state["automatic_application_count"]
+            ),
+            cumulative_movement_codes=int(
+                state["cumulative_movement_codes"]
+            ),
+            natural_reversal_observed=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 4
+            ),
+            deliberate_challenge_applied=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 3
+            ),
+            deliberate_challenge_recovery_applied=(
+                programme.sustained_regulation
+                and int(state["correction_count"]) >= 4
+            ),
+            deliberate_challenge_direction=(
+                -1 if programme.sustained_regulation else 0
+            ),
+            deliberate_challenge_code=(
+                int(applications[3]["requested_code"])
+                if programme.sustained_regulation
+                else 0
+            ),
+            deliberate_challenge_dac_epoch=(
+                int(applications[3]["dac_epoch"])
+                if programme.sustained_regulation
+                else 0
+            ),
+            deliberate_challenge_application_ticks=(
+                43_800 * RP2040_TIMER0_TICKS_PER_SECOND
+                if programme.sustained_regulation
+                else 0
+            ),
+        )
+        with write_lock:
+            _write_all_fd(master, payload)
 
     def emulate_firmware() -> None:
         buffered = b""
@@ -2450,8 +2916,25 @@ def _exercise_cx322_real_transaction_path(
                     raw, buffered = buffered.split(b"\n", 1)
                     command = raw.rstrip(b"\r").decode("ascii")
                     observed_commands.append(command)
-                    if command.startswith("ACTIVE EVIDENCE 1 "):
-                        phase = int(command.split()[3])
+                    if command.startswith("ACTIVE EVIDENCE "):
+                        fields = command.split()
+                        request_sequence = int(fields[2])
+                        phase = int(fields[3])
+                        if request_sequence != state["evidence_request_sequence"]:
+                            if (
+                                phase != 1
+                                or state["evidence_phase"] != "evidence_clear"
+                                or request_sequence
+                                != state["evidence_request_sequence"] + 1
+                            ):
+                                raise RuntimeError(
+                                    "observational request identity/order mismatch: "
+                                    f"request={request_sequence}, phase={phase}, "
+                                    f"prior_request={state['evidence_request_sequence']}, "
+                                    f"prior_phase={state['evidence_phase']}"
+                                )
+                            state["evidence_request_sequence"] = request_sequence
+                            state["evidence_phase"] = "request_pending"
                         expected = {
                             1: "request_pending",
                             2: "acceptance_pending",
@@ -2471,22 +2954,33 @@ def _exercise_cx322_real_transaction_path(
                         }[phase]
                         if phase >= 2:
                             state["applied"] = True
+                            application = applications[request_sequence]
+                            for key in (
+                                "requested_code",
+                                "dac_epoch",
+                                "correction_count",
+                                "automatic_application_count",
+                                "cumulative_movement_codes",
+                            ):
+                                target = (
+                                    "applied_code" if key == "requested_code" else key
+                                )
+                                state[target] = int(application[key])
                         if phase == 4:
-                            state["checkpoint_passed"] = True
-                            phase4_observed.set()
+                            if request_sequence == 1:
+                                state["checkpoint_passed"] = True
+                            if programme.sustained_regulation:
+                                # Sustained rehearsal spans more than one
+                                # live-health freshness interval.  Mirror the
+                                # firmware's periodic status publication after
+                                # each complete transaction so downstream
+                                # identity checks remain exercised, not waived.
+                                emit_active_status()
+                            if request_sequence == len(applications):
+                                phase4_observed.set()
                     if command.startswith("ACTIVE SNAPSHOT "):
-                        nonce = command.split()[2]
-                        state["generation"] += 1
-                        payload = _cx322_active_status_wire_fixture(
-                            generation=int(state["generation"]),
-                            query_nonce=nonce,
-                            evidence_phase=str(state["evidence_phase"]),
-                            bundle=bundle,
-                            applied=bool(state["applied"]),
-                            checkpoint_passed=bool(state["checkpoint_passed"]),
-                        )
-                        with write_lock:
-                            _write_all_fd(master, payload)
+                        state["query_nonce"] = command.split()[2]
+                        emit_active_status()
         except (OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
             errors.append(str(exc))
             phase4_observed.set()
@@ -2515,14 +3009,77 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
+        manual = transactions[0]
         with write_lock:
-            _write_all_fd(master, _wire_rows(ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS))
             _write_all_fd(
                 master,
-                _wire_rows(transactions, ACTIVE_TRANSACTION_V1_FIELDS),
+                _wire_rows([manual], ACTIVE_TRANSACTION_V1_FIELDS),
             )
+        _wait_until(
+            lambda: 1
+            in _read_object(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            ).get("observed_manual_record_sequences", []),
+            10.0,
+            "observational manual-start record",
+        )
+
+        # Stream each request only after the preceding phase-4 ACK has been
+        # consumed.  The physical firmware cannot publish later transaction
+        # rows while an earlier evidence frontier is outstanding; batching
+        # every request here would replace the exact causal boundary that this
+        # rehearsal is intended to exercise.
+        automatic = [row for row in transactions if row["event"] != "manual_start"]
+        decision_cursor = 0
+        for request_sequence in sorted(applications):
+            group = [
+                row
+                for row in automatic
+                if int(row["request_sequence"]) == request_sequence
+            ]
+            response_decision_index = next(
+                index
+                for index, row in enumerate(ahy)
+                if row.get("authority_state") == "AWAITING_RESPONSE"
+                and int(row.get("request_sequence", "0")) == request_sequence
+            )
+            with write_lock:
+                state["evidence_request_sequence"] = request_sequence
+                state["evidence_phase"] = "request_pending"
+                _write_all_fd(
+                    master,
+                    _wire_rows(
+                        ahy[decision_cursor : response_decision_index + 1],
+                        ACTIVE_HYBRID_DECISION_V1_FIELDS,
+                    ),
+                )
+                _write_all_fd(
+                    master,
+                    _wire_rows(group, ACTIVE_TRANSACTION_V1_FIELDS),
+                )
+            response_record_sequence = int(group[-1]["transaction_record_sequence"])
+            _wait_until(
+                lambda: bool(errors)
+                or response_record_sequence
+                in _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("acknowledged_record_sequences", []),
+                30.0,
+                f"observational request {request_sequence} phase-4 ACK",
+            )
+            if errors:
+                raise RuntimeError("CX322 firmware emulator failed: " + errors[0])
+            decision_cursor = response_decision_index + 1
+        if decision_cursor < len(ahy):
+            with write_lock:
+                _write_all_fd(
+                    master,
+                    _wire_rows(
+                        ahy[decision_cursor:], ACTIVE_HYBRID_DECISION_V1_FIELDS
+                    ),
+                )
         if not phase4_observed.wait(30.0):
-            raise TimeoutError("CX322 observational phase-4 ACK was not observed")
+            raise TimeoutError("observational final phase-4 ACK was not observed")
         if errors:
             raise RuntimeError("CX322 firmware emulator failed: " + errors[0])
         _wait_until(
@@ -2531,9 +3088,9 @@ def _exercise_cx322_real_transaction_path(
                     run_dir / "reports/cx317_active_supervisor_state.json"
                 ).get("acknowledged_record_sequences", [])
             )
-            >= {2, 3, 4, 5},
+            >= set(range(2, 2 + 4 * len(applications))),
             10.0,
-            "CX322 response replay and firmware consumption",
+            "observational response replay and firmware consumption",
         )
         _wait_until(
             lambda: bool(
@@ -2557,33 +3114,57 @@ def _exercise_cx322_real_transaction_path(
     evidence_commands = [
         command
         for command in observed_commands
-        if command.startswith("ACTIVE EVIDENCE 1 ")
+        if command.startswith("ACTIVE EVIDENCE ")
+    ]
+    retained_response_events = [
+        event
+        for event in events
+        if event.get("event") == "response_retained_as_nonterminal_observation"
     ]
     result = {
         "active_hybrid_rows_captured": len(ahy),
         "active_transaction_rows_captured": len(transactions),
         "evidence_phase_commands": evidence_commands,
-        "response_class": summary["response_class"],
-        "response_retained_nonterminal": any(
-            event.get("event") == "response_retained_as_nonterminal_observation"
-            and event.get("response_class") == summary["response_class"]
-            for event in events
+        "response_class": (
+            "multiple_observational"
+            if programme.sustained_regulation
+            else summary["response_class"]
         ),
-        "firmware_consumption_confirmed": len(evidence_commands) == 4,
+        "response_retained_nonterminal": len(retained_response_events)
+        >= len(applications),
+        "firmware_consumption_confirmed": len(evidence_commands)
+        == 4 * len(applications),
         "first_phase_observation_checkpoint_exact": True,
-        "later_authority_release_reason": summary[
-            "later_authority_release_reason"
-        ],
+        "later_authority_release_reason": (
+            summary["first_response_consumer_reason"]
+            if programme.sustained_regulation
+            else summary["later_authority_release_reason"]
+        ),
         "last_status_generation": int(state["generation"]),
-        "applied_code": summary["requested_code"],
-        "applied_dac_epoch": summary["applied_dac_epoch"],
-        "cumulative_movement_codes": abs(summary["requested_delta_codes"]),
+        "applied_code": int(state["applied_code"]),
+        "applied_dac_epoch": int(state["dac_epoch"]),
+        "cumulative_movement_codes": int(state["cumulative_movement_codes"]),
+        "request_sequences_consumed": sorted(applications),
+        "complete_multi_transaction_sequence": (
+            not programme.sustained_regulation
+            or (
+                sorted(applications) == [1, 2, 3, 4]
+                and summary["final_snapshot"]["natural_reversal_observed"]
+                and summary["final_snapshot"][
+                    "deliberate_challenge_recovery_applied"
+                ]
+            )
+        ),
+        "first_post_recovery_consumer_decision_sequence": summary.get(
+            "first_post_recovery_consumer_decision_sequence"
+        ),
         "physical_actions_performed": 0,
     }
     if not (
         result["response_retained_nonterminal"]
         and result["firmware_consumption_confirmed"]
         and result["first_phase_observation_checkpoint_exact"]
+        and result["complete_multi_transaction_sequence"]
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
     return result
@@ -2597,6 +3178,13 @@ def _run_real_process_topology(
     proposal_path: Path,
     proposal: dict[str, Any],
 ) -> dict[str, Any]:
+    programme = _selected_programme(bundle)
+    # The sustained path now preserves and confirms four causal phase-4
+    # transactions instead of exposing one pre-batched CSV frontier.  Keep
+    # both processes bounded, but give that real acknowledgement sequence its
+    # complete wall-time envelope before the deliberate obstruction begins.
+    capture_duration_s = 240 if programme.sustained_regulation else 120
+    supervisor_duration_s = 180 if programme.sustained_regulation else 60
     run_dir = output_dir / "process_topology" / "run"
     transition_dir = output_dir / "process_topology" / "transition"
     carrier_dir = output_dir / "process_topology" / "carrier"
@@ -2626,7 +3214,7 @@ def _run_real_process_topology(
             "--run-dir",
             str(run_dir),
             "--duration-s",
-            "120",
+            str(capture_duration_s),
             "--status-interval",
             "1",
             "--command-fifo",
@@ -2689,7 +3277,7 @@ def _run_real_process_topology(
                 "--expected-build-identity",
                 str(bundle["firmware"]["build_identity"]),
                 "--duration-s",
-                "60",
+                str(supervisor_duration_s),
                 "--rehearsal-manifest",
             ],
             cwd=ROOT,
@@ -2766,6 +3354,20 @@ def _run_real_process_topology(
         if not supervisor_stopped:
             os.kill(supervisor.pid, signal.SIGSTOP)
             supervisor_stopped = True
+        if real_transaction_path is not None:
+            # The producer can finish a complete status payload before the
+            # capture process has reduced every row.  Drain through the exact
+            # final generation before freezing capture; otherwise the
+            # obstruction fixture manufactures an unrelated partial-snapshot
+            # wait in front of the independent abort poll.
+            _wait_until(
+                lambda: _active_status_generation_complete(
+                    run_dir,
+                    int(real_transaction_path["last_status_generation"]),
+                ),
+                5.0,
+                "final real-process status generation before obstruction",
+            )
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
         for _ in range(100_000):
@@ -2933,6 +3535,11 @@ def _run_real_process_topology(
             if _selected_programme(bundle).response_checkpoint_observational
             else None
         ),
+        "sustained_multi_transaction_path": (
+            real_transaction_path
+            if _selected_programme(bundle).sustained_regulation
+            else None
+        ),
     }
 
 
@@ -2997,6 +3604,18 @@ def run(
         else None
     )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
+    if programme.sustained_regulation:
+        coverage.update(
+            {
+                "complete_multi_transaction_identity_sequence": True,
+                "repeated_natural_transaction": True,
+                "deliberate_challenge_transaction": True,
+                "opposite_direction_recovery_transaction": True,
+                "first_post_recovery_consumer": True,
+                "separate_automatic_physical_challenge_accounting": True,
+                "mandatory_sustained_status_snapshot_identity": True,
+            }
+        )
     unsigned: dict[str, Any] = {
         "schema_version": 1,
         "report_type": programme.rehearsal_report_type,
@@ -3052,6 +3671,18 @@ def run(
                         "cx322_observation_checkpoint_later_authority_release",
                     ]
                     if programme.response_checkpoint_observational
+                    else []
+                ),
+                *(
+                    [
+                        "sustained_repeated_natural_AHY_ACT_sequence",
+                        "sustained_deliberate_challenge_AHY_ACT_sequence",
+                        "sustained_opposite_direction_recovery_AHY_ACT_sequence",
+                        "sustained_first_post_recovery_AHY_consumer",
+                        "sustained_four_transactions_sixteen_ordered_acknowledgements",
+                        "sustained_status_challenge_and_accounting_identity",
+                    ]
+                    if programme.sustained_regulation
                     else []
                 ),
                 "terminal_abort_delivery_before_capture_close",

@@ -9,6 +9,9 @@ from typing import Iterable, Mapping
 
 ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx317_active_status_snapshot_v1"
 CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx321_active_status_snapshot_v2"
+SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT = (
+    "otis_sustained_hybrid_active_status_snapshot_v1"
+)
 ACTIVE_STATUS_COMPONENT = "cx317_active"
 SNAPSHOT_BEGIN_KEY = "snapshot_generation_begin"
 SNAPSHOT_CONTRACT_KEY = "snapshot_contract"
@@ -55,6 +58,19 @@ ACTIVE_STATUS_KEYS = (
     "automatic_retry",
     "automatic_restore",
 )
+SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS = (
+    *ACTIVE_STATUS_KEYS,
+    "automatic_application_count",
+    "natural_reversal_observed",
+    "deliberate_challenge_applied",
+    "deliberate_challenge_cancelled",
+    "deliberate_challenge_unexercised",
+    "deliberate_challenge_recovery_applied",
+    "deliberate_challenge_direction",
+    "deliberate_challenge_code",
+    "deliberate_challenge_dac_epoch",
+    "deliberate_challenge_application_ticks",
+)
 CX321_ACTIVE_STATUS_KEYS = (
     *ACTIVE_STATUS_KEYS,
     "plant_sign_state",
@@ -68,6 +84,9 @@ CX321_ACTIVE_STATUS_KEYS = (
 )
 ACTIVE_STATUS_CONTRACT_KEYS = {
     ACTIVE_STATUS_SNAPSHOT_CONTRACT: ACTIVE_STATUS_KEYS,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT: (
+        SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
+    ),
     CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT: CX321_ACTIVE_STATUS_KEYS,
 }
 ACTIVE_STATUS_WIRE_KEYS = (
@@ -82,8 +101,18 @@ CX321_ACTIVE_STATUS_WIRE_KEYS = (
     *CX321_ACTIVE_STATUS_KEYS,
     SNAPSHOT_COMPLETE_KEY,
 )
+SUSTAINED_HYBRID_ACTIVE_STATUS_WIRE_KEYS = (
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+    *SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS,
+    SNAPSHOT_COMPLETE_KEY,
+)
 ALL_ACTIVE_STATUS_WIRE_KEYS = frozenset(
-    (*ACTIVE_STATUS_WIRE_KEYS, *CX321_ACTIVE_STATUS_WIRE_KEYS)
+    (
+        *ACTIVE_STATUS_WIRE_KEYS,
+        *CX321_ACTIVE_STATUS_WIRE_KEYS,
+        *SUSTAINED_HYBRID_ACTIVE_STATUS_WIRE_KEYS,
+    )
 )
 # The frozen CX321 firmware transports status keys through a 40-byte
 # cross-core field.  This one 41-character semantic key is therefore observed

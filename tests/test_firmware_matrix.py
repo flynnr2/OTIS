@@ -25,6 +25,7 @@ CURRENT_PROFILES = {
     "cx320_active_hybrid",
     "cx321_active_hybrid",
     "cx322_direct_hybrid",
+    "otis_sustained_hybrid_regulation_v1",
 }
 CURRENT_GUARDS = {
     "invalid_cx320_active_hybrid_parameters",
@@ -46,7 +47,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 17
+    assert len(profiles) == 18
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -71,6 +72,7 @@ def test_verification_tiers_are_explicit_and_small() -> None:
         "cx320_active_hybrid",
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
+        "otis_sustained_hybrid_regulation_v1",
     ]
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="campaign"

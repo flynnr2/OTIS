@@ -75,6 +75,15 @@ REHEARSAL_COVERAGE = (
     "logical_evidence_rotation",
     "analysis_seal_registration",
 )
+SUSTAINED_REHEARSAL_COVERAGE = (
+    "complete_multi_transaction_identity_sequence",
+    "repeated_natural_transaction",
+    "deliberate_challenge_transaction",
+    "opposite_direction_recovery_transaction",
+    "first_post_recovery_consumer",
+    "separate_automatic_physical_challenge_accounting",
+    "mandatory_sustained_status_snapshot_identity",
+)
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
     "emergency_abort": "control/emergency_abort.fifo",
@@ -277,6 +286,9 @@ def validate_operational_rehearsal(
     }
     coverage = report.get("coverage")
     tool_bindings = report.get("tool_bindings")
+    expected_coverage = set(REHEARSAL_COVERAGE)
+    if programme.sustained_regulation:
+        expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
         or report.get("report_type") != programme.rehearsal_report_type
@@ -287,8 +299,8 @@ def validate_operational_rehearsal(
         or report.get("qualification_evidence") is not False
         or claimed != _canonical_sha256(unsigned)
         or not isinstance(coverage, dict)
-        or set(coverage) != set(REHEARSAL_COVERAGE)
-        or any(coverage.get(name) is not True for name in REHEARSAL_COVERAGE)
+        or set(coverage) != expected_coverage
+        or any(coverage.get(name) is not True for name in expected_coverage)
         or tool_bindings != bundle.get("host_tools")
     ):
         raise ValueError("CX320 live-topology rehearsal receipt differs or is incomplete")
@@ -400,6 +412,8 @@ def _authority(
         "control_arm": True,
         "live_acquisition_limit": 1,
         "maximum_total_automatic_applications": programme.maximum_applications,
+        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
@@ -892,7 +906,15 @@ def create_run_manifest(
             },
             "automatic_control": {
                 "authorized": True,
-                "maximum_total_applications": programme.maximum_applications,
+                "maximum_total_applications": programme.maximum_physical_applications,
+                **(
+                    {
+                        "maximum_total_automatic_applications": programme.maximum_applications,
+                        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
+                    }
+                    if programme.sustained_regulation
+                    else {}
+                ),
                 "maximum_step_codes": programme.maximum_step_codes,
                 "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
                 "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
@@ -1062,7 +1084,15 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or control
         != {
             "authorized": True,
-            "maximum_total_applications": programme.maximum_applications,
+            "maximum_total_applications": programme.maximum_physical_applications,
+            **(
+                {
+                    "maximum_total_automatic_applications": programme.maximum_applications,
+                    "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
+                }
+                if programme.sustained_regulation
+                else {}
+            ),
             "maximum_step_codes": programme.maximum_step_codes,
             "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,

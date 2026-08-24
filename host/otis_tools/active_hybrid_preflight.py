@@ -12,7 +12,10 @@ from typing import Any
 from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_evidence_audit import audit_predecessor
 from .active_hybrid_proposal import validate_proposal
-from .active_hybrid_programme_contract import programme_from_mapping
+from .active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
+    programme_from_mapping,
+)
 from .programme_status import OFFLINE_PREPARATION, load_programme_status
 from .serial_commands import parse_serial_command
 
@@ -26,6 +29,21 @@ def _canonical_sha256(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def _programme_status_allows_preflight(
+    status: dict[str, Any], programme: ActiveHybridProgramme
+) -> bool:
+    if status.get("active_programme") != programme.status_programme_id:
+        return False
+    current = status["programmes"].get(programme.status_programme_id, {})
+    physical_authority_effective = current.get("physical_authority_effective")
+    expected_operations = [OFFLINE_PREPARATION]
+    if physical_authority_effective is True:
+        expected_operations.append(programme.operation)
+    elif physical_authority_effective is not False:
+        return False
+    return current.get("allowed_operations") == expected_operations
+
+
 def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
     declared_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     if not isinstance(declared_bundle, dict):
@@ -35,15 +53,10 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
     proposal = validate_proposal(proposal_path, programme)
     predecessor = audit_predecessor()
     status = load_programme_status()
-    current = status["programmes"].get(programme.status_programme_id, {})
-    if (
-        status.get("active_programme") != programme.status_programme_id
-        or current.get("allowed_operations") != [OFFLINE_PREPARATION]
-        or current.get("physical_authority_effective") is not False
-    ):
+    if not _programme_status_allows_preflight(status, programme):
         raise ValueError(
-            f"programme status does not permit only {programme.key.upper()} "
-            "offline preparation"
+            f"programme status does not permit {programme.key.upper()} "
+            "preflight under its declared authority state"
         )
     if proposal["exact_bundle"]["bundle_sha256"] != bundle["bundle_sha256"]:
         raise ValueError("preflight proposal and bundle identities differ")
@@ -68,7 +81,7 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "predecessor_programme_seal_and_bound_evidence": predecessor["status"] == "passed",
         "exact_bundle_valid": True,
         "proposal_non_effective": proposal["authority"]["effective"] is False,
-        "programme_status_offline_only": True,
+        "programme_status_allows_preflight": True,
         "exact_policy_profile_build_and_UF2_bound": True,
         "frozen_replay_passed": all(bundle["offline_replay"]["selection_checks"].values()),
         "command_envelope_parses": len(normalized) == len(commands),

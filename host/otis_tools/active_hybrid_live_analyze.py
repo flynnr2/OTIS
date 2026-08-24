@@ -37,6 +37,7 @@ from .active_hybrid_evidence_guard import (
     replay_response_before_acknowledgement,
 )
 from .active_hybrid_policy import load_policy
+from .active_control_supervisor import RP2040_TIMER0_TICKS_PER_SECOND
 from .active_status_contract import latest_complete_health
 from .active_transactions import (
     ACTIVE_CSV,
@@ -852,6 +853,8 @@ def _application_contract(
     maximum_code: int,
     maximum_step: int,
     maximum_applications: int,
+    maximum_automatic_applications: int | None = None,
+    maximum_deliberate_challenges: int = 0,
     maximum_cumulative: int,
     minimum_cadence_s: int,
     response_checkpoint_observational: bool = False,
@@ -865,6 +868,26 @@ def _application_contract(
         if row.get("phase_materially_influenced") == "true"
         and int(row.get("requested_delta_codes", "0")) != 0
     }
+    challenge_decisions = {
+        int(row["decision_sequence"])
+        for row in decisions
+        if row.get("reason") == "deliberate_reversal_challenge_request_ready"
+    }
+    challenge_applications = [
+        row
+        for row in applications
+        if int(row["decision_sequence"]) in challenge_decisions
+    ]
+    natural_applications = [
+        row
+        for row in applications
+        if int(row["decision_sequence"]) not in challenge_decisions
+    ]
+    automatic_limit = (
+        maximum_applications
+        if maximum_automatic_applications is None
+        else maximum_automatic_applications
+    )
 
 
     material_applications = [
@@ -915,6 +938,8 @@ def _application_contract(
     )
     budgets_exact = (
         len(applications) <= maximum_applications
+        and len(natural_applications) <= automatic_limit
+        and len(challenge_applications) <= maximum_deliberate_challenges
         and sum(movements) <= maximum_cumulative
         and all(0 < movement <= maximum_step for movement in movements)
         and all(
@@ -982,7 +1007,9 @@ def _application_contract(
     return {
         "exact": epochs_exact and dac_exact and budgets_exact and later_authority_gated,
         "setup_count": len(manual),
-        "automatic_application_count": len(applications),
+        "automatic_application_count": len(natural_applications),
+        "physical_control_application_count": len(applications),
+        "deliberate_challenge_application_count": len(challenge_applications),
         "frequency_only_application_count": len(frequency_only_applications),
         "phase_nonzero_application_count": sum(
             float(decision.get("phase_term_hz", "0")) != 0.0
@@ -1014,8 +1041,93 @@ def _application_contract(
         "budgets_range_step_cadence_and_clamp_exact": budgets_exact,
         "cumulative_movement_codes": sum(movements),
         "maximum_application_budget": maximum_applications,
+        "maximum_automatic_application_budget": automatic_limit,
+        "maximum_deliberate_challenges": maximum_deliberate_challenges,
         "maximum_cumulative_movement_codes": maximum_cumulative,
     }
+
+
+def _response_dependent_consumer_propagation(
+    active_rows: list[dict[str, str]],
+    decision_rows: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Verify each response identity through its first dependent AHY decision."""
+
+    comparisons: list[dict[str, Any]] = []
+    exact = True
+    ordered_decisions = sorted(
+        decision_rows, key=lambda row: int(row["decision_sequence"])
+    )
+    for response in (row for row in active_rows if row.get("event") == "response"):
+        request_sequence = int(response["request_sequence"])
+        source_decision_sequence = int(response["decision_sequence"])
+        consumer = next(
+            (
+                row
+                for row in ordered_decisions
+                if int(row["decision_sequence"]) > source_decision_sequence
+                and not (
+                    row.get("authority_state") == "AWAITING_RESPONSE"
+                    and int(row.get("request_sequence", "0")) == request_sequence
+                )
+            ),
+            None,
+        )
+        row_exact = bool(
+            consumer is not None
+            and int(consumer.get("request_sequence", "0")) == request_sequence
+            and int(consumer.get("application_sequence", "0"))
+            == int(response["application_sequence"])
+            and consumer.get("response_class") == response.get("response_class")
+            and int(consumer.get("actual_applied_code", "-1"))
+            == int(response["applied_code"])
+            and int(consumer.get("actual_dac_epoch", "-1"))
+            == int(response["dac_epoch"])
+            and consumer.get("downstream_epoch_exact") == "true"
+        )
+        exact &= row_exact
+        comparisons.append(
+            {
+                "request_sequence": request_sequence,
+                "response_record_sequence": int(
+                    response["transaction_record_sequence"]
+                ),
+                "expected_response_class": response.get("response_class"),
+                "expected_applied_code": int(response["applied_code"]),
+                "expected_dac_epoch": int(response["dac_epoch"]),
+                "consumer_decision_sequence": (
+                    None if consumer is None else int(consumer["decision_sequence"])
+                ),
+                "consumer_response_class": (
+                    None if consumer is None else consumer.get("response_class")
+                ),
+                "consumer_request_sequence": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("request_sequence", "0"))
+                ),
+                "consumer_application_sequence": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("application_sequence", "0"))
+                ),
+                "consumer_applied_code": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("actual_applied_code", "-1"))
+                ),
+                "consumer_dac_epoch": (
+                    None
+                    if consumer is None
+                    else int(consumer.get("actual_dac_epoch", "-1"))
+                ),
+                "consumer_reason": (
+                    None if consumer is None else consumer.get("reason")
+                ),
+                "exact": row_exact,
+            }
+        )
+    return {"exact": exact, "comparisons": comparisons}
 
 
 def _response_horizon_facts(
@@ -1207,6 +1319,228 @@ def _classify_decision(
     if not phase_pass:
         return "bounded_nonpass", "hybrid_response_wrong_or_frequency_not_reacquired"
     return "passed", "bounded_active_hybrid_control_passed"
+
+
+def _sustained_regulation_outcome(
+    *,
+    integrity_exact: bool,
+    operator_abort: bool,
+    platform_terminal: bool,
+    endpoint_complete: bool,
+    terminal: dict[str, Any],
+    supervisor_state: dict[str, Any],
+    active_rows: list[dict[str, str]],
+    decision_rows: list[dict[str, str]],
+    phase_rows: list[dict[str, str]],
+    applications: dict[str, Any],
+    no_fault_or_chatter: bool,
+    frequency_pass: bool,
+    qualified_duration_s: int,
+) -> tuple[str, str, dict[str, Any]]:
+    """Apply the frozen 24-hour reversal/recovery decision contract."""
+
+    application_rows = [
+        row for row in active_rows if row.get("event") == "application"
+    ]
+    decisions_by_sequence = {
+        int(row["decision_sequence"]): row for row in decision_rows
+    }
+    classified: list[dict[str, Any]] = []
+    for row in application_rows:
+        decision = decisions_by_sequence.get(int(row["decision_sequence"]), {})
+        delta = int(row["requested_delta_codes"])
+        classified.append(
+            {
+                "request_sequence": int(row["request_sequence"]),
+                "decision_sequence": int(row["decision_sequence"]),
+                "application_timestamp_s": int(row["application_timestamp_s"]),
+                "applied_code": int(row["applied_code"]),
+                "dac_epoch": int(row["dac_epoch"]),
+                "delta_codes": delta,
+                "direction": 1 if delta > 0 else -1,
+                "kind": (
+                    "deliberate_challenge"
+                    if decision.get("reason")
+                    == "deliberate_reversal_challenge_request_ready"
+                    else "natural_automatic"
+                ),
+                "decision_reason": decision.get("reason"),
+                "phase_epoch": int(decision.get("phase_epoch", "0") or "0"),
+                "phase_observation_sequence": int(
+                    decision.get("phase_observation_sequence", "0") or "0"
+                ),
+            }
+        )
+    natural = [row for row in classified if row["kind"] == "natural_automatic"]
+    challenges = [row for row in classified if row["kind"] == "deliberate_challenge"]
+    initial_natural_direction = natural[0]["direction"] if natural else None
+    natural_reversal = next(
+        (
+            row
+            for row in natural[1:]
+            if row["direction"] != initial_natural_direction
+        ),
+        None,
+    )
+    challenge = challenges[0] if challenges else None
+    challenge_recovery = (
+        next(
+            (
+                row
+                for row in natural
+                if row["application_timestamp_s"]
+                > challenge["application_timestamp_s"]
+                and row["direction"] == -challenge["direction"]
+            ),
+            None,
+        )
+        if challenge is not None
+        else None
+    )
+    reversal = challenge_recovery if challenge is not None else natural_reversal
+    qualified_origin_ticks = supervisor_state.get(
+        "qualified_origin_timestamp_ticks"
+    )
+    endpoint_device_ticks = (
+        qualified_origin_ticks
+        + qualified_duration_s * RP2040_TIMER0_TICKS_PER_SECOND
+        if type(qualified_origin_ticks) is int
+        else None
+    )
+    post_reversal_ticks = (
+        endpoint_device_ticks
+        - reversal["application_timestamp_s"]
+        * RP2040_TIMER0_TICKS_PER_SECOND
+        if endpoint_device_ticks is not None and reversal is not None
+        else None
+    )
+    post_reversal_s = (
+        post_reversal_ticks / RP2040_TIMER0_TICKS_PER_SECOND
+        if post_reversal_ticks is not None
+        else None
+    )
+
+    valid_phase = [
+        row
+        for row in _qualified_phase_rows(phase_rows)
+        if int(row.get("phase_epoch", "0") or "0") > 0
+    ]
+    maximum_absolute_phase_cycles = max(
+        (abs(int(row["relative_phase_cycles"])) for row in valid_phase),
+        default=None,
+    )
+    final_phase_rows: list[dict[str, str]] = []
+    final_phase_slope: float | None = None
+    final_phase_slope_numerator: int | None = None
+    final_phase_slope_denominator: int | None = None
+    final_phase_window_contiguous = False
+    if reversal is not None and valid_phase:
+        terminal_phase_epoch = int(valid_phase[-1]["phase_epoch"])
+        terminal_phase_sequence = int(valid_phase[-1]["observation_sequence"])
+        window_start_sequence = max(
+            reversal["phase_observation_sequence"],
+            terminal_phase_sequence - 21_600 + 1,
+        )
+        final_phase_rows = [
+            row
+            for row in valid_phase
+            if int(row["phase_epoch"]) == terminal_phase_epoch
+            and int(row["observation_sequence"]) >= window_start_sequence
+        ]
+        if len(final_phase_rows) >= 2:
+            x = [int(row["observation_sequence"]) for row in final_phase_rows]
+            y = [int(row["relative_phase_cycles"]) for row in final_phase_rows]
+            final_phase_window_contiguous = x == list(range(x[0], x[0] + len(x)))
+            count = len(x)
+            numerator = count * sum(
+                x_value * y_value
+                for x_value, y_value in zip(x, y, strict=True)
+            ) - sum(x) * sum(y)
+            denominator = count * sum(value * value for value in x) - sum(x) ** 2
+            if denominator > 0:
+                final_phase_slope_numerator = numerator
+                final_phase_slope_denominator = denominator
+                final_phase_slope = numerator / denominator
+
+    phase_bound_pass = (
+        maximum_absolute_phase_cycles is not None
+        and maximum_absolute_phase_cycles <= 36
+    )
+    final_slope_pass = (
+        final_phase_slope_numerator is not None
+        and final_phase_slope_denominator is not None
+        and abs(final_phase_slope_numerator) * 3600
+        <= final_phase_slope_denominator
+        and len(final_phase_rows) >= 21_600
+        and final_phase_window_contiguous
+    )
+    post_reversal_pass = (
+        post_reversal_ticks is not None
+        and post_reversal_ticks
+        >= 21_600 * RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    physical_accounting_exact = (
+        applications.get("automatic_application_count", 0) <= 12
+        and applications.get("physical_control_application_count", 0) <= 13
+        and applications.get("deliberate_challenge_application_count", 0) <= 1
+        and applications.get("cumulative_movement_codes", 0) <= 84
+    )
+    facts = {
+        "classified_applications": classified,
+        "initial_natural_direction": initial_natural_direction,
+        "natural_reversal": natural_reversal,
+        "deliberate_challenge": challenge,
+        "deliberate_challenge_recovery": challenge_recovery,
+        "selected_reversal": reversal,
+        "endpoint_device_ticks": endpoint_device_ticks,
+        "counter_domain": "rp2040_timer0",
+        "post_reversal_ticks": post_reversal_ticks,
+        "post_reversal_qualified_s": post_reversal_s,
+        "post_reversal_minimum_s": 21_600,
+        "maximum_absolute_raw_relative_phase_cycles": maximum_absolute_phase_cycles,
+        "maximum_absolute_raw_relative_phase_limit_cycles": 36,
+        "final_phase_window_row_count": len(final_phase_rows),
+        "final_phase_window_contiguous": final_phase_window_contiguous,
+        "final_phase_OLS_slope_cycles_per_s": final_phase_slope,
+        "final_phase_OLS_slope_exact_numerator": final_phase_slope_numerator,
+        "final_phase_OLS_slope_exact_denominator": final_phase_slope_denominator,
+        "maximum_absolute_final_phase_slope_cycles_per_s": 1.0 / 3600.0,
+        "phase_bound_pass": phase_bound_pass,
+        "final_phase_slope_pass": final_slope_pass,
+        "frequency_preservation_pass": frequency_pass,
+        "physical_accounting_exact": physical_accounting_exact,
+        "no_chatter_or_path_exhaustion": no_fault_or_chatter,
+    }
+    terminal_primary = terminal.get("primary_decision")
+    if platform_terminal or not integrity_exact:
+        return "failed", "measurement_authority_or_platform_fault", facts
+    if operator_abort:
+        return "bounded_nonpass", "operator_abort", facts
+    if terminal_primary == "hybrid_policy_chatter_or_path_exhaustion" or not no_fault_or_chatter:
+        return "bounded_nonpass", "hybrid_policy_chatter_or_path_exhaustion", facts
+    if not physical_accounting_exact:
+        return "failed", "measurement_authority_or_platform_fault", facts
+    if terminal_primary == "phase_or_frequency_regulation_not_sustained":
+        return "bounded_nonpass", "phase_or_frequency_regulation_not_sustained", facts
+    if not endpoint_complete:
+        return "bounded_nonpass", "right_censored_incomplete", facts
+    if reversal is None:
+        if challenge is not None:
+            return "bounded_nonpass", "deliberate_reversal_recovery_not_demonstrated", facts
+        return "bounded_nonpass", "reversal_not_observed_within_authorized_window", facts
+    if not post_reversal_pass:
+        return "bounded_nonpass", "deliberate_reversal_recovery_not_demonstrated", facts
+    if not (phase_bound_pass and final_slope_pass and frequency_pass):
+        return "bounded_nonpass", "phase_or_frequency_regulation_not_sustained", facts
+    return (
+        "passed",
+        (
+            "sustained_hybrid_regulation_demonstrated_challenge_reversal"
+            if challenge is not None
+            else "sustained_hybrid_regulation_demonstrated_natural_reversal"
+        ),
+        facts,
+    )
 
 
 def _legacy_checkpoint_terminal_misclassified(
@@ -1719,8 +2053,7 @@ def analyze(
     )
     terminal_requires_abort = (
         terminal.get("result") in {"aborted", "nonpass"}
-        and terminal.get("reason")
-        != f"{programme.key}_16h_absolute_wall_endpoint"
+        and "absolute_wall_endpoint" not in str(terminal.get("reason", ""))
     )
     allowed_emergency_aborts = 1 if terminal_requires_abort else 0
     abort_submissions = sum(
@@ -1791,6 +2124,8 @@ def analyze(
             maximum_code=spec.maximum_code,
             maximum_step=spec.maximum_step,
             maximum_applications=spec.correction_limit,
+            maximum_automatic_applications=programme.maximum_applications,
+            maximum_deliberate_challenges=programme.maximum_deliberate_challenges,
             maximum_cumulative=spec.cumulative_limit,
             minimum_cadence_s=int(control["minimum_applied_cadence_s"]),
             response_checkpoint_observational=(
@@ -1817,6 +2152,12 @@ def analyze(
             "cumulative_movement_codes": 0,
             "error": str(exc),
         }
+
+    response_consumer_propagation = (
+        _response_dependent_consumer_propagation(active_rows, decision_rows)
+        if programme.sustained_regulation
+        else {"exact": True, "comparisons": []}
+    )
 
     response_horizon_facts: dict[str, Any] | None = None
     if programme.response_checkpoint_observational:
@@ -1921,7 +2262,11 @@ def analyze(
     endpoint_complete = (
         terminal.get("result") == "healthy_stop"
         and terminal.get("reason")
-        == f"{programme.key}_12h_qualified_endpoint_complete"
+        == (
+            f"{programme.key}_{programme.qualified_duration_s // 3600}h_qualified_endpoint_complete"
+            if programme.sustained_regulation
+            else f"{programme.key}_12h_qualified_endpoint_complete"
+        )
     )
     phase_degraded = (
         terminal.get("primary_decision")
@@ -2000,6 +2345,9 @@ def analyze(
         "tight_deadband_replay_exact": tdb_replay_exact,
         "setup_dac_epoch_application_and_budget_exact": applications["exact"],
         "progressive_first_checkpoint_and_later_authority_exact": progressive_authority_exact,
+        "response_identity_through_first_dependent_decision_exact": (
+            response_consumer_propagation["exact"]
+        ),
         "capture_closed_cleanly_with_one_owner": capture_closure["ok"],
         "command_stream_exact": command_exact,
         "wall_origin_capture_identity_and_setup_order_exact": wall_origin_exact,
@@ -2018,34 +2366,55 @@ def analyze(
         "wall_origin_capture_identity_and_setup_order_exact",
         "abort_submission_delivery_and_close_order_exact",
         "terminal_disarmed_evidence_clear_no_outstanding_static_code",
+        "response_identity_through_first_dependent_decision_exact",
     }
     acquisition_gate_passed = all(
         common_checks[name] for name in acquisition_check_names
     )
     finalization_gate_passed = all(common_checks.values())
     integrity_exact = all(common_checks.values())
-    status, primary_decision = _classify_decision(
-        integrity_exact=integrity_exact,
-        operator_abort=operator_abort,
-        platform_terminal=platform_terminal,
-        phase_degraded=phase_degraded,
-        endpoint_complete=endpoint_complete,
-        material_applications=int(applications["phase_material_application_count"]),
-        first_checkpoint_passed=first_checkpoint_exact,
-        responses_healthy=bool(applications["all_response_checkpoints_passed"]),
-        tight_reacquired_and_retained=terminal_tight_inside,
-        policy_limits_exact=no_fault_or_chatter,
-        phase_pass=bool(phase_metrics["pass"]),
-        frequency_pass=bool(frequency_metrics["pass"]),
-        minimum_material_applications=int(
-            metric_contract["minimum_material_phase_applications"]
-        ),
-        fact_gathering=programme.response_checkpoint_observational,
-        early_safety_terminal=(
-            terminal.get("primary_decision")
-            == "bounded_direct_hybrid_early_safety_stop"
-        ),
-    )
+    sustained_regulation: dict[str, Any] | None = None
+    if programme.sustained_regulation:
+        status, primary_decision, sustained_regulation = (
+            _sustained_regulation_outcome(
+                integrity_exact=integrity_exact,
+                operator_abort=operator_abort,
+                platform_terminal=platform_terminal,
+                endpoint_complete=endpoint_complete,
+                terminal=terminal,
+                supervisor_state=supervisor_state,
+                active_rows=active_rows,
+                decision_rows=decision_rows,
+                phase_rows=rph_rows,
+                applications=applications,
+                no_fault_or_chatter=no_fault_or_chatter,
+                frequency_pass=bool(frequency_metrics["pass"]),
+                qualified_duration_s=programme.qualified_duration_s,
+            )
+        )
+    else:
+        status, primary_decision = _classify_decision(
+            integrity_exact=integrity_exact,
+            operator_abort=operator_abort,
+            platform_terminal=platform_terminal,
+            phase_degraded=phase_degraded,
+            endpoint_complete=endpoint_complete,
+            material_applications=int(applications["phase_material_application_count"]),
+            first_checkpoint_passed=first_checkpoint_exact,
+            responses_healthy=bool(applications["all_response_checkpoints_passed"]),
+            tight_reacquired_and_retained=terminal_tight_inside,
+            policy_limits_exact=no_fault_or_chatter,
+            phase_pass=bool(phase_metrics["pass"]),
+            frequency_pass=bool(frequency_metrics["pass"]),
+            minimum_material_applications=int(
+                metric_contract["minimum_material_phase_applications"]
+            ),
+            fact_gathering=programme.response_checkpoint_observational,
+            early_safety_terminal=(
+                terminal.get("primary_decision")
+                == "bounded_direct_hybrid_early_safety_stop"
+            ),
+        )
     preliminary_decision = terminal.get("preliminary_decision")
     plant_terminal_decision = (
         plant_sign_replay.get("terminal_decision")
@@ -2143,7 +2512,7 @@ def analyze(
                 "descriptive_prior_comparisons": descriptive_prior_comparisons,
                 "scientific_acceptance_checks": {},
             }
-            if programme.response_checkpoint_observational
+            if programme.response_checkpoint_observational and not programme.sustained_regulation
             else {"scientific_acceptance_checks": scientific_acceptance_checks}
         ),
         "acquisition_gate": {
@@ -2173,6 +2542,9 @@ def analyze(
             "unacknowledged_rejected_response_record_sequences": sorted(
                 rejected_response_record_sequences
             ),
+            "response_dependent_consumer_propagation": (
+                response_consumer_propagation
+            ),
         },
         "measurement_replay": {
             "exact": measurement_exact,
@@ -2180,6 +2552,11 @@ def analyze(
         },
         "active_hybrid_replay": ahy_replay,
         "application_counts_and_budgets": applications,
+        **(
+            {"sustained_regulation": sustained_regulation}
+            if sustained_regulation is not None
+            else {}
+        ),
         **(
             {"response_horizon_facts": response_horizon_facts}
             if programme.response_checkpoint_observational

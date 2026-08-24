@@ -8,6 +8,7 @@
 #include "otis_active_hybrid_policy_engine.h"
 #include "otis_cx317_active_actuator.h"
 #include "otis_decimal_format.h"
+#include "otis_dependent_response_identity.h"
 #include "otis_dual_core_partition.h"
 #include "otis_cx317_preview_live.h"
 #include "otis_cx321_plant_sign.h"
@@ -34,6 +35,11 @@ constexpr char kNumericalPolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
+#elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
+constexpr char kNumericalPolicyHash[] =
+    "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";
+constexpr char kActivePolicyHash[] =
+    "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";
 #elif OTIS_ENABLE_CX322_DIRECT_HYBRID
 constexpr char kNumericalPolicyHash[] =
     "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48";
@@ -145,6 +151,10 @@ constexpr char kExpectedProfile[] = "cx321_active_hybrid";
     OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
 constexpr char kRunIdentity[] = "cx322_direct_hybrid:3220001";
 constexpr char kExpectedProfile[] = "cx322_direct_hybrid";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+constexpr char kRunIdentity[] = "otis_sustained_hybrid_regulation_v1:1";
+constexpr char kExpectedProfile[] = "otis_sustained_hybrid_regulation_v1";
 #else
 constexpr char kRunIdentity[] = "cx317_bounded_active_disabled";
 constexpr char kExpectedProfile[] = "disabled";
@@ -208,6 +218,7 @@ OtisCx317ResponseClass pending_hybrid_response_class =
     OtisCx317ResponseClass::MeasurementOrActuatorFault;
 bool pending_hybrid_response_valid = false;
 bool pending_hybrid_predicted_sign_observed = false;
+OtisDependentResponseIdentity dependent_response_identity = {};
 uint32_t hybrid_record_sequence = 0u;
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
 OtisCx321PlantSignEngine plant_sign_engine = {};
@@ -300,7 +311,9 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
+        OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
       true,
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
@@ -587,7 +600,7 @@ bool queue_active_hybrid_decision(
     const OtisCx317ActiveLiveDecision &source,
     const OtisActiveHybridDecision &decision) {
   const uint32_t next_sequence = hybrid_record_sequence + 1u;
-  const OtisActiveHybridDecisionRecordContext context = {
+  OtisActiveHybridDecisionRecordContext context = {
       next_sequence,
       kRunIdentity,
       kBuildIdentity,
@@ -609,6 +622,9 @@ bool queue_active_hybrid_decision(
       kResponsePolicyHash,
       false,
   };
+  const bool carries_dependent_response =
+      otis_dependent_response_identity_apply(&dependent_response_identity,
+                                             &context);
   const int used = otis_format_active_hybrid_decision_v1(
       frame.data, sizeof(frame.data), &source, &decision, &context);
   if (used <= 0 || static_cast<size_t>(used) >= sizeof(frame.data)) {
@@ -629,6 +645,8 @@ bool queue_active_hybrid_decision(
   frame = {};
 #endif
   hybrid_record_sequence = next_sequence;
+  if (carries_dependent_response)
+    otis_dependent_response_identity_consume(&dependent_response_identity);
   return true;
 }
 #endif
@@ -793,6 +811,7 @@ bool otis_cx317_active_live_begin(void) {
       OtisCx317ResponseClass::MeasurementOrActuatorFault;
   pending_hybrid_response_valid = false;
   pending_hybrid_predicted_sign_observed = false;
+  otis_dependent_response_identity_reset(&dependent_response_identity);
   hybrid_record_sequence = 0u;
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   otis_cx321_plant_sign_engine_init(&plant_sign_engine);
@@ -943,6 +962,7 @@ void otis_cx317_active_live_abort(const char *reason) {
   evidence_phase = EvidencePhase::None;
   evidence_request_sequence = 0u;
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+  otis_dependent_response_identity_reset(&dependent_response_identity);
   if (hybrid_engine_ready)
     hybrid_fail_static(reason == nullptr ? "operator_abort" : reason);
 #endif
@@ -1077,9 +1097,16 @@ bool otis_cx317_active_live_acknowledge_evidence(uint32_t request_sequence,
         &hybrid_engine, healthy_classification, predicted_sign_observed,
         true, latest_health.estimator_valid, applied_epoch_exact,
         OTIS_ENABLE_CX322_DIRECT_HYBRID);
+    const bool response_identity_retained =
+        noted && otis_dependent_response_identity_retain(
+                     &dependent_response_identity,
+                     transaction.request.request_sequence,
+                     transaction.applied.application_sequence,
+                     otis_cx317_response_class_name(
+                         pending_hybrid_response_class));
     pending_hybrid_response_valid = false;
     pending_hybrid_predicted_sign_observed = false;
-    if (!noted ||
+    if (!noted || !response_identity_retained ||
         hybrid_engine.state == OtisActiveHybridState::FailStatic)
       otis_cx317_active_fault(
           &transaction, "active_hybrid_response_checkpoint_failed");
@@ -1972,6 +1999,8 @@ void otis_cx317_active_live_visit_status(
   visitor(context, "snapshot_contract",
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
           OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V2, OTIS_SEVERITY_INFO,
+#elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
+          OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V3, OTIS_SEVERITY_INFO,
 #else
           OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V1, OTIS_SEVERITY_INFO,
 #endif
@@ -2088,6 +2117,41 @@ void otis_cx317_active_live_visit_status(
   snprintf(value, sizeof(value), "%u",
            active.frequency_only_application_count);
   visitor(context, "frequency_only_application_count", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u",
+           active.automatic_application_count);
+  visitor(context, "automatic_application_count", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "natural_reversal_observed",
+          active.natural_reversal_observed ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "deliberate_challenge_applied",
+          active.deliberate_challenge_applied ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "deliberate_challenge_cancelled",
+          active.deliberate_challenge_cancelled ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "deliberate_challenge_unexercised",
+          active.deliberate_challenge_unexercised ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "deliberate_challenge_recovery_applied",
+          active.deliberate_challenge_recovery_applied ? "true" : "false",
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%d",
+           static_cast<int>(active.deliberate_challenge_direction));
+  visitor(context, "deliberate_challenge_direction", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%u", active.deliberate_challenge_code);
+  visitor(context, "deliberate_challenge_code", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%lu",
+           static_cast<unsigned long>(active.deliberate_challenge_dac_epoch));
+  visitor(context, "deliberate_challenge_dac_epoch", value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(value, sizeof(value), "%llu",
+           static_cast<unsigned long long>(
+               active.deliberate_challenge_application_ticks));
+  visitor(context, "deliberate_challenge_application_ticks", value,
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   snprintf(value, sizeof(value), "%lu",
            static_cast<unsigned long>(active.session_id));
@@ -2270,6 +2334,26 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
       hybrid_engine.frequency_only_application_count;
   status->first_phase_checkpoint_passed =
       hybrid_engine.first_checkpoint_response_passed;
+  status->automatic_application_count =
+      hybrid_engine.automatic_application_count;
+  status->natural_reversal_observed =
+      hybrid_engine.natural_reversal_observed;
+  status->deliberate_challenge_applied =
+      hybrid_engine.deliberate_challenge_applied;
+  status->deliberate_challenge_cancelled =
+      hybrid_engine.deliberate_challenge_cancelled;
+  status->deliberate_challenge_unexercised =
+      hybrid_engine.deliberate_challenge_unexercised;
+  status->deliberate_challenge_recovery_applied =
+      hybrid_engine.deliberate_challenge_recovery_applied;
+  status->deliberate_challenge_direction =
+      hybrid_engine.deliberate_challenge_direction;
+  status->deliberate_challenge_code =
+      hybrid_engine.deliberate_challenge_code;
+  status->deliberate_challenge_dac_epoch =
+      hybrid_engine.deliberate_challenge_dac_epoch;
+  status->deliberate_challenge_application_ticks =
+      hybrid_engine.deliberate_challenge_application_ticks;
 #else
   status->hybrid_state = "DISABLED";
   status->hybrid_reason = "active_hybrid_compiled_out";

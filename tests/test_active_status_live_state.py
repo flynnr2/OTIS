@@ -9,6 +9,8 @@ from host.otis_tools.active_status_contract import (
     ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     CX321_ACTIVE_STATUS_KEYS,
     CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
@@ -44,11 +46,12 @@ def _burst(
     nonce: int = 99,
     contract: str = ACTIVE_STATUS_SNAPSHOT_CONTRACT,
 ) -> list[dict[str, str]]:
-    keys = (
-        CX321_ACTIVE_STATUS_KEYS
-        if contract == CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
-        else ACTIVE_STATUS_KEYS
-    )
+    if contract == CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT:
+        keys = CX321_ACTIVE_STATUS_KEYS
+    elif contract == SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT:
+        keys = SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
+    else:
+        keys = ACTIVE_STATUS_KEYS
     values = {
         key: f"value:{key}" for key in keys
     }
@@ -165,6 +168,31 @@ def test_cx321_v2_atomic_state_requires_and_returns_plant_fields(
     assert selected.health[("cx317_active", "plant_sign_state")] == (
         "value:plant_sign_state"
     )
+
+
+def test_sustained_atomic_state_requires_and_returns_decision_identities(
+    tmp_path: Path,
+) -> None:
+    reducer = ActiveStatusLiveReducer()
+    latest = None
+    for row in _burst(
+        14,
+        nonce=323,
+        contract=SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    ):
+        update = reducer.observe(row)
+        if update is not None:
+            latest = update
+    assert latest is not None and latest["state"] == "complete"
+    path = tmp_path / "sustained_state.json"
+    path.write_text(json.dumps(_published(latest)), encoding="utf-8")
+
+    selected = read_live_health_state(path, required_query_nonce=323)
+
+    assert selected.state == "complete"
+    assert selected.health[
+        ("cx317_active", "deliberate_challenge_dac_epoch")
+    ] == "value:deliberate_challenge_dac_epoch"
 
 
 def test_cx321_atomic_state_canonicalizes_frozen_truncated_wire_key(

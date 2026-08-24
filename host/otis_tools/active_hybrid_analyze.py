@@ -75,6 +75,36 @@ def _validate_scenario(
         raise ValueError("rehearsal terminal reason differs")
 
 
+def _scenario_terminal_classifications(programme: Any) -> dict[str, str]:
+    faults = {
+        "shared_fail_static_transport_obstruction": (
+            "measurement_authority_or_platform_fault"
+        ),
+        "abort_delivery_failure": "measurement_authority_or_platform_fault",
+    }
+    if programme.sustained_regulation:
+        return {
+            "modeled_phase_transaction": "right_censored_incomplete",
+            "clean_phase_degradation": "right_censored_incomplete",
+            **faults,
+        }
+    if programme.response_checkpoint_observational:
+        return {
+            "modeled_phase_transaction": "bounded_direct_hybrid_evidence_acquired",
+            "clean_phase_degradation": "right_censored_incomplete",
+            **faults,
+        }
+    return {
+        "modeled_phase_transaction": (
+            "first_phase_transaction_passed_sustained_result_incomplete"
+        ),
+        "clean_phase_degradation": (
+            "phase_channel_degraded_frequency_control_retained"
+        ),
+        **faults,
+    }
+
+
 def analyze(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     manifest = _read_object(run_dir / "run_manifest.json")
@@ -248,20 +278,8 @@ def analyze(run_dir: Path) -> dict[str, Any]:
         "phase_nonzero_decision_count": len(nonzero),
         "phase_material_decision_count": len(material),
         "checks": checks,
-        "scenario_terminal_classifications": (
-            {
-                "modeled_phase_transaction": "bounded_direct_hybrid_evidence_acquired",
-                "clean_phase_degradation": "right_censored_incomplete",
-                "shared_fail_static_transport_obstruction": "measurement_authority_or_platform_fault",
-                "abort_delivery_failure": "measurement_authority_or_platform_fault",
-            }
-            if programme.response_checkpoint_observational
-            else {
-                "modeled_phase_transaction": "first_phase_transaction_passed_sustained_result_incomplete",
-                "clean_phase_degradation": "phase_channel_degraded_frequency_control_retained",
-                "shared_fail_static_transport_obstruction": "measurement_authority_or_platform_fault",
-                "abort_delivery_failure": "measurement_authority_or_platform_fault",
-            }
+        "scenario_terminal_classifications": _scenario_terminal_classifications(
+            programme
         ),
         "limitations": [
             "Accelerated deterministic observations exercise host and policy state transitions but do not reproduce the physical plant.",

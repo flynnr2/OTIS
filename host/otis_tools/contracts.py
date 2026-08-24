@@ -1989,7 +1989,14 @@ def _check_active_hybrid_decision_v1(
         errors.append(f"row {row_number}: requested code does not equal current plus delta")
     if not 0xA800 <= requested_code <= 0xAB00:
         errors.append(f"row {row_number}: requested code is outside A800..AB00")
-    expected_material = phase_term != 0.0 and delta != counterfactual
+    deliberate_challenge = (
+        row.get("reason") == "deliberate_reversal_challenge_request_ready"
+    )
+    expected_material = (
+        not deliberate_challenge
+        and phase_term != 0.0
+        and delta != counterfactual
+    )
     if (row.get("phase_materially_influenced") == "true") != expected_material:
         errors.append(f"row {row_number}: phase materiality counterfactual differs")
     if row.get("phase_recorder_published") != "true":

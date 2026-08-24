@@ -1069,6 +1069,59 @@ def test_abort_arriving_during_serial_read_preempts_normal_command(
     assert runner.commands_rejected == 0
 
 
+def test_normal_command_reaches_serial_before_device_batch_consumers(
+    tmp_path: Path,
+) -> None:
+    """A slow CSV/status consumer cannot consume the command freshness budget."""
+    stop_event = threading.Event()
+    base = _config(tmp_path)
+    normal_fifo = tmp_path / "control/commands.fifo"
+    emergency_fifo = tmp_path / "control/emergency.fifo"
+    config = CaptureDeviceConfig(
+        device=base.device,
+        baud=base.baud,
+        run_dir=base.run_dir,
+        command_fifo=normal_fifo,
+        emergency_command_fifo=emergency_fifo,
+        normal_command_max_age_s=2.0,
+        status_interval_s=base.status_interval_s,
+    )
+
+    class CommandDuringRead(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.read_count = 0
+
+        def read(self, _size: int) -> bytes:
+            self.read_count += 1
+            if self.read_count == 1:
+                send_timestamped_command_to_fifo(
+                    normal_fifo, "ACTIVE LEASE 1"
+                )
+                return b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"
+            stop_event.set()
+            return b""
+
+    serial = CommandDuringRead()
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+    original_process_line = runner._process_line
+
+    def assert_ingress_precedes_consumer(*args, **kwargs) -> None:
+        assert serial.writes == [b"ACTIVE LEASE 1\n"]
+        original_process_line(*args, **kwargs)
+
+    runner._process_line = assert_ingress_precedes_consumer  # type: ignore[method-assign]
+
+    assert runner.run() == 0
+    assert serial.writes == [b"ACTIVE LEASE 1\n"]
+    assert runner.commands_sent == 1
+    assert runner.commands_rejected == 0
+
+
 def test_capture_device_rejects_open_ended_command(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)

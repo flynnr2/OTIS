@@ -14,6 +14,8 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _phase_metrics,
     _replay_ahy,
     _response_attestations,
+    _response_dependent_consumer_propagation,
+    _sustained_regulation_outcome,
     _tight_deadband_policy_sha256,
     _wall_origin_and_setup_order_exact,
 )
@@ -110,6 +112,146 @@ def test_frozen_phase_and_frequency_metrics_pass_matched_1800() -> None:
     assert frequency["pass"] is True
     assert frequency["frequency_rms_degradation_hz"] < 1.0 / 600.0
     assert frequency["tight_inside_occupancy_degradation_fraction"] == 0.0
+
+
+def test_sustained_outcome_uses_exact_raw_phase_window_and_counter_time() -> None:
+    decision_rows = [
+        {
+            "decision_sequence": "1",
+            "reason": "phase_material_request_ready",
+            "phase_epoch": "1",
+            "phase_observation_sequence": "10000",
+        },
+        {
+            "decision_sequence": "2",
+            "reason": "deliberate_reversal_challenge_request_ready",
+            "phase_epoch": "1",
+            "phase_observation_sequence": "50000",
+        },
+        {
+            "decision_sequence": "3",
+            "reason": "deliberate_reversal_challenge_recovery_request_ready",
+            "phase_epoch": "1",
+            "phase_observation_sequence": "60000",
+        },
+    ]
+    active_rows = [
+        {
+            "event": "application",
+            "request_sequence": str(sequence),
+            "decision_sequence": str(sequence),
+            "application_timestamp_s": str(timestamp),
+            "applied_code": str(code),
+            "dac_epoch": str(sequence + 1),
+            "requested_delta_codes": str(delta),
+        }
+        for sequence, timestamp, code, delta in (
+            (1, 10_000, 43_063, -5),
+            (2, 50_000, 43_042, -21),
+            (3, 60_000, 43_047, 5),
+        )
+    ]
+    phase_rows = [
+        {
+            "phase_epoch": "1",
+            "observation_sequence": str(sequence),
+            "relative_phase_cycles": "7",
+            "qualification_state": "qualified",
+        }
+        for sequence in range(64_801, 86_401)
+    ]
+    status, decision, facts = _sustained_regulation_outcome(
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal={},
+        supervisor_state={"qualified_origin_timestamp_ticks": 0},
+        active_rows=active_rows,
+        decision_rows=decision_rows,
+        phase_rows=phase_rows,
+        applications={
+            "automatic_application_count": 2,
+            "physical_control_application_count": 3,
+            "deliberate_challenge_application_count": 1,
+            "cumulative_movement_codes": 31,
+        },
+        no_fault_or_chatter=True,
+        frequency_pass=True,
+        qualified_duration_s=86_400,
+    )
+    assert status == "passed"
+    assert decision == "sustained_hybrid_regulation_demonstrated_challenge_reversal"
+    assert facts["post_reversal_ticks"] == 26_400 * 16_000_000
+    assert facts["final_phase_window_row_count"] == 21_600
+    assert facts["final_phase_window_contiguous"] is True
+    assert facts["final_phase_OLS_slope_exact_numerator"] == 0
+    assert facts["final_phase_slope_pass"] is True
+
+
+def test_response_identity_reaches_first_dependent_decision_exactly() -> None:
+    response = {
+        "event": "response",
+        "request_sequence": "2",
+        "transaction_record_sequence": "9",
+        "decision_sequence": "9",
+        "application_sequence": "2",
+        "applied_code": "43062",
+        "dac_epoch": "3",
+        "response_class": "healthy_indeterminate_near_resolution",
+    }
+    boundary = {
+        "decision_sequence": "10",
+        "authority_state": "AWAITING_RESPONSE",
+        "request_sequence": "2",
+    }
+    consumer = {
+        "decision_sequence": "11",
+        "authority_state": "DISARMED",
+        "request_sequence": "2",
+        "application_sequence": "2",
+        "response_class": "healthy_indeterminate_near_resolution",
+        "actual_applied_code": "43062",
+        "actual_dac_epoch": "3",
+        "downstream_epoch_exact": "true",
+        "reason": "first_phase_observation_recorded_and_tight_reacquired",
+    }
+
+    result = _response_dependent_consumer_propagation(
+        [response], [boundary, consumer]
+    )
+    assert result["exact"] is True
+    assert result["comparisons"][0]["consumer_decision_sequence"] == 11
+
+    consumer["response_class"] = "unavailable"
+    assert _response_dependent_consumer_propagation(
+        [response], [boundary, consumer]
+    )["exact"] is False
+
+
+def test_sustained_platform_integrity_fault_precedes_operator_abort_label() -> None:
+    status, decision, _ = _sustained_regulation_outcome(
+        integrity_exact=False,
+        operator_abort=True,
+        platform_terminal=False,
+        endpoint_complete=False,
+        terminal={"primary_decision": "operator_abort"},
+        supervisor_state={},
+        active_rows=[],
+        decision_rows=[],
+        phase_rows=[],
+        applications={
+            "automatic_application_count": 0,
+            "physical_control_application_count": 0,
+            "deliberate_challenge_application_count": 0,
+            "cumulative_movement_codes": 0,
+        },
+        no_fault_or_chatter=True,
+        frequency_pass=False,
+        qualified_duration_s=86_400,
+    )
+    assert status == "failed"
+    assert decision == "measurement_authority_or_platform_fault"
 
 
 def test_command_and_wall_origin_setup_order_are_exact() -> None:

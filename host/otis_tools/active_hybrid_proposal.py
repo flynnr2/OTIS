@@ -84,6 +84,8 @@ def _progressive_envelope(
 ) -> dict[str, Any]:
     return {
         "maximum_total_automatic_applications": programme.maximum_applications,
+        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
         "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
@@ -212,6 +214,13 @@ def create_successor_proposal(
                     "scientific_thresholds_criteria_and_duration_unchanged": True,
                 }
                 if programme is CX320_PROGRAMME
+                else {
+                    "natural_controller_mathematics_unchanged": True,
+                    "scientific_limits_and_duration_changed_by_current_prospectively_frozen_programme": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+                if programme.sustained_regulation
                 else {
                     "scientific_limits_and_duration_unchanged": True,
                     "successor_qualification_criterion_prospectively_frozen": True,
@@ -350,6 +359,22 @@ def validate_proposal(
                     or lineage.get("inherits_physical_authority") is not False
                 )
             )
+            or (
+                programme.sustained_regulation
+                and (
+                    lineage.get("natural_controller_mathematics_unchanged")
+                    is not True
+                    or lineage.get(
+                        "scientific_limits_and_duration_changed_by_current_prospectively_frozen_programme"
+                    )
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                )
+            )
             or lineage.get("automatic_controller_retry") is not False
             or lineage.get("automatic_restoration") is not False
             or not isinstance(lineage.get("successor_reason"), str)
@@ -369,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322"), default="cx320"
+        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
     )
     args = parser.parse_args(argv)
     if args.create:

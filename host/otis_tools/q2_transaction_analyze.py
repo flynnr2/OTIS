@@ -61,7 +61,7 @@ def expected_cases() -> dict[int, dict[str, object]]:
             "retry_rejected": False,
         }
     names = [
-        "stale_status_generation",
+        "later_observation_generation_preserved",
         "stale_query_nonce",
         "stale_session",
         "stale_expiry",
@@ -84,6 +84,11 @@ def expected_cases() -> dict[int, dict[str, object]]:
             "automatic_i2c_attempts": 0,
             "retry_rejected": True,
         }
+    cases[14].update(
+        disposition="released_with_exact_retained_generation",
+        phase_mask=15,
+        retry_rejected=False,
+    )
     names = [
         "execution_expired",
         "execution_expected_code_changed",

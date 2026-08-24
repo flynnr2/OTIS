@@ -46,6 +46,9 @@ TOOL_PATHS = {
     "controller_reference": Path(__file__).with_name("active_hybrid_policy.py"),
     "predecessor_audit": Path(__file__).with_name("active_hybrid_evidence_audit.py"),
     "frozen_evidence_replay": Path(__file__).with_name("active_hybrid_replay.py"),
+    "sustained_continuation_synthesis": Path(__file__).with_name(
+        "sustained_hybrid_synthesis.py"
+    ),
     "host_supervisor_contract": Path(__file__).with_name("active_hybrid_supervisor.py"),
     "response_replay_guard": Path(__file__).with_name("active_hybrid_evidence_guard.py"),
     "plant_sign_replay_guard": Path(__file__).with_name(
@@ -79,6 +82,43 @@ TOOL_PATHS = {
     "live_analyzer_and_sealer": Path(__file__).with_name("active_hybrid_live_analyze.py"),
     "live_topology_rehearsal": Path(__file__).with_name("active_hybrid_live_rehearsal.py"),
     "live_monitor": Path(__file__).with_name("active_hybrid_monitor.py"),
+}
+SUSTAINED_REGULATION_ACCEPTANCE = {
+    "characterization_is_not_an_entry_or_terminal_failure": True,
+    "failure_requires_real_evidence_against_a_frozen_criterion": True,
+    "maximum_absolute_raw_relative_phase_cycles": 36,
+    "final_post_reversal_window_s": 21_600,
+    "maximum_absolute_final_OLS_phase_slope_cycles_per_s": 1.0 / 3600.0,
+    "persistent_wrong_direction_complete_same_epoch_windows": 2,
+    "minimum_post_reversal_qualified_s": 21_600,
+}
+SUSTAINED_DECISION_IDENTITY_PROPAGATION = {
+    "required_sequence": [
+        "setup",
+        "first_natural_application_and_response",
+        "first_post_response_released_decision",
+        "repeated_natural_application_and_response",
+        "deliberate_challenge_application_and_response_if_required",
+        "opposite_direction_recovery_application_and_response",
+        "first_post_recovery_decision",
+    ],
+    "identity_fields": [
+        "run_identity",
+        "build_identity",
+        "profile_identity",
+        "policy_sha256",
+        "session_id",
+        "request_sequence",
+        "decision_sequence",
+        "application_sequence",
+        "applied_code",
+        "dac_epoch",
+        "phase_epoch",
+        "automatic_application_count",
+        "correction_count",
+        "deliberate_challenge_disposition",
+    ],
+    "producer_acknowledgement_alone_is_sufficient": False,
 }
 
 
@@ -131,12 +171,14 @@ def _validate_build(
         "OTIS_CX317_ACTIVE_CAMPAIGN": (
             "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
             if programme.identification_required
+            else "OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION"
+            if programme.sustained_regulation
             else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
             if programme.response_checkpoint_observational
             else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
         ),
         "OTIS_CX317_ACTIVE_START_CODE": "0xA83Cu",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "4u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": f"{programme.maximum_physical_applications}u",
         "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u",
         "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "1800u",
         "OTIS_DAC_MIN_CODE": "0xA800u",
@@ -147,6 +189,14 @@ def _validate_build(
         expected_defines["OTIS_ENABLE_CX321_ACTIVE_HYBRID"] = "1"
     if programme.response_checkpoint_observational:
         expected_defines["OTIS_ENABLE_CX322_DIRECT_HYBRID"] = "1"
+    if programme.sustained_regulation:
+        expected_defines.update(
+            {
+                "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION": "1",
+                "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS": "12u",
+                "OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE": "1",
+            }
+        )
     if any(defines.get(name) != value for name, value in expected_defines.items()):
         raise ValueError(
             f"firmware build {programme.key.upper()} compile-time envelope differs"
@@ -190,20 +240,32 @@ def _validate_build(
     }
 
 
-def _validate_replay(replay_path: Path, policy_sha256: str) -> dict[str, Any]:
+def _validate_replay(
+    replay_path: Path,
+    policy_sha256: str,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
     replay = _read_object(replay_path)
     claimed = replay.pop("report_sha256", None)
     observed = _canonical_sha256(replay)
     replay["report_sha256"] = claimed
     if claimed != observed:
         raise ValueError("CX320 replay semantic report identity differs")
-    current_tool = Path(__file__).with_name("active_hybrid_replay.py")
+    current_tool = Path(__file__).with_name(
+        "sustained_hybrid_synthesis.py"
+        if programme.sustained_regulation
+        else "active_hybrid_replay.py"
+    )
     if (
         replay.get("status") != "passed"
         or replay.get("selected_candidate_id") != "p21600_cap1_tight_active_v1"
         or replay.get("policy_sha256") != policy_sha256
         or replay.get("tool_sha256") != _sha256_file(current_tool)
         or not all(replay.get("selection_checks", {}).values())
+        or (
+            programme.sustained_regulation
+            and replay.get("programme_id") != programme.programme_id
+        )
     ):
         raise ValueError("CX320 replay selection or current tool binding differs")
     return {
@@ -223,7 +285,9 @@ def create_bundle(
     policy = load_policy(programme.natural_policy_path)
     policy_document = _read_object(programme.natural_policy_path)
     firmware = _validate_build(build_manifest_path.resolve(), programme)
-    replay = _validate_replay(replay_path.resolve(), policy.policy_sha256)
+    replay = _validate_replay(
+        replay_path.resolve(), policy.policy_sha256, programme
+    )
     authority = {name: False for name in REQUIRED_FALSE_AUTHORITY}
     authority.update(
         {
@@ -284,6 +348,8 @@ def create_bundle(
             "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
             "wall_clock_origin": "sole_capture_owner_records_exact_run_identity_before_setup_submission",
             "maximum_total_automatic_applications": programme.maximum_applications,
+            "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+            "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
             "maximum_combined_step_codes": programme.maximum_step_codes,
             "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
@@ -355,6 +421,23 @@ def create_bundle(
         },
         "authority": authority,
     }
+    if programme.sustained_regulation:
+        bundle["reversal_challenge"] = policy_document["reversal_challenge"]
+        bundle["sustained_regulation_acceptance"] = (
+            SUSTAINED_REGULATION_ACCEPTANCE
+        )
+        bundle["decision_identity_propagation"] = (
+            SUSTAINED_DECISION_IDENTITY_PROPAGATION
+        )
+        bundle["stop_conditions"].extend(
+            [
+                "persistent_wrong_direction_across_two_complete_same_phase_epoch_response_windows",
+                "required_reversal_or_deliberate_challenge_recovery_not_demonstrated",
+                "absolute_raw_relative_phase_escape",
+                "final_phase_slope_or_frequency_preservation_criterion_not_sustained",
+                "hybrid_policy_chatter_or_path_exhaustion",
+            ]
+        )
     if programme.identification_required:
         programme_policy = _read_object(programme.policy_path)
         policy_bindings = programme_policy.get("bindings")
@@ -566,8 +649,21 @@ def validate_bundle(
         "prospective_metrics"
     ):
         raise ValueError("CX320 prospective scientific metrics differ from policy")
+    if programme.sustained_regulation and (
+        bundle.get("reversal_challenge")
+        != policy_document.get("reversal_challenge")
+        or bundle.get("sustained_regulation_acceptance")
+        != SUSTAINED_REGULATION_ACCEPTANCE
+        or bundle.get("decision_identity_propagation")
+        != SUSTAINED_DECISION_IDENTITY_PROPAGATION
+    ):
+        raise ValueError("sustained-hybrid frozen decision contract differs")
     _validate_build(Path(bundle["firmware"]["build_manifest"]["path"]), programme)
-    _validate_replay(Path(bundle["offline_replay"]["path"]), policy.policy_sha256)
+    _validate_replay(
+        Path(bundle["offline_replay"]["path"]),
+        policy.policy_sha256,
+        programme,
+    )
     return bundle
 
 
@@ -578,7 +674,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322"), default="cx320"
+        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
     )
     args = parser.parse_args(argv)
     programme = get_active_hybrid_programme(args.programme)
