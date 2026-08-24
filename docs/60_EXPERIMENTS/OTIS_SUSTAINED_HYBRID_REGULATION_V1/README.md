@@ -130,3 +130,26 @@ batch did not reach the serial writer before its acknowledgement deadline.
 Abort, capture close, analysis, sealing, and registration completed exactly.
 The evidence and bounded consumer-latency repair are in
 [`03_ATTEMPT3_COMMAND_INGRESS_LATENCY_TERMINAL.md`](03_ATTEMPT3_COMMAND_INGRESS_LATENCY_TERMINAL.md).
+
+## Attempt 4 and programme closeout
+
+Attempt 4 physically verified the repaired command-ingress boundary and ran
+the unchanged controller for 40,537 qualified seconds. It completed eleven
+automatic physical transactions, established a natural reversal, and then
+entered the frozen `prospective_low_efficiency_path` terminal before allowing
+the next uneconomic five-code application.
+
+The physical qualification is formally failed because the host supervisor
+omitted the sustained profile from its pre-phase-4 response-replay dispatch;
+the eleven contemporaneous attestation files were therefore not retained.
+Independent offline replay of every unchanged response and its first later
+consumer passes, so that platform omission did not alter the controller's
+scientific low-efficiency decision. The dispatch is repaired, its direct
+producer-to-command regression passes, and the exact multi-transaction
+operational rehearsal passes through challenge, recovery, abort, rotation,
+analysis, seal, and registration.
+
+The scientific rejection answers this programme. No Attempt 5 will be created
+for the unchanged controller. Full evidence, exact identities, causal
+classification, repair, and closeout are in
+[`04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md`](04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md).
