@@ -1221,6 +1221,18 @@ def _sustained_multi_transaction_fixture(
     )
     dependent_response = response
 
+    # Keep the declared wrapping TIMER0 domain causally reconstructable while
+    # accelerating across the natural-reversal window.  These are ordinary
+    # zero-code decisions, and the first also consumes request 2's retained
+    # response identity through the real downstream replay path.
+    for timestamp_s in range(6902, 43_800, 1800):
+        bridge = observe(timestamp_s, 0)
+        if bridge.requested_delta_codes != 0:
+            raise RuntimeError(
+                "sustained wrap bridge unexpectedly requested physical control"
+            )
+        append_decision(bridge)
+
     challenge = observe(43_800, 30)
     if challenge.reason != "deliberate_reversal_challenge_request_ready":
         raise RuntimeError("sustained fixture did not reach the frozen challenge")
