@@ -2983,18 +2983,75 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
+        manual = transactions[0]
         with write_lock:
-            # The firmware publishes the first ACT request only after its
-            # evidence frontier enters request_pending.  Mirror that causal
-            # boundary before the captured transaction batch becomes visible
-            # to the real live supervisor.
-            state["evidence_request_sequence"] = 1
-            state["evidence_phase"] = "request_pending"
-            _write_all_fd(master, _wire_rows(ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS))
             _write_all_fd(
                 master,
-                _wire_rows(transactions, ACTIVE_TRANSACTION_V1_FIELDS),
+                _wire_rows([manual], ACTIVE_TRANSACTION_V1_FIELDS),
             )
+        _wait_until(
+            lambda: 1
+            in _read_object(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            ).get("observed_manual_record_sequences", []),
+            10.0,
+            "observational manual-start record",
+        )
+
+        # Stream each request only after the preceding phase-4 ACK has been
+        # consumed.  The physical firmware cannot publish later transaction
+        # rows while an earlier evidence frontier is outstanding; batching
+        # every request here would replace the exact causal boundary that this
+        # rehearsal is intended to exercise.
+        automatic = [row for row in transactions if row["event"] != "manual_start"]
+        decision_cursor = 0
+        for request_sequence in sorted(applications):
+            group = [
+                row
+                for row in automatic
+                if int(row["request_sequence"]) == request_sequence
+            ]
+            response_decision_index = next(
+                index
+                for index, row in enumerate(ahy)
+                if row.get("authority_state") == "AWAITING_RESPONSE"
+                and int(row.get("request_sequence", "0")) == request_sequence
+            )
+            with write_lock:
+                state["evidence_request_sequence"] = request_sequence
+                state["evidence_phase"] = "request_pending"
+                _write_all_fd(
+                    master,
+                    _wire_rows(
+                        ahy[decision_cursor : response_decision_index + 1],
+                        ACTIVE_HYBRID_DECISION_V1_FIELDS,
+                    ),
+                )
+                _write_all_fd(
+                    master,
+                    _wire_rows(group, ACTIVE_TRANSACTION_V1_FIELDS),
+                )
+            response_record_sequence = int(group[-1]["transaction_record_sequence"])
+            _wait_until(
+                lambda: bool(errors)
+                or response_record_sequence
+                in _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("acknowledged_record_sequences", []),
+                30.0,
+                f"observational request {request_sequence} phase-4 ACK",
+            )
+            if errors:
+                raise RuntimeError("CX322 firmware emulator failed: " + errors[0])
+            decision_cursor = response_decision_index + 1
+        if decision_cursor < len(ahy):
+            with write_lock:
+                _write_all_fd(
+                    master,
+                    _wire_rows(
+                        ahy[decision_cursor:], ACTIVE_HYBRID_DECISION_V1_FIELDS
+                    ),
+                )
         if not phase4_observed.wait(30.0):
             raise TimeoutError("observational final phase-4 ACK was not observed")
         if errors:
