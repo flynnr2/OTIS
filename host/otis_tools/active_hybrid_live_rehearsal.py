@@ -3178,6 +3178,13 @@ def _run_real_process_topology(
     proposal_path: Path,
     proposal: dict[str, Any],
 ) -> dict[str, Any]:
+    programme = _selected_programme(bundle)
+    # The sustained path now preserves and confirms four causal phase-4
+    # transactions instead of exposing one pre-batched CSV frontier.  Keep
+    # both processes bounded, but give that real acknowledgement sequence its
+    # complete wall-time envelope before the deliberate obstruction begins.
+    capture_duration_s = 240 if programme.sustained_regulation else 120
+    supervisor_duration_s = 180 if programme.sustained_regulation else 60
     run_dir = output_dir / "process_topology" / "run"
     transition_dir = output_dir / "process_topology" / "transition"
     carrier_dir = output_dir / "process_topology" / "carrier"
@@ -3207,7 +3214,7 @@ def _run_real_process_topology(
             "--run-dir",
             str(run_dir),
             "--duration-s",
-            "120",
+            str(capture_duration_s),
             "--status-interval",
             "1",
             "--command-fifo",
@@ -3270,7 +3277,7 @@ def _run_real_process_topology(
                 "--expected-build-identity",
                 str(bundle["firmware"]["build_identity"]),
                 "--duration-s",
-                "60",
+                str(supervisor_duration_s),
                 "--rehearsal-manifest",
             ],
             cwd=ROOT,
