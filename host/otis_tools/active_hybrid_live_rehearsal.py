@@ -2972,6 +2972,12 @@ def _exercise_cx322_real_transaction_path(
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
         with write_lock:
+            # The firmware publishes the first ACT request only after its
+            # evidence frontier enters request_pending.  Mirror that causal
+            # boundary before the captured transaction batch becomes visible
+            # to the real live supervisor.
+            state["evidence_request_sequence"] = 1
+            state["evidence_phase"] = "request_pending"
             _write_all_fd(master, _wire_rows(ahy, ACTIVE_HYBRID_DECISION_V1_FIELDS))
             _write_all_fd(
                 master,
