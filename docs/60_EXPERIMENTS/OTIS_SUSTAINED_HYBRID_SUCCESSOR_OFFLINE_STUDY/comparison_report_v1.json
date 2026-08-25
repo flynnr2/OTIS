@@ -1,0 +1,4800 @@
+{
+  "candidate_comparisons": [
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_and_uncertainty_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_claim": true
+      },
+      "candidate_id": "one_count_tight_hold_v1",
+      "first_discriminating_failure": "minimum:phase_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 28,
+      "nominal_attempt4_net_regulation_codes": -10,
+      "passed_perturbation_case_count": 27,
+      "perturbation_case_count": 32,
+      "perturbations": [
+        {
+          "case_id": "isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_crossing",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_positive_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_negative_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_positive_to_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              2,
+              0,
+              -2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_negative_to_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.005,
+              0.005,
+              0.006666666666666667,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              -0.005,
+              -0.005,
+              -0.006666666666666667,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled",
+              "frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              -0.0033333333333333335
+            ],
+            "reasons": [
+              "frequency_enabled",
+              "frequency_enabled",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "frequency_enabled",
+              "frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0033333333333333335
+            ],
+            "reasons": [
+              "frequency_enabled",
+              "frequency_enabled",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "frequency_enabled",
+              "frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "no_natural_reversal_challenge_recovery",
+          "detail": {
+            "inherited_challenge_enabled": true,
+            "policy_id": "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_adverse",
+          "detail": {
+            "scenario_id": "attempt4_adverse"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_favorable",
+          "detail": {
+            "scenario_id": "attempt4_favorable"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "long_zero_demand_dwell",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold",
+              "one_count_tight_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "estimator_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_or_retry_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "gate_reason": "invalid_or_stale_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "disposition": "fail_static",
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "frozen_limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "frozen_limit": 84,
+            "maximum_modeled_path_codes": 44
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "frozen_range": [
+              43008,
+              43776
+            ],
+            "maximum_modeled_code": 43080,
+            "minimum_modeled_code": 43049
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "inherited_fail_static_state": "FAIL_STATIC",
+            "reason": "measurement_authority_or_common_health_fault"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 9,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.00017394156321333312,
+            "modeled_absolute_frequency_max_hz": 0.002811686499771754,
+            "modeled_absolute_frequency_p95_hz": 0.0023700360981455055,
+            "modeled_frequency_rms_hz": 0.0014927251034533337,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012233874676589095,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.4711830129301525,
+            "matched_improvement_fraction": 0.17625648371419225,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 19.880886424004338,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "one_count_tight_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43058,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "natural_path_codes": 28,
+            "net_regulation_codes": -10,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 9,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.00013458206888672278,
+            "modeled_absolute_frequency_max_hz": 0.00285725967856692,
+            "modeled_absolute_frequency_p95_hz": 0.0023980310508339648,
+            "modeled_frequency_rms_hz": 0.001532084597779944,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012559390328598249,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.41259019556850485,
+            "matched_improvement_fraction": 0.15433853744773207,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 20.433362679486518,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "one_count_tight_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43058,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "natural_path_codes": 28,
+            "net_regulation_codes": -10,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 9,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.00011464395246749506,
+            "modeled_absolute_frequency_max_hz": 0.0028800476431204924,
+            "modeled_absolute_frequency_p95_hz": 0.0024120293719168736,
+            "modeled_frequency_rms_hz": 0.0015520227141991717,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.001272215797693275,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.38329201886829445,
+            "matched_improvement_fraction": 0.14337890294753486,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 20.709617478020633,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "one_count_tight_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43058,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "natural_path_codes": 28,
+            "net_regulation_codes": -10,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43074,
+              "dac_epoch": 4,
+              "decision_sequence": 15,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43075,
+              "dac_epoch": 5,
+              "decision_sequence": 18,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43076,
+              "dac_epoch": 6,
+              "decision_sequence": 21,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43077,
+              "dac_epoch": 7,
+              "decision_sequence": 23,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43078,
+              "dac_epoch": 8,
+              "decision_sequence": 27,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43079,
+              "dac_epoch": 9,
+              "decision_sequence": 30,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43080,
+              "dac_epoch": 10,
+              "decision_sequence": 34,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.000592539981436789,
+            "modeled_absolute_frequency_max_hz": 0.0025423147018589997,
+            "modeled_absolute_frequency_p95_hz": 0.00206624050042592,
+            "modeled_frequency_rms_hz": 0.0010741266852298777,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 37,
+            "tight_inside_occupancy_fraction": 0.7567567567567568,
+            "tight_occupancy_degradation_fraction": 0.2432432432432432
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0016606245390940158,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -0.31584371565303887,
+            "matched_improvement_fraction": -0.11814836527751094,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 8.007696760887713,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_adverse",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 9,
+            "candidate_id": "one_count_tight_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43080,
+            "final_dac_epoch": 10,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "adverse",
+            "natural_path_codes": 16,
+            "net_regulation_codes": 12,
+            "phase_material_application_count": 9,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "adverse"
+          },
+          "uncertainty_mode": "adverse"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43053,
+              "dac_epoch": 3,
+              "decision_sequence": 11,
+              "delta_codes": -14,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 4,
+              "decision_sequence": 13,
+              "delta_codes": -4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 5,
+              "decision_sequence": 20,
+              "delta_codes": 15,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 19219,
+              "timestamp_s": 19221.125584
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 6,
+              "decision_sequence": 23,
+              "delta_codes": -10,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 0.0025078461097881198,
+            "modeled_absolute_frequency_max_hz": 0.005433754209807235,
+            "modeled_absolute_frequency_p95_hz": 0.005433754209807235,
+            "modeled_frequency_rms_hz": 0.004174512776454787,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 21,
+            "tight_inside_occupancy_fraction": 0.42857142857142855,
+            "tight_occupancy_degradation_fraction": 0.5714285714285714
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.004172502604813666,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -4.837224233948409,
+            "matched_improvement_fraction": -1.809471290382047,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 77.65546609976052,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_favorable",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": false,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 5,
+            "candidate_id": "one_count_tight_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 2,
+            "final_code": 43054,
+            "final_dac_epoch": 6,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "favorable",
+            "natural_path_codes": 44,
+            "net_regulation_codes": -14,
+            "phase_material_application_count": 3,
+            "range_clamped": false,
+            "terminal_reason": "prospective_repeated_alternation",
+            "terminal_state": "FAIL_STATIC",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "favorable"
+          },
+          "uncertainty_mode": "favorable"
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 1,
+      "worst_case_frequency_rms_degradation_hz": 0.0025078461097881198
+    },
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_and_uncertainty_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_claim": true
+      },
+      "candidate_id": "tight_phase_only_v1",
+      "first_discriminating_failure": "minimum:phase_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 20,
+      "nominal_attempt4_net_regulation_codes": -18,
+      "passed_perturbation_case_count": 25,
+      "perturbation_case_count": 32,
+      "perturbations": [
+        {
+          "case_id": "isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_crossing",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_positive_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_negative_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_positive_to_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              2,
+              0,
+              -2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_negative_to_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "outside_tight_frequency_enabled",
+              "outside_tight_frequency_enabled",
+              "outside_tight_frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "outside_tight_frequency_enabled",
+              "outside_tight_frequency_enabled",
+              "outside_tight_frequency_enabled"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "no_natural_reversal_challenge_recovery",
+          "detail": {
+            "inherited_challenge_enabled": true,
+            "policy_id": "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_adverse",
+          "detail": {
+            "scenario_id": "attempt4_adverse"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_favorable",
+          "detail": {
+            "scenario_id": "attempt4_favorable"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "long_zero_demand_dwell",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold",
+              "tight_phase_only_frequency_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "estimator_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "candidate_has_persistence_state": false
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_or_retry_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "gate_reason": "invalid_or_stale_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "disposition": "fail_static",
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "frozen_limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "frozen_limit": 84,
+            "maximum_modeled_path_codes": 22
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "frozen_range": [
+              43008,
+              43776
+            ],
+            "maximum_modeled_code": 43086,
+            "minimum_modeled_code": 43047
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "inherited_fail_static_state": "FAIL_STATIC",
+            "reason": "measurement_authority_or_common_health_fault"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 1.9877397786992757e-05,
+            "modeled_absolute_frequency_max_hz": 0.003465983391069899,
+            "modeled_absolute_frequency_p95_hz": 0.002697184543794578,
+            "modeled_frequency_rms_hz": 0.0016865440644536595,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012233874676589095,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.4711830129301525,
+            "matched_improvement_fraction": 0.17625648371419225,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 19.880886424004338,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "tight_phase_only_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43050,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "natural_path_codes": 20,
+            "net_regulation_codes": -18,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 6.630699146391848e-05,
+            "modeled_absolute_frequency_max_hz": 0.003537598386319446,
+            "modeled_absolute_frequency_p95_hz": 0.0027382004047102277,
+            "modeled_frequency_rms_hz": 0.0017329736581305853,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012559390328598249,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.41259019556850485,
+            "matched_improvement_fraction": 0.15433853744773207,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 20.433362679486518,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "tight_phase_only_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43050,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "natural_path_codes": 20,
+            "net_regulation_codes": -18,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 27,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 34,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 8.974504852947277e-05,
+            "modeled_absolute_frequency_max_hz": 0.003573408044903631,
+            "modeled_absolute_frequency_p95_hz": 0.002758709572808443,
+            "modeled_frequency_rms_hz": 0.0017564117151961395,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 35,
+            "tight_inside_occupancy_fraction": 0.6571428571428571,
+            "tight_occupancy_degradation_fraction": 0.34285714285714286
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.001272215797693275,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.38329201886829445,
+            "matched_improvement_fraction": 0.14337890294753486,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 20.709617478020633,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "tight_phase_only_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43050,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "natural_path_codes": 20,
+            "net_regulation_codes": -18,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43067,
+              "dac_epoch": 4,
+              "decision_sequence": 15,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43068,
+              "dac_epoch": 5,
+              "decision_sequence": 18,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43069,
+              "dac_epoch": 6,
+              "decision_sequence": 21,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43071,
+              "dac_epoch": 7,
+              "decision_sequence": 23,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43073,
+              "dac_epoch": 8,
+              "decision_sequence": 27,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43075,
+              "dac_epoch": 9,
+              "decision_sequence": 30,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43078,
+              "dac_epoch": 10,
+              "decision_sequence": 34,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43081,
+              "dac_epoch": 11,
+              "decision_sequence": 38,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43084,
+              "dac_epoch": 12,
+              "decision_sequence": 42,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35129,
+              "timestamp_s": 35131.043395
+            },
+            {
+              "applied_code": 43086,
+              "dac_epoch": 13,
+              "decision_sequence": 46,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 38431,
+              "timestamp_s": 38433.026036
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.0003091478404346373,
+            "modeled_absolute_frequency_max_hz": 0.0025423147018589997,
+            "modeled_absolute_frequency_p95_hz": 0.0021341929242043286,
+            "modeled_frequency_rms_hz": 0.0013575188262320295,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 31,
+            "tight_inside_occupancy_fraction": 0.6129032258064516,
+            "tight_occupancy_degradation_fraction": 0.3870967741935484
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0016606245390940158,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -0.31584371565303887,
+            "matched_improvement_fraction": -0.11814836527751094,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 22.010640786873143,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_adverse",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "tight_phase_only_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43086,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "adverse",
+            "natural_path_codes": 22,
+            "net_regulation_codes": 18,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "adverse"
+          },
+          "uncertainty_mode": "adverse"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 3,
+              "decision_sequence": 11,
+              "delta_codes": -3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43059,
+              "dac_epoch": 4,
+              "decision_sequence": 23,
+              "delta_codes": -5,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 5,
+              "decision_sequence": 27,
+              "delta_codes": -5,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 6,
+              "decision_sequence": 30,
+              "delta_codes": -5,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43047,
+              "dac_epoch": 7,
+              "decision_sequence": 47,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 39031,
+              "timestamp_s": 39033.022877
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 0.002875951775376466,
+            "modeled_absolute_frequency_max_hz": 0.006964516302250418,
+            "modeled_absolute_frequency_p95_hz": 0.005450762677501047,
+            "modeled_frequency_rms_hz": 0.004542618442043133,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 40,
+            "tight_inside_occupancy_fraction": 0.15,
+            "tight_occupancy_degradation_fraction": 0.85
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.004172502604813666,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -4.837224233948409,
+            "matched_improvement_fraction": -1.809471290382047,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 83.98417958661183,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_favorable",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 6,
+            "candidate_id": "tight_phase_only_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 0,
+            "final_code": 43047,
+            "final_dac_epoch": 7,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "favorable",
+            "natural_path_codes": 21,
+            "net_regulation_codes": -21,
+            "phase_material_application_count": 6,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "favorable"
+          },
+          "uncertainty_mode": "favorable"
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 2,
+      "worst_case_frequency_rms_degradation_hz": 0.002875951775376466
+    },
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_and_uncertainty_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_claim": true
+      },
+      "candidate_id": "persistent_one_count_release_v1",
+      "first_discriminating_failure": "minimum:phase_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 28,
+      "nominal_attempt4_net_regulation_codes": -10,
+      "passed_perturbation_case_count": 27,
+      "perturbation_case_count": 32,
+      "perturbations": [
+        {
+          "case_id": "isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "isolated_crossing",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0016666666666666668
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistent_one_count_released"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "persistent_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0016666666666666668
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistent_one_count_released"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_positive_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "alternating_negative_first",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_first_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_positive_to_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              2,
+              0,
+              -2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "zero_crossing_phase_negative_to_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistent_one_count_first_hold",
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold"
+            ],
+            "relative_phase_cycles_preserved": [
+              -2,
+              0,
+              2
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0016666666666666668,
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.005,
+              0.005,
+              0.006666666666666667,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_released",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              -0.0016666666666666668,
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              -0.005,
+              -0.005,
+              -0.006666666666666667,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistent_one_count_first_hold",
+              "persistent_one_count_released",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              -0.0033333333333333335
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0033333333333333335
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "no_natural_reversal_challenge_recovery",
+          "detail": {
+            "inherited_challenge_enabled": true,
+            "policy_id": "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_adverse",
+          "detail": {
+            "scenario_id": "attempt4_adverse"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "hysteresis_repeatability_favorable",
+          "detail": {
+            "scenario_id": "attempt4_favorable"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "long_zero_demand_dwell",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable",
+              "persistence_not_applicable"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "candidate_has_persistence_state": true,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "persistent_one_count_first_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "candidate_has_persistence_state": true,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "persistent_one_count_first_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "estimator_reset",
+          "detail": {
+            "candidate_has_persistence_state": true,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "persistent_one_count_first_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "candidate_has_persistence_state": true,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "persistent_one_count_first_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_or_retry_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "gate_reason": "invalid_or_stale_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "disposition": "fail_static",
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "frozen_limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "frozen_limit": 84,
+            "maximum_modeled_path_codes": 44
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "frozen_range": [
+              43008,
+              43776
+            ],
+            "maximum_modeled_code": 43081,
+            "minimum_modeled_code": 43049
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "inherited_fail_static_state": "FAIL_STATIC",
+            "reason": "measurement_authority_or_common_health_fault"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43063,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43051,
+              "dac_epoch": 9,
+              "decision_sequence": 23,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 36,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 31529,
+              "timestamp_s": 31531.061905
+            },
+            {
+              "applied_code": 43053,
+              "dac_epoch": 11,
+              "decision_sequence": 40,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 33929,
+              "timestamp_s": 33931.049469
+            },
+            {
+              "applied_code": 43055,
+              "dac_epoch": 12,
+              "decision_sequence": 45,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            },
+            {
+              "applied_code": 43057,
+              "dac_epoch": 13,
+              "decision_sequence": 49,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 41135,
+              "timestamp_s": 41137.011856
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.0001819548300838387,
+            "modeled_absolute_frequency_max_hz": 0.0024845380541226813,
+            "modeled_absolute_frequency_p95_hz": 0.0024845380541226813,
+            "modeled_frequency_rms_hz": 0.001484711836582828,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 34,
+            "tight_inside_occupancy_fraction": 0.6470588235294118,
+            "tight_occupancy_degradation_fraction": 0.3529411764705882
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012233874676589095,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.4711830129301525,
+            "matched_improvement_fraction": 0.17625648371419225,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 19.2705529635371,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "persistent_one_count_release_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43057,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "natural_path_codes": 23,
+            "net_regulation_codes": -11,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43061,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43059,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 26,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 24625,
+              "timestamp_s": 24627.096891
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 38,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 9,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.0002443628118590983,
+            "modeled_absolute_frequency_max_hz": 0.00285725967856692,
+            "modeled_absolute_frequency_p95_hz": 0.0024065352846808713,
+            "modeled_frequency_rms_hz": 0.0014223038548075685,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 34,
+            "tight_inside_occupancy_fraction": 0.6470588235294118,
+            "tight_occupancy_degradation_fraction": 0.3529411764705882
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0012559390328598249,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.41259019556850485,
+            "matched_improvement_fraction": 0.15433853744773207,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 21.35317581189801,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "persistent_one_count_release_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43058,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "natural_path_codes": 28,
+            "net_regulation_codes": -10,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43062,
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43061,
+              "dac_epoch": 6,
+              "decision_sequence": 15,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43059,
+              "dac_epoch": 7,
+              "decision_sequence": 18,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43056,
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 9,
+              "decision_sequence": 26,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 24625,
+              "timestamp_s": 24627.096891
+            },
+            {
+              "applied_code": 43052,
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43050,
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": -2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 12,
+              "decision_sequence": 38,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43058,
+              "dac_epoch": 13,
+              "decision_sequence": 45,
+              "delta_codes": 9,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.0002281658264149816,
+            "modeled_absolute_frequency_max_hz": 0.0028800476431204924,
+            "modeled_absolute_frequency_p95_hz": 0.0024206963769391626,
+            "modeled_frequency_rms_hz": 0.0014385008402516852,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 34,
+            "tight_inside_occupancy_fraction": 0.6470588235294118,
+            "tight_occupancy_degradation_fraction": 0.3529411764705882
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.001272215797693275,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 0.38329201886829445,
+            "matched_improvement_fraction": 0.14337890294753486,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 21.647035848880442,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "persistent_one_count_release_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43058,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "natural_path_codes": 28,
+            "net_regulation_codes": -10,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "nominal"
+          },
+          "uncertainty_mode": "nominal"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43066,
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43074,
+              "dac_epoch": 4,
+              "decision_sequence": 15,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 14411,
+              "timestamp_s": 14413.150508
+            },
+            {
+              "applied_code": 43075,
+              "dac_epoch": 5,
+              "decision_sequence": 18,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17115,
+              "timestamp_s": 17117.136699
+            },
+            {
+              "applied_code": 43076,
+              "dac_epoch": 6,
+              "decision_sequence": 21,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43078,
+              "dac_epoch": 7,
+              "decision_sequence": 23,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            },
+            {
+              "applied_code": 43079,
+              "dac_epoch": 8,
+              "decision_sequence": 28,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43081,
+              "dac_epoch": 9,
+              "decision_sequence": 45,
+              "delta_codes": 2,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            },
+            {
+              "applied_code": 43080,
+              "dac_epoch": 10,
+              "decision_sequence": 49,
+              "delta_codes": -1,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 41135,
+              "timestamp_s": 41137.011856
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": -0.0006465432238763604,
+            "modeled_absolute_frequency_max_hz": 0.0025423147018589997,
+            "modeled_absolute_frequency_p95_hz": 0.00206624050042592,
+            "modeled_frequency_rms_hz": 0.0010201234427903063,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 38,
+            "tight_inside_occupancy_fraction": 0.7631578947368421,
+            "tight_occupancy_degradation_fraction": 0.23684210526315785
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0016606245390940158,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -0.31584371565303887,
+            "matched_improvement_fraction": -0.11814836527751094,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 8.007696760887713,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_adverse",
+          "selection_checks": {
+            "attempt4_path_at_most_27": true,
+            "attempt4_path_reduction_at_least_25_percent": true,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 9,
+            "candidate_id": "persistent_one_count_release_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 2,
+            "final_code": 43080,
+            "final_dac_epoch": 10,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "adverse",
+            "natural_path_codes": 18,
+            "net_regulation_codes": 12,
+            "phase_material_application_count": 7,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "adverse"
+          },
+          "uncertainty_mode": "adverse"
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43067,
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43053,
+              "dac_epoch": 3,
+              "decision_sequence": 11,
+              "delta_codes": -14,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43049,
+              "dac_epoch": 4,
+              "decision_sequence": 13,
+              "delta_codes": -4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43064,
+              "dac_epoch": 5,
+              "decision_sequence": 20,
+              "delta_codes": 15,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 19219,
+              "timestamp_s": 19221.125584
+            },
+            {
+              "applied_code": 43054,
+              "dac_epoch": 6,
+              "decision_sequence": 23,
+              "delta_codes": -10,
+              "phase_materially_influenced": false,
+              "range_clamped": false,
+              "reason": "combined_nonmaterial_request_ready",
+              "source_last_sequence": 21921,
+              "timestamp_s": 21923.110944
+            }
+          ],
+          "frequency_metrics": {
+            "exact": true,
+            "frequency_rms_degradation_hz": 0.0025078461097881198,
+            "modeled_absolute_frequency_max_hz": 0.005433754209807235,
+            "modeled_absolute_frequency_p95_hz": 0.005433754209807235,
+            "modeled_frequency_rms_hz": 0.004174512776454787,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 21,
+            "tight_inside_occupancy_fraction": 0.42857142857142855,
+            "tight_occupancy_degradation_fraction": 0.5714285714285714
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.004172502604813666,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": -4.837224233948409,
+            "matched_improvement_fraction": -1.809471290382047,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 77.65546609976052,
+            "pass": false,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "phase_threshold_failed"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_favorable",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "no_fail_static_or_low_efficiency_terminal": false,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": false
+          },
+          "summary": {
+            "application_count": 5,
+            "candidate_id": "persistent_one_count_release_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 2,
+            "final_code": 43054,
+            "final_dac_epoch": 6,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "favorable",
+            "natural_path_codes": 44,
+            "net_regulation_codes": -14,
+            "phase_material_application_count": 3,
+            "range_clamped": false,
+            "terminal_reason": "prospective_repeated_alternation",
+            "terminal_state": "FAIL_STATIC",
+            "three_reversals_in_four": false,
+            "uncertainty_mode": "favorable"
+          },
+          "uncertainty_mode": "favorable"
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 3,
+      "worst_case_frequency_rms_degradation_hz": 0.0025078461097881198
+    }
+  ],
+  "causal_ablations": {
+    "claim_boundary": "same-frontier deterministic term attribution only; post-divergence rows are not physical replay",
+    "decision_comparisons": [
+      {
+        "cadence_limited": true,
+        "decision_sequence": 1,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 2,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 2,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -10,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 3,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 4,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 5,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 6,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 1,
+        "observed_requested_delta_codes": -6,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 7,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 8,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 9,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 0,
+        "observed_requested_delta_codes": -1,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 10,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 11,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 0,
+        "observed_requested_delta_codes": -1,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 12,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 13,
+        "frequency_removed_while_tight_integer_delta_codes": -2,
+        "observed_count": 1,
+        "observed_requested_delta_codes": -6,
+        "one_count_frequency_held_integer_delta_codes": -2,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 14,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 15,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 16,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 0,
+        "observed_requested_delta_codes": -1,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 17,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 18,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 19,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 0,
+        "observed_requested_delta_codes": -1,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 20,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 21,
+        "frequency_removed_while_tight_integer_delta_codes": -1,
+        "observed_count": 0,
+        "observed_requested_delta_codes": -1,
+        "one_count_frequency_held_integer_delta_codes": -1,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 22,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 23,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 24,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 25,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 5,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 26,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 27,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 28,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 5,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 29,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 30,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 31,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 32,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 33,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 34,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 35,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 36,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 37,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 38,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 39,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 40,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 41,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 42,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 43,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 44,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 1,
+        "observed_requested_delta_codes": -5,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": -5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 45,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 46,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 47,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 48,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 5,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 49,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "OUTSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 50,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 51,
+        "frequency_removed_while_tight_integer_delta_codes": 0,
+        "observed_count": 0,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 0,
+        "phase_removed_integer_delta_codes": 0,
+        "tight_state": "TIGHT_INSIDE"
+      },
+      {
+        "cadence_limited": false,
+        "decision_sequence": 52,
+        "frequency_removed_while_tight_integer_delta_codes": 1,
+        "observed_count": -1,
+        "observed_requested_delta_codes": 0,
+        "one_count_frequency_held_integer_delta_codes": 1,
+        "phase_removed_integer_delta_codes": 5,
+        "tight_state": "TIGHT_INSIDE"
+      }
+    ],
+    "gain_must_be_strictly_below_codes_per_hz_per_decision": 300.0,
+    "grouped_two_output_diagnostic_pairs": [
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        -1
+      ]
+    ],
+    "late_frequency_driven_application_sequences": [
+      25,
+      28,
+      44,
+      48
+    ],
+    "late_frequency_driven_observed_deltas": [
+      5,
+      5,
+      -5,
+      5
+    ],
+    "late_one_count_hold_deltas": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "late_requests_cadence_limited": false,
+    "one_count_frequency_hz": 0.0016666666666666668,
+    "v1_one_count_raw_codes": 4.807504617744086
+  },
+  "claim_boundary": {
+    "causal_ablation": "retained decision frontier only",
+    "counterfactual": "static-gain and labeled retained-uncertainty model after code divergence",
+    "exact_replay": "V1 chronology and integer decisions only",
+    "physical_qualification": false,
+    "unexercised_boundaries": [
+      "RP2040 cross-core propagation",
+      "USB device driver and serial carrier",
+      "AD5693R and DAC-to-CX317 path",
+      "D14 reference input",
+      "D8 oscillator/count input",
+      "physical CX317 plant response"
+    ]
+  },
+  "contract": {
+    "contract_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+    "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/study_contract_v1.json"
+  },
+  "decision": {
+    "next_gate": "estimator_or_controller_architecture_revision",
+    "rejected_candidates": [
+      {
+        "candidate_id": "one_count_tight_hold_v1",
+        "first_discriminating_failure": "minimum:phase_behavior_preserved"
+      },
+      {
+        "candidate_id": "tight_phase_only_v1",
+        "first_discriminating_failure": "minimum:phase_behavior_preserved"
+      },
+      {
+        "candidate_id": "persistent_one_count_release_v1",
+        "first_discriminating_failure": "minimum:phase_behavior_preserved"
+      }
+    ],
+    "selected_candidate_id": null,
+    "terminal": "no_controller_successor_selected"
+  },
+  "exact_v1_baseline": {
+    "all_response_checkpoints_passed": true,
+    "application_count": 11,
+    "application_decision_sequences": [
+      6,
+      9,
+      11,
+      13,
+      16,
+      19,
+      21,
+      25,
+      28,
+      44,
+      48
+    ],
+    "application_deltas": [
+      -6,
+      -1,
+      -1,
+      -6,
+      -1,
+      -1,
+      -1,
+      5,
+      5,
+      -5,
+      5
+    ],
+    "cumulative_natural_movement_codes": 37,
+    "decision_count": 52,
+    "exact": true,
+    "first_seven_path_codes": 17,
+    "first_seven_phase_material": true,
+    "first_seven_terminal_code": 43051,
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+    "formal_physical_qualification_passed": false,
+    "last_four_net_codes": 10,
+    "last_four_path_codes": 20,
+    "last_four_phase_nonmaterial_frequency_driven": true,
+    "net_movement_from_setup_codes": -7,
+    "phase_material_application_count": 7,
+    "policy_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+    "terminal_code": 43061,
+    "terminal_dac_epoch": 12,
+    "terminal_decision_sequence": 52,
+    "terminal_next_unchecked_delta_codes": 5,
+    "terminal_prospective_net_displacement_codes": 2,
+    "terminal_prospective_path_codes": 42,
+    "terminal_reason": "prospective_low_efficiency_path"
+  },
+  "limitations": [
+    "Missing contemporaneous Attempt 4 replay attestations remain missing and the physical seal remains failed.",
+    "Modeled values after candidate code divergence are not observed plant behavior.",
+    "Raw phase epochs are never joined with a guessed offset.",
+    "D10 remains an external event input only and is absent from timing authority and control eligibility."
+  ],
+  "observed_facts": {
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+    "formal_physical_qualification_passed": false,
+    "registered_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90"
+  },
+  "ranking_tied": false,
+  "report_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523",
+  "report_type": "otis_sustained_hybrid_successor_offline_comparison_v1",
+  "schema_version": 1,
+  "selected_candidate_id": null,
+  "source_validation": {
+    "bound_file_count": 22,
+    "evidence_snapshot_failures": [],
+    "evidence_snapshot_warnings": [],
+    "package_identity": {
+      "content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+      "file_count": 80,
+      "total_bytes": 409352510
+    },
+    "run_dir": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z"
+  },
+  "status": "passed",
+  "terminal": "no_controller_successor_selected",
+  "tool": "otis_sustained_hybrid_successor_offline_compare_v1",
+  "tool_sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489"
+}

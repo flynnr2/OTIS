@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY_V1",
+  "status": "prospectively_frozen_before_candidate_results",
+  "contract_sha256": "c02ce352d5224b5ed395d48d62a2ddc8a99654d08b95ad23a182186a716a37eb",
+  "authority": {
+    "offline_analysis": true,
+    "serial_access": false,
+    "firmware_flash": false,
+    "reset": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "live_activation": false
+  },
+  "predecessor_study": {
+    "contract_path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/study_contract_v1.json",
+    "contract_semantic_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+    "contract_file_sha256": "602988d02fac311ca39e73c0531caa0dd5856be084b4838f26918d3ebcda235a",
+    "report_path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/comparison_report_v1.json",
+    "report_semantic_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523",
+    "report_file_sha256": "1aa3f8e5766bab071af91160a8801843102ad6058e36539daf97f0efbdd52ea7",
+    "tool_path": "host/otis_tools/sustained_hybrid_successor_study.py",
+    "tool_file_sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489",
+    "terminal": "no_controller_successor_selected",
+    "next_gate": "estimator_or_controller_architecture_revision"
+  },
+  "tracked_bindings": {
+    "v1_policy": {
+      "path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+      "sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c"
+    },
+    "frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "phase_estimator_candidates": {
+      "path": "profiles/estimators/cx318_relative_phase_candidates_v1.json",
+      "sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    }
+  },
+  "architecture_basis": {
+    "v1_application_sequences": [6, 9, 11, 13, 16, 19, 21, 25, 28, 44, 48],
+    "v1_application_deltas": [-6, -1, -1, -6, -1, -1, -1, 5, 5, -5, 5],
+    "phase_material_sequences": [6, 9, 11, 13, 16, 19, 21],
+    "frequency_only_maintenance_sequences": [25, 28, 44, 48],
+    "first_maintenance_frontier_sequence": 25,
+    "first_seven_path_codes": 17,
+    "late_four_path_codes": 20,
+    "one_count_frequency_hz": 0.0016666666666666668,
+    "one_count_v1_raw_codes": 4.807504617744086,
+    "empirical_detection_floor_hz": 0.0033333317438761396,
+    "calibrated_resolution_status": "unavailable",
+    "combined_uncertainty_status": "unavailable"
+  },
+  "mode_classifier": {
+    "phase_material_correction": "bounded_combined_integer_delta_differs_from_bounded_frequency_only_integer_delta",
+    "frequency_only_maintenance": "bounded_combined_integer_delta_equals_bounded_frequency_only_integer_delta",
+    "classification_time": "same_fresh_decision_frontier_before_request_submission",
+    "response_or_future_evidence_used": false,
+    "recompute_after_every_observation": true
+  },
+  "candidates": [
+    {
+      "candidate_id": "v1_baseline",
+      "selectable": false,
+      "semantics": "unchanged_exact_replay_only"
+    },
+    {
+      "candidate_id": "phase_priority_one_count_hold_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 1,
+      "semantics": "preserve_full_v1_combined_law_for_phase_material_correction;during_tight_frequency_only_maintenance_hold_absolute_counts_at_most_one;outside_tight_preserve_v1_frequency_acquisition"
+    },
+    {
+      "candidate_id": "separated_fll_pll_maintenance_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 2,
+      "semantics": "preserve_full_v1_combined_law_for_phase_material_correction;during_tight_nonmaterial_maintenance_apply_phase_only_integer_request;re_enable_frequency_loop_only_after_existing_tight_band_release"
+    },
+    {
+      "candidate_id": "phase_priority_1200s_maintenance_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 3,
+      "semantics": "preserve_full_v1_combined_law_for_phase_material_correction;during_tight_frequency_only_maintenance_use_exact_aggregate_of_two_fresh_contiguous_nonoverlapping_same_session_same_candidate_dac_epoch_selected600_count_outputs;hold_until_complete_support",
+      "maintenance_support_outputs": 2,
+      "maintenance_support_s": 1200,
+      "reset_on": [
+        "dac_epoch_change",
+        "capture_session_change",
+        "invalid_observation",
+        "stale_observation",
+        "noncontiguous_support",
+        "settling_exclusion",
+        "reference_loss",
+        "authority_loss"
+      ]
+    }
+  ],
+  "model": {
+    "counter_domain": "rp2040_timer0_extended",
+    "counter_rate_hz": 16000000,
+    "frequency_projection": "observed_frequency_hz_plus_gain_hz_per_code_times_candidate_minus_actual_code",
+    "phase_projection": "within_each_unjoined_phase_epoch_integrate_gain_times_candidate_minus_actual_code_over_exact_decision_intervals",
+    "phase_epoch_join": "forbidden",
+    "modeled_application_time": "source_decision_timestamp_ticks",
+    "plant_gain_hz_per_code": {
+      "minimum": 0.00016357422282453626,
+      "nominal": 0.00017008467693813145,
+      "maximum": 0.00017334010044578463
+    },
+    "ordinary_differential_uncertainty": "finite_run_gain_envelope_only",
+    "maximum_observed_hysteresis_equivalent_codes": 7.349273493706863,
+    "hysteresis_perturbation_codes_outward": 8,
+    "hysteresis_application": "dedicated_first_response_after_direction_reversal_dead_zone_perturbation_only",
+    "same_code_repeatability_span_hz": 0.0016666650772094727,
+    "same_code_repeatability_application": "dedicated_positive_and_negative_one_count_maintenance_observation_perturbations_only",
+    "continuous_nonzero_code_difference_offset_forbidden": true,
+    "calibrated_or_combined_uncertainty_claim": false,
+    "raw_sources_immutable": true
+  },
+  "selection_gate": {
+    "baseline_exact_required": true,
+    "mode_classifier_causal_required": true,
+    "attempt4_first_seven_phase_material_applications_exact_required": true,
+    "minimum_material_phase_applications_when_supplied": 2,
+    "maximum_absolute_raw_relative_phase_cycles": 36,
+    "minimum_matched_phase_improvement_fraction": 0.1,
+    "minimum_matched_phase_improvement_cycles": 1,
+    "maximum_frequency_rms_degradation_hz": 0.0016666666666666668,
+    "maximum_tight_occupancy_degradation_fraction": 0.1,
+    "attempt4_maximum_natural_path_codes": 27,
+    "attempt4_minimum_path_reduction_fraction_from_v1": 0.25,
+    "attempt4_minimum_absolute_net_regulation_codes": 2,
+    "repeated_alternation_forbidden": true,
+    "low_efficiency_terminal_forbidden": true,
+    "unexpected_clamp_forbidden": true,
+    "overlapping_transaction_forbidden": true,
+    "stale_evidence_reuse_forbidden": true,
+    "latent_demand_hiding_forbidden": true,
+    "maintenance_state_reset_exact_required": true,
+    "all_perturbation_cases_must_pass": true,
+    "all_gain_cases_must_pass": true,
+    "host_firmware_parity_required_if_selected": true,
+    "offline_result_is_physical_qualification": false,
+    "offline_result_grants_physical_authority": false
+  },
+  "perturbation_corpus": [
+    {"case_id": "phase_material_positive_one", "counts": [1], "phase_raw_codes": [-1.1]},
+    {"case_id": "phase_material_negative_one", "counts": [-1], "phase_raw_codes": [1.1]},
+    {"case_id": "maintenance_isolated_positive_one", "counts": [0, 1, 0]},
+    {"case_id": "maintenance_isolated_negative_one", "counts": [0, -1, 0]},
+    {"case_id": "maintenance_alternating", "counts": [1, -1, 1, -1]},
+    {"case_id": "maintenance_persistent_positive", "counts": [1, 1, 1, 1]},
+    {"case_id": "maintenance_persistent_negative", "counts": [-1, -1, -1, -1]},
+    {"case_id": "legitimate_slow_positive_drift", "counts": [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]},
+    {"case_id": "legitimate_slow_negative_drift", "counts": [0, -1, -1, -2, -2, -3, -3, -4, -4, -5, -5]},
+    {"case_id": "negative_to_positive_demand_reversal", "counts": [2, 2, 0, 0, -2, -2, -4, -4]},
+    {"case_id": "positive_to_negative_demand_reversal", "counts": [-2, -2, 0, 0, 2, 2, 4, 4]},
+    {"case_id": "maintenance_repeatability_positive_one_count", "count_offset": 1},
+    {"case_id": "maintenance_repeatability_negative_one_count", "count_offset": -1},
+    {"case_id": "reversal_hysteresis_dead_zone", "dead_zone_codes": 8},
+    {"case_id": "plant_gain_minimum", "gain": "minimum"},
+    {"case_id": "plant_gain_nominal", "gain": "nominal"},
+    {"case_id": "plant_gain_maximum", "gain": "maximum"},
+    {"case_id": "rounding_boundaries", "raw_delta_codes": [0.499999999999, 0.5, 0.500000000001, -0.499999999999, -0.5, -0.500000000001]},
+    {"case_id": "cadence_below_at_above", "elapsed_s": [1799, 1800, 1801]},
+    {"case_id": "dac_epoch_reset", "identity_transition": "dac_epoch"},
+    {"case_id": "capture_session_reset", "identity_transition": "capture_session"},
+    {"case_id": "noncontiguous_support_reset", "identity_transition": "source_support"},
+    {"case_id": "settling_support_reset", "identity_transition": "settling_exclusion"},
+    {"case_id": "stale_coherent", "identity_transition": "stale_coherent_hold"},
+    {"case_id": "contradictory_identity", "identity_transition": "contradictory_fail_static"},
+    {"case_id": "application_count_boundary", "authority_boundary": "maximum_automatic_applications"},
+    {"case_id": "cumulative_path_boundary", "authority_boundary": "maximum_cumulative_movement_codes"},
+    {"case_id": "range_boundary", "authority_boundary": "dac_range"},
+    {"case_id": "abort_fail_static_boundary", "authority_boundary": "abort_fail_static"}
+  ],
+  "ranking": [
+    "descending_passed_perturbation_case_count",
+    "ascending_attempt4_natural_path_codes",
+    "ascending_worst_case_frequency_rms_degradation_hz",
+    "ascending_semantic_complexity_rank"
+  ],
+  "tie_disposition": "no_mode_separated_architecture_selected",
+  "terminal_outcomes": [
+    "selected_mode_separated_architecture",
+    "no_mode_separated_architecture_selected",
+    "study_invalid_due_to_evidence_or_replay_mismatch"
+  ],
+  "output": {
+    "schema_version": 1,
+    "report_type": "otis_sustained_hybrid_mode_separation_offline_comparison_v1",
+    "tool_id": "otis_sustained_hybrid_mode_separation_offline_compare_v1",
+    "tool_path": "host/otis_tools/sustained_hybrid_mode_separation_study.py",
+    "canonical_json": "utf8_sorted_keys_compact_separators_allow_nan_false",
+    "report_sha256_scope": "all_report_fields_except_report_sha256",
+    "immutable_output_required": true
+  }
+}

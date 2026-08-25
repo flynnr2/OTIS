@@ -1,0 +1,3574 @@
+{
+  "candidate_comparisons": [
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_or_calibrated_uncertainty_claim": true
+      },
+      "candidate_id": "phase_priority_one_count_hold_v1",
+      "first_discriminating_failure": "minimum:frequency_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 28,
+      "nominal_attempt4_net_regulation_codes": -6,
+      "passed_perturbation_case_count": 26,
+      "perturbation_case_count": 29,
+      "perturbations": [
+        {
+          "case_id": "phase_material_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              -1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "phase_material_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_alternating",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.005,
+              0.005,
+              0.006666666666666667,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              -0.005,
+              -0.005,
+              -0.006666666666666667,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              -0.006666666666666667,
+              -0.006666666666666667
+            ],
+            "reasons": [
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0033333333333333335,
+              -0.0033333333333333335,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0033333333333333335,
+              0.006666666666666667,
+              0.006666666666666667
+            ],
+            "reasons": [
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "maintenance_frequency_enabled",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_repeatability_positive_one_count",
+          "detail": {
+            "count_offset": 1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_repeatability_negative_one_count",
+          "detail": {
+            "count_offset": -1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold",
+              "maintenance_one_count_hold"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "reversal_hysteresis_dead_zone",
+          "detail": {
+            "dead_zone_codes": 8,
+            "disposition": "finite_reversal_demand_remains_observable",
+            "maximum_unrounded_request_codes": 19.230018470976344
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_one_count_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_one_count_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "noncontiguous_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_one_count_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "limit": 84,
+            "maximum_modeled_path_codes": 29
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "maximum_code": 43063,
+            "minimum_code": 43051
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 10,
+              "decision_sequence": 31,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 28529,
+              "timestamp_s": 28531.077146
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 35,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30929,
+              "timestamp_s": 30931.064948
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 39,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 33329,
+              "timestamp_s": 33331.052507
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 13,
+              "decision_sequence": 43,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35729,
+              "timestamp_s": 35731.040237
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 6.771790195924819e-05,
+            "modeled_absolute_frequency_max_hz": 0.0024845380541226813,
+            "modeled_absolute_frequency_p95_hz": 0.0019120282742368044,
+            "modeled_frequency_rms_hz": 0.0010194517925771818,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5652173913043478,
+            "tight_occupancy_degradation_fraction": 0.19565217391304357
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055184654453809,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433472169145038,
+            "matched_improvement_fraction": 0.7269522408268311,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.99616265930871,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "phase_priority_one_count_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43063,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 29,
+            "net_regulation_codes": -5,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 27,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43058,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 38,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 13,
+              "decision_sequence": 42,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35129,
+              "timestamp_s": 35131.043395
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.746571333112765e-05,
+            "modeled_absolute_frequency_max_hz": 0.002517090324690657,
+            "modeled_absolute_frequency_p95_hz": 0.0017942304477035985,
+            "modeled_frequency_rms_hz": 0.0010291996039490613,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5217391304347826,
+            "tight_occupancy_degradation_fraction": 0.23913043478260876
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.00040551784413488736,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433483352733922,
+            "matched_improvement_fraction": 0.7269526591738422,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.996009928456273,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "phase_priority_one_count_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43062,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 28,
+            "net_regulation_codes": -6,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 12,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.114717920828626e-05,
+            "modeled_absolute_frequency_max_hz": 0.002533367442228923,
+            "modeled_absolute_frequency_p95_hz": 0.0017966720153343384,
+            "modeled_frequency_rms_hz": 0.00102288106982622,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.6086956521739131,
+            "tight_occupancy_degradation_fraction": 0.15217391304347827
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055175334608926,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433488944865829,
+            "matched_improvement_fraction": 0.7269528683599714,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.995933558421449,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 11,
+            "candidate_id": "phase_priority_one_count_hold_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43063,
+            "final_dac_epoch": 12,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 29,
+            "net_regulation_codes": -5,
+            "phase_material_application_count": 11,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 1,
+      "worst_case_frequency_rms_degradation_hz": 7.746571333112765e-05
+    },
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_or_calibrated_uncertainty_claim": true
+      },
+      "candidate_id": "separated_fll_pll_maintenance_v1",
+      "first_discriminating_failure": "minimum:frequency_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 28,
+      "nominal_attempt4_net_regulation_codes": -6,
+      "passed_perturbation_case_count": 24,
+      "perturbation_case_count": 29,
+      "perturbations": [
+        {
+          "case_id": "phase_material_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              -1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "phase_material_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_alternating",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              -0.006666666666666667
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.006666666666666667
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "maintenance_repeatability_positive_one_count",
+          "detail": {
+            "count_offset": 1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_repeatability_negative_one_count",
+          "detail": {
+            "count_offset": -1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only",
+              "tight_maintenance_phase_only"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "reversal_hysteresis_dead_zone",
+          "detail": {
+            "dead_zone_codes": 8,
+            "disposition": "finite_reversal_demand_remains_observable",
+            "maximum_unrounded_request_codes": 19.230018470976344
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "tight_maintenance_phase_only"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "tight_maintenance_phase_only"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "noncontiguous_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "tight_maintenance_phase_only"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "limit": 84,
+            "maximum_modeled_path_codes": 29
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "maximum_code": 43063,
+            "minimum_code": 43051
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 10,
+              "decision_sequence": 31,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 28529,
+              "timestamp_s": 28531.077146
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 35,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30929,
+              "timestamp_s": 30931.064948
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 39,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 33329,
+              "timestamp_s": 33331.052507
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 13,
+              "decision_sequence": 43,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35729,
+              "timestamp_s": 35731.040237
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 6.771790195924819e-05,
+            "modeled_absolute_frequency_max_hz": 0.0024845380541226813,
+            "modeled_absolute_frequency_p95_hz": 0.0019120282742368044,
+            "modeled_frequency_rms_hz": 0.0010194517925771818,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5652173913043478,
+            "tight_occupancy_degradation_fraction": 0.19565217391304357
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055184654453809,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433472169145038,
+            "matched_improvement_fraction": 0.7269522408268311,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.99616265930871,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "separated_fll_pll_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43063,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 29,
+            "net_regulation_codes": -5,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 27,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43058,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 38,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 13,
+              "decision_sequence": 42,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35129,
+              "timestamp_s": 35131.043395
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.746571333112765e-05,
+            "modeled_absolute_frequency_max_hz": 0.002517090324690657,
+            "modeled_absolute_frequency_p95_hz": 0.0017942304477035985,
+            "modeled_frequency_rms_hz": 0.0010291996039490613,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5217391304347826,
+            "tight_occupancy_degradation_fraction": 0.23913043478260876
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.00040551784413488736,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433483352733922,
+            "matched_improvement_fraction": 0.7269526591738422,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.996009928456273,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "separated_fll_pll_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43062,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 28,
+            "net_regulation_codes": -6,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 12,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.114717920828626e-05,
+            "modeled_absolute_frequency_max_hz": 0.002533367442228923,
+            "modeled_absolute_frequency_p95_hz": 0.0017966720153343384,
+            "modeled_frequency_rms_hz": 0.00102288106982622,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.6086956521739131,
+            "tight_occupancy_degradation_fraction": 0.15217391304347827
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055175334608926,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433488944865829,
+            "matched_improvement_fraction": 0.7269528683599714,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.995933558421449,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 11,
+            "candidate_id": "separated_fll_pll_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43063,
+            "final_dac_epoch": 12,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 29,
+            "net_regulation_codes": -5,
+            "phase_material_application_count": 11,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 2,
+      "worst_case_frequency_rms_degradation_hz": 7.746571333112765e-05
+    },
+    {
+      "aggregate_checks": {
+        "all_frozen_perturbations_pass": false,
+        "all_gain_scenarios_pass": false,
+        "deterministic_explicit_state": true,
+        "implementable_in_host_and_firmware": true,
+        "no_physical_or_calibrated_uncertainty_claim": true
+      },
+      "candidate_id": "phase_priority_1200s_maintenance_v1",
+      "first_discriminating_failure": "minimum:frequency_behavior_preserved",
+      "nominal_attempt4_natural_path_codes": 28,
+      "nominal_attempt4_net_regulation_codes": -6,
+      "passed_perturbation_case_count": 22,
+      "perturbation_case_count": 29,
+      "perturbations": [
+        {
+          "case_id": "phase_material_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              -1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "phase_material_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              -0.0016666666666666668
+            ],
+            "full_combined_preserved": true,
+            "phase_raw_codes": [
+              1.1
+            ],
+            "reasons": [
+              "phase_material_full_combined_law"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_isolated_positive_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0008333333333333334,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "maintenance_isolated_negative_one",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0008333333333333334,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "maintenance_alternating",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_positive",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0016666666666666668,
+              0.0,
+              0.0016666666666666668
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_persistent_negative",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0016666666666666668,
+              0.0,
+              -0.0016666666666666668
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_positive_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0008333333333333334,
+              0.0,
+              0.0025,
+              0.0,
+              0.004166666666666667,
+              0.0,
+              0.005833333333333334,
+              0.006666666666666667,
+              0.008333333333333333,
+              0.008333333333333333
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "legitimate_slow_negative_drift",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0008333333333333334,
+              0.0,
+              -0.0025,
+              0.0,
+              -0.004166666666666667,
+              0.0,
+              -0.005833333333333334,
+              -0.006666666666666667,
+              -0.008333333333333333,
+              -0.008333333333333333
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE",
+              "OUTSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "negative_to_positive_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0033333333333333335,
+              0.0,
+              0.0,
+              0.0,
+              -0.0033333333333333335,
+              0.0,
+              -0.006666666666666667
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "positive_to_negative_demand_reversal",
+          "detail": {
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0033333333333333335,
+              0.0,
+              0.0,
+              0.0,
+              0.0033333333333333335,
+              0.0,
+              0.006666666666666667
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete",
+              "outside_tight_frequency_acquisition"
+            ],
+            "tight_states": [
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "TIGHT_INSIDE",
+              "OUTSIDE"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "maintenance_repeatability_positive_one_count",
+          "detail": {
+            "count_offset": 1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              0.0008333333333333334,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "maintenance_repeatability_negative_one_count",
+          "detail": {
+            "count_offset": -1,
+            "effective_frequency_errors_hz": [
+              0.0,
+              -0.0008333333333333334,
+              0.0
+            ],
+            "reasons": [
+              "maintenance_1200s_support_incomplete",
+              "maintenance_1200s_aggregate_ready",
+              "maintenance_1200s_support_incomplete"
+            ]
+          },
+          "pass": false
+        },
+        {
+          "case_id": "reversal_hysteresis_dead_zone",
+          "detail": {
+            "dead_zone_codes": 8,
+            "disposition": "finite_reversal_demand_remains_observable",
+            "maximum_unrounded_request_codes": 19.230018470976344
+          },
+          "pass": true
+        },
+        {
+          "case_id": "plant_gain_minimum",
+          "detail": {
+            "scenario_id": "attempt4_minimum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_nominal",
+          "detail": {
+            "scenario_id": "attempt4_nominal"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "plant_gain_maximum",
+          "detail": {
+            "scenario_id": "attempt4_maximum"
+          },
+          "pass": false
+        },
+        {
+          "case_id": "rounding_boundaries",
+          "detail": {
+            "expected": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ],
+            "rounded": [
+              0,
+              1,
+              1,
+              0,
+              -1,
+              -1
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cadence_below_at_above",
+          "detail": {
+            "cadence_limited": [
+              true,
+              false,
+              false
+            ]
+          },
+          "pass": true
+        },
+        {
+          "case_id": "dac_epoch_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_1200s_support_incomplete"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "capture_session_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_1200s_support_incomplete"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "noncontiguous_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "maintenance_1200s_support_incomplete"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "settling_support_reset",
+          "detail": {
+            "maintenance_support_reused": false,
+            "post_transition_effective_frequency_error_hz": 0.0,
+            "post_transition_reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "stale_coherent",
+          "detail": {
+            "disposition": "bounded_hold_not_contradiction",
+            "effective_frequency_error_hz": 0.0,
+            "reason": "invalid_or_stale_maintenance_hold"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "contradictory_identity",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        },
+        {
+          "case_id": "application_count_boundary",
+          "detail": {
+            "limit": 12,
+            "maximum_modeled_applications": 12
+          },
+          "pass": true
+        },
+        {
+          "case_id": "cumulative_path_boundary",
+          "detail": {
+            "limit": 84,
+            "maximum_modeled_path_codes": 32
+          },
+          "pass": true
+        },
+        {
+          "case_id": "range_boundary",
+          "detail": {
+            "maximum_code": 43066,
+            "minimum_code": 43051
+          },
+          "pass": true
+        },
+        {
+          "case_id": "abort_fail_static_boundary",
+          "detail": {
+            "reason": "measurement_authority_or_common_health_fault",
+            "state_after": "FAIL_STATIC"
+          },
+          "pass": true
+        }
+      ],
+      "scenarios": [
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 10,
+              "decision_sequence": 31,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 28529,
+              "timestamp_s": 28531.077146
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 35,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30929,
+              "timestamp_s": 30931.064948
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 39,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 33329,
+              "timestamp_s": 33331.052507
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 13,
+              "decision_sequence": 43,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35729,
+              "timestamp_s": 35731.040237
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 6.771790195924819e-05,
+            "modeled_absolute_frequency_max_hz": 0.0024845380541226813,
+            "modeled_absolute_frequency_p95_hz": 0.0019120282742368044,
+            "modeled_frequency_rms_hz": 0.0010194517925771818,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5652173913043478,
+            "tight_occupancy_degradation_fraction": 0.19565217391304357
+          },
+          "gain_hz_per_code": 0.00016357422282453626,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055184654453809,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433472169145038,
+            "matched_improvement_fraction": 0.7269522408268311,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.99616265930871,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_minimum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "phase_priority_1200s_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43063,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00016357422282453626,
+            "gain_name": "minimum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 29,
+            "net_regulation_codes": -5,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 27,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25225,
+              "timestamp_s": 25227.093749
+            },
+            {
+              "applied_code": 43058,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 4,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 12,
+              "decision_sequence": 38,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 32729,
+              "timestamp_s": 32731.055682
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 13,
+              "decision_sequence": 42,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 35129,
+              "timestamp_s": 35131.043395
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.746571333112765e-05,
+            "modeled_absolute_frequency_max_hz": 0.002517090324690657,
+            "modeled_absolute_frequency_p95_hz": 0.0017942304477035985,
+            "modeled_frequency_rms_hz": 0.0010291996039490613,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.5217391304347826,
+            "tight_occupancy_degradation_fraction": 0.23913043478260876
+          },
+          "gain_hz_per_code": 0.00017008467693813145,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.00040551784413488736,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433483352733922,
+            "matched_improvement_fraction": 0.7269526591738422,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.996009928456273,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_nominal",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "phase_priority_1200s_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43062,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017008467693813145,
+            "gain_name": "nominal",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 28,
+            "net_regulation_codes": -6,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        },
+        {
+          "applications": [
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 2,
+              "decision_sequence": 6,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 5399,
+              "timestamp_s": 5401.197692
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 3,
+              "decision_sequence": 9,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 8102,
+              "timestamp_s": 8104.182775
+            },
+            {
+              "applied_code": 43060,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 4,
+              "decision_sequence": 11,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 10206,
+              "timestamp_s": 10208.171749
+            },
+            {
+              "applied_code": 43054,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 5,
+              "decision_sequence": 13,
+              "delta_codes": -6,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 12309,
+              "timestamp_s": 12311.160897
+            },
+            {
+              "applied_code": 43053,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 6,
+              "decision_sequence": 16,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 15011,
+              "timestamp_s": 15013.147511
+            },
+            {
+              "applied_code": 43052,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 7,
+              "decision_sequence": 19,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 17715,
+              "timestamp_s": 17717.133569
+            },
+            {
+              "applied_code": 43051,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 8,
+              "decision_sequence": 21,
+              "delta_codes": -1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 19819,
+              "timestamp_s": 19821.122284
+            },
+            {
+              "applied_code": 43059,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 9,
+              "decision_sequence": 28,
+              "delta_codes": 8,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 25825,
+              "timestamp_s": 25827.090743
+            },
+            {
+              "applied_code": 43061,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 10,
+              "decision_sequence": 30,
+              "delta_codes": 2,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 27929,
+              "timestamp_s": 27931.080398
+            },
+            {
+              "applied_code": 43062,
+              "architecture_mode": "PHASE_MATERIAL_CORRECTION",
+              "dac_epoch": 11,
+              "decision_sequence": 34,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 30329,
+              "timestamp_s": 30331.067997
+            },
+            {
+              "applied_code": 43063,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 12,
+              "decision_sequence": 45,
+              "delta_codes": 1,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 37831,
+              "timestamp_s": 37833.029128
+            },
+            {
+              "applied_code": 43066,
+              "architecture_mode": "FREQUENCY_ONLY_MAINTENANCE",
+              "dac_epoch": 13,
+              "decision_sequence": 52,
+              "delta_codes": 3,
+              "phase_materially_influenced": true,
+              "range_clamped": false,
+              "reason": "phase_material_request_ready",
+              "source_last_sequence": 42935,
+              "timestamp_s": 42937.002961
+            }
+          ],
+          "frequency_metrics": {
+            "baseline_frequency_rms_hz": 0.0009517338906179336,
+            "baseline_sample_count": 46,
+            "baseline_tight_inside_occupancy_fraction": 0.7608695652173914,
+            "exact": true,
+            "frequency_rms_degradation_hz": 7.114717920828626e-05,
+            "modeled_absolute_frequency_max_hz": 0.002533367442228923,
+            "modeled_absolute_frequency_p95_hz": 0.0017966720153343384,
+            "modeled_frequency_rms_hz": 0.00102288106982622,
+            "pass": false,
+            "reason": "frequency_threshold_failed",
+            "sample_count": 46,
+            "tight_inside_occupancy_fraction": 0.6086956521739131,
+            "tight_occupancy_degradation_fraction": 0.15217391304347827
+          },
+          "gain_hz_per_code": 0.00017334010044578463,
+          "phase_metrics": {
+            "active_absolute_ols_slope_cycles_per_s": 0.0004055175334608926,
+            "baseline_absolute_ols_slope_cycles_per_s": 0.0014851558081756609,
+            "exact": true,
+            "matched_improvement_cycles": 1.9433488944865829,
+            "matched_improvement_fraction": 0.7269528683599714,
+            "maximum_absolute_modeled_raw_relative_phase_cycles": 11.995933558421449,
+            "pass": true,
+            "phase_epoch": 1,
+            "raw_phase_epochs_joined": false,
+            "reason": "thresholds_satisfied"
+          },
+          "provenance": "modeled_closed_loop_counterfactual",
+          "scenario_id": "attempt4_maximum",
+          "selection_checks": {
+            "attempt4_path_at_most_27": false,
+            "attempt4_path_reduction_at_least_25_percent": false,
+            "count_and_path_authority_preserved": true,
+            "first_seven_phase_material_applications_exact": true,
+            "frequency_behavior_preserved": false,
+            "meaningful_net_regulation": true,
+            "minimum_two_material_phase_applications": true,
+            "mode_classifier_causal": true,
+            "no_fail_static_or_low_efficiency_terminal": true,
+            "no_physical_or_calibrated_uncertainty_claim": true,
+            "no_three_reversals_in_four": true,
+            "no_unexpected_range_clamp": true,
+            "phase_behavior_preserved": true
+          },
+          "summary": {
+            "application_count": 12,
+            "candidate_id": "phase_priority_1200s_maintenance_v1",
+            "counter_domain": "rp2040_timer0_extended",
+            "direction_reversal_count": 1,
+            "final_code": 43066,
+            "final_dac_epoch": 13,
+            "gain_hz_per_code": 0.00017334010044578463,
+            "gain_name": "maximum",
+            "mode_classifier_causal": true,
+            "natural_path_codes": 32,
+            "net_regulation_codes": -2,
+            "phase_material_application_count": 12,
+            "range_clamped": false,
+            "terminal_reason": "response_observation_recorded",
+            "terminal_state": "HYBRID_TRACKING",
+            "three_reversals_in_four": false
+          }
+        }
+      ],
+      "selectable": false,
+      "semantic_complexity_rank": 3,
+      "worst_case_frequency_rms_degradation_hz": 7.746571333112765e-05
+    }
+  ],
+  "claim_boundary": {
+    "counterfactual": "finite_run_gain_envelope_model_after_first_candidate_code_divergence",
+    "exact_replay": "V1 chronology, integer decisions, and mode classification only",
+    "physical_authority": false,
+    "physical_qualification": false,
+    "unexercised_boundaries": [
+      "RP2040 cross-core propagation",
+      "USB device driver and serial carrier",
+      "AD5693R and DAC-to-CX317 path",
+      "D14 reference input",
+      "D8 oscillator/count input",
+      "physical CX317 response"
+    ]
+  },
+  "contract": {
+    "contract_sha256": "c02ce352d5224b5ed395d48d62a2ddc8a99654d08b95ad23a182186a716a37eb",
+    "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/study_contract_v1.json"
+  },
+  "decision": {
+    "next_gate": "estimator_state_and_uncertainty_architecture_revision",
+    "rejected_candidates": [
+      {
+        "candidate_id": "phase_priority_one_count_hold_v1",
+        "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+      },
+      {
+        "candidate_id": "separated_fll_pll_maintenance_v1",
+        "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+      },
+      {
+        "candidate_id": "phase_priority_1200s_maintenance_v1",
+        "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+      }
+    ],
+    "selected_candidate_id": null,
+    "terminal": "no_mode_separated_architecture_selected"
+  },
+  "exact_v1_baseline": {
+    "all_response_checkpoints_passed": true,
+    "application_count": 11,
+    "application_decision_sequences": [
+      6,
+      9,
+      11,
+      13,
+      16,
+      19,
+      21,
+      25,
+      28,
+      44,
+      48
+    ],
+    "application_deltas": [
+      -6,
+      -1,
+      -1,
+      -6,
+      -1,
+      -1,
+      -1,
+      5,
+      5,
+      -5,
+      5
+    ],
+    "cumulative_natural_movement_codes": 37,
+    "decision_count": 52,
+    "exact": true,
+    "first_seven_path_codes": 17,
+    "first_seven_phase_material": true,
+    "first_seven_terminal_code": 43051,
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+    "formal_physical_qualification_passed": false,
+    "last_four_net_codes": 10,
+    "last_four_path_codes": 20,
+    "last_four_phase_nonmaterial_frequency_driven": true,
+    "net_movement_from_setup_codes": -7,
+    "phase_material_application_count": 7,
+    "policy_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+    "terminal_code": 43061,
+    "terminal_dac_epoch": 12,
+    "terminal_decision_sequence": 52,
+    "terminal_next_unchecked_delta_codes": 5,
+    "terminal_prospective_net_displacement_codes": 2,
+    "terminal_prospective_path_codes": 42,
+    "terminal_reason": "prospective_low_efficiency_path"
+  },
+  "limitations": [
+    "Attempt 4's missing contemporaneous replay attestations remain missing.",
+    "Candidate values after code-path divergence are modeled, not observed.",
+    "Calibrated estimator, reference, aperture, plant, and combined uncertainty remain unavailable.",
+    "Finite-run hysteresis and repeatability perturbations are discriminators, not population bounds.",
+    "Raw phase epochs are never joined with a guessed offset.",
+    "D10 remains an external event input only."
+  ],
+  "mode_classifier_replay": {
+    "causal_decision_frontier": true,
+    "frequency_only_maintenance_sequences": [
+      25,
+      28,
+      44,
+      48
+    ],
+    "phase_material_sequences": [
+      6,
+      9,
+      11,
+      13,
+      16,
+      19,
+      21
+    ]
+  },
+  "model_revision_from_predecessor": {
+    "calibrated_or_combined_uncertainty_available": false,
+    "continuous_hysteresis_offset_applied": false,
+    "continuous_same_code_repeatability_offset_applied": false,
+    "hysteresis_exercised_as": "outward_eight_code_reversal_dead_zone_perturbation",
+    "ordinary_differential_response": "retained_minimum_nominal_maximum_gain",
+    "same_code_repeatability_exercised_as": "positive_and_negative_one_count_maintenance_observation_perturbations"
+  },
+  "observed_facts": {
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+    "formal_physical_qualification_passed": false,
+    "v1_application_deltas": [
+      -6,
+      -1,
+      -1,
+      -6,
+      -1,
+      -1,
+      -1,
+      5,
+      5,
+      -5,
+      5
+    ],
+    "v1_terminal_reason": "prospective_low_efficiency_path"
+  },
+  "ranking_tied": false,
+  "report_sha256": "6b971643c106fabe0cec2c267f733ded330469ad7596125fb2dd33e57a6b9aef",
+  "report_type": "otis_sustained_hybrid_mode_separation_offline_comparison_v1",
+  "schema_version": 1,
+  "selected_candidate_id": null,
+  "source_validation": {
+    "attempt4_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+    "attempt4_file_count": 80,
+    "attempt4_total_bytes": 409352510,
+    "bound_file_count": 8,
+    "evidence_snapshot_failures": [],
+    "evidence_snapshot_warnings": [],
+    "predecessor_contract_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+    "predecessor_report_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523"
+  },
+  "status": "passed",
+  "terminal": "no_mode_separated_architecture_selected",
+  "tool": "otis_sustained_hybrid_mode_separation_offline_compare_v1",
+  "tool_sha256": "9fe68acc9efcd5fd60a1f1b4982a2a485e5cca1d21dbdce418189fc57d93b85a"
+}

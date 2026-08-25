@@ -10,9 +10,9 @@ The design principles are in
 ## Current support boundary
 
 Current HEAD preserves `CX319_EVIDENCE_EPOCH_1` as its physical evidence floor
-and retains the CX320 active-hybrid implementation and qualification tooling
-with live authority disabled. The retained deployed CX319 wire identities,
-fail-closed rules, and historical reproduction procedure are in
+and retains the active-hybrid implementation, evidence readers, and offline
+replay tooling with all physical live authority disabled. The retained deployed
+CX319 wire identities, fail-closed rules, and historical reproduction procedure are in
 [`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`](docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md).
 
 H0/SW1, H1, Phase 4/5, CX317, and CX318 operational readers, profiles, campaign
@@ -41,16 +41,24 @@ reset makes the physical code unknown until a new exact setup acknowledgement
 is captured. See the
 [`attempt-9 terminal report`](docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md).
 
-The active programme is offline-only CX321 successor preparation. Its v2 design
-adds one separately identified 21-code plant-sign transaction using a dedicated
-1,500-second estimator before the unchanged 600-second natural hybrid
-controller. Exhaustive fixed-code replay selected the three-count gate over the
-original 600-second and persistent candidates; the retained plant dwells give
-direct estimator parity. Firmware, host replay, supervision, analysis and the
-producer-to-first-natural-consumer path are implemented and release-verified.
-The exact clean-source bundle, its same-bundle rehearsal and separate physical
-authority are still pending. See the
-[CX321 design decision](docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md).
+The OTIS sustained-hybrid V1 programme is closed after Attempt 4. Its physical
+qualification failed because eleven required contemporaneous pre-phase-4 replay
+attestations were absent; that missing source evidence cannot be recreated as a
+pass. Separately, the retained controller path reached the prospectively frozen
+`prospective_low_efficiency_path` terminal after 52 decisions and eleven
+automatic applications. The unchanged V1 controller is therefore scientifically
+rejected and no Attempt 5 or V1 live operation is authorized. See the
+[Attempt 4 terminal report](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md).
+
+The offline sustained-hybrid successor study rejected three simple deadband
+variants because none preserved the early phase behavior. A subsequent frozen
+mode-separation architecture study preserved that behavior and cleared the
+phase gate, but all three architectures lost too much tight-band occupancy and
+used 28 to 32 path codes. It therefore also selected no successor. Attempt 4
+authority remains consumed, V1 remains closed, and there is no active
+programme or physical authority on current HEAD. The next gate is a separately
+frozen estimator-state and uncertainty architecture revision. See the
+[mode-separation decision](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md).
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute
@@ -86,9 +94,9 @@ compatibility tests. See
 | `data_contracts/` | current deployed contract documentation |
 | `firmware/arduino/otis_nano_rp2040_connect/` | current firmware platform |
 | `host/otis_tools/` | current capture, control, replay, and evidence tools |
-| `profiles/` | current CX319 evidence, sealed CX320 result, and offline CX321 policy, model, estimator, and authority bindings |
+| `profiles/` | current evidence, closed programme status, offline study, policy, model, estimator, and authority bindings |
 | `schemas/` | current machine-readable schemas |
-| `tests/` | current platform, CX319/CX320 evidence, and CX321 design regression tests |
+| `tests/` | current platform, evidence, policy, authority, and replay regressions |
 | `docs/60_EXPERIMENTS/` | reviewed current and historical scientific record |
 
 ## License

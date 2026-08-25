@@ -290,6 +290,41 @@ def test_existing_run_is_rejected_before_owner_or_board_access(
         )
 
 
+def test_sustained_v1_live_operation_is_blocked_before_serial_or_board_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation_path = tmp_path / "sustained-v1-activation.json"
+    activation = {
+        "programme_id": "OTIS_SUSTAINED_HYBRID_REGULATION_V1",
+        "device": {"path": "/dev/cu.must-not-open"},
+    }
+    _write(activation_path, activation)
+    monkeypatch.setattr(
+        runner,
+        "validate_activation",
+        lambda _path, *, programme: (activation, {}, {}),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_serial_owner_pids",
+        lambda _device: (_ for _ in ()).throw(AssertionError("serial access")),
+    )
+    monkeypatch.setattr(
+        runner,
+        "read_board_identity",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("board access")),
+    )
+
+    with pytest.raises(RuntimeError, match="otis_sustained_hybrid_regulation_live"):
+        runner.run_active_hybrid_qualification(
+            activation_path=activation_path,
+            run_dir=tmp_path / "must-not-exist",
+            evidence_index_path=tmp_path / "index.json",
+        )
+
+    assert not (tmp_path / "must-not-exist").exists()
+
+
 def test_orchestration_waits_for_abort_delivery_before_capture_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
