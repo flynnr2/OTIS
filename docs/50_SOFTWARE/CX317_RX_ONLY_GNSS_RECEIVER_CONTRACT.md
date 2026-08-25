@@ -1,124 +1,165 @@
-# CX317 RX-Only GNSS Receiver Contract
+# CX317 GNSS Serial Discovery and Runtime RX-Only Contract
 
-Status: Stage 2 implementation contract; the 3000 ms freshness candidate must
-be confirmed or tightened from the sealed live smoke before active control.
+Status: current implementation contract. The historical filename is retained
+for stable references. The 3000 ms metadata-freshness value remains subject to
+the sealed live receiver evidence.
 
 ## Scope and authority
 
-This adapter qualifies contemporaneous receiver health beside the existing raw
-PPS capture. It does not timestamp PPS from UART arrival time, prove UTC
-traceability, calibrate cable or receiver delay, or establish the PA1616S PPS
-accuracy in the installed rig.
+This service qualifies contemporaneous receiver health beside the independent
+raw D14 PPS capture. UART arrival time never timestamps PPS, establishes UTC
+traceability, calibrates receiver/cable delay, or replaces D14 timing authority.
 
-The adapter has no transmit operation. `OTIS_GNSS_UART_TX_ENABLED=1` is a
-compile-time error. The implementation maps only UART0 RX and explicitly leaves
-Nano D1/GPIO0 as a high-impedance input. Raw PPS capture continues through its
-existing independent D14 path and is serviced before GNSS parsing.
+GNSS serial acquisition is not a boot or capture prerequisite. `begin()` only
+initializes fixed state and the first UART candidate; discovery, queries and
+configuration advance through bounded Core 0 service calls. D14/D8 capture,
+host attachment and telemetry continue while the link is `discovering`,
+`validating`, `degraded` or `lost`. GNSS-dependent control remains inhibited
+until the serial link and required metadata independently qualify.
+
+Nano D1/GPIO0 is owned by the GNSS service. Transmission is limited to four
+compile-time fixed PMTK packets:
+
+- `$PMTK605*31` - query receiver firmware identity;
+- `$PMTK251,115200*1F` - request the frozen target baud;
+- `$PMTK414*33` - query NMEA output configuration; and
+- `$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29` - enable exactly
+  RMC, GGA and GSA once per position fix.
+
+No host command, runtime payload or general receiver-write API exists. Once the
+target baud, identity and output configuration are confirmed, the service is
+runtime RX-only. In this retained telemetry terminology, `rx_only=true` means
+that the fixed configuration transaction is complete and no transmit action is
+pending or active. D1 remains UART-mapped and electrically idle-high; it is not
+returned to a high-impedance GPIO input.
 
 ## Frozen physical and protocol mapping
 
-| Item | Stage 2 value | Evidence |
+| Item | Current value | Evidence |
 |---|---|---|
-| GPS breakout TX | Nano D0 / RP2040 GPIO1 / UART0 RX | Installed Philhower `rp2040` 6.0.0 Nano variant: `D0=(1u)`, `PIN_SERIAL1_RX=D0` |
-| Nano TX reservation | Nano D1 / RP2040 GPIO0, high-impedance input, never UART-mapped | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; source-level structural test |
+| GPS TX | Nano D0 / RP2040 GPIO1 / UART0 RX | Installed Philhower `rp2040` 6.0.0 Nano variant: `D0=(1u)`, `PIN_SERIAL1_RX=D0` |
+| GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
 | Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
-| UART | UART0, 9600 baud, 8 data bits, no parity, 1 stop bit | PA1616S default is 9600 baud; Adafruit breakout guide says TX defaults to 9600 baud |
-| Logic | GPS TX is a 3.3 V logic output; PA1616S TX0 high is 2.4-2.8 V and low is at most 0.4 V | Local Adafruit guide p. 12; PA1616S local datasheet p. 13 |
-| Receiver output | 1 Hz default; checksum-terminated NMEA RMC and GGA accepted; other checksum-valid sentences ignored | PA1616S local datasheet pp. 12 and 14-18 |
-| PPS | Independent breakout PPS output on D14; UART metadata is never substituted for its timestamp | Adafruit guide p. 12 and OTIS capture architecture |
+| UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
+| Discovery baud set | 115200, 9600, 57600, 38400, 19200, 14400, 4800 | MT3339 PMTK251 supported values; target first, then the documented alternatives |
+| Frozen operational baud | 115200 | Confirmed checksum-valid PMTK705 after any baud transition |
+| Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 fields zero | PMTK514 readback must exactly match after acknowledgement |
+| PPS | Independent breakout PPS output on D14 | UART metadata never substitutes for the D14 timestamp |
 
-The local file `docs/datasheets/CD+PA1616S+Datasheet.v03.pdf` has SHA-256
+The local `docs/datasheets/CD PA1616S Datasheet.v05.pdf` has SHA-256
+`1edf78b565231f887164a52e3ed0e6b001e9c6246cddc21dda7e64291ff8a8f2`.
+It identifies the MT3339 solution and 9600 baud as the module default.
+
+The older local `docs/datasheets/CD+PA1616S+Datasheet.v03.pdf` has SHA-256
 `f041c26af4d3f244a33f8f0c6f6d5286e239173a9ea510346dc9c8c7cd3814c4`.
 Its PDF metadata says Revision V03 while the rendered document identifies
-itself as V04. The operator referred to V05, but no V05 file was found in the
-workspace or user home at Stage 2 execution time. Claims here are therefore
-limited to the exact local artifact and the live receiver output.
+itself as V04. It agrees on the MT3339 solution and default baud.
+
+The local `docs/datasheets/PMTK command packet-Complete-C39-A01.pdf` has
+SHA-256 `88318174825c78e27c4f24eb9b205875e5336f1352e5fa2801a724dad6ce1160`.
+It documents PMTK acknowledgements, PMTK605/705 identity, PMTK414/514 output
+query/readback, all seven candidate baud values, and the temporary/retained
+configuration qualifications. The state machine therefore discovers current
+state rather than assuming either reset-to-default or backup retention.
 
 The local `docs/datasheets/adafruit-ultimate-gps.pdf` has SHA-256
-`799ba1670e7eca399d482fc6fecf59fdbc0feda2c01b81e40fac9fab175b2c03` and
-identifies itself as updated 2025-07-23.
+`799ba1670e7eca399d482fc6fecf59fdbc0feda2c01b81e40fac9fab175b2c03`
+and identifies itself as updated 2025-07-23.
+
+## Discovery and configuration state machine
+
+1. Select a candidate baud without waiting and clear the discovery frame.
+2. Listen passively for 1200 ms. Any checksum-valid NMEA/PMTK frame is link
+   evidence only; wrong-baud bytes never enter the canonical metadata parser.
+3. Send PMTK605 and require a checksum-valid PMTK705 within 750 ms. Silence or
+   unrelated NMEA advances to the next candidate.
+4. If identity is found away from 115200, send PMTK251 at the identified baud,
+   wait for bounded physical transmission completion, switch UART0 to 115200,
+   and require a fresh PMTK705 response at the target baud. An acknowledgement
+   at the producer boundary is not sufficient.
+5. Query PMTK514. If it does not exactly declare RMC/GGA/GSA-only output, send
+   the fixed PMTK314 packet, require successful PMTK001 acknowledgement, query
+   again, and require exact PMTK514 readback.
+6. Enter `online` and open the metadata parser only after all preceding gates.
+   Ten seconds without any checksum-valid link frame closes it and restarts
+   discovery; receiver metadata must requalify under the identity-epoch rules.
+
+The first complete scan is a bounded grace period. Discovery still in progress
+after 15 seconds reports `degraded`; it does not stop capture. A previously
+online link reports `lost` while reacquisition proceeds.
 
 ## Parser and service bounds
 
-- Fixed receiver state; no heap allocation.
-- Fixed 96-byte line buffer, including sentence start and terminator space.
-- At most 32 UART bytes consumed per main-loop service call.
-- Every complete synchronous STS record invokes one additional instance of
-  that same 32-byte-bounded service. This prevents periodic health and
-  `CONFIG?` output bursts from starving UART0 without weakening capture-first
-  main-loop ordering or creating an unbounded drain. A startup guard makes the
-  interleave a no-op until the RX-only UART is initialized.
-- GNSS status takes its monotonic-millisecond freshness anchor immediately
-  before copying the receiver snapshot, after all preceding interleaved UART
-  service in that burst. A status-burst entry timestamp must not be reused for
-  this calculation: a sentence parsed later in the same burst would otherwise
-  appear slightly in the future and its unsigned age would wrap near
-  `UINT32_MAX`.
-- RMC requires a checksum-valid sentence, status `A`, syntactically valid UTC,
-  and a six-digit date.
-- GGA requires a checksum-valid sentence, non-zero fix quality, non-zero
-  satellite count, and syntactically valid UTC. HDOP is retained when supplied.
-- Both a fresh RMC and fresh GGA must occur after the most recent checksum or
-  parser fault before metadata can requalify.
-- A partial line, nested `$`, absent/malformed checksum, field failure, or
-  oversize sentence increments the parser-fault epoch and inhibits eligibility.
-- The initial freshness candidate is 3000 ms: three nominal 1 Hz epochs. Live
-  Stage 2 evidence must show the observed RMC/GGA interval distribution and may
-  only retain or tighten this value.
-- Ten seconds without a recognized RMC/GGA marks a disconnect. The next
-  recognized message increments `identity_epoch`. Any epoch other than the
-  run-start epoch is non-authoritative until a fresh run explicitly establishes
-  identity, so reconnect cannot silently resume actuation.
-- Short fix loss without a receiver-identity epoch change may recover only
-  after a fresh, checksum-valid RMC/GGA pair.
+- No heap allocation.
+- Separate fixed buffers: 256 bytes for PMTK/NMEA discovery and 96 bytes for
+  canonical RMC/GGA/GSA metadata.
+- At most 32 UART RX bytes and eight UART TX bytes are handled per service call.
+- A transmit has one absolute 500 ms horizon; intermittent FIFO progress does
+  not extend it. Failure is recorded and discovery restarts.
+- UART changes use the documented candidate set only. Each transition resets
+  the discovery collector so prior-rate bytes cannot manufacture a frame.
+- Every synchronous STS record invokes the same bounded service, preventing
+  health bursts from starving UART0 without weakening capture-first ordering.
+- GNSS status takes its freshness anchor immediately before snapshot copying,
+  after preceding interleaved service.
+- RMC requires a valid checksum, status `A`, syntactically valid UTC and a
+  six-digit date. GGA requires valid checksum, non-zero fix quality and
+  satellites, and valid UTC. GSA Mode 2 independently supplies 3D state.
+- Fresh RMC and GGA after the latest metadata parser fault are required.
+- Ten seconds without recognized RMC/GGA marks a receiver disconnect. The next
+  recognized message increments `identity_epoch`; an epoch other than the
+  run-start epoch cannot silently resume control.
 
 ## Eligibility contract
 
 `gnss_receiver.metadata_control_eligible` is true only when:
 
-1. the receiver is initialized and structurally RX-only;
-2. current RMC and GGA messages are both fresh and checksum-valid after the
-   latest parser fault;
-3. RMC is valid, GGA fix quality and satellite count are non-zero, and UTC/date
-   are available; and
-4. `identity_epoch` remains the run-start epoch.
+1. the service is initialized;
+2. `link_state=online`, `confirmed_baud=115200`, PMTK705 identity is available,
+   PMTK514 configuration is exact, and the service has returned to RX-only;
+3. RMC and GGA are fresh and checksum-requalified after the latest parser fault;
+4. RMC is valid, GGA fix quality and satellite count are non-zero, UTC/date are
+   available; and
+5. `identity_epoch` remains the run-start epoch.
 
-`gnss_receiver.control_eligible` additionally requires the independent raw PPS
-and count gate to be healthy: a control-ready count stream, at least one
-accepted D14 PPS, no rejected-short or rejected-long D14 event, and no capture
-or PPS-boundary ring drop. Eligibility is a gate only. It is not a PPS accuracy,
-UTC traceability, or holdover claim.
+The active-authority consumer additionally requires fresh checksum-requalified
+GSA Mode 2 value 3 as explicit 3D evidence; GGA fix quality does not encode that
+dimension.
+
+`gnss_receiver.control_eligible` additionally requires the independent raw D14
+PPS and D8/count gates: a control-ready count stream, accepted D14 PPS, clean
+capture/boundary queues and no current reference anomaly. Eligibility is a
+diagnostic gate, not a PPS-accuracy, UTC-traceability or holdover claim.
 
 ## Telemetry contract
 
-Periodic `STS` records under component `gnss_receiver` expose:
+Periodic `STS` records under `gnss_receiver` expose:
 
-- receiver/configuration, RX/TX pins, RX-only state and NMEA talker;
-- RMC/GGA seen state, RMC validity, GGA fix quality, satellites and HDOP;
-- UTC/date availability and values;
-- metadata age/freshness, checksum requalification, disconnect state,
-  identity stability and identity epoch;
-- checksum-valid, checksum-failure, parser-drop, truncated, oversize, RMC and
-  GGA counters; and
+- service initialization, link state, current candidate and confirmed baud;
+- PMTK release identity, exact-configuration confirmation and runtime RX-only
+  state;
+- discovery cycle, last-valid-frame age, candidate rejection, configuration,
+  transmit, link-loss, checksum and oversize counters;
+- RMC/GGA/GSA state, validity, fix quality/dimension, satellites and HDOP;
+- metadata freshness, checksum requalification, disconnect and identity epoch;
+  and
 - metadata-only, raw-PPS-only and combined control eligibility.
 
-UTC/date values are diagnostic receiver metadata. They are not used as event
+UTC/date values remain diagnostic receiver metadata and are never event
 timestamps.
 
 ## Deterministic fixtures
 
 `tests/cpp/gnss_receiver_harness.cpp` and `tests/test_gnss_receiver.py` cover:
 
-- valid GGA-before-RMC order and extracted fields;
-- checksum failure followed by mandatory RMC/GGA requalification;
-- truncated, nested-start and oversize input;
-- exact freshness boundary and stale metadata;
-- fix loss and fresh-pair recovery;
-- invalid UTC;
-- a long disconnect, receiver identity epoch increment and continued inhibit;
-- source-level proof that GPIO0 is never UART-mapped and no UART write API is
-  present; and
-- capture-first, statically bounded service ordering, including bounded
-  receiver interleaving between synchronous STS records; and
-- source-level proof that each GNSS status snapshot takes a local post-service
-  freshness clock anchor rather than reusing the status-burst entry time.
+- passive target-baud discovery and exact configuration confirmation;
+- timeout at 115200, discovery at 9600, bounded transition to 115200, identity
+  re-query and output reconfiguration/readback;
+- wrong-baud/checksum noise isolation, degraded discovery and online loss;
+- fixed command checksums, the sole bounded UART write site and absence of a
+  generic transmit API;
+- constant-time `begin()`, capture-first ordering and bounded RX/TX service;
+- valid metadata order variation, parser faults and requalification;
+- freshness, fix loss/recovery, GSA dimension, disconnect and identity epoch;
+  and
+- post-service status freshness anchoring.

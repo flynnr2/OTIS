@@ -37,7 +37,9 @@ Both profiles freeze:
 - minimum applied-to-applied cadence 1800 s;
 - 900 s post-application exclusion and 600 s wholly fresh authoritative
   support;
-- RX-only GNSS at UART0/9600 with Nano TX high impedance;
+- asynchronous GNSS serial discovery across the documented MT3339 baud set,
+  frozen 115200-baud operation, exact PMTK identity/output readback, and
+  runtime RX-only service after bounded fixed-command configuration;
 - the qualified PPS-gated snapshot/count backend;
 - one outstanding request and one I2C attempt;
 - no automatic retry and no restoration write on any stop.
@@ -75,6 +77,9 @@ latches a fault. Reboot clears all volatile arming and capture leases.
 
 GGA fix quality, GSA fix dimension, and the 1PPS pin are separate evidence:
 
+- GNSS serial discovery does not gate boot, D14/D8 capture, telemetry or host
+  attachment; it independently inhibits setup/control authority until the link
+  is online at 115200 with exact PMTK identity and output configuration;
 - RMC and GGA must be checksum-valid, mutually fresh, fix-valid, dated, and
   UTC-bearing under the frozen metadata policy;
 - the receiver identity epoch must remain 1 for the run;

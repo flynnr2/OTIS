@@ -2371,6 +2371,13 @@ void emit_gnss_receiver_status(void) {
                                     : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT;
   const char *health_severity =
       status.control_eligible ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN;
+  const char *link_severity =
+      status.link_online || !status.discovery_degraded
+          ? OTIS_SEVERITY_INFO
+          : OTIS_SEVERITY_WARN;
+  const uint32_t link_flags = status.link_online
+                                  ? OTIS_FLAG_NONE
+                                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
   emit_status("gnss_receiver", "enabled",
               OTIS_ENABLE_GNSS_RECEIVER ? "true" : "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
@@ -2379,20 +2386,97 @@ void emit_gnss_receiver_status(void) {
               status.initialized ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
               status.initialized ? OTIS_FLAG_NONE
                                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("gnss_receiver", "link_state",
+              status.link_health_state[0] == '\0'
+                  ? "disabled"
+                  : status.link_health_state,
+              link_severity, link_flags);
+  emit_status("gnss_receiver", "link_online",
+              status.link_online ? "true" : "false", link_severity,
+              link_flags);
   emit_status("gnss_receiver", "receiver_identity",
-              "nmea_rmc_gga_model_unavailable", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("gnss_receiver", "uart_configuration", "uart0_9600_8n1",
+              status.receiver_identity_available
+                  ? status.receiver_release
+                  : "unavailable",
+              link_severity, link_flags);
+  emit_status("gnss_receiver", "configuration_confirmed",
+              status.configuration_confirmed ? "true" : "false",
+              link_severity, link_flags);
+  emit_status("gnss_receiver", "uart_configuration",
+              "uart0_autodiscovery_8n1_target_115200",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_receiver", "candidate_baud", status.candidate_baud,
+                  link_severity, link_flags);
+  if (status.confirmed_baud == 0u) {
+    emit_status("gnss_receiver", "confirmed_baud", "unavailable",
+                link_severity, link_flags);
+  } else {
+    emit_status_u32("gnss_receiver", "confirmed_baud",
+                    status.confirmed_baud, link_severity, link_flags);
+  }
   emit_status("gnss_receiver", "rx_pin", "D0_GPIO1_UART0_RX",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status("gnss_receiver", "tx_pin", "D1_GPIO0_high_impedance_input",
+  emit_status("gnss_receiver", "tx_pin", "D1_GPIO0_UART0_TX",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "tx_policy",
+              "fixed_discovery_configuration_only",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("gnss_receiver", "rx_only",
               status.rx_only ? "true" : "false",
-              status.rx_only ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
-              status.rx_only ? OTIS_FLAG_NONE
-                             : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+              link_severity, link_flags);
+  emit_status_u32("gnss_receiver", "discovery_cycle",
+                  status.discovery_cycle, link_severity, link_flags);
+  if (status.link_last_valid_frame_age_ms == UINT32_MAX) {
+    emit_status("gnss_receiver", "link_last_valid_frame_age_ms",
+                "unavailable", link_severity, link_flags);
+  } else {
+    emit_status_u32("gnss_receiver", "link_last_valid_frame_age_ms",
+                    status.link_last_valid_frame_age_ms, link_severity,
+                    link_flags);
+  }
+  emit_status_u32("gnss_receiver", "link_checksum_valid_count",
+                  status.link_checksum_valid_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "link_checksum_failure_count",
+                  status.link_checksum_failure_count,
+                  status.link_checksum_failure_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  status.link_checksum_failure_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "link_oversize_count",
+                  status.link_oversize_count,
+                  status.link_oversize_count == 0u ? OTIS_SEVERITY_INFO
+                                                   : OTIS_SEVERITY_WARN,
+                  status.link_oversize_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "candidate_rejection_count",
+                  status.candidate_rejection_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "configuration_failure_count",
+                  status.configuration_failure_count,
+                  status.configuration_failure_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  status.configuration_failure_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "transmit_failure_count",
+                  status.transmit_failure_count,
+                  status.transmit_failure_count == 0u ? OTIS_SEVERITY_INFO
+                                                      : OTIS_SEVERITY_WARN,
+                  status.transmit_failure_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "link_loss_count",
+                  status.link_loss_count,
+                  status.link_loss_count == 0u ? OTIS_SEVERITY_INFO
+                                               : OTIS_SEVERITY_WARN,
+                  status.link_loss_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   emit_status("gnss_receiver", "talker",
               status.talker[0] == '\0' ? "unavailable" : status.talker,
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);

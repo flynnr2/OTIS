@@ -14,6 +14,13 @@ sole authoritative PPS/reference input. D8 supplies short-term oscillator
 continuity evidence only; GNSS serial metadata qualifies the same receiver but
 never replaces D14.
 
+GNSS serial discovery and reacquisition are service-plane activities. They do
+not gate boot or D14/D8 capture. `discovering`, `validating`, `degraded` or
+`lost` serial state inhibits GNSS-dependent setup and control authority while
+preserving raw timing acquisition. A recovered link must re-establish 115200
+baud, PMTK identity and exact output configuration before metadata can
+requalify; a prior producer acknowledgement is not sufficient.
+
 ## Required behavior
 
 For a malformed, duplicate, short, long, or temporarily missing D14 cadence:

@@ -353,7 +353,7 @@ def test_current_profile_keeps_dac_manual_only() -> None:
     assert defines["OTIS_ENABLE_CX317_I_ONLY_PREVIEW"] == "1"
     assert defines["OTIS_ENABLE_DUAL_CORE_PARTITION"] == "1"
     assert defines["OTIS_ENABLE_GNSS_RECEIVER"] == "1"
-    assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "0"
+    assert defines["OTIS_GNSS_UART_TX_ENABLED"] == "1"
     assert defines["OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW"] == "0"
     assert defines["OTIS_ENABLE_DAC_AD5693R"] == "1"
     assert defines["OTIS_ENABLE_H1_DAC_SWEEP"] == "0"

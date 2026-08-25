@@ -638,19 +638,40 @@
 #define OTIS_ENABLE_DAC_AD5693R 0
 #endif
 
-// Stage 2 GNSS metadata is deliberately receive-only. The exact installed
-// Nano variant maps Serial1 RX to D0/GPIO1 and Serial1 TX to D1/GPIO0. The
-// implementation maps only UART0 RX; TX remains a high-impedance input.
+// GNSS UART transmission is restricted to the fixed asynchronous discovery
+// and configuration state machine. No host or runtime command surface can
+// supply receiver bytes; successful configuration returns to transmit-quiescent
+// service (the UART TX pin remains mapped and electrically idle-high).
 #ifndef OTIS_GNSS_UART_TX_ENABLED
 #define OTIS_GNSS_UART_TX_ENABLED 0
 #endif
 
 #ifndef OTIS_GNSS_UART_BAUD
-#define OTIS_GNSS_UART_BAUD 9600u
+#define OTIS_GNSS_UART_BAUD 115200u
 #endif
 
 #ifndef OTIS_GNSS_SERVICE_BYTE_BUDGET
 #define OTIS_GNSS_SERVICE_BYTE_BUDGET 32u
+#endif
+
+#ifndef OTIS_GNSS_SERVICE_TX_BYTE_BUDGET
+#define OTIS_GNSS_SERVICE_TX_BYTE_BUDGET 8u
+#endif
+
+#ifndef OTIS_GNSS_UART_TX_TIMEOUT_MS
+#define OTIS_GNSS_UART_TX_TIMEOUT_MS 500u
+#endif
+
+#ifndef OTIS_GNSS_DISCOVERY_PASSIVE_DWELL_MS
+#define OTIS_GNSS_DISCOVERY_PASSIVE_DWELL_MS 1200u
+#endif
+
+#ifndef OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS
+#define OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS 750u
+#endif
+
+#ifndef OTIS_GNSS_DISCOVERY_DEGRADED_MS
+#define OTIS_GNSS_DISCOVERY_DEGRADED_MS 15000u
 #endif
 
 #ifndef OTIS_GNSS_METADATA_MAX_AGE_MS
@@ -831,17 +852,46 @@
 #error "The GNSS metadata receiver is supported only in H1 OCXO observe mode."
 #endif
 
-#if OTIS_GNSS_UART_TX_ENABLED
-#error "The bounded GNSS programme requires Nano TX to remain electrically silent."
+#if OTIS_GNSS_UART_TX_ENABLED != 0 && OTIS_GNSS_UART_TX_ENABLED != 1
+#error "OTIS_GNSS_UART_TX_ENABLED must be 0 or 1."
 #endif
 
-#if OTIS_GNSS_UART_BAUD != 9600u
-#error "The Stage 2 receiver profile is frozen at 9600 baud."
+#if OTIS_ENABLE_GNSS_RECEIVER && !OTIS_GNSS_UART_TX_ENABLED
+#error "The GNSS receiver requires its bounded discovery/configuration TX path."
+#endif
+
+#if OTIS_GNSS_UART_BAUD != 115200u
+#error "The qualified GNSS receiver target is frozen at 115200 baud."
 #endif
 
 #if OTIS_GNSS_SERVICE_BYTE_BUDGET < 1u || \
     OTIS_GNSS_SERVICE_BYTE_BUDGET > 64u
 #error "OTIS_GNSS_SERVICE_BYTE_BUDGET must be between 1 and 64 bytes."
+#endif
+
+#if OTIS_GNSS_SERVICE_TX_BYTE_BUDGET < 1u || \
+    OTIS_GNSS_SERVICE_TX_BYTE_BUDGET > 16u
+#error "OTIS_GNSS_SERVICE_TX_BYTE_BUDGET must be between 1 and 16 bytes."
+#endif
+
+#if OTIS_GNSS_UART_TX_TIMEOUT_MS < 100u || \
+    OTIS_GNSS_UART_TX_TIMEOUT_MS > 1000u
+#error "The GNSS UART TX timeout must be between 100 and 1000 ms."
+#endif
+
+#if OTIS_GNSS_DISCOVERY_PASSIVE_DWELL_MS < 1000u || \
+    OTIS_GNSS_DISCOVERY_PASSIVE_DWELL_MS > 5000u
+#error "GNSS passive discovery dwell must be between 1 and 5 seconds."
+#endif
+
+#if OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS < 100u || \
+    OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS > 2000u
+#error "GNSS command response timeout must be between 100 ms and 2 seconds."
+#endif
+
+#if OTIS_GNSS_DISCOVERY_DEGRADED_MS < 10000u || \
+    OTIS_GNSS_DISCOVERY_DEGRADED_MS > 60000u
+#error "GNSS degraded discovery deadline must be between 10 and 60 seconds."
 #endif
 
 #if OTIS_GNSS_METADATA_MAX_AGE_MS < 1000u || \
@@ -1007,9 +1057,9 @@
      OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ || \
      OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
      !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || !OTIS_ENABLE_GNSS_RECEIVER || \
-     OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
+     !OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
      OTIS_ENABLE_PSEUDO_PPS_GENERATOR)
-#error "CX318 Stage 4 premise setup requires qualified PPS, RX-only GNSS, and environment telemetry."
+#error "CX318 Stage 4 premise setup requires qualified PPS, bounded GNSS discovery, and environment telemetry."
 #endif
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION != 0 && \
@@ -1043,9 +1093,9 @@
      OTIS_CAPTURE_BACKEND != OTIS_CAPTURE_BACKEND_IRQ || \
      OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
      !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || !OTIS_ENABLE_GNSS_RECEIVER || \
-     OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
+     !OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
      OTIS_ENABLE_PSEUDO_PPS_GENERATOR)
-#error "CX318 Stage 4 preview requires qualified D14 PPS capture, RX-only GNSS, and environment telemetry."
+#error "CX318 Stage 4 preview requires qualified D14 PPS capture, bounded GNSS discovery, and environment telemetry."
 #endif
 
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW && \
@@ -1058,7 +1108,7 @@
     (!OTIS_ENABLE_DUAL_CORE_PARTITION || !OTIS_ENABLE_CX317_I_ONLY_PREVIEW || \
      OTIS_ENABLE_CX317_BOUNDED_ACTIVE || !OTIS_ENABLE_DAC_AD5693R || \
      OTIS_ENABLE_H1_DAC_SWEEP || !OTIS_ENABLE_GNSS_RECEIVER || \
-     OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
+     !OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
      !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || \
      OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
      OTIS_CX319_RANGE_MAP_INITIAL_CODE < 0xA800u || \
@@ -1071,10 +1121,10 @@
     (!OTIS_ENABLE_DUAL_CORE_PARTITION || !OTIS_ENABLE_CX317_I_ONLY_PREVIEW || \
      !OTIS_ENABLE_CX317_BOUNDED_ACTIVE || !OTIS_ENABLE_DAC_AD5693R || \
      OTIS_ENABLE_H1_DAC_SWEEP || !OTIS_ENABLE_GNSS_RECEIVER || \
-     OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
+     !OTIS_GNSS_UART_TX_ENABLED || !OTIS_ENABLE_ENV_SENSORS || \
      !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || \
      OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO)
-#error "The tight active preview requires the exact dual-core frequency-only active, RX-only GNSS, qualified count, environment, and nonsweep DAC topology."
+#error "The tight active preview requires the exact dual-core frequency-only active, bounded GNSS discovery, qualified count, environment, and nonsweep DAC topology."
 #endif
 
 #if OTIS_ENABLE_CX318_STAGE5_PREVIEW && \
@@ -1189,7 +1239,7 @@
      !OTIS_ENABLE_DAC_AD5693R || OTIS_ENABLE_H1_DAC_SWEEP || \
      !OTIS_ENABLE_ENV_SENSORS || !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || \
      OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO)
-#error "Bounded active control requires the dedicated preview, RX-only GNSS, qualified count, environment, and nonsweep DAC topology."
+#error "Bounded active control requires the dedicated preview, bounded GNSS discovery, qualified count, environment, and nonsweep DAC topology."
 #endif
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \

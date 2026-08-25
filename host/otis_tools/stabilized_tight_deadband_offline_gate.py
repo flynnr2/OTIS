@@ -144,7 +144,7 @@ def _profile_checks(policy: dict[str, Any]) -> dict[str, bool]:
             and defines.get("OTIS_ENABLE_CX318_STAGE5_PREVIEW") == "0"
             and defines.get("OTIS_ENABLE_CX317_BOUNDED_ACTIVE") == "1"
             and defines.get("OTIS_ENABLE_DUAL_CORE_PARTITION") == "1"
-            and defines.get("OTIS_GNSS_UART_TX_ENABLED") == "0"
+            and defines.get("OTIS_GNSS_UART_TX_ENABLED") == "1"
             and defines.get("OTIS_ENABLE_H1_DAC_SWEEP") == "0"
             and defines.get("OTIS_DAC_MIN_CODE") == "0xA800u"
             and defines.get("OTIS_DAC_MAX_CODE") == "0xAB00u"
