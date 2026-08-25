@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY_V1",
+  "status": "prospectively_frozen_before_candidate_results",
+  "contract_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+  "authority": {
+    "offline_analysis": true,
+    "serial_access": false,
+    "firmware_flash": false,
+    "reset": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "live_activation": false
+  },
+  "source": {
+    "run_id": "live_attempt4_20260823T2148Z",
+    "run_dir": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z",
+    "run_identity": "otis_sustained_hybrid_regulation_v1:1",
+    "profile_identity": "otis_sustained_hybrid_regulation_v1",
+    "source_revision": "da0f4f024dddd33c94da853a6d503ad97e3892eb",
+    "firmware_build_identity": "bfa206c69f2d5ebaa117fae466d93a13d4701ee91673943ba7e885a7aefe94d8:ad8feae0d5f99b5089a1777ca227e2791f8ee4379f181df004b5c95c2afd2d78",
+    "uf2_sha256": "abf037af3f2f438d3b0d53223f66a38e7009b348dcfa247f3735ce54a0d30717",
+    "registered_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+    "registered_file_count": 80,
+    "registered_total_bytes": 409352510,
+    "run_manifest_file_sha256": "3bda75ceb8309a71d6e91ba18f9e2fe5781906f191b69bd5bd84cf5bf7a4f3fc",
+    "evidence_manifest_file_sha256": "5da145fd66d3e9f070fc31c8bfdcf72223fe929453583c071f8b2d3574a82b9a",
+    "activation_sha256": "ac84beb3b6deef4a0bc8914ac3daacd3ed115f3c6ab39749e23fbeb80daaf64c",
+    "activation_file_sha256": "e48257957c5766f15f24c6dfb168ae799388b7cb9267c3daff2b458ea1542a76",
+    "bundle_sha256": "d3edbab4f21f2bf9b4e65eff4410d98374ccc6f82caa8a32af8a4ec6ce0c4431",
+    "bundle_file_sha256": "deb96fcdc2514c5aaad63f8b1e04fe5e7f0090909c7b7026715e5640d6f81243",
+    "physical_seal_sha256": "8078b24453e36d149fe05c85f37a7c73df314408923a44c763e90eb6ebe3b455",
+    "physical_seal_file_sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+    "record_files": {
+      "active_hybrid_decisions_v1": {
+        "path": "csv/active_hybrid_decisions_v1.csv",
+        "sha256": "8b287f7e4572ff43a2e5ecd43c5aeb693e9060ddc17f952ed283144b3a97af9e"
+      },
+      "active_transactions_v1": {
+        "path": "csv/active_transactions_v1.csv",
+        "sha256": "0dc1513a40f444ca2f537d84b3744bf16c848a2b9b9db3b7be748e6faf31039a"
+      },
+      "selected_estimates_v2": {
+        "path": "csv/estimates_v2.csv",
+        "sha256": "85eb01cbea51c7c91307b139bc3dba6263ee7ee12b2888f2a359890105eee62d"
+      },
+      "tight_deadband_decisions_v1": {
+        "path": "csv/tight_deadband_decisions_v1.csv",
+        "sha256": "f6e5778a087fe43c5b64ad9224b85645f3f07f2bb6fd6d2f8a9c4afb90e66e80"
+      },
+      "phase_estimator_outputs_v1": {
+        "path": "csv/phase_estimator_outputs_v1.csv",
+        "sha256": "559f351a6709589e754b287069c532906d56d7cb0c5d272e5a50601adcf220c5"
+      },
+      "relative_phase_observations_v1": {
+        "path": "csv/relative_phase_observations_v1.csv",
+        "sha256": "e0765d1f4d99997b61da6b7543b8b854f1d1d2b92eda4b588c97693ec0e45daa"
+      },
+      "pps_snapshots_v1": {
+        "path": "csv/pps_snapshots.csv",
+        "sha256": "3dc886aea1bdf1119aca316e4c1069f1a9c03b9567aca1c56f5386edca0a1e38"
+      },
+      "count_observations_v1": {
+        "path": "csv/count_observations.csv",
+        "sha256": "ab8a0b3cc7fa36406078eefa1608eb54455220edb351a03d118bfa8f139ea3e9"
+      },
+      "raw_events_v1": {
+        "path": "csv/raw_events.csv",
+        "sha256": "fb094d8f54ab7313db9b45f37a702185889d25cb30b312e96ceca3a07b39e3bf"
+      },
+      "reference_observations_v1": {
+        "path": "csv/reference_observations_v1.csv",
+        "sha256": "665b6faaad73f92fa6d254c4f7425e0baa09586b4b55117c6cd306d37a995bd3"
+      }
+    }
+  },
+  "attestation_repair": {
+    "source_revision": "791fe8e349748c67ee215825f53bb4ab9b26585f",
+    "bundle_path": "runs/otis_sustained_hybrid_regulation_v1/preparation_791fe8e_attestation_repair/otis_sustained_hybrid_exact_bundle_v1.json",
+    "bundle_sha256": "094317d7ea6c6dd4ec26c947064ae334b06e9b975a2cf3fc581cae670a760ebb",
+    "bundle_file_sha256": "57393e218a5f28f25e4b3bf554157e2c012262b81bee51932cc95874930d7338",
+    "proposal_sha256": "5e0e7c9cbc42ded38e81c0f0ce2d66546bd125ae58c77ebb6af72e78f8a9815b",
+    "proposal_file_sha256": "1f4c89f07e620eaa287ac0181e984d16dc6c2f1d32e3956b4f1f4dd8ed076d06",
+    "rehearsal_path": "runs/otis_sustained_hybrid_regulation_v1/preparation_791fe8e_attestation_repair/exact_bundle_rehearsal_v1/otis_sustained_hybrid_live_topology_rehearsal_v1.json",
+    "rehearsal_sha256": "ea0bdf6b216cc2897603756a2a0a108c067ac5ea0e245a61f837a79aa83ee7db",
+    "rehearsal_file_sha256": "131e591a2b923fc4db355a040927a68780a9526bf14b50bf41ae1aae3daff044",
+    "physical_actions_performed": 0
+  },
+  "baseline": {
+    "policy_path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+    "policy_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+    "frequency_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "phase_estimator_sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+    "plant_model_sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
+    "response_policy_sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e",
+    "decision_count": 52,
+    "application_deltas": [-6, -1, -1, -6, -1, -1, -1, 5, 5, -5, 5],
+    "application_decision_sequences": [6, 9, 11, 13, 16, 19, 21, 25, 28, 44, 48],
+    "phase_material_application_count": 7,
+    "automatic_application_count": 11,
+    "cumulative_natural_movement_codes": 37,
+    "net_movement_from_setup_codes": -7,
+    "setup_code": 43068,
+    "terminal_code": 43061,
+    "terminal_dac_epoch": 12,
+    "terminal_decision_sequence": 52,
+    "terminal_count_error": -1,
+    "terminal_next_unchecked_delta_codes": 5,
+    "terminal_prospective_path_codes": 42,
+    "terminal_prospective_net_displacement_codes": 2,
+    "terminal": "prospective_low_efficiency_path",
+    "formal_physical_qualification_passed": false,
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations"
+  },
+  "provenance": {
+    "observed": [
+      "all frozen source files and their canonical fields",
+      "V1 requests, applications, responses, phase observations, selected estimates, tight states, identities and terminal"
+    ],
+    "derived": [
+      "exact V1 replay comparisons",
+      "causal term ablations at the retained decision frontier",
+      "summary metrics computed without changing raw fields"
+    ],
+    "modeled": [
+      "candidate frequency and raw-phase values after first code-path divergence",
+      "candidate DAC epochs, responses and later controller decisions",
+      "plant-gain and retained uncertainty sensitivity cases"
+    ]
+  },
+  "candidates": [
+    {
+      "candidate_id": "v1_baseline",
+      "selectable": false,
+      "semantics": "unchanged_exact_replay_only"
+    },
+    {
+      "candidate_id": "one_count_tight_hold_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 1,
+      "semantics": "when tight_state_is_TIGHT_INSIDE_and_absolute_fresh_authoritative_count_is_at_most_1_set_frequency_contribution_to_zero;preserve_phase_and_all_other_v1_semantics"
+    },
+    {
+      "candidate_id": "tight_phase_only_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 2,
+      "semantics": "when tight_state_is_TIGHT_INSIDE_set_frequency_contribution_to_zero;preserve_outside_tight_frequency_acquisition_and_all_other_v1_semantics"
+    },
+    {
+      "candidate_id": "persistent_one_count_release_v1",
+      "selectable": true,
+      "semantic_complexity_rank": 3,
+      "semantics": "hold_first_absolute_one_count_frequency_contribution_while_tight;release_only_second_consecutive_fresh_nonoverlapping_same_sign_same_session_same_dac_epoch_estimate",
+      "reset_on": [
+        "zero_count",
+        "opposite_sign",
+        "invalid_observation",
+        "session_change",
+        "dac_epoch_change",
+        "settling_exclusion",
+        "reference_loss",
+        "authority_loss"
+      ]
+    }
+  ],
+  "diagnostic_ablations_non_selectable": [
+    "phase_term_removed",
+    "frequency_term_removed_while_tight_inside",
+    "one_count_frequency_term_held",
+    "v1_gain_and_half_away_rounding_contribution",
+    "cadence_changed_with_estimator_observations_fixed",
+    "longer_grouped_estimator_support_without_closed_loop_claim"
+  ],
+  "model": {
+    "counter_domain": "rp2040_timer0_extended",
+    "counter_rate_hz": 16000000,
+    "frequency_projection": "observed_frequency_hz_plus_gain_hz_per_code_times_candidate_minus_actual_code",
+    "phase_projection": "within_each_unjoined_phase_epoch_integrate_only_gain_times_candidate_minus_actual_code_over_exact_decision_intervals",
+    "phase_epoch_join": "forbidden",
+    "modeled_application_time": "source_decision_timestamp_ticks_for_offline_control_law_comparison",
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "authoritative_support_s": 600,
+    "authoritative_windows_overlap": false,
+    "plant_gain_hz_per_code": {
+      "minimum": 0.00016357422282453626,
+      "nominal": 0.00017008467693813145,
+      "maximum": 0.00017334010044578463
+    },
+    "retained_uncertainty_sensitivities": {
+      "maximum_observed_hysteresis_hz": 0.0012499988079071045,
+      "centre_repeatability_span_hz": 0.0016666650772094727,
+      "application": "labeled_adverse_and_favorable_nonzero_code_path_response_offsets_in_dedicated_sensitivity_cases_only",
+      "zero_code_path_difference_has_zero_offset": true
+    },
+    "raw_sources_immutable": true
+  },
+  "perturbation_corpus": [
+    {"case_id": "isolated_positive_one", "counts": [0, 1, 0]},
+    {"case_id": "isolated_negative_one", "counts": [0, -1, 0]},
+    {"case_id": "isolated_crossing", "counts": [1, 0, -1]},
+    {"case_id": "persistent_positive_one", "counts": [1, 1]},
+    {"case_id": "persistent_negative_one", "counts": [-1, -1]},
+    {"case_id": "alternating_positive_first", "counts": [1, -1, 1, -1]},
+    {"case_id": "alternating_negative_first", "counts": [-1, 1, -1, 1]},
+    {"case_id": "zero_crossing_phase_positive_to_negative", "counts": [1, 0, -1], "relative_phase_cycles": [2, 0, -2]},
+    {"case_id": "zero_crossing_phase_negative_to_positive", "counts": [-1, 0, 1], "relative_phase_cycles": [-2, 0, 2]},
+    {"case_id": "rounding_boundaries", "raw_delta_codes": [0.499999999999, 0.5, 0.500000000001, -0.499999999999, -0.5, -0.500000000001]},
+    {"case_id": "legitimate_slow_positive_drift", "counts": [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]},
+    {"case_id": "legitimate_slow_negative_drift", "counts": [0, -1, -1, -2, -2, -3, -3, -4, -4, -5, -5]},
+    {"case_id": "negative_to_positive_demand_reversal", "counts": [2, 2, 0, 0, -2, -2]},
+    {"case_id": "positive_to_negative_demand_reversal", "counts": [-2, -2, 0, 0, 2, 2]},
+    {"case_id": "no_natural_reversal_challenge_recovery", "qualified_duration_s": 50400},
+    {"case_id": "plant_gain_minimum", "gain": "minimum"},
+    {"case_id": "plant_gain_nominal", "gain": "nominal"},
+    {"case_id": "plant_gain_maximum", "gain": "maximum"},
+    {"case_id": "hysteresis_repeatability_adverse", "uncertainty": "adverse"},
+    {"case_id": "hysteresis_repeatability_favorable", "uncertainty": "favorable"},
+    {"case_id": "cadence_below_at_above", "elapsed_s": [1799, 1800, 1801]},
+    {"case_id": "long_zero_demand_dwell", "counts": [0, 0, 0, 0, 0, 0]},
+    {"case_id": "dac_epoch_reset", "identity_transition": "dac_epoch"},
+    {"case_id": "capture_session_reset", "identity_transition": "capture_session"},
+    {"case_id": "estimator_reset", "identity_transition": "estimator_reset"},
+    {"case_id": "settling_support_reset", "identity_transition": "settling_exclusion"},
+    {"case_id": "stale_coherent", "identity_transition": "stale_coherent_hold"},
+    {"case_id": "contradictory_identity", "identity_transition": "contradictory_fail_static"},
+    {"case_id": "application_count_boundary", "authority_boundary": "maximum_automatic_applications"},
+    {"case_id": "cumulative_path_boundary", "authority_boundary": "maximum_cumulative_movement_codes"},
+    {"case_id": "range_boundary", "authority_boundary": "dac_range"},
+    {"case_id": "abort_fail_static_boundary", "authority_boundary": "abort_fail_static"}
+  ],
+  "selection_gate": {
+    "baseline_exact_required": true,
+    "minimum_material_phase_applications_when_supplied": 2,
+    "maximum_absolute_raw_relative_phase_cycles": 36,
+    "minimum_matched_phase_improvement_fraction": 0.1,
+    "minimum_matched_phase_improvement_cycles": 1,
+    "maximum_frequency_rms_degradation_hz": 0.0016666666666666668,
+    "maximum_tight_occupancy_degradation_fraction": 0.1,
+    "attempt4_maximum_natural_path_codes": 27,
+    "attempt4_minimum_path_reduction_fraction_from_v1": 0.25,
+    "attempt4_minimum_absolute_net_regulation_codes": 2,
+    "repeated_alternation_forbidden": true,
+    "low_efficiency_terminal_forbidden": true,
+    "unexpected_clamp_forbidden": true,
+    "overlapping_transaction_forbidden": true,
+    "stale_evidence_reuse_forbidden": true,
+    "latent_demand_hiding_forbidden": true,
+    "all_perturbation_cases_must_pass": true,
+    "all_gain_cases_must_pass": true,
+    "host_firmware_parity_required_if_selected": true,
+    "offline_result_is_physical_qualification": false
+  },
+  "ranking": [
+    "descending_passed_perturbation_case_count",
+    "ascending_attempt4_natural_path_codes",
+    "ascending_worst_case_frequency_rms_degradation_hz",
+    "ascending_semantic_complexity_rank"
+  ],
+  "tie_disposition": "no_controller_successor_selected",
+  "output": {
+    "schema_version": 1,
+    "report_type": "otis_sustained_hybrid_successor_offline_comparison_v1",
+    "tool_id": "otis_sustained_hybrid_successor_offline_compare_v1",
+    "tool_path": "host/otis_tools/sustained_hybrid_successor_study.py",
+    "canonical_json": "utf8_sorted_keys_compact_separators_allow_nan_false",
+    "report_sha256_scope": "all_report_fields_except_report_sha256",
+    "immutable_output_required": true
+  },
+  "terminal_outcomes": [
+    "selected_changed_successor",
+    "no_controller_successor_selected",
+    "study_invalid_due_to_evidence_or_replay_mismatch"
+  ]
+}

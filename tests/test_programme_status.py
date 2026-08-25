@@ -16,10 +16,10 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> None:
+def test_tracked_status_closes_sustained_v1_and_offline_successor_studies() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] == "otis_sustained_hybrid_regulation_v1"
+    assert status["active_programme"] is None
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
         "allowed_operations": [],
@@ -236,11 +236,11 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
         "09e18bb1f043effb79c41951099548f22c8de616f5c96362c6dc28bbdd6e0d30"
     )
     sustained = status["programmes"]["otis_sustained_hybrid_regulation_v1"]
-    assert sustained["physical_authority_effective"] is True
-    assert sustained["allowed_operations"] == [
-        OFFLINE_PREPARATION,
-        "otis_sustained_hybrid_regulation_live",
-    ]
+    assert sustained["state"] == (
+        "closed_after_attempt4_physical_failure_and_scientific_rejection"
+    )
+    assert sustained["physical_authority_effective"] is False
+    assert sustained["allowed_operations"] == ["historical_validation"]
     assert sustained["attempt2_operator_authority"]["attempt_ordinal"] == 2
     assert sustained["attempt2_operator_authority"]["physical_live_run_limit"] == 1
     assert sustained["attempt2_operator_authority"]["automatic_retry"] is False
@@ -273,6 +273,64 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
     assert sustained["finite_envelope"][
         "maximum_physical_applications_including_challenge"
     ] == 13
+    attempt4 = sustained["attempts"][3]
+    assert attempt4["physical_qualification_passed"] is False
+    assert attempt4["physical_qualification_terminal_reason"] == (
+        "missing_contemporaneous_pre_phase4_response_replay_attestations"
+    )
+    assert attempt4["scientific_terminal"] == "prospective_low_efficiency_path"
+    assert attempt4["active_hybrid_decisions"] == 52
+    assert attempt4["automatic_applications"] == 11
+    assert attempt4["cumulative_natural_movement_codes"] == 37
+    assert attempt4["last_confirmed_code"] == 0xA835
+    assert sustained["authority_consumption"]["latest_consumed_attempt"] == 4
+    assert sustained["authority_consumption"]["attempt5_authorized"] is False
+    study = status["programmes"][
+        "otis_sustained_hybrid_successor_offline_study"
+    ]
+    assert study["state"] == "no_controller_successor_selected"
+    assert study["allowed_operations"] == ["historical_validation"]
+    assert study["physical_authority_effective"] is False
+    assert set(study["authority_boundary"].values()) == {False}
+    assert study["study_contract"]["contract_sha256"] == (
+        "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf"
+    )
+    assert study["comparison"]["report_sha256"] == (
+        "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523"
+    )
+    assert study["comparison"]["selected_candidate_id"] is None
+    assert study["successor_outputs"] == {
+        "policy_created": False,
+        "firmware_profile_created": False,
+        "exact_bundle_created": False,
+        "authority_proposal_created": False,
+        "physical_rehearsal_performed": False,
+        "physical_actions_performed": 0,
+    }
+    architecture_study = status["programmes"][
+        "otis_sustained_hybrid_mode_separation_offline_study"
+    ]
+    assert architecture_study["state"] == (
+        "no_mode_separated_architecture_selected"
+    )
+    assert architecture_study["allowed_operations"] == ["historical_validation"]
+    assert architecture_study["physical_authority_effective"] is False
+    assert set(architecture_study["authority_boundary"].values()) == {False}
+    assert architecture_study["study_contract"]["contract_sha256"] == (
+        "c02ce352d5224b5ed395d48d62a2ddc8a99654d08b95ad23a182186a716a37eb"
+    )
+    assert architecture_study["comparison"]["report_sha256"] == (
+        "6b971643c106fabe0cec2c267f733ded330469ad7596125fb2dd33e57a6b9aef"
+    )
+    assert architecture_study["comparison"]["selected_candidate_id"] is None
+    assert architecture_study["successor_outputs"] == {
+        "policy_created": False,
+        "firmware_profile_created": False,
+        "exact_bundle_created": False,
+        "authority_proposal_created": False,
+        "physical_rehearsal_performed": False,
+        "physical_actions_performed": 0,
+    }
     assert cx322["stage5_attempts"][0]["setup_applications"] == 1
     assert cx322["stage5_attempts"][0]["automatic_applications"] == 0
     assert cx322["stage5_attempts"][0]["qualified_origin_established"] is False
@@ -1297,16 +1355,24 @@ def test_tracked_status_records_terminal_predecessors_and_active_sustained() -> 
         require_programme_operation_allowed(
             "cx322_bounded_hybrid_fact_gathering", OFFLINE_PREPARATION
         )
-    sustained = load_programme_status()["programmes"][
-        "otis_sustained_hybrid_regulation_v1"
-    ]
-    assert require_programme_operation_allowed(
-        "otis_sustained_hybrid_regulation_v1", OFFLINE_PREPARATION
-    ) == sustained
-    assert require_programme_operation_allowed(
-        "otis_sustained_hybrid_regulation_v1",
-        "otis_sustained_hybrid_regulation_live",
-    ) == sustained
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_regulation_v1", OFFLINE_PREPARATION
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_regulation_v1",
+            "otis_sustained_hybrid_regulation_live",
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_successor_offline_study", OFFLINE_PREPARATION
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_mode_separation_offline_study",
+            OFFLINE_PREPARATION,
+        )
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "cx321_bounded_active_hybrid_successor", OFFLINE_PREPARATION

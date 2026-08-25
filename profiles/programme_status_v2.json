@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "otis_sustained_hybrid_regulation_v1",
+  "active_programme": null,
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -10,14 +10,13 @@
       "authority": "passed_completion_gate"
     },
     "otis_sustained_hybrid_regulation_v1": {
-      "state": "attempt4_authorized_command_ingress_latency_repair_gates_pending",
+      "state": "closed_after_attempt4_physical_failure_and_scientific_rejection",
       "allowed_operations": [
-        "offline_preparation",
-        "otis_sustained_hybrid_regulation_live"
+        "historical_validation"
       ],
-      "effective_date": "2026-08-23",
-      "authority": "explicit_operator_unattended_continue_solving_issues_and_moving_forward",
-      "physical_authority_effective": true,
+      "effective_date": "2026-08-24",
+      "authority": "attempt4_consumed_no_attempt5_or_unchanged_v1_live_authority",
+      "physical_authority_effective": false,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
       "design_prompt": "docs/60_EXPERIMENTS/SUSTAINED_HYBRID_REGULATION_PROGRAMME_PROMPT.md",
       "design_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/README.md",
@@ -70,11 +69,15 @@
         "attempt3_offline_finalization_completed": true,
         "attempt3_evidence_registration_passed": true,
         "attempt4_command_ingress_producer_to_serial_regression_passed": true,
-        "attempt4_exact_firmware_build_pending": true,
-        "attempt4_exact_bundle_pending": true,
-        "attempt4_structural_preflight_pending": true,
-        "attempt4_complete_operational_rehearsal_pending": true,
-        "attempt4_physical_acquisition_pending": true
+        "attempt4_physical_acquisition_complete": true,
+        "attempt4_physical_qualification_passed": false,
+        "attempt4_response_pre_acknowledgement_attestations_exact": false,
+        "attempt4_offline_response_and_first_consumer_replay_passed": true,
+        "attempt4_evidence_registration_passed": true,
+        "attempt4_attestation_dispatch_regression_passed": true,
+        "attempt4_attestation_repair_exact_firmware_build_passed": true,
+        "attempt4_attestation_repair_exact_bundle_passed": true,
+        "attempt4_attestation_repair_complete_zero_io_rehearsal_passed": true
       },
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -84,7 +87,9 @@
       },
       "authority_consumption": {
         "consumed_by_first_physical_terminal": true,
-        "latest_consumed_attempt": 3,
+        "latest_consumed_attempt": 4,
+        "consumed_by_run_id": "live_attempt4_20260823T2148Z",
+        "attempt5_authorized": false,
         "automatic_retry": false,
         "criteria_change_after_evidence": false
       },
@@ -127,7 +132,9 @@
         "requires_attempt3_terminal_lineage": true,
         "requires_new_clean_exact_bundle": true,
         "requires_command_ingress_producer_to_serial_regression": true,
-        "requires_complete_multi_transaction_rehearsal": true
+        "requires_complete_multi_transaction_rehearsal": true,
+        "consumed": true,
+        "consumed_by_run_id": "live_attempt4_20260823T2148Z"
       },
       "attempts": [
         {
@@ -207,9 +214,175 @@
           "seal_sha256": "d5ebf5987f8fc3795319cc88bb733bbdb740449a10dc76af964d7ff95636db55",
           "evidence_content_sha256": "7cbfda0d1fca1b1e1be63607864cda313321d7b90af3dd4f6d7bdd10d42ab38f",
           "scientific_result": "none_incomplete_before_sustained_duration_reversal_or_recovery_boundaries"
+        },
+        {
+          "ordinal": 4,
+          "run_id": "live_attempt4_20260823T2148Z",
+          "classification": "platform_escape_into_campaign_and_controller_scientific_rejection",
+          "physical_qualification_passed": false,
+          "physical_qualification_terminal": "measurement_authority_or_platform_fault",
+          "physical_qualification_terminal_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+          "scientific_terminal": "prospective_low_efficiency_path",
+          "scientific_result": "unchanged_controller_rejected",
+          "qualified_origin_established": true,
+          "qualified_duration_s": 40537,
+          "active_hybrid_decisions": 52,
+          "automatic_applications": 11,
+          "phase_material_applications": 7,
+          "complete_response_consumers": 11,
+          "response_pre_acknowledgement_attestations_retained": 0,
+          "offline_response_replays_passed": 11,
+          "cumulative_natural_movement_codes": 37,
+          "net_movement_from_setup_codes": 7,
+          "last_confirmed_code": 43061,
+          "last_confirmed_dac_epoch": 12,
+          "natural_reversal_established": true,
+          "deliberate_challenge_applied": false,
+          "abort_submissions": 1,
+          "abort_deliveries": 1,
+          "capture_closed_cleanly": true,
+          "parser_errors": 0,
+          "reconnects": 0,
+          "commands_rejected": 0,
+          "activation_sha256": "ac84beb3b6deef4a0bc8914ac3daacd3ed115f3c6ab39749e23fbeb80daaf64c",
+          "bundle_sha256": "d3edbab4f21f2bf9b4e65eff4410d98374ccc6f82caa8a32af8a4ec6ce0c4431",
+          "firmware_uf2_sha256": "abf037af3f2f438d3b0d53223f66a38e7009b348dcfa247f3735ce54a0d30717",
+          "seal_sha256": "8078b24453e36d149fe05c85f37a7c73df314408923a44c763e90eb6ebe3b455",
+          "evidence_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+          "physical_rerun_required_for_finalization": false
         }
       ],
-      "next_gate": "attempt4_clean_exact_bundle_command_ingress_regression_preflight_rehearsal_activation_and_single_live_execution"
+      "next_gate": "otis_sustained_hybrid_successor_offline_study"
+    },
+    "otis_sustained_hybrid_successor_offline_study": {
+      "state": "no_controller_successor_selected",
+      "allowed_operations": [
+        "historical_validation"
+      ],
+      "effective_date": "2026-08-24",
+      "authority": "offline_study_complete_no_successor_or_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "otis_sustained_hybrid_regulation_v1",
+      "design_prompt": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY_PROMPT.md",
+      "study_identity": "OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY_V1",
+      "study_contract": {
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/study_contract_v1.json",
+        "contract_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf"
+      },
+      "comparison": {
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/comparison_report_v1.json",
+        "report_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523",
+        "file_sha256": "1aa3f8e5766bab071af91160a8801843102ad6058e36539daf97f0efbdd52ea7",
+        "tool_sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489",
+        "source_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+        "exact_v1_baseline_passed": true,
+        "selected_candidate_id": null,
+        "rejected_candidates": [
+          {
+            "candidate_id": "one_count_tight_hold_v1",
+            "first_discriminating_failure": "minimum:phase_behavior_preserved"
+          },
+          {
+            "candidate_id": "tight_phase_only_v1",
+            "first_discriminating_failure": "minimum:phase_behavior_preserved"
+          },
+          {
+            "candidate_id": "persistent_one_count_release_v1",
+            "first_discriminating_failure": "minimum:phase_behavior_preserved"
+          }
+        ]
+      },
+      "decision_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/DECISION.md",
+      "successor_outputs": {
+        "policy_created": false,
+        "firmware_profile_created": false,
+        "exact_bundle_created": false,
+        "authority_proposal_created": false,
+        "physical_rehearsal_performed": false,
+        "physical_actions_performed": 0
+      },
+      "terminal_outcomes": [
+        "selected_changed_successor",
+        "no_controller_successor_selected",
+        "study_invalid_due_to_evidence_or_replay_mismatch"
+      ],
+      "authority_boundary": {
+        "serial_access": false,
+        "firmware_flash": false,
+        "reset": false,
+        "dac_write": false,
+        "control_arm": false,
+        "physical_rehearsal": false,
+        "live_acquisition": false
+      },
+      "next_gate": "estimator_or_controller_architecture_revision_requires_separately_frozen_study"
+    },
+    "otis_sustained_hybrid_mode_separation_offline_study": {
+      "state": "no_mode_separated_architecture_selected",
+      "allowed_operations": [
+        "historical_validation"
+      ],
+      "effective_date": "2026-08-25",
+      "authority": "offline_architecture_study_complete_no_successor_or_physical_authority",
+      "physical_authority_effective": false,
+      "predecessor_programme": "otis_sustained_hybrid_successor_offline_study",
+      "study_identity": "OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY_V1",
+      "architecture": {
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/ARCHITECTURE.md",
+        "file_sha256": "ae4967c4fdb8bcb532052f14290e2dccd3a61d7c238bdec28111e81120adbf0b"
+      },
+      "study_contract": {
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/study_contract_v1.json",
+        "contract_sha256": "c02ce352d5224b5ed395d48d62a2ddc8a99654d08b95ad23a182186a716a37eb",
+        "file_sha256": "f0af0cbcac15b9758e4ae4ba3e2246a4c9ec6dc51804f4b5df1540f503083165"
+      },
+      "comparison": {
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/comparison_report_v1.json",
+        "report_sha256": "6b971643c106fabe0cec2c267f733ded330469ad7596125fb2dd33e57a6b9aef",
+        "file_sha256": "27bcdf5b3cc4ec1db23c835a3a0df11e832ed27682863bcea7a1fa5d4d2c7b07",
+        "tool_sha256": "9fe68acc9efcd5fd60a1f1b4982a2a485e5cca1d21dbdce418189fc57d93b85a",
+        "source_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+        "exact_v1_baseline_passed": true,
+        "selected_candidate_id": null,
+        "rejected_candidates": [
+          {
+            "candidate_id": "phase_priority_one_count_hold_v1",
+            "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+          },
+          {
+            "candidate_id": "separated_fll_pll_maintenance_v1",
+            "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+          },
+          {
+            "candidate_id": "phase_priority_1200s_maintenance_v1",
+            "first_discriminating_failure": "minimum:frequency_behavior_preserved"
+          }
+        ]
+      },
+      "decision_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md",
+      "successor_outputs": {
+        "policy_created": false,
+        "firmware_profile_created": false,
+        "exact_bundle_created": false,
+        "authority_proposal_created": false,
+        "physical_rehearsal_performed": false,
+        "physical_actions_performed": 0
+      },
+      "terminal_outcomes": [
+        "selected_mode_separated_architecture",
+        "no_mode_separated_architecture_selected",
+        "study_invalid_due_to_evidence_or_replay_mismatch"
+      ],
+      "authority_boundary": {
+        "serial_access": false,
+        "firmware_flash": false,
+        "reset": false,
+        "dac_write": false,
+        "control_arm": false,
+        "physical_rehearsal": false,
+        "live_acquisition": false
+      },
+      "next_gate": "estimator_state_and_uncertainty_architecture_revision_requires_separately_frozen_study"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",

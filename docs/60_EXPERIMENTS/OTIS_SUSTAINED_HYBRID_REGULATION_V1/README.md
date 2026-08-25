@@ -153,3 +153,20 @@ The scientific rejection answers this programme. No Attempt 5 will be created
 for the unchanged controller. Full evidence, exact identities, causal
 classification, repair, and closeout are in
 [`04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md`](04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md).
+
+`profiles/programme_status_v2.json` records Attempt 4 authority as consumed,
+sets V1 physical authority false, and blocks both offline preparation and
+`otis_sustained_hybrid_regulation_live` for this closed programme. The
+separately named offline-only sustained-hybrid successor study then rejected
+all three prospectively frozen changed controllers at its phase-preservation
+gate. It created neither Attempt 5 nor a successor policy or bundle and
+performed no physical operation. Its decision is in
+[`../OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/DECISION.md`](../OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/DECISION.md).
+The subsequently frozen mode-separation architecture study preserved the
+seven early phase-material applications and passed the phase gate, but all
+three candidates exceeded the permitted tight-occupancy loss and 27-code path
+limit. It also selected no successor and performed no physical operation. Its
+decision is in
+[`../OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md`](../OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md).
+The next gate is a separately frozen estimator-state and uncertainty
+architecture revision.
