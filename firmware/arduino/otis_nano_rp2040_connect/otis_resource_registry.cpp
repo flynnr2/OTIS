@@ -164,13 +164,14 @@ void add_h1_i2c_owner(void) {
 void add_gnss_receiver_owner(void) {
 #if OTIS_ENABLE_GNSS_RECEIVER
   add_bound_claim(OtisResourceType::UartController, kUart0Instance, 0u,
-                  OTIS_OWNER_GNSS_RECEIVER, "serial1_uart0_rx_only");
+                  OTIS_OWNER_GNSS_RECEIVER,
+                  "serial1_uart0_bounded_discovery_then_rx_only");
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
                   OTIS_PIN_GNSS_RX, OTIS_OWNER_GNSS_RECEIVER,
                   "gps_tx_to_nano_d0_gpio1_uart0_rx");
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
-                  OTIS_PIN_GNSS_TX_SILENT, OTIS_OWNER_GNSS_RECEIVER,
-                  "nano_d1_gpio0_reserved_silent_input");
+                  OTIS_PIN_GNSS_TX, OTIS_OWNER_GNSS_RECEIVER,
+                  "nano_d1_gpio0_uart0_bounded_configuration_tx");
 #endif
 }
 

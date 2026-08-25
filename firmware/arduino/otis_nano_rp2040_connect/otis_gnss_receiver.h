@@ -5,6 +5,84 @@
 #include <stdint.h>
 
 constexpr size_t kOtisGnssMaximumLineBytes = 96u;
+constexpr size_t kOtisGnssDiscoveryMaximumLineBytes = 256u;
+constexpr size_t kOtisGnssReleaseMaximumBytes = 40u;
+
+enum class OtisGnssLinkState : uint8_t {
+  SelectCandidateBaud = 0u,
+  PassiveListen = 1u,
+  TransmitIdentityQuery = 2u,
+  AwaitIdentityResponse = 3u,
+  TransmitTargetBaud = 4u,
+  SelectTargetBaud = 5u,
+  TransmitTargetIdentityQuery = 6u,
+  AwaitTargetIdentityResponse = 7u,
+  TransmitOutputQuery = 8u,
+  AwaitOutputResponse = 9u,
+  TransmitOutputConfiguration = 10u,
+  AwaitOutputConfigurationAck = 11u,
+  TransmitOutputVerificationQuery = 12u,
+  AwaitOutputVerificationResponse = 13u,
+  Online = 14u,
+};
+
+enum class OtisGnssLinkActionKind : uint8_t {
+  None = 0u,
+  SetUartBaud = 1u,
+  TransmitIdentityQuery = 2u,
+  TransmitTargetBaud = 3u,
+  TransmitOutputQuery = 4u,
+  TransmitOutputConfiguration = 5u,
+};
+
+struct OtisGnssLinkPolicy {
+  uint32_t target_baud;
+  uint32_t passive_dwell_ms;
+  uint32_t response_timeout_ms;
+  uint32_t degraded_after_ms;
+  uint32_t link_loss_ms;
+};
+
+struct OtisGnssLinkAction {
+  OtisGnssLinkActionKind kind;
+  uint32_t baud;
+  const char *bytes;
+  size_t length;
+};
+
+struct OtisGnssLink {
+  char line[kOtisGnssDiscoveryMaximumLineBytes];
+  char receiver_release[kOtisGnssReleaseMaximumBytes];
+  uint16_t line_length;
+  bool collecting;
+  bool discarding_oversize;
+  bool service_initialized;
+  bool action_pending;
+  bool action_in_progress;
+  bool valid_frame_seen;
+  bool receiver_identity_available;
+  bool configuration_confirmed;
+  OtisGnssLinkState state;
+  OtisGnssLinkActionKind pending_action;
+  OtisGnssLinkPolicy policy;
+  uint8_t candidate_index;
+  uint32_t candidate_baud;
+  uint32_t confirmed_baud;
+  uint32_t pending_baud;
+  uint32_t state_started_ms;
+  uint32_t discovery_started_ms;
+  uint32_t last_valid_frame_ms;
+  uint32_t discovery_cycle;
+  uint32_t checksum_valid_count;
+  uint32_t checksum_failure_count;
+  uint32_t oversize_count;
+  uint32_t candidate_rejection_count;
+  uint32_t configuration_failure_count;
+  uint32_t transmit_failure_count;
+  uint32_t link_loss_count;
+  uint32_t identity_response_count;
+  uint32_t output_response_count;
+};
 
 struct OtisGnssReceiver {
   char line[kOtisGnssMaximumLineBytes];
@@ -51,6 +129,10 @@ struct OtisGnssReceiver {
 struct OtisGnssReceiverSnapshot {
   bool initialized;
   bool rx_only;
+  bool link_online;
+  bool configuration_confirmed;
+  bool receiver_identity_available;
+  bool discovery_degraded;
   bool disconnected;
   bool rmc_seen;
   bool gga_seen;
@@ -68,10 +150,24 @@ struct OtisGnssReceiverSnapshot {
   uint8_t fix_quality;
   uint8_t fix_dimension;
   uint8_t satellites;
+  OtisGnssLinkState link_state;
   char talker[3];
   char utc[11];
   char date[7];
   char hdop[9];
+  char link_health_state[12];
+  char receiver_release[kOtisGnssReleaseMaximumBytes];
+  uint32_t candidate_baud;
+  uint32_t confirmed_baud;
+  uint32_t discovery_cycle;
+  uint32_t link_last_valid_frame_age_ms;
+  uint32_t link_checksum_valid_count;
+  uint32_t link_checksum_failure_count;
+  uint32_t link_oversize_count;
+  uint32_t candidate_rejection_count;
+  uint32_t configuration_failure_count;
+  uint32_t transmit_failure_count;
+  uint32_t link_loss_count;
   uint32_t identity_epoch;
   uint32_t metadata_age_ms;
   uint32_t checksum_valid_count;
@@ -83,6 +179,22 @@ struct OtisGnssReceiverSnapshot {
   uint32_t gga_count;
   uint32_t gsa_count;
 };
+
+void otis_gnss_link_reset(OtisGnssLink *link,
+                          const OtisGnssLinkPolicy *policy,
+                          uint32_t now_ms);
+void otis_gnss_link_tick(OtisGnssLink *link, uint32_t now_ms);
+void otis_gnss_link_feed(OtisGnssLink *link, char byte, uint32_t now_ms);
+bool otis_gnss_link_take_action(OtisGnssLink *link,
+                                OtisGnssLinkAction *action);
+void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
+                                    uint32_t now_ms);
+bool otis_gnss_link_online(const OtisGnssLink *link);
+bool otis_gnss_link_runtime_rx_only(const OtisGnssLink *link);
+bool otis_gnss_link_discovery_degraded(const OtisGnssLink *link,
+                                       uint32_t now_ms);
+const char *otis_gnss_link_state_name(const OtisGnssLink *link,
+                                      uint32_t now_ms);
 
 void otis_gnss_receiver_reset(OtisGnssReceiver *receiver, uint32_t now_ms);
 void otis_gnss_receiver_feed(OtisGnssReceiver *receiver, char byte,

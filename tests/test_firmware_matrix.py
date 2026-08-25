@@ -32,7 +32,7 @@ CURRENT_GUARDS = {
     "invalid_cx321_enable_value",
     "invalid_cx321_active_hybrid_parameters",
     "invalid_active_missing_gnss",
-    "invalid_gnss_uart_tx_enabled",
+    "invalid_gnss_uart_tx_disabled",
     "invalid_cx319_lower_parameters",
     "invalid_pps_ratio_with_pio_capture",
     "invalid_pseudo_pps_nonisolated_resources",

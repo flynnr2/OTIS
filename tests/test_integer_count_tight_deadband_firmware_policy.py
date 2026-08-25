@@ -31,7 +31,7 @@ def stage5_engine_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "OTIS_DAC_MIN_CODE=0xA800u",
         "OTIS_DAC_MAX_CODE=0xAB00u",
         "OTIS_ENABLE_GNSS_RECEIVER=1",
-        "OTIS_GNSS_UART_TX_ENABLED=0",
+        "OTIS_GNSS_UART_TX_ENABLED=1",
         "OTIS_ENABLE_ENV_SENSORS=1",
         "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1",
         "OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",

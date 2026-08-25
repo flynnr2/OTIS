@@ -34,6 +34,45 @@ const char *kValidGga =
     "GPGGA,091626.000,2236.2791,N,12017.2818,E,1,10,1.00,8.8,M,18.7,M,,";
 const char *kValidGsa =
     "GPGSA,A,3,04,05,09,12,24,25,29,31,,,,,1.8,1.0,1.5";
+const char *kExpectedOutput =
+    "PMTK514,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0";
+
+OtisGnssLinkPolicy link_policy() {
+  return {115200u, 1200u, 750u, 15000u, 10000u};
+}
+
+OtisGnssLinkAction take_action(OtisGnssLink *link,
+                               OtisGnssLinkActionKind expected) {
+  OtisGnssLinkAction action;
+  assert(otis_gnss_link_take_action(link, &action));
+  assert(action.kind == expected);
+  return action;
+}
+
+void feed_link(OtisGnssLink *link, const std::string &text,
+               uint32_t now_ms) {
+  for (char byte : text) otis_gnss_link_feed(link, byte, now_ms);
+}
+
+void establish_target_link(OtisGnssLink *link, uint32_t now_ms) {
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(link, &policy, now_ms);
+  OtisGnssLinkAction action =
+      take_action(link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 115200u);
+  otis_gnss_link_complete_action(link, true, now_ms);
+  feed_link(link, sentence(kValidRmc), now_ms + 1u);
+  action = take_action(link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  assert(std::string(action.bytes, action.length) == "$PMTK605*31\r\n");
+  otis_gnss_link_complete_action(link, true, now_ms + 2u);
+  feed_link(link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), now_ms + 3u);
+  action = take_action(link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  assert(std::string(action.bytes, action.length) == "$PMTK414*33\r\n");
+  otis_gnss_link_complete_action(link, true, now_ms + 4u);
+  feed_link(link, sentence(kExpectedOutput), now_ms + 5u);
+  assert(otis_gnss_link_online(link));
+  assert(otis_gnss_link_runtime_rx_only(link));
+}
 
 void test_valid_and_message_order_variation() {
   OtisGnssReceiver receiver;
@@ -150,6 +189,94 @@ void test_gsa_dimension_is_separate_and_fresh_for_active_authority() {
   assert(!snapshot(receiver, 3401u).gsa_fresh);
 }
 
+void test_passive_target_discovery_and_exact_configuration() {
+  OtisGnssLink link;
+  establish_target_link(&link, 100u);
+  assert(link.confirmed_baud == 115200u);
+  assert(link.configuration_confirmed);
+  assert(link.receiver_identity_available);
+  assert(std::string(link.receiver_release) == "AXN_5.10_3339");
+  assert(link.identity_response_count == 1u);
+  assert(link.output_response_count == 1u);
+  assert(std::string(otis_gnss_link_state_name(&link, 200u)) == "online");
+}
+
+void test_unknown_baud_transition_and_output_reconfiguration() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  OtisGnssLinkAction action =
+      take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 115200u);
+  otis_gnss_link_complete_action(&link, true, 0u);
+
+  otis_gnss_link_tick(&link, 1200u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 1200u);
+  otis_gnss_link_tick(&link, 1950u);
+  action = take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 9600u);
+  otis_gnss_link_complete_action(&link, true, 1950u);
+
+  feed_link(&link, sentence("PMTK010,001"), 2000u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2001u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 2002u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitTargetBaud);
+  assert(std::string(action.bytes, action.length) ==
+         "$PMTK251,115200*1F\r\n");
+  otis_gnss_link_complete_action(&link, true, 2003u);
+  action = take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 115200u);
+  otis_gnss_link_complete_action(&link, true, 2004u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2005u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 2006u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 2007u);
+
+  feed_link(
+      &link,
+      sentence("PMTK514,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"),
+      2008u);
+  action =
+      take_action(&link,
+                  OtisGnssLinkActionKind::TransmitOutputConfiguration);
+  assert(std::string(action.bytes, action.length) ==
+         "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
+  otis_gnss_link_complete_action(&link, true, 2009u);
+  feed_link(&link, sentence("PMTK001,314,3"), 2010u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 2011u);
+  feed_link(&link, sentence(kExpectedOutput), 2012u);
+
+  assert(otis_gnss_link_online(&link));
+  assert(link.confirmed_baud == 115200u);
+  assert(link.candidate_rejection_count == 1u);
+  assert(link.output_response_count == 2u);
+}
+
+void test_discovery_noise_degradation_and_online_loss() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  feed_link(&link, "$GPRMC,garbage*00\r\n", 10u);
+  assert(link.checksum_failure_count == 1u);
+  assert(!link.action_pending);
+  assert(otis_gnss_link_discovery_degraded(&link, 15000u));
+  assert(std::string(otis_gnss_link_state_name(&link, 15000u)) ==
+         "degraded");
+
+  establish_target_link(&link, 20000u);
+  assert(link.last_valid_frame_ms == 20005u);
+  otis_gnss_link_tick(&link, 30005u);
+  assert(!otis_gnss_link_online(&link));
+  assert(link.link_loss_count == 1u);
+  assert(std::string(otis_gnss_link_state_name(&link, 30005u)) == "lost");
+}
+
 }  // namespace
 
 int main() {
@@ -159,5 +286,8 @@ int main() {
   test_stale_and_short_fix_loss_return();
   test_invalid_utc_and_reconnect_identity_epoch();
   test_gsa_dimension_is_separate_and_fresh_for_active_authority();
+  test_passive_target_discovery_and_exact_configuration();
+  test_unknown_baud_transition_and_output_reconfiguration();
+  test_discovery_noise_degradation_and_online_loss();
   return 0;
 }

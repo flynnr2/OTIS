@@ -41,6 +41,9 @@ def test_g1_fixture_requires_the_gnss_state_needed_by_g2() -> None:
     assert readiness.ready is True
     assert readiness.contract_id == RUNTIME_CONTRACT_ID
     assert health[("gnss_receiver", "identity_epoch")] == "1"
+    assert health[("gnss_receiver", "link_state")] == "online"
+    assert health[("gnss_receiver", "confirmed_baud")] == "115200"
+    assert health[("gnss_receiver", "configuration_confirmed")] == "true"
     assert health[("gnss_receiver", "control_eligible")] == "true"
 
 

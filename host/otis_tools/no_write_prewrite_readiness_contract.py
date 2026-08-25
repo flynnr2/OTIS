@@ -37,6 +37,10 @@ INHERITED_PREVIEW_BASELINE_PROVENANCE = (
 )
 GNSS_PREWRITE_EXACT = {
     ("gnss_receiver", "initialized"): "true",
+    ("gnss_receiver", "link_state"): "online",
+    ("gnss_receiver", "link_online"): "true",
+    ("gnss_receiver", "configuration_confirmed"): "true",
+    ("gnss_receiver", "confirmed_baud"): "115200",
     ("gnss_receiver", "rx_only"): "true",
     ("gnss_receiver", "metadata_fresh"): "true",
     ("gnss_receiver", "checksum_requalified"): "true",

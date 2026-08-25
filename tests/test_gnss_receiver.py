@@ -31,7 +31,7 @@ def test_bounded_gnss_parser_fixtures(tmp_path: Path) -> None:
     subprocess.run([str(executable)], check=True, cwd=ROOT)
 
 
-def test_gnss_uart_is_structurally_receive_only() -> None:
+def test_gnss_uart_has_only_the_bounded_discovery_configuration_tx_path() -> None:
     source = (FIRMWARE / "otis_gnss_receiver.cpp").read_text(encoding="utf-8")
     board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
     registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(
@@ -40,17 +40,27 @@ def test_gnss_uart_is_structurally_receive_only() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
 
     assert "PIN_SERIAL1_RX" in board and "OTIS_GPIO_GNSS_RX 1u" in board
-    assert "PIN_SERIAL1_TX" in board and "OTIS_GPIO_GNSS_TX_SILENT 0u" in board
+    assert "PIN_SERIAL1_TX" in board and "OTIS_GPIO_GNSS_TX 0u" in board
     assert "gpio_set_function(OTIS_PIN_GNSS_RX, GPIO_FUNC_UART)" in source
-    assert "gpio_set_dir(OTIS_PIN_GNSS_TX_SILENT, GPIO_IN)" in source
-    assert "gpio_set_function(OTIS_PIN_GNSS_TX_SILENT" not in source
-    for forbidden in ("uart_put", "uart_write", "Serial1.write", "Serial1.print"):
+    assert "gpio_set_function(OTIS_PIN_GNSS_TX, GPIO_FUNC_UART)" in source
+    assert source.count("uart_get_hw(uart0)->dr =") == 1
+    for forbidden in (
+        "uart_putc",
+        "uart_puts",
+        "uart_write_blocking",
+        "Serial1.write",
+        "Serial1.print",
+    ):
         assert forbidden not in source
-    assert "#if OTIS_GNSS_UART_TX_ENABLED" in config
-    assert "requires Nano TX to remain electrically silent" in config
+    assert '"$PMTK605*31\\r\\n"' in source
+    assert '"$PMTK251,115200*1F\\r\\n"' in source
+    assert '"$PMTK414*33\\r\\n"' in source
+    assert '"$PMTK314,0,1,0,1,1,0' in source
+    assert "OTIS_ENABLE_GNSS_RECEIVER && !OTIS_GNSS_UART_TX_ENABLED" in config
+    assert "#define OTIS_GNSS_UART_BAUD 115200u" in config
     assert "OtisResourceType::UartController" in registry
     assert "OTIS_PIN_GNSS_RX" in registry
-    assert "OTIS_PIN_GNSS_TX_SILENT" in registry
+    assert "OTIS_PIN_GNSS_TX" in registry
 
 
 def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
@@ -61,8 +71,11 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     )
 
     assert "kOtisGnssMaximumLineBytes = 96u" in header
+    assert "kOtisGnssDiscoveryMaximumLineBytes = 256u" in header
     assert "OTIS_GNSS_SERVICE_BYTE_BUDGET" in source
+    assert "OTIS_GNSS_SERVICE_TX_BYTE_BUDGET" in source
     assert "while (remaining-- > 0u && uart_is_readable(uart0))" in source
+    assert "while (remaining-- > 0u && live_transmit.index" in source
     loop1 = sketch[sketch.index("void loop1()") : sketch.index("void loop()")]
     loop = sketch[sketch.index("void loop()") :]
     dual_start = loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION")
@@ -91,6 +104,30 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert "otis_gnss_receiver_service(millis())" in legacy[
         legacy.index("if (otis_cx317_active_live_transport_busy())") :
         legacy.index("emit_protocol_banner_if_serial_ready()")
+    ]
+
+
+def test_gnss_begin_is_constant_time_and_does_not_gate_timing_boot() -> None:
+    source = (FIRMWARE / "otis_gnss_receiver.cpp").read_text(encoding="utf-8")
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    begin_start = source.index("bool otis_gnss_receiver_begin(void)")
+    begin = source[
+        begin_start : source.index("void otis_gnss_receiver_service", begin_start)
+    ]
+    assert "otis_gnss_link_reset" in begin
+    assert "begin_pending_link_action" in begin
+    assert "while (" not in begin
+    assert "delay(" not in begin
+
+    setup = sketch[sketch.index("void setup()") : sketch.index("void setup1()")]
+    timing_handoff = setup.rindex(
+        "__atomic_store_n(&dual_core_service_boot_ready"
+    )
+    assert setup.index("boot_phase_peripherals_init();") < timing_handoff
+    assert "otis_gnss_receiver_service(millis())" in setup[
+        timing_handoff:
     ]
 
 

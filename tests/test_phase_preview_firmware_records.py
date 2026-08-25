@@ -274,7 +274,7 @@ def test_core1_live_producer_publishes_pointer_free_numerical_records(
         "OTIS_TCXO_COUNTER_BACKEND=OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
         "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1",
         "OTIS_ENABLE_GNSS_RECEIVER=1",
-        "OTIS_GNSS_UART_TX_ENABLED=0",
+        "OTIS_GNSS_UART_TX_ENABLED=1",
         "OTIS_ENABLE_ENV_SENSORS=1",
         "OTIS_ENABLE_DAC_AD5693R=0",
         "OTIS_ENABLE_H1_DAC_SWEEP=0",
