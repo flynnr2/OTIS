@@ -18,6 +18,7 @@ def test_bounded_gnss_parser_fixtures(tmp_path: Path) -> None:
             "-Wextra",
             "-Werror",
             "-DOTIS_GNSS_HOST_TEST",
+            "-DOTIS_GNSS_UART_BAUD=9600u",
             "-I",
             str(FIRMWARE),
             str(ROOT / "tests/cpp/gnss_receiver_harness.cpp"),
@@ -53,11 +54,19 @@ def test_gnss_uart_has_only_the_bounded_discovery_configuration_tx_path() -> Non
     ):
         assert forbidden not in source
     assert '"$PMTK605*31\\r\\n"' in source
+    assert '"$PMTK251,9600*17\\r\\n"' in source
     assert '"$PMTK251,115200*1F\\r\\n"' in source
     assert '"$PMTK414*33\\r\\n"' in source
     assert '"$PMTK314,0,1,0,1,1,0' in source
+    assert "OtisGnssLinkState::ObserveConfiguredOutput" in source
+    assert "Pmtk314AckObservedExact" in source
+    assert "last_identity_response_baud" in source
+    assert "output_query_timeout_count" in source
     assert "OTIS_ENABLE_GNSS_RECEIVER && !OTIS_GNSS_UART_TX_ENABLED" in config
-    assert "#define OTIS_GNSS_UART_BAUD 115200u" in config
+    assert "#define OTIS_GNSS_UART_BAUD 9600u" in config
+    assert source.index('#include "otis_config.h"') < source.index(
+        "#if OTIS_GNSS_UART_BAUD == 9600u"
+    )
     assert "OtisResourceType::UartController" in registry
     assert "OTIS_PIN_GNSS_RX" in registry
     assert "OTIS_PIN_GNSS_TX" in registry

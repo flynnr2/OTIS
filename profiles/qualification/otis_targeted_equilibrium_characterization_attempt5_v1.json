@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "programme_id": "OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_ATTEMPT5_V1",
+  "status": "operator_authorized_pending_exact_build_bundle_preflight_and_rehearsal",
+  "base_programme": {
+    "path": "profiles/qualification/otis_targeted_equilibrium_characterization_attempt4_v1.json",
+    "sha256": "b0d823e44e6ffb9640650a34acae13b8fd40e923a9d6b8c47a7d23b6239d5efa",
+    "size_bytes": 6499
+  },
+  "operator_authority": {
+    "instruction": "Go back to 9600 baud and progress with attempt 5; the receiver may currently be at 115200, so correct it back to 9600 before science.",
+    "instruction_date": "2026-08-25",
+    "scope": [
+      "offline_preparation",
+      "firmware_build",
+      "exact_bundle_creation",
+      "structural_preflight",
+      "operational_path_rehearsal",
+      "firmware_flash",
+      "board_reset",
+      "serial_access",
+      "gnss_115200_to_9600_transition",
+      "predetermined_dac_setup_stimuli",
+      "finite_live_acquisition",
+      "evidence_analysis",
+      "evidence_sealing",
+      "evidence_registration"
+    ],
+    "unattended_execution": true,
+    "physical_live_run_limit": 1,
+    "firmware_flash_limit": 1,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "frequency_control_authority": false,
+    "phase_or_hybrid_actuation": false
+  },
+  "frozen_inputs": {
+    "attempt4_terminal_seal": {
+      "path": "runs/otis_targeted_equilibrium_characterization_v1/campaign_attempt4_20260825T164928Z/live_attempt4_20260825T165938Z/reports/targeted_equilibrium_seal_v1.json",
+      "sha256": "325005168634874917b5a9320893cedd4ea8b87087acff482d5d601e7132cd8d"
+    }
+  },
+  "predecessor_attempt": {
+    "run_id": "live_attempt4_20260825T165938Z",
+    "classification": "platform_escape_into_campaign",
+    "terminal": "firmware_erased_selected_frequency_support_on_transient_gnss_metadata_parser_faults",
+    "scientific_dwells_started": 1,
+    "scientific_dwells_completed": 0,
+    "dac_stimuli_issued": 1,
+    "prewrite_gate_passed": true,
+    "priority_abort_delivery": "sent",
+    "seal_sha256": "7c4da17e6e871e78c255de590bb7afce1be176cfd2bc6d8b1331969484728b03",
+    "physical_d14_d8_support": "three_contiguous_600_interval_windows_present_after_settling",
+    "escaped_firmware_assumption": "transient_serial_metadata_dequalification_invalidates_non_actuating_D14_D8_estimator_support",
+    "corrective_semantics": "open_loop_range_map_selected_frequency_support_follows_valid_D14_D8_intervals_while_host_holds_and_resumes_across_transient_metadata_dequalification"
+  },
+  "firmware": {
+    "profile_id": "cx319_range_map_part_a",
+    "fqbn": "rp2040:rp2040:arduino_nano_connect:freq=133",
+    "expected_board_serial": "503533748A919118",
+    "required_defines": {
+      "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "0",
+      "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW": "1",
+      "OTIS_CX317_STARTUP_WARMUP_S": "1800u",
+      "OTIS_CX317_SETTLING_EXCLUSION_S": "900u",
+      "OTIS_CX317_SELECTED_SPAN_INTERVALS_CONFIG": "600u",
+      "OTIS_DAC_MIN_CODE": "0xA800u",
+      "OTIS_DAC_MAX_CODE": "0xAB00u",
+      "OTIS_GNSS_UART_BAUD": "9600u"
+    }
+  },
+  "gnss_live_boundary": {
+    "qualification_state": "attempt4_support_coupling_corrected_9600_return_pending_one_physical_attempt",
+    "baud_transition_qualification_state": "115200_to_9600_return_pending_same_run_prewrite_qualification",
+    "candidate_baud_order": [9600, 115200, 57600, 38400, 19200, 14400, 4800],
+    "target_baud": 9600,
+    "target_baud_command": "$PMTK251,9600*17\\r\\n",
+    "output_query": "$PMTK414*33\\r\\n",
+    "output_configuration_command": "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\\r\\n",
+    "pmtk514_qualified_field_count": 22,
+    "pmtk514_qualified_signature": "0101100000000000000000",
+    "allowed_output_confirmation_methods": [
+      "pmtk514_exact",
+      "pmtk314_ack_observed_exact"
+    ],
+    "direct_output_observation_ms": 2500,
+    "required_observed_sentence_mask": 7,
+    "forbidden_observed_sentence_mask": 0,
+    "confirmation_evidence": {
+      "pmtk514_exact": {
+        "output_configuration_field_count": "22",
+        "output_configuration_signature": "0101100000000000000000"
+      },
+      "pmtk314_ack_observed_exact": {
+        "last_command_ack_packet_type": "314",
+        "last_command_ack_flag": "3",
+        "output_configuration_ack_count_minimum": 1,
+        "output_observation_success_count_minimum": 1,
+        "output_observed_sentence_mask": "7",
+        "output_unexpected_sentence_mask": "0"
+      }
+    },
+    "required_prewrite_health": {
+      "link_state": "online",
+      "link_phase": "online",
+      "link_online": "true",
+      "configuration_confirmed": "true",
+      "confirmed_baud": "9600",
+      "last_identity_response_baud": "9600",
+      "rx_only": "true",
+      "identity_stable": "true",
+      "metadata_control_eligible": "true",
+      "raw_pps_control_eligible": "true",
+      "configuration_failure_count": "0",
+      "transmit_failure_count": "0",
+      "link_loss_count": "0"
+    },
+    "runtime_qualification_policy": {
+      "bounded_hold_status_keys": [
+        "metadata_control_eligible",
+        "raw_pps_control_eligible"
+      ],
+      "hold_deadline_source": "current_frozen_operation_timeout",
+      "hold_behavior": "continue_capture_and_do_not_complete_the_current_dependent_predicate_until_requalified",
+      "scientific_support_requires_requalified_snapshot": true,
+      "all_other_gnss_mismatches_are_immediate_invariant_failures": true
+    },
+    "physical_entry_path": "single_flash_continuous_sole_owner_ordinary_gnss_d14_d8_gate_then_science_promotion",
+    "first_physical_qualification": "discover_possible_115200_start_issue_fixed_9600_transition_then_require_post_transition_identity_exact_output_configuration_metadata_D14_D8_and_partition_gate_before_science",
+    "stability_qualification": "identity_9600_baud_configuration_and_persistent_failure_counters_remain_exact; transient_metadata_or_raw_pps_disqualification_holds_host_progress_but_does_not_erase_valid_non_actuating_D14_D8_estimator_support",
+    "future_reuse_policy": "use_9600_for_the_current_scientific_campaign; investigate_the_115200_corruption_mechanism_separately_without_gating_valid_open_loop_D14_D8_science",
+    "invalidation": "stop_before_first_DAC_write_if_post_transition_9600_identity_or_configuration_cannot_be_confirmed; after entry stop on persistent_link_identity_configuration_or_declared_deadline_failure",
+    "failure_action": "priority_abort_and_stop_before_first_DAC_write"
+  },
+  "stop_policy": {
+    "healthy_terminal": "targeted_characterization_complete",
+    "abort_before_write": [
+      "prewrite_gate_failure",
+      "wrong_frozen_order",
+      "code_outside_characterized_envelope",
+      "insufficient_remaining_wall"
+    ],
+    "abort_fail_static": [
+      "missing_exact_application_acknowledgement",
+      "missing_first_dependent_consumer",
+      "stale_or_cross_epoch_support",
+      "receiver_identity_configuration_or_persistent_link_fault",
+      "runtime_qualification_hold_deadline_expired",
+      "reference_capture_transport_queue_or_partition_fault",
+      "any_action_authority_contamination",
+      "wall_deadline_expired"
+    ],
+    "last_confirmed_state_preserved": true,
+    "automatic_retry": false,
+    "automatic_restore": false
+  }
+}

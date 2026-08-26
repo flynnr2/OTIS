@@ -36,9 +36,11 @@ const char *kValidGsa =
     "GPGSA,A,3,04,05,09,12,24,25,29,31,,,,,1.8,1.0,1.5";
 const char *kExpectedOutput =
     "PMTK514,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0";
+const char *kExpectedExtendedOutput =
+    "PMTK514,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0";
 
 OtisGnssLinkPolicy link_policy() {
-  return {115200u, 1200u, 750u, 15000u, 10000u};
+  return {9600u, 1200u, 750u, 15000u, 10000u, 2500u};
 }
 
 OtisGnssLinkAction take_action(OtisGnssLink *link,
@@ -59,7 +61,7 @@ void establish_target_link(OtisGnssLink *link, uint32_t now_ms) {
   otis_gnss_link_reset(link, &policy, now_ms);
   OtisGnssLinkAction action =
       take_action(link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 115200u);
+  assert(action.baud == 9600u);
   otis_gnss_link_complete_action(link, true, now_ms);
   feed_link(link, sentence(kValidRmc), now_ms + 1u);
   action = take_action(link, OtisGnssLinkActionKind::TransmitIdentityQuery);
@@ -192,7 +194,7 @@ void test_gsa_dimension_is_separate_and_fresh_for_active_authority() {
 void test_passive_target_discovery_and_exact_configuration() {
   OtisGnssLink link;
   establish_target_link(&link, 100u);
-  assert(link.confirmed_baud == 115200u);
+  assert(link.confirmed_baud == 9600u);
   assert(link.configuration_confirmed);
   assert(link.receiver_identity_available);
   assert(std::string(link.receiver_release) == "AXN_5.10_3339");
@@ -207,7 +209,7 @@ void test_unknown_baud_transition_and_output_reconfiguration() {
   otis_gnss_link_reset(&link, &policy, 0u);
   OtisGnssLinkAction action =
       take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 115200u);
+  assert(action.baud == 9600u);
   otis_gnss_link_complete_action(&link, true, 0u);
 
   otis_gnss_link_tick(&link, 1200u);
@@ -215,7 +217,7 @@ void test_unknown_baud_transition_and_output_reconfiguration() {
   otis_gnss_link_complete_action(&link, true, 1200u);
   otis_gnss_link_tick(&link, 1950u);
   action = take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 9600u);
+  assert(action.baud == 115200u);
   otis_gnss_link_complete_action(&link, true, 1950u);
 
   feed_link(&link, sentence("PMTK010,001"), 2000u);
@@ -224,10 +226,10 @@ void test_unknown_baud_transition_and_output_reconfiguration() {
   feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 2002u);
   action = take_action(&link, OtisGnssLinkActionKind::TransmitTargetBaud);
   assert(std::string(action.bytes, action.length) ==
-         "$PMTK251,115200*1F\r\n");
+         "$PMTK251,9600*17\r\n");
   otis_gnss_link_complete_action(&link, true, 2003u);
   action = take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 115200u);
+  assert(action.baud == 9600u);
   otis_gnss_link_complete_action(&link, true, 2004u);
   action = take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
   otis_gnss_link_complete_action(&link, true, 2005u);
@@ -251,9 +253,126 @@ void test_unknown_baud_transition_and_output_reconfiguration() {
   feed_link(&link, sentence(kExpectedOutput), 2012u);
 
   assert(otis_gnss_link_online(&link));
-  assert(link.confirmed_baud == 115200u);
+  assert(link.confirmed_baud == 9600u);
   assert(link.candidate_rejection_count == 1u);
   assert(link.output_response_count == 2u);
+}
+
+void test_output_query_timeout_uses_acknowledged_observed_configuration() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  OtisGnssLinkAction action =
+      take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 9600u);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  feed_link(&link, sentence(kValidRmc), 1u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 3u);
+  assert(link.last_identity_response_baud == 9600u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 4u);
+
+  otis_gnss_link_tick(&link, 754u);
+  assert(link.output_query_timeout_count == 1u);
+  assert(link.configuration_failure_count == 0u);
+  action =
+      take_action(&link, OtisGnssLinkActionKind::TransmitOutputConfiguration);
+  otis_gnss_link_complete_action(&link, true, 755u);
+  feed_link(&link, sentence("PMTK001,314,3"), 756u);
+  assert(link.output_configuration_ack_count == 1u);
+  assert(link.last_command_ack_packet_type == 314u);
+  assert(link.last_command_ack_flag == 3u);
+  action = take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 757u);
+  otis_gnss_link_tick(&link, 1507u);
+  assert(link.output_query_timeout_count == 2u);
+  assert(link.state == OtisGnssLinkState::ObserveConfiguredOutput);
+
+  feed_link(&link, sentence(kValidRmc), 1600u);
+  feed_link(&link, sentence(kValidGga), 1700u);
+  feed_link(&link, sentence(kValidGsa), 1800u);
+  otis_gnss_link_tick(&link, 4006u);
+  assert(!otis_gnss_link_online(&link));
+  otis_gnss_link_tick(&link, 4007u);
+  assert(otis_gnss_link_online(&link));
+  assert(link.output_observation_success_count == 1u);
+  assert(link.output_unexpected_sentence_mask == 0u);
+  assert(otis_gnss_output_confirmation_method_name(&link) ==
+         std::string("pmtk314_ack_observed_exact"));
+}
+
+void test_physical_receiver_extended_pmtk514_shape_is_exact() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  feed_link(&link, sentence(kValidRmc), 1u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 3u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 4u);
+  feed_link(&link, sentence(kExpectedExtendedOutput), 5u);
+
+  assert(otis_gnss_link_online(&link));
+  assert(link.configuration_failure_count == 0u);
+  assert(link.output_configuration_field_count == 22u);
+  assert(std::string(link.output_configuration_signature) ==
+         "0101100000000000000000");
+  assert(std::string(otis_gnss_output_confirmation_method_name(&link)) ==
+         "pmtk514_exact");
+}
+
+void test_physical_receiver_extension_must_remain_disabled() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  feed_link(&link, sentence(kValidRmc), 1u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 3u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 4u);
+  feed_link(
+      &link,
+      sentence("PMTK514,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1"),
+      5u);
+
+  assert(!otis_gnss_link_online(&link));
+  assert(link.state == OtisGnssLinkState::TransmitOutputConfiguration);
+  assert(link.output_configuration_field_count == 22u);
+}
+
+void test_observed_configuration_rejects_an_unexpected_sentence() {
+  OtisGnssLink link;
+  const OtisGnssLinkPolicy policy = link_policy();
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  feed_link(&link, sentence(kValidRmc), 1u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 2u);
+  feed_link(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 3u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 4u);
+  otis_gnss_link_tick(&link, 754u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputConfiguration);
+  otis_gnss_link_complete_action(&link, true, 755u);
+  feed_link(&link, sentence("PMTK001,314,3"), 756u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+  otis_gnss_link_complete_action(&link, true, 757u);
+  otis_gnss_link_tick(&link, 1507u);
+  feed_link(&link, sentence("GPGSV,1,1,00"), 1600u);
+  otis_gnss_link_tick(&link, 1600u);
+  assert(!otis_gnss_link_online(&link));
+  assert(link.configuration_failure_count == 1u);
+  assert(link.output_unexpected_sentence_mask == (1u << 5u));
+  assert(link.last_identity_response_baud == 9600u);
 }
 
 void test_discovery_noise_degradation_and_online_loss() {
@@ -288,6 +407,10 @@ int main() {
   test_gsa_dimension_is_separate_and_fresh_for_active_authority();
   test_passive_target_discovery_and_exact_configuration();
   test_unknown_baud_transition_and_output_reconfiguration();
+  test_output_query_timeout_uses_acknowledged_observed_configuration();
+  test_physical_receiver_extended_pmtk514_shape_is_exact();
+  test_physical_receiver_extension_must_remain_disabled();
+  test_observed_configuration_rejects_an_unexpected_sentence();
   test_discovery_noise_degradation_and_online_loss();
   return 0;
 }

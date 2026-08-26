@@ -419,7 +419,10 @@ def test_live_receiver_invalidation_fixture_is_bounded_and_non_actuating() -> No
     boundary_end = sketch.index("void drain_pps_count_boundary_ring(", boundary_start)
     boundary = sketch[boundary_start:boundary_end]
     assert "dual_core_receiver_qualified_for_control()" in boundary
-    assert "preview_receiver_valid" in boundary
+    assert "raw_d14_d8_interval_valid" in boundary
+    assert "otis_preview_reference_valid_for_profile" in boundary
+    assert "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW != 0" in boundary
+    assert "preview_reference_valid" in boundary
 
 
 def test_live_receiver_recovery_is_explicit_qualified_and_non_actuating() -> None:

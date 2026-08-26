@@ -1,0 +1,125 @@
+{
+  "schema_version": 2,
+  "attempt_id": "OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_V1_RECOVERY_ATTEMPT_2",
+  "status": "prospectively_frozen_before_recovery_attempt_results",
+  "contract_sha256": "534beecf00ac09087fdbb3f1c36f03660753c29d8a7d3d4ff0756aa9c3f24f80",
+  "operator_direction": {
+    "text": "proceed",
+    "received_date": "2026-08-25",
+    "scope": "separately identified zero-I/O recovery attempt after the exact next-gate artifact was recovered; no physical authority"
+  },
+  "parent_contract": {
+    "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/study_contract_v1.json",
+    "semantic_sha256": "ab2ec34269d0cb21b7895e459201e6d8c500ae050304d8f9f3bd5a829caed682",
+    "file_sha256": "1fef915dfe7c23aaacfaed104db1d4d62ac0d407cfc5618e60032a26ac064902",
+    "immutable_invalid_report_preserved": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/observability_report_v1.json"
+  },
+  "unchanged_scientific_contract": {
+    "parent_keys": [
+      "state_and_observation_semantics",
+      "evidence_partition",
+      "model_hypotheses",
+      "nuisance_and_arithmetic_semantics",
+      "sensitivity_cases",
+      "usefulness_gate",
+      "uninformative_baseline",
+      "feasibility_gate_order",
+      "terminal_outcomes",
+      "authority"
+    ],
+    "semantic_sha256": "18b071c30123a79ae4126b2a5435528ce646b6dd6c73cad48d5b5702adc6dbe4",
+    "changes": "none; the split, three models, gain cases, nuisances, sensitivity list, 18-code usefulness gate, terminal order, and no-I/O authority are inherited exactly"
+  },
+  "source_recovery": {
+    "recovery_record_path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/SOURCE_RECOVERY.md",
+    "recovery_record_sha256": "82631661dd8bbea44e3df8b08e0dfa69a1378bd4a2f6086134e884e27a7824d1",
+    "restored_path": "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+    "restored_sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+    "restored_size_bytes": 3459,
+    "recovered_git_blob": "bbfce71a3dd789c39458821dcdc0d84bba881812",
+    "recovered_commit": "b4b3ca46019a740c77ea52267c8fb5e96998f00e",
+    "recorded_stage5_source_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "recorded_stage5_source_state": "dirty",
+    "claim_boundary": "exact recorded artifact identity recovered; no clean-source-revision claim"
+  },
+  "additional_source_bindings": [
+    {
+      "role": "source_recovery_record",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/SOURCE_RECOVERY.md",
+      "sha256": "82631661dd8bbea44e3df8b08e0dfa69a1378bd4a2f6086134e884e27a7824d1"
+    },
+    {
+      "role": "stage5_raw_D8_counts",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/cnt.csv",
+      "sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264"
+    },
+    {
+      "role": "stage5_DAC_acknowledgements",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/dac_steps.csv",
+      "sha256": "34b9678f01718cae43a7ec8e88de82e016ccc0767ac44dbdfb55f08bbe954644"
+    },
+    {
+      "role": "stage5_nearby_air_context",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/environment.csv",
+      "sha256": "049126131a574af82d29a55b9df776d3872b9e6bcfaea4ec0ed9620d35d6e11b"
+    },
+    {
+      "role": "stage5_D14_reference_events",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/ref.csv",
+      "sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5"
+    },
+    {
+      "role": "stage5_D8_cumulative_snapshots",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/snp.csv",
+      "sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b"
+    },
+    {
+      "role": "stage5_settling_and_DAC_epoch_policy",
+      "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/interval_policy_v1.json",
+      "sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3"
+    }
+  ],
+  "recovery_attempt_clarifications": {
+    "purpose": "deterministic executable detail needed to evaluate, not alter, the already frozen model and validation semantics",
+    "stage5_support_construction": "for each complete settled Stage 5 dwell, reconstruct the first two non-overlapping 600-accepted-D14-interval supports from raw cumulative D8 snapshots and count rows; require exact D14 association, one capture session, one DAC epoch, valid flags, and count arithmetic",
+    "settling_boundary_cases": "one interval before the 900-second boundary is rejected; exact-boundary and one-second-above starts are independently reconstructed from fresh 600-second supports",
+    "frequency_observation": "integer count error c maps to closed [(2c-1)/1200,(2c+1)/1200] Hz",
+    "constant_model": "intersect every Stage 5 support's exact equilibrium-code interval at each fixed gain case",
+    "slow_drift_model": "use e(t)=e_ref+d*(t-t_ref), exact D14-sequence elapsed hours, t_ref at the midpoint of first and last support midpoints, and d in [-1.91,+1.91] codes/hour; retain the complete correlated feasible projection",
+    "history_model": "outbound_or_anchor segments are centre_1, lower_interior_1, lower_endpoint, centre_2, upper_interior_1, and upper_endpoint; return segments are lower_interior_2, upper_interior_2, and final_safe_centre; one durable base plus a common return offset bounded to [-8,+8] codes must explain both groups",
+    "same_code_perturbation": "apply +1 and -1 integer count separately to both supports of one complete repeated return segment at a time; never apply it as a permanent response offset",
+    "held_out_prediction": "use all 52 Attempt 4 selected 600-second supports only after identification; a support is covered when its closed half-count observation interval intersects the model prediction interval; require 52/52 coverage",
+    "slow_drift_holdout": "cross-run prediction fails closed because independent capture sessions have no frozen shared drift origin",
+    "history_holdout": "carry the full [-8,+8]-code history offset into every held-out prediction rather than selecting a favorable direction after outcomes",
+    "leave_one_out": "remove both supports of one complete Stage 5 dwell, never one adjacent support",
+    "gain_aggregation": "minimum, nominal, and maximum fixed-gain cases must each pass; no averaging or nominal-only selection",
+    "temperature": "report both complete nearby-air ranges without fitting a coefficient or creating a hard applicability gate",
+    "terminal_rule": "identity or executable model-binding failure is invalid; otherwise any empty, held-out-failing, sensitivity-failing, or wider-than-18-code case is not observable; observability requires all ten parent gates"
+  },
+  "authority": {
+    "offline_analysis": true,
+    "serial_access": false,
+    "firmware_flash": false,
+    "reset": false,
+    "gnss_transmission": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "live_activation": false,
+    "effective_authority_creation": false
+  },
+  "output": {
+    "schema_version": 2,
+    "report_type": "otis_sustained_hybrid_equilibrium_estimator_observability_report_v2",
+    "canonical_json": "utf8_sorted_keys_compact_separators_allow_nan_false",
+    "report_sha256_scope": "all_report_fields_except_report_sha256",
+    "immutable_output_required": true,
+    "tool": {
+      "tool_id": "otis_sustained_hybrid_equilibrium_estimator_recovery_v2",
+      "path": "host/otis_tools/sustained_hybrid_equilibrium_estimator_recovery_study.py",
+      "sha256": "9fcfdbfdf08cecb0839fc6cbc7e32a4859dfa5908d74ab58de4939a3ed05a959"
+    }
+  }
+}
