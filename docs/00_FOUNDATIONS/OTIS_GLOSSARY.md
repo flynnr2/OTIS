@@ -18,6 +18,18 @@ Ability to reconstruct analysis deterministically from preserved telemetry.
 ## Discipline Engine
 Logic responsible for steering a reference oscillator toward an external reference.
 
+## Reactive Frequency Steering
+Bounded discipline from current qualified frequency-error observations without
+requiring future-drift prediction or one permanent actuator code.
+
+## Correction Debt
+Provenance-bearing fractional actuator demand not yet realized as an integer
+DAC-code application.
+
+## Shadow Estimator
+A zero-authority estimator whose output is additive evidence and whose failure
+cannot invalidate canonical observations or the selected baseline controller.
+
 ## Holdover
 Operation during temporary absence of the external reference source.
 

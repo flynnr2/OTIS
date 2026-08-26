@@ -918,6 +918,54 @@
         "evidence_content_sha256": "ab9d58a76de1340c15a271e0e124eb16b0e2665278e8046e9c146f3468922bbb",
         "snapshot_digest": "50c5e5e1fc3d17dcb5bb53bf3cb1a03d5cb27e2683fe42e24367f30c3b9370d5"
       },
+      "successor_architecture_decision": {
+        "status": "adaptive_fll_pll_selected_offline_contract_pending",
+        "effective_date": "2026-08-26",
+        "path": "docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md",
+        "decision": "one_coherent_adaptive_fll_pll_with_bounded_reactive_frequency_baseline_and_later_bounded_phase_bias",
+        "durable_equilibrium_code_required": false,
+        "future_drift_prediction_required": false,
+        "baseline_control_state": "evolving_confirmed_dac_state_plus_fractional_correction_debt",
+        "fll_role": "correct_current_D14_qualified_D8_frequency_error",
+        "pll_role": "later_bounded_same_epoch_D14_relative_phase_error_frequency_bias_through_the_same_policy_and_transaction_path",
+        "independent_competing_loops_allowed": false,
+        "future_estimator_authority": "zero_until_separately_promoted",
+        "future_estimator_failure_effect": "estimator_local_only",
+        "future_estimator_may_invalidate_canonical_evidence": false,
+        "future_estimator_may_inhibit_reactive_baseline": false,
+        "future_estimator_may_change_physical_terminal": false,
+        "existing_bounded_fll_qualification_reused": true,
+        "existing_coherent_fll_pll_integration_evidence_reused": true,
+        "cx322_positive_combined_control_evidence_reused": true,
+        "existing_selected_frequency_estimator_reused": true,
+        "existing_relative_phase_estimator_reused": true,
+        "existing_active_hybrid_engine_and_transaction_path_reused": true,
+        "existing_replay_and_operational_platform_reused": true,
+        "unchanged_fll_fll_pll_requalification_required": false,
+        "new_general_characterization_required": false,
+        "remaining_work_class": "minimal_sustained_operation_policy_delta_then_use",
+        "d10_current_steering_profile_claimed": false,
+        "d10_failure_scope": "external_event_evidence_only_never_D14_D8_control_or_run_terminal",
+        "gnss_serial_metadata_transient_disposition": "bounded_static_control_hold_not_run_failure",
+        "gnss_metadata_hold_preserves_D14_D8_capture_and_canonical_history": true,
+        "gnss_metadata_recovery_requires_fresh_causal_requalification": true,
+        "gnss_metadata_hold_current_implementation_gap": "active_hybrid_live_supervisor_terminal_and_firmware_reference_path_conflation_must_be_replaced_in_existing_paths",
+        "changed_policy_verification_scope": "shortest_affected_replay_integration_or_if_evidence_is_insufficient_finite_performance_gate",
+        "physical_authority_created": false,
+        "firmware_profile_created": false,
+        "exact_bundle_created": false,
+        "automatic_successor_created": false,
+        "next_steps": [
+          "bind_and_reuse_existing_estimator_phase_controller_transaction_replay_and_operational_identities",
+          "freeze_only_the_minimal_sustained_operation_authority_hold_and_terminal_delta",
+          "compare_correction_debt_to_the_unchanged_existing_law_in_causal_replay_and_adopt_only_if_better",
+          "implement_only_the_selected_delta_in_the_existing_host_firmware_parity_engines",
+          "replace_transient_GNSS_metadata_terminal_with_transaction_aware_hold_in_existing_firmware_and_host_paths",
+          "prove_future_estimator_counterfactual_isolation",
+          "prove_D10_and_transient_GNSS_metadata_failures_are_local",
+          "reuse_the_existing_operational_path_and_move_to_bounded_operation"
+        ]
+      },
       "authority_consumption": {
         "consumed": true,
         "consumed_by_run_id": "live_attempt1_20260825T140809Z",
@@ -939,7 +987,7 @@
         "sixth_live_attempt_consumed": true,
         "sixth_live_attempt_consumed_by_run_id": "live_attempt6_20260826T062115Z"
       },
-      "next_gate": "no_automatic_successor_review_valid_equilibrium_state_not_observable_result_before_any_new_programme"
+      "next_gate": "freeze_the_minimal_sustained_operation_policy_delta_on_the_existing_engine_then_use_the_existing_operational_path"
     },
     "cx322_bounded_hybrid_fact_gathering": {
       "state": "stage5_evidence_acquired_successor_decision_pending",

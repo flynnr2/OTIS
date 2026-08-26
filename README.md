@@ -80,6 +80,26 @@ maximum gain, so no model was eligible. The valid scientific terminal is
 was created. See the
 [targeted-characterization report](docs/60_EXPERIMENTS/OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_V1/README.md).
 
+The resulting architecture decision is positive: OTIS will stop treating one
+permanent equilibrium DAC code as the foundation of steering. The selected
+end-state is one coherent adaptive FLL/PLL policy, with bounded reactive
+frequency discipline as its first dependable baseline and a later bounded
+phase-bias term through the same command path. It carries an evolving DAC state
+plus explicit correction debt; prediction is optional. Existing sealed FLL
+qualification and coherent FLL/PLL integration evidence are reused; unchanged
+architecture and plumbing are not requalified. Every unpromoted future
+estimator is zero-authority and must fail only itself; it cannot invalidate
+canonical evidence, inhibit the reactive baseline, or fail current physical
+reality. CX322 already supplies positive physical combined-control evidence:
+four phase-material corrections approximately halved the matched relative-phase
+ramp while frequency stayed within the frozen comparison limits. The remaining
+work is the smallest sustained-operation policy delta, followed by use of the
+existing platform—not a new steering or platform qualification programme. The
+same decision makes recoverable GNSS serial-metadata glitches a bounded static
+control hold with continuing D14/D8 acquisition, never a failed physical run.
+The decision and reuse ledger are in the
+[adaptive-frequency-steering architecture](docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md).
+
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute
 frequency, calibrated phase, UTC, lock, or holdover.

@@ -20,6 +20,29 @@ before the unchanged 600-second natural controller. Implementation and
 physical authority remain pending; current details are in
 `../60_EXPERIMENTS/CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
+**Current direction (updated 2026-08-26):** later sustained-hybrid and targeted
+equilibrium work supersedes that historical “next” direction without changing
+its retained evidence. Targeted Attempt 6 completed all twelve dwells and 36
+supports, but no frozen durable-equilibrium model had a nonempty complete set.
+The selected next architecture is one coherent adaptive FLL/PLL, not another
+fixed-equilibrium or unchanged hybrid attempt. Bounded reactive FLL steering
+corrects current D14-qualified D8 frequency error with an evolving DAC state;
+prediction is not required. A later PLL term may request bounded frequency bias
+through the same policy and transaction path. The existing sealed FLL
+qualification and physically exercised coherent FLL/PLL integration path are
+reused; this decision does not require their requalification. Future estimators
+are isolated zero-authority consumers whose failure cannot invalidate canonical
+evidence or the reactive baseline. See
+`../10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md`. This direction
+creates no implementation or physical authority. CX322 already provides the
+positive combined-control result: four phase-material corrections approximately
+halved the matched relative-phase ramp without exceeding the frequency limits.
+The next engineering unit is therefore a minimal sustained-operation policy
+delta on the existing engine and operational path, followed by use—not a new
+FLL/PLL or platform qualification programme. The focused platform correction
+is to make recoverable GNSS serial-metadata dequalification a transaction-aware
+static control hold while D14/D8 acquisition continues; it is not a terminal.
+
 **Status:** revised through the completed and sealed CX317 bounded closed-loop
 acquisition programme on 8 August 2026; decision
 `dual_core_frequency_control_endurance_passed`
@@ -555,7 +578,20 @@ This separation is important for future NTP, PTP, chrony, RSN or time-server app
 
 ## 5. PLL, FLL and the recommended “both-ish” evolution
 
-The current repository correctly recommends an initial guarded I-only frequency controller. That should remain the first actuation target.
+The 2026-08-26 adaptive-steering decision makes one coherent FLL/PLL the
+selected architecture. It reuses the sealed bounded FLL qualification and the
+physically exercised coherent FLL/PLL integration path. Detect current
+frequency error, retain fractional correction debt, apply a bounded integer-code
+correction, observe the response, and repeat. Drift prediction and a durable
+equilibrium code are not baseline dependencies. A phase term requests bounded
+frequency bias through the same policy; it cannot become an independent loop
+competing for the actuator. Later work validates only materially changed policy
+semantics or a new performance claim with the shortest affected gate; it does
+not requalify unchanged FLL/PLL architecture or plumbing.
+
+The current repository correctly recommends an initial guarded I-only frequency
+controller. That historical target was met by the sealed CX317 bounded
+frequency-control programme; it is not a pending requalification gate.
 
 ### 5.1 Do not implement independent loops that fight each other
 

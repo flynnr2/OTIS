@@ -117,6 +117,26 @@ Given the same canonical measurements, configuration, diagnostic version, and
 plant model, host replay should reproduce the same findings or record why a newer
 algorithm differs.
 
+### Fail the model, not the observation
+
+A diagnostic may conclude that an estimator is unavailable, stale, divergent,
+inapplicable, or contradicted by canonical evidence. That conclusion affects
+the estimator and any authority explicitly dependent on it. It must not mark
+the upstream observation invalid merely because the estimator cannot explain
+it.
+
+An unpromoted shadow estimator has `control_effect=none`. Its absence, delay,
+failure, or rejection cannot inhibit an otherwise eligible reactive baseline,
+stop capture, reset valid estimator history, alter a DAC request, or create an
+instrument terminal. Preserve the canonical evidence and emit the
+estimator-local status and supporting range.
+
+If a separately promoted estimator loses coherence, policy may withdraw that
+estimator's authority and select a prospectively frozen reactive fallback or
+hold. Only an independently established reference, capture, ordering,
+actuator-state, acknowledgement, or safety contradiction may carry the
+corresponding physical control consequence.
+
 ## Initial SW2 diagnostic families
 
 The first implementation should prioritize:
@@ -175,3 +195,6 @@ Diagnostics become first-class only when tests demonstrate that:
 - service-plane overload cannot silently corrupt timing truth;
 - every applied DAC update can be traced through estimate, diagnostic gate,
   policy decision, request, and acknowledgement.
+- disabling, stalling, corrupting, or contradicting an unpromoted estimator
+  leaves canonical evidence, reactive decisions, DAC transactions, and the
+  non-shadow terminal unchanged.

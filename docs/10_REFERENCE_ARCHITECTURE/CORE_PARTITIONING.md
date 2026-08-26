@@ -141,6 +141,18 @@ Core 1 should remain:
 - observable;
 - timing-focused.
 
+Optional future estimators must not share authority or backpressure with the
+canonical capture and reactive-control path. Before promotion they consume a
+bounded copy of evidence and publish only additive shadow records. If their
+consumer is absent or slow, bounded shadow work may be dropped with explicit
+counters; capture, baseline estimator state, control eligibility, abort, and
+actuator transactions must continue unchanged.
+
+A future estimator may not become a second hidden owner of control state.
+Promotion requires one explicit policy boundary and a frozen reactive fallback.
+An estimator-local fault withdraws that estimator, not the timing fabric or
+canonical physical evidence.
+
 ---
 
 # Core 0 — Instrument Service and I/O Core

@@ -371,6 +371,38 @@ Examples:
 - `gpsdo_disciplined_10mhz`;
 - `disciplined_frequency_estimate_hz`.
 
+### Reactive frequency steering
+
+A discipline policy that adjusts the local oscillator in response to current,
+qualified frequency-error observations rather than requiring a prediction of
+future drift or one permanent actuator setting.
+
+For OTIS, the selected baseline uses D14-qualified D8 observations and one
+versioned command policy. Reactive does not mean immediate or aggressive; the
+observation window, persistence, correction fraction, cadence, and actuator
+limits remain explicit and may be deliberately slow.
+
+### Correction debt
+
+A derived control state representing fractional actuator demand that has been
+justified by accepted observations but not yet realized as an integer DAC-code
+application.
+
+Correction debt must name its code domain, source evidence frontier, policy,
+gain assumption, and update history. It is not raw frequency error, accumulated
+phase error, a calibrated equilibrium code, or permission to actuate.
+
+### Shadow estimator
+
+A named, versioned estimator that consumes a bounded copy of canonical evidence
+and has zero control or terminal authority. Its output is additive derived
+telemetry used for causal replay and comparison.
+
+Missing, stale, delayed, contradictory, corrupt, or infeasible shadow output
+fails the shadow estimator only. It must not invalidate upstream observations,
+alter the selected baseline controller, backpressure timing capture, or fail a
+physical run.
+
 ### Lock
 
 A state in which a discipline or synchronization process has met its configured acceptance criteria.

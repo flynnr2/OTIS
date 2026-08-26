@@ -80,6 +80,9 @@ or bypass control safety.
 - Separate measurement, metrology, diagnostics, control, and telemetry.
 - Make uncertainty and reason codes visible.
 - Make every control action explainable and replayable.
+- Treat optional or future estimator failure as local to that estimator. A
+  model that cannot explain an observation does not invalidate the observation,
+  canonical evidence, baseline control path, or physical reality.
 - Hold the last confirmed actuator state and enter documented reference hold or
   holdover when reference evidence is temporarily unavailable; reserve latched
   fail-static state for integrity, ordering, capture-loss, or actuator failures

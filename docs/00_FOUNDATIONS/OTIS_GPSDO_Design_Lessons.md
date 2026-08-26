@@ -237,6 +237,23 @@ GPS PPS is noisy at short timescales.
 
 An aggressive PLL often performs WORSE than a gentle FLL.
 
+Current OTIS decision, 2026-08-26:
+
+* select one coherent adaptive FLL/PLL architecture;
+* reuse the already qualified bounded reactive FLL baseline and the physically
+  exercised coherent FLL/PLL integration path rather than requalifying
+  unchanged boundaries;
+* add a later bounded phase-frequency-bias term through the same policy and
+  actuator transaction path, rather than an independent competing loop;
+* validate only materially changed policy semantics and new performance claims
+  with the shortest affected replay, integration, or physical gate;
+* do not require one permanent equilibrium DAC code or future-drift prediction;
+* keep unpromoted future estimators zero-authority and make their failures local
+  to themselves.
+
+The normative decision is
+`../10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md`.
+
 ⸻
 
 Stage 3

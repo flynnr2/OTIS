@@ -448,6 +448,42 @@ def test_tracked_status_closes_sustained_v1_and_offline_successor_studies() -> N
     )
     assert targeted["verification"]["attempt6_physical_acquisition_complete"] is True
     assert targeted["verification"]["attempt6_evidence_registration_passed"] is True
+    adaptive = targeted["successor_architecture_decision"]
+    assert adaptive["status"] == "adaptive_fll_pll_selected_offline_contract_pending"
+    assert adaptive["durable_equilibrium_code_required"] is False
+    assert adaptive["future_drift_prediction_required"] is False
+    assert adaptive["independent_competing_loops_allowed"] is False
+    assert adaptive["future_estimator_authority"] == "zero_until_separately_promoted"
+    assert adaptive["future_estimator_failure_effect"] == "estimator_local_only"
+    assert adaptive["future_estimator_may_invalidate_canonical_evidence"] is False
+    assert adaptive["future_estimator_may_inhibit_reactive_baseline"] is False
+    assert adaptive["future_estimator_may_change_physical_terminal"] is False
+    assert adaptive["existing_bounded_fll_qualification_reused"] is True
+    assert adaptive["existing_coherent_fll_pll_integration_evidence_reused"] is True
+    assert adaptive["cx322_positive_combined_control_evidence_reused"] is True
+    assert adaptive["existing_selected_frequency_estimator_reused"] is True
+    assert adaptive["existing_relative_phase_estimator_reused"] is True
+    assert adaptive["existing_active_hybrid_engine_and_transaction_path_reused"] is True
+    assert adaptive["existing_replay_and_operational_platform_reused"] is True
+    assert adaptive["unchanged_fll_fll_pll_requalification_required"] is False
+    assert adaptive["new_general_characterization_required"] is False
+    assert adaptive["remaining_work_class"] == (
+        "minimal_sustained_operation_policy_delta_then_use"
+    )
+    assert adaptive["d10_current_steering_profile_claimed"] is False
+    assert adaptive["gnss_serial_metadata_transient_disposition"] == (
+        "bounded_static_control_hold_not_run_failure"
+    )
+    assert adaptive[
+        "gnss_metadata_hold_preserves_D14_D8_capture_and_canonical_history"
+    ] is True
+    assert adaptive[
+        "gnss_metadata_recovery_requires_fresh_causal_requalification"
+    ] is True
+    assert adaptive["physical_authority_created"] is False
+    assert adaptive["firmware_profile_created"] is False
+    assert adaptive["exact_bundle_created"] is False
+    assert adaptive["automatic_successor_created"] is False
     assert targeted["verification"]["post_attempt5_affected_profile_build_passed"] is True
     assert targeted["verification"]["post_attempt5_compiled_elf_target_command"] == (
         "$PMTK251,9600*17"

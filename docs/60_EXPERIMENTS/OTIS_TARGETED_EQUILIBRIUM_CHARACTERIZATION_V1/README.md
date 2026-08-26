@@ -550,3 +550,49 @@ Attempt 6 closes this characterization decision. It grants no control
 authority and does not select an equilibrium estimator. Any successor requires
 a separate architectural decision and explicit authority; it is not attempt 7
 or an automatic continuation of this campaign.
+
+## Post-study architecture decision
+
+The subsequent review does not weaken or relabel the frozen
+`equilibrium_state_not_observable` terminal. It draws a different, supported
+design conclusion from the complete body of retained evidence: the VCOCXO is
+controllable by slow feedback, while a durable equilibrium code is not a sound
+control foundation.
+
+`../../10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md` therefore
+selects one coherent adaptive FLL/PLL architecture. Bounded reactive frequency
+steering is the first dependable baseline: it corrects current observed D8
+frequency error relative to D14 and carries an evolving DAC state and
+fractional correction debt without requiring a drift predictor. A later bounded
+phase term requests frequency bias through the same policy and command path.
+Future estimators remain zero-authority until separately promoted. Their
+failure rejects the estimator, never the canonical evidence, reactive baseline,
+or physical run.
+
+This conclusion reuses the sealed bounded-FLL qualification and the physically
+exercised coherent FLL/PLL integration path within their recorded envelopes.
+In particular, the sealed CX322 12-hour result already supplied positive
+combined-control evidence: four phase-material applications approximately
+halved the matched relative-phase ramp while preserving the frozen frequency
+comparison. The remaining question is sustained operating authority and
+maintenance behavior after that experiment's four-application budget, not
+whether coherent FLL/PLL steering works.
+The rejected fixed controller and equilibrium models do not invalidate those
+unchanged boundaries. Only materially changed policy semantics or a new
+performance claim receive the shortest affected replay, integration, or—when
+retained evidence is insufficient—physical validation; this is not FLL/PLL
+requalification.
+
+The current PPS-gated steering profiles do not claim D10. D10 remains the
+independent external-event input; if a future operating profile records its
+edges, D10-local glitches may degrade only that event evidence and cannot gate
+D14/D8 steering or fail the operating run.
+
+Likewise, a recoverable GNSS serial-metadata glitch is a bounded static control
+hold, not a run failure. D14/D8 capture and phase evidence continue; no new DAC
+request is issued until fresh causal metadata requalification, after which
+ordinary operation resumes. D14 loss, an unknown applied code, or a
+contradictory acknowledgement remains a separate authoritative fault.
+
+This is an architecture decision only. It creates no successor firmware,
+policy, bundle, physical authority, phase actuation, retry, or restoration.
