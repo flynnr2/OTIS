@@ -167,3 +167,25 @@ and preview eligibility distinct. `CTL` references its exact `EST`, model,
 policy, and configuration inputs and records model applicability and every
 limit result. Phase 4 `CTL` is structurally non-actuating:
 `preview_only=true`, `actuation_authorized=false`, and `actionable=false`.
+
+## 10. Reactive baseline and future estimators
+
+The selected CX317 discipline architecture is one coherent adaptive FLL/PLL,
+defined in `ADAPTIVE_FREQUENCY_STEERING.md`. Its dependable baseline responds
+to current D14-qualified D8 frequency-error evidence. A later phase term may
+request a bounded frequency bias through the same policy and transaction path.
+Neither term requires one durable equilibrium code or a prediction of future
+drift.
+
+An unpromoted future estimator is an optional zero-authority metrology consumer.
+Its model mismatch, stale or missing output, numerical failure, or bad
+prediction is an estimator-local diagnostic. It must not change measurement
+validity, baseline control eligibility, canonical evidence, applied actuator
+state, or a physical run's terminal status. The correct interpretation is that
+the estimator failed to explain reality, not that reality failed.
+
+Before promotion, a shadow estimator must be removable, stalled, killed, or
+deliberately contradicted without changing the canonical record stream,
+reactive decisions, DAC transactions, or non-shadow terminal. After a separate
+promotion, loss of estimator coherence withdraws its authority and selects the
+frozen reactive fallback or hold; it does not rewrite prior evidence.

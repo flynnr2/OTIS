@@ -138,6 +138,12 @@ Diagnostics are not debugging exhaust. They must be versioned, replayable,
 evidence-backed, and capable of stating why control is permitted, degraded, or
 inhibited.
 
+Derived models and estimators fail locally. When an estimator cannot explain a
+canonical observation, preserve the observation and reject, degrade, or
+withdraw that estimator. An optional or unpromoted estimator must not redefine
+measurement validity, inhibit a dependable baseline controller, or turn model
+infeasibility into a claim that physical reality failed.
+
 ## Explainable Control
 
 Every requested and applied control action must be reconstructable from preserved

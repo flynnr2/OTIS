@@ -12,6 +12,14 @@ cadence, or write DAC codes for the purpose of self-calibration. A live policy
 remains versioned and fixed until a separately reviewed replacement has passed
 bounded active validation.
 
+The selected end-state is one coherent adaptive FLL/PLL. Its dependable
+baseline is bounded reactive frequency steering: it corrects current observed
+frequency error and does not require future drift prediction or one permanent
+equilibrium code. Its evolving applied code, fractional correction debt,
+evidence frontier, hold reasons, and observed transaction responses belong in
+the continuous evidence ledger. A later PLL term may request bounded frequency
+bias through the same policy; it is not an independent actuator owner.
+
 The deadband is a decision threshold, not a direct claim of frequency,
 UTC, phase-lock, holdover, or traceable accuracy. A low residual alone cannot
 establish the health of the GNSS reference, antenna, capture chain, or an
@@ -44,6 +52,13 @@ investigation or nominate a later validation candidate when it sees persistent
 evidence that a candidate improves error without material actuator cost, or
 when current residual spread/churn indicates that the active guard band merits
 review.
+
+Shadow and future estimators are optional zero-authority consumers. Missing,
+stale, delayed, corrupt, contradictory, or numerically invalid shadow output
+fails that estimator only. It must not change canonical validity, baseline
+reactive decisions, DAC transactions, capture progress, or the physical-run
+terminal. Prove this counterfactual identity before collecting live shadow
+evidence.
 
 Such a report is advisory only. Its promotion path is:
 

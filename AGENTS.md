@@ -32,6 +32,18 @@ lasting preference changes.
 - Treat GNSS serial metadata as qualification evidence from the same receiver
   that supplies D14 PPS. It may qualify receiver state but must never replace
   D14 as timing authority.
+- Treat a recoverable GNSS serial-metadata anomaly as a bounded control hold,
+  not a run or measurement failure. Preserve the last confirmed DAC code,
+  continue D14/D8 capture and canonical evidence, issue no new correction, and
+  resume only after fresh causal requalification. Do not erase otherwise valid
+  estimator or phase history solely because serial metadata was briefly stale,
+  missing, malformed, or checksum-unqualified.
+- Treat D10 observations as optional external-event evidence. D10-local
+  absence, noise, invalidity, or overflow must degrade only D10 evidence and
+  must never enter D14/D8 validity, steering eligibility, actuation, or the run
+  terminal. If D10 traffic compromises shared D14/D8 capture, classify and
+  repair that as a platform-isolation defect rather than making D10 a health
+  veto.
 - Hardware capture establishes timing truth. The CPU may observe timing events
   but interrupt latency, scheduling, logging, networking, UI, and storage must
   not define or contaminate their timestamps.
@@ -41,6 +53,14 @@ lasting preference changes.
 - Preserve canonical raw observations unchanged. Derived, adjusted,
   reconstructed, projected, calibrated, or disciplined values must not
   overwrite or obscure raw evidence.
+- Treat a model mismatch or estimator failure as evidence against that model or
+  estimator, never as evidence that canonical observations or physical reality
+  failed. Preserve the observation and state the estimator-local reason.
+- Keep every unpromoted future estimator zero-authority and isolated from
+  canonical validity, baseline reactive control, serial/capture ownership,
+  abort, and terminal decisions. Its absence, stall, corruption, or rejection
+  must fail only that estimator and must not backpressure or alter the
+  decision-bearing path.
 - Treat telemetry and logs as scientific records, not debugging exhaust.
   Preserve sufficient schema, ordering, identity, configuration, and provenance
   to permit deterministic replay, offline reconstruction, independent

@@ -17,6 +17,27 @@ before unchanged 600-second natural hybrid requests. Implementation and
 physical authority remain pending; see
 `../60_EXPERIMENTS/CX322_PRE_ENVELOPE_ACTIVE_HYBRID_SUCCESSOR/README.md`.
 
+**Current direction (updated 2026-08-26):** subsequent sustained-hybrid and
+targeted characterization has selected an architectural direction rather than
+another automatic campaign successor. The VCOCXO has a demonstrated positive
+monotonic control response, but the effective crossing moves and none of the
+three frozen durable-equilibrium models survived exact identification. The
+selected end-state is one coherent adaptive FLL/PLL, with bounded reactive
+frequency steering and an evolving DAC state as its first dependable baseline.
+A later phase term requests a bounded frequency bias through the same policy.
+The sealed FLL qualification and physically exercised coherent FLL/PLL
+integration path remain valid within their recorded envelopes and are reused;
+they do not require requalification. Future predictive estimators remain
+isolated and zero-authority until separately promoted; they fail themselves,
+not canonical measurements or current physical reality. See
+`../10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md`. No live authority
+is created. CX322's sealed 12-hour result already supplies positive physical
+combined-control evidence; remaining work is limited to sustained-operation
+policy semantics after its four-application budget and then use of the existing
+platform. Recoverable GNSS serial-metadata anomalies enter a bounded static
+control hold with continued D14/D8 capture and fresh causal requalification;
+they are not operating-run failures.
+
 ## Decision
 
 The bounded frequency-control programme reached
