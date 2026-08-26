@@ -331,6 +331,143 @@ def test_tracked_status_closes_sustained_v1_and_offline_successor_studies() -> N
         "physical_rehearsal_performed": False,
         "physical_actions_performed": 0,
     }
+    equilibrium_study = status["programmes"][
+        "otis_sustained_hybrid_equilibrium_estimator_feasibility_study"
+    ]
+    assert equilibrium_study["state"] == (
+        "equilibrium_state_not_observable_targeted_characterization_required"
+    )
+    assert equilibrium_study["allowed_operations"] == ["historical_validation"]
+    assert equilibrium_study["physical_authority_effective"] is False
+    assert set(equilibrium_study["authority_boundary"].values()) == {False}
+    assert equilibrium_study["study_contract"]["contract_sha256"] == (
+        "ab2ec34269d0cb21b7895e459201e6d8c500ae050304d8f9f3bd5a829caed682"
+    )
+    assert equilibrium_study["recovery_attempt_contract"]["contract_sha256"] == (
+        "534beecf00ac09087fdbb3f1c36f03660753c29d8a7d3d4ff0756aa9c3f24f80"
+    )
+    assert equilibrium_study["observability_report"]["report_sha256"] == (
+        "dae8dcc78cd816152246e06df1886ed572e873ed2ca1fd52e38c91f80228b21b"
+    )
+    assert equilibrium_study["observability_report"][
+        "equilibrium_interval_computed"
+    ] is True
+    assert equilibrium_study["observability_report"]["eligible_model_count"] == 0
+    assert equilibrium_study["observability_report"][
+        "first_discriminating_failure"
+    ]["failure_id"] == "identification_complete_feasible_set_nonempty"
+    assert equilibrium_study["initial_invalid_attempt"]["preserved"] is True
+    assert equilibrium_study["initial_invalid_attempt"]["report_sha256"] == (
+        "b98bf927170c0f8f868007cf5aa497898d3d7c65a57583b30c299dacd64547c3"
+    )
+    assert equilibrium_study["next_step_requirements"]["document_count"] == 1
+    assert equilibrium_study["next_step_requirements"]["effective"] is False
+    assert equilibrium_study["study_outputs"] == {
+        "equilibrium_estimator_selected": False,
+        "trajectory_study_authorized": False,
+        "policy_created": False,
+        "firmware_profile_created": False,
+        "exact_bundle_created": False,
+        "authority_proposal_created": False,
+        "physical_rehearsal_performed": False,
+        "physical_actions_performed": 0,
+    }
+    targeted = status["programmes"]["otis_targeted_equilibrium_characterization_v1"]
+    assert targeted["state"] == (
+        "attempt6_complete_equilibrium_state_not_observable_closed"
+    )
+    assert targeted["physical_authority_effective"] is False
+    assert targeted["exact_bundle"]["bundle_sha256"] == (
+        "4d69a99cbd0483241035912974dca2476283dadf553f4a92df70d1be2ca69343"
+    )
+    assert targeted["attempt1"]["completed_dwells"] == 0
+    assert targeted["attempt1"]["dac_stimuli"] == 0
+    assert targeted["attempt1"]["priority_abort_deliveries"] == 1
+    assert targeted["gnss_baud_transition_qualification"]["status"] == "passed"
+    assert targeted["gnss_baud_transition_qualification"][
+        "special_gate_required_for_unchanged_future_runs"
+    ] is False
+    assert targeted["gnss_output_configuration_qualification"]["status"] == "passed"
+    assert targeted["authority_consumption"]["consumed"] is True
+    assert targeted["authority_consumption"]["second_live_attempt_authorized"] is True
+    assert targeted["authority_consumption"]["second_live_attempt_consumed"] is True
+    assert targeted["authority_consumption"]["third_live_attempt_authorized"] is True
+    assert targeted["authority_consumption"]["third_live_attempt_consumed"] is True
+    assert targeted["authority_consumption"]["fourth_live_attempt_authorized"] is True
+    assert targeted["authority_consumption"]["fourth_live_attempt_consumed"] is True
+    assert targeted["authority_consumption"]["fifth_live_attempt_authorized"] is True
+    assert targeted["authority_consumption"]["fifth_live_attempt_consumed"] is True
+    assert targeted["authority_consumption"]["sixth_live_attempt_authorized"] is True
+    assert targeted["authority_consumption"]["sixth_live_attempt_consumed"] is True
+    assert targeted["attempt2_operator_authority"][
+        "reuses_attempt1_baud_transition_qualification"
+    ] is True
+    assert targeted["attempt2"]["completed_dwells"] == 0
+    assert targeted["attempt2"]["dac_stimuli"] == 0
+    assert targeted["attempt2"]["pmtk514_field_count"] == 22
+    assert targeted["attempt2"]["last_identity_response_baud"] == 115200
+    assert targeted["attempt2"]["priority_abort_deliveries"] == 1
+    assert targeted["attempt3"]["prewrite_gate_passed"] is True
+    assert targeted["attempt3"]["completed_dwells"] == 0
+    assert targeted["attempt3"]["dac_stimuli"] == 0
+    assert targeted["attempt3"]["classification"] == "platform_escape_into_campaign"
+    assert targeted["attempt4"]["classification"] == "platform_escape_into_campaign"
+    assert targeted["attempt4"]["first_dwell_minimum_duration_acquired"] is True
+    assert targeted["attempt4"]["completed_dwells_under_frozen_predicate"] == 0
+    assert targeted["attempt4"]["dac_stimuli"] == 1
+    assert targeted["attempt4"]["post_application_metadata_dequalification_count"] == 18
+    assert [
+        row["integer_edge_error_counts"]
+        for row in targeted["attempt4"]["raw_d14_d8_support_windows"]
+    ] == [3, 2, 1]
+    assert targeted["attempt5"]["classification"] == "platform_escape_into_campaign"
+    assert targeted["attempt5"]["prewrite_gate_passed"] is False
+    assert targeted["attempt5"]["completed_dwells"] == 0
+    assert targeted["attempt5"]["dac_stimuli"] == 0
+    assert targeted["attempt5"]["last_identity_response_baud"] == 115200
+    assert targeted["attempt5"]["requested_target_baud"] == 9600
+    assert targeted["attempt5"]["priority_abort_deliveries"] == 1
+    assert targeted["attempt6"]["classification"] == "completed_campaign"
+    assert targeted["attempt6"]["terminal"] == "healthy_stop"
+    assert targeted["attempt6"]["scientific_terminal"] == (
+        "equilibrium_state_not_observable"
+    )
+    assert targeted["attempt6"]["completed_dwells"] == 12
+    assert targeted["attempt6"]["identification_supports"] == 21
+    assert targeted["attempt6"]["held_out_supports"] == 15
+    assert targeted["attempt6"]["eligible_model_count"] == 0
+    assert targeted["attempt6"]["confirmed_baud"] == 9600
+    assert targeted["attempt6"]["last_identity_response_baud"] == 9600
+    assert targeted["attempt6"]["parser_errors"] == 0
+    assert targeted["attempt6"]["reconnects"] == 0
+    assert targeted["attempt6_exact_bundle"]["bundle_sha256"] == (
+        "8a1e06d438ca05c5caca8869ea3e5c8b2566b1d394523fd0edcc4436834d9b1a"
+    )
+    assert targeted["attempt6_exact_bundle"]["firmware_elf_sha256"] == (
+        "f91b3955542f6a9d16200d74edd64cafdfc780dc6fdc8792a4907cafebba4d05"
+    )
+    assert targeted["verification"]["attempt6_physical_acquisition_complete"] is True
+    assert targeted["verification"]["attempt6_evidence_registration_passed"] is True
+    assert targeted["verification"]["post_attempt5_affected_profile_build_passed"] is True
+    assert targeted["verification"]["post_attempt5_compiled_elf_target_command"] == (
+        "$PMTK251,9600*17"
+    )
+    assert targeted["verification"][
+        "post_attempt4_profile_boundary_and_campaign_tests_passed"
+    ] == 45
+    assert targeted["verification"]["post_attempt4_affected_profile_build_passed"] is True
+    assert targeted["verification"]["post_attempt4_release_verification_pending"] is False
+    assert targeted["verification"]["post_attempt4_release_host_native_tests_passed"] == 1076
+    assert targeted["verification"]["post_attempt4_release_supported_profiles_passed"] == 10
+    assert targeted["verification"][
+        "post_attempt4_release_expected_failure_guards_passed"
+    ] == 8
+    assert targeted["verification"][
+        "post_attempt2_release_verification_pending"
+    ] is False
+    assert targeted["verification"][
+        "post_attempt2_release_host_native_tests_passed"
+    ] == 1073
     assert cx322["stage5_attempts"][0]["setup_applications"] == 1
     assert cx322["stage5_attempts"][0]["automatic_applications"] == 0
     assert cx322["stage5_attempts"][0]["qualified_origin_established"] is False
@@ -1371,6 +1508,11 @@ def test_tracked_status_closes_sustained_v1_and_offline_successor_studies() -> N
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
         require_programme_operation_allowed(
             "otis_sustained_hybrid_mode_separation_offline_study",
+            OFFLINE_PREPARATION,
+        )
+    with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):
+        require_programme_operation_allowed(
+            "otis_sustained_hybrid_equilibrium_estimator_feasibility_study",
             OFFLINE_PREPARATION,
         )
     with pytest.raises(ProgrammeExecutionBlocked, match="is blocked"):

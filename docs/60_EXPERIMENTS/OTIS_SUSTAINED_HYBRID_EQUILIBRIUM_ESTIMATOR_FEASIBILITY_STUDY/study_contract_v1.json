@@ -1,0 +1,467 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_V1",
+  "status": "prospectively_frozen_before_equilibrium_results",
+  "contract_sha256": "ab2ec34269d0cb21b7895e459201e6d8c500ae050304d8f9f3bd5a829caed682",
+  "authority": {
+    "offline_analysis": true,
+    "serial_access": false,
+    "firmware_flash": false,
+    "reset": false,
+    "gnss_transmission": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "live_activation": false,
+    "effective_authority_creation": false
+  },
+  "pre_study_status": {
+    "active_programme": null,
+    "programme_status_path": "profiles/programme_status_v2.json",
+    "programme_status_file_sha256": "5ab52240a15a999a95cb651845496a7f29a0de830023614777124b173666d0e0",
+    "all_physical_authority_false": true
+  },
+  "predecessor_reproduction": {
+    "successor_contract_semantic_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+    "successor_report_semantic_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523",
+    "mode_architecture_file_sha256": "ae4967c4fdb8bcb532052f14290e2dccd3a61d7c238bdec28111e81120adbf0b",
+    "mode_contract_semantic_sha256": "c02ce352d5224b5ed395d48d62a2ddc8a99654d08b95ad23a182186a716a37eb",
+    "mode_report_semantic_sha256": "6b971643c106fabe0cec2c267f733ded330469ad7596125fb2dd33e57a6b9aef"
+  },
+  "tracked_bindings": [
+    {
+      "role": "study_prompt",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_PROMPT.md",
+      "sha256": "5e03b59b8e4b3ee9510e0ce941f5974dfc2c28c1827d9a24a36f4e9f68ac202c"
+    },
+    {
+      "role": "mode_architecture",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/ARCHITECTURE.md",
+      "sha256": "ae4967c4fdb8bcb532052f14290e2dccd3a61d7c238bdec28111e81120adbf0b"
+    },
+    {
+      "role": "mode_contract",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/study_contract_v1.json",
+      "sha256": "f0af0cbcac15b9758e4ae4ba3e2246a4c9ec6dc51804f4b5df1540f503083165"
+    },
+    {
+      "role": "mode_report",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/comparison_report_v1.json",
+      "sha256": "27bcdf5b3cc4ec1db23c835a3a0df11e832ed27682863bcea7a1fa5d4d2c7b07"
+    },
+    {
+      "role": "mode_comparator",
+      "path": "host/otis_tools/sustained_hybrid_mode_separation_study.py",
+      "sha256": "9fe68acc9efcd5fd60a1f1b4982a2a485e5cca1d21dbdce418189fc57d93b85a"
+    },
+    {
+      "role": "successor_contract",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/study_contract_v1.json",
+      "sha256": "602988d02fac311ca39e73c0531caa0dd5856be084b4838f26918d3ebcda235a"
+    },
+    {
+      "role": "successor_report",
+      "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/comparison_report_v1.json",
+      "sha256": "1aa3f8e5766bab071af91160a8801843102ad6058e36539daf97f0efbdd52ea7"
+    },
+    {
+      "role": "successor_comparator",
+      "path": "host/otis_tools/sustained_hybrid_successor_study.py",
+      "sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489"
+    },
+    {
+      "role": "v1_policy",
+      "path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+      "sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c"
+    },
+    {
+      "role": "frequency_estimator",
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    {
+      "role": "frequency_estimator_method",
+      "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
+      "sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+    },
+    {
+      "role": "phase_estimator",
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    {
+      "role": "phase_estimator_candidates",
+      "path": "profiles/estimators/cx318_relative_phase_candidates_v1.json",
+      "sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb"
+    },
+    {
+      "role": "plant_model",
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    {
+      "role": "response_policy",
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+    },
+    {
+      "role": "active_hybrid_policy_reference",
+      "path": "host/otis_tools/active_hybrid_policy.py",
+      "sha256": "566c5364f489cc9fc3b848b321d45f8c76024da2e12e746b867923ed31a92c76"
+    },
+    {
+      "role": "active_hybrid_replay",
+      "path": "host/otis_tools/active_hybrid_replay.py",
+      "sha256": "238bce7f46bed66aab74cb9c1be089e8c00e966fe13aae8dac897199a81eb825"
+    },
+    {
+      "role": "programme_status_loader_and_guard",
+      "path": "host/otis_tools/programme_status.py",
+      "sha256": "5cfb232d1936f7a25137a01f6680bdf7a251673c7dcab67ca1aaa618147cf765"
+    }
+  ],
+  "attempt4": {
+    "run_dir": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z",
+    "run_identity": "otis_sustained_hybrid_regulation_v1:1",
+    "registered_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+    "registered_file_count": 80,
+    "registered_total_bytes": 409352510,
+    "file_bindings": [
+      {
+        "role": "attempt4_run_manifest",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/run_manifest.json",
+        "sha256": "3bda75ceb8309a71d6e91ba18f9e2fe5781906f191b69bd5bd84cf5bf7a4f3fc"
+      },
+      {
+        "role": "attempt4_evidence_manifest",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/evidence_manifest.json",
+        "sha256": "5da145fd66d3e9f070fc31c8bfdcf72223fe929453583c071f8b2d3574a82b9a"
+      },
+      {
+        "role": "attempt4_activation",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/otis_sustained_hybrid_live_activation_v1.json",
+        "sha256": "e48257957c5766f15f24c6dfb168ae799388b7cb9267c3daff2b458ea1542a76"
+      },
+      {
+        "role": "attempt4_exact_bundle",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/otis_sustained_hybrid_exact_bundle_v1.json",
+        "sha256": "deb96fcdc2514c5aaad63f8b1e04fe5e7f0090909c7b7026715e5640d6f81243"
+      },
+      {
+        "role": "attempt4_physical_seal",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/reports/otis_sustained_hybrid_physical_seal_v1.json",
+        "sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66"
+      },
+      {
+        "role": "attempt4_AHY",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/active_hybrid_decisions_v1.csv",
+        "sha256": "8b287f7e4572ff43a2e5ecd43c5aeb693e9060ddc17f952ed283144b3a97af9e"
+      },
+      {
+        "role": "attempt4_ACT_response_and_transactions",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/active_transactions_v1.csv",
+        "sha256": "0dc1513a40f444ca2f537d84b3744bf16c848a2b9b9db3b7be748e6faf31039a"
+      },
+      {
+        "role": "attempt4_selected_estimates",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/estimates_v2.csv",
+        "sha256": "85eb01cbea51c7c91307b139bc3dba6263ee7ee12b2888f2a359890105eee62d"
+      },
+      {
+        "role": "attempt4_tight_band",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/tight_deadband_decisions_v1.csv",
+        "sha256": "f6e5778a087fe43c5b64ad9224b85645f3f07f2bb6fd6d2f8a9c4afb90e66e80"
+      },
+      {
+        "role": "attempt4_phase_estimates",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/phase_estimator_outputs_v1.csv",
+        "sha256": "559f351a6709589e754b287069c532906d56d7cb0c5d272e5a50601adcf220c5"
+      },
+      {
+        "role": "attempt4_raw_relative_phase",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/relative_phase_observations_v1.csv",
+        "sha256": "e0765d1f4d99997b61da6b7543b8b854f1d1d2b92eda4b588c97693ec0e45daa"
+      },
+      {
+        "role": "attempt4_pps_snapshots",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/pps_snapshots.csv",
+        "sha256": "3dc886aea1bdf1119aca316e4c1069f1a9c03b9567aca1c56f5386edca0a1e38"
+      },
+      {
+        "role": "attempt4_count_observations",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/count_observations.csv",
+        "sha256": "ab8a0b3cc7fa36406078eefa1608eb54455220edb351a03d118bfa8f139ea3e9"
+      },
+      {
+        "role": "attempt4_raw_events",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/raw_events.csv",
+        "sha256": "fb094d8f54ab7313db9b45f37a702185889d25cb30b312e96ceca3a07b39e3bf"
+      },
+      {
+        "role": "attempt4_reference_observations",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/reference_observations_v1.csv",
+        "sha256": "665b6faaad73f92fa6d254c4f7425e0baa09586b4b55117c6cd306d37a995bd3"
+      },
+      {
+        "role": "attempt4_environment",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/environment.csv",
+        "sha256": "60ad60d080fd221270c2d2d3977aa419bec4f43b2b5fdd075da3768ec2899993"
+      }
+    ]
+  },
+  "exact_v1_baseline": {
+    "decision_count": 52,
+    "application_count": 11,
+    "application_decision_sequences": [6, 9, 11, 13, 16, 19, 21, 25, 28, 44, 48],
+    "application_deltas": [-6, -1, -1, -6, -1, -1, -1, 5, 5, -5, 5],
+    "first_seven_path_codes": 17,
+    "first_seven_terminal_code": 43051,
+    "last_four_path_codes": 20,
+    "terminal_code": 43061,
+    "terminal_dac_epoch": 12,
+    "terminal_reason": "prospective_low_efficiency_path",
+    "formal_physical_qualification_passed": false,
+    "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+    "exact": true
+  },
+  "plant_characterization": {
+    "summary_path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+    "source_run": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z",
+    "recorded_source_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "source_bindings": [
+      {
+        "role": "stage5_evidence_manifest",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/evidence_manifest.json",
+        "sha256": "9b7dedf7eb972b1852cd843faaccb2892cfd5be482da4e8ef1e6ab2d1611c976"
+      },
+      {
+        "role": "stage5_run_manifest",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/run_manifest.json",
+        "sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c"
+      },
+      {
+        "role": "stage5_plant_characterization",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+        "sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7"
+      },
+      {
+        "role": "stage5_reviewed_characterization",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/reports/PLANT_CHARACTERIZATION.md",
+        "sha256": "5a44c54510a43ddfa8c09717ce4bc913c1fb9be9582d90abfc62612e6e9757f5"
+      },
+      {
+        "role": "stage5_physical_gate",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_preparation/physical_safety_gate_evaluation_v1.json",
+        "sha256": "28377345556e027239b8afbfbd99d3486294f6b590d7670a8580e5690c0dc401"
+      },
+      {
+        "role": "stage5_exact_open_loop_plan",
+        "path": "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+        "sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d"
+      },
+      {
+        "role": "rapid_evidence_manifest",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/evidence_manifest.json",
+        "sha256": "1a41ca8bf478c13acef4ad1365ad2215fa502e68ed29d508ad4905a275c0e72f"
+      },
+      {
+        "role": "rapid_reviewed_characterization",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/reports/RAPID_STEP_CHARACTERIZATION_ANALYSIS.md",
+        "sha256": "04e4cd1065874a8699756a379ac3060c049773f1948bfa2fcd76594702e64ddf"
+      },
+      {
+        "role": "rapid_exact_open_loop_plan",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/control/rapid_open_loop_plan.json",
+        "sha256": "cf9f9208f433174ed13b80f6e92feac48a54f934ddb6aa0d820c0fd186049fbe"
+      }
+    ]
+  },
+  "state_and_observation_semantics": {
+    "applied_dac_code": "exact acknowledged AD5693R code associated with one DAC epoch",
+    "equilibrium_code": "modeled code or closed code interval at which qualified D8 oscillator frequency error relative to D14 is zero within the frozen segment, thermal context, direction/history, drift, and nuisance assumptions",
+    "phase_steering_displacement_codes": "modeled arithmetic applied_dac_code minus equilibrium_code; bookkeeping for one actuator, not a measured second state or actuator",
+    "qualified_frequency_observation": "non-overlapping 600-second D8 count output relative to authoritative D14, one count equals 1/600 Hz",
+    "raw_relative_phase": "arbitrary-zero D8 cycles relative to D14 within one exact phase epoch only",
+    "plant_gain": "positive differential D8 frequency response in Hz/code, finite-run minimum/nominal/maximum provenance",
+    "counter_domain": "rp2040_timer0_extended for Attempt 4 decision chronology; source characterization uses its declared session reconstruction",
+    "D14_role": "sole authoritative PPS/reference input",
+    "D8_role": "sole oscillator/count input",
+    "D10_role": "external event input excluded from estimator"
+  },
+  "evidence_partition": {
+    "identification": {
+      "source": "complete Stage 5 nine-dwell physical characterization",
+      "segments": [
+        "centre_1",
+        "lower_interior_1",
+        "lower_endpoint",
+        "lower_interior_2",
+        "centre_2",
+        "upper_interior_1",
+        "upper_endpoint",
+        "upper_interior_2",
+        "final_safe_centre"
+      ],
+      "leakage_rule": "complete dwell segments only; no adjacent 600-second support is split between identification and validation"
+    },
+    "held_out_validation": {
+      "source": "complete Attempt 4 physical run",
+      "use": "prediction only; no estimator identification or nuisance fitting",
+      "phase_use": "same-epoch consistency only and never equilibrium identification"
+    },
+    "sensitivity_only": {
+      "source": "complete rapid nine-visit physical characterization",
+      "reason": "uses 60/120-second diagnostic support and cannot replace the selected 600-second method",
+      "eligible_for_identification": false
+    },
+    "excluded": [
+      {
+        "source": "all successor and mode-separated candidate continuations after code-path divergence",
+        "reason": "modeled counterfactuals are not plant observations"
+      },
+      {
+        "source": "D10",
+        "reason": "external event input is not reference, oscillator, or estimator evidence"
+      },
+      {
+        "source": "cross-phase-epoch raw phase offsets",
+        "reason": "raw arbitrary epochs may not be joined with a guessed offset"
+      }
+    ]
+  },
+  "model_hypotheses": [
+    {
+      "model_id": "constant_equilibrium_per_stage5_thermal_segment_v1",
+      "semantics": "one constant closed equilibrium interval for the complete Stage 5 segment",
+      "structural_check": "code excitation must distinguish positive gain from intercept and retain at least one below/above zero bracket"
+    },
+    {
+      "model_id": "bounded_slow_drift_equilibrium_v1",
+      "semantics": "constant equilibrium plus bounded linear-in-time displacement",
+      "maximum_absolute_drift_codes_per_hour": 1.91,
+      "derivation": "absolute observed same-code centre drift 0.0003122245821427368 Hz/hour divided by minimum gain 0.00016357422282453626 Hz/code, rounded outward",
+      "structural_check": "same-code returns must identify drift independently of code response"
+    },
+    {
+      "model_id": "direction_history_conditioned_equilibrium_v1",
+      "semantics": "separate outbound and return closed equilibrium intervals only at retained naturally reversed/returned code histories",
+      "maximum_outward_reversal_dead_zone_codes": 8,
+      "derivation": "maximum observed 7.349273493706863 equivalent-code return difference rounded outward",
+      "structural_check": "both directions and a same-code return must exist; no discontinuous offset is applied to every nonzero code difference"
+    }
+  ],
+  "nuisance_and_arithmetic_semantics": {
+    "algorithm": "deterministic closed set-membership intersection",
+    "canonical_arithmetic": "integer and rational Fraction arithmetic through interval construction and gate comparison",
+    "interval_closure": "closed at both endpoints",
+    "ordering": "source run, complete segment, DAC epoch, support first sequence, support last sequence",
+    "count_quantization": "each integer 600-second count denotes the exact closed half-count interval [(2c-1)/1200,(2c+1)/1200] Hz for this feasibility construction",
+    "same_code_repeatability": "separate positive and negative one-count observation-consistency sensitivities, never a permanent code-response offset",
+    "gain_cases_hz_per_code": {
+      "minimum": "16357422282453626/100000000000000000000",
+      "nominal": "17008467693813145/100000000000000000000",
+      "maximum": "17334010044578463/100000000000000000000"
+    },
+    "empirical_detection_floor_hz": "33333317438761396/10000000000000000000",
+    "calibrated_resolution_available": false,
+    "combined_uncertainty_available": false,
+    "settling_exclusion_s": 900,
+    "fresh_support_s": 600,
+    "support_overlap": false,
+    "phase_epoch_join": "forbidden",
+    "unknown_or_contradictory_domain": "invalid_study",
+    "DAC_epoch_change": "reset_support",
+    "capture_session_change": "reset_support",
+    "settling_boundary": "support_must_close_after_exclusion_and_use_600_fresh_seconds",
+    "temperature": "retained nearby-air covariate only; no fitted coefficient or hard applicability gate"
+  },
+  "structural_and_predictive_checks": {
+    "identification_feasible_set_nonempty": true,
+    "complete_set_required": true,
+    "gain_and_equilibrium_joint_confounding_forbidden": true,
+    "per_support_free_equilibrium_is_uninformative_baseline_only": true,
+    "held_out_coverage_required_fraction": 1.0,
+    "held_out_worst_residual_max_hz": 0.0033333317438761396,
+    "tail_residual_quantile": 0.95,
+    "leave_one_complete_segment_out_required": true,
+    "all_gain_cases_required": true,
+    "all_nuisance_cases_required": true,
+    "empty_or_unbounded_case_terminal": "equilibrium_state_not_observable_targeted_characterization_required"
+  },
+  "usefulness_gate": {
+    "maximum_equilibrium_interval_span_codes": 18,
+    "maximum_integer_midpoint_return_error_codes": 9,
+    "maximum_return_frequency_error_hz_at_maximum_gain": 0.0015600609040120617,
+    "frequency_RMS_degradation_allowance_hz": 0.0016666666666666668,
+    "tight_entry_counts_lte": 2,
+    "natural_path_limit_codes": 27,
+    "minimum_nonvacuous_phase_excursion_codes": 1,
+    "minimum_nonvacuous_phase_excursion_duration_s_at_minimum_gain": 6114,
+    "minimum_depart_and_return_path_codes": 2,
+    "worst_case_total_path_including_return_error_codes": 11,
+    "minimum_matched_phase_improvement_cycles": 1,
+    "minimum_matched_phase_improvement_fraction": 0.1,
+    "derivation": "A closed integer-code interval spanning at most 18 codes admits an integer centre no more than 9 codes from either endpoint. At maximum retained gain, 9 codes produces 0.0015600609040120617 Hz, below the unchanged 1/600 Hz frequency-RMS allowance and below one 600-second count. Independently, a one-code excursion held for ceil(1/minimum_gain)=6114 seconds has at least one cycle finite area; departure and intentional return cost two path codes. Adding the 9-code worst-case return correction gives 11 path codes, below the 27-code limit. This establishes a non-vacuous prospective region without requiring the historical seven-action trajectory."
+  },
+  "uninformative_baseline": {
+    "characterized_range_min_code": 43008,
+    "characterized_range_max_code": 43776,
+    "span_codes": 768,
+    "maximum_useful_fraction_of_baseline": 0.0234375,
+    "per_support_free_equilibrium": "uninformative_and_forbidden_as_observability_claim"
+  },
+  "sensitivity_cases": [
+    "plant_gain_minimum",
+    "plant_gain_nominal",
+    "plant_gain_maximum",
+    "quantization_lower_and_upper_boundaries",
+    "same_code_positive_one_count",
+    "same_code_negative_one_count",
+    "reversal_eight_code_dead_zone",
+    "bounded_slow_drift",
+    "settling_boundary_below_at_above",
+    "DAC_epoch_change",
+    "capture_session_change",
+    "phase_epoch_reset",
+    "temperature_context_extremes",
+    "leave_one_complete_segment_out"
+  ],
+  "feasibility_gate_order": [
+    "all_required_identities_and_exact_V1_baseline_pass",
+    "structurally_identifiable_under_one_credible_model_and_not_unbounded_by_an_equally_supported_model",
+    "identification_complete_feasible_set_nonempty",
+    "held_out_physical_prediction_passes",
+    "all_gain_quantization_drift_repeatability_hysteresis_and_leave_one_segment_out_cases_pass",
+    "worst_case_equilibrium_uncertainty_passes_usefulness_gate",
+    "materially_narrower_than_uninformative_baseline_and_not_a_relabeled_applied_code",
+    "source_DAC_epoch_counter_support_and_provenance_reconstructable",
+    "no_raw_phase_epoch_join_and_no_D10_input",
+    "finite_evidence_observability_claim_only"
+  ],
+  "terminal_rules": {
+    "identity_or_model_binding_failure_precedence": true,
+    "not_observable_on_any_numerical_or_sensitivity_failure": true,
+    "observable_only_if_all_gate_rows_pass": true,
+    "threshold_model_split_and_nuisance_changes_after_result": "forbidden",
+    "tie": "equilibrium_state_not_observable_targeted_characterization_required"
+  },
+  "terminal_outcomes": [
+    "equilibrium_state_observable_for_bounded_trajectory_study",
+    "equilibrium_state_not_observable_targeted_characterization_required",
+    "study_invalid_due_to_evidence_or_model_binding_failure"
+  ],
+  "output": {
+    "schema_version": 1,
+    "report_type": "otis_sustained_hybrid_equilibrium_estimator_observability_report_v1",
+    "canonical_json": "utf8_sorted_keys_compact_separators_allow_nan_false",
+    "report_sha256_scope": "all_report_fields_except_report_sha256",
+    "immutable_output_required": true,
+    "tool": {
+      "tool_id": "otis_sustained_hybrid_equilibrium_estimator_feasibility_v1",
+      "path": "host/otis_tools/sustained_hybrid_equilibrium_estimator_study.py",
+      "sha256": "f99ebf2e358c62ee3f7875a86b67745a59e2093f5fa8e847bf2a03895eb2c29a"
+    }
+  }
+}

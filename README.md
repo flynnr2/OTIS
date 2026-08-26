@@ -56,9 +56,29 @@ mode-separation architecture study preserved that behavior and cleared the
 phase gate, but all three architectures lost too much tight-band occupancy and
 used 28 to 32 path codes. It therefore also selected no successor. Attempt 4
 authority remains consumed, V1 remains closed, and there is no active
-programme or physical authority on current HEAD. The next gate is a separately
-frozen estimator-state and uncertainty architecture revision. See the
-[mode-separation decision](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md).
+programme or physical authority on current HEAD. The separately frozen
+equilibrium-estimator feasibility study first stopped on a missing Stage 5
+plan. The exact bound bytes were subsequently recovered, and a separately
+frozen zero-I/O attempt reconstructed all 18 Stage 5 identification supports
+and 52 held-out Attempt 4 supports. All three frozen equilibrium models have
+empty complete identification sets at minimum, nominal, and maximum gain. The
+current terminal is
+`equilibrium_state_not_observable_targeted_characterization_required`; no
+estimator, trajectory study, or authority was selected. The next gate is one
+separately authorized, prospectively frozen targeted characterization. See the
+[equilibrium-estimator decision](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/DECISION.md).
+
+The targeted-characterization programme consumed six separately authorized
+physical attempts. Attempt 4 exposed an over-strong GNSS/support coupling and
+attempt 5 exposed a compiled-command/preflight escape. Attempt 6 then completed
+all twelve dwells and all 36 prospectively frozen supports without a live
+platform fault. The corrected receiver transitioned from retained 115200 to
+9600 baud and remained qualified through the terminal. All three frozen model
+families had empty complete identification intervals at minimum, nominal, and
+maximum gain, so no model was eligible. The valid scientific terminal is
+`equilibrium_state_not_observable`; no control authority or automatic successor
+was created. See the
+[targeted-characterization report](docs/60_EXPERIMENTS/OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_V1/README.md).
 
 The scientific claim remains limited to bounded experimental frequency and
 arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute

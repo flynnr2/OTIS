@@ -177,6 +177,17 @@ void receiver_qualification_age_is_timer_rollover_safe() {
       &receiver, 36000000ull, kMaximumMetadataAgeMs));
 }
 
+void open_loop_range_map_keeps_d14_d8_support_during_metadata_dips() {
+  assert(otis_preview_reference_valid_for_profile(true, false, true));
+  assert(otis_preview_reference_valid_for_profile(true, true, true));
+  assert(!otis_preview_reference_valid_for_profile(false, true, true));
+  assert(!otis_preview_reference_valid_for_profile(false, false, true));
+
+  assert(otis_preview_reference_valid_for_profile(true, true, false));
+  assert(!otis_preview_reference_valid_for_profile(true, false, false));
+  assert(!otis_preview_reference_valid_for_profile(false, true, false));
+}
+
 void diagnostic_queries_cross_poll_mutation_and_fault_boundaries() {
   for (uint32_t boundary = 0u; boundary < 4u; ++boundary) {
     otis_dual_core_partition_reset();
@@ -795,6 +806,7 @@ int main() {
   full_build_identity_crosses_telemetry_queue_without_truncation();
   forced_boot_publish_drain_interleavings_are_exactly_once();
   receiver_qualification_age_is_timer_rollover_safe();
+  open_loop_range_map_keeps_d14_d8_support_during_metadata_dips();
   diagnostic_queries_cross_poll_mutation_and_fault_boundaries();
   bounded_core0_stall_preserves_raw_evidence();
   stage7_concurrent_health_and_active_query_burst_does_not_drop();

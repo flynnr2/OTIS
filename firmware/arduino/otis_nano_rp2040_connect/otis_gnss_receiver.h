@@ -7,6 +7,9 @@
 constexpr size_t kOtisGnssMaximumLineBytes = 96u;
 constexpr size_t kOtisGnssDiscoveryMaximumLineBytes = 256u;
 constexpr size_t kOtisGnssReleaseMaximumBytes = 40u;
+constexpr size_t kOtisGnssOutputSignatureMaximumBytes = 32u;
+constexpr size_t kOtisGnssLinkPhaseMaximumBytes = 40u;
+constexpr size_t kOtisGnssConfirmationMethodMaximumBytes = 40u;
 
 enum class OtisGnssLinkState : uint8_t {
   SelectCandidateBaud = 0u,
@@ -24,6 +27,13 @@ enum class OtisGnssLinkState : uint8_t {
   TransmitOutputVerificationQuery = 12u,
   AwaitOutputVerificationResponse = 13u,
   Online = 14u,
+  ObserveConfiguredOutput = 15u,
+};
+
+enum class OtisGnssOutputConfirmationMethod : uint8_t {
+  None = 0u,
+  Pmtk514Exact = 1u,
+  Pmtk314AckObservedExact = 2u,
 };
 
 enum class OtisGnssLinkActionKind : uint8_t {
@@ -41,6 +51,7 @@ struct OtisGnssLinkPolicy {
   uint32_t response_timeout_ms;
   uint32_t degraded_after_ms;
   uint32_t link_loss_ms;
+  uint32_t output_observation_ms;
 };
 
 struct OtisGnssLinkAction {
@@ -62,12 +73,15 @@ struct OtisGnssLink {
   bool valid_frame_seen;
   bool receiver_identity_available;
   bool configuration_confirmed;
+  bool output_configuration_command_acknowledged;
   OtisGnssLinkState state;
   OtisGnssLinkActionKind pending_action;
+  OtisGnssOutputConfirmationMethod output_confirmation_method;
   OtisGnssLinkPolicy policy;
   uint8_t candidate_index;
   uint32_t candidate_baud;
   uint32_t confirmed_baud;
+  uint32_t last_identity_response_baud;
   uint32_t pending_baud;
   uint32_t state_started_ms;
   uint32_t discovery_started_ms;
@@ -82,6 +96,15 @@ struct OtisGnssLink {
   uint32_t link_loss_count;
   uint32_t identity_response_count;
   uint32_t output_response_count;
+  uint32_t output_query_timeout_count;
+  uint32_t output_configuration_ack_count;
+  uint32_t output_observation_success_count;
+  uint32_t output_observed_sentence_mask;
+  uint32_t output_unexpected_sentence_mask;
+  uint16_t last_command_ack_packet_type;
+  uint8_t last_command_ack_flag;
+  uint8_t output_configuration_field_count;
+  char output_configuration_signature[kOtisGnssOutputSignatureMaximumBytes];
 };
 
 struct OtisGnssReceiver {
@@ -156,9 +179,14 @@ struct OtisGnssReceiverSnapshot {
   char date[7];
   char hdop[9];
   char link_health_state[12];
+  char link_phase[kOtisGnssLinkPhaseMaximumBytes];
+  char output_confirmation_method
+      [kOtisGnssConfirmationMethodMaximumBytes];
   char receiver_release[kOtisGnssReleaseMaximumBytes];
+  char output_configuration_signature[kOtisGnssOutputSignatureMaximumBytes];
   uint32_t candidate_baud;
   uint32_t confirmed_baud;
+  uint32_t last_identity_response_baud;
   uint32_t discovery_cycle;
   uint32_t link_last_valid_frame_age_ms;
   uint32_t link_checksum_valid_count;
@@ -168,6 +196,16 @@ struct OtisGnssReceiverSnapshot {
   uint32_t configuration_failure_count;
   uint32_t transmit_failure_count;
   uint32_t link_loss_count;
+  uint32_t identity_response_count;
+  uint32_t output_response_count;
+  uint32_t output_query_timeout_count;
+  uint32_t output_configuration_ack_count;
+  uint32_t output_observation_success_count;
+  uint32_t output_observed_sentence_mask;
+  uint32_t output_unexpected_sentence_mask;
+  uint16_t last_command_ack_packet_type;
+  uint8_t last_command_ack_flag;
+  uint8_t output_configuration_field_count;
   uint32_t identity_epoch;
   uint32_t metadata_age_ms;
   uint32_t checksum_valid_count;
@@ -195,6 +233,9 @@ bool otis_gnss_link_discovery_degraded(const OtisGnssLink *link,
                                        uint32_t now_ms);
 const char *otis_gnss_link_state_name(const OtisGnssLink *link,
                                       uint32_t now_ms);
+const char *otis_gnss_link_phase_name(const OtisGnssLink *link);
+const char *otis_gnss_output_confirmation_method_name(
+    const OtisGnssLink *link);
 
 void otis_gnss_receiver_reset(OtisGnssReceiver *receiver, uint32_t now_ms);
 void otis_gnss_receiver_feed(OtisGnssReceiver *receiver, char byte,

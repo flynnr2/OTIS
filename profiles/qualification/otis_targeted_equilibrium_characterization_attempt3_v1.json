@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "programme_id": "OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_ATTEMPT3_V1",
+  "status": "operator_authorized_pending_exact_build_bundle_preflight_and_rehearsal",
+  "base_programme": {
+    "path": "profiles/qualification/otis_targeted_equilibrium_characterization_attempt2_v1.json",
+    "sha256": "8c6fb6f4ab9d07fa1aef1953021a81148d32b18674979ff38799fbf62dd62f77",
+    "size_bytes": 4614
+  },
+  "operator_authority": {
+    "instruction": "Authorized for attempt 3 ...",
+    "instruction_date": "2026-08-25",
+    "scope": [
+      "offline_preparation",
+      "firmware_build",
+      "exact_bundle_creation",
+      "structural_preflight",
+      "operational_path_rehearsal",
+      "firmware_flash",
+      "board_reset",
+      "serial_access",
+      "predetermined_dac_setup_stimuli",
+      "finite_live_acquisition",
+      "evidence_analysis",
+      "evidence_sealing",
+      "evidence_registration"
+    ],
+    "unattended_execution": true,
+    "physical_live_run_limit": 1,
+    "firmware_flash_limit": 1,
+    "automatic_retry": false,
+    "automatic_restore": false,
+    "frequency_control_authority": false,
+    "phase_or_hybrid_actuation": false
+  },
+  "frozen_inputs": {
+    "attempt2_terminal_seal": {
+      "path": "runs/otis_targeted_equilibrium_characterization_v1/campaign_attempt2_20260825T150616Z/live_attempt2_20260825T150841Z/reports/targeted_equilibrium_seal_v1.json",
+      "sha256": "7ee7533e7bc03d0b69df77a57fd35ffadcd29c5fbcbaf6b52962a95fef9a88fd"
+    }
+  },
+  "predecessor_attempt": {
+    "run_id": "live_attempt2_20260825T150841Z",
+    "classification": "firmware_defect_under_intended_startup_integration",
+    "terminal": "prewrite_gate_timeout",
+    "scientific_dwells_started": 0,
+    "dac_stimuli_issued": 0,
+    "seal_sha256": "d034d5d7974e6cd3c37edf7f4837a1b1e09640a8357df0298da478986268feab",
+    "baud_transition_qualification": "passed_reusable_when_decision_relevant_inputs_are_unchanged",
+    "observed_pmtk514_field_count": 22,
+    "observed_pmtk514_signature": "0101100000000000000000"
+  },
+  "gnss_live_boundary": {
+    "qualification_state": "baud_transition_physically_qualified_pmtk514_22_field_correction_pending_one_physical_attempt",
+    "baud_transition_qualification_state": "passed_reused_from_attempt1_and_reaffirmed_attempt2",
+    "candidate_baud_order": [115200, 9600, 57600, 38400, 19200, 14400, 4800],
+    "target_baud": 115200,
+    "target_baud_command": "$PMTK251,115200*1F\\r\\n",
+    "output_query": "$PMTK414*33\\r\\n",
+    "output_configuration_command": "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\\r\\n",
+    "pmtk514_qualified_field_count": 22,
+    "pmtk514_qualified_signature": "0101100000000000000000",
+    "allowed_output_confirmation_methods": [
+      "pmtk514_exact",
+      "pmtk314_ack_observed_exact"
+    ],
+    "direct_output_observation_ms": 2500,
+    "required_observed_sentence_mask": 7,
+    "forbidden_observed_sentence_mask": 0,
+    "confirmation_evidence": {
+      "pmtk514_exact": {
+        "output_configuration_field_count": "22",
+        "output_configuration_signature": "0101100000000000000000"
+      },
+      "pmtk314_ack_observed_exact": {
+        "last_command_ack_packet_type": "314",
+        "last_command_ack_flag": "3",
+        "output_configuration_ack_count_minimum": 1,
+        "output_observation_success_count_minimum": 1,
+        "output_observed_sentence_mask": "7",
+        "output_unexpected_sentence_mask": "0"
+      }
+    },
+    "required_prewrite_health": {
+      "link_state": "online",
+      "link_phase": "online",
+      "link_online": "true",
+      "configuration_confirmed": "true",
+      "confirmed_baud": "115200",
+      "last_identity_response_baud": "115200",
+      "rx_only": "true",
+      "identity_stable": "true",
+      "metadata_control_eligible": "true",
+      "raw_pps_control_eligible": "true",
+      "configuration_failure_count": "0",
+      "transmit_failure_count": "0",
+      "link_loss_count": "0"
+    },
+    "physical_entry_path": "single_flash_continuous_sole_owner_gnss_gate_then_science_promotion",
+    "first_physical_qualification": "same_process_zero_DAC_GNSS_D14_D8_and_partition_gate_then_direct_promotion_into_warmup_and_science",
+    "stability_qualification": "confirmed_115200_online_with_last_identity_response_at_115200_exact_output_confirmation_and_zero_configuration_transmit_or_link_failures_retained_through_campaign_terminal",
+    "future_reuse_policy": "reuse_without_a_special_baud_transition_gate_when_firmware_source_configuration_receiver_identity_and_wiring_are_unchanged; retain_only_the_ordinary_GNSS_and_D14_health_gates_of_the_future_campaign",
+    "invalidation": "repeat_the_shortest_physical_GNSS_qualification_if_firmware_transition_semantics_or_configuration_receiver_identity_wiring_or_recorded_link_health_changes",
+    "failure_action": "priority_abort_and_stop_before_first_DAC_write"
+  }
+}

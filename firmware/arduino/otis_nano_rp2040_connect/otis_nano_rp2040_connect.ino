@@ -1865,12 +1865,18 @@ void emit_pps_count_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
   const OtisCx317StaticCodeState cx317_code = cx317_static_code_state();
   OtisCx317ActiveLiveOutcome active_outcome;
+  const bool raw_d14_d8_interval_valid =
+      window_completed && runtime_state.tcxo.last_observation_valid;
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
-  const bool preview_receiver_valid =
+  const bool receiver_metadata_qualified =
       dual_core_receiver_qualified_for_control();
 #else
-  const bool preview_receiver_valid = true;
+  const bool receiver_metadata_qualified = true;
 #endif
+  const bool preview_reference_valid =
+      otis_preview_reference_valid_for_profile(
+          raw_d14_d8_interval_valid, receiver_metadata_qualified,
+          OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW != 0);
 #if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
     OTIS_ENABLE_CX320_ACTIVE_HYBRID
   // CX320 consumes the exact phase record produced at this boundary. Publish
@@ -1880,8 +1886,7 @@ void emit_pps_count_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
       window_completed,
-      window_completed && runtime_state.tcxo.last_observation_valid &&
-          preview_receiver_valid,
+      preview_reference_valid,
       false);
 #endif
   otis_cx317_preview_live_on_boundary(
@@ -1891,8 +1896,7 @@ void emit_pps_count_boundary(
       // OTIS_FLAG_TIMESTAMP_RECONSTRUCTED as provenance on a valid CNT row.
       // Use the backend's completed validity assessment instead of requiring
       // a numerically zero flag word.
-      window_completed && runtime_state.tcxo.last_observation_valid &&
-          preview_receiver_valid,
+      preview_reference_valid,
       millis() / 1000u, &cx317_code, &active_outcome);
 #if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
     !OTIS_ENABLE_CX320_ACTIVE_HYBRID
@@ -1900,8 +1904,7 @@ void emit_pps_count_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
       window_completed,
-      window_completed && runtime_state.tcxo.last_observation_valid &&
-          preview_receiver_valid,
+      preview_reference_valid,
       false);
 #endif
   if (active_outcome.application_attempted) {
@@ -2391,6 +2394,9 @@ void emit_gnss_receiver_status(void) {
                   ? "disabled"
                   : status.link_health_state,
               link_severity, link_flags);
+  emit_status("gnss_receiver", "link_phase",
+              status.link_phase[0] == '\0' ? "disabled" : status.link_phase,
+              link_severity, link_flags);
   emit_status("gnss_receiver", "link_online",
               status.link_online ? "true" : "false", link_severity,
               link_flags);
@@ -2403,7 +2409,11 @@ void emit_gnss_receiver_status(void) {
               status.configuration_confirmed ? "true" : "false",
               link_severity, link_flags);
   emit_status("gnss_receiver", "uart_configuration",
+#if OTIS_GNSS_UART_BAUD == 9600u
+              "uart0_autodiscovery_8n1_target_9600",
+#else
               "uart0_autodiscovery_8n1_target_115200",
+#endif
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("gnss_receiver", "candidate_baud", status.candidate_baud,
                   link_severity, link_flags);
@@ -2414,6 +2424,59 @@ void emit_gnss_receiver_status(void) {
     emit_status_u32("gnss_receiver", "confirmed_baud",
                     status.confirmed_baud, link_severity, link_flags);
   }
+  if (status.last_identity_response_baud == 0u) {
+    emit_status("gnss_receiver", "last_identity_response_baud",
+                "unavailable", link_severity, link_flags);
+  } else {
+    emit_status_u32("gnss_receiver", "last_identity_response_baud",
+                    status.last_identity_response_baud, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_NONE);
+  }
+  emit_status("gnss_receiver", "output_confirmation_method",
+              status.output_confirmation_method[0] == '\0'
+                  ? "none"
+                  : status.output_confirmation_method,
+              link_severity, link_flags);
+  emit_status_u32("gnss_receiver", "identity_response_count",
+                  status.identity_response_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_response_count",
+                  status.output_response_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_query_timeout_count",
+                  status.output_query_timeout_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_configuration_ack_count",
+                  status.output_configuration_ack_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_observation_success_count",
+                  status.output_observation_success_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_observed_sentence_mask",
+                  status.output_observed_sentence_mask,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_unexpected_sentence_mask",
+                  status.output_unexpected_sentence_mask,
+                  status.output_unexpected_sentence_mask == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_WARN,
+                  status.output_unexpected_sentence_mask == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "last_command_ack_packet_type",
+                  status.last_command_ack_packet_type,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "last_command_ack_flag",
+                  status.last_command_ack_flag,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "output_configuration_field_count",
+                  status.output_configuration_field_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "output_configuration_signature",
+              status.output_configuration_signature[0] == '\0'
+                  ? "unavailable"
+                  : status.output_configuration_signature,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status("gnss_receiver", "rx_pin", "D0_GPIO1_UART0_RX",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("gnss_receiver", "tx_pin", "D1_GPIO0_UART0_TX",

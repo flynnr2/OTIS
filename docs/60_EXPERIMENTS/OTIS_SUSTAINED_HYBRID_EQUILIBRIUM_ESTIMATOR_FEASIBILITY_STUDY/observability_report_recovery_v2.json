@@ -1,0 +1,3930 @@
+{
+  "attempt_id": "OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_V1_RECOVERY_ATTEMPT_2",
+  "authority": {
+    "control_arm": false,
+    "dac_write": false,
+    "effective_authority_creation": false,
+    "firmware_flash": false,
+    "gnss_transmission": false,
+    "live_acquisition": false,
+    "live_activation": false,
+    "offline_analysis": true,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "reset": false,
+    "serial_access": false
+  },
+  "contract": {
+    "contract_sha256": "534beecf00ac09087fdbb3f1c36f03660753c29d8a7d3d4ff0756aa9c3f24f80",
+    "file_sha256": "608090d7e14806c3d6d67245d76c1031f5a25115e71cc9c2e824bad4dd0d747f",
+    "parent_contract_semantic_sha256": "ab2ec34269d0cb21b7895e459201e6d8c500ae050304d8f9f3bd5a829caed682",
+    "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/study_contract_recovery_v2.json"
+  },
+  "decision": {
+    "equilibrium_estimator_selected": false,
+    "equilibrium_interval_computed": true,
+    "first_discriminating_failure": "identification_complete_feasible_set_nonempty",
+    "next_gate": "separately_authorize_one_prospectively_frozen_targeted_characterization",
+    "terminal": "equilibrium_state_not_observable_targeted_characterization_required"
+  },
+  "eligible_models_passing_every_frozen_gate": [],
+  "evidence_inventory": {
+    "attempt4_held_out_supports": [
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 1800,
+        "first_reference_sequence": 1799,
+        "first_snapshot_sequence": 1799,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 2399,
+        "last_reference_sequence": 2399,
+        "last_snapshot_sequence": 2399,
+        "midpoint_reference_sequence": "2099/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 2,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 2400,
+        "first_reference_sequence": 2399,
+        "first_snapshot_sequence": 2399,
+        "frequency_error_hz": "1/300",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 2999,
+        "last_reference_sequence": 2999,
+        "last_snapshot_sequence": 2999,
+        "midpoint_reference_sequence": "2699/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000002
+      },
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 3000,
+        "first_reference_sequence": 2999,
+        "first_snapshot_sequence": 2999,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 3599,
+        "last_reference_sequence": 3599,
+        "last_snapshot_sequence": 3599,
+        "midpoint_reference_sequence": "3299/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 3600,
+        "first_reference_sequence": 3599,
+        "first_snapshot_sequence": 3599,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 4199,
+        "last_reference_sequence": 4199,
+        "last_snapshot_sequence": 4199,
+        "midpoint_reference_sequence": "3899/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 4200,
+        "first_reference_sequence": 4199,
+        "first_snapshot_sequence": 4199,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 4799,
+        "last_reference_sequence": 4799,
+        "last_snapshot_sequence": 4799,
+        "midpoint_reference_sequence": "4499/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43068,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:1",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 4800,
+        "first_reference_sequence": 4799,
+        "first_snapshot_sequence": 4799,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 5399,
+        "last_reference_sequence": 5399,
+        "last_snapshot_sequence": 5399,
+        "midpoint_reference_sequence": "5099/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_1",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43062,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:2",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 6303,
+        "first_reference_sequence": 6302,
+        "first_snapshot_sequence": 6302,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 6902,
+        "last_reference_sequence": 6902,
+        "last_snapshot_sequence": 6902,
+        "midpoint_reference_sequence": "6602/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_2",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43062,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:2",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 6903,
+        "first_reference_sequence": 6902,
+        "first_snapshot_sequence": 6902,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 7502,
+        "last_reference_sequence": 7502,
+        "last_snapshot_sequence": 7502,
+        "midpoint_reference_sequence": "7202/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_2",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43062,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:2",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 7503,
+        "first_reference_sequence": 7502,
+        "first_snapshot_sequence": 7502,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 8102,
+        "last_reference_sequence": 8102,
+        "last_snapshot_sequence": 8102,
+        "midpoint_reference_sequence": "7802/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_2",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:3",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 9007,
+        "first_reference_sequence": 9006,
+        "first_snapshot_sequence": 9006,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 9606,
+        "last_reference_sequence": 9606,
+        "last_snapshot_sequence": 9606,
+        "midpoint_reference_sequence": "9306/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_3",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:3",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 9607,
+        "first_reference_sequence": 9606,
+        "first_snapshot_sequence": 9606,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 10206,
+        "last_reference_sequence": 10206,
+        "last_snapshot_sequence": 10206,
+        "midpoint_reference_sequence": "9906/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_3",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43060,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:4",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 11110,
+        "first_reference_sequence": 11109,
+        "first_snapshot_sequence": 11109,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 11709,
+        "last_reference_sequence": 11709,
+        "last_snapshot_sequence": 11709,
+        "midpoint_reference_sequence": "11409/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_4",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43060,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:4",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 11710,
+        "first_reference_sequence": 11709,
+        "first_snapshot_sequence": 11709,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 12309,
+        "last_reference_sequence": 12309,
+        "last_snapshot_sequence": 12309,
+        "midpoint_reference_sequence": "12009/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_4",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43054,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:5",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 13212,
+        "first_reference_sequence": 13211,
+        "first_snapshot_sequence": 13211,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 13811,
+        "last_reference_sequence": 13811,
+        "last_snapshot_sequence": 13811,
+        "midpoint_reference_sequence": "13511/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_5",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43054,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:5",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 13812,
+        "first_reference_sequence": 13811,
+        "first_snapshot_sequence": 13811,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 14411,
+        "last_reference_sequence": 14411,
+        "last_snapshot_sequence": 14411,
+        "midpoint_reference_sequence": "14111/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_5",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43054,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:5",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 14412,
+        "first_reference_sequence": 14411,
+        "first_snapshot_sequence": 14411,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 15011,
+        "last_reference_sequence": 15011,
+        "last_snapshot_sequence": 15011,
+        "midpoint_reference_sequence": "14711/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_5",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43053,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:6",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 15916,
+        "first_reference_sequence": 15915,
+        "first_snapshot_sequence": 15915,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 16515,
+        "last_reference_sequence": 16515,
+        "last_snapshot_sequence": 16515,
+        "midpoint_reference_sequence": "16215/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_6",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43053,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:6",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 16516,
+        "first_reference_sequence": 16515,
+        "first_snapshot_sequence": 16515,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 17115,
+        "last_reference_sequence": 17115,
+        "last_snapshot_sequence": 17115,
+        "midpoint_reference_sequence": "16815/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_6",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43053,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:6",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 17116,
+        "first_reference_sequence": 17115,
+        "first_snapshot_sequence": 17115,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 17715,
+        "last_reference_sequence": 17715,
+        "last_snapshot_sequence": 17715,
+        "midpoint_reference_sequence": "17415/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_6",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43052,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:7",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 18620,
+        "first_reference_sequence": 18619,
+        "first_snapshot_sequence": 18619,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 19219,
+        "last_reference_sequence": 19219,
+        "last_snapshot_sequence": 19219,
+        "midpoint_reference_sequence": "18919/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_7",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43052,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:7",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 19220,
+        "first_reference_sequence": 19219,
+        "first_snapshot_sequence": 19219,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 19819,
+        "last_reference_sequence": 19819,
+        "last_snapshot_sequence": 19819,
+        "midpoint_reference_sequence": "19519/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_7",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43051,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:8",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 20722,
+        "first_reference_sequence": 20721,
+        "first_snapshot_sequence": 20721,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 21321,
+        "last_reference_sequence": 21321,
+        "last_snapshot_sequence": 21321,
+        "midpoint_reference_sequence": "21021/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_8",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43051,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:8",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 21322,
+        "first_reference_sequence": 21321,
+        "first_snapshot_sequence": 21321,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 21921,
+        "last_reference_sequence": 21921,
+        "last_snapshot_sequence": 21921,
+        "midpoint_reference_sequence": "21621/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_8",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43051,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:8",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 21922,
+        "first_reference_sequence": 21921,
+        "first_snapshot_sequence": 21921,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 22521,
+        "last_reference_sequence": 22521,
+        "last_snapshot_sequence": 22521,
+        "midpoint_reference_sequence": "22221/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_8",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43051,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:8",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 22522,
+        "first_reference_sequence": 22521,
+        "first_snapshot_sequence": 22521,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 23121,
+        "last_reference_sequence": 23121,
+        "last_snapshot_sequence": 23121,
+        "midpoint_reference_sequence": "22821/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_8",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:9",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 24026,
+        "first_reference_sequence": 24025,
+        "first_snapshot_sequence": 24025,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 24625,
+        "last_reference_sequence": 24625,
+        "last_snapshot_sequence": 24625,
+        "midpoint_reference_sequence": "24325/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_9",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:9",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 24626,
+        "first_reference_sequence": 24625,
+        "first_snapshot_sequence": 24625,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 25225,
+        "last_reference_sequence": 25225,
+        "last_snapshot_sequence": 25225,
+        "midpoint_reference_sequence": "24925/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_9",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:9",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 25226,
+        "first_reference_sequence": 25225,
+        "first_snapshot_sequence": 25225,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 25825,
+        "last_reference_sequence": 25825,
+        "last_snapshot_sequence": 25825,
+        "midpoint_reference_sequence": "25525/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_9",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 26730,
+        "first_reference_sequence": 26729,
+        "first_snapshot_sequence": 26729,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 27329,
+        "last_reference_sequence": 27329,
+        "last_snapshot_sequence": 27329,
+        "midpoint_reference_sequence": "27029/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 27330,
+        "first_reference_sequence": 27329,
+        "first_snapshot_sequence": 27329,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 27929,
+        "last_reference_sequence": 27929,
+        "last_snapshot_sequence": 27929,
+        "midpoint_reference_sequence": "27629/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 27930,
+        "first_reference_sequence": 27929,
+        "first_snapshot_sequence": 27929,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 28529,
+        "last_reference_sequence": 28529,
+        "last_snapshot_sequence": 28529,
+        "midpoint_reference_sequence": "28229/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 28530,
+        "first_reference_sequence": 28529,
+        "first_snapshot_sequence": 28529,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 29129,
+        "last_reference_sequence": 29129,
+        "last_snapshot_sequence": 29129,
+        "midpoint_reference_sequence": "28829/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 29130,
+        "first_reference_sequence": 29129,
+        "first_snapshot_sequence": 29129,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 29729,
+        "last_reference_sequence": 29729,
+        "last_snapshot_sequence": 29729,
+        "midpoint_reference_sequence": "29429/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 29730,
+        "first_reference_sequence": 29729,
+        "first_snapshot_sequence": 29729,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 30329,
+        "last_reference_sequence": 30329,
+        "last_snapshot_sequence": 30329,
+        "midpoint_reference_sequence": "30029/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 30330,
+        "first_reference_sequence": 30329,
+        "first_snapshot_sequence": 30329,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 30929,
+        "last_reference_sequence": 30929,
+        "last_snapshot_sequence": 30929,
+        "midpoint_reference_sequence": "30629/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 30930,
+        "first_reference_sequence": 30929,
+        "first_snapshot_sequence": 30929,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 31529,
+        "last_reference_sequence": 31529,
+        "last_snapshot_sequence": 31529,
+        "midpoint_reference_sequence": "31229/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 31530,
+        "first_reference_sequence": 31529,
+        "first_snapshot_sequence": 31529,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 32129,
+        "last_reference_sequence": 32129,
+        "last_snapshot_sequence": 32129,
+        "midpoint_reference_sequence": "31829/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 32130,
+        "first_reference_sequence": 32129,
+        "first_snapshot_sequence": 32129,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 32729,
+        "last_reference_sequence": 32729,
+        "last_snapshot_sequence": 32729,
+        "midpoint_reference_sequence": "32429/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 32730,
+        "first_reference_sequence": 32729,
+        "first_snapshot_sequence": 32729,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 33329,
+        "last_reference_sequence": 33329,
+        "last_snapshot_sequence": 33329,
+        "midpoint_reference_sequence": "33029/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 33330,
+        "first_reference_sequence": 33329,
+        "first_snapshot_sequence": 33329,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 33929,
+        "last_reference_sequence": 33929,
+        "last_snapshot_sequence": 33929,
+        "midpoint_reference_sequence": "33629/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 33930,
+        "first_reference_sequence": 33929,
+        "first_snapshot_sequence": 33929,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 34529,
+        "last_reference_sequence": 34529,
+        "last_snapshot_sequence": 34529,
+        "midpoint_reference_sequence": "34229/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 34530,
+        "first_reference_sequence": 34529,
+        "first_snapshot_sequence": 34529,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 35129,
+        "last_reference_sequence": 35129,
+        "last_snapshot_sequence": 35129,
+        "midpoint_reference_sequence": "34829/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 35130,
+        "first_reference_sequence": 35129,
+        "first_snapshot_sequence": 35129,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 35729,
+        "last_reference_sequence": 35729,
+        "last_snapshot_sequence": 35729,
+        "midpoint_reference_sequence": "35429/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 1,
+        "dac_epoch": "live:DAC:10",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 35730,
+        "first_reference_sequence": 35729,
+        "first_snapshot_sequence": 35729,
+        "frequency_error_hz": "1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 36329,
+        "last_reference_sequence": 36329,
+        "last_snapshot_sequence": 36329,
+        "midpoint_reference_sequence": "36029/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_10",
+        "total_counted_edges": 6000000001
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:11",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 37232,
+        "first_reference_sequence": 37231,
+        "first_snapshot_sequence": 37231,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 37831,
+        "last_reference_sequence": 37831,
+        "last_snapshot_sequence": 37831,
+        "midpoint_reference_sequence": "37531/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_11",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:11",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 37832,
+        "first_reference_sequence": 37831,
+        "first_snapshot_sequence": 37831,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 38431,
+        "last_reference_sequence": 38431,
+        "last_snapshot_sequence": 38431,
+        "midpoint_reference_sequence": "38131/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_11",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:11",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 38432,
+        "first_reference_sequence": 38431,
+        "first_snapshot_sequence": 38431,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 39031,
+        "last_reference_sequence": 39031,
+        "last_snapshot_sequence": 39031,
+        "midpoint_reference_sequence": "38731/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_11",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43056,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:11",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 39032,
+        "first_reference_sequence": 39031,
+        "first_snapshot_sequence": 39031,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 39631,
+        "last_reference_sequence": 39631,
+        "last_snapshot_sequence": 39631,
+        "midpoint_reference_sequence": "39331/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_11",
+        "total_counted_edges": 5999999999
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:12",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 40536,
+        "first_reference_sequence": 40535,
+        "first_snapshot_sequence": 40535,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 41135,
+        "last_reference_sequence": 41135,
+        "last_snapshot_sequence": 41135,
+        "midpoint_reference_sequence": "40835/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_12",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:12",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 41136,
+        "first_reference_sequence": 41135,
+        "first_snapshot_sequence": 41135,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 41735,
+        "last_reference_sequence": 41735,
+        "last_snapshot_sequence": 41735,
+        "midpoint_reference_sequence": "41435/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_12",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": 0,
+        "dac_epoch": "live:DAC:12",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 41736,
+        "first_reference_sequence": 41735,
+        "first_snapshot_sequence": 41735,
+        "frequency_error_hz": "0/1",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 42335,
+        "last_reference_sequence": 42335,
+        "last_snapshot_sequence": 42335,
+        "midpoint_reference_sequence": "42035/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_12",
+        "total_counted_edges": 6000000000
+      },
+      {
+        "capture_session": "1",
+        "code": 43061,
+        "count_error": -1,
+        "dac_epoch": "live:DAC:12",
+        "evidence_source": "attempt4_held_out_validation",
+        "first_count_sequence": 42336,
+        "first_reference_sequence": 42335,
+        "first_snapshot_sequence": 42335,
+        "frequency_error_hz": "-1/600",
+        "history_class": "held_out_observed_path",
+        "last_count_sequence": 42935,
+        "last_reference_sequence": 42935,
+        "last_snapshot_sequence": 42935,
+        "midpoint_reference_sequence": "42635/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "dac_epoch_12",
+        "total_counted_edges": 5999999999
+      }
+    ],
+    "attempt4_validation": {
+      "D10_used": false,
+      "application_chronology": [
+        {
+          "applied_dac_code_before": 43068,
+          "dac_epoch_before": 1,
+          "decision_sequence": 6,
+          "decision_timestamp_s": 5401,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43062,
+          "requested_delta_codes": -6,
+          "source_first_sequence": 4799,
+          "source_last_sequence": 5399
+        },
+        {
+          "applied_dac_code_before": 43062,
+          "dac_epoch_before": 2,
+          "decision_sequence": 9,
+          "decision_timestamp_s": 8104,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43061,
+          "requested_delta_codes": -1,
+          "source_first_sequence": 7502,
+          "source_last_sequence": 8102
+        },
+        {
+          "applied_dac_code_before": 43061,
+          "dac_epoch_before": 3,
+          "decision_sequence": 11,
+          "decision_timestamp_s": 10208,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43060,
+          "requested_delta_codes": -1,
+          "source_first_sequence": 9606,
+          "source_last_sequence": 10206
+        },
+        {
+          "applied_dac_code_before": 43060,
+          "dac_epoch_before": 4,
+          "decision_sequence": 13,
+          "decision_timestamp_s": 12311,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43054,
+          "requested_delta_codes": -6,
+          "source_first_sequence": 11709,
+          "source_last_sequence": 12309
+        },
+        {
+          "applied_dac_code_before": 43054,
+          "dac_epoch_before": 5,
+          "decision_sequence": 16,
+          "decision_timestamp_s": 15013,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43053,
+          "requested_delta_codes": -1,
+          "source_first_sequence": 14411,
+          "source_last_sequence": 15011
+        },
+        {
+          "applied_dac_code_before": 43053,
+          "dac_epoch_before": 6,
+          "decision_sequence": 19,
+          "decision_timestamp_s": 17717,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43052,
+          "requested_delta_codes": -1,
+          "source_first_sequence": 17115,
+          "source_last_sequence": 17715
+        },
+        {
+          "applied_dac_code_before": 43052,
+          "dac_epoch_before": 7,
+          "decision_sequence": 21,
+          "decision_timestamp_s": 19821,
+          "phase_material": true,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43051,
+          "requested_delta_codes": -1,
+          "source_first_sequence": 19219,
+          "source_last_sequence": 19819
+        },
+        {
+          "applied_dac_code_before": 43051,
+          "dac_epoch_before": 8,
+          "decision_sequence": 25,
+          "decision_timestamp_s": 23123,
+          "phase_material": false,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43056,
+          "requested_delta_codes": 5,
+          "source_first_sequence": 22521,
+          "source_last_sequence": 23121
+        },
+        {
+          "applied_dac_code_before": 43056,
+          "dac_epoch_before": 9,
+          "decision_sequence": 28,
+          "decision_timestamp_s": 25827,
+          "phase_material": false,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43061,
+          "requested_delta_codes": 5,
+          "source_first_sequence": 25225,
+          "source_last_sequence": 25825
+        },
+        {
+          "applied_dac_code_before": 43061,
+          "dac_epoch_before": 10,
+          "decision_sequence": 44,
+          "decision_timestamp_s": 36331,
+          "phase_material": false,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43056,
+          "requested_delta_codes": -5,
+          "source_first_sequence": 35729,
+          "source_last_sequence": 36329
+        },
+        {
+          "applied_dac_code_before": 43056,
+          "dac_epoch_before": 11,
+          "decision_sequence": 48,
+          "decision_timestamp_s": 39633,
+          "phase_material": false,
+          "provenance": "observed_AHY_request_before_transaction",
+          "requested_code": 43061,
+          "requested_delta_codes": 5,
+          "source_first_sequence": 39031,
+          "source_last_sequence": 39631
+        }
+      ],
+      "decision_count": 52,
+      "evidence_class": "held_out_physical_validation_only",
+      "modeled_candidate_continuations_eligible": false,
+      "phase_epochs": [
+        1
+      ],
+      "phase_observation_count": 42940,
+      "run_dir": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z",
+      "selected_600s_output_count": 52,
+      "terminal": {
+        "applied_dac_code": 43061,
+        "capture_session": 1,
+        "dac_epoch": 12,
+        "decision_sequence": 52,
+        "phase_epoch": 1,
+        "reason": "prospective_low_efficiency_path",
+        "source_first_sequence": 42335,
+        "source_last_sequence": 42935,
+        "status": "FAIL_STATIC"
+      },
+      "transaction_record_count": 45
+    },
+    "excluded": [
+      {
+        "reason": "modeled counterfactuals are not plant observations",
+        "source": "all successor and mode-separated candidate continuations after code-path divergence"
+      },
+      {
+        "reason": "external event input is not reference, oscillator, or estimator evidence",
+        "source": "D10"
+      },
+      {
+        "reason": "raw arbitrary epochs may not be joined with a guessed offset",
+        "source": "cross-phase-epoch raw phase offsets"
+      }
+    ],
+    "plant_characterization": {
+      "calibrated_or_combined_uncertainty_available": false,
+      "dwell_count": 9,
+      "dwells": [
+        {
+          "acknowledged_ticks": 38254283296,
+          "code": 43344,
+          "dac_epoch": "dwell_01_centre_1_0xA950",
+          "label": "centre_1",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.046666667,
+            10000000.045
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 76685554656,
+          "code": 43088,
+          "dac_epoch": "dwell_02_lower_interior_1_0xA850",
+          "label": "lower_interior_1",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.003333334,
+            10000000.005
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 115118015520,
+          "code": 43008,
+          "dac_epoch": "dwell_03_lower_endpoint_0xA800",
+          "label": "lower_endpoint",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            9999999.99,
+            9999999.99
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 153550293808,
+          "code": 43088,
+          "dac_epoch": "dwell_04_lower_interior_2_0xA850",
+          "label": "lower_interior_2",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.003333334,
+            10000000.003333334
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 191982296000,
+          "code": 43344,
+          "dac_epoch": "dwell_05_centre_2_0xA950",
+          "label": "centre_2",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.046666667,
+            10000000.046666667
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 230414307072,
+          "code": 43600,
+          "dac_epoch": "dwell_06_upper_interior_1_0xAA50",
+          "label": "upper_interior_1",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.091666667,
+            10000000.09
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 268845616128,
+          "code": 43776,
+          "dac_epoch": "dwell_07_upper_endpoint_0xAB00",
+          "label": "upper_endpoint",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.12,
+            10000000.121666666
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1501
+        },
+        {
+          "acknowledged_ticks": 307278002912,
+          "code": 43600,
+          "dac_epoch": "dwell_08_upper_interior_2_0xAA50",
+          "label": "upper_interior_2",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.091666667,
+            10000000.091666667
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1502
+        },
+        {
+          "acknowledged_ticks": 345726293408,
+          "code": 43344,
+          "dac_epoch": "dwell_09_final_safe_centre_0xA950",
+          "label": "final_safe_centre",
+          "provenance": "observed_stage5_physical_characterization",
+          "selected_600s_values_hz": [
+            10000000.046666667,
+            10000000.048333334
+          ],
+          "selected_output_count": 2,
+          "settled_interval_count": 1571
+        }
+      ],
+      "evidence_class": "physical_characterization_identification_candidate",
+      "gain_samples": {
+        "maximum_hz_per_code": 0.00017334010044578463,
+        "median_hz_per_code": 0.00017008467693813145,
+        "minimum_hz_per_code": 0.00016357422282453626,
+        "population_stddev_hz_per_code": 3.2526870275102995e-06,
+        "sample_count": 6,
+        "samples": [
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "centre_1",
+              "centre_2"
+            ],
+            "code_difference": 256,
+            "drift_interpolated_bracket_frequency_hz": 10000000.046041667,
+            "hz_per_code": 0.00016357422282453626,
+            "sample": "lower_interior_outbound",
+            "target_frequency_hz": 10000000.004166666,
+            "target_label": "lower_interior_1"
+          },
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "lower_interior_1",
+              "lower_interior_2"
+            ],
+            "code_difference": 80,
+            "drift_interpolated_bracket_frequency_hz": 10000000.00375,
+            "hz_per_code": 0.00017187499906867743,
+            "sample": "lower_endpoint",
+            "target_frequency_hz": 9999999.99,
+            "target_label": "lower_endpoint"
+          },
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "centre_1",
+              "centre_2"
+            ],
+            "code_difference": 256,
+            "drift_interpolated_bracket_frequency_hz": 10000000.046458334,
+            "hz_per_code": 0.0001684570306679234,
+            "sample": "lower_interior_return",
+            "target_frequency_hz": 10000000.003333334,
+            "target_label": "lower_interior_2"
+          },
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "centre_2",
+              "final_safe_centre"
+            ],
+            "code_difference": 256,
+            "drift_interpolated_bracket_frequency_hz": 10000000.046874978,
+            "hz_per_code": 0.0001717123232083395,
+            "sample": "upper_interior_outbound",
+            "target_frequency_hz": 10000000.090833332,
+            "target_label": "upper_interior_1"
+          },
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "upper_interior_1",
+              "upper_interior_2"
+            ],
+            "code_difference": 176,
+            "drift_interpolated_bracket_frequency_hz": 10000000.091249999,
+            "hz_per_code": 0.000168087130243128,
+            "sample": "upper_endpoint",
+            "target_frequency_hz": 10000000.120833334,
+            "target_label": "upper_endpoint"
+          },
+          {
+            "authority": "finite-run drift-cancelled characterization; not calibrated uncertainty",
+            "bracket_labels": [
+              "centre_2",
+              "final_safe_centre"
+            ],
+            "code_difference": 256,
+            "drift_interpolated_bracket_frequency_hz": 10000000.047291601,
+            "hz_per_code": 0.00017334010044578463,
+            "sample": "upper_interior_return",
+            "target_frequency_hz": 10000000.091666667,
+            "target_label": "upper_interior_2"
+          }
+        ],
+        "uncertainty_status": "unavailable; observed finite-run range only"
+      },
+      "natural_return_and_reversal_observations": [
+        {
+          "absolute_equivalent_codes": 7.349273493706863,
+          "authority": "observed bidirectional finite-run characterization; no rejection threshold or population bound",
+          "code": 43088,
+          "location": "lower_interior",
+          "outbound_drift_adjusted_residual_hz": -0.041875001043081284,
+          "outbound_label": "lower_interior_1",
+          "return_drift_adjusted_residual_hz": -0.04312499985098839,
+          "return_label": "lower_interior_2",
+          "return_minus_outbound_hz": -0.0012499988079071045
+        },
+        {
+          "absolute_equivalent_codes": 2.4500206619878457,
+          "authority": "observed bidirectional finite-run characterization; no rejection threshold or population bound",
+          "code": 43600,
+          "location": "upper_interior",
+          "outbound_drift_adjusted_residual_hz": 0.043958354741334915,
+          "outbound_label": "upper_interior_1",
+          "return_drift_adjusted_residual_hz": 0.044375065714120865,
+          "return_label": "upper_interior_2",
+          "return_minus_outbound_hz": 0.0004167109727859497
+        }
+      ],
+      "same_code_return_observations": {
+        "authority": "finite-run repeatability/time-confounding characterization only",
+        "centre_code": 43344,
+        "drift_fit_residual_span_hz": 4.470348358154297e-08,
+        "drift_fit_residuals_hz": [
+          -1.4901161193847656e-08,
+          2.9802322387695312e-08,
+          -1.4901161193847656e-08
+        ],
+        "linear_drift_hz_per_hour": 0.0003122245821427368,
+        "raw_visit_frequencies_hz": [
+          10000000.045833334,
+          10000000.046666667,
+          10000000.0475
+        ],
+        "raw_visit_max_hz": 10000000.0475,
+        "raw_visit_min_hz": 10000000.045833334,
+        "raw_visit_span_hz": 0.0016666650772094727,
+        "visit_count": 3
+      },
+      "settling": {
+        "comparison_floor_hz": 0.0033333317438761396,
+        "comparison_pass": true,
+        "conservative_history_reset_s": 1500,
+        "declared_exclusion_s": 900,
+        "fresh_selected_support_s": 600,
+        "interpretation": "900 s exclusion is tested only at 600 s selected-estimator resolution; no sub-resolution t95 is claimed",
+        "maximum_post_exclusion_selected_range_hz": 0.0016666669398546219,
+        "t95_s_max": null,
+        "t95_s_min": null
+      },
+      "source_immutability_verified_by_original_report": true,
+      "temperature_context": {
+        "applicability": "observed environmental context, not a demonstrated CX317 internal-temperature sensitivity bound",
+        "sample_count": 21617,
+        "sensor_uncertainty_status": "unavailable",
+        "source": "SHT41 approximately 1 cm from CX317; near-air proxy only",
+        "temperature_max_c": 30.245,
+        "temperature_min_c": 27.259,
+        "timestamp_wrap_count": 5
+      }
+    },
+    "rapid_characterization": {
+      "eligible_for_identification": false,
+      "reason": "uses 60/120-second diagnostic support and cannot replace the selected 600-second method",
+      "source": "complete rapid nine-visit physical characterization"
+    },
+    "stage5_identification_supports": [
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 28,
+        "dac_epoch": "dwell_01_centre_1_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 3290,
+        "first_reference_sequence": 3289,
+        "first_snapshot_sequence": 3289,
+        "frequency_error_hz": "7/150",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 3889,
+        "last_reference_sequence": 3889,
+        "last_snapshot_sequence": 3889,
+        "midpoint_reference_sequence": "3589/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "centre_1",
+        "total_counted_edges": 6000000028
+      },
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 27,
+        "dac_epoch": "dwell_01_centre_1_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 3890,
+        "first_reference_sequence": 3889,
+        "first_snapshot_sequence": 3889,
+        "frequency_error_hz": "9/200",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 4489,
+        "last_reference_sequence": 4489,
+        "last_snapshot_sequence": 4489,
+        "midpoint_reference_sequence": "4189/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "centre_1",
+        "total_counted_edges": 6000000027
+      },
+      {
+        "capture_session": "1",
+        "code": 43088,
+        "count_error": 2,
+        "dac_epoch": "dwell_02_lower_interior_1_0xA850",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 5692,
+        "first_reference_sequence": 5691,
+        "first_snapshot_sequence": 5691,
+        "frequency_error_hz": "1/300",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 6291,
+        "last_reference_sequence": 6291,
+        "last_snapshot_sequence": 6291,
+        "midpoint_reference_sequence": "5991/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_interior_1",
+        "total_counted_edges": 6000000002
+      },
+      {
+        "capture_session": "1",
+        "code": 43088,
+        "count_error": 3,
+        "dac_epoch": "dwell_02_lower_interior_1_0xA850",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 6292,
+        "first_reference_sequence": 6291,
+        "first_snapshot_sequence": 6291,
+        "frequency_error_hz": "1/200",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 6891,
+        "last_reference_sequence": 6891,
+        "last_snapshot_sequence": 6891,
+        "midpoint_reference_sequence": "6591/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_interior_1",
+        "total_counted_edges": 6000000003
+      },
+      {
+        "capture_session": "1",
+        "code": 43008,
+        "count_error": -6,
+        "dac_epoch": "dwell_03_lower_endpoint_0xA800",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 8094,
+        "first_reference_sequence": 8093,
+        "first_snapshot_sequence": 8093,
+        "frequency_error_hz": "-1/100",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 8693,
+        "last_reference_sequence": 8693,
+        "last_snapshot_sequence": 8693,
+        "midpoint_reference_sequence": "8393/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_endpoint",
+        "total_counted_edges": 5999999994
+      },
+      {
+        "capture_session": "1",
+        "code": 43008,
+        "count_error": -6,
+        "dac_epoch": "dwell_03_lower_endpoint_0xA800",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 8694,
+        "first_reference_sequence": 8693,
+        "first_snapshot_sequence": 8693,
+        "frequency_error_hz": "-1/100",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 9293,
+        "last_reference_sequence": 9293,
+        "last_snapshot_sequence": 9293,
+        "midpoint_reference_sequence": "8993/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_endpoint",
+        "total_counted_edges": 5999999994
+      },
+      {
+        "capture_session": "1",
+        "code": 43088,
+        "count_error": 2,
+        "dac_epoch": "dwell_04_lower_interior_2_0xA850",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 10496,
+        "first_reference_sequence": 10495,
+        "first_snapshot_sequence": 10495,
+        "frequency_error_hz": "1/300",
+        "history_class": "return",
+        "last_count_sequence": 11095,
+        "last_reference_sequence": 11095,
+        "last_snapshot_sequence": 11095,
+        "midpoint_reference_sequence": "10795/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_interior_2",
+        "total_counted_edges": 6000000002
+      },
+      {
+        "capture_session": "1",
+        "code": 43088,
+        "count_error": 2,
+        "dac_epoch": "dwell_04_lower_interior_2_0xA850",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 11096,
+        "first_reference_sequence": 11095,
+        "first_snapshot_sequence": 11095,
+        "frequency_error_hz": "1/300",
+        "history_class": "return",
+        "last_count_sequence": 11695,
+        "last_reference_sequence": 11695,
+        "last_snapshot_sequence": 11695,
+        "midpoint_reference_sequence": "11395/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "lower_interior_2",
+        "total_counted_edges": 6000000002
+      },
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 28,
+        "dac_epoch": "dwell_05_centre_2_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 12898,
+        "first_reference_sequence": 12897,
+        "first_snapshot_sequence": 12897,
+        "frequency_error_hz": "7/150",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 13497,
+        "last_reference_sequence": 13497,
+        "last_snapshot_sequence": 13497,
+        "midpoint_reference_sequence": "13197/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "centre_2",
+        "total_counted_edges": 6000000028
+      },
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 28,
+        "dac_epoch": "dwell_05_centre_2_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 13498,
+        "first_reference_sequence": 13497,
+        "first_snapshot_sequence": 13497,
+        "frequency_error_hz": "7/150",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 14097,
+        "last_reference_sequence": 14097,
+        "last_snapshot_sequence": 14097,
+        "midpoint_reference_sequence": "13797/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "centre_2",
+        "total_counted_edges": 6000000028
+      },
+      {
+        "capture_session": "1",
+        "code": 43600,
+        "count_error": 55,
+        "dac_epoch": "dwell_06_upper_interior_1_0xAA50",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 15300,
+        "first_reference_sequence": 15299,
+        "first_snapshot_sequence": 15299,
+        "frequency_error_hz": "11/120",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 15899,
+        "last_reference_sequence": 15899,
+        "last_snapshot_sequence": 15899,
+        "midpoint_reference_sequence": "15599/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_interior_1",
+        "total_counted_edges": 6000000055
+      },
+      {
+        "capture_session": "1",
+        "code": 43600,
+        "count_error": 54,
+        "dac_epoch": "dwell_06_upper_interior_1_0xAA50",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 15900,
+        "first_reference_sequence": 15899,
+        "first_snapshot_sequence": 15899,
+        "frequency_error_hz": "9/100",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 16499,
+        "last_reference_sequence": 16499,
+        "last_snapshot_sequence": 16499,
+        "midpoint_reference_sequence": "16199/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_interior_1",
+        "total_counted_edges": 6000000054
+      },
+      {
+        "capture_session": "1",
+        "code": 43776,
+        "count_error": 72,
+        "dac_epoch": "dwell_07_upper_endpoint_0xAB00",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 17702,
+        "first_reference_sequence": 17701,
+        "first_snapshot_sequence": 17701,
+        "frequency_error_hz": "3/25",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 18301,
+        "last_reference_sequence": 18301,
+        "last_snapshot_sequence": 18301,
+        "midpoint_reference_sequence": "18001/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_endpoint",
+        "total_counted_edges": 6000000072
+      },
+      {
+        "capture_session": "1",
+        "code": 43776,
+        "count_error": 73,
+        "dac_epoch": "dwell_07_upper_endpoint_0xAB00",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 18302,
+        "first_reference_sequence": 18301,
+        "first_snapshot_sequence": 18301,
+        "frequency_error_hz": "73/600",
+        "history_class": "outbound_or_anchor",
+        "last_count_sequence": 18901,
+        "last_reference_sequence": 18901,
+        "last_snapshot_sequence": 18901,
+        "midpoint_reference_sequence": "18601/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_endpoint",
+        "total_counted_edges": 6000000073
+      },
+      {
+        "capture_session": "1",
+        "code": 43600,
+        "count_error": 55,
+        "dac_epoch": "dwell_08_upper_interior_2_0xAA50",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 20104,
+        "first_reference_sequence": 20103,
+        "first_snapshot_sequence": 20103,
+        "frequency_error_hz": "11/120",
+        "history_class": "return",
+        "last_count_sequence": 20703,
+        "last_reference_sequence": 20703,
+        "last_snapshot_sequence": 20703,
+        "midpoint_reference_sequence": "20403/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_interior_2",
+        "total_counted_edges": 6000000055
+      },
+      {
+        "capture_session": "1",
+        "code": 43600,
+        "count_error": 55,
+        "dac_epoch": "dwell_08_upper_interior_2_0xAA50",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 20704,
+        "first_reference_sequence": 20703,
+        "first_snapshot_sequence": 20703,
+        "frequency_error_hz": "11/120",
+        "history_class": "return",
+        "last_count_sequence": 21303,
+        "last_reference_sequence": 21303,
+        "last_snapshot_sequence": 21303,
+        "midpoint_reference_sequence": "21003/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "upper_interior_2",
+        "total_counted_edges": 6000000055
+      },
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 28,
+        "dac_epoch": "dwell_09_final_safe_centre_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 22507,
+        "first_reference_sequence": 22506,
+        "first_snapshot_sequence": 22506,
+        "frequency_error_hz": "7/150",
+        "history_class": "return",
+        "last_count_sequence": 23106,
+        "last_reference_sequence": 23106,
+        "last_snapshot_sequence": 23106,
+        "midpoint_reference_sequence": "22806/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "final_safe_centre",
+        "total_counted_edges": 6000000028
+      },
+      {
+        "capture_session": "1",
+        "code": 43344,
+        "count_error": 29,
+        "dac_epoch": "dwell_09_final_safe_centre_0xA950",
+        "evidence_source": "stage5_identification",
+        "first_count_sequence": 23107,
+        "first_reference_sequence": 23106,
+        "first_snapshot_sequence": 23106,
+        "frequency_error_hz": "29/600",
+        "history_class": "return",
+        "last_count_sequence": 23706,
+        "last_reference_sequence": 23706,
+        "last_snapshot_sequence": 23706,
+        "midpoint_reference_sequence": "23406/1",
+        "provenance": "reconstructed_from_bound_raw_D14_D8_and_DAC_records",
+        "segment": "final_safe_centre",
+        "total_counted_edges": 6000000029
+      }
+    ],
+    "temperature_context": {
+      "attempt4_nearby_air_max_c": 28.106,
+      "attempt4_nearby_air_min_c": 26.375,
+      "attempt4_sample_count": 42937,
+      "claim": "observed_nearby_air_context_only",
+      "fitted_temperature_coefficient": null,
+      "overlap_exists": true,
+      "stage5_nearby_air_max_c": 30.245,
+      "stage5_nearby_air_min_c": 27.259,
+      "stage5_sample_count": 21617
+    }
+  },
+  "evidence_partition": {
+    "excluded": [
+      {
+        "reason": "modeled counterfactuals are not plant observations",
+        "source": "all successor and mode-separated candidate continuations after code-path divergence"
+      },
+      {
+        "reason": "external event input is not reference, oscillator, or estimator evidence",
+        "source": "D10"
+      },
+      {
+        "reason": "raw arbitrary epochs may not be joined with a guessed offset",
+        "source": "cross-phase-epoch raw phase offsets"
+      }
+    ],
+    "held_out_validation": {
+      "phase_use": "same-epoch consistency only and never equilibrium identification",
+      "source": "complete Attempt 4 physical run",
+      "use": "prediction only; no estimator identification or nuisance fitting"
+    },
+    "identification": {
+      "leakage_rule": "complete dwell segments only; no adjacent 600-second support is split between identification and validation",
+      "segments": [
+        "centre_1",
+        "lower_interior_1",
+        "lower_endpoint",
+        "lower_interior_2",
+        "centre_2",
+        "upper_interior_1",
+        "upper_endpoint",
+        "upper_interior_2",
+        "final_safe_centre"
+      ],
+      "source": "complete Stage 5 nine-dwell physical characterization"
+    },
+    "sensitivity_only": {
+      "eligible_for_identification": false,
+      "reason": "uses 60/120-second diagnostic support and cannot replace the selected 600-second method",
+      "source": "complete rapid nine-visit physical characterization"
+    }
+  },
+  "feasibility_gate_checks": [
+    {
+      "gate": "all_required_identities_and_exact_V1_baseline_pass",
+      "index": 1,
+      "passed": true,
+      "reason": "all restored and original identities plus exact V1 baseline pass",
+      "status": "passed"
+    },
+    {
+      "gate": "structurally_identifiable_under_one_credible_model_and_not_unbounded_by_an_equally_supported_model",
+      "index": 2,
+      "passed": true,
+      "reason": "all three frozen structures have discriminating code/time/history evidence and finite parameter bounds",
+      "status": "passed"
+    },
+    {
+      "gate": "identification_complete_feasible_set_nonempty",
+      "index": 3,
+      "passed": false,
+      "reason": "all three nominal-gain complete identification sets are empty",
+      "status": "failed"
+    },
+    {
+      "gate": "held_out_physical_prediction_passes",
+      "index": 4,
+      "passed": false,
+      "reason": "no nominal-gain model with a nonempty identification set covers all held-out Attempt 4 supports",
+      "status": "failed"
+    },
+    {
+      "gate": "all_gain_quantization_drift_repeatability_hysteresis_and_leave_one_segment_out_cases_pass",
+      "index": 5,
+      "passed": false,
+      "reason": "no model passes every frozen gain, perturbation, history, settling, and leave-one-segment-out case",
+      "status": "failed"
+    },
+    {
+      "gate": "worst_case_equilibrium_uncertainty_passes_usefulness_gate",
+      "index": 6,
+      "passed": false,
+      "reason": "no fully sensitive model retains an at-most-18-code complete interval",
+      "status": "failed"
+    },
+    {
+      "gate": "materially_narrower_than_uninformative_baseline_and_not_a_relabeled_applied_code",
+      "index": 7,
+      "passed": false,
+      "reason": "no fully sensitive model is both decision-useful and materially narrower than 768 codes",
+      "status": "failed"
+    },
+    {
+      "gate": "source_DAC_epoch_counter_support_and_provenance_reconstructable",
+      "index": 8,
+      "passed": true,
+      "reason": "all source, DAC epoch, D14 support, D8 count, and session identities reconstruct exactly",
+      "status": "passed"
+    },
+    {
+      "gate": "no_raw_phase_epoch_join_and_no_D10_input",
+      "index": 9,
+      "passed": true,
+      "reason": "raw phase is validation context only; no phase epoch is joined and D10 is excluded",
+      "status": "passed"
+    },
+    {
+      "gate": "finite_evidence_observability_claim_only",
+      "index": 10,
+      "passed": true,
+      "reason": "claim is restricted to retained finite evidence and creates no calibration or authority",
+      "status": "passed"
+    }
+  ],
+  "first_discriminating_failure": "identification_complete_feasible_set_nonempty",
+  "limitations": [
+    "Recovered exact bytes validate the recorded plan identity but do not turn the dirty Stage 5 source revision into a clean commit.",
+    "Gain, drift, hysteresis, repeatability, and temperature ranges are retained finite-run evidence, not calibrated or population uncertainty.",
+    "The bounded-drift model has no frozen cross-session time origin and therefore cannot predict Attempt 4 without an unsupported extrapolation.",
+    "SHT41 is nearby-air context, not CX317 internal temperature; no temperature coefficient is fitted.",
+    "Attempt 4 remains a failed physical qualification because its contemporaneous response-replay attestations are absent.",
+    "No raw phase epoch was joined, D10 was not used, and no physical boundary was exercised."
+  ],
+  "model_hypotheses": [
+    {
+      "gain_cases": {
+        "maximum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_equilibrium_set": null,
+            "feasible": false,
+            "first_empty_after_support": {
+              "count_error": 2,
+              "first_snapshot_sequence": 5691,
+              "last_snapshot_sequence": 6291,
+              "segment": "lower_interior_1"
+            }
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "minimum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_equilibrium_set": null,
+            "feasible": false,
+            "first_empty_after_support": {
+              "count_error": 3,
+              "first_snapshot_sequence": 6291,
+              "last_snapshot_sequence": 6891,
+              "segment": "lower_interior_1"
+            }
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "nominal": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_equilibrium_set": null,
+            "feasible": false,
+            "first_empty_after_support": {
+              "count_error": 2,
+              "first_snapshot_sequence": 5691,
+              "last_snapshot_sequence": 6291,
+              "segment": "lower_interior_1"
+            }
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        }
+      },
+      "model_id": "constant_equilibrium_per_stage5_thermal_segment_v1",
+      "semantics": "one constant closed equilibrium interval for the complete Stage 5 segment",
+      "structural_check": "code excitation must distinguish positive gain from intercept and retain at least one below/above zero bracket",
+      "structural_identifiability": {
+        "evidence": "nine complete dwells include positive code excitation and a D14-relative zero bracket",
+        "identifiable": true
+      }
+    },
+    {
+      "derivation": "absolute observed same-code centre drift 0.0003122245821427368 Hz/hour divided by minimum gain 0.00016357422282453626 Hz/code, rounded outward",
+      "gain_cases": {
+        "maximum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "evaluated": false,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "independent_run_has_no_frozen_cross_session_drift_origin"
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "cross_run_extrapolation": "undefined_across_independent_sessions",
+            "equilibrium_at_reference": null,
+            "feasible": false,
+            "reference_D14_sequence": "26995/2",
+            "slope_codes_per_hour": null
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "minimum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "evaluated": false,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "independent_run_has_no_frozen_cross_session_drift_origin"
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "cross_run_extrapolation": "undefined_across_independent_sessions",
+            "equilibrium_at_reference": null,
+            "feasible": false,
+            "reference_D14_sequence": "26995/2",
+            "slope_codes_per_hour": null
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "nominal": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "evaluated": false,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "independent_run_has_no_frozen_cross_session_drift_origin"
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "cross_run_extrapolation": "undefined_across_independent_sessions",
+            "equilibrium_at_reference": null,
+            "feasible": false,
+            "reference_D14_sequence": "26995/2",
+            "slope_codes_per_hour": null
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        }
+      },
+      "maximum_absolute_drift_codes_per_hour": 1.91,
+      "model_id": "bounded_slow_drift_equilibrium_v1",
+      "semantics": "constant equilibrium plus bounded linear-in-time displacement",
+      "structural_check": "same-code returns must identify drift independently of code response",
+      "structural_identifiability": {
+        "evidence": "three same-code centre visits plus exact D14 sequence establish a separate bounded time coordinate",
+        "identifiable": true
+      }
+    },
+    {
+      "derivation": "maximum observed 7.349273493706863 equivalent-code return difference rounded outward",
+      "gain_cases": {
+        "maximum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_effective_equilibrium_set": null,
+            "durable_base_equilibrium_set": null,
+            "feasible": false,
+            "history_offset_codes": null,
+            "outbound_equilibrium_set": null,
+            "return_equilibrium_set": {
+              "lower": "746575331372208900272/17334010044578463",
+              "lower_decimal_display_only": 43069.972236788584,
+              "upper": "746575331372208900272/17334010044578463",
+              "upper_decimal_display_only": 43069.972236788584,
+              "width": "0/1",
+              "width_decimal_display_only": 0.0
+            }
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "minimum": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_effective_equilibrium_set": null,
+            "durable_base_equilibrium_set": null,
+            "feasible": false,
+            "history_offset_codes": null,
+            "outbound_equilibrium_set": null,
+            "return_equilibrium_set": null
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        },
+        "nominal": {
+          "bounded": false,
+          "complete_interval": null,
+          "held_out_prediction": {
+            "coverage_count": 0,
+            "coverage_fraction": "0/1",
+            "evaluated": false,
+            "first_uncovered_support": null,
+            "observation_count": 52,
+            "passed": false,
+            "reason": "identification_complete_feasible_set_empty",
+            "tail_residual_hz": null,
+            "worst_residual_hz": null
+          },
+          "leave_one_complete_segment_out": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "centre_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_1",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_endpoint",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "omitted_segment": "final_safe_centre",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "numerical": {
+            "complete_effective_equilibrium_set": null,
+            "durable_base_equilibrium_set": null,
+            "feasible": false,
+            "history_offset_codes": null,
+            "outbound_equilibrium_set": null,
+            "return_equilibrium_set": {
+              "lower": "146493004744127391376/3401693538762629",
+              "lower_decimal_display_only": 43064.72734090398,
+              "upper": "146493004744127391376/3401693538762629",
+              "upper_decimal_display_only": 43064.72734090398,
+              "width": "0/1",
+              "width_decimal_display_only": 0.0
+            }
+          },
+          "same_code_one_count_perturbations": {
+            "all_nonempty_and_useful": false,
+            "cases": [
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": -1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "final_safe_centre",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "lower_interior_2",
+                "useful_span_passed": false
+              },
+              {
+                "interval": null,
+                "nonempty": false,
+                "perturbation_counts": 1,
+                "segment": "upper_interior_2",
+                "useful_span_passed": false
+              }
+            ]
+          },
+          "settling_boundary": {
+            "at": "evaluated",
+            "below": "rejected_crosses_frozen_900_second_exclusion",
+            "one_second_above": {
+              "bounded": false,
+              "complete_interval": null,
+              "useful_span_passed": false
+            }
+          },
+          "useful_span_passed": false
+        }
+      },
+      "maximum_outward_reversal_dead_zone_codes": 8,
+      "model_id": "direction_history_conditioned_equilibrium_v1",
+      "semantics": "separate outbound and return closed equilibrium intervals only at retained naturally reversed/returned code histories",
+      "structural_check": "both directions and a same-code return must exist; no discontinuous offset is applied to every nonzero code difference",
+      "structural_identifiability": {
+        "evidence": "both directions, two natural reversals, and same-code returns are retained as complete dwells",
+        "identifiable": true
+      }
+    }
+  ],
+  "nuisance_and_arithmetic_semantics": {
+    "DAC_epoch_change": "reset_support",
+    "algorithm": "deterministic closed set-membership intersection",
+    "calibrated_resolution_available": false,
+    "canonical_arithmetic": "integer and rational Fraction arithmetic through interval construction and gate comparison",
+    "capture_session_change": "reset_support",
+    "combined_uncertainty_available": false,
+    "count_quantization": "each integer 600-second count denotes the exact closed half-count interval [(2c-1)/1200,(2c+1)/1200] Hz for this feasibility construction",
+    "empirical_detection_floor_hz": "33333317438761396/10000000000000000000",
+    "fresh_support_s": 600,
+    "gain_cases_hz_per_code": {
+      "maximum": "17334010044578463/100000000000000000000",
+      "minimum": "16357422282453626/100000000000000000000",
+      "nominal": "17008467693813145/100000000000000000000"
+    },
+    "interval_closure": "closed at both endpoints",
+    "ordering": "source run, complete segment, DAC epoch, support first sequence, support last sequence",
+    "phase_epoch_join": "forbidden",
+    "same_code_repeatability": "separate positive and negative one-count observation-consistency sensitivities, never a permanent code-response offset",
+    "settling_boundary": "support_must_close_after_exclusion_and_use_600_fresh_seconds",
+    "settling_exclusion_s": 900,
+    "support_overlap": false,
+    "temperature": "retained nearby-air covariate only; no fitted coefficient or hard applicability gate",
+    "unknown_or_contradictory_domain": "invalid_study"
+  },
+  "physical_actions_performed": 0,
+  "predecessor_and_baseline_reproduction": {
+    "exact_v1_baseline": {
+      "all_response_checkpoints_passed": true,
+      "application_count": 11,
+      "application_decision_sequences": [
+        6,
+        9,
+        11,
+        13,
+        16,
+        19,
+        21,
+        25,
+        28,
+        44,
+        48
+      ],
+      "application_deltas": [
+        -6,
+        -1,
+        -1,
+        -6,
+        -1,
+        -1,
+        -1,
+        5,
+        5,
+        -5,
+        5
+      ],
+      "cumulative_natural_movement_codes": 37,
+      "decision_count": 52,
+      "exact": true,
+      "first_seven_path_codes": 17,
+      "first_seven_phase_material": true,
+      "first_seven_terminal_code": 43051,
+      "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+      "formal_physical_qualification_passed": false,
+      "last_four_net_codes": 10,
+      "last_four_path_codes": 20,
+      "last_four_phase_nonmaterial_frequency_driven": true,
+      "net_movement_from_setup_codes": -7,
+      "phase_material_application_count": 7,
+      "policy_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+      "terminal_code": 43061,
+      "terminal_dac_epoch": 12,
+      "terminal_decision_sequence": 52,
+      "terminal_next_unchecked_delta_codes": 5,
+      "terminal_prospective_net_displacement_codes": 2,
+      "terminal_prospective_path_codes": 42,
+      "terminal_reason": "prospective_low_efficiency_path"
+    },
+    "exact_v1_baseline_reproduced": true,
+    "mode_classifier_replay": {
+      "causal_decision_frontier": true,
+      "frequency_only_maintenance_sequences": [
+        25,
+        28,
+        44,
+        48
+      ],
+      "phase_material_sequences": [
+        6,
+        9,
+        11,
+        13,
+        16,
+        19,
+        21
+      ]
+    },
+    "mode_report_reproduced": true,
+    "mode_report_semantic_sha256": "6b971643c106fabe0cec2c267f733ded330469ad7596125fb2dd33e57a6b9aef",
+    "mode_terminal": "no_mode_separated_architecture_selected",
+    "source_validation": {
+      "attempt4_content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+      "attempt4_file_count": 80,
+      "attempt4_total_bytes": 409352510,
+      "bound_file_count": 8,
+      "evidence_snapshot_failures": [],
+      "evidence_snapshot_warnings": [],
+      "predecessor_contract_sha256": "d60c26c90d7f06f4c605f2b35159209315f4c1b035dd9831f76c78e1200ea7cf",
+      "predecessor_report_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523"
+    },
+    "successor_report_reproduced": true,
+    "successor_report_semantic_sha256": "d3b48818b082d9e8797c9a78316b1ae286f8bdcf5eb4ef34b66f286223717523",
+    "successor_terminal": "no_controller_successor_selected"
+  },
+  "provenance_labels": {
+    "bounded": [
+      "finite-run gain cases, 1.91-code/hour drift, eight-code return dead zone, and 18-code usefulness limit"
+    ],
+    "derived": [
+      "closed rational observation and equilibrium intervals",
+      "exact linear-drift projections, coverage residuals, sensitivities, and gate rows"
+    ],
+    "modeled": [
+      "constant, bounded-drift, and direction/history-conditioned equilibrium states"
+    ],
+    "observed": [
+      "Stage 5 raw D14 reference, D8 cumulative count, DAC acknowledgement, and nearby-air records",
+      "Attempt 4 selected supports, applications, DAC epochs, phase epoch, and nearby-air records"
+    ],
+    "reconstructed": [
+      "eighteen exact Stage 5 600-second supports",
+      "fifty-two exact-count Attempt 4 held-out supports",
+      "predecessor comparators and V1 baseline"
+    ]
+  },
+  "recovery_attempt_clarifications": {
+    "constant_model": "intersect every Stage 5 support's exact equilibrium-code interval at each fixed gain case",
+    "frequency_observation": "integer count error c maps to closed [(2c-1)/1200,(2c+1)/1200] Hz",
+    "gain_aggregation": "minimum, nominal, and maximum fixed-gain cases must each pass; no averaging or nominal-only selection",
+    "held_out_prediction": "use all 52 Attempt 4 selected 600-second supports only after identification; a support is covered when its closed half-count observation interval intersects the model prediction interval; require 52/52 coverage",
+    "history_holdout": "carry the full [-8,+8]-code history offset into every held-out prediction rather than selecting a favorable direction after outcomes",
+    "history_model": "outbound_or_anchor segments are centre_1, lower_interior_1, lower_endpoint, centre_2, upper_interior_1, and upper_endpoint; return segments are lower_interior_2, upper_interior_2, and final_safe_centre; one durable base plus a common return offset bounded to [-8,+8] codes must explain both groups",
+    "leave_one_out": "remove both supports of one complete Stage 5 dwell, never one adjacent support",
+    "purpose": "deterministic executable detail needed to evaluate, not alter, the already frozen model and validation semantics",
+    "same_code_perturbation": "apply +1 and -1 integer count separately to both supports of one complete repeated return segment at a time; never apply it as a permanent response offset",
+    "settling_boundary_cases": "one interval before the 900-second boundary is rejected; exact-boundary and one-second-above starts are independently reconstructed from fresh 600-second supports",
+    "slow_drift_holdout": "cross-run prediction fails closed because independent capture sessions have no frozen shared drift origin",
+    "slow_drift_model": "use e(t)=e_ref+d*(t-t_ref), exact D14-sequence elapsed hours, t_ref at the midpoint of first and last support midpoints, and d in [-1.91,+1.91] codes/hour; retain the complete correlated feasible projection",
+    "stage5_support_construction": "for each complete settled Stage 5 dwell, reconstruct the first two non-overlapping 600-accepted-D14-interval supports from raw cumulative D8 snapshots and count rows; require exact D14 association, one capture session, one DAC epoch, valid flags, and count arithmetic",
+    "temperature": "report both complete nearby-air ranges without fitting a coefficient or creating a hard applicability gate",
+    "terminal_rule": "identity or executable model-binding failure is invalid; otherwise any empty, held-out-failing, sensitivity-failing, or wider-than-18-code case is not observable; observability requires all ten parent gates"
+  },
+  "report_sha256": "dae8dcc78cd816152246e06df1886ed572e873ed2ca1fd52e38c91f80228b21b",
+  "report_type": "otis_sustained_hybrid_equilibrium_estimator_observability_report_v2",
+  "schema_version": 2,
+  "sensitivity_cases": [
+    "plant_gain_minimum",
+    "plant_gain_nominal",
+    "plant_gain_maximum",
+    "quantization_lower_and_upper_boundaries",
+    "same_code_positive_one_count",
+    "same_code_negative_one_count",
+    "reversal_eight_code_dead_zone",
+    "bounded_slow_drift",
+    "settling_boundary_below_at_above",
+    "DAC_epoch_change",
+    "capture_session_change",
+    "phase_epoch_reset",
+    "temperature_context_extremes",
+    "leave_one_complete_segment_out"
+  ],
+  "source_identity_validation": {
+    "all_required_exact": true,
+    "bindings": [
+      {
+        "actual_sha256": "5e03b59b8e4b3ee9510e0ce941f5974dfc2c28c1827d9a24a36f4e9f68ac202c",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "5e03b59b8e4b3ee9510e0ce941f5974dfc2c28c1827d9a24a36f4e9f68ac202c",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_PROMPT.md",
+        "required": true,
+        "role": "study_prompt"
+      },
+      {
+        "actual_sha256": "ae4967c4fdb8bcb532052f14290e2dccd3a61d7c238bdec28111e81120adbf0b",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "ae4967c4fdb8bcb532052f14290e2dccd3a61d7c238bdec28111e81120adbf0b",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/ARCHITECTURE.md",
+        "required": true,
+        "role": "mode_architecture"
+      },
+      {
+        "actual_sha256": "f0af0cbcac15b9758e4ae4ba3e2246a4c9ec6dc51804f4b5df1540f503083165",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "f0af0cbcac15b9758e4ae4ba3e2246a4c9ec6dc51804f4b5df1540f503083165",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/study_contract_v1.json",
+        "required": true,
+        "role": "mode_contract"
+      },
+      {
+        "actual_sha256": "27bcdf5b3cc4ec1db23c835a3a0df11e832ed27682863bcea7a1fa5d4d2c7b07",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "27bcdf5b3cc4ec1db23c835a3a0df11e832ed27682863bcea7a1fa5d4d2c7b07",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/comparison_report_v1.json",
+        "required": true,
+        "role": "mode_report"
+      },
+      {
+        "actual_sha256": "9fe68acc9efcd5fd60a1f1b4982a2a485e5cca1d21dbdce418189fc57d93b85a",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "9fe68acc9efcd5fd60a1f1b4982a2a485e5cca1d21dbdce418189fc57d93b85a",
+        "path": "host/otis_tools/sustained_hybrid_mode_separation_study.py",
+        "required": true,
+        "role": "mode_comparator"
+      },
+      {
+        "actual_sha256": "602988d02fac311ca39e73c0531caa0dd5856be084b4838f26918d3ebcda235a",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "602988d02fac311ca39e73c0531caa0dd5856be084b4838f26918d3ebcda235a",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/study_contract_v1.json",
+        "required": true,
+        "role": "successor_contract"
+      },
+      {
+        "actual_sha256": "1aa3f8e5766bab071af91160a8801843102ad6058e36539daf97f0efbdd52ea7",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "1aa3f8e5766bab071af91160a8801843102ad6058e36539daf97f0efbdd52ea7",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_SUCCESSOR_OFFLINE_STUDY/comparison_report_v1.json",
+        "required": true,
+        "role": "successor_report"
+      },
+      {
+        "actual_sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "3e009a12502b23a692b4eda3a2ba070f612e6b31337ce4edc70a101107fd1489",
+        "path": "host/otis_tools/sustained_hybrid_successor_study.py",
+        "required": true,
+        "role": "successor_comparator"
+      },
+      {
+        "actual_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+        "path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
+        "required": true,
+        "role": "v1_policy"
+      },
+      {
+        "actual_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+        "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+        "required": true,
+        "role": "frequency_estimator"
+      },
+      {
+        "actual_sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839",
+        "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
+        "required": true,
+        "role": "frequency_estimator_method"
+      },
+      {
+        "actual_sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+        "required": true,
+        "role": "phase_estimator"
+      },
+      {
+        "actual_sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb",
+        "path": "profiles/estimators/cx318_relative_phase_candidates_v1.json",
+        "required": true,
+        "role": "phase_estimator_candidates"
+      },
+      {
+        "actual_sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
+        "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+        "required": true,
+        "role": "plant_model"
+      },
+      {
+        "actual_sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e",
+        "path": "profiles/discipline/cx317_response_classification_v2.json",
+        "required": true,
+        "role": "response_policy"
+      },
+      {
+        "actual_sha256": "566c5364f489cc9fc3b848b321d45f8c76024da2e12e746b867923ed31a92c76",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "566c5364f489cc9fc3b848b321d45f8c76024da2e12e746b867923ed31a92c76",
+        "path": "host/otis_tools/active_hybrid_policy.py",
+        "required": true,
+        "role": "active_hybrid_policy_reference"
+      },
+      {
+        "actual_sha256": "238bce7f46bed66aab74cb9c1be089e8c00e966fe13aae8dac897199a81eb825",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "238bce7f46bed66aab74cb9c1be089e8c00e966fe13aae8dac897199a81eb825",
+        "path": "host/otis_tools/active_hybrid_replay.py",
+        "required": true,
+        "role": "active_hybrid_replay"
+      },
+      {
+        "actual_sha256": "5cfb232d1936f7a25137a01f6680bdf7a251673c7dcab67ca1aaa618147cf765",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "5cfb232d1936f7a25137a01f6680bdf7a251673c7dcab67ca1aaa618147cf765",
+        "path": "host/otis_tools/programme_status.py",
+        "required": true,
+        "role": "programme_status_loader_and_guard"
+      },
+      {
+        "actual_sha256": "3bda75ceb8309a71d6e91ba18f9e2fe5781906f191b69bd5bd84cf5bf7a4f3fc",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "3bda75ceb8309a71d6e91ba18f9e2fe5781906f191b69bd5bd84cf5bf7a4f3fc",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/run_manifest.json",
+        "required": true,
+        "role": "attempt4_run_manifest"
+      },
+      {
+        "actual_sha256": "5da145fd66d3e9f070fc31c8bfdcf72223fe929453583c071f8b2d3574a82b9a",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "5da145fd66d3e9f070fc31c8bfdcf72223fe929453583c071f8b2d3574a82b9a",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/evidence_manifest.json",
+        "required": true,
+        "role": "attempt4_evidence_manifest"
+      },
+      {
+        "actual_sha256": "e48257957c5766f15f24c6dfb168ae799388b7cb9267c3daff2b458ea1542a76",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "e48257957c5766f15f24c6dfb168ae799388b7cb9267c3daff2b458ea1542a76",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/otis_sustained_hybrid_live_activation_v1.json",
+        "required": true,
+        "role": "attempt4_activation"
+      },
+      {
+        "actual_sha256": "deb96fcdc2514c5aaad63f8b1e04fe5e7f0090909c7b7026715e5640d6f81243",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "deb96fcdc2514c5aaad63f8b1e04fe5e7f0090909c7b7026715e5640d6f81243",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/otis_sustained_hybrid_exact_bundle_v1.json",
+        "required": true,
+        "role": "attempt4_exact_bundle"
+      },
+      {
+        "actual_sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/reports/otis_sustained_hybrid_physical_seal_v1.json",
+        "required": true,
+        "role": "attempt4_physical_seal"
+      },
+      {
+        "actual_sha256": "8b287f7e4572ff43a2e5ecd43c5aeb693e9060ddc17f952ed283144b3a97af9e",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "8b287f7e4572ff43a2e5ecd43c5aeb693e9060ddc17f952ed283144b3a97af9e",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/active_hybrid_decisions_v1.csv",
+        "required": true,
+        "role": "attempt4_AHY"
+      },
+      {
+        "actual_sha256": "0dc1513a40f444ca2f537d84b3744bf16c848a2b9b9db3b7be748e6faf31039a",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "0dc1513a40f444ca2f537d84b3744bf16c848a2b9b9db3b7be748e6faf31039a",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/active_transactions_v1.csv",
+        "required": true,
+        "role": "attempt4_ACT_response_and_transactions"
+      },
+      {
+        "actual_sha256": "85eb01cbea51c7c91307b139bc3dba6263ee7ee12b2888f2a359890105eee62d",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "85eb01cbea51c7c91307b139bc3dba6263ee7ee12b2888f2a359890105eee62d",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/estimates_v2.csv",
+        "required": true,
+        "role": "attempt4_selected_estimates"
+      },
+      {
+        "actual_sha256": "f6e5778a087fe43c5b64ad9224b85645f3f07f2bb6fd6d2f8a9c4afb90e66e80",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "f6e5778a087fe43c5b64ad9224b85645f3f07f2bb6fd6d2f8a9c4afb90e66e80",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/tight_deadband_decisions_v1.csv",
+        "required": true,
+        "role": "attempt4_tight_band"
+      },
+      {
+        "actual_sha256": "559f351a6709589e754b287069c532906d56d7cb0c5d272e5a50601adcf220c5",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "559f351a6709589e754b287069c532906d56d7cb0c5d272e5a50601adcf220c5",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/phase_estimator_outputs_v1.csv",
+        "required": true,
+        "role": "attempt4_phase_estimates"
+      },
+      {
+        "actual_sha256": "e0765d1f4d99997b61da6b7543b8b854f1d1d2b92eda4b588c97693ec0e45daa",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "e0765d1f4d99997b61da6b7543b8b854f1d1d2b92eda4b588c97693ec0e45daa",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/relative_phase_observations_v1.csv",
+        "required": true,
+        "role": "attempt4_raw_relative_phase"
+      },
+      {
+        "actual_sha256": "3dc886aea1bdf1119aca316e4c1069f1a9c03b9567aca1c56f5386edca0a1e38",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "3dc886aea1bdf1119aca316e4c1069f1a9c03b9567aca1c56f5386edca0a1e38",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/pps_snapshots.csv",
+        "required": true,
+        "role": "attempt4_pps_snapshots"
+      },
+      {
+        "actual_sha256": "ab8a0b3cc7fa36406078eefa1608eb54455220edb351a03d118bfa8f139ea3e9",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "ab8a0b3cc7fa36406078eefa1608eb54455220edb351a03d118bfa8f139ea3e9",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/count_observations.csv",
+        "required": true,
+        "role": "attempt4_count_observations"
+      },
+      {
+        "actual_sha256": "fb094d8f54ab7313db9b45f37a702185889d25cb30b312e96ceca3a07b39e3bf",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "fb094d8f54ab7313db9b45f37a702185889d25cb30b312e96ceca3a07b39e3bf",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/raw_events.csv",
+        "required": true,
+        "role": "attempt4_raw_events"
+      },
+      {
+        "actual_sha256": "665b6faaad73f92fa6d254c4f7425e0baa09586b4b55117c6cd306d37a995bd3",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "665b6faaad73f92fa6d254c4f7425e0baa09586b4b55117c6cd306d37a995bd3",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/reference_observations_v1.csv",
+        "required": true,
+        "role": "attempt4_reference_observations"
+      },
+      {
+        "actual_sha256": "60ad60d080fd221270c2d2d3977aa419bec4f43b2b5fdd075da3768ec2899993",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "60ad60d080fd221270c2d2d3977aa419bec4f43b2b5fdd075da3768ec2899993",
+        "path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z/csv/environment.csv",
+        "required": true,
+        "role": "attempt4_environment"
+      },
+      {
+        "actual_sha256": "9b7dedf7eb972b1852cd843faaccb2892cfd5be482da4e8ef1e6ab2d1611c976",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "9b7dedf7eb972b1852cd843faaccb2892cfd5be482da4e8ef1e6ab2d1611c976",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/evidence_manifest.json",
+        "required": true,
+        "role": "stage5_evidence_manifest"
+      },
+      {
+        "actual_sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "d5158ded8eba2a97e41832a1f22523b6fb19966446c645b346776fa713f7234c",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/run_manifest.json",
+        "required": true,
+        "role": "stage5_run_manifest"
+      },
+      {
+        "actual_sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "4b22830013083d378f1dc0370bc9e970b8b190d6401ab1bbdfdb0c861d4effd7",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/plant_characterization_v1.json",
+        "required": true,
+        "role": "stage5_plant_characterization"
+      },
+      {
+        "actual_sha256": "5a44c54510a43ddfa8c09717ce4bc913c1fb9be9582d90abfc62612e6e9757f5",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "5a44c54510a43ddfa8c09717ce4bc913c1fb9be9582d90abfc62612e6e9757f5",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/reports/PLANT_CHARACTERIZATION.md",
+        "required": true,
+        "role": "stage5_reviewed_characterization"
+      },
+      {
+        "actual_sha256": "28377345556e027239b8afbfbd99d3486294f6b590d7670a8580e5690c0dc401",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "28377345556e027239b8afbfbd99d3486294f6b590d7670a8580e5690c0dc401",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_preparation/physical_safety_gate_evaluation_v1.json",
+        "required": true,
+        "role": "stage5_physical_gate"
+      },
+      {
+        "actual_sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+        "path": "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+        "required": true,
+        "role": "stage5_exact_open_loop_plan"
+      },
+      {
+        "actual_sha256": "1a41ca8bf478c13acef4ad1365ad2215fa502e68ed29d508ad4905a275c0e72f",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "1a41ca8bf478c13acef4ad1365ad2215fa502e68ed29d508ad4905a275c0e72f",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/evidence_manifest.json",
+        "required": true,
+        "role": "rapid_evidence_manifest"
+      },
+      {
+        "actual_sha256": "04e4cd1065874a8699756a379ac3060c049773f1948bfa2fcd76594702e64ddf",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "04e4cd1065874a8699756a379ac3060c049773f1948bfa2fcd76594702e64ddf",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/reports/RAPID_STEP_CHARACTERIZATION_ANALYSIS.md",
+        "required": true,
+        "role": "rapid_reviewed_characterization"
+      },
+      {
+        "actual_sha256": "cf9f9208f433174ed13b80f6e92feac48a54f934ddb6aa0d820c0fd186049fbe",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "cf9f9208f433174ed13b80f6e92feac48a54f934ddb6aa0d820c0fd186049fbe",
+        "path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/control/rapid_open_loop_plan.json",
+        "required": true,
+        "role": "rapid_exact_open_loop_plan"
+      },
+      {
+        "actual_sha256": "82631661dd8bbea44e3df8b08e0dfa69a1378bd4a2f6086134e884e27a7824d1",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "82631661dd8bbea44e3df8b08e0dfa69a1378bd4a2f6086134e884e27a7824d1",
+        "path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/SOURCE_RECOVERY.md",
+        "required": true,
+        "role": "source_recovery_record"
+      },
+      {
+        "actual_sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "d152d4b9e35ee6af5a8fd91c9b8d594469b4bc0df29ea62b1d000bbe56c28264",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/cnt.csv",
+        "required": true,
+        "role": "stage5_raw_D8_counts"
+      },
+      {
+        "actual_sha256": "34b9678f01718cae43a7ec8e88de82e016ccc0767ac44dbdfb55f08bbe954644",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "34b9678f01718cae43a7ec8e88de82e016ccc0767ac44dbdfb55f08bbe954644",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/dac_steps.csv",
+        "required": true,
+        "role": "stage5_DAC_acknowledgements"
+      },
+      {
+        "actual_sha256": "049126131a574af82d29a55b9df776d3872b9e6bcfaea4ec0ed9620d35d6e11b",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "049126131a574af82d29a55b9df776d3872b9e6bcfaea4ec0ed9620d35d6e11b",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/environment.csv",
+        "required": true,
+        "role": "stage5_nearby_air_context"
+      },
+      {
+        "actual_sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "329dbad1fefd217145d835096ea43da8ab37659048cf80c2d3d7a8f9bbd4d2f5",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/ref.csv",
+        "required": true,
+        "role": "stage5_D14_reference_events"
+      },
+      {
+        "actual_sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "d47da7810c672a98b569a0a27416b77800584677fb896b5022204e27d02e5a3b",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/csv/snp.csv",
+        "required": true,
+        "role": "stage5_D8_cumulative_snapshots"
+      },
+      {
+        "actual_sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3",
+        "exact": true,
+        "exists": true,
+        "expected_sha256": "e5b744c350f1d3c594845998676217d71a4f8674d31d990537d94984531799b3",
+        "path": "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/derived/cx317_pps_plant_characterization_v1/interval_policy_v1.json",
+        "required": true,
+        "role": "stage5_settling_and_DAC_epoch_policy"
+      }
+    ],
+    "failures": []
+  },
+  "source_recovery": {
+    "claim_boundary": "exact recorded artifact identity recovered; no clean-source-revision claim",
+    "recorded_stage5_source_commit": "0d52df61f189eb98c8e0e1e318e8ca706fcf6e52",
+    "recorded_stage5_source_state": "dirty",
+    "recovered_commit": "b4b3ca46019a740c77ea52267c8fb5e96998f00e",
+    "recovered_git_blob": "bbfce71a3dd789c39458821dcdc0d84bba881812",
+    "recovery_record_path": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/SOURCE_RECOVERY.md",
+    "recovery_record_sha256": "82631661dd8bbea44e3df8b08e0dfa69a1378bd4a2f6086134e884e27a7824d1",
+    "restored_path": "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json",
+    "restored_sha256": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
+    "restored_size_bytes": 3459
+  },
+  "state_and_observation_semantics": {
+    "D10_role": "external event input excluded from estimator",
+    "D14_role": "sole authoritative PPS/reference input",
+    "D8_role": "sole oscillator/count input",
+    "applied_dac_code": "exact acknowledged AD5693R code associated with one DAC epoch",
+    "counter_domain": "rp2040_timer0_extended for Attempt 4 decision chronology; source characterization uses its declared session reconstruction",
+    "equilibrium_code": "modeled code or closed code interval at which qualified D8 oscillator frequency error relative to D14 is zero within the frozen segment, thermal context, direction/history, drift, and nuisance assumptions",
+    "phase_steering_displacement_codes": "modeled arithmetic applied_dac_code minus equilibrium_code; bookkeeping for one actuator, not a measured second state or actuator",
+    "plant_gain": "positive differential D8 frequency response in Hz/code, finite-run minimum/nominal/maximum provenance",
+    "qualified_frequency_observation": "non-overlapping 600-second D8 count output relative to authoritative D14, one count equals 1/600 Hz",
+    "raw_relative_phase": "arbitrary-zero D8 cycles relative to D14 within one exact phase epoch only"
+  },
+  "status": "complete_bounded_terminal",
+  "study_identity": "OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY_V1",
+  "terminal": "equilibrium_state_not_observable_targeted_characterization_required",
+  "tool": {
+    "path": "host/otis_tools/sustained_hybrid_equilibrium_estimator_recovery_study.py",
+    "sha256": "9fcfdbfdf08cecb0839fc6cbc7e32a4859dfa5908d74ab58de4939a3ed05a959",
+    "tool_id": "otis_sustained_hybrid_equilibrium_estimator_recovery_v2"
+  },
+  "uninformative_baseline": {
+    "characterized_range_max_code": 43776,
+    "characterized_range_min_code": 43008,
+    "maximum_useful_fraction_of_baseline": 0.0234375,
+    "per_support_free_equilibrium": "uninformative_and_forbidden_as_observability_claim",
+    "span_codes": 768
+  },
+  "usefulness_gate": {
+    "derivation": "A closed integer-code interval spanning at most 18 codes admits an integer centre no more than 9 codes from either endpoint. At maximum retained gain, 9 codes produces 0.0015600609040120617 Hz, below the unchanged 1/600 Hz frequency-RMS allowance and below one 600-second count. Independently, a one-code excursion held for ceil(1/minimum_gain)=6114 seconds has at least one cycle finite area; departure and intentional return cost two path codes. Adding the 9-code worst-case return correction gives 11 path codes, below the 27-code limit. This establishes a non-vacuous prospective region without requiring the historical seven-action trajectory.",
+    "frequency_RMS_degradation_allowance_hz": 0.0016666666666666668,
+    "maximum_equilibrium_interval_span_codes": 18,
+    "maximum_integer_midpoint_return_error_codes": 9,
+    "maximum_return_frequency_error_hz_at_maximum_gain": 0.0015600609040120617,
+    "minimum_depart_and_return_path_codes": 2,
+    "minimum_matched_phase_improvement_cycles": 1,
+    "minimum_matched_phase_improvement_fraction": 0.1,
+    "minimum_nonvacuous_phase_excursion_codes": 1,
+    "minimum_nonvacuous_phase_excursion_duration_s_at_minimum_gain": 6114,
+    "natural_path_limit_codes": 27,
+    "tight_entry_counts_lte": 2,
+    "worst_case_total_path_including_return_error_codes": 11
+  }
+}

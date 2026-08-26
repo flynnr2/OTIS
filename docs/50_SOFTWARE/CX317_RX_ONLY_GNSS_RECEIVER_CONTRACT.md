@@ -21,7 +21,7 @@ Nano D1/GPIO0 is owned by the GNSS service. Transmission is limited to four
 compile-time fixed PMTK packets:
 
 - `$PMTK605*31` - query receiver firmware identity;
-- `$PMTK251,115200*1F` - request the frozen target baud;
+- `$PMTK251,9600*17` - request the frozen target baud;
 - `$PMTK414*33` - query NMEA output configuration; and
 - `$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29` - enable exactly
   RMC, GGA and GSA once per position fix.
@@ -41,9 +41,9 @@ returned to a high-impedance GPIO input.
 | GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
 | Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
 | UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
-| Discovery baud set | 115200, 9600, 57600, 38400, 19200, 14400, 4800 | MT3339 PMTK251 supported values; target first, then the documented alternatives |
-| Frozen operational baud | 115200 | Confirmed checksum-valid PMTK705 after any baud transition |
-| Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 fields zero | PMTK514 readback must exactly match after acknowledgement |
+| Discovery baud set | 9600, 115200, 57600, 38400, 19200, 14400, 4800 | MT3339 PMTK251 supported values; target first, then the documented alternatives |
+| Frozen operational baud | 9600 | Confirmed checksum-valid PMTK705 after any baud transition |
+| Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 and receiver-extension fields zero | PMTK514 readback must match one explicitly qualified field shape after acknowledgement |
 | PPS | Independent breakout PPS output on D14 | UART metadata never substitutes for the D14 timestamp |
 
 The local `docs/datasheets/CD PA1616S Datasheet.v05.pdf` has SHA-256
@@ -62,6 +62,68 @@ query/readback, all seven candidate baud values, and the temporary/retained
 configuration qualifications. The state machine therefore discovers current
 state rather than assuming either reset-to-default or backup retention.
 
+The command set contains no query/data pair for the current NMEA-port baud.
+`PMTK251` is set-only. Baud confirmation is therefore an operational
+challenge/response fact: after changing the MCU UART to the target baud, require
+a fresh checksum-valid `PMTK705` identity response at that baud. `PMTK414` and
+`PMTK514` query and report NMEA sentence output frequencies, not UART baud.
+Keep baud-transition qualification and output-configuration qualification as
+separate recorded facts even when both are required before declaring the full
+link online.
+
+The first physical exercise on 2026-08-25 proved repeated post-transition
+communication at 115200 but failed the later `PMTK414`/`PMTK514` output-
+configuration verification. The attempt-1 implementation's `confirmed_baud`
+field was cleared when that later failure restarted discovery, so it did not
+preserve the already established baud fact. The corrective revision exposes
+the last successful identity-response baud, exact link phase, confirmation
+method, command acknowledgement, output-response signature, query timeouts,
+and observed sentence masks independently. See
+`docs/60_EXPERIMENTS/OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_V1/README.md`.
+
+Attempt 5 subsequently returned the frozen operational target to 9600 so the
+targeted open-loop science would not depend on first diagnosing sparse NMEA
+frame corruption observed during the 115200 soak. The first attempt-5 artifact
+exposed a C++ translation-unit configuration escape: sketch telemetry compiled
+the 9600 selector while the receiver implementation compiled the 115200 PMTK251
+branch. The receiver implementation now includes the configuration before its
+conditional command definition. Campaign bundling also binds the ELF and
+requires the selected target command to be present and the opposite target
+command absent. Successful source tests or a declared build selector alone are
+not accepted as evidence of the emitted receiver command.
+
+Authorized attempt 6 provided the physical closure on 2026-08-26. The receiver
+was first identified at its retained 115200 baud, accepted the compiled 9600
+transition, and returned a fresh checksum-valid PMTK705 identity at 9600. It
+then remained online and exactly configuration-confirmed for the complete
+twelve-dwell campaign. Terminal telemetry recorded `confirmed_baud=9600`,
+`last_identity_response_baud=9600`, 137028 checksum-valid frames, and zero
+checksum, truncation, oversize, configuration, transmit, or link-loss failures.
+The 9600 transition is therefore proved and is an ordinary reusable status
+fact, not a special gate for future runs whose receiver, wiring, firmware
+transition semantics, and other decision-relevant inputs are unchanged.
+
+Some PA1616S firmware may not implement the documented `PMTK414` query. A
+missing query response or an explicit unsupported acknowledgement therefore
+enters a strict fallback; it is not itself evidence that configuration is
+correct. The link sends the exact 19-field `PMTK314` command, requires
+`PMTK001,314,3`, retries `PMTK414`, and, only if the query remains unavailable,
+observes 2.5 seconds of checksum-valid NMEA output. That observation must
+contain RMC, GGA, and GSA and no other NMEA sentence type. The online state
+records whether qualification used an exact `PMTK514` response or the
+acknowledged-command-plus-exact-observation path.
+
+The authorized attempt-2 physical entry showed that this PA1616S firmware does
+implement `PMTK414`, but returns 22 data fields rather than the 19 fields in the
+MT3339 A11 document. Its exact response was
+`0101100000000000000000`: the commanded 19-field RMC/GGA/GSA-only prefix plus
+three disabled extension fields. PMTK documentation across firmware families
+also varies in its declared field count. The implementation does not accept an
+arbitrary variable-length response: it accepts the documented 19-field form or
+the physically observed 22-field form only, requires the entire common prefix
+to match, and requires all three extension fields to be zero. Field count and
+the full bounded signature remain in telemetry and the campaign contract.
+
 The local `docs/datasheets/adafruit-ultimate-gps.pdf` has SHA-256
 `799ba1670e7eca399d482fc6fecf59fdbc0feda2c01b81e40fac9fab175b2c03`
 and identifies itself as updated 2025-07-23.
@@ -73,13 +135,15 @@ and identifies itself as updated 2025-07-23.
    evidence only; wrong-baud bytes never enter the canonical metadata parser.
 3. Send PMTK605 and require a checksum-valid PMTK705 within 750 ms. Silence or
    unrelated NMEA advances to the next candidate.
-4. If identity is found away from 115200, send PMTK251 at the identified baud,
-   wait for bounded physical transmission completion, switch UART0 to 115200,
+4. If identity is found away from 9600, send PMTK251 at the identified baud,
+   wait for bounded physical transmission completion, switch UART0 to 9600,
    and require a fresh PMTK705 response at the target baud. An acknowledgement
    at the producer boundary is not sufficient.
-5. Query PMTK514. If it does not exactly declare RMC/GGA/GSA-only output, send
-   the fixed PMTK314 packet, require successful PMTK001 acknowledgement, query
-   again, and require exact PMTK514 readback.
+5. Query PMTK514. Accept only the exact documented 19-field
+   RMC/GGA/GSA-only signature or the exact qualified 22-field PA1616S signature
+   with three trailing zeros. Otherwise send the fixed PMTK314 packet, require
+   successful PMTK001 acknowledgement, and query again. If query/readback is
+   unavailable, use the bounded exact-output observation fallback above.
 6. Enter `online` and open the metadata parser only after all preceding gates.
    Ten seconds without any checksum-valid link frame closes it and restarts
    discovery; receiver metadata must requalify under the identity-epoch rules.
@@ -135,9 +199,11 @@ diagnostic gate, not a PPS-accuracy, UTC-traceability or holdover claim.
 
 Periodic `STS` records under `gnss_receiver` expose:
 
-- service initialization, link state, current candidate and confirmed baud;
-- PMTK release identity, exact-configuration confirmation and runtime RX-only
-  state;
+- service initialization, coarse link state, exact link phase, current
+  candidate, confirmed baud, and last successful identity-response baud;
+- PMTK release identity, exact-configuration confirmation method, full bounded
+  response signature and field count, command acknowledgement, query/response
+  and observation counters, observed sentence masks, and runtime RX-only state;
 - discovery cycle, last-valid-frame age, candidate rejection, configuration,
   transmit, link-loss, checksum and oversize counters;
 - RMC/GGA/GSA state, validity, fix quality/dimension, satellites and HDOP;

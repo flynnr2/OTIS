@@ -647,7 +647,7 @@
 #endif
 
 #ifndef OTIS_GNSS_UART_BAUD
-#define OTIS_GNSS_UART_BAUD 115200u
+#define OTIS_GNSS_UART_BAUD 9600u
 #endif
 
 #ifndef OTIS_GNSS_SERVICE_BYTE_BUDGET
@@ -668,6 +668,10 @@
 
 #ifndef OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS
 #define OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS 750u
+#endif
+
+#ifndef OTIS_GNSS_OUTPUT_OBSERVATION_MS
+#define OTIS_GNSS_OUTPUT_OBSERVATION_MS 2500u
 #endif
 
 #ifndef OTIS_GNSS_DISCOVERY_DEGRADED_MS
@@ -860,8 +864,8 @@
 #error "The GNSS receiver requires its bounded discovery/configuration TX path."
 #endif
 
-#if OTIS_GNSS_UART_BAUD != 115200u
-#error "The qualified GNSS receiver target is frozen at 115200 baud."
+#if OTIS_GNSS_UART_BAUD != 9600u && OTIS_GNSS_UART_BAUD != 115200u
+#error "The GNSS receiver target must be 9600 or 115200 baud."
 #endif
 
 #if OTIS_GNSS_SERVICE_BYTE_BUDGET < 1u || \
@@ -887,6 +891,11 @@
 #if OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS < 100u || \
     OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS > 2000u
 #error "GNSS command response timeout must be between 100 ms and 2 seconds."
+#endif
+
+#if OTIS_GNSS_OUTPUT_OBSERVATION_MS < 2000u || \
+    OTIS_GNSS_OUTPUT_OBSERVATION_MS > 10000u
+#error "GNSS output observation must be between 2 and 10 seconds."
 #endif
 
 #if OTIS_GNSS_DISCOVERY_DEGRADED_MS < 10000u || \

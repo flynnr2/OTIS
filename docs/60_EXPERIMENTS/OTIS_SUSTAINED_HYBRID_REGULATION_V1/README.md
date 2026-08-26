@@ -168,5 +168,13 @@ three candidates exceeded the permitted tight-occupancy loss and 27-code path
 limit. It also selected no successor and performed no physical operation. Its
 decision is in
 [`../OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md`](../OTIS_SUSTAINED_HYBRID_MODE_SEPARATION_OFFLINE_STUDY/DECISION.md).
-The next gate is a separately frozen estimator-state and uncertainty
-architecture revision.
+The separately frozen equilibrium-estimator feasibility study reproduced the
+predecessor reports and exact V1 baseline. Its first immutable attempt stopped
+on a missing Stage 5 plan; after exact byte recovery, a separately frozen
+zero-I/O attempt reconstructed 18 Stage 5 identification supports and all 52
+held-out Attempt 4 supports. Every frozen equilibrium model has an empty
+complete set at minimum, nominal, and maximum gain. Its current terminal is
+`equilibrium_state_not_observable_targeted_characterization_required`; it
+selected no estimator, trajectory study, or authority. The next gate is one
+separately authorized, prospectively frozen targeted characterization. See
+[`../OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/DECISION.md`](../OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/DECISION.md).

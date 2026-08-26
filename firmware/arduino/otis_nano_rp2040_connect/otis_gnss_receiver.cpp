@@ -1,5 +1,7 @@
 #include "otis_gnss_receiver.h"
 
+#include "otis_config.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +76,15 @@ bool parse_u8(const char *value, uint8_t maximum, uint8_t *result) {
   unsigned long parsed = strtoul(value, &end, 10);
   if (end == value || *end != '\0' || parsed > maximum) return false;
   *result = static_cast<uint8_t>(parsed);
+  return true;
+}
+
+bool parse_u16(const char *value, uint16_t maximum, uint16_t *result) {
+  if (value == nullptr || *value == '\0') return false;
+  char *end = nullptr;
+  unsigned long parsed = strtoul(value, &end, 10);
+  if (end == value || *end != '\0' || parsed > maximum) return false;
+  *result = static_cast<uint16_t>(parsed);
   return true;
 }
 
@@ -205,13 +216,20 @@ void parse_complete_line(OtisGnssReceiver *receiver, uint32_t now_ms) {
 
 namespace {
 
+#if OTIS_GNSS_UART_BAUD == 9600u
+constexpr uint32_t kGnssCandidateBauds[] = {
+    9600u, 115200u, 57600u, 38400u, 19200u, 14400u, 4800u,
+};
+constexpr char kGnssTargetBaudCommand[] = "$PMTK251,9600*17\r\n";
+#else
 constexpr uint32_t kGnssCandidateBauds[] = {
     115200u, 9600u, 57600u, 38400u, 19200u, 14400u, 4800u,
 };
+constexpr char kGnssTargetBaudCommand[] = "$PMTK251,115200*1F\r\n";
+#endif
 constexpr size_t kGnssCandidateBaudCount =
     sizeof(kGnssCandidateBauds) / sizeof(kGnssCandidateBauds[0]);
 constexpr char kGnssIdentityQuery[] = "$PMTK605*31\r\n";
-constexpr char kGnssTargetBaudCommand[] = "$PMTK251,115200*1F\r\n";
 constexpr char kGnssOutputQuery[] = "$PMTK414*33\r\n";
 constexpr char kGnssOutputConfiguration[] =
     "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n";
@@ -219,6 +237,17 @@ constexpr uint8_t kGnssExpectedOutputConfiguration[] = {
     0u, 1u, 0u, 1u, 1u, 0u, 0u, 0u, 0u, 0u,
     0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
 };
+constexpr size_t kGnssObservedExtendedOutputConfigurationFields = 22u;
+constexpr uint32_t kGnssOutputRmcMask = 1u << 0u;
+constexpr uint32_t kGnssOutputGgaMask = 1u << 1u;
+constexpr uint32_t kGnssOutputGsaMask = 1u << 2u;
+constexpr uint32_t kGnssOutputGllMask = 1u << 3u;
+constexpr uint32_t kGnssOutputVtgMask = 1u << 4u;
+constexpr uint32_t kGnssOutputGsvMask = 1u << 5u;
+constexpr uint32_t kGnssOutputZdaMask = 1u << 6u;
+constexpr uint32_t kGnssOutputOtherMask = 1u << 31u;
+constexpr uint32_t kGnssRequiredOutputMask =
+    kGnssOutputRmcMask | kGnssOutputGgaMask | kGnssOutputGsaMask;
 
 void reset_link_line(OtisGnssLink *link) {
   link->line_length = 0u;
@@ -262,6 +291,8 @@ void restart_discovery(OtisGnssLink *link, uint32_t now_ms,
                        bool link_was_lost) {
   if (link_was_lost) link->link_loss_count++;
   link->configuration_confirmed = false;
+  link->output_configuration_command_acknowledged = false;
+  link->output_confirmation_method = OtisGnssOutputConfirmationMethod::None;
   link->receiver_identity_available = false;
   link->confirmed_baud = 0u;
   link->candidate_index = 0u;
@@ -286,6 +317,16 @@ void queue_output_query(OtisGnssLink *link, bool verification) {
       OtisGnssLinkActionKind::TransmitOutputQuery);
 }
 
+void begin_output_observation(OtisGnssLink *link, uint32_t now_ms) {
+  link->state = OtisGnssLinkState::ObserveConfiguredOutput;
+  link->state_started_ms = now_ms;
+  link->output_observed_sentence_mask = 0u;
+  link->output_unexpected_sentence_mask = 0u;
+  link->action_pending = false;
+  link->action_in_progress = false;
+  link->pending_action = OtisGnssLinkActionKind::None;
+}
+
 void copy_release_identity(OtisGnssLink *link, const char *release) {
   if (release == nullptr || *release == '\0') {
     link->receiver_release[0] = '\0';
@@ -307,7 +348,9 @@ void copy_release_identity(OtisGnssLink *link, const char *release) {
 }
 
 bool output_configuration_matches(char **fields, size_t field_count) {
-  if (field_count != sizeof(kGnssExpectedOutputConfiguration) + 1u)
+  const size_t data_fields = field_count > 0u ? field_count - 1u : 0u;
+  if (data_fields != sizeof(kGnssExpectedOutputConfiguration) &&
+      data_fields != kGnssObservedExtendedOutputConfigurationFields)
     return false;
   for (size_t index = 0u;
        index < sizeof(kGnssExpectedOutputConfiguration); ++index) {
@@ -316,14 +359,70 @@ bool output_configuration_matches(char **fields, size_t field_count) {
         parsed != kGnssExpectedOutputConfiguration[index])
       return false;
   }
+  // The physical PA1616S used by OTIS reports three additional fields beyond
+  // the 19-field MT3339 A11 form. They are accepted only as an exact disabled
+  // extension; any nonzero or malformed extension remains a mismatch.
+  for (size_t index = sizeof(kGnssExpectedOutputConfiguration);
+       index < data_fields; ++index) {
+    uint8_t parsed = 0u;
+    if (!parse_u8(fields[index + 1u], 5u, &parsed) || parsed != 0u)
+      return false;
+  }
   return true;
 }
 
-void establish_online_link(OtisGnssLink *link, uint32_t now_ms) {
+void record_output_configuration(OtisGnssLink *link, char **fields,
+                                 size_t field_count) {
+  const size_t data_fields = field_count > 0u ? field_count - 1u : 0u;
+  link->output_configuration_field_count = static_cast<uint8_t>(
+      data_fields > UINT8_MAX ? UINT8_MAX : data_fields);
+  size_t output = 0u;
+  for (size_t index = 0u;
+       index < data_fields &&
+       output < sizeof(link->output_configuration_signature) - 1u;
+       ++index) {
+    const char *field = fields[index + 1u];
+    link->output_configuration_signature[output++] =
+        field != nullptr && field[0] >= '0' && field[0] <= '5' &&
+                field[1] == '\0'
+            ? field[0]
+            : '?';
+  }
+  link->output_configuration_signature[output] = '\0';
+}
+
+uint32_t output_sentence_mask(const char *packet_type) {
+  if (packet_type == nullptr) return 0u;
+  const size_t length = strlen(packet_type);
+  if (length < 5u || strncmp(packet_type, "PMTK", 4u) == 0) return 0u;
+  const char *suffix = packet_type + length - 3u;
+  if (strcmp(suffix, "RMC") == 0) return kGnssOutputRmcMask;
+  if (strcmp(suffix, "GGA") == 0) return kGnssOutputGgaMask;
+  if (strcmp(suffix, "GSA") == 0) return kGnssOutputGsaMask;
+  if (strcmp(suffix, "GLL") == 0) return kGnssOutputGllMask;
+  if (strcmp(suffix, "VTG") == 0) return kGnssOutputVtgMask;
+  if (strcmp(suffix, "GSV") == 0) return kGnssOutputGsvMask;
+  if (strcmp(suffix, "ZDA") == 0) return kGnssOutputZdaMask;
+  return kGnssOutputOtherMask;
+}
+
+void note_observed_output_sentence(OtisGnssLink *link,
+                                   const char *packet_type) {
+  if (link->state != OtisGnssLinkState::ObserveConfiguredOutput) return;
+  const uint32_t mask = output_sentence_mask(packet_type);
+  if (mask == 0u) return;
+  link->output_observed_sentence_mask |= mask;
+  if ((mask & ~kGnssRequiredOutputMask) != 0u)
+    link->output_unexpected_sentence_mask |= mask;
+}
+
+void establish_online_link(OtisGnssLink *link, uint32_t now_ms,
+                           OtisGnssOutputConfirmationMethod method) {
   link->state = OtisGnssLinkState::Online;
   link->state_started_ms = now_ms;
   link->confirmed_baud = link->policy.target_baud;
   link->configuration_confirmed = true;
+  link->output_confirmation_method = method;
   link->action_pending = false;
   link->action_in_progress = false;
   link->pending_action = OtisGnssLinkActionKind::None;
@@ -340,6 +439,7 @@ void note_identity_response(OtisGnssLink *link, char **fields,
   link->identity_response_count++;
   copy_release_identity(link, fields[1]);
   if (!link->receiver_identity_available) return;
+  link->last_identity_response_baud = link->candidate_baud;
 
   if (candidate_response && link->candidate_baud != link->policy.target_baud) {
     queue_link_action(link, OtisGnssLinkState::TransmitTargetBaud,
@@ -358,8 +458,10 @@ void note_output_response(OtisGnssLink *link, char **fields,
       link->state == OtisGnssLinkState::AwaitOutputVerificationResponse;
   if (!initial && !verification) return;
   link->output_response_count++;
+  record_output_configuration(link, fields, field_count);
   if (output_configuration_matches(fields, field_count)) {
-    establish_online_link(link, now_ms);
+    establish_online_link(link, now_ms,
+                          OtisGnssOutputConfirmationMethod::Pmtk514Exact);
     return;
   }
   if (initial) {
@@ -374,10 +476,34 @@ void note_output_response(OtisGnssLink *link, char **fields,
 
 void note_command_ack(OtisGnssLink *link, char **fields, size_t field_count,
                       uint32_t now_ms) {
-  if (link->state != OtisGnssLinkState::AwaitOutputConfigurationAck ||
-      field_count != 3u || strcmp(fields[1], "314") != 0)
+  if (field_count != 3u) return;
+  uint16_t packet_type = 0u;
+  uint8_t flag = 0u;
+  if (!parse_u16(fields[1], 999u, &packet_type) ||
+      !parse_u8(fields[2], 3u, &flag))
     return;
-  if (strcmp(fields[2], "3") == 0) {
+  link->last_command_ack_packet_type = packet_type;
+  link->last_command_ack_flag = flag;
+
+  if ((link->state == OtisGnssLinkState::AwaitOutputResponse ||
+       link->state == OtisGnssLinkState::AwaitOutputVerificationResponse) &&
+      packet_type == 414u && flag == 1u) {
+    if (link->state == OtisGnssLinkState::AwaitOutputResponse) {
+      queue_link_action(link,
+                        OtisGnssLinkState::TransmitOutputConfiguration,
+                        OtisGnssLinkActionKind::TransmitOutputConfiguration);
+    } else if (link->output_configuration_command_acknowledged) {
+      begin_output_observation(link, now_ms);
+    }
+    return;
+  }
+
+  if (link->state != OtisGnssLinkState::AwaitOutputConfigurationAck ||
+      packet_type != 314u)
+    return;
+  if (flag == 3u) {
+    link->output_configuration_command_acknowledged = true;
+    link->output_configuration_ack_count++;
     queue_output_query(link, true);
     return;
   }
@@ -410,6 +536,8 @@ void process_link_line(OtisGnssLink *link, uint32_t now_ms) {
   if (!split_fields(link->line + 1, fields, 24u, &field_count) ||
       field_count == 0u)
     return;
+
+  note_observed_output_sentence(link, fields[0]);
 
   if (strcmp(fields[0], "PMTK705") == 0) {
     note_identity_response(link, fields, field_count, now_ms);
@@ -453,13 +581,50 @@ void otis_gnss_link_tick(OtisGnssLink *link, uint32_t now_ms) {
         advance_candidate(link, now_ms);
       break;
     case OtisGnssLinkState::AwaitTargetIdentityResponse:
-    case OtisGnssLinkState::AwaitOutputResponse:
     case OtisGnssLinkState::AwaitOutputConfigurationAck:
-    case OtisGnssLinkState::AwaitOutputVerificationResponse:
       if (elapsed_at_least(now_ms, link->state_started_ms,
                            link->policy.response_timeout_ms)) {
         link->configuration_failure_count++;
         restart_discovery(link, now_ms, false);
+      }
+      break;
+    case OtisGnssLinkState::AwaitOutputResponse:
+      if (elapsed_at_least(now_ms, link->state_started_ms,
+                           link->policy.response_timeout_ms)) {
+        link->output_query_timeout_count++;
+        queue_link_action(link,
+                          OtisGnssLinkState::TransmitOutputConfiguration,
+                          OtisGnssLinkActionKind::TransmitOutputConfiguration);
+      }
+      break;
+    case OtisGnssLinkState::AwaitOutputVerificationResponse:
+      if (elapsed_at_least(now_ms, link->state_started_ms,
+                           link->policy.response_timeout_ms)) {
+        link->output_query_timeout_count++;
+        if (link->output_configuration_command_acknowledged) {
+          begin_output_observation(link, now_ms);
+        } else {
+          link->configuration_failure_count++;
+          restart_discovery(link, now_ms, false);
+        }
+      }
+      break;
+    case OtisGnssLinkState::ObserveConfiguredOutput:
+      if (link->output_unexpected_sentence_mask != 0u) {
+        link->configuration_failure_count++;
+        restart_discovery(link, now_ms, false);
+      } else if (elapsed_at_least(now_ms, link->state_started_ms,
+                                  link->policy.output_observation_ms)) {
+        if ((link->output_observed_sentence_mask & kGnssRequiredOutputMask) ==
+            kGnssRequiredOutputMask) {
+          link->output_observation_success_count++;
+          establish_online_link(
+              link, now_ms,
+              OtisGnssOutputConfirmationMethod::Pmtk314AckObservedExact);
+        } else {
+          link->configuration_failure_count++;
+          restart_discovery(link, now_ms, false);
+        }
       }
       break;
     case OtisGnssLinkState::Online:
@@ -624,6 +789,59 @@ const char *otis_gnss_link_state_name(const OtisGnssLink *link,
   return "discovering";
 }
 
+const char *otis_gnss_link_phase_name(const OtisGnssLink *link) {
+  if (link == nullptr || !link->service_initialized) return "disabled";
+  switch (link->state) {
+    case OtisGnssLinkState::SelectCandidateBaud:
+      return "select_candidate_baud";
+    case OtisGnssLinkState::PassiveListen:
+      return "passive_listen";
+    case OtisGnssLinkState::TransmitIdentityQuery:
+      return "transmit_identity_query";
+    case OtisGnssLinkState::AwaitIdentityResponse:
+      return "await_identity_response";
+    case OtisGnssLinkState::TransmitTargetBaud:
+      return "transmit_target_baud";
+    case OtisGnssLinkState::SelectTargetBaud:
+      return "select_target_baud";
+    case OtisGnssLinkState::TransmitTargetIdentityQuery:
+      return "transmit_target_identity_query";
+    case OtisGnssLinkState::AwaitTargetIdentityResponse:
+      return "await_target_identity_response";
+    case OtisGnssLinkState::TransmitOutputQuery:
+      return "transmit_output_query";
+    case OtisGnssLinkState::AwaitOutputResponse:
+      return "await_output_response";
+    case OtisGnssLinkState::TransmitOutputConfiguration:
+      return "transmit_output_configuration";
+    case OtisGnssLinkState::AwaitOutputConfigurationAck:
+      return "await_output_configuration_ack";
+    case OtisGnssLinkState::TransmitOutputVerificationQuery:
+      return "transmit_output_verification_query";
+    case OtisGnssLinkState::AwaitOutputVerificationResponse:
+      return "await_output_verification_response";
+    case OtisGnssLinkState::ObserveConfiguredOutput:
+      return "observe_configured_output";
+    case OtisGnssLinkState::Online:
+      return "online";
+  }
+  return "unknown";
+}
+
+const char *otis_gnss_output_confirmation_method_name(
+    const OtisGnssLink *link) {
+  if (link == nullptr) return "none";
+  switch (link->output_confirmation_method) {
+    case OtisGnssOutputConfirmationMethod::Pmtk514Exact:
+      return "pmtk514_exact";
+    case OtisGnssOutputConfirmationMethod::Pmtk314AckObservedExact:
+      return "pmtk314_ack_observed_exact";
+    case OtisGnssOutputConfirmationMethod::None:
+      return "none";
+  }
+  return "unknown";
+}
+
 void otis_gnss_receiver_reset(OtisGnssReceiver *receiver, uint32_t now_ms) {
   if (receiver == nullptr) return;
   *receiver = {};
@@ -760,8 +978,6 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
 #include <hardware/uart.h>
 
 #include "otis_board.h"
-#include "otis_config.h"
-
 namespace {
 OtisGnssReceiver live_receiver = {};
 OtisGnssLink live_link = {};
@@ -850,6 +1066,7 @@ bool otis_gnss_receiver_begin(void) {
       OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS,
       OTIS_GNSS_DISCOVERY_DEGRADED_MS,
       OTIS_GNSS_RECONNECT_GAP_MS,
+      OTIS_GNSS_OUTPUT_OBSERVATION_MS,
   };
   otis_gnss_receiver_reset(&live_receiver, now_ms);
   otis_gnss_link_reset(&live_link, &policy, now_ms);
@@ -872,7 +1089,9 @@ void otis_gnss_receiver_service(uint32_t now_ms) {
   uint8_t remaining = OTIS_GNSS_SERVICE_BYTE_BUDGET;
   while (remaining-- > 0u && uart_is_readable(uart0)) {
     const char byte = static_cast<char>(uart_getc(uart0));
-    const bool metadata_path_open = otis_gnss_link_online(&live_link);
+    const bool metadata_path_open =
+        otis_gnss_link_online(&live_link) ||
+        live_link.state == OtisGnssLinkState::ObserveConfiguredOutput;
     otis_gnss_link_feed(&live_link, byte, now_ms);
     if (metadata_path_open)
       otis_gnss_receiver_feed(&live_receiver, byte, now_ms);
@@ -901,10 +1120,20 @@ void otis_gnss_receiver_get_snapshot(uint32_t now_ms,
   copy_field(snapshot->link_health_state,
              sizeof(snapshot->link_health_state),
              otis_gnss_link_state_name(&live_link, now_ms));
+  copy_field(snapshot->link_phase, sizeof(snapshot->link_phase),
+             otis_gnss_link_phase_name(&live_link));
+  copy_field(snapshot->output_confirmation_method,
+             sizeof(snapshot->output_confirmation_method),
+             otis_gnss_output_confirmation_method_name(&live_link));
   copy_field(snapshot->receiver_release,
              sizeof(snapshot->receiver_release), live_link.receiver_release);
+  copy_field(snapshot->output_configuration_signature,
+             sizeof(snapshot->output_configuration_signature),
+             live_link.output_configuration_signature);
   snapshot->candidate_baud = live_link.candidate_baud;
   snapshot->confirmed_baud = live_link.confirmed_baud;
+  snapshot->last_identity_response_baud =
+      live_link.last_identity_response_baud;
   snapshot->discovery_cycle = live_link.discovery_cycle;
   snapshot->link_last_valid_frame_age_ms =
       live_link.valid_frame_seen
@@ -918,6 +1147,22 @@ void otis_gnss_receiver_get_snapshot(uint32_t now_ms,
       live_link.configuration_failure_count;
   snapshot->transmit_failure_count = live_link.transmit_failure_count;
   snapshot->link_loss_count = live_link.link_loss_count;
+  snapshot->identity_response_count = live_link.identity_response_count;
+  snapshot->output_response_count = live_link.output_response_count;
+  snapshot->output_query_timeout_count = live_link.output_query_timeout_count;
+  snapshot->output_configuration_ack_count =
+      live_link.output_configuration_ack_count;
+  snapshot->output_observation_success_count =
+      live_link.output_observation_success_count;
+  snapshot->output_observed_sentence_mask =
+      live_link.output_observed_sentence_mask;
+  snapshot->output_unexpected_sentence_mask =
+      live_link.output_unexpected_sentence_mask;
+  snapshot->last_command_ack_packet_type =
+      live_link.last_command_ack_packet_type;
+  snapshot->last_command_ack_flag = live_link.last_command_ack_flag;
+  snapshot->output_configuration_field_count =
+      live_link.output_configuration_field_count;
   snapshot->disconnected = snapshot->disconnected ||
                            (live_link.link_loss_count > 0u &&
                             !snapshot->link_online);

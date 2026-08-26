@@ -21,4 +21,15 @@ static inline bool otis_dual_core_receiver_qualified_for_control_at(
          local_age_ticks <= maximum_age_ticks;
 }
 
+// D14/D8 establish the measurement interval.  The open-loop CX319 range-map
+// preview has no actuation authority, so a transient serial-metadata
+// dequalification must not erase otherwise valid timing support.  Profiles
+// that can participate in control retain the stricter receiver-metadata gate.
+static inline bool otis_preview_reference_valid_for_profile(
+    bool raw_d14_d8_interval_valid, bool receiver_metadata_qualified,
+    bool open_loop_range_map_preview) {
+  return raw_d14_d8_interval_valid &&
+         (open_loop_range_map_preview || receiver_metadata_qualified);
+}
+
 #endif
