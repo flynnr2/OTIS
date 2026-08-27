@@ -1,0 +1,744 @@
+{
+  "actuator_results": {
+    "attempt4_sustained": {
+      "absolute_dac_path_codes": 37,
+      "application_count": 11,
+      "application_deltas_codes": [
+        -6,
+        -1,
+        -1,
+        -6,
+        -1,
+        -1,
+        -1,
+        5,
+        5,
+        -5,
+        5
+      ],
+      "applications_per_named_duration_hour": {
+        "control_decision_eligible": 1.2674433491230317,
+        "measurement_qualified": 0.922238524418361,
+        "settled_same_code": 1.2212422130389196
+      },
+      "code_domain_only_no_dac_voltage_claim": true,
+      "code_residence_s": {
+        "43051": 3304,
+        "43052": 2102,
+        "43053": 2704,
+        "43054": 2704,
+        "43056": 6008,
+        "43060": 2102,
+        "43061": 15913,
+        "43062": 2704,
+        "43068": 4785
+      },
+      "direction_reversal_count": 3,
+      "duration_denominators_s": {
+        "control_decision_eligible": 31244,
+        "measurement_qualified": 42939,
+        "settled_same_code": 32426
+      },
+      "formal_terminal": {
+        "acquisition_terminal": "measurement_authority_or_platform_fault",
+        "class": "physical_seal",
+        "file_sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+        "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations",
+        "path": "reports/otis_sustained_hybrid_physical_seal_v1.json",
+        "scientific_terminal": "prospective_low_efficiency_path",
+        "semantic_sha256": "8078b24453e36d149fe05c85f37a7c73df314408923a44c763e90eb6ebe3b455",
+        "status": "failed"
+      },
+      "frequency_only_or_phase_unavailable_application_count": 4,
+      "metadata_hold_duration_s": 0,
+      "metadata_hold_lost_control_opportunity_count": 0,
+      "net_movement_codes": -7,
+      "net_path_efficiency": 0.1891891891891892,
+      "path_codes_per_named_duration_hour": {
+        "control_decision_eligible": 4.263218537959289,
+        "measurement_qualified": 3.1020750366799414,
+        "settled_same_code": 4.107814716585456
+      },
+      "phase_material_application_count": 7,
+      "repeated_alternation": false,
+      "source_id": "attempt4_sustained",
+      "step_distribution_codes": [
+        -6,
+        -6,
+        -5,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        5,
+        5,
+        5
+      ],
+      "terminal_code": 43061
+    },
+    "cx317_fll_baseline": {
+      "absolute_dac_path_codes": 19,
+      "application_count": 1,
+      "application_deltas_codes": [
+        19
+      ],
+      "applications_per_named_duration_hour": {
+        "control_decision_eligible": 0.039500971065538695,
+        "measurement_qualified": 0.03836807775930426,
+        "settled_same_code": 0.038739669421487606
+      },
+      "code_domain_only_no_dac_voltage_claim": true,
+      "code_residence_s": {
+        "43029": 2392,
+        "43048": 91436
+      },
+      "direction_reversal_count": 0,
+      "duration_denominators_s": {
+        "control_decision_eligible": 91137,
+        "measurement_qualified": 93828,
+        "settled_same_code": 92928
+      },
+      "formal_terminal": {
+        "class": "historical_stage7_exit_gate",
+        "file_sha256": "e9138a05bb1dd0f88842e539ecdfc695b681e31c6311d41f4e1b1c4124fa9668",
+        "path": "reports/stage7_exit_gate.json",
+        "scientific_terminal": "dual_core_frequency_control_endurance_passed",
+        "status": "pass"
+      },
+      "frequency_only_or_phase_unavailable_application_count": 1,
+      "metadata_hold_duration_s": 0,
+      "metadata_hold_lost_control_opportunity_count": 0,
+      "net_movement_codes": 19,
+      "net_path_efficiency": 1.0,
+      "path_codes_per_named_duration_hour": {
+        "control_decision_eligible": 0.7505184502452352,
+        "measurement_qualified": 0.7289934774267809,
+        "settled_same_code": 0.7360537190082644
+      },
+      "phase_material_application_count": 0,
+      "repeated_alternation": false,
+      "source_id": "cx317_fll_baseline",
+      "step_distribution_codes": [
+        19
+      ],
+      "terminal_code": 43048
+    },
+    "cx322_coherent": {
+      "absolute_dac_path_codes": 14,
+      "application_count": 4,
+      "application_deltas_codes": [
+        -6,
+        -6,
+        -1,
+        -1
+      ],
+      "applications_per_named_duration_hour": {
+        "control_decision_eligible": 0.3581376840429765,
+        "measurement_qualified": 0.3157617752828699,
+        "settled_same_code": 0.34786810001207874
+      },
+      "code_domain_only_no_dac_voltage_claim": true,
+      "code_residence_s": {
+        "43054": 33272,
+        "43055": 2107,
+        "43056": 2109,
+        "43062": 2710,
+        "43068": 4797
+      },
+      "direction_reversal_count": 0,
+      "duration_denominators_s": {
+        "control_decision_eligible": 40208,
+        "measurement_qualified": 45604,
+        "settled_same_code": 41395
+      },
+      "formal_terminal": {
+        "acquisition_terminal": "healthy_stop",
+        "class": "physical_seal",
+        "file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "path": "reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "scientific_terminal": "bounded_direct_hybrid_evidence_acquired",
+        "semantic_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "status": "passed"
+      },
+      "frequency_only_or_phase_unavailable_application_count": 0,
+      "metadata_hold_duration_s": 0,
+      "metadata_hold_lost_control_opportunity_count": 0,
+      "net_movement_codes": -14,
+      "net_path_efficiency": 1.0,
+      "path_codes_per_named_duration_hour": {
+        "control_decision_eligible": 1.2534818941504178,
+        "measurement_qualified": 1.1051662134900448,
+        "settled_same_code": 1.2175383500422756
+      },
+      "phase_material_application_count": 4,
+      "repeated_alternation": false,
+      "source_id": "cx322_coherent",
+      "step_distribution_codes": [
+        -6,
+        -6,
+        -1,
+        -1
+      ],
+      "terminal_code": 43054
+    }
+  },
+  "analysis_base_revision": "2c76c07dc64c0411a5385c1626e500ccacaeaa52",
+  "analyzer_defects_discovered": [
+    "The historical response helper selected the first AHY decision after a target without proving a complete source window; the derived response table uses exact trailing and settled 600-second support.",
+    "The historical targeted-characterization analyzer aggregated BMP280 temperatures while labeling the aggregate SHT41 nearby air; the derived view filters exact sht4x/vcocxo_near/flags and keeps BMP280 separate.",
+    "Current live metadata handling combines GNSS metadata and D14/D8 health; the implementation map separates GNSS_METADATA_HOLD from authoritative measurement health."
+  ],
+  "candidate_decision": "cx322_unchanged",
+  "contract_sha256": "c139723c38a7c8db5409d68ce5aec18e2a4f6006a109ad717c27e77a65a5a40a",
+  "counterfactual_model_validation": {
+    "checks": {
+      "maximum_median_absolute_gain_error_hz_per_code": false,
+      "minimum_exact_settled_response_count": true,
+      "minimum_gain_envelope_coverage_fraction": false,
+      "minimum_positive_direction_fraction": false
+    },
+    "claim_boundary": "held-out physical response validation of the frozen model only; no candidate post-divergence value is physical evidence",
+    "consequence_on_failure": "any_required_gate_failure_blocks_changed_policy_recommendation",
+    "exact_settled_response_count": 12,
+    "gain_envelope_coverage_fraction": 0.0,
+    "median_absolute_gain_error_hz_per_code": 0.00017008467693813145,
+    "model_id": "static_gain_residual_reinjection_phase_integration_v1",
+    "observed_gains_hz_per_code": [
+      8.771929824561403e-05,
+      0.0002777777777777778,
+      0.0,
+      0.0,
+      0.0002777777777777778,
+      0.0,
+      0.0016666666666666668,
+      0.0016666666666666668,
+      0.0,
+      0.0003333333333333333,
+      0.0006666666666666666,
+      0.0003333333333333333
+    ],
+    "positive_direction_fraction": 0.6666666666666666,
+    "valid_for_decision_bearing_continuation": false
+  },
+  "data_completeness_and_comparability": {
+    "attempt4_sustained": {
+      "application_count": 11,
+      "comparable_roles": [
+        "sustained_maintenance_reversal_evidence",
+        "exact_sustained_own_law_replay",
+        "counterfactual_cx322_and_candidate_chronology",
+        "failed_qualification_with_retained_scientific_chronology"
+      ],
+      "exclusions": [
+        "qualified_positive_controller_population",
+        "exact_cx322_own_law_replay",
+        "post_divergence_physical_candidate_evidence",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "formal_status": "failed",
+      "interval_count": 42940,
+      "measurement_qualified_interval_count": 42939,
+      "phase_method": [
+        "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1"
+      ],
+      "selected600_window_count": 53
+    },
+    "cx317_fll_baseline": {
+      "application_count": 1,
+      "comparable_roles": [
+        "qualified_fll_frequency_baseline",
+        "reconstructed_d14_d8_phase",
+        "fixed_envelope_actuator_context"
+      ],
+      "exclusions": [
+        "native_firmware_relative_phase",
+        "coherent_controller_population",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "formal_status": "pass",
+      "interval_count": 93829,
+      "measurement_qualified_interval_count": 93828,
+      "phase_method": [
+        "derived_adjacent_d14_d8_integer_cumulative_phase_v1"
+      ],
+      "selected600_window_count": 153
+    },
+    "cx322_coherent": {
+      "application_count": 4,
+      "comparable_roles": [
+        "positive_coherent_controller",
+        "exact_cx322_own_law_replay",
+        "unchanged_cx322_request_replay",
+        "phase_frequency_response_environment_actuator"
+      ],
+      "exclusions": [
+        "sustained_regulation_claim",
+        "post_divergence_physical_candidate_evidence",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "formal_status": "passed",
+      "interval_count": 45605,
+      "measurement_qualified_interval_count": 45604,
+      "phase_method": [
+        "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1"
+      ],
+      "selected600_window_count": 67
+    }
+  },
+  "derived_artifacts": [
+    {
+      "path": "source_ledger_v1.json",
+      "row_count": 3,
+      "sha256": "5424b08296b4f87189827e78332ccb8b6b80cc51e959bf00ab43a1590ab06633",
+      "size_bytes": 12804
+    },
+    {
+      "path": "qualified_intervals_v1.csv.gz",
+      "row_count": 182374,
+      "sha256": "a79cac326f46b06001b2e4595331387cf8c36cdba9ffd50e600e611ed563033e",
+      "size_bytes": 3858109
+    },
+    {
+      "path": "selected_windows_v1.csv",
+      "row_count": 273,
+      "sha256": "93fc3ff4287130b7edc3d42ee6d73955ddf08d3c2366527c2efe8572289bc1d5",
+      "size_bytes": 160028
+    },
+    {
+      "path": "phase_windows_v1.csv",
+      "row_count": 663,
+      "sha256": "dc3b6c1f55818e9f740ac2178f15a808e86f0f86cd5f80025805eec2da7c4b0f",
+      "size_bytes": 341974
+    },
+    {
+      "path": "stability_v1.csv",
+      "row_count": 718,
+      "sha256": "ecb58baabe65c545db969f78130dac939997611744053568a327f332af8096d7",
+      "size_bytes": 540947
+    },
+    {
+      "path": "actuator_transactions_v1.csv",
+      "row_count": 67,
+      "sha256": "05315a278e1037db5925aa5fd499fde4296e501c68b08e68949358aa862d8021",
+      "size_bytes": 77513
+    },
+    {
+      "path": "response_horizons_v1.csv",
+      "row_count": 160,
+      "sha256": "ce15ed4dc8743082a9a5969ef0678b07174c421ee7fc342618c4006adc135cfd",
+      "size_bytes": 80451
+    },
+    {
+      "path": "controller_episodes_v1.csv",
+      "row_count": 3,
+      "sha256": "580f79c04625e5d4c841e1e9eaf6043fe1c7425a2df6dba623a95a878a370b20",
+      "size_bytes": 1754
+    },
+    {
+      "path": "environment_associations_v1.csv",
+      "row_count": 819,
+      "sha256": "82d6de715544967dfd4fc9f0212e85936d5ceeb5d211e807adea00bbdf0a96e6",
+      "size_bytes": 379706
+    },
+    {
+      "path": "replay_and_divergence_v1.json",
+      "row_count": null,
+      "sha256": "b446c55cd8e664ea522b1747c277d02d71408791bf59ea4a8ff82e2e67a5119b",
+      "size_bytes": 7759
+    },
+    {
+      "path": "candidate_comparison_v1.json",
+      "row_count": null,
+      "sha256": "d92eb26207dc4640932d2742eaff52638acb41bf96430cdc926c5552f9d12e3f",
+      "size_bytes": 53457
+    }
+  ],
+  "derived_package_manifest_sha256": "b95d33d851599868f6e1b03dd8557b37ff4c060b8b5017476f59c6353f285ff7",
+  "environment_results": {
+    "attempt4_sustained": {
+      "causal_authority": false,
+      "lag_results": {
+        "0": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0001704927781375247,
+          "frequency_range_hz": 0.005,
+          "pearson_correlation": -0.10117441721103339,
+          "sample_count": 53,
+          "temperature_range_c": 1.7010000000000005
+        },
+        "1500": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -4.826383860584965e-05,
+          "frequency_range_hz": 0.005,
+          "pearson_correlation": -0.027533112342499493,
+          "sample_count": 37,
+          "temperature_range_c": 1.5280000000000022
+        },
+        "600": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": 7.856799909411675e-06,
+          "frequency_range_hz": 0.005,
+          "pearson_correlation": 0.004611361279846041,
+          "sample_count": 46,
+          "temperature_range_c": 1.6529999999999987
+        }
+      },
+      "limitation": "nearby-air association only; not an OCXO temperature coefficient, internal-state measurement, causal effect, or predictive authority",
+      "nearby_air_humidity_range_pct": [
+        41.017,
+        43.01
+      ],
+      "nearby_air_temperature_range_c": [
+        26.397,
+        28.098
+      ],
+      "primary_covariate": "sht4x_vcocxo_near_valid_flags",
+      "source_id": "attempt4_sustained"
+    },
+    "cx317_fll_baseline": {
+      "causal_authority": false,
+      "lag_results": {
+        "0": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0030754490656924264,
+          "frequency_range_hz": 0.006666666666666666,
+          "pearson_correlation": -0.3822686146945517,
+          "sample_count": 153,
+          "temperature_range_c": 0.48799999999999955
+        },
+        "1500": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0026361608114373576,
+          "frequency_range_hz": 0.006666666666666666,
+          "pearson_correlation": -0.35644341449227,
+          "sample_count": 97,
+          "temperature_range_c": 0.48900000000000077
+        },
+        "600": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0028966645125190864,
+          "frequency_range_hz": 0.006666666666666666,
+          "pearson_correlation": -0.36002025679910804,
+          "sample_count": 132,
+          "temperature_range_c": 0.46999999999999886
+        }
+      },
+      "limitation": "nearby-air association only; not an OCXO temperature coefficient, internal-state measurement, causal effect, or predictive authority",
+      "nearby_air_humidity_range_pct": [
+        38.278,
+        41.204
+      ],
+      "nearby_air_temperature_range_c": [
+        27.369,
+        27.857
+      ],
+      "primary_covariate": "sht4x_vcocxo_near_valid_flags",
+      "source_id": "cx317_fll_baseline"
+    },
+    "cx322_coherent": {
+      "causal_authority": false,
+      "lag_results": {
+        "0": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0003950614192177363,
+          "frequency_range_hz": 0.006666666666666667,
+          "pearson_correlation": -0.13814116904552953,
+          "sample_count": 67,
+          "temperature_range_c": 1.514000000000003
+        },
+        "1500": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0005943292227915362,
+          "frequency_range_hz": 0.005,
+          "pearson_correlation": -0.22946903999925203,
+          "sample_count": 45,
+          "temperature_range_c": 1.5030000000000001
+        },
+        "600": {
+          "available": true,
+          "frequency_error_slope_hz_per_nearby_air_c": -0.0004978817012465458,
+          "frequency_range_hz": 0.005,
+          "pearson_correlation": -0.19069027898467142,
+          "sample_count": 59,
+          "temperature_range_c": 1.514000000000003
+        }
+      },
+      "limitation": "nearby-air association only; not an OCXO temperature coefficient, internal-state measurement, causal effect, or predictive authority",
+      "nearby_air_humidity_range_pct": [
+        34.337,
+        41.215
+      ],
+      "nearby_air_temperature_range_c": [
+        26.688,
+        28.202
+      ],
+      "primary_covariate": "sht4x_vcocxo_near_valid_flags",
+      "source_id": "cx322_coherent"
+    }
+  },
+  "frequency_results": {
+    "attempt4_sustained": {
+      "absolute_quantiles_hz": {
+        "0.5": 0.0,
+        "0.95": 0.0016666666666666668,
+        "0.99": 0.0024666666666666617
+      },
+      "available": true,
+      "common_band_occupancy": {
+        "0.0016666666666666668": 0.9811320754716981,
+        "0.0033333333333333335": 1.0,
+        "0.005": 1.0
+      },
+      "control_decision_eligible_duration_s": 31244,
+      "excluded_duration_s": 1,
+      "historical_policy_state_occupancy": {
+        "OUTSIDE": 0.23076923076923078,
+        "TIGHT_INSIDE": 0.7692307692307693
+      },
+      "maximum_absolute_frequency_error_hz": 0.0033333333333333335,
+      "measurement_qualified_duration_s": 42939,
+      "median_signed_frequency_error_hz": 0.0,
+      "rms_signed_frequency_error_hz": 0.0011215443081840886,
+      "selected600_window_count": 53,
+      "settled_same_code_duration_s": 32426,
+      "signed_quantiles_hz": {
+        "0.05": -0.0016666666666666668,
+        "0.5": 0.0,
+        "0.95": 0.0016666666666666668,
+        "0.99": 0.0024666666666666617
+      },
+      "source_id": "attempt4_sustained"
+    },
+    "cx317_fll_baseline": {
+      "absolute_quantiles_hz": {
+        "0.5": 0.0033333333333333335,
+        "0.95": 0.005,
+        "0.99": 0.006666666666666667
+      },
+      "available": true,
+      "common_band_occupancy": {
+        "0.0016666666666666668": 0.19607843137254902,
+        "0.0033333333333333335": 0.9411764705882353,
+        "0.005": 0.9803921568627451
+      },
+      "control_decision_eligible_duration_s": 91137,
+      "excluded_duration_s": 1,
+      "historical_policy_state_occupancy": {
+        "unavailable": 1.0
+      },
+      "maximum_absolute_frequency_error_hz": 0.008333333333333333,
+      "measurement_qualified_duration_s": 93828,
+      "median_signed_frequency_error_hz": -0.0033333333333333335,
+      "rms_signed_frequency_error_hz": 0.0032922302404945827,
+      "selected600_window_count": 153,
+      "settled_same_code_duration_s": 92928,
+      "signed_quantiles_hz": {
+        "0.05": -0.005,
+        "0.5": -0.0033333333333333335,
+        "0.95": -0.001666666666666667,
+        "0.99": -0.0016666666666666668
+      },
+      "source_id": "cx317_fll_baseline"
+    },
+    "cx322_coherent": {
+      "absolute_quantiles_hz": {
+        "0.5": 0.0016666666666666668,
+        "0.95": 0.0016666666666666668,
+        "0.99": 0.0033333333333333335
+      },
+      "available": true,
+      "common_band_occupancy": {
+        "0.0016666666666666668": 0.9701492537313433,
+        "0.0033333333333333335": 1.0,
+        "0.005": 1.0
+      },
+      "control_decision_eligible_duration_s": 40208,
+      "excluded_duration_s": 1,
+      "historical_policy_state_occupancy": {
+        "OUTSIDE": 0.07575757575757576,
+        "TIGHT_INSIDE": 0.9242424242424242
+      },
+      "maximum_absolute_frequency_error_hz": 0.0033333333333333335,
+      "measurement_qualified_duration_s": 45604,
+      "median_signed_frequency_error_hz": -0.0016666666666666668,
+      "rms_signed_frequency_error_hz": 0.0014253101841568943,
+      "selected600_window_count": 67,
+      "settled_same_code_duration_s": 41395,
+      "signed_quantiles_hz": {
+        "0.05": -0.0016666666666666668,
+        "0.5": -0.0016666666666666668,
+        "0.95": 0.0016666666666666668,
+        "0.99": 0.002233333333333339
+      },
+      "source_id": "cx322_coherent"
+    }
+  },
+  "generation_utc": "2026-08-26T22:02:34.890613Z",
+  "historical_limitations": [
+    "CX317 has no native relative-phase file; its phase is reconstructed from exact adjacent D14/D8 integer evidence.",
+    "Attempt 4 remains a failed physical qualification while retaining a replayable scientific chronology.",
+    "D8-relative-to-D14 stability is not UTC traceability, oscillator-only stability, calibrated accuracy, thermal causality, or delivered-output qualification."
+  ],
+  "next_authorized_gate": "after the GNSS soak is stopped, finalized and sealed: integrate finalized UART changes, qualify D9/GPOUT0 and D6 in unchanged FLL, run the D9 waveform/frequency-only soak, then confirm or reject this provisional decision without retuning",
+  "operational_semantics_document": "OPERATIONAL_SEMANTICS.md",
+  "own_law_replays": {
+    "attempt4_sustained": {
+      "all_response_checkpoints_passed": true,
+      "application_deltas": [
+        -6,
+        -1,
+        -1,
+        -6,
+        -1,
+        -1,
+        -1,
+        5,
+        5,
+        -5,
+        5
+      ],
+      "claim_layer": "historical_exact",
+      "completed_response_decision_sequences": [
+        6,
+        9,
+        11,
+        13,
+        16,
+        19,
+        21,
+        25,
+        28,
+        44,
+        48
+      ],
+      "decision_count": 52,
+      "exact": true,
+      "formal_physical_qualification_status": "failed",
+      "phase_material_decision_count": 11,
+      "phase_nonzero_decision_count": 33,
+      "replay_adapter": "active_hybrid_evidence_guard_v1",
+      "scientific_terminal": "prospective_low_efficiency_path"
+    },
+    "cx317_fll_baseline": {
+      "application_count": 1,
+      "application_deltas": [
+        19
+      ],
+      "claim_layer": "historical_exact",
+      "control_decision_count": 152,
+      "exact": true,
+      "replay_adapter": "historical_stage7_exit_gate_bound_replay_v1",
+      "terminal_attestation_sha256": "e9138a05bb1dd0f88842e539ecdfc695b681e31c6311d41f4e1b1c4124fa9668"
+    },
+    "cx322_coherent": {
+      "all_response_checkpoints_passed": true,
+      "application_deltas": [
+        -6,
+        -6,
+        -1,
+        -1
+      ],
+      "claim_layer": "historical_exact",
+      "completed_response_decision_sequences": [
+        6,
+        9,
+        11,
+        13
+      ],
+      "decision_count": 66,
+      "exact": true,
+      "formal_physical_qualification_status": "passed",
+      "phase_material_decision_count": 4,
+      "phase_nonzero_decision_count": 54,
+      "replay_adapter": "active_hybrid_evidence_guard_v1",
+      "scientific_terminal": "bounded_direct_hybrid_evidence_acquired"
+    },
+    "unchanged_cx322_on_cx322": {
+      "all_response_checkpoints_passed": true,
+      "application_deltas": [
+        -6,
+        -6,
+        -1,
+        -1
+      ],
+      "calculation": "unchanged_cx322_request_law",
+      "claim_layer": "historical_exact",
+      "completed_response_decision_sequences": [
+        6,
+        9,
+        11,
+        13
+      ],
+      "decision_count": 66,
+      "exact": true,
+      "first_divergence_decision_sequence": null,
+      "formal_physical_qualification_status": "passed",
+      "phase_material_decision_count": 4,
+      "phase_nonzero_decision_count": 54,
+      "replay_adapter": "active_hybrid_evidence_guard_v1",
+      "scientific_terminal": "bounded_direct_hybrid_evidence_acquired"
+    }
+  },
+  "phase_result_artifact": "phase_windows_v1.csv",
+  "report_sha256": "5c38866ab2076de1ee75f1b617b0e39168ec16dd8a841e1c894b196d9edd2d27",
+  "report_type": "adaptive_steering_offline_study_report_v1",
+  "response_result_artifact": "response_horizons_v1.csv",
+  "schema_version": 1,
+  "source_immutability": {
+    "attempt4_sustained": {
+      "bytes_changed": 0,
+      "exact": true,
+      "files_added": 0,
+      "post": {
+        "content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+        "file_count": 80,
+        "total_bytes": 409352510
+      },
+      "pre": {
+        "content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+        "file_count": 80,
+        "total_bytes": 409352510
+      }
+    },
+    "cx317_fll_baseline": {
+      "bytes_changed": 0,
+      "exact": true,
+      "files_added": 0,
+      "post": {
+        "content_sha256": "ff21bd5e21e9838f72f159f2af63c7393f2aa1b0cce6f9e3e136d8408c0e5b6b",
+        "file_count": 27,
+        "total_bytes": 489226798
+      },
+      "pre": {
+        "content_sha256": "ff21bd5e21e9838f72f159f2af63c7393f2aa1b0cce6f9e3e136d8408c0e5b6b",
+        "file_count": 27,
+        "total_bytes": 489226798
+      }
+    },
+    "cx322_coherent": {
+      "bytes_changed": 0,
+      "exact": true,
+      "files_added": 0,
+      "post": {
+        "content_sha256": "f71ddb6479c0a140e8f8377998bc37d3556f1e554853ed6476c626fe1400fddf",
+        "file_count": 56,
+        "total_bytes": 429428776
+      },
+      "pre": {
+        "content_sha256": "f71ddb6479c0a140e8f8377998bc37d3556f1e554853ed6476c626fe1400fddf",
+        "file_count": 56,
+        "total_bytes": 429428776
+      }
+    }
+  },
+  "source_ledger_sha256": "41dc680aae3f67df1270933558735ff250a722139fe4b12328d33e0b8bb0f7d1",
+  "stability_result_artifact": "stability_v1.csv",
+  "stop_boundary": "offline source ledger, derived analysis, finite policy decision, operational semantics, deterministic host tests and firmware change map only",
+  "terminal": "provisional_cx322_unchanged_pending_d9_gate",
+  "tool_file_sha256": "cd686e4ef990359ada2f03ff9cbdc4a4ceb9f336a1e7217cf343d7f34e970059",
+  "tool_id": "otis_cross_campaign_adaptive_steering_offline_study_v1"
+}

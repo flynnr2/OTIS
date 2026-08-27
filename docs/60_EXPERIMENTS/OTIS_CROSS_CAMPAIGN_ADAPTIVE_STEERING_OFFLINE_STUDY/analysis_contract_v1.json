@@ -1,0 +1,475 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_V1",
+  "status": "prospectively_frozen_before_candidate_results",
+  "contract_sha256": "c139723c38a7c8db5409d68ce5aec18e2a4f6006a109ad717c27e77a65a5a40a",
+  "authority": {
+    "offline_analysis": true,
+    "completed_evidence_read_only": true,
+    "isolated_worktree_required": true,
+    "serial_access": false,
+    "live_process_access": false,
+    "active_gnss_soak_input": false,
+    "firmware_build": false,
+    "firmware_edit": false,
+    "firmware_flash": false,
+    "reset": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false
+  },
+  "analysis_base_revision": "2c76c07dc64c0411a5385c1626e500ccacaeaa52",
+  "source_repository_binding": {
+    "mode": "operator_supplied_read_only_repository_root",
+    "logical_prefix": "runs",
+    "absolute_path_is_not_part_of_semantic_identity": true,
+    "required_pre_post_full_tree_identity_equality": true
+  },
+  "sources": [
+    {
+      "source_id": "cx317_fll_baseline",
+      "required": true,
+      "logical_package_path": "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage7/part_b_final_20260807T073432Z",
+      "allowed_roles": [
+        "qualified_fll_frequency_baseline",
+        "reconstructed_d14_d8_phase",
+        "fixed_envelope_actuator_context"
+      ],
+      "explicit_exclusions": [
+        "native_firmware_relative_phase",
+        "coherent_controller_population",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "terminal_attestation": {
+        "class": "historical_stage7_exit_gate",
+        "path": "reports/stage7_exit_gate.json",
+        "file_sha256": "e9138a05bb1dd0f88842e539ecdfc695b681e31c6311d41f4e1b1c4124fa9668",
+        "status": "pass",
+        "scientific_terminal": "dual_core_frequency_control_endurance_passed"
+      },
+      "package_identity": {
+        "class": "study_frozen_full_tree_identity_older_package_without_registered_content_digest",
+        "content_sha256": "ff21bd5e21e9838f72f159f2af63c7393f2aa1b0cce6f9e3e136d8408c0e5b6b",
+        "file_count": 27,
+        "total_bytes": 489226798,
+        "evidence_snapshot_sha256": "7f862ee45b849d0149b4a7fe3b0744e7ad6472fcbefed817d92f2afcf4a22d23",
+        "registered_content_digest": "not_retained"
+      },
+      "historical_identity": {
+        "source_revision": "0541d0bbc937f6290efd223cf0958dcd4474427a",
+        "firmware_build_identity": "fdcb2205f4e4db5848c01bec55cdb3089c0908db613de48277c434aaa15da875:70702906c08be11ec5ec3f2ba9795710cb36c5a2caa22141cd151e3ad96c4c8b",
+        "profile_identity": "cx317_dual_core_active_endurance_part_b",
+        "policy_sha256": "29db33da6a518727b25396f5fa77e26a1f5ca886a7eda232ca32997c5e82ae42",
+        "board": "arduino_nano_rp2040_connect",
+        "receiver_identity": "not_retained",
+        "capture_backend": "pio_wait_cumulative_snapshot_dma_v1",
+        "timer_domain": "rp2040_timer0",
+        "timer_nominal_hz": 16000000,
+        "oscillator_domain": "h0_tcxo_16mhz_historical_token_nominal_10mhz",
+        "counter_width_bits": 32,
+        "rollover": "modulo_2_power_32_down_counter_adjacent_snapshot_reconstruction"
+      },
+      "consumed_files": {
+        "COMPLETE": "37a40f08d8548dba289b9b0bb35bcf63b359f6d37ee86044ebc6b6da080b9ec1",
+        "run_manifest.json": "cc22a9d4e21295f4bdf91f8d586583aa54b251461d9eb97eadd391c813eed5de",
+        "evidence_manifest.json": "828f5b62b4f945089e02c5844f8acb27db6aecd3fd1e8173036394bebf71313c",
+        "reports/stage7_exit_gate.json": "e9138a05bb1dd0f88842e539ecdfc695b681e31c6311d41f4e1b1c4124fa9668",
+        "csv/count_observations.csv": "a558bc4df8fdf498e87db039a1c03bb799b163605e649f3b48fafd8cd3e6898a",
+        "csv/pps_snapshots.csv": "ae8299e34b27a183ef3f8d251842d84a0c53cd843cb79d03b1e08457a6a0c315",
+        "csv/estimates_v2.csv": "bfaa8ea3f9b89431599b2bdde8fa92251fa3247fbb756682b14d8a0fd9ac8513",
+        "csv/active_transactions_v1.csv": "d8c01ca54fa899c31fb8a593b99a7851fd98bcda89cba1d7cc1ce6f40676a378",
+        "csv/control_previews_v1.csv": "a945b717cdfcf6d6f448489327339ff7f4e3843319d5a7cbc4d8a5e8c9347797",
+        "csv/dac_steps.csv": "cb4f4bf91e817071763689c94dbf6264a4c21be4e7069ef42c071692c712b04d",
+        "csv/environment.csv": "cc44066ac9ba7b73831d63a4c808ea1a2342df30b5a7c0358d2eaefa5356865c",
+        "csv/raw_events.csv": "fbc169d1bea5dc21d5bec2b8e1b986022cb79669d7397fa067c178b722f30d30"
+      }
+    },
+    {
+      "source_id": "cx322_coherent",
+      "required": true,
+      "logical_package_path": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+      "allowed_roles": [
+        "positive_coherent_controller",
+        "exact_cx322_own_law_replay",
+        "unchanged_cx322_request_replay",
+        "phase_frequency_response_environment_actuator"
+      ],
+      "explicit_exclusions": [
+        "sustained_regulation_claim",
+        "post_divergence_physical_candidate_evidence",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "terminal_attestation": {
+        "class": "physical_seal",
+        "path": "reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "semantic_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "status": "passed",
+        "acquisition_terminal": "healthy_stop",
+        "scientific_terminal": "bounded_direct_hybrid_evidence_acquired"
+      },
+      "package_identity": {
+        "class": "registered_full_tree_content_identity",
+        "content_sha256": "f71ddb6479c0a140e8f8377998bc37d3556f1e554853ed6476c626fe1400fddf",
+        "file_count": 56,
+        "total_bytes": 429428776,
+        "evidence_snapshot_sha256": "a860badcd121273ca2a71945ef4ad2ad489b55c962dbbab2ec8d2dec8072c498"
+      },
+      "historical_identity": {
+        "run_identity": "cx322_direct_hybrid:3220001",
+        "source_revision": "b6d936ca935a44c8b90a05aa7e47977c0b468f29",
+        "firmware_build_identity": "f508c58e734e62b1050e787efce2fce7c27e519a35d4663860b7d857cacdd9b5:99d55df144d2984d16a7610d077d737644375cfb6731e2345cad73739b8763d8",
+        "profile_identity": "cx322_direct_hybrid",
+        "policy_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+        "analyzer_sha256": "5a677011b470b05ab617f41d01a20bdcdc36e24e4e3ddc1b601b3b8755bd4e76",
+        "board": "arduino_nano_rp2040_connect",
+        "board_serial": "503533748A919118",
+        "receiver_identity": "same_receiver_as_d14_metadata_source_identity_not_serialized",
+        "capture_backend": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
+        "timer_domain": "rp2040_timer0",
+        "timer_nominal_hz": 16000000,
+        "oscillator_domain": "h1_cx317_ocxo_10mhz",
+        "counter_width_bits": 32,
+        "rollover": "modulo_2_power_32_hardware_counter_and_declared_timer_domain_unwrap"
+      },
+      "consumed_files": {
+        "COMPLETE": "b443b26df1a874a8c5f53d8446a25c1978c53121ab1fc69341f0382c06a210b7",
+        "run_manifest.json": "2efabc69d366c723b4cc8af29c1a2884602d8052fad2d4757faddab00dad600a",
+        "evidence_manifest.json": "2f2f2c8f83659270edc8feb9ec19c410c268758c0302951a1fa48751e8d3066c",
+        "reports/cx322_direct_hybrid_physical_seal_v1.json": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "csv/count_observations.csv": "d7cfd0549e2153d60d5e46d1e4ac9f9c69d285f7572e23193359ce3454ab098d",
+        "csv/pps_snapshots.csv": "d0a0074fcdb32466aca36a856168d8f8d937b32e4ebf4b646cba63326ef7990f",
+        "csv/estimates_v2.csv": "874095dbb29c87b0d5f450cd38820b29f1eee652a3642640c4597f863ee8ac66",
+        "csv/relative_phase_observations_v1.csv": "c6a1f0220f6d5a8799a94a9af694f490c1c60e782318e5e7b019cbb3034e16a9",
+        "csv/active_hybrid_decisions_v1.csv": "8ca19f79c1525dd1c0b8e03c5325e83f7e3329e1360fb12370dfbfd1dc09ee1d",
+        "csv/active_transactions_v1.csv": "0f02f8758897d7d843742ce9fb2894f9b04ca5470fcaf0668f255c00b73e4e60",
+        "csv/dac_steps.csv": "eb190c8bba027dc531a88460e791becbf4f59d64df856631fa5c99f0127ce25f",
+        "csv/environment.csv": "baeadea26a307f84150c20f08170063dc44da040cac7a7e98b9d30555349e708",
+        "csv/health.csv": "196d0b58075b10898f645509b9a3eb8d9431233915efafe916da1c43d2294422",
+        "csv/raw_events.csv": "f850253f1b8378dbc9663f490caf94a151c32c164b38c5d4a4e2c495a7a1975a"
+      }
+    },
+    {
+      "source_id": "attempt4_sustained",
+      "required": true,
+      "logical_package_path": "runs/otis_sustained_hybrid_regulation_v1/live_attempt4_20260823T2148Z",
+      "allowed_roles": [
+        "sustained_maintenance_reversal_evidence",
+        "exact_sustained_own_law_replay",
+        "counterfactual_cx322_and_candidate_chronology",
+        "failed_qualification_with_retained_scientific_chronology"
+      ],
+      "explicit_exclusions": [
+        "qualified_positive_controller_population",
+        "exact_cx322_own_law_replay",
+        "post_divergence_physical_candidate_evidence",
+        "utc_traceability",
+        "oscillator_only_stability"
+      ],
+      "terminal_attestation": {
+        "class": "physical_seal",
+        "path": "reports/otis_sustained_hybrid_physical_seal_v1.json",
+        "file_sha256": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+        "semantic_sha256": "8078b24453e36d149fe05c85f37a7c73df314408923a44c763e90eb6ebe3b455",
+        "status": "failed",
+        "acquisition_terminal": "measurement_authority_or_platform_fault",
+        "scientific_terminal": "prospective_low_efficiency_path",
+        "formal_failure_reason": "missing_contemporaneous_pre_phase4_response_replay_attestations"
+      },
+      "package_identity": {
+        "class": "registered_full_tree_content_identity",
+        "content_sha256": "aa7ac41bb07192f4de5807547899d50b0e51b3c60bbcac4f8e9cadb6fc6a2a90",
+        "file_count": 80,
+        "total_bytes": 409352510,
+        "evidence_snapshot_sha256": "3bbc5a4c97ae3db006819601489a7f0bda425623cf8a3413ba3a5483d3b8ec0a"
+      },
+      "historical_identity": {
+        "run_identity": "otis_sustained_hybrid_regulation_v1:1",
+        "source_revision": "da0f4f024dddd33c94da853a6d503ad97e3892eb",
+        "firmware_build_identity": "bfa206c69f2d5ebaa117fae466d93a13d4701ee91673943ba7e885a7aefe94d8:ad8feae0d5f99b5089a1777ca227e2791f8ee4379f181df004b5c95c2afd2d78",
+        "profile_identity": "otis_sustained_hybrid_regulation_v1",
+        "policy_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+        "analyzer_sha256": "0d53878e2d76e270eb9a69ace463f44fa93f1b3c06e06ee627f72ec052125d83",
+        "board": "arduino_nano_rp2040_connect",
+        "board_serial": "503533748A919118",
+        "receiver_identity": "same_receiver_as_d14_metadata_source_identity_not_serialized",
+        "capture_backend": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
+        "timer_domain": "rp2040_timer0",
+        "timer_nominal_hz": 16000000,
+        "oscillator_domain": "h1_cx317_ocxo_10mhz",
+        "counter_width_bits": 32,
+        "rollover": "modulo_2_power_32_hardware_counter_and_declared_timer_domain_unwrap"
+      },
+      "consumed_files": {
+        "COMPLETE": "8a36873baa40fa30ea653be73392bda279bd01240936ca1d95c2f1f2f1781bef",
+        "run_manifest.json": "3bda75ceb8309a71d6e91ba18f9e2fe5781906f191b69bd5bd84cf5bf7a4f3fc",
+        "evidence_manifest.json": "5da145fd66d3e9f070fc31c8bfdcf72223fe929453583c071f8b2d3574a82b9a",
+        "reports/otis_sustained_hybrid_physical_seal_v1.json": "e5d3a8bf4b7af336b2aceae9f1e6b7f7299b421e22652f409ac3a36b051e2c66",
+        "csv/count_observations.csv": "ab8a0b3cc7fa36406078eefa1608eb54455220edb351a03d118bfa8f139ea3e9",
+        "csv/pps_snapshots.csv": "3dc886aea1bdf1119aca316e4c1069f1a9c03b9567aca1c56f5386edca0a1e38",
+        "csv/estimates_v2.csv": "85eb01cbea51c7c91307b139bc3dba6263ee7ee12b2888f2a359890105eee62d",
+        "csv/relative_phase_observations_v1.csv": "e0765d1f4d99997b61da6b7543b8b854f1d1d2b92eda4b588c97693ec0e45daa",
+        "csv/active_hybrid_decisions_v1.csv": "8b287f7e4572ff43a2e5ecd43c5aeb693e9060ddc17f952ed283144b3a97af9e",
+        "csv/active_transactions_v1.csv": "0dc1513a40f444ca2f537d84b3744bf16c848a2b9b9db3b7be748e6faf31039a",
+        "csv/dac_steps.csv": "8f412723bcd392698a0aea6edbf4ef2595ad209ff9f2b2c76e06509eb8378bcc",
+        "csv/environment.csv": "60ad60d080fd221270c2d2d3977aa419bec4f43b2b5fdd075da3768ec2899993",
+        "csv/health.csv": "378bda8bf4ec8884158e361d51af37db07b0095538e2028af8635124f003ea7d",
+        "csv/raw_events.csv": "fb094d8f54ab7313db9b45f37a702185889d25cb30b312e96ceca3a07b39e3bf"
+      }
+    }
+  ],
+  "topology": {
+    "D14": "sole_authoritative_pps_reference_input",
+    "D8": "sole_authoritative_oscillator_count_input",
+    "D10": "optional_external_event_evidence_never_control_or_pps_authority",
+    "gnss_serial_metadata": "qualification_evidence_from_same_receiver_as_D14_never_timing_authority"
+  },
+  "segmentation": {
+    "base_interval_s": 1,
+    "break_on": [
+      "capture_session",
+      "counter_domain",
+      "capture_backend",
+      "nominal_source",
+      "configuration_identity",
+      "illegal_counter_movement",
+      "unknown_rollover_contract",
+      "nonconsecutive_snapshot_sequence",
+      "nonconsecutive_count_sequence",
+      "nonconsecutive_d14_reference_sequence",
+      "invalid_observation_or_qualification_flags",
+      "missing_interval",
+      "phase_epoch_for_phase_and_primary_stability",
+      "dac_epoch_for_fixed_code_and_response",
+      "settling_boundary_for_settled_population",
+      "terminal_reset_boot_or_source_identity_contradiction"
+    ],
+    "phase_epoch_join": "forbidden",
+    "cross_source_join": "forbidden",
+    "forward_fill_across_boundary": "forbidden"
+  },
+  "phase_analysis": {
+    "method_native": "cx318_relative_phase_selected_v1",
+    "method_reconstructed": "derived_adjacent_d14_d8_integer_cumulative_phase_v1",
+    "horizons_s": [600, 1500, 3600, 7200, 21600],
+    "alignment": "nonoverlapping_from_each_segment_opening_closing_frontier_inclusive",
+    "shortening": "forbidden",
+    "ols_x": "integer_closing_d14_reference_sequence",
+    "ols_y": "integer_relative_phase_cycles",
+    "exact_integer_numerator_denominator": true
+  },
+  "stability_analysis": {
+    "statistics": ["overlapping_allan_deviation", "overlapping_hadamard_deviation"],
+    "base_sampling_interval_s": 1,
+    "tau_grid_s": [1, 2, 5, 10, 20, 50, 100, 200, 600, 1500, 3600, 7200, 21600],
+    "minimum_difference_term_count": 3,
+    "detrending": "none",
+    "pooling": "sum_squared_difference_numerators_and_term_counts_within_same_population_tau_without_stitching_segments",
+    "phase_epoch_break_for_primary_view": true,
+    "frequency_domain_sensitivity_without_phase_break": false,
+    "fractional_frequency_denominator_hz": 10000000
+  },
+  "selected_frequency_analysis": {
+    "estimator_id": "derived_selected_600s_nonoverlap_from_exact_d14_d8_counts_v1",
+    "span_s": 600,
+    "opening_boundary": "segment_first_interval_opening_frontier",
+    "closing_boundary": "600th_contiguous_interval_closing_frontier_inclusive",
+    "source_frontier": "opening_exclusive_closing_inclusive",
+    "reset_origin_after": ["gap", "application", "settling_boundary", "session_or_identity_change"],
+    "deliberately_skipped_window_advances_origin": false,
+    "common_bands_absolute_hz": [0.0016666666666666668, 0.0033333333333333335, 0.005],
+    "quantiles": [0.05, 0.5, 0.95, 0.99]
+  },
+  "response_analysis": {
+    "horizons_s": [600, 1500, 3600, 7200, 21600],
+    "settling_exclusion_s": 900,
+    "estimands": ["trailing_selected600_at_horizon", "settled_selected600_at_horizon"],
+    "require_complete_600s_support": true,
+    "require_same_applied_code_and_dac_epoch": true,
+    "right_censor_on": [
+      "subsequent_application",
+      "d14_d8_or_session_continuity_break",
+      "identity_break",
+      "terminal",
+      "lack_of_full_support"
+    ],
+    "metadata_loss": "record_measurement_response_but_exclude_from_control_rearm_until_causal_requalification"
+  },
+  "environment_analysis": {
+    "primary": {"source": "sht4x", "role": "vcocxo_near", "required_flags": 0},
+    "secondary": {"source": "bmp280", "role": "ambient_pressure", "kept_separate": true},
+    "timer_domain": "rp2040_timer0",
+    "lags_s": [0, 600, 1500],
+    "maximum_sample_age_s": 5,
+    "minimum_samples": 30,
+    "minimum_temperature_range_c": 0.05,
+    "missingness": "explicit_no_forward_fill",
+    "causal_authority": false
+  },
+  "controller_comparison": {
+    "baseline": "cx322_unchanged",
+    "candidates": [
+      {
+        "candidate_id": "cx322_unchanged",
+        "debt": false,
+        "same_sign_persistence_count": 1
+      },
+      {
+        "candidate_id": "cx322_tagged_debt_with_bounded_backcalculation",
+        "debt": true,
+        "same_sign_persistence_count": 1
+      },
+      {
+        "candidate_id": "cx322_tagged_debt_backcalculation_plus_same_sign_persistence",
+        "debt": true,
+        "same_sign_persistence_count": 2
+      }
+    ],
+    "combined_demand_interval": {
+      "frequency_count_interval": "exact_count_plus_or_minus_one_half_count_over_600_seconds_with_controller_sign",
+      "pll_term": "exact_bounded_relative_phase_over_21600_seconds",
+      "positive_plant_gain_envelope_hz_per_code": {
+        "minimum": 0.00016357422282453626,
+        "nominal": 0.00017008467693813145,
+        "maximum": 0.00017334010044578463
+      },
+      "interval_containing_zero_sign": "none"
+    },
+    "debt": {
+      "representation": "exact_python_fraction_with_decimal_input_conversion",
+      "maximum_committed_absolute_codes": "1/2",
+      "rounding": "signed_half_away_from_zero",
+      "full_raw_code_demand": true,
+      "step_limit_codes": 21,
+      "range_minimum_code": 43008,
+      "range_maximum_code": 43776,
+      "component_backcalculation": "scale_fll_and_pll_components_by_exact_post_limit_or_post_application_total_ratio",
+      "opposing_component_cancellation": "cancel_equal_and_opposite_fll_and_pll_components_before_retaining_tagged_debt",
+      "hard_outward_endpoint": "backcalculate_outward_total_and_components_to_zero",
+      "zero_request": "commit_bounded_residual_without_ACT_transaction",
+      "cadence_hold_phase_direction_hold_unsatisfied_persistence": "retain_prior_committed_debt_without_current_increment",
+      "application_commit": "after_exact_acknowledgement_and_first_dependent_consumer_propagation",
+      "rejection_or_expiry_before_acceptance": "discard_pending_leave_committed_unchanged",
+      "unknown_application_or_identity": "debt_nonactionable_actuator_provenance_fail_static",
+      "phase_loss": "discard_pll_origin_after_outstanding_transaction_resolution_preserve_valid_fll_origin",
+      "session_or_source_identity_change": "discard_all_debt",
+      "metadata_hold": "freeze_committed_debt_require_fresh_post_requalification_observation"
+    },
+    "persistence": {
+      "count": 2,
+      "only_current_eligible_increment_after_threshold": true,
+      "prethreshold_debt_accrual": false,
+      "fresh_nonoverlapping_contiguous_required": true,
+      "same_session_code_dac_epoch_phase_state_required": true,
+      "zero_containing_interval_advances": false,
+      "metadata_hold": "freeze_history_then_require_one_complete_post_requalification_observation"
+    }
+  },
+  "counterfactual_model": {
+    "model_id": "static_gain_residual_reinjection_phase_integration_v1",
+    "divergence_state": "historical_exact_controller_state_immediately_before_first_different_application",
+    "frequency_equation": "historical_frequency_error_plus_gain_times_candidate_minus_historical_applied_code_plus_frozen_residual_case",
+    "phase_equation": "within_unjoined_phase_epoch_integral_of_gain_times_candidate_minus_historical_code_plus_frozen_residual_case",
+    "disturbance": "historical_observation_minus_static_gain_historical_code_path_implicitly_retained",
+    "gain_cases": ["minimum", "nominal", "maximum"],
+    "residual_cases_hz": {
+      "nominal": 0.0,
+      "adverse": 0.002916663885116577,
+      "favorable": -0.002916663885116577
+    },
+    "held_out_validation": {
+      "sources": ["cx317_fll_baseline", "attempt4_sustained"],
+      "minimum_exact_settled_response_count": 6,
+      "minimum_positive_direction_fraction": 0.8,
+      "maximum_median_absolute_gain_error_hz_per_code": 0.00016666666666666666,
+      "minimum_gain_envelope_coverage_fraction": 0.6,
+      "invalidity": "any_required_gate_failure_blocks_changed_policy_recommendation"
+    },
+    "physical_claim_after_divergence": false,
+    "rejoin_physical_claim_after_code_reconvergence": false
+  },
+  "selection_gate": {
+    "own_law_exact_replay_required": true,
+    "unchanged_cx322_exact_on_cx322_required": true,
+    "all_identity_safety_range_cadence_transaction_perturbations_required": true,
+    "frequency_no_worse": {
+      "maximum_rms_degradation_hz": 0.0,
+      "maximum_absolute_p95_degradation_hz": 0.0016666666666666668,
+      "minimum_tight_band_occupancy_change": 0.0
+    },
+    "phase_no_worse": {
+      "maximum_absolute_slope_degradation_cycles_per_s": 0.0,
+      "maximum_excursion_degradation_cycles": 0
+    },
+    "actuator_no_worse": {
+      "maximum_path_per_hour_change": 0.0,
+      "maximum_application_count_change": 0,
+      "maximum_reversal_count_change": 0,
+      "new_repeated_alternation_forbidden": true,
+      "recovery_degradation_forbidden": true
+    },
+    "material_improvement": {
+      "minimum_frequency_rms_fraction": 0.05,
+      "minimum_phase_absolute_slope_fraction": 0.1,
+      "minimum_phase_excursion_cycles": 1,
+      "minimum_actuator_path_fraction": 0.2
+    },
+    "all_gain_and_required_residual_cases": true,
+    "model_validation_required_for_changed_recommendation": true
+  },
+  "operational_semantics": {
+    "metadata_state": "GNSS_METADATA_HOLD",
+    "measurement_continues_during_metadata_hold": true,
+    "new_requests_inhibited_during_metadata_hold": true,
+    "private_unreleased_request": "withdraw_locally_and_record_exact_identity",
+    "released_request": "sole_core0_owner_resolves_accept_reject_or_expiry",
+    "accepted_request": "complete_exact_transaction_then_hold",
+    "response_pending": "preserve_d14_d8_response_evidence_without_control_rearm",
+    "recovery": "fresh_metadata_plus_complete_causally_later_d14_d8_observation",
+    "phase_loss": "resolve_outstanding_transaction_then_fll_fallback_and_discard_pll_debt",
+    "optional_shadow_failure": "local_only_zero_authority",
+    "d10_failure": "local_only_unless_shared_capture_compromise"
+  },
+  "output": {
+    "derived_root": "runs/derived/cross_campaign_adaptive_steering_offline_v1",
+    "tracked_report_root": "docs/60_EXPERIMENTS/OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_STUDY",
+    "artifacts": [
+      "source_ledger_v1.json",
+      "qualified_intervals_v1.csv.gz",
+      "selected_windows_v1.csv",
+      "phase_windows_v1.csv",
+      "stability_v1.csv",
+      "actuator_transactions_v1.csv",
+      "response_horizons_v1.csv",
+      "controller_episodes_v1.csv",
+      "environment_associations_v1.csv",
+      "replay_and_divergence_v1.json",
+      "candidate_comparison_v1.json",
+      "derived_package_manifest_v1.json"
+    ],
+    "every_artifact_binds": [
+      "contract_sha256",
+      "analysis_base_revision",
+      "tool_file_sha256",
+      "generation_utc",
+      "exact_source_file_sha256"
+    ],
+    "semantic_digest": "canonical_json_sort_keys_compact_no_nan_excluding_self_digest"
+  },
+  "explicit_source_exclusions": [
+    "active_gnss_baud_soak",
+    "unsealed_substitute_run",
+    "live_or_in_progress_file",
+    "failed_attempt_before_scientific_stimulus_as_performance_population",
+    "older_run020_or_recovered_stage5_as_current_selected600",
+    "cx319_part_b_cross_epoch_phase_join"
+  ],
+  "terminal_outcomes": [
+    "provisional_finite_policy_delta_recommended_pending_d9_gate",
+    "provisional_cx322_unchanged_pending_d9_gate",
+    "study_invalid_due_to_evidence_or_replay_mismatch"
+  ]
+}
