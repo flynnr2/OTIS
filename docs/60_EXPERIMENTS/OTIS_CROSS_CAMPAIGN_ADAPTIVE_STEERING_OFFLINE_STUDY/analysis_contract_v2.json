@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "contract_id": "OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_V2",
+  "status": "prospectively_refrozen_after_v1_normalization_review_before_v2_candidate_results",
+  "base_contract_path": "analysis_contract_v1.json",
+  "base_contract_sha256": "c139723c38a7c8db5409d68ce5aec18e2a4f6006a109ad717c27e77a65a5a40a",
+  "supersedes": {
+    "contract_id": "OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_V1",
+    "study_report": "study_report_v1.json",
+    "reason": "independent_pre_completion_review_found_incomplete_raw_event_joins_unsupported_control_eligibility_and_incomplete_derived_row_provenance",
+    "v1_preservation": "immutable_superseded_audit_record_not_decision_bearing"
+  },
+  "source_overlays": {
+    "cx317_fll_baseline": {
+      "count_source_domain": "h0_tcxo_16mhz"
+    },
+    "cx322_coherent": {
+      "count_source_domain": "h1_cx317_ocxo_10mhz",
+      "additional_consumed_files": {
+        "csv/phase_estimator_outputs_v1.csv": "6f4390fa6792bb58965c53d39527dee1c92cad314f60c523f85350d57ed8c491"
+      }
+    },
+    "attempt4_sustained": {
+      "count_source_domain": "h1_cx317_ocxo_10mhz",
+      "additional_consumed_files": {
+        "csv/phase_estimator_outputs_v1.csv": "559f351a6709589e754b287069c532906d56d7cb0c5d272e5a50601adcf220c5"
+      }
+    }
+  },
+  "normalization_v2": {
+    "natural_interval_key": [
+      "package_content_sha256",
+      "capture_session",
+      "closing_snapshot_sequence"
+    ],
+    "d14_raw_event": {
+      "record_type": "REF",
+      "schema_version": "1",
+      "channel_id": "1",
+      "edge": "R",
+      "capture_domain": "rp2040_timer0",
+      "invalid_flags_mask": 4079,
+      "endpoint_join": "unique_capture_domain_and_timestamp_ticks",
+      "adjacency": "opening_and_closing_are_adjacent_in_the_filtered_d14_rising_event_stream"
+    },
+    "snapshot": {
+      "record_type": "SNP",
+      "schema_version": "1",
+      "status": "0",
+      "backend": "pio_wait_cumulative_snapshot_dma_v1",
+      "adjacency": "same_session_and_closing_snapshot_and_reference_sequences_equal_opening_plus_one"
+    },
+    "count": {
+      "record_type": "CNT",
+      "schema_version": "1",
+      "channel_id": "2",
+      "source_edge": "R",
+      "gate_domain": "rp2040_timer0",
+      "invalid_flags_mask": 14119,
+      "join": "count_seq_equals_closing_snapshot_sequence_and_gate_endpoints_equal_snapshot_reference_timestamps",
+      "parity": "modulo_2_power_32_opening_minus_closing_down_counter_equals_counted_edges"
+    },
+    "selected_frequency": {
+      "source": "recorded_estimates_v2",
+      "estimator_version": "cx317_selected_600s_nonoverlap_v1",
+      "config_hash": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+      "accepted_sample_count": 600,
+      "time_domain": "rp2040_timer0",
+      "validity": "observation_reference_and_count_valid_continuous_diagnostic_healthy_preview_true",
+      "exact_count_support": "600_contiguous_measurement_qualified_intervals_opening_exclusive_closing_inclusive",
+      "phase_independent": true,
+      "summary_population": "recorded_selected600_with_all_supporting_intervals_settled_at_one_applied_code"
+    },
+    "hybrid_phase": {
+      "relative_phase_method_id": "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1",
+      "phase_estimator_id": "CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
+      "configuration_sha256": "449c828d2affeff8589e81da0bc9c44840369d741dc1f917a8d662acb4",
+      "source_backend": "pio_wait_cumulative_snapshot_dma_v1",
+      "source_file_sentinel": "live_stream_unsealed",
+      "join": "exact_phase_epoch_observation_sequence_rph_reference_and_measurement_qualified_interval",
+      "fll_phase": "reconstructed_adjacent_d14_d8_integer_phase_with_phase_local_reset_and_no_native_phase_claim"
+    },
+    "control_eligibility": {
+      "representation": "three_valued_true_hold_unavailable",
+      "gnss_metadata_freshness_limit_s": 3,
+      "historical_decision_state": "unavailable_evidence_cadence_insufficient",
+      "control_input_support": "recorded_selected600_preview_eligible_is_separate_from_actuation_eligibility",
+      "missing_hold_chronology": "unavailable_not_zero"
+    },
+    "derived_row_provenance": "canonical_json_map_of_every_material_source_relative_path_to_frozen_sha256",
+    "d10_policy": "never_joined_never_a_validity_or_authority_input"
+  },
+  "environment_analysis_v2": {
+    "primary": {
+      "source": "sht4x",
+      "role": "vcocxo_near",
+      "required_flags": 0
+    },
+    "secondary": {
+      "source": "bmp280",
+      "role": "pressure_reference",
+      "kept_separate": true
+    },
+    "minimum_samples": 30,
+    "minimum_temperature_range_c": 0.05,
+    "missingness": "explicit_no_forward_fill",
+    "temperature_rate": "finite_difference_only_within_contiguous_same_source_role_domain_segments",
+    "cross_campaign_consistency": "leave_one_campaign_out_noncausal_diagnostic",
+    "causal_authority": false
+  },
+  "counterfactual_v2": {
+    "finite_candidate_set_unchanged": true,
+    "validation_input": "recomputed_v2_normalized_settled_response_products",
+    "changed_candidate_continuation": "execute_all_frozen_gain_and_residual_cases_after_first_divergence_only_when_held_out_model_valid",
+    "invalid_model_behavior": "emit_explicit_not_executed_unavailable_layer_for_every_changed_candidate_and_source_with_zero_generated_rows",
+    "dependent_gate_state": "not_evaluated_required_prerequisite_failed_not_numeric_zero_or_false",
+    "selection_state": "fail_closed_required_prerequisite_failed",
+    "first_divergence_sensitivity": "retained_as_non_selection_diagnostic_not_a_continuation_trace_when_model_invalid",
+    "physical_claim_after_divergence": false
+  },
+  "outputs_v2": {
+    "derived_package": "runs/derived/cross_campaign_adaptive_steering_offline_v2",
+    "tracked_report": "study_report_v2.json",
+    "artifact_suffix": "_v2"
+  },
+  "contract_sha256": "b7525de381bbd6506978819a46ccdc280993c47aba2d1ab673a9e595b48e325f"
+}
