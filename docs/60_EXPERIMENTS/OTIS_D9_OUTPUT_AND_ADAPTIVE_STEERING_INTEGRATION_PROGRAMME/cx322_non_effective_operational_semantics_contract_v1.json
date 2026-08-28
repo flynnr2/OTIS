@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX322_NON_EFFECTIVE_OPERATIONAL_SEMANTICS_V1",
+  "contract_semantic_sha256": "704cfed034c959994d11f2ea71d8438ba0b0366c5437ce62edd7c1c84d2ea660",
+  "entry_controller_terminal": "cx322_integration_blocked_by_d9_output_gate",
+  "entry_controller_decision_semantic_sha256": "3ab6a0a004788e5856eabe27b45956160ec2b66d05a8a42237c7cf4325bda82f",
+  "terminal": "operational_semantics_implemented_promotion_blocked_by_d9_gate",
+  "authority": {
+    "physical_authority": false,
+    "firmware_profile_actionable": false,
+    "effective_actuation": false,
+    "dac_write": false,
+    "fll_arm": false,
+    "hybrid_arm": false,
+    "phase_authority": false,
+    "trial_proposal": false
+  },
+  "unchanged_cx322_request_law": {
+    "policy_path": "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+    "policy_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+    "frequency_estimator_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+    "phase_estimator_sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+    "host_policy_path": "host/otis_tools/active_hybrid_policy.py",
+    "host_policy_sha256": "e9b2aa3daeca85a9acbe5d0b9904bd191d7ee1a9d071ea0622010bf5a832a9e3",
+    "firmware_policy_source_path": "firmware/arduino/otis_nano_rp2040_connect/otis_active_hybrid_policy_engine.cpp",
+    "firmware_policy_source_sha256": "2364561e761c7c47503973e9186a8a3cb882a37dba40457cbcebefa0542a2326",
+    "firmware_policy_header_path": "firmware/arduino/otis_nano_rp2040_connect/otis_active_hybrid_policy_engine.h",
+    "firmware_policy_header_sha256": "7dfb68cb427cd9794fe7d46c0fabe0fbd9072a7d27f07e003ca4e7119ca650c0",
+    "correction_debt_change": "none",
+    "phase_degradation_debt_record": "not_applicable_no_committed_pll_debt"
+  },
+  "existing_transaction_path": {
+    "source_path": "firmware/arduino/otis_nano_rp2040_connect/otis_cx317_active_transaction.cpp",
+    "source_sha256": "ddafae7a2e0bd5d459e6650d20083aa8791f7a5942bf619aa764421cc80579ad",
+    "header_path": "firmware/arduino/otis_nano_rp2040_connect/otis_cx317_active_transaction.h",
+    "header_sha256": "07851e05ef6bd3832672419833643be7d75e028a1539d321ace6685537c10121",
+    "non_effective_oracle_path": "host/otis_tools/cx322_non_effective_operational_semantics.py",
+    "non_effective_oracle_sha256": "a32361e274823dedc28a5f0ff945b6a74fd8dac33e9c9d773472715f9c9499dc",
+    "offline_reference_path": "host/otis_tools/adaptive_steering_offline.py",
+    "offline_reference_sha256": "923aac30cad045d053404dba0c34f862f17a2e34cae93b9becb87dd9fae70217"
+  },
+  "state_contract": {
+    "measurement_authority": "D14_D8_only",
+    "states": [
+      "ACTIVE",
+      "GNSS_METADATA_HOLD",
+      "PHASE_DEGRADED_FLL",
+      "LOW_EFFICIENCY_INHIBIT",
+      "ACTUATOR_PROVENANCE_FAIL_STATIC"
+    ],
+    "absorbing_states": [
+      "LOW_EFFICIENCY_INHIBIT",
+      "ACTUATOR_PROVENANCE_FAIL_STATIC"
+    ],
+    "metadata_rearm": "fresh_same_receiver_metadata_then_causally_later_exact_D14_D8_observation_with_exact_applied_identity",
+    "phase_rejoin": "new_explicit_epoch_only_no_retired_epoch_or_numeric_rejoin",
+    "low_efficiency": "two_identity_bound_nonoverlapping_completed_fll_only_episodes_inhibit_automatic_actuation",
+    "effective_actuation_permitted": false,
+    "eligibility_is_hypothetical_only": true
+  },
+  "transaction_ownership": {
+    "private_unreleased_owner": "Core1",
+    "released_through_response_owner": "Core0",
+    "acceptance_wins_deadline_race": true,
+    "silence_after_exact_deadline": "ACTUATOR_PROVENANCE_FAIL_STATIC",
+    "acceptance_requires": [
+      "request_sequence",
+      "nonce",
+      "outcome_sequence",
+      "application_sequence",
+      "applied_code",
+      "dac_epoch",
+      "first_consumer_frontier",
+      "response_frontier"
+    ],
+    "deadline_domain": "declared_16_32_or_64_bit_modular_counter"
+  },
+  "delivered_output_and_optional_inputs": {
+    "d9_d6_readiness_contract_semantic_sha256": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d",
+    "d9_is_control_authority": false,
+    "d6_is_control_authority": false,
+    "d10_is_control_authority": false,
+    "shadow_is_control_authority": false,
+    "d9_invalidity_changes_d14_d8_truth": false,
+    "optional_queue_policy": "bounded_nonblocking_additive_drop_local"
+  },
+  "telemetry_and_compatibility": {
+    "new_live_schema_version": null,
+    "reason": "blocked_gate_reference_oracle_is_not_integrated_into_live_firmware_or_host_transport",
+    "historical_reader_policy": "unchanged",
+    "missing_new_fields_in_historical_evidence": "not_reinterpreted_as_clean"
+  },
+  "native_fixture": {
+    "path": "tests/cpp/cx322_non_effective_operational_semantics_harness.cpp",
+    "sha256": "afa16febf35b4f4993bdf96dcf00fb6932abd8cd7a70bdc9c287c0bdc919d424",
+    "pytest_path": "tests/test_cx322_non_effective_operational_semantics_native.py",
+    "pytest_sha256": "865c139f2d456fe77848653118c6a59a13e63f4dc317ce384c5c0e234e139abc",
+    "claim": "deterministic_native_reference_fixture_not_integrated_firmware_binary"
+  },
+  "semantic_change_ledger": [
+    "separated_D14_D8_measurement_health_from_GNSS_metadata_and_D9_output_status",
+    "made_fail_static_and_low_efficiency_inhibit_absorbing",
+    "bound_Core1_private_withdrawal_and_Core0_released_transaction_outcomes",
+    "bound_acceptance_application_DAC_epoch_first_consumer_and_response_identity",
+    "latched_phase_loss_until_transaction_response_resolution",
+    "required_new_nonretired_phase_epoch_after_degradation",
+    "counted_only_explicit_completed_nonoverlapping_FLL_ONLY_low_efficiency_episodes",
+    "kept_D9_D6_D10_and_shadow_faults_local",
+    "kept_all_effective_authority_false"
+  ],
+  "remaining_prompt04_boundaries": [
+    "no_integrated_D9_D6_CX322_profile_exists_or_is_permitted",
+    "non_effective_semantics_are_not_emitted_by_a_firmware_profile",
+    "complete_integrated_PTY_process_topology_is_intentionally_uncreated",
+    "physical_D9_waveform_load_and_noninterference_not_claimed"
+  ]
+}

@@ -90,3 +90,11 @@
   terminal is `output_function_correct_but_waveform_evidence_incomplete`, the
   soak is `frequency_only_d9_output_soak_incomplete`, and unchanged CX322 is
   `cx322_integration_blocked_by_d9_output_gate`.
+- The Prompt 03 metadata-hold, phase-degradation, low-efficiency, fail-static,
+  and optional-evidence semantics are deterministic non-effective reference
+  code with a host-compiled native parity fixture. They are not emitted by a
+  live firmware profile or wired into the live parser, supervisor, controller,
+  or telemetry schema. No D9/D6/CX322 integrated binary or process-topology
+  rehearsal exists, by design, because the valid Prompt 02 D9 gate blocked
+  promotion. These semantics grant no DAC, arm, flash, serial, or trial
+  authority.

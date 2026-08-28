@@ -225,6 +225,16 @@ serial metadata with D14/D8 health during unfinished transactions. Separate
 `GNSS_METADATA_HOLD` from authoritative-reference and actuator-provenance
 faults in those existing paths; do not create another controller or supervisor.
 
+The 2026-08-28 D9 programme closed its output gate as materially incomplete, so
+the first implementation of these semantics is intentionally a permanently
+non-effective reference oracle and native deterministic fixture. It binds
+Core 1 private withdrawal, Core 0 ownership after durable release, acceptance
+through application/DAC epoch/first consumer/response, absorbing actuator
+provenance and low-efficiency states, phase-loss latching, and causal metadata
+requalification. It does not alter the live CX322 firmware, schemas, parser,
+supervisor, or authority profile. The exact contract is
+[`cx322_non_effective_operational_semantics_contract_v1.json`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_non_effective_operational_semantics_contract_v1.json).
+
 D10 is not claimed by the current PPS-gated steering profiles. If a future
 operating profile enables D10 `EVT` capture, D10-local invalidity, noise, gaps,
 or overflow must remain local to the external-event evidence plane. It cannot

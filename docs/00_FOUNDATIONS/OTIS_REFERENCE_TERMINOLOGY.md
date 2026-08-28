@@ -410,6 +410,41 @@ Correction debt must name its code domain, source evidence frontier, policy,
 gain assumption, and update history. It is not raw frequency error, accumulated
 phase error, a calibrated equilibrium code, or permission to actuate.
 
+The unchanged CX322 request law does not commit a new tagged correction-debt
+state. When its non-effective operational semantics discard a cached
+phase-derived contribution and no committed PLL debt exists, record
+`not_applicable_no_committed_pll_debt`; do not manufacture debt to make the
+transition appear stateful.
+
+### GNSS metadata hold
+
+`GNSS_METADATA_HOLD` is a bounded inhibition of new control requests caused by
+missing, stale, malformed, or otherwise unqualified serial metadata from the
+receiver that supplies D14. It is not holdover and does not make GNSS serial
+data a timing reference. Healthy D14/D8 measurement, estimation, phase
+accumulation, response observation, and canonical telemetry continue while the
+last confirmed DAC code is retained.
+
+### Phase-degraded FLL
+
+`PHASE_DEGRADED_FLL` means qualified D14/D8 frequency evidence remains usable
+but phase-derived requests are inhibited. A later phase recovery opens a new
+explicit phase epoch; numerical proximity alone cannot rejoin a retired epoch.
+
+### Low-efficiency inhibit
+
+`LOW_EFFICIENCY_INHIBIT` is a static automatic-actuation inhibit entered after
+the prospectively frozen number of independent, identity-bound, completed
+FLL-only low-efficiency episodes. Measurement continues. Recovery requires
+explicit future operator authority and is never an automatic retry.
+
+### Actuator-provenance fail-static
+
+`ACTUATOR_PROVENANCE_FAIL_STATIC` is the absorbing state used when the applied
+code, DAC epoch, request owner, outcome, or first dependent consumer cannot be
+established by the exact deadline or has contradictory identity. Silence is
+not inferred to mean rejection, application, or unchanged state.
+
 ### Shadow estimator
 
 A named, versioned estimator that consumes a bounded copy of canonical evidence

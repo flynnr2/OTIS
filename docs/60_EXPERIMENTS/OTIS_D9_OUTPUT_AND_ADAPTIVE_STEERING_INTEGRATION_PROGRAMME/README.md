@@ -75,6 +75,10 @@ Prompt 03 may proceed only as non-effective safety architecture. The valid D9
 gate result blocks creation of an actionable integrated profile or promotion
 claim; it does not authorize a renewed D9/FLL soak.
 
+Prompt 03 has now reached
+`operational_semantics_implemented_promotion_blocked_by_d9_gate`. See
+[`PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md`](PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md).
+
 ## Stop boundary
 
 This bundle stops after the confirmed implementation, exact affected build and
