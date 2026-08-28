@@ -806,6 +806,42 @@ void actuator_transaction_requires_exact_two_phase_ack() {
   assert(!otis_dual_core_fail_static());
 }
 
+void forwarded_monitor_overflow_does_not_mutate_actuator_transaction() {
+  otis_dual_core_partition_reset();
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH; ++sequence) {
+    const OtisMonitorObservationMessage value = monitor_observation(sequence);
+    assert(otis_dual_core_publish_monitor_observation(&value));
+  }
+  const OtisMonitorObservationMessage overflow =
+      monitor_observation(OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH + 1u);
+  assert(!otis_dual_core_publish_monitor_observation(&overflow));
+
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.monitor_observation_dropped == 1u);
+  assert(stats.fault == OtisPartitionFault::None);
+  assert(!stats.fail_static);
+
+  OtisActuatorTransactionGuard guard = {};
+  otis_actuator_guard_init(&guard);
+  const OtisCrossCoreActuatorRequest pending = request();
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  const OtisCrossCoreActuatorAck accepted =
+      acknowledgement(OtisActuatorAckKind::Accepted);
+  assert(otis_actuator_guard_acknowledge(&guard, &accepted));
+  const OtisCrossCoreActuatorAck applied =
+      acknowledgement(OtisActuatorAckKind::Applied);
+  assert(otis_actuator_guard_acknowledge(&guard, &applied));
+  assert(guard.state == OtisActuatorGuardState::Applied);
+  assert(guard.pending.request_sequence == pending.request_sequence);
+  assert(guard.pending.decision_sequence == pending.decision_sequence);
+  assert(guard.pending.authorization_sequence == pending.authorization_sequence);
+  assert(guard.pending.nonce == pending.nonce);
+  assert(strcmp(guard.reason, "exact_application_confirmed") == 0);
+  assert(!otis_dual_core_fail_static());
+}
+
 void stale_ack_and_timeout_fault_without_retry() {
   otis_dual_core_partition_reset();
   OtisActuatorTransactionGuard guard = {};
@@ -908,6 +944,7 @@ int main() {
   every_non_droppable_queue_has_exact_capacity_boundaries();
   service_exhaustion_freezes_core1_progress_capsule_once();
   actuator_transaction_requires_exact_two_phase_ack();
+  forwarded_monitor_overflow_does_not_mutate_actuator_transaction();
   stale_ack_and_timeout_fault_without_retry();
   actuator_deadline_is_wrap_safe_in_one_named_domain();
   applied_ack_advances_stale_periodic_dac_state_before_health();

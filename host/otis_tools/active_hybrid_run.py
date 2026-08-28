@@ -39,6 +39,7 @@ from .active_hybrid_programme_contract import (
     programme_from_mapping,
 )
 from .board_identity import read_board_identity
+from .capture_device import _detect_single_device
 from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .evidence import (
     EVIDENCE_MANIFEST,
@@ -201,6 +202,15 @@ def _locate_board_by_serial(
     return address, read_board_identity(address, arduino_cli=arduino_cli)
 
 
+def _fresh_auto_detect_device() -> str:
+    """Resolve the current sole USB CDC path without retaining an old path."""
+
+    try:
+        return _detect_single_device()
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _upload_exact_firmware(
     *,
     run_dir: Path,
@@ -235,9 +245,15 @@ def _upload_exact_firmware(
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
             try:
-                device_after, board_after = _locate_board_by_serial(
-                    EXPECTED_BOARD_SERIAL, arduino_cli=arduino_cli
-                )
+                if programme.fresh_serial_auto_detect:
+                    device_after = _fresh_auto_detect_device()
+                    board_after = read_board_identity(
+                        device_after, arduino_cli=arduino_cli
+                    )
+                else:
+                    device_after, board_after = _locate_board_by_serial(
+                        EXPECTED_BOARD_SERIAL, arduino_cli=arduino_cli
+                    )
                 break
             except (
                 OSError,
@@ -247,13 +263,19 @@ def _upload_exact_firmware(
             ) as exc:
                 reappearance_error = str(exc)
                 time.sleep(0.5)
+    expected_serial = (
+        None if programme.fresh_serial_auto_detect else EXPECTED_BOARD_SERIAL
+    )
     passed = (
         completed.returncode == 0
         and device_after is not None
         and board_after is not None
         and board_before.get("serial_number")
         == board_after.get("serial_number")
-        == EXPECTED_BOARD_SERIAL
+        and (
+            programme.fresh_serial_auto_detect
+            or board_after.get("serial_number") == EXPECTED_BOARD_SERIAL
+        )
     )
     record = {
         "schema_version": 1,
@@ -269,7 +291,12 @@ def _upload_exact_firmware(
         "stderr_sha256": sha256(completed.stderr.encode()).hexdigest(),
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
-        "expected_board_serial": EXPECTED_BOARD_SERIAL,
+        "expected_board_serial": expected_serial,
+        "device_selection": (
+            "fresh_capture_device_--auto-detect"
+            if programme.fresh_serial_auto_detect
+            else "expected_board_serial"
+        ),
         "board_identity_confirmed_before": True,
         "board_identity_confirmed_after": passed,
         "usb_reenumerated": board_after is not None,
@@ -306,12 +333,21 @@ def _capture_command(
     run_dir: Path,
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         "-m",
         "host.otis_tools.capture_device",
-        "--device",
-        device,
+    ]
+    command.extend(
+        [
+            "--auto-detect",
+            "--expected-auto-detect-device",
+            device,
+        ]
+        if programme.fresh_serial_auto_detect
+        else ["--device", device]
+    )
+    command.extend([
         "--run-dir",
         str(run_dir),
         "--duration-s",
@@ -326,7 +362,8 @@ def _capture_command(
         "1",
         "--normal-command-max-age-s",
         "2",
-    ]
+    ])
+    return command
 
 
 def _supervisor_command(
@@ -870,12 +907,19 @@ def run_active_hybrid_qualification(
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX320 live run already exists: {run_dir}")
-    device = str(activation["device"]["path"])
+    device = (
+        _fresh_auto_detect_device()
+        if programme.fresh_serial_auto_detect
+        else str(activation["device"]["path"])
+    )
     owners = _serial_owner_pids(device)
     if owners:
         raise ValueError(f"serial device already has owners: {sorted(owners)}")
     board = read_board_identity(device, arduino_cli=arduino_cli)
-    if board.get("serial_number") != EXPECTED_BOARD_SERIAL:
+    if (
+        not programme.fresh_serial_auto_detect
+        and board.get("serial_number") != EXPECTED_BOARD_SERIAL
+    ):
         raise ValueError("connected board serial differs from CX320 activation")
 
     run_dir.mkdir(parents=True)
@@ -926,6 +970,12 @@ def run_active_hybrid_qualification(
 
     manifest_path = run_dir / RUN_MANIFEST_PATH
     try:
+        if programme.fresh_serial_auto_detect:
+            freshly_detected = _fresh_auto_detect_device()
+            if freshly_detected != device:
+                raise RuntimeError(
+                    "fresh serial path changed before capture ownership"
+                )
         create_run_manifest(
             activation_path=run_activation,
             bundle_path=run_bundle,

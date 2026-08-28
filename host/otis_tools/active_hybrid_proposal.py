@@ -15,6 +15,7 @@ from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
     CX321_PROGRAMME,
+    PROGRAMMES,
     get_active_hybrid_programme,
     progressive_checkpoint_contract,
     programme_from_mapping,
@@ -83,17 +84,23 @@ def _progressive_envelope(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
     return {
-        "maximum_total_automatic_applications": programme.maximum_applications,
-        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_total_automatic_applications": (
+            programme.authorized_maximum_applications
+        ),
+        "maximum_total_physical_control_applications": (
+            programme.authorized_maximum_physical_applications
+        ),
         "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
-        "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+        "maximum_cumulative_absolute_movement_codes": (
+            programme.authorized_maximum_cumulative_movement_codes
+        ),
         "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
         "minimum_code": programme.minimum_code,
         "maximum_code": programme.maximum_code,
         "qualified_duration_s": programme.qualified_duration_s,
-        "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+        "absolute_wall_clock_limit_s": programme.authorized_absolute_wall_limit_s,
         "retry": False,
         "extension": False,
     }
@@ -394,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
+        "--programme", choices=tuple(PROGRAMMES), default="cx320"
     )
     args = parser.parse_args(argv)
     if args.create:

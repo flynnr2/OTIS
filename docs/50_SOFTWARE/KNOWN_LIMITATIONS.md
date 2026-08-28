@@ -94,14 +94,16 @@
   and optional-evidence semantics are deterministic non-effective reference
   code with a host-compiled native parity fixture. They are not emitted by a
   live firmware profile or wired into the live parser, supervisor, controller,
-  or telemetry schema. No D9/D6/CX322 integrated binary or process-topology
-  rehearsal exists, by design, because the valid Prompt 02 D9 gate blocked
-  promotion. These semantics grant no DAC, arm, flash, serial, or trial
-  authority.
+  or telemetry schema. The later `cx322_d9_d6_integration_engineering` profile
+  deliberately retains unchanged CX322 and does not select this oracle. These
+  reference semantics grant no DAC, arm, flash, serial, or trial authority.
 - Prompt 04 verified the complete current Release matrix, three exact separated
   build manifests, the unchanged CX322 policy, the non-effective Prompt 03
   contract, and the retained sealed D9/D6 PTY operational path. It deliberately
   did not create a combined D9/D6/CX322 binary, live Prompt 03 telemetry path,
-  integrated rehearsal, or 72-hour proposal. Those are blocked by the missing
-  D9 waveform and qualified-load evidence; passing deterministic reference and
-  separated-build checks cannot be promoted into a physical integration claim.
+  integrated rehearsal, or 72-hour proposal. A later operator-authorized
+  engineering profile now combines unchanged CX322 with fixed D9 forwarding
+  and D6 diagnostics under a distinct contract and narrower one-application,
+  21-code, 7,200-second host envelope. This is not the blocked 72-hour
+  proposal and cannot be promoted into a waveform, qualified-load, jitter,
+  independently referenced frequency, or public delivered-output claim.

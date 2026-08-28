@@ -16,10 +16,25 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_closes_sustained_v1_and_offline_successor_studies() -> None:
+def test_tracked_status_closes_prior_work_and_selects_integrated_engineering() -> None:
     status = load_programme_status()
 
-    assert status["active_programme"] is None
+    assert status["active_programme"] == (
+        "cx322_d9_d6_integration_engineering"
+    )
+    integrated = status["programmes"][status["active_programme"]]
+    assert integrated["allowed_operations"] == [
+        "cx322_d9_d6_integration_engineering_live"
+    ]
+    assert integrated["finite_envelope"][
+        "maximum_total_automatic_applications"
+    ] == 1
+    assert integrated["finite_envelope"][
+        "maximum_cumulative_absolute_movement_codes"
+    ] == 21
+    assert integrated["finite_envelope"]["absolute_wall_clock_limit_s"] == 7200
+    assert integrated["serial"]["baud"] == 115200
+    assert integrated["serial"]["stored_device_path_authority"] is False
     assert status["programmes"]["platform_stabilization"] == {
         "state": "completed",
         "allowed_operations": [],

@@ -34,6 +34,7 @@ CURRENT_PROFILES = {
     "cx320_active_hybrid",
     "cx321_active_hybrid",
     "cx322_direct_hybrid",
+    "cx322_d9_d6_integration_engineering",
     "otis_sustained_hybrid_regulation_v1",
     "d9_forwarded_output_no_control",
     "d9_disabled_no_control_baseline",
@@ -63,7 +64,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 25
+    assert len(profiles) == 26
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -123,6 +124,21 @@ def test_ordinary_gnss_profiles_select_characterized_115200_baud() -> None:
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="bench"
     )} == CURRENT_PROFILES
+
+
+def test_integrated_cx322_profile_changes_only_d9_d6_selectors() -> None:
+    matrix = load_matrix()
+    standalone = _profile(matrix, "cx322_direct_hybrid")["defines"]
+    integrated = _profile(
+        matrix, "cx322_d9_d6_integration_engineering"
+    )["defines"]
+    expected = {
+        **standalone,
+        "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
+        "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
+        "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
+    }
+    assert integrated == expected
 
 
 @pytest.mark.parametrize(

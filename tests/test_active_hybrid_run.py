@@ -8,6 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import active_hybrid_run as runner
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
+)
 
 
 class FakeProcess:
@@ -101,6 +104,20 @@ def test_process_commands_bind_one_owner_three_fifos_and_finite_limits(
         supervisor[supervisor.index("--abort-fifo") + 1],
     }
     assert len(fifo_values) == 3
+
+
+def test_integrated_capture_resolves_the_serial_path_fresh() -> None:
+    command = runner._capture_command(
+        device="/dev/cu.usbmodem-freshly-resolved",
+        run_dir=Path("/tmp/integrated-fixture"),
+        programme=CX322_D9_D6_INTEGRATION_PROGRAMME,
+    )
+
+    assert "--auto-detect" in command
+    assert "--device" not in command
+    assert command[command.index("--expected-auto-detect-device") + 1] == (
+        "/dev/cu.usbmodem-freshly-resolved"
+    )
 
 
 def test_healthy_terminal_defers_scientific_decision_to_analyzer() -> None:

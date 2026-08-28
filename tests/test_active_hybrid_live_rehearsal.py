@@ -8,7 +8,11 @@ import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
-from host.otis_tools.active_hybrid_programme_contract import CX322_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX322_PROGRAMME,
+)
+from host.otis_tools.capture_serial import CsvRecordSplitter
 from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
 
 
@@ -136,6 +140,36 @@ def test_rehearsal_manifest_accepts_macos_pty_slave(
     observed = rehearsal.validate_rehearsal_run_manifest(path)
 
     assert observed["host"]["serial_device"] == "/dev/ttys001"
+
+
+def test_integrated_rehearsal_manifest_can_select_first_response_endpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    bundle["programme_id"] = CX322_D9_D6_INTEGRATION_PROGRAMME.programme_id
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal, "validate_bundle", lambda path, programme: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal, "validate_proposal", lambda path, programme: proposal
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/pts/99",
+        endpoint_mode="first_response",
+    )
+
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+    assert observed["qualification_evidence"] is False
+    assert observed["rehearsal_endpoint_mode"] == "first_response"
 
 
 def test_cx321_rehearsal_manifest_declares_extended_plant_sign_time_domain(
@@ -311,6 +345,66 @@ def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
         < supervisor_continue
         < capture_continue
     )
+
+
+def test_integrated_wire_fixture_captures_d14_d8_d9_d6_and_localizes_d6_fault(
+    tmp_path: Path,
+) -> None:
+    csv_dir = tmp_path / "csv"
+    targets = {
+        "health_v1": csv_dir / "health.csv",
+        "pps_snapshots_v1": csv_dir / "pps_snapshots.csv",
+        "count_observations_v1": csv_dir / "count_observations.csv",
+        "forwarded_monitor_snapshots_v1": (
+            csv_dir / "forwarded_monitor_snapshots.csv"
+        ),
+    }
+    with CsvRecordSplitter(targets) as splitter:
+        for line in rehearsal._forwarded_integration_wire_fixture().decode(
+            "ascii"
+        ).splitlines():
+            assert splitter.process_line(line) is not None
+
+    summary = rehearsal._forwarded_integration_capture_summary(tmp_path)
+
+    assert summary == {
+        "d9_configuration_and_readback_exact": True,
+        "d9_evidence_missing": [],
+        "d9_evidence_mismatches": [],
+        "d14_snapshot_rows_captured": 3,
+        "d8_count_rows_captured": 3,
+        "d6_monitor_snapshot_rows_captured": 3,
+        "d6_local_fault_observed": True,
+        "d6_fault_has_control_authority": False,
+        "d9_waveform_or_load_claim": False,
+    }
+
+
+def test_integrated_first_response_consumer_binds_application_and_epoch() -> None:
+    policy_path = CX322_D9_D6_INTEGRATION_PROGRAMME.policy_path
+    bundle = {
+        "programme_id": CX322_D9_D6_INTEGRATION_PROGRAMME.programme_id,
+        "firmware": {"build_identity": "a" * 64 + ":" + "b" * 64},
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+
+    ahy, transactions, summary = (
+        rehearsal._cx322_first_observational_transaction_fixture(bundle)
+    )
+    response = transactions[-1]
+    consumer = ahy[-1]
+
+    assert response["event"] == "response"
+    assert consumer["reason"] == summary["first_response_consumer_reason"]
+    assert consumer["request_sequence"] == response["request_sequence"]
+    assert consumer["application_sequence"] == response["application_sequence"]
+    assert consumer["actual_applied_code"] == response["applied_code"]
+    assert consumer["actual_dac_epoch"] == response["dac_epoch"]
+    assert consumer["response_class"] == response["response_class"]
+    assert consumer["downstream_epoch_exact"] == "true"
 
 
 def test_accelerated_prewrite_boundary_uses_physical_evidence_deadline(

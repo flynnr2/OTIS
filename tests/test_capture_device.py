@@ -71,6 +71,37 @@ class FakeSerial:
         self.flush_calls += 1
 
 
+def test_auto_detect_must_match_freshly_frozen_manifest_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capture_device_module,
+        "_detect_single_device",
+        lambda: "/dev/cu.usbmodem-current",
+    )
+
+    assert capture_device_module._resolve_requested_device(
+        explicit_device=None,
+        auto_detect=True,
+        expected_auto_detect_device="/dev/cu.usbmodem-current",
+    ) == "/dev/cu.usbmodem-current"
+    with pytest.raises(ValueError, match="differs from the path frozen"):
+        capture_device_module._resolve_requested_device(
+            explicit_device=None,
+            auto_detect=True,
+            expected_auto_detect_device="/dev/cu.usbmodem-prior",
+        )
+
+
+def test_expected_auto_detect_binding_requires_auto_detect() -> None:
+    with pytest.raises(ValueError, match="requires --auto-detect"):
+        capture_device_module._resolve_requested_device(
+            explicit_device="/dev/cu.usbmodem-current",
+            auto_detect=False,
+            expected_auto_detect_device="/dev/cu.usbmodem-current",
+        )
+
+
 def _config(tmp_path: Path) -> CaptureDeviceConfig:
     return CaptureDeviceConfig(
         device="/dev/cu.usbmodemTEST",

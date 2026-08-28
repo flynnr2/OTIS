@@ -593,6 +593,7 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx320_active_hybrid",
                 "cx321_active_hybrid",
                 "cx322_direct_hybrid",
+                "cx322_d9_d6_integration_engineering",
                 "otis_sustained_hybrid_regulation_v1",
                 "d9_d6_frequency_only_lower",
             }
@@ -1410,6 +1411,7 @@ def _d9_d6_binary_contract(
         return {
             **base,
             "status": "disabled_profile",
+            "topology_contract": None,
             "readiness_contract": None,
             "required_markers": {},
             "forbidden_markers_present": {},
@@ -1448,14 +1450,26 @@ def _d9_d6_binary_contract(
             "D9 readiness binary contains forbidden runtime/fractional "
             f"selection markers: {present}"
         )
+    contract_binding = {
+        "path": str(D9_D6_READINESS_CONTRACT.relative_to(REPO_ROOT)),
+        "contract_id": readiness["contract_id"],
+        "contract_semantic_sha256": readiness["contract_semantic_sha256"],
+    }
     return {
         **base,
         "status": "verified",
-        "readiness_contract": {
-            "path": str(D9_D6_READINESS_CONTRACT.relative_to(REPO_ROOT)),
-            "contract_id": readiness["contract_id"],
-            "contract_semantic_sha256": readiness["contract_semantic_sha256"],
+        "topology_contract": {
+            **contract_binding,
+            "binding_scope": (
+                "fixed_D8_GPIN0_to_D9_GPOUT0_and_D6_zero_authority_sidecar"
+            ),
         },
+        "readiness_contract": contract_binding if zero_authority else None,
+        "authority_scope": (
+            "no_control_readiness"
+            if zero_authority
+            else "D9_D6_topology_only_controller_authority_is_separate"
+        ),
         "required_markers": {
             "d9_output": marker_presence,
             "d6_monitor": monitor_markers if monitor_selected else {},

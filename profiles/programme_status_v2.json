@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": null,
+  "active_programme": "cx322_d9_d6_integration_engineering",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -2663,6 +2663,53 @@
         "phase_or_hybrid_actuation",
         "g4_progression"
       ]
+    },
+    "cx322_d9_d6_integration_engineering": {
+      "state": "operator_authorized_preflight_rehearsal_and_bounded_bench",
+      "allowed_operations": [
+        "cx322_d9_d6_integration_engineering_live"
+      ],
+      "effective_date": "2026-08-28",
+      "authority": "operator_authorized_nonincremental_engineering_bench_work",
+      "physical_authority_effective": true,
+      "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_integration_engineering_contract_v1.json",
+      "firmware_profile": "cx322_d9_d6_integration_engineering",
+      "serial": {
+        "baud": 115200,
+        "device_selection": "fresh_capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*",
+        "stored_device_path_authority": false
+      },
+      "finite_envelope": {
+        "unarmed_concurrency_observation_s": 1800,
+        "maximum_total_automatic_applications": 1,
+        "maximum_total_physical_control_applications": 1,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 21,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "absolute_wall_clock_limit_s": 7200,
+        "stop_after_first_complete_application_first_consumer_and_response": true,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "extension": false
+      },
+      "authority_invariants": {
+        "D14_reference_authority": true,
+        "D8_oscillator_and_control_truth": true,
+        "D9_measurement_or_control_authority": false,
+        "D6_measurement_control_abort_or_terminal_authority": false,
+        "D10_authority_changed": false,
+        "waveform_qualified": false
+      },
+      "verification": {
+        "exact_build_pending": true,
+        "operational_rehearsal_pending": true,
+        "bench_entry_pending": true,
+        "authority_consumed": false
+      },
+      "next_gate": "exact_build_complete_operational_rehearsal_then_fresh_auto_detect_bench_entry"
     }
   }
 }

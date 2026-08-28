@@ -58,6 +58,13 @@ class ActiveHybridProgramme:
     identification_required: bool = False
     response_checkpoint_observational: bool = False
     sustained_regulation: bool = False
+    forwarded_output_integration: bool = False
+    fresh_serial_auto_detect: bool = False
+    engineering_maximum_applications: int | None = None
+    engineering_maximum_physical_applications: int | None = None
+    engineering_maximum_cumulative_movement_codes: int | None = None
+    engineering_absolute_wall_limit_s: int | None = None
+    terminal_after_first_response: bool = False
 
     @property
     def campaign_name(self) -> str:
@@ -65,11 +72,33 @@ class ActiveHybridProgramme:
 
     @property
     def capture_duration_s(self) -> int:
-        return self.absolute_wall_limit_s + 180
+        return self.authorized_absolute_wall_limit_s + 180
 
     @property
     def supervisor_duration_s(self) -> int:
-        return self.absolute_wall_limit_s + 120
+        return self.authorized_absolute_wall_limit_s + 120
+
+    @property
+    def authorized_maximum_applications(self) -> int:
+        return self.engineering_maximum_applications or self.maximum_applications
+
+    @property
+    def authorized_maximum_physical_applications(self) -> int:
+        return (
+            self.engineering_maximum_physical_applications
+            or self.maximum_physical_applications
+        )
+
+    @property
+    def authorized_maximum_cumulative_movement_codes(self) -> int:
+        return (
+            self.engineering_maximum_cumulative_movement_codes
+            or self.maximum_cumulative_movement_codes
+        )
+
+    @property
+    def authorized_absolute_wall_limit_s(self) -> int:
+        return self.engineering_absolute_wall_limit_s or self.absolute_wall_limit_s
 
 _COMMON_TERMINALS = frozenset(
     {
@@ -259,6 +288,75 @@ CX322_PROGRAMME = ActiveHybridProgramme(
 )
 
 
+CX322_D9_D6_INTEGRATION_PROGRAMME = ActiveHybridProgramme(
+    key="cx322_d9_d6_integration",
+    programme_id="OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_V1",
+    profile_id="cx322_d9_d6_integration_engineering",
+    runtime_run_identity="cx322_d9_d6_integration_engineering:1",
+    status_programme_id="cx322_d9_d6_integration_engineering",
+    operation="cx322_d9_d6_integration_engineering_live",
+    live_stage="OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_LIVE",
+    compatibility_floor="OTIS_CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH_1",
+    manifest_section="cx322_d9_d6_integration",
+    policy_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    policy_path=REPO_ROOT
+    / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+    natural_policy_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+    natural_policy_path=REPO_ROOT
+    / "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
+    setup_code=0xA83C,
+    maximum_applications=4,
+    maximum_physical_applications=4,
+    maximum_deliberate_challenges=0,
+    maximum_cumulative_movement_codes=84,
+    maximum_step_codes=21,
+    minimum_code=0xA800,
+    maximum_code=0xAB00,
+    minimum_applied_cadence_s=1800,
+    qualified_duration_s=43_200,
+    absolute_wall_limit_s=57_600,
+    minimum_natural_phase_material_applications=2,
+    bundle_id="cx322_d9_d6_integration_engineering_bundle_v1",
+    activation_id="cx322_d9_d6_integration_engineering_activation_v1",
+    rehearsal_report_type="cx322_d9_d6_integration_live_topology_rehearsal_v1",
+    run_bundle_path=Path("cx322_d9_d6_integration_exact_bundle_v1.json"),
+    run_proposal_path=Path("cx322_d9_d6_integration_authority_proposal_v1.json"),
+    run_activation_path=Path("cx322_d9_d6_integration_live_activation_v1.json"),
+    physical_seal_path=Path(
+        "reports/cx322_d9_d6_integration_physical_seal_v1.json"
+    ),
+    terminal_decisions=frozenset(
+        {
+            "bounded_integrated_engineering_evidence_acquired",
+            "bounded_integrated_engineering_early_safety_stop",
+            "right_censored_incomplete",
+            "measurement_authority_or_platform_fault",
+            "operator_abort",
+        }
+    ),
+    healthy_preliminary_decisions=frozenset(
+        {"pending_offline_scientific_analysis"}
+    ),
+    hybrid_states=_COMMON_STATES,
+    armable_hybrid_states=frozenset(
+        {
+            "FREQUENCY_ACQUIRE",
+            "PHASE_QUALIFY",
+            "HYBRID_TRACKING",
+            "PHASE_DEGRADED_FREQUENCY_ONLY",
+        }
+    ),
+    response_checkpoint_observational=True,
+    forwarded_output_integration=True,
+    fresh_serial_auto_detect=True,
+    engineering_maximum_applications=1,
+    engineering_maximum_physical_applications=1,
+    engineering_maximum_cumulative_movement_codes=21,
+    engineering_absolute_wall_limit_s=7_200,
+    terminal_after_first_response=True,
+)
+
+
 SUSTAINED_HYBRID_PROGRAMME = ActiveHybridProgramme(
     key="sustained_hybrid",
     programme_id="OTIS_SUSTAINED_HYBRID_REGULATION_V1",
@@ -328,6 +426,7 @@ PROGRAMMES = {
     CX320_PROGRAMME.key: CX320_PROGRAMME,
     CX321_PROGRAMME.key: CX321_PROGRAMME,
     CX322_PROGRAMME.key: CX322_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME.key: CX322_D9_D6_INTEGRATION_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME.key: SUSTAINED_HYBRID_PROGRAMME,
 }
 

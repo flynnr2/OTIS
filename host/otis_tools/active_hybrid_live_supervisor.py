@@ -37,11 +37,12 @@ from .active_control_supervisor import (
 from .active_transactions import (
     ACTIVE_CSV,
     LEASE_PERIOD_S,
-    QUERY_PERIOD_S,
+QUERY_PERIOD_S,
     CampaignSpec,
     _read_csv,
     _utc_now,
 )
+FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
 from .contracts import CsvValidationContext, validate_csv
 from .cx321_plant_sign_evidence_guard import (
     plant_sign_terminal_decision_from_record,
@@ -90,6 +91,84 @@ MINIMUM_PHASE_MATERIAL_APPLICATIONS = 2
 QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S = (
     int(ACTIVE_STATUS_COMPLETE_MAX_AGE_S) + 1
 )
+
+# CONFIG? publishes these non-active records before the solicited ACTIVE
+# snapshot.  The atomic live-health reducer carries their latest values into
+# that snapshot, allowing the integrated programme to fail closed on a D9
+# register/GPIO contradiction without granting D9 measurement or controller
+# authority.  D6 is deliberately different: its status must be observable,
+# but every value (including a local fault) remains admissible here.
+FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH = {
+    ("build", "enable_forwarded_d9_output"): "1",
+    ("build", "enable_forwarded_d6_monitor"): "1",
+    ("build", "enable_d9_d6_readiness_profile"): "0",
+    ("forwarded_clock_output", "contract_id"): (
+        "OTIS_D9_D6_READINESS_CONTRACT_V1"
+    ),
+    ("forwarded_clock_output", "contract_sha256"): (
+        "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d"
+    ),
+    ("forwarded_clock_output", "state"): (
+        "configured_10mhz_forwarded_unqualified"
+    ),
+    ("forwarded_clock_output", "source"): "D8_GPIO20_GPIN0",
+    ("forwarded_clock_output", "destination"): "D9_GPIO21_GPOUT0",
+    ("forwarded_clock_output", "integer_divider"): "1",
+    ("forwarded_clock_output", "fractional_divider"): "0",
+    ("forwarded_clock_output", "applied_auxsrc"): "1",
+    ("forwarded_clock_output", "applied_integer_divider"): "1",
+    ("forwarded_clock_output", "applied_fractional_divider"): "0",
+    ("forwarded_clock_output", "source_gpio_function"): "8",
+    ("forwarded_clock_output", "destination_gpio_function"): "8",
+    ("forwarded_clock_output", "inversion"): "0",
+    ("forwarded_clock_output", "drive_strength_ma"): "2",
+    ("forwarded_clock_output", "slew_rate"): "slow",
+    ("forwarded_clock_output", "nominal_frequency_hz"): "10000000",
+    ("forwarded_clock_output", "readback_valid"): "true",
+}
+FORWARDED_MONITOR_OBSERVABILITY_KEYS = (
+    ("forwarded_clock_monitor", "state"),
+    ("forwarded_clock_monitor", "configured"),
+    ("forwarded_clock_monitor", "running"),
+    ("forwarded_clock_monitor", "session"),
+    ("forwarded_clock_monitor", "snapshot_count"),
+    ("forwarded_clock_monitor", "no_snapshot_count"),
+    ("forwarded_clock_monitor", "fifo_backlog_count"),
+    ("forwarded_clock_monitor", "pio_rxstall_count"),
+    ("forwarded_clock_monitor", "fault_flags"),
+)
+
+
+def forwarded_output_integration_prewrite_evidence(
+    health: dict[tuple[str, str], str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Validate D9 exactness and D6 observability without using either as truth."""
+
+    missing: list[str] = []
+    mismatches: list[str] = []
+    for key, expected in FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH.items():
+        observed = health.get(key)
+        label = f"{key[0]}.{key[1]}"
+        if observed is None:
+            missing.append(label)
+        elif observed != expected:
+            mismatches.append(f"{label}={observed!r}, expected {expected!r}")
+    first_valid_key = ("forwarded_clock_output", "first_valid_ticks")
+    first_valid = health.get(first_valid_key)
+    if first_valid is None:
+        missing.append("forwarded_clock_output.first_valid_ticks")
+    else:
+        try:
+            if int(first_valid) <= 0:
+                raise ValueError
+        except ValueError:
+            mismatches.append(
+                "forwarded_clock_output.first_valid_ticks must be positive"
+            )
+    for key in FORWARDED_MONITOR_OBSERVABILITY_KEYS:
+        if key not in health:
+            missing.append(f"{key[0]}.{key[1]}")
+    return tuple(missing), tuple(mismatches)
 
 HYBRID_STATES = frozenset(
     {
@@ -233,16 +312,16 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or section.get("profile_id") != programme.profile_id
         or setup.get("code") != programme.setup_code
         or control.get("maximum_total_applications")
-        != programme.maximum_physical_applications
+        != programme.authorized_maximum_physical_applications
         or control.get(
             "maximum_total_automatic_applications",
             control.get("maximum_total_applications"),
         )
-        != programme.maximum_applications
+        != programme.authorized_maximum_applications
         or control.get("maximum_deliberate_challenges", 0)
         != programme.maximum_deliberate_challenges
         or control.get("maximum_cumulative_movement_codes")
-        != programme.maximum_cumulative_movement_codes
+        != programme.authorized_maximum_cumulative_movement_codes
         or control.get("maximum_step_codes") != programme.maximum_step_codes
         or control.get("minimum_applied_cadence_s")
         != programme.minimum_applied_cadence_s
@@ -251,7 +330,7 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
         or qualification.get("absolute_wall_clock_limit_s")
-        != programme.absolute_wall_limit_s
+        != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
     ):
         raise ValueError("CX320 live manifest does not carry the exact envelope")
@@ -423,8 +502,10 @@ def load_active_hybrid_spec(
             profile=programme.profile_id,
             run_identity=programme.runtime_run_identity,
             start_code=programme.setup_code,
-            correction_limit=programme.maximum_physical_applications,
-            cumulative_limit=programme.maximum_cumulative_movement_codes,
+            correction_limit=programme.authorized_maximum_physical_applications,
+            cumulative_limit=(
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
             minimum_code=programme.minimum_code,
             maximum_code=programme.maximum_code,
             maximum_step=programme.maximum_step_codes,
@@ -445,6 +526,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         *,
         manifest: dict[str, Any],
         manifest_path: Path,
+        rehearsal_manifest: bool = False,
         **kwargs: object,
     ) -> None:
         envelope = _runtime_envelope(manifest)
@@ -457,6 +539,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ):
             raise ValueError("CX320 supervisor inputs differ from the live manifest")
         self.programme = envelope.programme
+        self.rehearsal_manifest = rehearsal_manifest
         super().__init__(
             mode="live",
             leg=TightDeadbandLeg(
@@ -718,17 +801,24 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
             telemetry_drop_baseline=0,
         )
+        missing = list(readiness.missing)
         mismatches = list(readiness.mismatches)
         if health.get(("cx317_active", "query_nonce")) != str(
             self.state["host_attach_query_nonce"]
         ):
             mismatches.append("solicited post-attachment snapshot is absent")
+        if self.programme.forwarded_output_integration:
+            output_missing, output_mismatches = (
+                forwarded_output_integration_prewrite_evidence(health)
+            )
+            missing.extend(output_missing)
+            mismatches.extend(output_mismatches)
         return PrewriteReadiness(
             contract_id=(
                 f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v1"
             ),
-            ready=not readiness.missing and not mismatches,
-            missing=readiness.missing,
+            ready=not missing and not mismatches,
+            missing=tuple(dict.fromkeys(missing)),
             mismatches=tuple(dict.fromkeys(mismatches)),
             inherited_preview_baseline_code=(
                 readiness.inherited_preview_baseline_code
@@ -920,6 +1010,23 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self._abort(decision)
                 return
         ControlSupervisorBase._check_fail_static_health(self, health)
+        if (
+            self.programme.forwarded_output_integration
+            and self.state["prewrite_contract_ready_utc"] is not None
+        ):
+            output_missing, output_mismatches = (
+                forwarded_output_integration_prewrite_evidence(health)
+            )
+            d9_missing = tuple(
+                item
+                for item in output_missing
+                if not item.startswith("forwarded_clock_monitor.")
+            )
+            if d9_missing or output_mismatches:
+                raise ValueError(
+                    "integrated D9 digital configuration/readback lost: "
+                    + "; ".join((*d9_missing, *output_mismatches))
+                )
         integrity = self._runtime_health_integrity(health)
         if integrity.mismatches or (
             self.state["prewrite_contract_ready_utc"] is not None
@@ -1007,9 +1114,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # frequency_only; each individual count must remain bounded by the
         # global correction count.
         if (
-            corrections > self.programme.maximum_physical_applications
-            or automatic_applications > self.programme.maximum_applications
-            or movement > self.programme.maximum_cumulative_movement_codes
+            corrections
+            > self.programme.authorized_maximum_physical_applications
+            or automatic_applications
+            > self.programme.authorized_maximum_applications
+            or movement
+            > self.programme.authorized_maximum_cumulative_movement_codes
             or material > phase_nonzero
             or phase_nonzero > corrections
             or material + frequency_only > corrections
@@ -1322,7 +1432,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and not _truth(health, "deliberate_challenge_unexercised")
         )
         if (
-            automatic_count >= self.programme.maximum_applications
+            automatic_count >= self.programme.authorized_maximum_applications
             and not challenge_pending
         ):
             return
@@ -1450,6 +1560,30 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
+        if (
+            self.programme.terminal_after_first_response
+            and (
+                self.manifest.get("qualification_evidence") is True
+                or (
+                    self.rehearsal_manifest
+                    and self.manifest.get("rehearsal_endpoint_mode")
+                    == "first_response"
+                )
+            )
+            and self.state.get("first_phase_observation_checkpoint_exact") is True
+            and _truth(health, "first_phase_checkpoint_passed")
+            and int(health.get(("cx317_active", "correction_count"), "0")) == 1
+            and self._healthy_terminal_ready(health)
+        ):
+            self._set_healthy_endpoint(
+                health,
+                endpoint=(
+                    f"{self.programme.key}_first_complete_application_"
+                    "consumer_and_response"
+                ),
+            )
+            return
+
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
         hold = self.state.get("host_verification_hold")
         if (
@@ -1503,16 +1637,14 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             isinstance(wall_origin, str)
             and wall_origin
             and now_epoch - _parse_utc_epoch(wall_origin)
-            >= self.programme.absolute_wall_limit_s
+            >= self.programme.authorized_absolute_wall_limit_s
         ):
             if self._healthy_terminal_ready(health):
                 self.state["terminal"] = {
                     "result": "nonpass",
                     "reason": (
                         f"{self.programme.key}_"
-                        f"{self.programme.absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
-                        if self.programme.sustained_regulation
-                        else f"{self.programme.key}_16h_absolute_wall_endpoint"
+                        f"{self.programme.authorized_absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
                     ),
                     "primary_decision": "right_censored_incomplete",
                     "last_confirmed_code": self.state["terminal_static_code"],
@@ -1583,6 +1715,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         started = time.monotonic()
         last_lease = 0.0
         last_query = 0.0
+        last_output_status_query = time.monotonic()
         with AbortFifo(self.abort_fifo) as abort:
             self._live_command_ack_required = True
             self._programme_event(
@@ -1614,6 +1747,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 if now - last_query >= QUERY_PERIOD_S:
                     self._command(self._status_query_command())
                     last_query = now
+                if (
+                    self.programme.forwarded_output_integration
+                    and now - last_output_status_query
+                    >= FORWARDED_OUTPUT_STATUS_PERIOD_S
+                ):
+                    self._command("CONFIG?")
+                    last_output_status_query = now
                 self._process_transactions()
                 health = self._current_health()
                 self._check_fail_static_health(health)
@@ -1676,6 +1816,7 @@ def create_supervisor(
         expected_build_identity=build_identity,
         duration_s=duration_s,
         console_events=console_events,
+        rehearsal_manifest=rehearsal_manifest,
     )
 
 

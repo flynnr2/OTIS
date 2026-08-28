@@ -149,8 +149,15 @@ constexpr char kRunIdentity[] = "cx321_active_hybrid:3210001";
 constexpr char kExpectedProfile[] = "cx321_active_hybrid";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT && \
+    OTIS_ENABLE_FORWARDED_D6_MONITOR && \
+    !OTIS_ENABLE_D9_D6_READINESS_PROFILE
+constexpr char kRunIdentity[] = "cx322_d9_d6_integration_engineering:1";
+constexpr char kExpectedProfile[] = "cx322_d9_d6_integration_engineering";
+#else
 constexpr char kRunIdentity[] = "cx322_direct_hybrid:3220001";
 constexpr char kExpectedProfile[] = "cx322_direct_hybrid";
+#endif
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
 constexpr char kRunIdentity[] = "otis_sustained_hybrid_regulation_v1:1";

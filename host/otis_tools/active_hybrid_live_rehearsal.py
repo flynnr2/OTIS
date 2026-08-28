@@ -34,10 +34,13 @@ from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_live_supervisor import (
     ARM_LIFETIME_S,
     CORRECTION_RESPONSE_RESERVE_S,
+    FORWARDED_MONITOR_OBSERVABILITY_KEYS,
+    FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS,
     QUERY_PERIOD_S,
     RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
+    forwarded_output_integration_prewrite_evidence,
     load_active_hybrid_spec,
 )
 from .active_hybrid_run import _wait_for_terminal_abort_delivery
@@ -159,6 +162,13 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"JSON root must be an object: {path}")
     return value
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
 
 
 def _active_status_generation_complete(
@@ -416,6 +426,109 @@ def _wire_rows(rows: list[dict[str, str]], fields: tuple[str, ...] | list[str]) 
     return "".join(
         ",".join(row[field] for field in fields) + "\r\n" for row in rows
     ).encode()
+
+
+def _forwarded_integration_health_fixture(
+    *, local_monitor_fault: bool
+) -> dict[tuple[str, str], str]:
+    """Return CONFIG?-derived D9 exactness and zero-authority D6 status."""
+
+    health = dict(FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH)
+    health[("forwarded_clock_output", "first_valid_ticks")] = "16000000"
+    health.update(
+        {
+            ("forwarded_clock_monitor", "state"): (
+                "monitor_invalid_or_unavailable"
+                if local_monitor_fault
+                else "monitoring_unqualified"
+            ),
+            ("forwarded_clock_monitor", "configured"): "1",
+            ("forwarded_clock_monitor", "running"): "1",
+            ("forwarded_clock_monitor", "session"): "1",
+            ("forwarded_clock_monitor", "reference_service_count"): "3",
+            ("forwarded_clock_monitor", "snapshot_count"): "3",
+            ("forwarded_clock_monitor", "no_snapshot_count"): "0",
+            ("forwarded_clock_monitor", "fifo_backlog_count"): (
+                "1" if local_monitor_fault else "0"
+            ),
+            ("forwarded_clock_monitor", "pio_rxstall_count"): "0",
+            ("forwarded_clock_monitor", "fault_flags"): (
+                "8" if local_monitor_fault else "0"
+            ),
+            ("forwarded_clock_monitor", "state_machine"): "3",
+            ("forwarded_clock_monitor", "program_offset"): "11",
+            ("forwarded_clock_monitor", "program_length"): "3",
+        }
+    )
+    return health
+
+
+def _forwarded_integration_wire_fixture() -> bytes:
+    """Exercise integrated D9/D6 capture while retaining D14/D8 truth."""
+
+    lines: list[str] = []
+    sequence = 100
+    healthy = _forwarded_integration_health_fixture(local_monitor_fault=False)
+    for (component, key), value in sorted(healthy.items()):
+        sequence += 1
+        lines.append(
+            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"{component},{key},{value},INFO,0"
+        )
+    for boundary in range(1, 4):
+        down_counter = 0xFFFFFFFF - boundary * 10_000_000
+        lines.extend(
+            (
+                f"SNP,1,1,{boundary},{down_counter},{boundary},"
+                f"{boundary * 16_000_000},0,"
+                "pio_wait_cumulative_snapshot_dma_v1",
+                f"CNT,1,{boundary},2,{(boundary - 1) * 16_000_000},"
+                f"{boundary * 16_000_000},rp2040_timer0,10000000,R,"
+                "h1_cx317_ocxo_10mhz,0",
+                f"MNS,1,1,1,{boundary},{down_counter},{boundary},"
+                f"{boundary * 16_000_000},0,"
+                "pio_wait_cumulative_snapshot_cpu_v1,3",
+            )
+        )
+    # The final CONFIG/status view is deliberately D6-local degraded.  The
+    # concurrent CX322 transaction must still cross its first consumer and
+    # response checkpoint, proving this diagnostic does not veto authority.
+    degraded = _forwarded_integration_health_fixture(local_monitor_fault=True)
+    for key in FORWARDED_MONITOR_OBSERVABILITY_KEYS:
+        sequence += 1
+        lines.append(
+            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"{key[0]},{key[1]},{degraded[key]},WARN,8"
+        )
+    return ("\r\n".join(lines) + "\r\n").encode("ascii")
+
+
+def _forwarded_integration_capture_summary(run_dir: Path) -> dict[str, Any]:
+    health_rows = _read_csv_rows(run_dir / "csv/health.csv")
+    latest = {
+        (row["component"], row["status_key"]): row["status_value"]
+        for row in health_rows
+    }
+    missing, mismatches = forwarded_output_integration_prewrite_evidence(latest)
+    monitor_rows = _read_csv_rows(
+        run_dir / "csv/forwarded_monitor_snapshots.csv"
+    )
+    d14_rows = _read_csv_rows(run_dir / "csv/pps_snapshots.csv")
+    d8_rows = _read_csv_rows(run_dir / "csv/count_observations.csv")
+    return {
+        "d9_configuration_and_readback_exact": not missing and not mismatches,
+        "d9_evidence_missing": list(missing),
+        "d9_evidence_mismatches": list(mismatches),
+        "d14_snapshot_rows_captured": len(d14_rows),
+        "d8_count_rows_captured": len(d8_rows),
+        "d6_monitor_snapshot_rows_captured": len(monitor_rows),
+        "d6_local_fault_observed": latest.get(
+            ("forwarded_clock_monitor", "state")
+        )
+        == "monitor_invalid_or_unavailable",
+        "d6_fault_has_control_authority": False,
+        "d9_waveform_or_load_claim": False,
+    }
 
 
 def _write_all_fd(descriptor: int, payload: bytes) -> None:
@@ -1040,23 +1153,34 @@ def _cx322_first_observational_transaction_fixture(
         and release.requested_delta_codes == 0
     ):
         raise RuntimeError("CX322 fixture did not release later authority exactly")
-    ahy.append(
-        _ahy_row(
-            release,
-            record_sequence=len(ahy) + 1,
-            run_identity=programme.runtime_run_identity,
-            build_identity=str(bundle["firmware"]["build_identity"]),
-            policy_sha256=str(bundle["policy"]["policy_sha256"]),
-            response_policy_sha256=policy.response_policy_sha256,
-            profile_identity=programme.profile_id,
-        )
+    release_row = _ahy_row(
+        release,
+        record_sequence=len(ahy) + 1,
+        run_identity=programme.runtime_run_identity,
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        policy_sha256=str(bundle["policy"]["policy_sha256"]),
+        response_policy_sha256=policy.response_policy_sha256,
+        profile_identity=programme.profile_id,
     )
+    release_row.update(
+        {
+            "request_sequence": response["request_sequence"],
+            "acceptance_sequence": response["request_sequence"],
+            "application_sequence": response["application_sequence"],
+            "response_class": response["response_class"],
+            "actual_applied_code": response["applied_code"],
+            "actual_dac_epoch": response["dac_epoch"],
+            "downstream_epoch_exact": "true",
+        }
+    )
+    ahy.append(release_row)
     return ahy, [manual, *transactions], {
         "request_sequence": 1,
         "requested_delta_codes": decision.requested_delta_codes,
         "requested_code": decision.requested_code,
         "applied_dac_epoch": 2,
         "response_class": response["response_class"],
+        "first_response_consumer_reason": release.reason,
         "later_authority_release_reason": release.reason,
     }
 
@@ -1384,7 +1508,9 @@ def _cx322_selected_estimate_fixture(
                 "source_reference_last_seq": decision["source_last_sequence"],
                 "source_status_refs": "live:STS:pps_gate",
                 "source_dac_ref": f"live:DAC:{decision['dac_epoch']}",
-                "manifest_ref": "firmware_config:cx322_direct_hybrid",
+                "manifest_ref": (
+                    "firmware_config:" + str(bundle["firmware"]["profile_id"])
+                ),
                 "estimator_version": policy.frequency_estimator_id,
                 "config_hash": policy.frequency_estimator_sha256,
                 "observation_validity": "valid",
@@ -1786,8 +1912,13 @@ def _create_rehearsal_run_manifest(
     proposal_path: Path,
     proposal: dict[str, Any],
     device: str,
+    endpoint_mode: str = "abort_path",
 ) -> Path:
     programme = _selected_programme(bundle)
+    if endpoint_mode not in {"abort_path", "first_response"}:
+        raise ValueError("unknown rehearsal endpoint mode")
+    if endpoint_mode == "first_response" and not programme.terminal_after_first_response:
+        raise ValueError("first-response rehearsal selected for a different programme")
     files = [
         dict(entry)
         for entry in (
@@ -1811,6 +1942,7 @@ def _create_rehearsal_run_manifest(
         "board": "pty_no_physical_hardware",
         "capture_mode": "real_capture_device_process_over_pty",
         "qualification_evidence": False,
+        "rehearsal_endpoint_mode": endpoint_mode,
         "physical_actions_performed": 0,
         "actionable": False,
         "actuation_authorized": False,
@@ -1847,17 +1979,19 @@ def _create_rehearsal_run_manifest(
             "setup": {"code": programme.setup_code},
             "automatic_control": {
                 "maximum_total_applications": (
-                    programme.maximum_physical_applications
+                    programme.authorized_maximum_physical_applications
                 ),
                 "maximum_step_codes": programme.maximum_step_codes,
-                "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+                "maximum_cumulative_movement_codes": (
+                    programme.authorized_maximum_cumulative_movement_codes
+                ),
                 "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
                 "minimum_code": programme.minimum_code,
                 "maximum_code": programme.maximum_code,
                 **(
                     {
                         "maximum_total_automatic_applications": (
-                            programme.maximum_applications
+                            programme.authorized_maximum_applications
                         ),
                         "maximum_deliberate_challenges": (
                             programme.maximum_deliberate_challenges
@@ -1869,7 +2003,9 @@ def _create_rehearsal_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
-                "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+                "absolute_wall_clock_limit_s": (
+                    programme.authorized_absolute_wall_limit_s
+                ),
                 "no_extension": True,
             },
         },
@@ -1878,6 +2014,17 @@ def _create_rehearsal_run_manifest(
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
+            *(
+                [
+                    {
+                        "channel_id": 0,
+                        "role": "independent_external_event_not_authority",
+                        "record_family": "raw_events_v1",
+                    }
+                ]
+                if programme.forwarded_output_integration
+                else []
+            ),
             {
                 "channel_id": 1,
                 "role": "authoritative_pps_reference",
@@ -1890,8 +2037,16 @@ def _create_rehearsal_run_manifest(
             },
             {
                 "channel_id": 3,
-                "role": "independent_external_event_not_authority",
-                "record_family": "raw_events_v1",
+                "role": (
+                    "diagnostic_forwarded_d9_clock_monitor_zero_authority"
+                    if programme.forwarded_output_integration
+                    else "independent_external_event_not_authority"
+                ),
+                "record_family": (
+                    "forwarded_monitor_snapshots_v1"
+                    if programme.forwarded_output_integration
+                    else "raw_events_v1"
+                ),
             },
         ],
         "contracts": {
@@ -1970,6 +2125,12 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         or value.get("run_identity") != programme.runtime_run_identity
         or value.get("profile_identity") != programme.profile_id
         or value.get("qualification_evidence") is not False
+        or value.get("rehearsal_endpoint_mode")
+        not in {"abort_path", "first_response"}
+        or (
+            value.get("rehearsal_endpoint_mode") == "first_response"
+            and not programme.terminal_after_first_response
+        )
         or value.get("physical_actions_performed") != 0
         or value.get("actionable") is not False
         or value.get("actuation_authorized") is not False
@@ -2027,6 +2188,7 @@ def _prewrite_boundary_supervisor(
     bundle: dict[str, Any],
     proposal_path: Path,
     proposal: dict[str, Any],
+    endpoint_mode: str = "abort_path",
 ) -> tuple[ActiveHybridLiveSupervisor, dict[tuple[str, str], str]]:
     run_dir.mkdir(parents=True)
     (run_dir / "csv").mkdir()
@@ -2037,6 +2199,7 @@ def _prewrite_boundary_supervisor(
         proposal_path=proposal_path,
         proposal=proposal,
         device="/dev/ttys999",
+        endpoint_mode=endpoint_mode,
     )
     manifest = validate_rehearsal_run_manifest(manifest_path)
     spec, identities = load_active_hybrid_spec(manifest)
@@ -2051,6 +2214,7 @@ def _prewrite_boundary_supervisor(
         identities=identities,
         expected_build_identity=str(bundle["firmware"]["build_identity"]),
         duration_s=None,
+        rehearsal_manifest=True,
     )
     expected_identity = {
         "run_identity": spec.run_identity,
@@ -2075,6 +2239,10 @@ def _prewrite_boundary_supervisor(
             ("cx317_active", "frequency_only_application_count"): "0",
         }
     )
+    if supervisor.programme.forwarded_output_integration:
+        health.update(
+            _forwarded_integration_health_fixture(local_monitor_fault=True)
+        )
     if supervisor.programme.identification_required:
         health.update(
             {
@@ -2249,12 +2417,18 @@ def _exercise_qualified_device_time_boundaries(
 ) -> dict[str, Any]:
     """Prove scientific duration is owned by the qualifying device clock."""
 
+    programme = _selected_programme(bundle)
     supervisor, health = _prewrite_boundary_supervisor(
         run_dir=output_dir / "qualified_device_clock",
         bundle_path=bundle_path,
         bundle=bundle,
         proposal_path=proposal_path,
         proposal=proposal,
+        endpoint_mode=(
+            "first_response"
+            if programme.terminal_after_first_response
+            else "abort_path"
+        ),
     )
     origin_uptime_s = 4_000
     # Preserve the non-zero subsecond phase that escaped the attempt-8 host
@@ -2298,6 +2472,8 @@ def _exercise_qualified_device_time_boundaries(
     supervisor.state["setup_confirmed_utc"] = supervisor.envelope.wall_origin_utc
     supervisor.state["manual_start_sent"] = True
     supervisor._save()
+    application_count = 1 if programme.terminal_after_first_response else 2
+    movement_codes = 4 if programme.terminal_after_first_response else 8
     health.update(
         {
             ("cx317_active", "state"): "DISARMED",
@@ -2311,10 +2487,14 @@ def _exercise_qualified_device_time_boundaries(
             ("cx317_active", "session_id"): "1",
             ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
             ("cx317_active", "first_phase_checkpoint_passed"): "true",
-            ("cx317_active", "phase_nonzero_application_count"): "2",
-            ("cx317_active", "phase_material_application_count"): "2",
-            ("cx317_active", "correction_count"): "2",
-            ("cx317_active", "cumulative_movement_codes"): "8",
+            ("cx317_active", "phase_nonzero_application_count"): str(
+                application_count
+            ),
+            ("cx317_active", "phase_material_application_count"): str(
+                application_count
+            ),
+            ("cx317_active", "correction_count"): str(application_count),
+            ("cx317_active", "cumulative_movement_codes"): str(movement_codes),
         }
     )
 
@@ -2331,6 +2511,47 @@ def _exercise_qualified_device_time_boundaries(
         and supervisor.state["qualified_origin_timestamp_ticks"] == origin_ticks
         and supervisor.state["qualified_origin_session_id"] == 1
     )
+
+    if programme.terminal_after_first_response:
+        supervisor._check_fail_static_health(health)
+        wall_origin_epoch = datetime.fromisoformat(
+            supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
+        ).timestamp()
+        supervisor._maybe_finish(health, wall_origin_epoch + 1, 0.0)
+        expected_reason = (
+            f"{programme.key}_first_complete_application_consumer_and_response"
+        )
+        terminal = supervisor.state.get("terminal") or {}
+        result = {
+            "time_domain": "rp2040_timer0",
+            "capture_session": 1,
+            "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
+            "fractional_origin_deferred_until_lower_bound": (
+                fractional_origin_deferred
+            ),
+            "exact_fractional_origin_established": exact_origin_established,
+            "authorized_physical_applications_exercised": application_count,
+            "authorized_cumulative_movement_codes_exercised": movement_codes,
+            "first_response_terminal_exercised": (
+                terminal.get("result") == "healthy_stop"
+                and terminal.get("reason") == expected_reason
+            ),
+            "qualified_endpoint_not_fabricated": True,
+            "physical_actions_performed": 0,
+        }
+        if not all(
+            result[key]
+            for key in (
+                "fractional_origin_deferred_until_lower_bound",
+                "exact_fractional_origin_established",
+                "first_response_terminal_exercised",
+                "qualified_endpoint_not_fabricated",
+            )
+        ):
+            raise RuntimeError(
+                "integrated first-response device-clock rehearsal failed"
+            )
+        return result
 
     qualified_duration_s = supervisor.programme.qualified_duration_s
     admission_elapsed_s = qualified_duration_s - CORRECTION_RESPONSE_RESERVE_S
@@ -2967,7 +3188,10 @@ def _exercise_cx322_real_transaction_path(
                                 )
                                 state[target] = int(application[key])
                         if phase == 4:
-                            if request_sequence == 1:
+                            if (
+                                request_sequence == 1
+                                and programme.sustained_regulation
+                            ):
                                 state["checkpoint_passed"] = True
                             if programme.sustained_regulation:
                                 # Sustained rehearsal spans more than one
@@ -3078,6 +3302,55 @@ def _exercise_cx322_real_transaction_path(
                         ahy[decision_cursor:], ACTIVE_HYBRID_DECISION_V1_FIELDS
                     ),
                 )
+        first_response_consumer_exact = True
+        first_response_consumer_reason = summary.get(
+            "first_response_consumer_reason"
+        )
+        if not programme.sustained_regulation:
+            ahy_path = run_dir / "csv/active_hybrid_decisions_v1.csv"
+            _wait_until(
+                lambda: ahy_path.is_file()
+                and sum(1 for _ in ahy_path.open(encoding="utf-8"))
+                >= len(ahy) + 1,
+                10.0,
+                "first response consumer AHY capture",
+            )
+            captured_ahy = list(
+                csv.DictReader(
+                    ahy_path.open("r", newline="", encoding="utf-8")
+                )
+            )
+            response = next(
+                row
+                for row in reversed(transactions)
+                if row["event"] == "response"
+            )
+            consumer = captured_ahy[-1]
+            first_response_consumer_exact = (
+                consumer["request_sequence"] == response["request_sequence"]
+                and consumer["application_sequence"]
+                == response["application_sequence"]
+                and consumer["actual_applied_code"] == response["applied_code"]
+                and consumer["actual_dac_epoch"] == response["dac_epoch"]
+                and consumer["response_class"] == response["response_class"]
+                and consumer["downstream_epoch_exact"] == "true"
+                and consumer["reason"] == first_response_consumer_reason
+            )
+            if not first_response_consumer_exact:
+                raise RuntimeError(
+                    "captured first-response consumer does not join the exact "
+                    "application and response"
+                )
+            if programme.forwarded_output_integration:
+                integration = _forwarded_integration_capture_summary(run_dir)
+                if not integration["d6_local_fault_observed"]:
+                    raise RuntimeError(
+                        "D6-local fault was not retained through the exact "
+                        "first-response consumer"
+                    )
+            with write_lock:
+                state["checkpoint_passed"] = True
+            emit_active_status()
         if not phase4_observed.wait(30.0):
             raise TimeoutError("observational final phase-4 ACK was not observed")
         if errors:
@@ -3135,11 +3408,11 @@ def _exercise_cx322_real_transaction_path(
         "firmware_consumption_confirmed": len(evidence_commands)
         == 4 * len(applications),
         "first_phase_observation_checkpoint_exact": True,
-        "later_authority_release_reason": (
-            summary["first_response_consumer_reason"]
-            if programme.sustained_regulation
-            else summary["later_authority_release_reason"]
-        ),
+        "first_response_consumer_exact": first_response_consumer_exact,
+        "first_response_consumer_reason": first_response_consumer_reason,
+        "later_authority_release_reason": summary[
+            "later_authority_release_reason"
+        ] if not programme.sustained_regulation else first_response_consumer_reason,
         "last_status_generation": int(state["generation"]),
         "applied_code": int(state["applied_code"]),
         "applied_dac_epoch": int(state["dac_epoch"]),
@@ -3160,10 +3433,34 @@ def _exercise_cx322_real_transaction_path(
         ),
         "physical_actions_performed": 0,
     }
+    if programme.forwarded_output_integration:
+        result["forwarded_output_integration"] = (
+            _forwarded_integration_capture_summary(run_dir)
+        )
+        integration = result["forwarded_output_integration"]
+        integration["d6_fault_retained_through_first_response_consumer"] = (
+            result["first_response_consumer_exact"]
+            and integration["d6_local_fault_observed"]
+        )
+        if not (
+            integration["d9_configuration_and_readback_exact"]
+            and integration["d14_snapshot_rows_captured"] == 3
+            and integration["d8_count_rows_captured"] == 3
+            and integration["d6_monitor_snapshot_rows_captured"] == 3
+            and integration["d6_local_fault_observed"]
+            and integration[
+                "d6_fault_retained_through_first_response_consumer"
+            ]
+            and integration["d6_fault_has_control_authority"] is False
+        ):
+            raise RuntimeError(
+                "integrated D9/D6 real-process capture rehearsal failed"
+            )
     if not (
         result["response_retained_nonterminal"]
         and result["firmware_consumption_confirmed"]
         and result["first_phase_observation_checkpoint_exact"]
+        and result["first_response_consumer_exact"]
         and result["complete_multi_transaction_sequence"]
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
@@ -3177,8 +3474,13 @@ def _run_real_process_topology(
     bundle: dict[str, Any],
     proposal_path: Path,
     proposal: dict[str, Any],
+    endpoint_mode: str = "abort_path",
 ) -> dict[str, Any]:
     programme = _selected_programme(bundle)
+    if endpoint_mode not in {"abort_path", "first_response"}:
+        raise ValueError("unknown real-process rehearsal endpoint mode")
+    if endpoint_mode == "first_response" and not programme.terminal_after_first_response:
+        raise ValueError("first-response topology selected for a different programme")
     # The sustained path now preserves and confirms four causal phase-4
     # transactions instead of exposing one pre-batched CSV frontier.  Keep
     # both processes bounded, but give that real acknowledgement sequence its
@@ -3200,6 +3502,7 @@ def _run_real_process_topology(
         proposal_path=proposal_path,
         proposal=proposal,
         device=device,
+        endpoint_mode=endpoint_mode,
     )
     normal = run_dir / "control/normal_commands.fifo"
     emergency = run_dir / "control/emergency_abort.fifo"
@@ -3305,6 +3608,8 @@ def _run_real_process_topology(
             10.0,
             "initial live-supervisor command acknowledgements",
         )
+        if programme.forwarded_output_integration:
+            _write_all_fd(master, _forwarded_integration_wire_fixture())
         if _selected_programme(bundle).identification_required:
             real_transaction_path = _exercise_cx321_real_transaction_path(
                 master=master,
@@ -3323,6 +3628,62 @@ def _run_real_process_topology(
                 run_dir=run_dir,
                 bundle=bundle,
             )
+            if endpoint_mode == "first_response":
+                supervisor.wait(timeout=15)
+                supervisor_output, _ = supervisor.communicate(timeout=5)
+                terminal = _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                )
+                expected_reason = (
+                    f"{programme.key}_first_complete_application_"
+                    "consumer_and_response"
+                )
+                if (
+                    supervisor.returncode != 0
+                    or (terminal.get("terminal") or {}).get("result")
+                    != "healthy_stop"
+                    or (terminal.get("terminal") or {}).get("reason")
+                    != expected_reason
+                ):
+                    raise RuntimeError(
+                        "integrated first-response PTY terminal was not exact: "
+                        f"exit={supervisor.returncode}; "
+                        f"terminal={terminal.get('terminal')!r}; "
+                        f"output={supervisor_output[-2000:]}"
+                    )
+                capture.send_signal(signal.SIGINT)
+                capture_output, _ = capture.communicate(timeout=15)
+                if capture.returncode != 0:
+                    raise RuntimeError(
+                        "first-response capture did not close cleanly: "
+                        f"{capture_output[-2000:]}"
+                    )
+                state = _read_object(
+                    run_dir / "reports/capture_device_state.json"
+                )
+                os.close(master)
+                master = -1
+                return {
+                    "rehearsal_endpoint_mode": endpoint_mode,
+                    "capture_pid": capture.pid,
+                    "supervisor_pid": supervisor.pid,
+                    "device": device,
+                    "owners_before": sorted(owners_before),
+                    "first_response_terminal_observed": True,
+                    "supervisor_terminal": terminal.get("terminal"),
+                    "capture_parser_errors": state.get("parser_errors"),
+                    "capture_emergency_aborts_sent": state.get(
+                        "emergency_aborts_sent"
+                    ),
+                    "initial_command_bytes_sha256": sha256(
+                        initial_commands
+                    ).hexdigest(),
+                    "config_query_observed": b"CONFIG?\n" in initial_commands,
+                    "real_transaction_path": real_transaction_path,
+                    "cx322_real_transaction_path": real_transaction_path,
+                    "physical_actions_performed": 0,
+                    "qualification_evidence": False,
+                }
             os.kill(supervisor.pid, signal.SIGSTOP)
             supervisor_stopped = True
         if real_transaction_path is None:
@@ -3495,7 +3856,8 @@ def _run_real_process_topology(
         except subprocess.TimeoutExpired:
             capture.kill()
             capture_output, _ = capture.communicate(timeout=5)
-        os.close(master)
+        if master >= 0:
+            os.close(master)
     if capture.returncode != 0:
         raise RuntimeError(
             f"capture process rehearsal failed: {capture_output[-4000:]}"
@@ -3503,6 +3865,7 @@ def _run_real_process_topology(
     state = _read_object(run_dir / "reports/capture_device_state.json")
     terminal = _read_object(run_dir / "reports/cx317_active_supervisor_state.json")
     return {
+        "rehearsal_endpoint_mode": endpoint_mode,
         "capture_pid": capture.pid,
         "supervisor_pid": None if supervisor is None else supervisor.pid,
         "device": device,
@@ -3577,6 +3940,19 @@ def run(
         bundle=bundle,
         proposal_path=proposal_path,
         proposal=proposal,
+        endpoint_mode="abort_path",
+    )
+    first_response_topology = (
+        _run_real_process_topology(
+            output_dir=output_dir / "first_response_endpoint",
+            bundle_path=bundle_path,
+            bundle=bundle,
+            proposal_path=proposal_path,
+            proposal=proposal,
+            endpoint_mode="first_response",
+        )
+        if programme.terminal_after_first_response
+        else None
     )
     prewrite_boundary = _exercise_prewrite_qualification_boundary(
         output_dir=output_dir / "prewrite_boundary",
@@ -3630,6 +4006,7 @@ def run(
         "coverage": coverage,
         "tool_bindings": bundle["host_tools"],
         "real_process_topology": topology,
+        "first_response_endpoint_topology": first_response_topology,
         "accelerated_prewrite_boundary": prewrite_boundary,
         "accelerated_qualified_device_clock": qualified_device_clock,
         "cx321_identification_ordering": cx321_ordering,
@@ -3669,6 +4046,14 @@ def run(
                         "cx322_inside_deadband_retained_nonterminal",
                         "cx322_firmware_ack_consumption_confirmation",
                         "cx322_observation_checkpoint_later_authority_release",
+                        *(
+                            [
+                                "integrated_first_response_healthy_terminal",
+                                "integrated_d6_fault_first_consumer_causal_join",
+                            ]
+                            if programme.terminal_after_first_response
+                            else []
+                        ),
                     ]
                     if programme.response_checkpoint_observational
                     else []

@@ -30,6 +30,9 @@ from .active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     programme_from_mapping,
 )
+from .active_hybrid_live_supervisor import (
+    forwarded_output_integration_prewrite_evidence,
+)
 from .active_hybrid_evidence_guard import (
     ResponseCheckpointRejected,
     _cx321_natural_replay_handoff,
@@ -2124,7 +2127,9 @@ def analyze(
             maximum_code=spec.maximum_code,
             maximum_step=spec.maximum_step,
             maximum_applications=spec.correction_limit,
-            maximum_automatic_applications=programme.maximum_applications,
+            maximum_automatic_applications=(
+                programme.authorized_maximum_applications
+            ),
             maximum_deliberate_challenges=programme.maximum_deliberate_challenges,
             maximum_cumulative=spec.cumulative_limit,
             minimum_cadence_s=int(control["minimum_applied_cadence_s"]),
@@ -2222,6 +2227,43 @@ def analyze(
         evidence = {}
 
     health = latest_complete_health(run_dir / HEALTH_CSV)
+    forwarded_output_integration: dict[str, Any] | None = None
+    if programme.forwarded_output_integration:
+        integration_missing, integration_mismatches = (
+            forwarded_output_integration_prewrite_evidence(health)
+        )
+        d9_missing = [
+            item
+            for item in integration_missing
+            if not item.startswith("forwarded_clock_monitor.")
+        ]
+        d6_missing = [
+            item
+            for item in integration_missing
+            if item.startswith("forwarded_clock_monitor.")
+        ]
+        monitor_path = _contract_path(
+            manifest, "forwarded_monitor_snapshots_v1"
+        )
+        monitor_rows = _read_csv(monitor_path)
+        forwarded_output_integration = {
+            "d9_digital_configuration_and_readback_exact": (
+                not d9_missing and not integration_mismatches
+            ),
+            "d9_missing": d9_missing,
+            "d9_mismatches": list(integration_mismatches),
+            "d9_waveform_load_jitter_or_independent_frequency_qualified": False,
+            "d6_status_observable": not d6_missing,
+            "d6_status_missing": d6_missing,
+            "d6_monitor_snapshot_count": len(monitor_rows),
+            "d6_latest_state": health.get(
+                ("forwarded_clock_monitor", "state"), "unavailable"
+            ),
+            "d6_latest_fault_flags": health.get(
+                ("forwarded_clock_monitor", "fault_flags"), "unavailable"
+            ),
+            "d6_control_validity_or_terminal_authority": False,
+        }
     latest_hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
     terminal_static_code = terminal.get(
         "last_confirmed_code", supervisor_state.get("terminal_static_code")
@@ -2259,7 +2301,16 @@ def analyze(
     except (TypeError, ValueError):
         static_terminal_exact = False
         retained_input_failures.append("terminal static code is malformed")
-    endpoint_complete = (
+    engineering_endpoint_complete = (
+        programme.terminal_after_first_response
+        and terminal.get("result") == "healthy_stop"
+        and terminal.get("reason")
+        == (
+            f"{programme.key}_first_complete_application_"
+            "consumer_and_response"
+        )
+    )
+    endpoint_complete = engineering_endpoint_complete or (
         terminal.get("result") == "healthy_stop"
         and terminal.get("reason")
         == (
@@ -2358,6 +2409,18 @@ def analyze(
         "plant_sign_evidence_replay_exact": bool(
             plant_sign_replay.get("exact_replay")
         ),
+        **(
+            {
+                "integrated_d9_digital_configuration_and_readback_exact": bool(
+                    forwarded_output_integration
+                    and forwarded_output_integration[
+                        "d9_digital_configuration_and_readback_exact"
+                    ]
+                )
+            }
+            if programme.forwarded_output_integration
+            else {}
+        ),
     }
     acquisition_check_names = {
         "frozen_live_manifest_exact",
@@ -2368,6 +2431,10 @@ def analyze(
         "terminal_disarmed_evidence_clear_no_outstanding_static_code",
         "response_identity_through_first_dependent_decision_exact",
     }
+    if programme.forwarded_output_integration:
+        acquisition_check_names.add(
+            "integrated_d9_digital_configuration_and_readback_exact"
+        )
     acquisition_gate_passed = all(
         common_checks[name] for name in acquisition_check_names
     )
@@ -2415,6 +2482,12 @@ def analyze(
                 == "bounded_direct_hybrid_early_safety_stop"
             ),
         )
+        if (
+            programme.terminal_after_first_response
+            and engineering_endpoint_complete
+            and primary_decision == "bounded_direct_hybrid_evidence_acquired"
+        ):
+            primary_decision = "bounded_integrated_engineering_evidence_acquired"
     preliminary_decision = terminal.get("preliminary_decision")
     plant_terminal_decision = (
         plant_sign_replay.get("terminal_decision")
@@ -2552,6 +2625,11 @@ def analyze(
         },
         "active_hybrid_replay": ahy_replay,
         "application_counts_and_budgets": applications,
+        **(
+            {"forwarded_output_integration": forwarded_output_integration}
+            if forwarded_output_integration is not None
+            else {}
+        ),
         **(
             {"sustained_regulation": sustained_regulation}
             if sustained_regulation is not None

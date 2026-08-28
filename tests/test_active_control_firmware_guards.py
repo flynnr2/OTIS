@@ -664,11 +664,11 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
         "otis_sustained_hybrid_regulation_v1",
-        # This is the retained CX319 lower-leg frequency-only controller with
-        # D9 forwarding/D6 monitoring.  It is the sole D9 profile permitted
-        # to compile bounded active control; the three readiness strata stay
-        # non-actuating.
+        # Retained CX319 lower-leg frequency-only controller with D9/D6.
         "d9_d6_frequency_only_lower",
+        # Operator-authorized integration engineering profile: unchanged
+        # CX322 authority with D9/D6 remaining outside control predicates.
+        "cx322_d9_d6_integration_engineering",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":
@@ -680,3 +680,46 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
             assert enabled == "1"
         else:
             assert enabled == "0"
+
+
+def test_integrated_cx322_keeps_d9_d6_zero_authority_but_requires_readback() -> None:
+    matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
+    profile = next(
+        item
+        for item in matrix["profiles"]
+        if item["id"] == "cx322_d9_d6_integration_engineering"
+    )
+    defines = profile["defines"]
+    assert defines["OTIS_ENABLE_CX322_DIRECT_HYBRID"] == "1"
+    assert defines["OTIS_ENABLE_D9_D6_READINESS_PROFILE"] == "0"
+    assert defines["OTIS_ENABLE_FORWARDED_D9_OUTPUT"] == "1"
+    assert defines["OTIS_ENABLE_FORWARDED_D6_MONITOR"] == "1"
+
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    selection = sketch[
+        sketch.index("#if OTIS_ENABLE_FORWARDED_D9_OUTPUT") :
+        sketch.index("#if OTIS_ENABLE_FORWARDED_D6_MONITOR")
+    ]
+    assert "OtisBootCapabilityRequirement::Required" in selection
+    assert "OtisBootCapabilityRequirement::Optional" not in selection
+    assert '"enable_forwarded_d9_output"' in sketch
+    assert '"enable_forwarded_d6_monitor"' in sketch
+    assert '"enable_d9_d6_readiness_profile"' in sketch
+    assert "emit_h0_pin_status();" in sketch[
+        sketch.index("OtisSerialCommandKind::ConfigQuery") :
+        sketch.index("OtisSerialCommandKind::GnssBaud")
+    ]
+
+
+def test_integrated_cx322_has_distinct_firmware_runtime_identity() -> None:
+    source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "cx322_d9_d6_integration_engineering:1" in source
+    assert 'kExpectedProfile[] = "cx322_d9_d6_integration_engineering"' in source
+    assert "OTIS_ENABLE_FORWARDED_D9_OUTPUT &&" in source
+    assert "OTIS_ENABLE_FORWARDED_D6_MONITOR &&" in source
+    assert "!OTIS_ENABLE_D9_D6_READINESS_PROFILE" in source

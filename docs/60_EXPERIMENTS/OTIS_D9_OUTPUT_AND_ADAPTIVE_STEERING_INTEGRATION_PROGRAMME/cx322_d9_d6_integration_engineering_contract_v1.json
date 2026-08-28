@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_CONTRACT_V1",
+  "purpose": "Exercise unchanged bounded CX322 steering concurrently with fixed D9 forwarding and the zero-authority D6 diagnostic sidecar without promoting any D9 electrical claim.",
+  "operator_direction": {
+    "recorded_date": "2026-08-28",
+    "engineering_testing_may_proceed_without_waveform_evidence": true,
+    "waveform_claims_waived": false,
+    "incremental_bench_authorization_required": false
+  },
+  "semantic_parents": {
+    "d9_d6_readiness_contract_semantic_sha256": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d",
+    "prompt02_controller_decision_semantic_sha256": "3ab6a0a004788e5856eabe27b45956160ec2b66d05a8a42237c7cf4325bda82f",
+    "cx322_policy_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+    "prompt03_non_effective_semantics_status": "reference_only_not_selected_by_this_baseline_integration"
+  },
+  "firmware_profile": {
+    "profile_id": "cx322_d9_d6_integration_engineering",
+    "base_profile_id": "cx322_direct_hybrid",
+    "required_selector_delta": {
+      "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
+      "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
+      "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1"
+    },
+    "every_other_selector_must_equal_base": true,
+    "gnss_uart_baud": 115200
+  },
+  "authority": {
+    "bundle_effective": false,
+    "operator_bench_authority_received": true,
+    "cx322_request_law_changed": false,
+    "firmware_maximum_applications": 4,
+    "firmware_maximum_cumulative_movement_codes": 84,
+    "firmware_maximum_step_codes": 21,
+    "dac_min_code_hex": "0xA800",
+    "dac_max_code_hex": "0xAB00",
+    "d9_measurement_authority": false,
+    "d9_control_authority": false,
+    "d6_measurement_authority": false,
+    "d6_control_authority": false,
+    "d10_authority_changed": false,
+    "waveform_qualified": false
+  },
+  "topology": {
+    "reference_authority": "D14",
+    "oscillator_and_control_truth": "D8",
+    "forwarded_output": "D8_GPIO20_GPIN0_to_D9_GPIO21_GPOUT0_integer_divide_one",
+    "diagnostic_loopback": "D9_through_operator_reported_1k_series_resistor_to_D6_GPIO18",
+    "d6_failure_policy": "local_drop_new_diagnostic_only",
+    "d9_entry_gate": "exact_source_destination_integer_fractional_gpio_and_readback_must_match",
+    "d9_waveform_evidence": "not_available_not_required_for_engineering_test"
+  },
+  "device_and_transport": {
+    "host_baud": 115200,
+    "selection": "capture_device_--auto-detect_fresh_for_every_capture_and_reenumeration",
+    "required_candidate_count": 1,
+    "stored_device_path_permitted": false,
+    "stored_board_serial_permitted": false,
+    "sole_serial_owner_required": true,
+    "independent_abort_delivery_required": true
+  },
+  "pre_actuation_gates": [
+    "clean_exact_source_and_verified_integrated_build_manifest",
+    "complete_integrated_no_hardware_operational_rehearsal",
+    "fresh_CONFIG_query_with_exact_profile_build_and_selector_identity",
+    "D9_readback_exact_and_valid",
+    "D14_D8_continuous_and_control_eligible",
+    "D6_status_present_or_explicitly_local_degraded",
+    "GNSS_metadata_fresh_same_receiver_at_115200",
+    "actual_DAC_code_and_epoch_queried_without_nominal_restoration",
+    "independent_abort_path_ready"
+  ],
+  "initial_bench_envelope": {
+    "unarmed_concurrency_observation_seconds": 1800,
+    "maximum_automatic_applications": 1,
+    "maximum_cumulative_movement_codes": 21,
+    "maximum_step_codes": 21,
+    "automatic_retry": false,
+    "stop_after_first_complete_application_first_consumer_and_response": true,
+    "absolute_wall_limit_seconds": 7200,
+    "starting_code_policy": "query_and_bind_actual_state_never_guess_or_restore"
+  },
+  "stop_conditions": [
+    "D14_or_D8_authoritative_capture_invalid_or_discontinuous",
+    "D9_configuration_source_divider_gpio_or_readback_contradiction",
+    "resource_registry_or_cross_core_integrity_fault",
+    "command_acknowledgement_or_transaction_identity_contradiction",
+    "DAC_code_epoch_or_first_consumer_identity_contradiction",
+    "normal_transport_obstructed_without_bounded_abort_delivery",
+    "actuator_request_outside_initial_bench_envelope"
+  ],
+  "claim_boundary": {
+    "engineering_tests_may_establish": [
+      "integrated_profile_and_binary_field_presence",
+      "D9_digital_configuration_and_readback",
+      "D6_same_D14_boundary_digital_count_continuity",
+      "D14_D8_non_interference_and_controller_truth",
+      "resource_queue_transport_and_transaction_coexistence",
+      "bounded_CX322_D14_D8_steering_response"
+    ],
+    "engineering_tests_cannot_establish": [
+      "D9_voltage_levels_or_logic_margin",
+      "D9_duty_cycle_rise_fall_ringing_or_load_response",
+      "D9_propagation_delay_or_jitter",
+      "independently_referenced_D9_frequency",
+      "general_D9_waveform_qualification"
+    ]
+  },
+  "contract_semantic_sha256": "02327759a02083de94e21064c529f95548ba20978c249613996c3bfa1b706d0c"
+}

@@ -141,6 +141,24 @@ def test_cx322_direct_hybrid_is_a_current_evidence_package(
     assert load_manifest(run_dir).data == value
 
 
+def test_cx322_d9_d6_integration_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx322_d9_d6"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="OTIS_CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH_1",
+        run_id="cx322_d9_d6_integration_live_fixture",
+        stage="OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_LIVE",
+        cx319=None,
+        cx322_d9_d6_integration={
+            "profile_id": "cx322_d9_d6_integration_engineering"
+        },
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_sustained_hybrid_is_a_current_evidence_package(
     tmp_path: Path,
 ) -> None:

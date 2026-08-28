@@ -241,6 +241,28 @@ def _detect_single_device() -> str:
     return candidates[0]
 
 
+def _resolve_requested_device(
+    *,
+    explicit_device: str | None,
+    auto_detect: bool,
+    expected_auto_detect_device: str | None,
+) -> str:
+    if expected_auto_detect_device is not None and not auto_detect:
+        raise ValueError("--expected-auto-detect-device requires --auto-detect")
+    device = _detect_single_device() if auto_detect else explicit_device
+    if not isinstance(device, str) or not device:
+        raise ValueError("serial device selection is unavailable")
+    if (
+        expected_auto_detect_device is not None
+        and device != expected_auto_detect_device
+    ):
+        raise ValueError(
+            "fresh capture auto-detect differs from the path frozen into "
+            "the run manifest"
+        )
+    return device
+
+
 def _create_manifest_if_missing(
     run_dir: Path,
     device: str,
@@ -1504,6 +1526,13 @@ def build_parser() -> argparse.ArgumentParser:
     device_group = parser.add_mutually_exclusive_group(required=True)
     device_group.add_argument("--device", help="Serial device path, for example /dev/cu.usbmodem101.")
     device_group.add_argument("--auto-detect", action="store_true", help="Use the only /dev/cu.usbmodem* device if exactly one exists.")
+    parser.add_argument(
+        "--expected-auto-detect-device",
+        help=(
+            "With --auto-detect, require the capture process's exactly-one "
+            "resolution to equal this freshly resolved manifest path."
+        ),
+    )
     parser.add_argument("--baud", type=int, default=115200, help="Serial baud rate.")
     parser.add_argument("--run-dir", required=True, type=Path, help="Run directory to create/use.")
     parser.add_argument("--status-interval", type=float, default=60.0, help="Seconds between health log lines.")
@@ -1620,7 +1649,14 @@ def main() -> None:
         filemode="a",
         force=True,
     )
-    device = _detect_single_device() if args.auto_detect else args.device
+    try:
+        device = _resolve_requested_device(
+            explicit_device=args.device,
+            auto_detect=args.auto_detect,
+            expected_auto_detect_device=args.expected_auto_detect_device,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     config = CaptureDeviceConfig(
         device=device,
         baud=args.baud,

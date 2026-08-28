@@ -568,6 +568,7 @@ class ActiveTransactionSupervisor:
             "cx320_active_hybrid",
             "cx321_active_hybrid",
             "cx322_direct_hybrid",
+            "cx322_d9_d6_integration_engineering",
             SUSTAINED_HYBRID_PROFILE_ID,
         }
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"

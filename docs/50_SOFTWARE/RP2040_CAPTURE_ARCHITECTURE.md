@@ -97,7 +97,8 @@ ownership diagnostics are defined in
 [`HARDWARE_RESOURCE_OWNERSHIP.md`](HARDWARE_RESOURCE_OWNERSHIP.md).
 
 Do not reuse `D9` or `D2` as general capture inputs. D6 is selected only by the
-exact readiness profile and remains outside the authoritative capture plane.
+exact readiness or integrated engineering profiles and remains outside the
+authoritative capture plane.
 
 ## D6 diagnostic sidecar
 

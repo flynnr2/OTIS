@@ -12,6 +12,7 @@ from host.otis_tools import active_hybrid_live_supervisor as supervisor
 from host.otis_tools.active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     CX321_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     get_active_hybrid_programme,
     programme_from_mapping,
 )
@@ -61,8 +62,29 @@ def test_programme_mapping_requires_an_exact_supported_identity() -> None:
         programme_from_mapping({"run_identity": CX320_PROGRAMME.runtime_run_identity})
         is CX320_PROGRAMME
     )
+    assert get_active_hybrid_programme(
+        "cx322_d9_d6_integration_engineering"
+    ) is CX322_D9_D6_INTEGRATION_PROGRAMME
     with pytest.raises(ValueError, match="does not identify"):
         programme_from_mapping({"programme_id": "CX999"})
+
+
+def test_cx322_d9_d6_descriptor_is_distinct_with_unchanged_controller() -> None:
+    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    assert programme.profile_id == "cx322_d9_d6_integration_engineering"
+    assert programme.forwarded_output_integration
+    assert programme.fresh_serial_auto_detect
+    assert programme.authorized_maximum_applications == 1
+    assert programme.authorized_maximum_physical_applications == 1
+    assert programme.authorized_maximum_cumulative_movement_codes == 21
+    assert programme.authorized_absolute_wall_limit_s == 7_200
+    assert programme.terminal_after_first_response
+    assert programme.response_checkpoint_observational
+    assert programme.policy_id == "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    assert programme.maximum_physical_applications == 4
+    assert programme.maximum_cumulative_movement_codes == 84
+    assert programme.maximum_step_codes == 21
+    assert programme.runtime_run_identity != "cx322_direct_hybrid:3220001"
 
 
 def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(

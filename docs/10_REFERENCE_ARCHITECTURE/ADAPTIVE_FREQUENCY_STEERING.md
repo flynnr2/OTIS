@@ -235,6 +235,14 @@ requalification. It does not alter the live CX322 firmware, schemas, parser,
 supervisor, or authority profile. The exact contract is
 [`cx322_non_effective_operational_semantics_contract_v1.json`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_non_effective_operational_semantics_contract_v1.json).
 
+A later operator instruction authorizes a distinct bounded engineering test of
+the unchanged CX322 law with D9 forwarding and D6 diagnostics enabled. That
+profile does not select the non-effective Prompt 03 oracle. D14 and D8 remain
+the only reference and oscillator/control truth; D9 configuration/readback is
+an output-leg entry and continuity gate, and D6 remains zero-authority. The
+engineering authorization does not revise the incomplete D9 waveform/load
+terminal or establish a public delivered-output claim.
+
 D10 is not claimed by the current PPS-gated steering profiles. If a future
 operating profile enables D10 `EVT` capture, D10-local invalidity, noise, gaps,
 or overflow must remain local to the external-event evidence plane. It cannot

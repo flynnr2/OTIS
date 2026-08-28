@@ -12,6 +12,15 @@ CURRENT_EVIDENCE_EPOCH = "CX319_EVIDENCE_EPOCH_1"
 SUSTAINED_HYBRID_EVIDENCE_EPOCH = "OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1"
 SUSTAINED_HYBRID_STAGE = "OTIS_SUSTAINED_HYBRID_REGULATION_LIVE"
 SUSTAINED_HYBRID_PROFILE_ID = "otis_sustained_hybrid_regulation_v1"
+CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH = (
+    "OTIS_CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH_1"
+)
+CX322_D9_D6_INTEGRATION_STAGE = (
+    "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_LIVE"
+)
+CX322_D9_D6_INTEGRATION_PROFILE_ID = (
+    "cx322_d9_d6_integration_engineering"
+)
 GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH = "OTIS_GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH_1"
 GNSS_BAUD_ENVELOPE_STAGE = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_LIVE"
 GNSS_BAUD_ENVELOPE_PROFILE_ID = "otis_gnss_baud_envelope_characterization_v1"
@@ -41,6 +50,7 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx320_active_hybrid",
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
         # Current non-actuating forwarded-output readiness packages.  These
         # profiles have no DAC/FLL/hybrid authority and are admitted solely so
         # their capture/analyzer/seal evidence can use the current lifecycle.
@@ -225,6 +235,21 @@ def _require_current_epoch(data: dict) -> None:
             return
         raise ValueError(
             f"manifest does not satisfy {SUSTAINED_HYBRID_EVIDENCE_EPOCH}; "
+            f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
+        )
+    if stage == CX322_D9_D6_INTEGRATION_STAGE:
+        programme = data.get("cx322_d9_d6_integration")
+        if (
+            data.get("compatibility_floor")
+            == CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH
+            and isinstance(programme, dict)
+            and programme.get("profile_id")
+            == CX322_D9_D6_INTEGRATION_PROFILE_ID
+        ):
+            return
+        raise ValueError(
+            "manifest does not satisfy "
+            f"{CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH}; "
             f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
         )
     if stage.startswith("CX322_"):

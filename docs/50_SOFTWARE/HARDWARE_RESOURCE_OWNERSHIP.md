@@ -101,7 +101,7 @@ registry also binds the dynamically claimed DMA channel to
 `count_observation`; DMA transports the already-captured word and is not a
 boundary owner.
 
-The exact D9/D6 qualification profile additionally claims D6/GPIO18 and one
+The exact D9/D6 qualification and integrated engineering profiles additionally claim D6/GPIO18 and one
 dynamically allocated PIO0 state machine plus a non-overlapping 15-word copy of
 the cumulative snapshot programme for `forwarded_clock_monitor`. It has no DMA
 claim and no GPIO IRQ claim. Its CPU consumer drains at most one snapshot per

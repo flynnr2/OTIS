@@ -134,6 +134,13 @@ not pass. The board was returned to the D9-disabled baseline profile. The
 tracked provenance and controller consequence are recorded in
 [`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md).
 
+A later, distinct engineering programme may exercise unchanged CX322 with this
+digital output and sidecar enabled. It retains the same 1 kΩ wiring and
+high-impedance-only claim boundary, requires exact D9 source/divider/GPIO
+readback before setup and during the run, and keeps D6 local-degraded behavior
+out of D14/D8 validity and steering authority. It does not turn the incomplete
+Prompt 02 waveform result into a qualified output.
+
 ## Non-Goals / Not MVP
 
 The OTIS MVP on the Nano RP2040 Connect does not include:

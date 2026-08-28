@@ -5369,6 +5369,16 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status_u32("build", "enable_dual_core_partition",
                     OTIS_ENABLE_DUAL_CORE_PARTITION, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_forwarded_d9_output",
+                    OTIS_ENABLE_FORWARDED_D9_OUTPUT, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_forwarded_d6_monitor",
+                    OTIS_ENABLE_FORWARDED_D6_MONITOR, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_status_u32("build", "enable_d9_d6_readiness_profile",
+                    OTIS_ENABLE_D9_D6_READINESS_PROFILE, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_PROFILE_ASSUMPTION);
+    emit_h0_pin_status();
     otis_memory_budget_emit_status(&status_emit_context);
     emit_status_u32("sweep", "default_dwell_ms",
                     OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS, OTIS_SEVERITY_INFO,

@@ -2,6 +2,27 @@
 
 ## Status
 
+The historical Prompt 04 terminal below remains valid for its frozen inputs.
+It is now followed by a separately operator-authorized engineering programme,
+bound by
+[`cx322_d9_d6_integration_engineering_contract_v1.json`](cx322_d9_d6_integration_engineering_contract_v1.json).
+That programme may test the unchanged CX322 request law concurrently with the
+fixed D8-to-D9 forwarding path and zero-authority D6 sidecar even though no
+oscilloscope or counter waveform evidence is available. It does not revise the
+Prompt 02 waveform terminal, authorize a frequency-only output soak, select the
+Prompt 03 reference oracle, or promote a delivered-output claim.
+
+The integrated engineering profile is distinct from historical CX322 and
+differs from `cx322_direct_hybrid` only by enabling fixed D9 forwarding and the
+D6 diagnostic monitor while keeping the D9/D6 readiness selector disabled.
+Its live entry requires fresh `capture_device --auto-detect`, 115200 baud, an
+exact post-attachment D9 source/divider/GPIO/readback transcript, observable
+D6 status (healthy or explicitly local-degraded), and the existing D14/D8,
+GNSS, DAC-epoch, transaction and independent-abort gates. Initial physical
+authority is narrower than the firmware ceiling: one automatic application,
+21 cumulative codes, no retry or restoration, first-response termination, and
+a 7,200-second absolute wall limit.
+
 Prompt 04 has closed at
 `non_effective_semantics_verified_promotion_blocked_by_d9_gate`. The complete
 current Release gate, exact separated builds, retained D9/D6 operational-path
@@ -14,8 +35,9 @@ integration blocked. See
 [`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md)
 and its machine-readable
 [`prompt02_controller_decision_v1.json`](prompt02_controller_decision_v1.json).
-This directory grants no further bench, serial, flash, receiver-command, DAC,
-control-arm or live-run authority.
+Those historical artifacts grant no further authority. Current engineering
+bench authority comes only from the later operator instruction recorded in the
+integrated engineering contract.
 
 The bundle carries the completed cross-campaign offline decision into two
 decision-bearing outcomes:
@@ -78,19 +100,20 @@ Execute these prompts in order:
    verification, build the exact profile, exercise the complete no-hardware
    operational path and freeze a non-effective integrated-trial proposal.
 
-Prompt 03 may proceed only as non-effective safety architecture. The valid D9
-gate result blocks creation of an actionable integrated profile or promotion
-claim; it does not authorize a renewed D9/FLL soak.
+Prompt 03 remains non-effective safety architecture. The later engineering
+profile does not compile or select those reference semantics and does not
+authorize a renewed D9/FLL soak.
 
 Prompt 03 has now reached
 `operational_semantics_implemented_promotion_blocked_by_d9_gate`. See
 [`PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md`](PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md).
 
-Prompt 04 has verified the resulting non-effective boundary. Its three exact
+Prompt 04 verified the resulting historical non-effective boundary. Its three exact
 builds remain intentionally separated: non-actuating D9/D6, compile-only
-unqualified frequency control, and retained standalone CX322. No actionable
-integrated profile, live rehearsal package, physical authority, or 72-hour
-proposal exists.
+unqualified frequency control, and retained standalone CX322. The later
+engineering profile and authority are a superseding, separately identified
+bench programme; they do not alter that historical result or create the
+Prompt 04 72-hour promotion proposal.
 
 ## Stop boundary
 

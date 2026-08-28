@@ -10,6 +10,9 @@ import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
 from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
+)
 from host.otis_tools.active_control_supervisor import (
     _next_selected_interval_is_cadence_eligible,
 )
@@ -510,6 +513,106 @@ def test_cx320_prewrite_accepts_the_complete_setup_authority_snapshot(
     assert readiness.ready is True
     assert readiness.missing == ()
     assert readiness.mismatches == ()
+
+
+def _forwarded_integration_health() -> dict[tuple[str, str], str]:
+    health = dict(live.FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH)
+    health[("forwarded_clock_output", "first_valid_ticks")] = "16000000"
+    for key in live.FORWARDED_MONITOR_OBSERVABILITY_KEYS:
+        health[key] = "monitor_invalid_or_unavailable" if key[1] == "state" else "0"
+    return health
+
+
+def test_integrated_prewrite_requires_exact_d9_digital_readback() -> None:
+    health = _forwarded_integration_health()
+
+    assert live.forwarded_output_integration_prewrite_evidence(health) == ((), ())
+
+    health[("forwarded_clock_output", "readback_valid")] = "false"
+    missing, mismatches = live.forwarded_output_integration_prewrite_evidence(
+        health
+    )
+
+    assert missing == ()
+    assert mismatches == (
+        "forwarded_clock_output.readback_valid='false', expected 'true'",
+    )
+
+
+def test_integrated_prewrite_keeps_d6_fault_values_zero_authority() -> None:
+    health = _forwarded_integration_health()
+    health[("forwarded_clock_monitor", "configured")] = "0"
+    health[("forwarded_clock_monitor", "running")] = "0"
+    health[("forwarded_clock_monitor", "fault_flags")] = "15"
+
+    assert live.forwarded_output_integration_prewrite_evidence(health) == ((), ())
+
+    del health[("forwarded_clock_monitor", "state")]
+    missing, mismatches = live.forwarded_output_integration_prewrite_evidence(
+        health
+    )
+    assert missing == ("forwarded_clock_monitor.state",)
+    assert mismatches == ()
+
+
+def test_integrated_physical_run_stops_after_first_complete_response(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.manifest["qualification_evidence"] = True
+    supervisor.state["first_phase_observation_checkpoint_exact"] = True
+    supervisor.state["arm_pending"] = False
+    health = _health(
+        supervisor,
+        state="DISARMED",
+        evidence_phase="evidence_clear",
+        evidence_pending="false",
+        evidence_request_sequence="0",
+        confirmed_applied_code_known="true",
+        confirmed_applied_code=str(0xA837),
+        correction_count="1",
+        cumulative_movement_codes="5",
+        first_phase_checkpoint_passed="true",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"] == {
+        "result": "healthy_stop",
+        "reason": (
+            "cx322_d9_d6_integration_first_complete_application_"
+            "consumer_and_response"
+        ),
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": 0xA837,
+        "utc": supervisor.state["terminal"]["utc"],
+    }
+
+
+def test_integrated_rehearsal_exercises_same_first_response_terminal(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.rehearsal_manifest = True
+    supervisor.manifest["qualification_evidence"] = False
+    supervisor.manifest["rehearsal_endpoint_mode"] = "first_response"
+    supervisor.state["first_phase_observation_checkpoint_exact"] = True
+    health = _health(
+        supervisor,
+        correction_count="1",
+        cumulative_movement_codes="5",
+        confirmed_applied_code=str(0xA837),
+        first_phase_checkpoint_passed="true",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"].endswith(
+        "first_complete_application_consumer_and_response"
+    )
 
 
 def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
@@ -1210,6 +1313,22 @@ def test_wall_endpoint_is_right_censored_nonpass_when_static(tmp_path: Path) -> 
         "right_censored_incomplete"
     )
     assert supervisor.state["terminal"]["last_confirmed_code"] == live.SETUP_CODE
+
+
+def test_integrated_wall_endpoint_reports_its_two_hour_authority(tmp_path: Path) -> None:
+    origin = 1_800_000_000.0
+    supervisor = _supervisor(tmp_path, wall_origin_epoch=origin)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+
+    supervisor._maybe_finish(
+        _health(supervisor),
+        origin + supervisor.programme.authorized_absolute_wall_limit_s,
+        0.0,
+    )
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx322_d9_d6_integration_2h_absolute_wall_endpoint"
+    )
 
 
 def test_independent_abort_uses_emergency_path_and_classifies_operator_abort(

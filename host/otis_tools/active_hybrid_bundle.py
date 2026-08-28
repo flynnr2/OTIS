@@ -13,6 +13,7 @@ from .active_hybrid_policy import load_policy
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    PROGRAMMES,
     get_active_hybrid_programme,
     progressive_checkpoint_contract,
     programme_from_mapping,
@@ -26,6 +27,9 @@ PROFILE_ID = "cx320_active_hybrid"
 PROGRAMME_ID = "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1"
 RUNTIME_RUN_IDENTITY = "cx320_active_hybrid:3200001"
 EXPECTED_BOARD_SERIAL = "503533748A919118"
+FRESH_SERIAL_AUTO_DETECT = (
+    "capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*"
+)
 REQUIRED_FALSE_AUTHORITY = (
     "effective",
     "firmware_flash",
@@ -189,6 +193,14 @@ def _validate_build(
         expected_defines["OTIS_ENABLE_CX321_ACTIVE_HYBRID"] = "1"
     if programme.response_checkpoint_observational:
         expected_defines["OTIS_ENABLE_CX322_DIRECT_HYBRID"] = "1"
+    if programme.forwarded_output_integration:
+        expected_defines.update(
+            {
+                "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
+                "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
+                "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
+            }
+        )
     if programme.sustained_regulation:
         expected_defines.update(
             {
@@ -320,11 +332,34 @@ def create_bundle(
             "sole_oscillator_count_input": "D8",
             "independent_event_input_not_authority": "D10",
             "gnss_role": "same_receiver_D14_qualification_metadata_only",
-            "D9_GPOUT0": "deferred_unchanged",
+            "D9_GPOUT0": (
+                "D8_GPIO20_GPIN0_to_D9_GPIO21_GPOUT0_integer_divide_one"
+                if programme.forwarded_output_integration
+                else "deferred_unchanged"
+            ),
+            **(
+                {
+                    "D6_forwarded_monitor": (
+                        "D9_through_1k_series_resistor_to_D6_GPIO18_"
+                        "diagnostic_zero_authority"
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
             "serial_owner_count": 1,
             "serial_owner": "capture_device",
             "normal_and_priority_abort_fifos_distinct": True,
-            "expected_board_serial": EXPECTED_BOARD_SERIAL,
+            "expected_board_serial": (
+                None
+                if programme.fresh_serial_auto_detect
+                else EXPECTED_BOARD_SERIAL
+            ),
+            **(
+                {"serial_device_selection": FRESH_SERIAL_AUTO_DETECT}
+                if programme.fresh_serial_auto_detect
+                else {}
+            ),
         },
         "setup": {
             "exact_code": programme.setup_code,
@@ -345,13 +380,21 @@ def create_bundle(
         "finite_limits": {
             "qualified_duration_s": programme.qualified_duration_s,
             "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
-            "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+            "absolute_wall_clock_limit_s": (
+                programme.authorized_absolute_wall_limit_s
+            ),
             "wall_clock_origin": "sole_capture_owner_records_exact_run_identity_before_setup_submission",
-            "maximum_total_automatic_applications": programme.maximum_applications,
-            "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+            "maximum_total_automatic_applications": (
+                programme.authorized_maximum_applications
+            ),
+            "maximum_total_physical_control_applications": (
+                programme.authorized_maximum_physical_applications
+            ),
             "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
             "maximum_combined_step_codes": programme.maximum_step_codes,
-            "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+            "maximum_cumulative_absolute_movement_codes": (
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
             "minimum_code": programme.minimum_code,
             "maximum_code": programme.maximum_code,
@@ -533,7 +576,16 @@ def validate_bundle(
             and bundle.get("profile_identity") != programme.profile_id
         )
         or bundle.get("topology", {}).get("expected_board_serial")
-        != EXPECTED_BOARD_SERIAL
+        != (
+            None
+            if programme.fresh_serial_auto_detect
+            else EXPECTED_BOARD_SERIAL
+        )
+        or (
+            programme.fresh_serial_auto_detect
+            and bundle.get("topology", {}).get("serial_device_selection")
+            != FRESH_SERIAL_AUTO_DETECT
+        )
         or bundle.get("command_envelope", {}).get("arm")
         != "ACTIVE ARM <authorization_sequence> <nonce> <absolute_expiry_s>"
     ):
@@ -674,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
+        "--programme", choices=tuple(PROGRAMMES), default="cx320"
     )
     args = parser.parse_args(argv)
     programme = get_active_hybrid_programme(args.programme)
