@@ -709,6 +709,88 @@ def test_adapter_activation_binds_one_exact_campaign18_physical_activation(
     assert result["baud"] == 115200
 
 
+def test_campaign18_physical_binding_accepts_shared_auto_detect_identifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from host.otis_tools import active_hybrid_activation
+    from host.otis_tools.active_hybrid_bundle import FRESH_SERIAL_AUTO_DETECT
+
+    bundle = _bundle(tmp_path / "bundle")
+    checked = programme.validate_bundle(bundle)
+    envelope = checked["controller_envelope"]
+    active_bundle = {
+        "firmware": {
+            "profile_id": checked["profile_id"],
+            "source_revision": checked["source_revision"],
+            "build_manifest": {
+                "sha256": checked["bindings"]["firmware_build_manifest"][
+                    "sha256"
+                ]
+            },
+            "defines": programme._intended_profile_defines(
+                programme.load_contract()
+            ),
+        },
+        "finite_limits": {
+            "qualified_duration_s": checked["time"]["qualified_duration_s"],
+            "absolute_wall_clock_limit_s": checked["time"][
+                "absolute_wall_limit_s"
+            ],
+            "maximum_total_automatic_applications": envelope[
+                "automatic_application_limit"
+            ],
+            "maximum_total_physical_control_applications": envelope[
+                "automatic_application_limit"
+            ],
+            "maximum_cumulative_absolute_movement_codes": envelope[
+                "automatic_cumulative_movement_limit_codes"
+            ],
+            "maximum_combined_step_codes": envelope[
+                "automatic_step_limit_codes"
+            ],
+            "minimum_applied_cadence_s": envelope[
+                "minimum_application_cadence_s"
+            ],
+        },
+    }
+    active_activation = {
+        "programme_id": programme.CAMPAIGN18_PROGRAMME_ID,
+        "run_identity": programme.CAMPAIGN18_RUN_IDENTITY,
+        "profile_identity": checked["profile_id"],
+        "device": {
+            "path": None,
+            "selection": FRESH_SERIAL_AUTO_DETECT,
+            "baud": 115200,
+            "expected_board_serial": None,
+        },
+        "authority": {
+            "effective": True,
+            "physical_execution": True,
+            "firmware_flash_limit": 1,
+            "setup_write_limit": 1,
+            "maximum_total_automatic_applications": 144,
+            "maximum_total_physical_control_applications": 144,
+            "maximum_cumulative_absolute_movement_codes": 3024,
+            "maximum_deliberate_challenges": 0,
+            "automatic_retry": False,
+            "automatic_restoration": False,
+            "live_extension": False,
+        },
+    }
+    monkeypatch.setattr(
+        active_hybrid_activation,
+        "validate_frozen_activation",
+        lambda *_args, **_kwargs: (active_activation, active_bundle, {}),
+    )
+
+    observed, _active_bundle = programme._validate_campaign18_active_activation(
+        bundle=bundle,
+        active_hybrid_activation_path=tmp_path / "activation.json",
+    )
+
+    assert observed["device"]["selection"] == FRESH_SERIAL_AUTO_DETECT
+
+
 def test_campaign18_runner_delegates_then_reads_without_mutating_sealed_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

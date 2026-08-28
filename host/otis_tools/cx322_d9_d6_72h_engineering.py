@@ -31,6 +31,7 @@ import time
 from typing import Any, Mapping
 
 from .active_control_supervisor import RP2040_TIMER0_TICKS_PER_SECOND
+from .active_hybrid_bundle import FRESH_SERIAL_AUTO_DETECT
 from .capture_segment_rotation import prepare_transition, request_rotation
 from .contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
@@ -827,8 +828,7 @@ def _validate_campaign18_active_activation(
         or active_activation.get("run_identity") != CAMPAIGN18_RUN_IDENTITY
         or active_activation.get("profile_identity") != checked["profile_id"]
         or device.get("path") is not None
-        or device.get("selection")
-        != "capture_device_--auto-detect_fresh_for_every_capture_and_reenumeration"
+        or device.get("selection") != FRESH_SERIAL_AUTO_DETECT
         or device.get("baud") != 115200
         or device.get("expected_board_serial") is not None
         or firmware.get("profile_id") != checked["profile_id"]
