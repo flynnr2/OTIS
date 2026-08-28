@@ -2673,6 +2673,14 @@
       "authority": "operator_authorized_nonincremental_engineering_bench_work",
       "physical_authority_effective": true,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "predecessor_evidence": {
+        "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+        "seal_path": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z/reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "seal_file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "seal_size_bytes": 12675403,
+        "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired"
+      },
       "engineering_contract": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_integration_engineering_contract_v1.json",
       "firmware_profile": "cx322_d9_d6_integration_engineering",
       "serial": {

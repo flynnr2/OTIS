@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_preflight as preflight_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
 )
 
@@ -26,6 +28,50 @@ def test_structural_preflight_accepts_exact_declared_live_authority_state() -> N
     }
 
     assert preflight_tool._programme_status_allows_preflight(status, programme)
+
+
+def test_integrated_preflight_binds_historical_cx322_seal_without_current_replay(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    seal_path = tmp_path / "cx322_seal.json"
+    seal = {
+        "programme_id": "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
+        "status": "passed",
+        "primary_decision": "bounded_direct_hybrid_evidence_acquired",
+        "seal_sha256": "a" * 64,
+    }
+    seal_path.write_text(json.dumps(seal), encoding="utf-8")
+    status = {
+        "programmes": {
+            CX322_D9_D6_INTEGRATION_PROGRAMME.status_programme_id: {
+                "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+                "predecessor_evidence": {
+                    "seal_path": str(seal_path),
+                    "seal_file_sha256": sha256(seal_path.read_bytes()).hexdigest(),
+                    "seal_size_bytes": seal_path.stat().st_size,
+                    "seal_sha256": seal["seal_sha256"],
+                    "terminal_primary_decision": seal["primary_decision"],
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(
+        preflight_tool,
+        "audit_predecessor",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("current-source historical audit must not run")
+        ),
+    )
+
+    observed = preflight_tool._predecessor_evidence(
+        status, CX322_D9_D6_INTEGRATION_PROGRAMME
+    )
+
+    assert observed["status"] == "passed"
+    assert observed["seal_sha256"] == seal["seal_sha256"]
+    assert observed["binding_mode"] == (
+        "historical_content_addressed_cx322_terminal_seal"
+    )
 
 
 def test_cx321_structural_preflight_exercises_extended_phase4_envelope(
