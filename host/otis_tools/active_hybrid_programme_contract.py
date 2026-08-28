@@ -60,6 +60,7 @@ class ActiveHybridProgramme:
     sustained_regulation: bool = False
     forwarded_output_integration: bool = False
     fresh_serial_auto_detect: bool = False
+    natural_policy_programme_id: str | None = None
     engineering_maximum_applications: int | None = None
     engineering_maximum_physical_applications: int | None = None
     engineering_maximum_cumulative_movement_codes: int | None = None
@@ -349,6 +350,7 @@ CX322_D9_D6_INTEGRATION_PROGRAMME = ActiveHybridProgramme(
     response_checkpoint_observational=True,
     forwarded_output_integration=True,
     fresh_serial_auto_detect=True,
+    natural_policy_programme_id="CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
     engineering_maximum_applications=1,
     engineering_maximum_physical_applications=1,
     engineering_maximum_cumulative_movement_codes=21,

@@ -127,6 +127,39 @@ def _cx321_manifest() -> dict:
     return manifest
 
 
+def _integrated_manifest() -> dict:
+    manifest = _manifest()
+    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    policy_path = programme.natural_policy_path
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    manifest.update(
+        {
+            "programme_id": programme.programme_id,
+            "stage": programme.live_stage,
+            "run_identity": programme.runtime_run_identity,
+            "profile_identity": programme.profile_id,
+            "policy": {
+                "path": str(policy_path),
+                "sha256": policy_sha256,
+                "size_bytes": policy_path.stat().st_size,
+                "policy_sha256": policy_sha256,
+            },
+        }
+    )
+    section = manifest.pop("cx320")
+    section["run_identity"] = programme.runtime_run_identity
+    section["profile_id"] = programme.profile_id
+    section["automatic_control"].update(
+        {
+            "maximum_total_applications": 1,
+            "maximum_cumulative_movement_codes": 21,
+        }
+    )
+    section["qualification"]["absolute_wall_clock_limit_s"] = 7_200
+    manifest[programme.manifest_section] = section
+    return manifest
+
+
 def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     manifest = _cx321_manifest()
     _, identities = live.load_active_hybrid_spec(manifest)
@@ -139,6 +172,19 @@ def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     ]
     assert identities["active_policy_sha256"] != identities[
         "numerical_policy_sha256"
+    ]
+
+
+def test_integrated_runtime_accepts_explicit_historical_policy_identity() -> None:
+    manifest = _integrated_manifest()
+
+    spec, identities = live.load_active_hybrid_spec(manifest)
+
+    assert spec.run_identity == (
+        CX322_D9_D6_INTEGRATION_PROGRAMME.runtime_run_identity
+    )
+    assert identities["active_policy_sha256"] == manifest["policy"][
+        "policy_sha256"
     ]
 
 

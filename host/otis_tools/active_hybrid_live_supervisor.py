@@ -335,15 +335,19 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     ):
         raise ValueError("CX320 live manifest does not carry the exact envelope")
 
-    numerical = natural_policy.get("numerical_policy", {})
-    authority = natural_policy.get("global_authority_limits", {})
-    if (
-        natural_policy.get("programme_id")
-        != (
+    expected_natural_policy_programme_id = (
+        programme.natural_policy_programme_id
+        or (
             programme.programme_id
             if programme.response_checkpoint_observational
             else CX320_PROGRAMME.programme_id
         )
+    )
+    numerical = natural_policy.get("numerical_policy", {})
+    authority = natural_policy.get("global_authority_limits", {})
+    if (
+        natural_policy.get("programme_id")
+        != expected_natural_policy_programme_id
         or natural_policy.get("policy_id") != programme.natural_policy_id
         or natural_policy.get("setup", {}).get("exact_start_code")
         != programme.setup_code

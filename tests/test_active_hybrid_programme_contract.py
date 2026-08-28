@@ -81,6 +81,9 @@ def test_cx322_d9_d6_descriptor_is_distinct_with_unchanged_controller() -> None:
     assert programme.terminal_after_first_response
     assert programme.response_checkpoint_observational
     assert programme.policy_id == "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    assert programme.natural_policy_programme_id == (
+        "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    )
     assert programme.maximum_physical_applications == 4
     assert programme.maximum_cumulative_movement_codes == 84
     assert programme.maximum_step_codes == 21
