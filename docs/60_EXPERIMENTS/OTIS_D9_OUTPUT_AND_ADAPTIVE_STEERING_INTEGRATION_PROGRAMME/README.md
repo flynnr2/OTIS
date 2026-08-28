@@ -2,8 +2,13 @@
 
 ## Status
 
-This directory is a future Codex execution bundle. Its presence does not grant
-bench, serial, flash, receiver-command, DAC, control-arm or live-run authority.
+Prompt 02 has closed with the D9 waveform gate incomplete and the unchanged
+CX322 integration blocked. See
+[`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md)
+and its machine-readable
+[`prompt02_controller_decision_v1.json`](prompt02_controller_decision_v1.json).
+This directory grants no further bench, serial, flash, receiver-command, DAC,
+control-arm or live-run authority.
 
 The bundle carries the completed cross-campaign offline decision into two
 decision-bearing outcomes:
@@ -66,9 +71,9 @@ Execute these prompts in order:
    verification, build the exact profile, exercise the complete no-hardware
    operational path and freeze a non-effective integrated-trial proposal.
 
-Do not skip directly to Prompt 03 merely because the hybrid law already has
-positive retained physical evidence. The pending D9/FLL-output gate is part of
-the frozen selection rule.
+Prompt 03 may proceed only as non-effective safety architecture. The valid D9
+gate result blocks creation of an actionable integrated profile or promotion
+claim; it does not authorize a renewed D9/FLL soak.
 
 ## Stop boundary
 

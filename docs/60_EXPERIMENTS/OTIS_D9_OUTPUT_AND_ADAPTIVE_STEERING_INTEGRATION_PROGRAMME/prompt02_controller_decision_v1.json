@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "decision_id": "OTIS_D9_D6_PROMPT02_CONTROLLER_DECISION_V1",
+  "decision_semantic_sha256": "3ab6a0a004788e5856eabe27b45956160ec2b66d05a8a42237c7cf4325bda82f",
+  "readiness_contract_semantic_sha256": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d",
+  "physical_candidate_bundle_semantic_sha256": "479ff52478cd4e2e0d3a9fbbfea29beca00d52ccbb7982aa3df092ca7727a43d",
+  "physical_firmware_source_revision": "7e59506f41377a287a711302fd2471825ada586d",
+  "analysis": {
+    "relative_path": "runs/d9_adaptive_steering_integration_20260828/prompt02/qualification_readback_repair/reports/d9_d6_readiness_analysis_v1.json",
+    "sha256": "41bed1fa23fd4984bb19baf43389244ce9a8122c028e05fc165e1d1a07df27a3"
+  },
+  "seal": {
+    "relative_path": "runs/d9_adaptive_steering_integration_20260828/prompt02/qualification_readback_repair/reports/d9_d6_readiness_seal_v1.json",
+    "sha256": "f30974567ae582e6e2db1a8ca1e07876bb413ad2a7b77a0f220f9ca3995ede8f",
+    "analysis_sha256": "41bed1fa23fd4984bb19baf43389244ce9a8122c028e05fc165e1d1a07df27a3",
+    "report_sha256": "055a958e81317f1c9091dc2fa26577ea5243b83cd6586136fae6d31a9b772063"
+  },
+  "terminals": {
+    "d9_output": "output_function_correct_but_waveform_evidence_incomplete",
+    "d6_monitor": "d6_forwarded_clock_monitor_qualified_as_diagnostic_only",
+    "d14_d8": "d14_d8_acquisition_healthy",
+    "frequency_only_soak": "frequency_only_d9_output_soak_incomplete",
+    "controller": "cx322_integration_blocked_by_d9_output_gate"
+  },
+  "observed_counts": {
+    "baseline_d8_intervals": 60,
+    "output_d8_intervals": 59,
+    "monitor_d8_intervals": 90,
+    "monitor_d6_comparisons": 90,
+    "maximum_absolute_d8_d6_difference_cycles": 1
+  },
+  "authority_and_final_state": {
+    "physical_authority": false,
+    "d9_control_authority": false,
+    "d6_control_authority": false,
+    "hybrid_authority": false,
+    "frequency_only_soak_authority": false,
+    "board_profile": "d9_disabled_no_control_baseline",
+    "host_carrier_baud": 115200,
+    "dac_code_known": false,
+    "dac_write_performed": false,
+    "receiver_command_performed": false
+  },
+  "blocking_evidence_gap": "no_oscilloscope_or_independently_referenced_frequency_counter_waveform_and_load_evidence"
+}

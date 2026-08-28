@@ -116,6 +116,14 @@ re-anchor or disable only the monitor. D6 records cannot enter D14/D8 validity,
 selected estimation, control eligibility, actuator requests, abort, or a run
 terminal.
 
+The retained Prompt 02 physical package exercised this sidecar with the D9 to
+D6 1 kΩ loopback. Its 90 same-reference D8:D6 comparisons differed by zero or
+one cycle, within the frozen two-cycle tolerance, while the 90 D14/D8 monitor
+stratum intervals remained healthy. This is a D6-local digital-continuity
+result, not a replacement for an external D9 waveform/frequency instrument or
+an input to control truth. The package's D9 waveform terminal remains
+`output_function_correct_but_waveform_evidence_incomplete`.
+
 ## SW1 H0 Bring-Up Modes
 
 The Arduino Nano RP2040 Connect sketch supports explicit compile-time bring-up

@@ -118,6 +118,22 @@ rise/fall behavior, ringing, jitter, delay, load drive, or absolute accuracy.
 The direct D9 interface remains a prospectively characterized 3.3 V CMOS,
 high-impedance-load output. It is not a qualified 50-ohm source.
 
+### Prompt 02 physical result
+
+The retained 2026-08-28 D9/D6 qualification package established the exact
+compile-time output/readback identity and D6 digital continuity under the
+1 kΩ D9-to-D6 loopback. It did not include an oscilloscope or independently
+referenced frequency counter. The resulting D9 terminal is
+`output_function_correct_but_waveform_evidence_incomplete`; D6 is
+`d6_forwarded_clock_monitor_qualified_as_diagnostic_only`; and D14/D8 remained
+healthy. Do not use a multimeter reading or D6 count match to upgrade the D9
+interface to a waveform, load, delay, jitter, voltage, or 50-ohm claim.
+
+The frequency-only output soak was not started because its waveform gate did
+not pass. The board was returned to the D9-disabled baseline profile. The
+tracked provenance and controller consequence are recorded in
+[`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md).
+
 ## Non-Goals / Not MVP
 
 The OTIS MVP on the Nano RP2040 Connect does not include:

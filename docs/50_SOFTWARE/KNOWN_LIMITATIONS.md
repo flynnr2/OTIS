@@ -76,11 +76,17 @@
   future bundle. They do not make the uncalibrated plant model generally
   control-ready or turn an indeterminate natural material response into
   observed sign.
-- OTIS has an offline-verified compile-time D8/GPIN0 to D9/GPOUT0
-  integer-divide-one implementation and a zero-authority D6 loopback monitor,
-  but it still does not provide a physically qualified D9 delivered timing
-  output. With only a multimeter and the D6 digital sidecar, voltage levels,
-  duty cycle, rise/fall behavior, ringing, propagation delay, jitter, load
-  sensitivity, and independently referenced frequency remain unmeasured. A
-  successful D6 count comparison cannot close those claims or authorize the
-  24-hour output soak.
+- The retained Prompt 02 package physically established the compile-time
+  D8/GPIN0 to D9/GPOUT0 output/readback identity and a zero-authority D6
+  loopback monitor. Its 90 same-reference D8:D6 comparisons differed by zero
+  or one cycle within the frozen two-cycle diagnostic tolerance, with healthy
+  authoritative D14/D8 capture. It still does not provide a physically
+  qualified D9 delivered timing output: no oscilloscope or independently
+  referenced frequency counter evidence was retained. With only a multimeter
+  and the D6 digital sidecar, voltage levels, duty cycle, rise/fall behavior,
+  ringing, propagation delay, jitter, load sensitivity, and independently
+  referenced frequency remain unmeasured. A successful D6 count comparison
+  cannot close those claims or authorize the 24-hour output soak. The exact D9
+  terminal is `output_function_correct_but_waveform_evidence_incomplete`, the
+  soak is `frequency_only_d9_output_soak_incomplete`, and unchanged CX322 is
+  `cx322_integration_blocked_by_d9_output_gate`.
