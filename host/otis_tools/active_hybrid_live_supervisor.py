@@ -605,6 +605,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
         self.state.setdefault("host_verification_hold", None)
         self.state.setdefault("persistent_wrong_direction_terminal", False)
+        self.state.setdefault("unarmed_observation_complete_utc", None)
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -1310,8 +1311,29 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         return True
 
+    def _unarmed_observation_complete(
+        self, elapsed_monotonic_s: float | None
+    ) -> bool:
+        required_s = self.programme.engineering_unarmed_observation_s
+        if required_s <= 0:
+            return True
+        if elapsed_monotonic_s is None or elapsed_monotonic_s < required_s:
+            return False
+        if self.state["unarmed_observation_complete_utc"] is None:
+            self.state["unarmed_observation_complete_utc"] = _utc_now()
+            self._save()
+            self._programme_event(
+                "unarmed_concurrency_observation_complete",
+                required_s=required_s,
+                observed_elapsed_monotonic_s=elapsed_monotonic_s,
+                setup_commands_issued=0,
+            )
+        return True
+
     def _maybe_start_or_arm(
-        self, health: dict[tuple[str, str], str]
+        self,
+        health: dict[tuple[str, str], str],
+        elapsed_monotonic_s: float | None = None,
     ) -> None:
         if self.state.get("host_verification_hold") is not None:
             return
@@ -1332,6 +1354,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and not self.state["manual_start_sent"]
             and state == "DISARMED"
         ):
+            if (
+                not self.rehearsal_manifest
+                and not self._unarmed_observation_complete(
+                    elapsed_monotonic_s
+                )
+            ):
+                return
             if not self._prewrite_readiness(health).ready:
                 return
             command, request = self._setup_command(health)
@@ -1766,7 +1795,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self._maybe_qualify(health)
                 self._maybe_finish(health, time.time(), now - started)
                 if self.state["terminal"] is None:
-                    self._maybe_start_or_arm(health)
+                    self._maybe_start_or_arm(
+                        health, elapsed_monotonic_s=now - started
+                    )
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
                         self._programme_event(

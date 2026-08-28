@@ -895,6 +895,53 @@ def test_exact_setup_then_frequency_acquisition_arm(
     assert supervisor.state["arm_pending"] is True
 
 
+def test_integrated_setup_waits_for_complete_unarmed_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_prewrite_readiness", lambda health: _ready())
+    monkeypatch.setattr(
+        supervisor,
+        "_setup_command",
+        lambda health: (
+            "ACTIVE SETUP exact",
+            {
+                "authorization_sequence": 1,
+                "status_generation": 7,
+                "query_nonce": 9,
+                "expires_s": 4100,
+                "session_id": 1,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor, "_retain_setup_authority", lambda health, request: None
+    )
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    before_setup = _health(
+        supervisor,
+        manual_start_confirmed="false",
+        confirmed_applied_code_known="false",
+        confirmed_applied_code="unavailable",
+        dac_epoch="0",
+        arm_eligible="false",
+        hybrid_state="SETUP_PENDING",
+    )
+
+    supervisor._maybe_start_or_arm(
+        before_setup, elapsed_monotonic_s=1_799.999
+    )
+    assert commands == []
+    assert supervisor.state["manual_start_sent"] is False
+
+    supervisor._maybe_start_or_arm(before_setup, elapsed_monotonic_s=1_800.0)
+    assert commands == ["ACTIVE SETUP exact"]
+    assert supervisor.state["manual_start_sent"] is True
+    assert supervisor.state["unarmed_observation_complete_utc"] is not None
+
+
 def test_phase_qualify_rearms_despite_continuous_frequency_preview(
     tmp_path: Path, monkeypatch
 ) -> None:

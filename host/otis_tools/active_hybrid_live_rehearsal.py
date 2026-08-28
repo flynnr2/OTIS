@@ -2334,6 +2334,7 @@ def _exercise_prewrite_qualification_boundary(
 ) -> dict[str, Any]:
     """Accelerate the exact firmware-grounded setup-authority deadline."""
 
+    programme = _selected_programme(bundle)
     waiting, waiting_health = _prewrite_boundary_supervisor(
         run_dir=output_dir / "qualification",
         bundle_path=bundle_path,
@@ -2353,6 +2354,17 @@ def _exercise_prewrite_qualification_boundary(
     qualified_health[("gnss_receiver", "control_eligible")] = "true"
     qualified_health[("cx317_active", "uptime_s")] = "612"
     ready = waiting._check_prewrite_contract(qualified_health, 612.0)
+    unarmed_required_s = programme.engineering_unarmed_observation_s
+    if unarmed_required_s > 0:
+        unarmed_held_before_boundary = not waiting._unarmed_observation_complete(
+            float(unarmed_required_s) - 0.001
+        )
+        unarmed_complete_at_boundary = waiting._unarmed_observation_complete(
+            float(unarmed_required_s)
+        )
+    else:
+        unarmed_held_before_boundary = True
+        unarmed_complete_at_boundary = True
     reduced_health = _reduce_complete_active_health(
         qualified_health, generation=612
     )
@@ -2386,6 +2398,11 @@ def _exercise_prewrite_qualification_boundary(
         "qualification_deadline_s": RAW_PPS_QUALIFICATION_DEADLINE_S,
         "waits_while_unqualified_at_30s": early is not None and not early.ready,
         "ready_at_observed_612s": ready is not None and ready.ready,
+        "unarmed_observation_required_s": unarmed_required_s,
+        "unarmed_setup_held_before_boundary": unarmed_held_before_boundary,
+        "unarmed_observation_complete_at_boundary": (
+            unarmed_complete_at_boundary
+        ),
         "atomic_handoff_hybrid_state": reduced_health.get(
             ("cx317_active", "hybrid_state")
         ),
@@ -2399,6 +2416,8 @@ def _exercise_prewrite_qualification_boundary(
         for key in (
             "waits_while_unqualified_at_30s",
             "ready_at_observed_612s",
+            "unarmed_setup_held_before_boundary",
+            "unarmed_observation_complete_at_boundary",
             "first_post_setup_consumer_passed",
             "missing_authority_at_660s_is_terminal",
         )
@@ -3980,6 +3999,8 @@ def run(
         else None
     )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
+    if programme.engineering_unarmed_observation_s > 0:
+        coverage["integrated_unarmed_concurrency_observation_boundary"] = True
     if programme.sustained_regulation:
         coverage.update(
             {
@@ -4077,6 +4098,11 @@ def run(
             "accelerated_deterministic": [
                 "active_hybrid_status_handoff",
                 "setup_authority_qualification_deadline",
+                *(
+                    ["integrated_unarmed_concurrency_observation_boundary"]
+                    if programme.engineering_unarmed_observation_s > 0
+                    else []
+                ),
                 "qualified_device_time_boundaries",
                 "setup_propagation",
                 "progressive_checkpoint",
