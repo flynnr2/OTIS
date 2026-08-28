@@ -38,7 +38,7 @@ GNSS_OPERATIONAL_PREWRITE_EXACT = {
     ),
     ("gnss_receiver", "operational_bootstrap_state"): "complete",
     ("gnss_receiver", "operational_bootstrap_ordered_source_bauds"): (
-        "9600,115200"
+        "9600%2C115200"
     ),
     ("gnss_receiver", "operational_bootstrap_settle_ms"): "1200",
     ("gnss_receiver", "operational_bootstrap_attempt_count"): "2",
@@ -77,6 +77,18 @@ def gnss_operational_runtime_invariant_errors(
     health: Mapping[tuple[str, str], str], *, require_present: bool
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return immutable bootstrap omissions and changes from live status."""
+
+    # A complete status generation can legitimately report the bounded boot
+    # transaction while it is still in progress. Before pre-write readiness
+    # has ever been established, that state grants no authority and must be a
+    # bounded startup hold rather than an immediate terminal. The existing
+    # pre-write grace owns the deadline. Failed, unexpected, and post-ready
+    # states continue through the exact invariant checks below.
+    bootstrap_state = health.get(
+        ("gnss_receiver", "operational_bootstrap_state")
+    )
+    if not require_present and bootstrap_state in {None, "in_progress"}:
+        return (), ()
 
     missing: list[str] = []
     mismatches: list[str] = []

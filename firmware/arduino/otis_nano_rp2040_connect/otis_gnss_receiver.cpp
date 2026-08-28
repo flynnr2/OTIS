@@ -2603,6 +2603,10 @@ bool otis_gnss_receiver_begin(void) {
 
 void otis_gnss_receiver_service(uint32_t now_ms) {
 #if OTIS_ENABLE_GNSS_RECEIVER
+  // The UART ring, parser, link state, and transmitter are mutable Core 0
+  // state. Keep the ownership invariant at the service boundary as well as at
+  // its call sites so a future indirect Core 1 call cannot race them.
+  if (get_core_num() != 0u) return;
   if (!live_receiver_started) return;
   update_live_service_timer0_extension();
   // Commit a physically completed query before parsing bytes already retained

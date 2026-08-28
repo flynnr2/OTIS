@@ -309,6 +309,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
         source.index("void otis_gnss_receiver_service") :
         source.index("void otis_gnss_receiver_get_snapshot")
     ]
+    assert "if (get_core_num() != 0u) return;" in service
     assert service.index("complete_live_transmit_if_drained(now_ms)") < (
         service.index("service_live_uart_rx_ring(now_ms)")
     )
@@ -327,7 +328,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert "otis_capture_backend_service()" in loop1
     assert "drain_pps_count_boundary_ring()" in loop1
     assert "drain_capture_ring()" in loop1
-    assert "otis_gnss_receiver_service(millis())" not in loop1
+    assert "otis_gnss_receiver_service(" not in loop1
     assert "otis_gnss_receiver_service(now_ms)" in dual_core0
     assert "drain_pps_count_boundary_ring()" not in dual_core0
     assert "drain_capture_ring()" not in dual_core0

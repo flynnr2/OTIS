@@ -6370,7 +6370,6 @@ void loop1() {
                                         otis_capture_ticks_now());
   if (!otis_transport_ready()) {
     discard_dual_core_outputs_before_first_carrier();
-    otis_gnss_receiver_service(now_ms);
     otis_status_led_poll(now_ms);
   }
 }
@@ -6385,6 +6384,10 @@ void loop() {
   }
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+  // Core 0 is the sole GNSS UART/link-state owner. Core 1 must never service
+  // this mutable state, including before the first USB carrier attaches.
+  // Core 0 remains live in the carrier-absent branch below, so attachment is
+  // not required for bounded UART drainage or bootstrap progress.
   // The USB byte stream has one chunked-frame owner. A producer keeps
   // ownership through its complete frame, but ownership no longer suppresses
   // input-only command collection indefinitely. Total pending-frame time is

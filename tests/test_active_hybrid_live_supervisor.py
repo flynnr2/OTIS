@@ -820,6 +820,27 @@ def test_integrated_runtime_rejects_post_bootstrap_promotion_attempt(
         supervisor._check_fail_static_health(health)
 
 
+def test_integrated_runtime_holds_during_bounded_gnss_bootstrap(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    health = _health(supervisor)
+    health.update(_forwarded_integration_health())
+    health.update(
+        {
+            ("gnss_receiver", "operational_bootstrap_state"): "in_progress",
+            ("gnss_receiver", "operational_bootstrap_attempt_count"): "1",
+            ("gnss_receiver", "target_baud_command_attempt_count"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["prewrite_contract_ready_utc"] is None
+
+
 def test_integrated_physical_run_stops_after_first_complete_response(
     tmp_path: Path,
 ) -> None:

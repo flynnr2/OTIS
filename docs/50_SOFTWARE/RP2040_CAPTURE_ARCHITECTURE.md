@@ -37,6 +37,11 @@ estimation and control state on Core 1. Bounded immutable queues are the only
 cross-core contract. Earlier GPIO bring-up proofs were single-core; that is
 historical evidence and not the current discipline architecture.
 
+The GNSS UART receive ring, parser, link state machine, and transmitter are
+mutable Core 0 state with one service executor. Core 1 does not drain or
+advance them during carrier absence; Core 0's carrier-absent loop retains that
+bounded service responsibility.
+
 ## Capture Families
 
 The RP2040 should emit separate semantic record families:

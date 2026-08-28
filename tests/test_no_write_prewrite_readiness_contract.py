@@ -5,6 +5,9 @@ from host.otis_tools.no_write_prewrite_readiness_contract import (
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
+from host.otis_tools.gnss_operational_baud_policy import (
+    gnss_operational_runtime_invariant_errors,
+)
 
 
 IDENTITY = {
@@ -59,6 +62,39 @@ def test_g1_fixture_requires_the_gnss_state_needed_by_g2() -> None:
     )
     assert health[("gnss_receiver", "local_uart_baud")] == "115200"
     assert health[("gnss_receiver", "post_bootstrap_baud_change_count")] == "0"
+
+
+def test_runtime_holds_in_progress_bootstrap_until_prewrite_deadline() -> None:
+    health = {
+        ("gnss_receiver", "operational_bootstrap_state"): "in_progress",
+        ("gnss_receiver", "operational_bootstrap_attempt_count"): "1",
+        ("gnss_receiver", "target_baud_command_attempt_count"): "1",
+    }
+
+    assert gnss_operational_runtime_invariant_errors(
+        health, require_present=False
+    ) == ((), ())
+
+    missing, mismatches = gnss_operational_runtime_invariant_errors(
+        health, require_present=True
+    )
+    assert missing
+    assert any("operational_bootstrap_state='in_progress'" in item for item in mismatches)
+
+
+def test_runtime_rejects_failed_bootstrap_before_prewrite() -> None:
+    health = {
+        ("gnss_receiver", "operational_bootstrap_state"): "failed",
+    }
+
+    missing, mismatches = gnss_operational_runtime_invariant_errors(
+        health, require_present=False
+    )
+
+    assert missing == ()
+    assert mismatches == (
+        "gnss_receiver.operational_bootstrap_state='failed', expected 'complete'",
+    )
 
 
 def test_g1_rejects_incomplete_operational_baud_promotion() -> None:

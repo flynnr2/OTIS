@@ -719,6 +719,25 @@ def test_live_frequency_only_rejects_post_bootstrap_promotion_attempt(
     )
 
 
+def test_live_frequency_only_holds_during_bounded_gnss_bootstrap(
+    tmp_path: Path,
+) -> None:
+    supervisor = endurance.create_live_supervisor(
+        run_dir=tmp_path / "run",
+        bundle=_bundle(tmp_path),
+    )
+    health = {
+        ("gnss_receiver", "operational_bootstrap_state"): "in_progress",
+        ("gnss_receiver", "operational_bootstrap_attempt_count"): "1",
+        ("gnss_receiver", "target_baud_command_attempt_count"): "1",
+    }
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["prewrite_contract_ready_utc"] is None
+
+
 def test_live_run_loop_holds_setup_until_post_config_d9_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
