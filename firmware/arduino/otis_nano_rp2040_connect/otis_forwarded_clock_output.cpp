@@ -37,8 +37,15 @@ bool output_readback_matches_contract(void) {
   const uint32_t auxsrc =
       (ctrl & kGpout0CtrlAuxsrcMask) >> CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_LSB;
   const bool enabled = (ctrl & CLOCKS_CLK_GPOUT0_CTRL_ENABLE_BITS) != 0u;
-  const uint32_t integer = div >> 16u;
-  const uint32_t fractional = div & 0xffffu;
+  // RP2040 and RP2350 place the GPOUT integer/fractional fields at different
+  // bit positions.  Read the exact target register contract instead of
+  // assuming the RP2350 16-bit fractional layout.
+  const uint32_t integer =
+      (div & CLOCKS_CLK_GPOUT0_DIV_INT_BITS) >>
+      CLOCKS_CLK_GPOUT0_DIV_INT_LSB;
+  const uint32_t fractional =
+      (div & CLOCKS_CLK_GPOUT0_DIV_FRAC_BITS) >>
+      CLOCKS_CLK_GPOUT0_DIV_FRAC_LSB;
   const uint32_t source_function = gpio_get_function(OTIS_GPIO_OSC_OBSERVATION);
   const uint32_t destination_function =
       gpio_get_function(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT);

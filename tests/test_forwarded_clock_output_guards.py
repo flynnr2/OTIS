@@ -13,6 +13,11 @@ def test_d9_output_has_one_fixed_gpin0_integer_one_path() -> None:
     assert "constexpr uint32_t kFractionalDivider = 0u" in source
     assert "clock_gpio_init_int_frac16" in source
     assert ">> CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_LSB" in source
+    assert "CLOCKS_CLK_GPOUT0_DIV_INT_BITS" in source
+    assert ">>\n      CLOCKS_CLK_GPOUT0_DIV_INT_LSB" in source
+    assert "CLOCKS_CLK_GPOUT0_DIV_FRAC_BITS" in source
+    assert ">>\n      CLOCKS_CLK_GPOUT0_DIV_FRAC_LSB" in source
+    assert "div >> 16u" not in source
     assert "clk_sys" not in source
     assert "clk_ref" not in source
     assert "clk_peri" not in source
