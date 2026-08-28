@@ -788,6 +788,8 @@ def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> N
     assert report["opportunity_causal_ledger_exercised"] is True
     assert report["backlogged_configuration_startup_hold_exercised"] is True
     assert report["no_setup_before_d9_exact_readback_established"] is True
+    assert report["setup_authority_false_holds_without_consuming_setup"] is True
+    assert report["setup_issued_only_after_fresh_exact_authority_snapshot"] is True
 
     bundle_path = tmp_path / "bundle.json"
     preflight_path = tmp_path / "preflight.json"

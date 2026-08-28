@@ -47,6 +47,9 @@ def complete_prewrite_health() -> dict[tuple[str, str], str]:
             "selected_interval_count": "0",
             "automatic_retry": "false",
             "automatic_restore": "false",
+            "setup_gnss_eligible": "true",
+            "setup_reference_eligible": "true",
+            "setup_partition_healthy": "true",
         }
     )
     health = {("cx317_active", key): value for key, value in values.items()}
@@ -110,6 +113,37 @@ def test_missing_active_dac_epoch_fails_the_same_contract_used_before_setup() ->
 
     assert result.ready is False
     assert "missing cx317_active.dac_epoch" in result.missing
+
+
+def test_exact_firmware_setup_authority_false_or_missing_holds_before_setup() -> None:
+    for status_key in (
+        "setup_gnss_eligible",
+        "setup_reference_eligible",
+        "setup_partition_healthy",
+    ):
+        false_health = complete_prewrite_health()
+        false_health[("cx317_active", status_key)] = "false"
+        false_result = evaluate_prewrite_readiness(
+            false_health,
+            expected_identity=IDENTITY,
+            planned_live_stimulus_code=0xA808,
+            active_row_count=0,
+            dac_row_count=0,
+        )
+        assert false_result.ready is False
+        assert any(status_key in item for item in false_result.mismatches)
+
+        missing_health = complete_prewrite_health()
+        del missing_health[("cx317_active", status_key)]
+        missing_result = evaluate_prewrite_readiness(
+            missing_health,
+            expected_identity=IDENTITY,
+            planned_live_stimulus_code=0xA808,
+            active_row_count=0,
+            dac_row_count=0,
+        )
+        assert missing_result.ready is False
+        assert any(status_key in item for item in missing_result.missing)
 
 
 def test_a808_target_is_not_accepted_as_a_prewrite_physical_confirmation() -> None:
