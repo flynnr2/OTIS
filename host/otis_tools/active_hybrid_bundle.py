@@ -168,6 +168,48 @@ def _engineering_contract_binding(
         for key, value in contract.items()
         if key != "contract_semantic_sha256"
     }
+    if contract.get("contract_id") == (
+        "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_CONTRACT_V1"
+    ):
+        from .cx322_d9_d6_72h_engineering import load_contract
+
+        checked = load_contract(path)
+        firmware = checked["firmware"]
+        timing = checked["time"]
+        envelope = checked["controller_envelope"]
+        serial = checked["serial"]
+        if (
+            claimed != _canonical_sha256(unsigned)
+            or firmware.get("profile_id") != programme.profile_id
+            or timing.get("qualified_duration_s")
+            != programme.qualified_duration_s
+            or timing.get("absolute_wall_limit_s")
+            != programme.authorized_absolute_wall_limit_s
+            or timing.get("counter_domain") != "rp2040_timer0_extended"
+            or envelope.get("automatic_application_limit")
+            != programme.authorized_maximum_applications
+            or envelope.get("automatic_cumulative_movement_limit_codes")
+            != programme.authorized_maximum_cumulative_movement_codes
+            or envelope.get("automatic_step_limit_codes")
+            != programme.maximum_step_codes
+            or envelope.get("total_dac_write_limit_including_setup")
+            != programme.authorized_maximum_physical_applications + 1
+            or envelope.get("minimum_application_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or envelope.get(
+                "close_new_application_admission_before_endpoint_s"
+            )
+            != programme.correction_response_reserve_s
+            or envelope.get("authority_ceilings_are_nonbinding_not_targets")
+            is not True
+            or serial.get("baud") != 115200
+            or serial.get("stored_device_path_permitted") is not False
+        ):
+            raise ValueError("72h integrated engineering contract semantics differ")
+        return {
+            **_binding(path),
+            "contract_semantic_sha256": claimed,
+        }
     envelope = contract.get("initial_bench_envelope", {})
     if (
         claimed != _canonical_sha256(unsigned)
@@ -215,17 +257,24 @@ def _validate_build(
         "OTIS_ENABLE_CX320_ACTIVE_HYBRID": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_CX317_ACTIVE_CAMPAIGN": (
-            "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
-            if programme.identification_required
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION"
-            if programme.sustained_regulation
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
-            if programme.response_checkpoint_observational
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+            programme.firmware_campaign_macro
+            or (
+                "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
+                if programme.identification_required
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION"
+                if programme.sustained_regulation
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
+                if programme.response_checkpoint_observational
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+            )
         ),
         "OTIS_CX317_ACTIVE_START_CODE": "0xA83Cu",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": f"{programme.maximum_physical_applications}u",
-        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": (
+            f"{programme.authorized_maximum_physical_applications}u"
+        ),
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": (
+            f"{programme.authorized_maximum_cumulative_movement_codes}u"
+        ),
         "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "1800u",
         "OTIS_DAC_MIN_CODE": "0xA800u",
         "OTIS_DAC_MAX_CODE": "0xAB00u",
@@ -251,6 +300,14 @@ def _validate_build(
                 "OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE": "1",
             }
         )
+    if programme.firmware_hybrid_maximum_automatic_applications is not None:
+        expected_defines["OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS"] = (
+            f"{programme.firmware_hybrid_maximum_automatic_applications}u"
+        )
+    if programme.firmware_hybrid_maximum_cumulative_movement_codes is not None:
+        expected_defines[
+            "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES"
+        ] = f"{programme.firmware_hybrid_maximum_cumulative_movement_codes}u"
     if any(defines.get(name) != value for name, value in expected_defines.items()):
         raise ValueError(
             f"firmware build {programme.key.upper()} compile-time envelope differs"

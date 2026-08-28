@@ -707,6 +707,28 @@ bool otis_actuator_guard_acknowledge(
   return false;
 }
 
+bool otis_actuator_guard_discard_exact_rejection(
+    OtisActuatorTransactionGuard *guard,
+    const OtisCrossCoreActuatorAck *acknowledgement,
+    uint16_t confirmed_applied_code) {
+  if (guard == nullptr || acknowledgement == nullptr ||
+      guard->state != OtisActuatorGuardState::AwaitingAcceptance ||
+      acknowledgement->kind != OtisActuatorAckKind::Rejected ||
+      acknowledgement->rejection_reason !=
+          OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance ||
+      !acknowledgement_matches(guard->pending, *acknowledgement) ||
+      guard->pending.current_applied_code != confirmed_applied_code ||
+      acknowledgement->accepted_code != confirmed_applied_code ||
+      acknowledgement->applied_code != confirmed_applied_code ||
+      acknowledgement->i2c_ok || acknowledgement->clamped ||
+      acknowledgement->ambiguous)
+    return false;
+  guard->pending = {};
+  guard->state = OtisActuatorGuardState::Idle;
+  guard->reason = "exact_rejection_discarded_without_application";
+  return true;
+}
+
 bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,
                                         OtisActuatorMonotonicSeconds now_s) {
   if (guard == nullptr) return false;

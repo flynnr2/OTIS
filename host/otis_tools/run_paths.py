@@ -25,7 +25,9 @@ DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
 ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
+ACTIVE_TRANSACTIONS_V2_CSV = "active_transactions_v2.csv"
 ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v1.csv"
+ACTIVE_HYBRID_DECISIONS_V2_CSV = "active_hybrid_decisions_v2.csv"
 PLANT_SIGN_QUALIFICATION_CSV = "plant_sign_qualification_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
@@ -99,8 +101,16 @@ class RunPaths:
         return self.csv_dir / ACTIVE_TRANSACTIONS_CSV
 
     @property
+    def active_transactions_v2_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_TRANSACTIONS_V2_CSV
+
+    @property
     def active_hybrid_decisions_csv(self) -> Path:
         return self.csv_dir / ACTIVE_HYBRID_DECISIONS_CSV
+
+    @property
+    def active_hybrid_decisions_v2_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_HYBRID_DECISIONS_V2_CSV
 
     @property
     def plant_sign_qualification_csv(self) -> Path:
@@ -203,6 +213,27 @@ def cx321_csv_files() -> list[dict[str, str]]:
         {
             "path": f"{CSV_DIR}/{PLANT_SIGN_QUALIFICATION_CSV}",
             "contract": "plant_sign_qualification_v1",
+            "optional": True,
+        },
+    ]
+
+
+def exact_active_timing_csv_files() -> list[dict[str, str]]:
+    """Base capture products plus revised long-run exact timing sidecars.
+
+    Keeping this inventory distinct prevents historical ACT/AHY campaigns
+    from acquiring empty v2 products or implying exact-counter coverage.
+    """
+
+    return [
+        *default_csv_files(),
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_V2_CSV}",
+            "contract": "active_transactions_v2",
+        },
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_V2_CSV}",
+            "contract": "active_hybrid_decisions_v2",
             "optional": True,
         },
     ]

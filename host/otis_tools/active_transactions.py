@@ -271,9 +271,9 @@ def validate_transaction_row(
         raise ValueError("requested code/delta violates the immutable step relation")
     if not spec.minimum_code <= requested <= spec.maximum_code:
         raise ValueError("requested code is outside the immutable range")
-    if event == "request_created" and accepted != 0:
+    if event in {"request_created", "request_withdrawn"} and accepted != 0:
         raise ValueError("unaccepted cross-core request has a non-zero accepted code")
-    if event != "request_created" and accepted != requested:
+    if event not in {"request_created", "request_withdrawn"} and accepted != requested:
         raise ValueError("accepted code differs from the immutable request")
     if not 1 <= ordinal <= spec.correction_limit:
         raise ValueError("correction ordinal exceeds the campaign limit")
@@ -379,15 +379,17 @@ def validate_transaction_history(
             and events[:failure_index] == list(expected_events[:failure_index])
             and events[-1] == "application_fault"
         )
+        valid_withdrawal = events == ["request_created", "request_withdrawn"]
         valid_prefix = events == list(expected_events[: len(events)])
-        if not valid_prefix and not valid_failure:
+        if not valid_prefix and not valid_failure and not valid_withdrawal:
             raise ValueError(
                 f"ACT request {request_sequence} phase order is invalid: {events}"
             )
         if len(events) > len(expected_events):
             raise ValueError("ACT request contains too many phases")
         if index < len(automatic) and not (
-            len(events) == len(expected_events) and valid_prefix
+            (len(events) == len(expected_events) and valid_prefix)
+            or valid_withdrawal
         ):
             raise ValueError("a new ACT request follows an incomplete transaction")
         if valid_failure and index < len(automatic):
@@ -419,7 +421,9 @@ def validate_transaction_history(
         if application is not None:
             previous_code = int(application["applied_code"])
             previous_cumulative = cumulative_after
-        if len(events) == len(expected_events) and valid_prefix:
+        if valid_withdrawal:
+            expected_request_sequence += 1
+        elif len(events) == len(expected_events) and valid_prefix:
             expected_request_sequence += 1
             expected_ordinal += 1
         elif index < len(automatic):
@@ -771,6 +775,11 @@ class ActiveTransactionSupervisor:
         )
         acknowledged = set(self.state["acknowledged_record_sequences"])
         observed_manual = set(self.state["observed_manual_record_sequences"])
+        withdrawn_requests = {
+            int(row["request_sequence"])
+            for row in rows
+            if row.get("event") == "request_withdrawn"
+        }
         for row in rows:
             record_sequence = int(row["transaction_record_sequence"])
             validate_transaction_row(
@@ -792,6 +801,33 @@ class ActiveTransactionSupervisor:
                 self._save()
                 continue
             if record_sequence in acknowledged:
+                continue
+            request_sequence = int(row["request_sequence"])
+            if (
+                event == "request_created"
+                and request_sequence in withdrawn_requests
+            ):
+                self.state["acknowledged_record_sequences"].append(
+                    record_sequence
+                )
+                self.state["acknowledged_record_sequences"].sort()
+                self._save()
+                continue
+            if event == "request_withdrawn":
+                self.state["acknowledged_record_sequences"].append(
+                    record_sequence
+                )
+                self.state["acknowledged_record_sequences"].sort()
+                self.state["arm_pending"] = False
+                if self.dual_core_transactions:
+                    self.state["arm_sent_at_utc"] = None
+                self._save()
+                self._event(
+                    "private_request_withdrawn_on_gnss_metadata_hold",
+                    request_sequence=request_sequence,
+                    requested_code=int(row["requested_code"]),
+                    delta_codes=int(row["requested_delta_codes"]),
+                )
                 continue
             phases = (
                 {

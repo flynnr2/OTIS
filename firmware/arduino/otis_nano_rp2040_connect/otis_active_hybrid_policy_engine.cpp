@@ -25,7 +25,8 @@ constexpr uint64_t kPhaseQualificationResidenceTicks =
     kTimer0TicksPerSecond;
 constexpr uint16_t kMaximumAutomaticApplications =
     OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS;
-constexpr uint16_t kMaximumCumulativeMovementCodes = 84u;
+constexpr uint16_t kMaximumCumulativeMovementCodes =
+    OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES;
 constexpr uint64_t kNaturalReversalWindowTicks =
     43200ull * kTimer0TicksPerSecond;
 constexpr uint64_t kChallengeLatestTicks =

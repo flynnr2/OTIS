@@ -520,6 +520,59 @@ bool otis_cx317_active_accept(OtisCx317ActiveTransaction *transaction,
   return true;
 }
 
+bool otis_cx317_active_discard_released_request_on_metadata_rejection(
+    OtisCx317ActiveTransaction *transaction,
+    OtisCx317ActionableRequest *pending_request,
+    bool *pending_request_valid,
+    bool metadata_hold_active,
+    bool *metadata_hold_transaction_pending,
+    bool request_durably_released,
+    uint16_t confirmed_applied_code,
+    uint32_t confirmed_dac_epoch,
+    const OtisCx317Core0RejectedOutcome *outcome) {
+  if (transaction == nullptr || pending_request == nullptr ||
+      pending_request_valid == nullptr ||
+      metadata_hold_transaction_pending == nullptr || outcome == nullptr ||
+      !metadata_hold_active || !*metadata_hold_transaction_pending ||
+      !request_durably_released || !*pending_request_valid ||
+      transaction->state != OtisCx317ActiveState::RequestPending ||
+      !transaction->have_request || transaction->have_acceptance ||
+      transaction->have_application || !pending_request->actionable ||
+      !request_equal(transaction->request, *pending_request) ||
+      transaction->applied_code != confirmed_applied_code ||
+      transaction->dac_epoch != confirmed_dac_epoch || !outcome->rejected ||
+      outcome->request_sequence != pending_request->request_sequence ||
+      outcome->decision_sequence != pending_request->decision_sequence ||
+      outcome->authorization_sequence !=
+          pending_request->authorization_sequence ||
+      outcome->nonce != pending_request->nonce ||
+      outcome->requested_code != pending_request->requested_code ||
+      outcome->accepted_code != confirmed_applied_code ||
+      outcome->applied_code != confirmed_applied_code ||
+      !outcome->metadata_hold_cancelled_before_acceptance || outcome->i2c_ok ||
+      outcome->clamped || outcome->ambiguous)
+    return false;
+
+  const uint16_t unchanged_code = transaction->applied_code;
+  const uint32_t unchanged_epoch = transaction->dac_epoch;
+  transaction->request.actionable = false;
+  transaction->have_request = false;
+  transaction->have_acceptance = false;
+  transaction->have_application = false;
+  transaction->have_arm = false;
+  transaction->state = OtisCx317ActiveState::Disarmed;
+  transaction->reason = "gnss_metadata_core0_rejection_discarded";
+  *pending_request = {};
+  *pending_request_valid = false;
+  *metadata_hold_transaction_pending = false;
+  // The caller must preserve the request_withdrawn ACT1 row and matching AT2
+  // sidecar while the durable transaction state is still DISARMED.  Only
+  // after both records have been published may it enter ReferenceHold.
+  return transaction->state == OtisCx317ActiveState::Disarmed &&
+         transaction->applied_code == unchanged_code &&
+         transaction->dac_epoch == unchanged_epoch;
+}
+
 bool otis_cx317_active_acknowledge_application(
     OtisCx317ActiveTransaction *transaction,
     const OtisCx317AppliedAck *ack) {

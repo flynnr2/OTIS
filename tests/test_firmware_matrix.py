@@ -35,6 +35,7 @@ CURRENT_PROFILES = {
     "cx321_active_hybrid",
     "cx322_direct_hybrid",
     "cx322_d9_d6_integration_engineering",
+    "cx322_d9_d6_72h_sustained_engineering",
     "otis_sustained_hybrid_regulation_v1",
     "d9_forwarded_output_no_control",
     "d9_disabled_no_control_baseline",
@@ -64,7 +65,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 26
+    assert len(profiles) == 27
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",

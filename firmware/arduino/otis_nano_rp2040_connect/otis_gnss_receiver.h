@@ -390,6 +390,7 @@ struct OtisGnssReceiverSnapshot {
   uint32_t gsa_count;
   uint32_t link_raw_acquisition_loss_count;
   uint32_t raw_acquisition_loss_count;
+  uint32_t last_good_frame_sequence;
   uint32_t minimum_line_length;
   uint32_t maximum_line_length;
   uint32_t minimum_interframe_gap_ms;

@@ -33,7 +33,6 @@ from .abort_transport import send_abort
 from .active_hybrid_bundle import validate_bundle
 from .active_hybrid_live_supervisor import (
     ARM_LIFETIME_S,
-    CORRECTION_RESPONSE_RESERVE_S,
     FORWARDED_MONITOR_OBSERVABILITY_KEYS,
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS,
@@ -55,6 +54,7 @@ from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
     programme_from_mapping,
 )
@@ -77,6 +77,9 @@ from .active_status_contract import (
     SNAPSHOT_CONTRACT_KEY,
 )
 from .active_status_live_state import (
+    LIVE_FRONTIER_COMPONENT,
+    LIVE_FRONTIER_DOMAIN_KEY,
+    LIVE_FRONTIER_TICKS_KEY,
     LIVE_STATE_PATH,
     ActiveStatusLiveReducer,
     read_live_health_state,
@@ -100,7 +103,11 @@ from .cx321_plant_sign_evidence_guard import (
     replay_plant_sign_evidence,
     replay_plant_sign_windows_against_snapshots,
 )
-from .run_paths import cx321_csv_files, default_csv_files
+from .run_paths import (
+    cx321_csv_files,
+    default_csv_files,
+    exact_active_timing_csv_files,
+)
 from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
 
@@ -1231,7 +1238,10 @@ def _sustained_multi_transaction_fixture(
     """
 
     programme = _selected_programme(bundle)
-    if not programme.sustained_regulation:
+    if not (
+        programme.sustained_regulation
+        or programme is CX322_D9_D6_72H_PROGRAMME
+    ):
         raise ValueError("sustained transaction fixture selected elsewhere")
     policy = load_policy(Path(str(bundle["policy"]["path"])))
     controller = ActiveHybridController(policy, setup_application_s=1)
@@ -1394,6 +1404,66 @@ def _sustained_multi_transaction_fixture(
         applied_epoch_exact=True,
     )
     dependent_response = response
+
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        second_consumer = observe(6902, 0)
+        append_decision(second_consumer)
+        first = transactions[0]
+        manual = dict(first)
+        manual.update(
+            {
+                "transaction_record_sequence": "1",
+                "event": "manual_start",
+                "authorization_sequence": "0",
+                "nonce": "0",
+                "request_sequence": "0",
+                "decision_sequence": "0",
+                "source_first_sequence": "0",
+                "source_last_sequence": "0",
+                "decision_timestamp_s": "1",
+                "current_applied_code": str(programme.setup_code),
+                "requested_delta_codes": "0",
+                "requested_code": str(programme.setup_code),
+                "correction_ordinal": "0",
+                "cumulative_after_codes": "0",
+                "pre_error_hz": "0.000000000000",
+                "accepted_code": str(programme.setup_code),
+                "accepted_timestamp_s": "1",
+                "applied_code": str(programme.setup_code),
+                "application_sequence": "0",
+                "application_timestamp_s": "1",
+                "i2c_ok": "true",
+                "clamped": "false",
+                "ambiguous": "false",
+                "dac_epoch": "1",
+                "estimator_history_reset": "false",
+                "correction_count": "0",
+                "cumulative_movement_codes": "0",
+                "post_error_hz": "0.000000000000",
+                "observed_response_hz": "0.000000000000",
+                "cumulative_response_hz": "0.000000000000",
+                "consecutive_indeterminate": "0",
+                "active_state": "DISARMED",
+                "response_class": "unavailable",
+                "reason": "manual_start_established",
+                "evidence_state": "evidence_clear",
+            }
+        )
+        snapshot = controller.snapshot()
+        if not (
+            snapshot["correction_count"] == 2
+            and not snapshot["transaction_outstanding"]
+            and second_consumer.requested_delta_codes == 0
+        ):
+            raise RuntimeError(
+                "campaign18 repeated natural transaction fixture differs"
+            )
+        return ahy, [manual, *transactions], {
+            "applications": applications,
+            "final_snapshot": snapshot,
+            "first_response_consumer_reason": release.reason,
+            "first_post_recovery_consumer_decision_sequence": None,
+        }
 
     # Keep the declared wrapping TIMER0 domain causally reconstructable while
     # accelerating across the natural-reversal window.  These are ordinary
@@ -1596,6 +1666,11 @@ def _cx322_active_status_wire_fixture(
     deliberate_challenge_code: int = 0,
     deliberate_challenge_dac_epoch: int = 0,
     deliberate_challenge_application_ticks: int = 0,
+    gnss_metadata_hold_active: bool = False,
+    gnss_metadata_hold_entry_sequence: int = 0,
+    gnss_metadata_requalification_sequence: int = 0,
+    gnss_metadata_qualification_frontier: int = 0,
+    d14_d8_observation_sequence: int = 0,
 ) -> bytes:
     """Return one complete CX322 status snapshot for a phase frontier."""
 
@@ -1636,7 +1711,9 @@ def _cx322_active_status_wire_fixture(
             "response_policy_sha256": bindings["response_policy"]["sha256"],
             "numerical_policy_sha256": bundle["policy"]["policy_sha256"],
             "state": (
-                "DISARMED"
+                "GNSS_METADATA_HOLD"
+                if gnss_metadata_hold_active
+                else "DISARMED"
                 if checkpoint_passed
                 else ("AWAITING_RESPONSE" if applied else "ARMED")
             ),
@@ -1685,6 +1762,22 @@ def _cx322_active_status_wire_fixture(
             "selected_interval_count": "0",
             "automatic_retry": "false",
             "automatic_restore": "false",
+            "gnss_metadata_hold_active": str(
+                gnss_metadata_hold_active
+            ).lower(),
+            "gnss_metadata_hold_transaction_pending": "false",
+            "gnss_metadata_hold_entry_sequence": str(
+                gnss_metadata_hold_entry_sequence
+            ),
+            "gnss_metadata_requalification_sequence": str(
+                gnss_metadata_requalification_sequence
+            ),
+            "gnss_metadata_qualification_frontier": str(
+                gnss_metadata_qualification_frontier
+            ),
+            "d14_d8_observation_sequence": str(
+                d14_d8_observation_sequence
+            ),
         }
     )
     if programme.sustained_regulation:
@@ -1953,14 +2046,20 @@ def _create_rehearsal_run_manifest(
         raise ValueError("unknown rehearsal endpoint mode")
     if endpoint_mode == "first_response" and not programme.terminal_after_first_response:
         raise ValueError("first-response rehearsal selected for a different programme")
-    files = [
-        dict(entry)
-        for entry in (
-            cx321_csv_files()
-            if programme.identification_required
-            else default_csv_files()
-        )
-    ]
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        source_files = exact_active_timing_csv_files()
+    elif programme.identification_required:
+        source_files = cx321_csv_files()
+    else:
+        source_files = default_csv_files()
+    files = [dict(entry) for entry in source_files]
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        for entry in files:
+            if entry["contract"] in {
+                "active_transactions_v2",
+                "active_hybrid_decisions_v2",
+            }:
+                entry.pop("optional", None)
     value: dict[str, Any] = {
         "schema_version": 1,
         "compatibility_floor": programme.compatibility_floor,
@@ -2084,7 +2183,16 @@ def _create_rehearsal_run_manifest(
             },
         ],
         "contracts": {
-            entry["contract"]: 2 if entry["contract"] == "estimates_v2" else 1
+            entry["contract"]: (
+                2
+                if entry["contract"]
+                in {
+                    "estimates_v2",
+                    "active_transactions_v2",
+                    "active_hybrid_decisions_v2",
+                }
+                else 1
+            )
             for entry in files
         },
         "files": files,
@@ -2101,13 +2209,17 @@ def _create_rehearsal_run_manifest(
             "reports/cx317_active_supervisor_events.jsonl",
         ],
     }
-    if programme.identification_required:
+    if (
+        programme.identification_required
+        or programme is CX322_D9_D6_72H_PROGRAMME
+    ):
         value["domains"].append(
             {
                 "name": "rp2040_timer0_extended",
                 "nominal_hz": 16_000_000,
             }
         )
+    if programme.identification_required:
         value["programme_policy"] = bundle["programme_policy"]
         value["identification"] = bundle["identification"]
         value[programme.manifest_section]["plant_sign_identification"] = {
@@ -2518,6 +2630,8 @@ def _exercise_qualified_device_time_boundaries(
         origin_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
         + origin_subsecond_ticks
     )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        origin_ticks %= RP2040_TIMER0_MICROS_WRAP_TICKS
     estimate_path = supervisor.run_dir / "csv/estimates_v2.csv"
     estimate = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
     estimate.update(
@@ -2578,11 +2692,22 @@ def _exercise_qualified_device_time_boundaries(
     )
 
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
+            "rp2040_timer0"
+        )
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            (origin_ticks - 1) % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
     supervisor._maybe_qualify(health)
     fractional_origin_deferred = (
         supervisor.state["qualified_origin_estimate_id"] is None
     )
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s + 1)
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            origin_ticks
+        )
     supervisor._maybe_qualify(health)
     exact_origin_established = (
         supervisor.state["qualified_origin_estimate_id"]
@@ -2633,16 +2758,43 @@ def _exercise_qualified_device_time_boundaries(
         return result
 
     qualified_duration_s = supervisor.programme.qualified_duration_s
-    admission_elapsed_s = qualified_duration_s - CORRECTION_RESPONSE_RESERVE_S
-    health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + admission_elapsed_s
+    admission_elapsed_s = (
+        qualified_duration_s - supervisor.programme.correction_response_reserve_s
     )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        admission_before_ticks = (
+            origin_ticks
+            + admission_elapsed_s * RP2040_TIMER0_TICKS_PER_SECOND
+            - 1
+        )
+        supervisor.state["qualified_frontier_raw_ticks"] = (
+            admission_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+        supervisor.state["qualified_frontier_extended_ticks"] = (
+            admission_before_ticks
+        )
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            admission_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+    else:
+        health[("cx317_active", "uptime_s")] = str(
+            origin_uptime_s + admission_elapsed_s
+        )
     admission_open_at_floor = not supervisor._close_response_horizon_if_required(
         health
     )
-    health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + admission_elapsed_s + 1
-    )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            (
+                int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
+                + 1
+            )
+            % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+    else:
+        health[("cx317_active", "uptime_s")] = str(
+            origin_uptime_s + admission_elapsed_s + 1
+        )
     admission_closed_conservatively = supervisor._close_response_horizon_if_required(
         health
     )
@@ -2650,22 +2802,48 @@ def _exercise_qualified_device_time_boundaries(
     wall_origin_epoch = datetime.fromisoformat(
         supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
     ).timestamp()
-    health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + qualified_duration_s
-    )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        endpoint_before_ticks = (
+            origin_ticks
+            + qualified_duration_s * RP2040_TIMER0_TICKS_PER_SECOND
+            - 1
+        )
+        supervisor.state["qualified_frontier_raw_ticks"] = (
+            endpoint_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+        supervisor.state["qualified_frontier_extended_ticks"] = (
+            endpoint_before_ticks
+        )
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            endpoint_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+    else:
+        health[("cx317_active", "uptime_s")] = str(
+            origin_uptime_s + qualified_duration_s
+        )
     supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
     endpoint_open_after_forward_utc_step = supervisor.state["terminal"] is None
-    health[("cx317_active", "uptime_s")] = str(
-        origin_uptime_s + qualified_duration_s + 1
-    )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+            (
+                int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
+                + 1
+            )
+            % RP2040_TIMER0_MICROS_WRAP_TICKS
+        )
+    else:
+        health[("cx317_active", "uptime_s")] = str(
+            origin_uptime_s + qualified_duration_s + 1
+        )
     supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
     endpoint_closed_after_backward_utc_step = (
         (supervisor.state.get("terminal") or {}).get("reason")
-        == (
-            f"{supervisor.programme.key}_"
-            f"{supervisor.programme.qualified_duration_s // 3600}h_"
-            "qualified_endpoint_complete"
-        )
+        == supervisor.programme.qualified_endpoint_reason
+    )
+    admission_closed_result_key = (
+        "admission_closed_at_exact_boundary"
+        if programme is CX322_D9_D6_72H_PROGRAMME
+        else "admission_closed_at_first_conservative_uptime"
     )
 
     result = {
@@ -2681,9 +2859,7 @@ def _exercise_qualified_device_time_boundaries(
         "admission_open_at_floor_before_exact_boundary": (
             admission_open_at_floor
         ),
-        "admission_closed_at_first_conservative_uptime": (
-            admission_closed_conservatively
-        ),
+        admission_closed_result_key: admission_closed_conservatively,
         "forward_host_utc_step_did_not_close_early": (
             endpoint_open_after_forward_utc_step
         ),
@@ -2698,7 +2874,7 @@ def _exercise_qualified_device_time_boundaries(
             "fractional_origin_deferred_until_lower_bound",
             "exact_fractional_origin_established",
             "admission_open_at_floor_before_exact_boundary",
-            "admission_closed_at_first_conservative_uptime",
+            admission_closed_result_key,
             "forward_host_utc_step_did_not_close_early",
             "backward_host_utc_step_did_not_delay_endpoint",
         )
@@ -3107,7 +3283,10 @@ def _exercise_cx322_real_transaction_path(
     """Drive observational responses through the actual host process path."""
 
     programme = _selected_programme(bundle)
-    if programme.sustained_regulation:
+    if (
+        programme.sustained_regulation
+        or programme is CX322_D9_D6_72H_PROGRAMME
+    ):
         ahy, transactions, summary = _sustained_multi_transaction_fixture(bundle)
         applications = {
             int(item["request_sequence"]): item
@@ -3147,6 +3326,11 @@ def _exercise_cx322_real_transaction_path(
         "automatic_application_count": 0,
         "cumulative_movement_codes": 0,
         "query_nonce": "0",
+        "gnss_metadata_hold_active": False,
+        "gnss_metadata_hold_entry_sequence": 0,
+        "gnss_metadata_requalification_sequence": 0,
+        "gnss_metadata_qualification_frontier": 0,
+        "d14_d8_observation_sequence": 0,
     }
 
     def emit_active_status() -> None:
@@ -3199,6 +3383,21 @@ def _exercise_cx322_real_transaction_path(
                 43_800 * RP2040_TIMER0_TICKS_PER_SECOND
                 if programme.sustained_regulation
                 else 0
+            ),
+            gnss_metadata_hold_active=bool(
+                state["gnss_metadata_hold_active"]
+            ),
+            gnss_metadata_hold_entry_sequence=int(
+                state["gnss_metadata_hold_entry_sequence"]
+            ),
+            gnss_metadata_requalification_sequence=int(
+                state["gnss_metadata_requalification_sequence"]
+            ),
+            gnss_metadata_qualification_frontier=int(
+                state["gnss_metadata_qualification_frontier"]
+            ),
+            d14_d8_observation_sequence=int(
+                state["d14_d8_observation_sequence"]
             ),
         )
         with write_lock:
@@ -3269,10 +3468,16 @@ def _exercise_cx322_real_transaction_path(
                         if phase == 4:
                             if (
                                 request_sequence == 1
-                                and programme.sustained_regulation
+                                and (
+                                    programme.sustained_regulation
+                                    or programme is CX322_D9_D6_72H_PROGRAMME
+                                )
                             ):
                                 state["checkpoint_passed"] = True
-                            if programme.sustained_regulation:
+                            if (
+                                programme.sustained_regulation
+                                or programme is CX322_D9_D6_72H_PROGRAMME
+                            ):
                                 # Sustained rehearsal spans more than one
                                 # live-health freshness interval.  Mirror the
                                 # firmware's periodic status publication after
@@ -3422,21 +3627,35 @@ def _exercise_cx322_real_transaction_path(
                     ahy_path.open("r", newline="", encoding="utf-8")
                 )
             )
-            response = next(
-                row
-                for row in reversed(transactions)
-                if row["event"] == "response"
-            )
-            consumer = captured_ahy[-1]
+            responses = [
+                row for row in transactions if row["event"] == "response"
+            ]
+            matched_consumers = [
+                next(
+                    (
+                        consumer
+                        for consumer in captured_ahy
+                        if consumer["request_sequence"]
+                        == response["request_sequence"]
+                        and consumer["application_sequence"]
+                        == response["application_sequence"]
+                        and consumer["actual_applied_code"]
+                        == response["applied_code"]
+                        and consumer["actual_dac_epoch"] == response["dac_epoch"]
+                        and consumer["response_class"]
+                        == response["response_class"]
+                        and consumer["downstream_epoch_exact"] == "true"
+                    ),
+                    None,
+                )
+                for response in responses
+            ]
             first_response_consumer_exact = (
-                consumer["request_sequence"] == response["request_sequence"]
-                and consumer["application_sequence"]
-                == response["application_sequence"]
-                and consumer["actual_applied_code"] == response["applied_code"]
-                and consumer["actual_dac_epoch"] == response["dac_epoch"]
-                and consumer["response_class"] == response["response_class"]
-                and consumer["downstream_epoch_exact"] == "true"
-                and consumer["reason"] == first_response_consumer_reason
+                all(consumer is not None for consumer in matched_consumers)
+                and len(matched_consumers) == len(applications)
+                and bool(matched_consumers)
+                and matched_consumers[0]["reason"]
+                == first_response_consumer_reason
             )
             if not first_response_consumer_exact:
                 raise RuntimeError(
@@ -3476,6 +3695,42 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact observation checkpoint and later-authority release",
         )
+        if programme is CX322_D9_D6_72H_PROGRAMME:
+            with write_lock:
+                state.update(
+                    {
+                        "gnss_metadata_hold_active": True,
+                        "gnss_metadata_hold_entry_sequence": 50,
+                        "d14_d8_observation_sequence": 500,
+                    }
+                )
+            emit_active_status()
+            _wait_until(
+                lambda: _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("gnss_metadata_hold_count")
+                == 1,
+                10.0,
+                "campaign18 GNSS control-only hold entry",
+            )
+            with write_lock:
+                state.update(
+                    {
+                        "gnss_metadata_hold_active": False,
+                        "gnss_metadata_requalification_sequence": 51,
+                        "gnss_metadata_qualification_frontier": 500,
+                        "d14_d8_observation_sequence": 501,
+                    }
+                )
+            emit_active_status()
+            _wait_until(
+                lambda: _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("gnss_metadata_hold")
+                is None,
+                10.0,
+                "campaign18 GNSS causal requalification",
+            )
     finally:
         stop.set()
         emulator.join(timeout=2.0)
@@ -3537,19 +3792,37 @@ def _exercise_cx322_real_transaction_path(
         "cumulative_movement_codes": int(state["cumulative_movement_codes"]),
         "request_sequences_consumed": sorted(applications),
         "complete_multi_transaction_sequence": (
-            not programme.sustained_regulation
-            or (
+            sorted(applications) == [1, 2]
+            if programme is CX322_D9_D6_72H_PROGRAMME
+            else (
+                True
+                if not programme.sustained_regulation
+                else (
                 sorted(applications) == [1, 2, 3, 4]
                 and summary["final_snapshot"]["natural_reversal_observed"]
                 and summary["final_snapshot"][
                     "deliberate_challenge_recovery_applied"
                 ]
+                )
             )
         ),
         "first_post_recovery_consumer_decision_sequence": summary.get(
             "first_post_recovery_consumer_decision_sequence"
         ),
         "physical_actions_performed": 0,
+        "gnss_hold_and_causal_requalification": (
+            programme is not CX322_D9_D6_72H_PROGRAMME
+            or (
+                _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("gnss_metadata_hold_count")
+                == 1
+                and _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("gnss_metadata_hold")
+                is None
+            )
+        ),
     }
     if programme.forwarded_output_integration:
         result["forwarded_output_integration"] = (
@@ -3582,6 +3855,7 @@ def _exercise_cx322_real_transaction_path(
         and result["first_phase_observation_checkpoint_exact"]
         and result["first_response_consumer_exact"]
         and result["complete_multi_transaction_sequence"]
+        and result["gnss_hold_and_causal_requalification"]
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
     return result
@@ -4177,6 +4451,15 @@ def run(
                 "mandatory_sustained_status_snapshot_identity": True,
             }
         )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        coverage.update(
+            {
+                "campaign18_exact_AT2_AH2_capture": True,
+                "campaign18_repeated_natural_transaction": True,
+                "campaign18_GNSS_hold_causal_requalification": True,
+                "campaign18_exact_72h_endpoint_clock": True,
+            }
+        )
     unsigned: dict[str, Any] = {
         "schema_version": 1,
         "report_type": programme.rehearsal_report_type,
@@ -4260,6 +4543,15 @@ def run(
                     if programme.sustained_regulation
                     else []
                 ),
+                *(
+                    [
+                        "campaign18_exact_AT2_AH2_capture",
+                        "campaign18_repeated_natural_transaction",
+                        "campaign18_GNSS_hold_causal_requalification",
+                    ]
+                    if programme is CX322_D9_D6_72H_PROGRAMME
+                    else []
+                ),
                 "terminal_abort_delivery_before_capture_close",
                 "post_abort_complete_active_snapshot",
                 "logical_evidence_rotation",
@@ -4276,6 +4568,11 @@ def run(
                     else []
                 ),
                 "qualified_device_time_boundaries",
+                *(
+                    ["campaign18_exact_72h_endpoint_clock"]
+                    if programme is CX322_D9_D6_72H_PROGRAMME
+                    else []
+                ),
                 "setup_propagation",
                 "progressive_checkpoint",
                 "conditional_release",

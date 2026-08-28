@@ -9,6 +9,7 @@ import pytest
 
 from host.otis_tools import active_hybrid_run as runner
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
 )
 from host.otis_tools.active_status_contract import (
@@ -122,6 +123,7 @@ def test_process_commands_bind_one_owner_three_fifos_and_finite_limits(
 
     assert capture[0:3] == [runner.sys.executable, "-m", "host.otis_tools.capture_device"]
     assert capture[capture.index("--duration-s") + 1] == str(57_780)
+    assert capture[capture.index("--baud") + 1] == "115200"
     assert capture[capture.index("--normal-command-max-age-s") + 1] == "2"
     assert supervisor[0:3] == [
         runner.sys.executable,
@@ -148,6 +150,31 @@ def test_integrated_capture_resolves_the_serial_path_fresh() -> None:
     assert "--device" not in command
     assert command[command.index("--expected-auto-detect-device") + 1] == (
         "/dev/cu.usbmodem-freshly-resolved"
+    )
+
+
+def test_campaign18_commands_bind_exact_wall_and_capture_drain() -> None:
+    run_dir = Path("/tmp/campaign18-command-fixture")
+    capture = runner._capture_command(
+        device="/dev/cu.usbmodem-campaign18",
+        run_dir=run_dir,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+    supervisor = runner._supervisor_command(
+        run_dir=run_dir,
+        build_identity="a" * 64 + ":" + "b" * 64,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert CX322_D9_D6_72H_PROGRAMME.qualified_duration_s == 259_200
+    assert CX322_D9_D6_72H_PROGRAMME.authorized_absolute_wall_limit_s == 280_800
+    assert capture[capture.index("--duration-s") + 1] == "280980"
+    assert supervisor[supervisor.index("--duration-s") + 1] == "280920"
+    assert capture[capture.index("--baud") + 1] == "115200"
+    assert "--auto-detect" in capture
+    assert "--device" not in capture
+    assert capture[capture.index("--expected-auto-detect-device") + 1] == (
+        "/dev/cu.usbmodem-campaign18"
     )
 
 
@@ -378,6 +405,59 @@ def test_exact_upload_occurs_once_and_binds_reenumerated_board(
     assert (tmp_path / runner.FLASH_RECORD).is_file()
 
 
+def test_campaign18_upload_reenumeration_uses_fresh_auto_detect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, activation, _ = _activation(tmp_path)
+    (tmp_path / "reports").mkdir()
+    upload_calls: list[list[str]] = []
+    detect_calls = 0
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        del kwargs
+        upload_calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="uploaded", stderr="")
+
+    def fresh_detect() -> str:
+        nonlocal detect_calls
+        detect_calls += 1
+        return "/dev/cu.usbmodem-after"
+
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    monkeypatch.setattr(runner, "_fresh_auto_detect_device", fresh_detect)
+    monkeypatch.setattr(
+        runner,
+        "read_board_identity",
+        lambda device, **kwargs: {
+            "serial_number": runner.EXPECTED_BOARD_SERIAL,
+            "address": device,
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_locate_board_by_serial",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("campaign18 must not reuse stored board serial discovery")
+        ),
+    )
+
+    device, board, record = runner._upload_exact_firmware(
+        run_dir=tmp_path,
+        activation=activation,
+        device="/dev/cu.usbmodem-before",
+        board_before={"serial_number": runner.EXPECTED_BOARD_SERIAL},
+        arduino_cli="arduino-cli",
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert len(upload_calls) == 1
+    assert detect_calls == 1
+    assert device == "/dev/cu.usbmodem-after"
+    assert board["address"] == device
+    assert record["device_selection"] == "fresh_capture_device_--auto-detect"
+    assert record["serial_path_changed"] is True
+
+
 def test_existing_run_is_rejected_before_owner_or_board_access(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -402,6 +482,52 @@ def test_existing_run_is_rejected_before_owner_or_board_access(
             run_dir=existing,
             evidence_index_path=tmp_path / "index.json",
         )
+
+
+def test_activation_is_globally_reserved_before_hardware_and_never_reusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation_path, activation, bundle = _activation(tmp_path)
+    monkeypatch.setattr(
+        runner, "validate_activation", lambda _path: (activation, bundle, {})
+    )
+    monkeypatch.setattr(
+        runner, "require_programme_operation_allowed", lambda *args: {}
+    )
+    reservation = runner._activation_attempt_reservation_path(activation)
+    hardware_calls = 0
+
+    def fail_after_reservation(_device: str) -> set[int]:
+        nonlocal hardware_calls
+        hardware_calls += 1
+        assert reservation.is_file()
+        raise RuntimeError("synthetic crash before board identity")
+
+    monkeypatch.setattr(runner, "_serial_owner_pids", fail_after_reservation)
+
+    with pytest.raises(RuntimeError, match="synthetic crash"):
+        runner.run_active_hybrid_qualification(
+            activation_path=activation_path,
+            run_dir=tmp_path / "attempt-1",
+            evidence_index_path=tmp_path / "index.json",
+        )
+    retained = json.loads(reservation.read_text(encoding="utf-8"))
+    assert retained["status"] == "irreversibly_reserved_before_hardware"
+    assert retained["intended_run_directory"] == str(
+        (tmp_path / "attempt-1").resolve()
+    )
+
+    copied_activation_path = tmp_path / "copied" / "activation-copy.json"
+    copied_activation_path.parent.mkdir()
+    copied_activation_path.write_bytes(activation_path.read_bytes())
+    with pytest.raises(RuntimeError, match="already irreversibly reserved"):
+        runner.run_active_hybrid_qualification(
+            activation_path=copied_activation_path,
+            run_dir=tmp_path / "attempt-2",
+            evidence_index_path=tmp_path / "index.json",
+        )
+    assert hardware_calls == 1
+    assert not (tmp_path / "attempt-2").exists()
 
 
 def test_sustained_v1_live_operation_is_blocked_before_serial_or_board_access(
@@ -543,6 +669,109 @@ def test_orchestration_waits_for_abort_delivery_before_capture_close(
     assert "host.otis_tools.active_hybrid_live_supervisor" in launched[1]
 
 
+def test_noncanonical_aborted_terminal_checks_delivery_before_capture_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation_path, activation, bundle = _activation(tmp_path)
+    run_dir = tmp_path / "run"
+    capture = FakeProcess(7101)
+    supervisor = FakeProcess(7102, exit_code=3)
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        runner, "validate_activation", lambda _path: (activation, bundle, {})
+    )
+    monkeypatch.setattr(
+        runner, "require_programme_operation_allowed", lambda *args: {}
+    )
+    owners = iter((set(), {capture.pid}))
+    monkeypatch.setattr(runner, "_serial_owner_pids", lambda _device: next(owners))
+    monkeypatch.setattr(
+        runner,
+        "read_board_identity",
+        lambda *args, **kwargs: {"serial_number": runner.EXPECTED_BOARD_SERIAL},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_upload_exact_firmware",
+        lambda **kwargs: (
+            "/dev/cu.test",
+            {"serial_number": runner.EXPECTED_BOARD_SERIAL},
+            {},
+        ),
+    )
+
+    def manifest(**kwargs: object) -> dict[str, object]:
+        _write(Path(kwargs["output_path"]), {"manifest": "live"})
+        return {"manifest": "live"}
+
+    monkeypatch.setattr(runner, "create_run_manifest", manifest)
+    journal = tmp_path / "journal.json"
+    _write(journal, {"phases": {}})
+    monkeypatch.setattr(runner, "begin_finalization", lambda **kwargs: journal)
+    monkeypatch.setattr(runner, "advance_phase", lambda *args, **kwargs: {})
+    monkeypatch.setattr(runner, "_capture_state_ready", lambda *args: True)
+    monkeypatch.setattr(
+        runner,
+        "_launch_process",
+        lambda command, _log: (
+            capture
+            if "host.otis_tools.capture_device" in command
+            else supervisor
+        ),
+    )
+    terminal = {
+        "result": "aborted",
+        "reason": "synthetic_noncanonical_abort",
+        # Deliberately omit primary_decision so the normal terminal validator
+        # rejects this branch before the ordinary delivery wait.
+        "last_confirmed_code": 0xA83C,
+    }
+
+    def wait(predicate, timeout_s, description):  # type: ignore[no-untyped-def]
+        del timeout_s
+        if "capture" in description and "command paths" in description:
+            os.mkfifo(run_dir / runner.NORMAL_FIFO)
+            os.mkfifo(run_dir / runner.EMERGENCY_FIFO)
+        elif "live supervisor" in description:
+            os.mkfifo(run_dir / runner.HOST_ABORT_FIFO)
+        elif "terminal" in description:
+            _write(run_dir / runner.SUPERVISOR_STATE, {"terminal": terminal})
+        assert predicate()
+
+    monkeypatch.setattr(runner, "_wait_until", wait)
+    monkeypatch.setattr(
+        runner,
+        "_wait_for_terminal_abort_delivery",
+        lambda _run_dir, _terminal: events.append("abort_delivery_checked"),
+    )
+
+    def close(_capture: FakeProcess) -> int:
+        events.append("capture_closed")
+        _capture.returned = 0
+        return 0
+
+    monkeypatch.setattr(runner, "_graceful_capture_stop", close)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_and_register",
+        lambda **kwargs: {
+            "status": "failed",
+            "primary_decision": "measurement_authority_or_platform_fault",
+            "evidence_content_sha256": "6" * 64,
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="retained terminal"):
+        runner.run_active_hybrid_qualification(
+            activation_path=activation_path,
+            run_dir=run_dir,
+            evidence_index_path=tmp_path / "index.json",
+        )
+
+    assert events == ["abort_delivery_checked", "capture_closed"]
+
+
 def test_upload_failure_is_retained_registered_and_never_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -587,6 +816,18 @@ def test_upload_failure_is_retained_registered_and_never_retried(
     assert (run_dir / runner.ORCHESTRATION_FAILURE).is_file()
     assert registered["attempt_classification"] == "interrupted_campaign"
     assert activation["authority"]["automatic_retry"] is False
+
+    copied_activation = tmp_path / "copied-after-upload-start" / "activation.json"
+    copied_activation.parent.mkdir()
+    copied_activation.write_bytes(activation_path.read_bytes())
+    with pytest.raises(RuntimeError, match="already irreversibly reserved"):
+        runner.run_active_hybrid_qualification(
+            activation_path=copied_activation,
+            run_dir=tmp_path / "retry-run",
+            evidence_index_path=tmp_path / "index.json",
+        )
+    assert uploads == 1
+    assert not (tmp_path / "retry-run").exists()
 
 
 @pytest.mark.parametrize("launch_error", [OSError("capture prewrite"), KeyboardInterrupt()])

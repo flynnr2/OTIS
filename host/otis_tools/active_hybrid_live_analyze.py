@@ -28,6 +28,7 @@ from .active_hybrid_activation import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
     progressive_checkpoint_contract,
 )
@@ -1649,6 +1650,40 @@ def _classify_decision(
     return "passed", "bounded_active_hybrid_control_passed"
 
 
+def _campaign18_outcome(
+    *,
+    integrity_exact: bool,
+    operator_abort: bool,
+    platform_terminal: bool,
+    endpoint_complete: bool,
+    terminal: dict[str, Any],
+    controller_authority_inhibited: bool,
+) -> tuple[str, str]:
+    if operator_abort:
+        return "bounded_nonpass", "cx322_d9_d6_72h_operator_abort"
+    if platform_terminal:
+        reason = str(terminal.get("reason", "")).lower()
+        if "d9" in reason and ("configuration" in reason or "readback" in reason):
+            decision = "cx322_d9_d6_72h_D9_configuration_or_readback_fault"
+        elif any(item in reason for item in ("transaction", "acknowledg", "controller")):
+            decision = "cx322_d9_d6_72h_controller_or_transaction_fault"
+        elif any(item in reason for item in ("d14", "d8", "capture")):
+            decision = "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+        else:
+            decision = "cx322_d9_d6_72h_identity_or_evidence_fault"
+        return "failed", decision
+    if not integrity_exact:
+        return "failed", "cx322_d9_d6_72h_identity_or_evidence_fault"
+    if not endpoint_complete:
+        return "bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete"
+    if controller_authority_inhibited:
+        return (
+            "bounded_nonpass",
+            "cx322_d9_d6_72h_controller_or_transaction_fault",
+        )
+    return "passed", "cx322_d9_d6_72h_qualified_engineering_complete"
+
+
 def _sustained_regulation_outcome(
     *,
     integrity_exact: bool,
@@ -2849,12 +2884,7 @@ def analyze(
     )
     endpoint_complete = engineering_endpoint_complete or (
         terminal.get("result") == "healthy_stop"
-        and terminal.get("reason")
-        == (
-            f"{programme.key}_{programme.qualified_duration_s // 3600}h_qualified_endpoint_complete"
-            if programme.sustained_regulation
-            else f"{programme.key}_12h_qualified_endpoint_complete"
-        )
+        and terminal.get("reason") == programme.qualified_endpoint_reason
     )
     phase_degraded = (
         terminal.get("primary_decision")
@@ -3005,7 +3035,19 @@ def analyze(
     )
     integrity_exact = finalization_gate_passed
     sustained_regulation: dict[str, Any] | None = None
-    if programme.sustained_regulation:
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        status, primary_decision = _campaign18_outcome(
+            integrity_exact=integrity_exact,
+            operator_abort=operator_abort,
+            platform_terminal=platform_terminal,
+            endpoint_complete=endpoint_complete,
+            terminal=terminal,
+            controller_authority_inhibited=isinstance(
+                supervisor_state.get("controller_authority_inhibited_reason"),
+                str,
+            ),
+        )
+    elif programme.sustained_regulation:
         status, primary_decision, sustained_regulation = (
             _sustained_regulation_outcome(
                 integrity_exact=integrity_exact,

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "otis_config.h"
+#include "otis_active_timing_sidecar.h"
 #include "otis_active_hybrid_decision_format.h"
 #include "otis_active_hybrid_policy_engine.h"
 #include "otis_cx317_active_actuator.h"
@@ -128,6 +129,14 @@ constexpr char kExpectedProfile[] = "cx319_tight_lower";
 constexpr char kRunIdentity[] = "cx319_tight_upper:3195002";
 constexpr char kExpectedProfile[] = "cx319_tight_upper";
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE
+constexpr char kRunIdentity[] = "d9_d6_frequency_only_endurance:1";
+constexpr char kExpectedProfile[] = "d9_d6_frequency_only_lower";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
+constexpr char kRunIdentity[] = "cx322_d9_d6_72h_sustained_engineering:1";
+constexpr char kExpectedProfile[] = "cx322_d9_d6_72h_sustained_engineering";
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER
 constexpr char kRunIdentity[] = "cx319_range_part_b_lower:3196001";
 constexpr char kExpectedProfile[] = "cx319_range_part_b_lower";
@@ -216,6 +225,23 @@ bool last_application_acknowledged = false;
 bool estimator_history_reset = false;
 uint32_t status_snapshot_generation = 0u;
 uint32_t status_query_nonce = 0u;
+bool gnss_metadata_hold_active = false;
+bool gnss_metadata_hold_transaction_pending = false;
+uint32_t gnss_metadata_hold_entry_sequence = 0u;
+uint32_t gnss_metadata_requalification_sequence = 0u;
+uint32_t gnss_metadata_qualification_frontier = 0u;
+uint32_t gnss_metadata_hold_session = 0u;
+uint16_t gnss_metadata_hold_applied_code = 0u;
+uint32_t gnss_metadata_hold_dac_epoch = 0u;
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+uint32_t timing_record_sequence = 0u;
+bool manual_start_timing_recorded = false;
+bool health_event_ticks_available = false;
+uint64_t health_event_timestamp_ticks = 0u;
+#endif
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+uint64_t pending_application_timestamp_ticks = 0u;
+#endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
 OtisActiveHybridEngine hybrid_engine = {};
 bool hybrid_engine_ready = false;
@@ -238,7 +264,6 @@ bool plant_sign_handoff_pending = false;
 char plant_sign_attestation_sha256[65] = {};
 #endif
 #if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
-uint64_t pending_application_timestamp_ticks = 0u;
 uint64_t setup_application_timestamp_ticks = 0u;
 #endif
 #endif
@@ -263,6 +288,108 @@ bool exact_sha256_text(const char *value) {
   }
   return value[64] == '\0';
 }
+
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+bool publish_timing_sidecar(const char *data, int used,
+                            uint32_t next_timing_sequence) {
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  if (data == nullptr || used <= 0 ||
+      static_cast<size_t>(used) >= sizeof(evidence_frame_scratch.data) ||
+      next_timing_sequence == 0u)
+    return false;
+  evidence_frame_scratch = {};
+  evidence_frame_scratch.sequence = next_timing_sequence;
+  evidence_frame_scratch.length = static_cast<uint16_t>(used);
+  memcpy(evidence_frame_scratch.data, data,
+         static_cast<size_t>(used) + 1u);
+  if (!otis_dual_core_publish_evidence(&evidence_frame_scratch)) return false;
+  timing_record_sequence = next_timing_sequence;
+  return true;
+#else
+  (void)data;
+  (void)used;
+  (void)next_timing_sequence;
+  return false;
+#endif
+}
+
+bool queue_transaction_timing_sidecar(
+    const char *event, uint64_t event_timestamp_ticks,
+    uint32_t transaction_sequence, uint32_t session_id,
+    uint32_t request_sequence, uint32_t decision_sequence,
+    uint32_t source_first_sequence, uint32_t source_last_sequence,
+    uint32_t authorization_sequence, uint32_t nonce,
+    uint16_t accepted_code, uint16_t applied_code,
+    uint32_t application_sequence, uint32_t dac_epoch,
+    const char *reason) {
+  char output[768] = {};
+  const uint32_t next_timing_sequence = timing_record_sequence + 1u;
+  const OtisActiveTransactionTimingV2 record = {
+      next_timing_sequence,
+      transaction_sequence,
+      event,
+      event_timestamp_ticks,
+      kRunIdentity,
+      kBuildIdentity,
+      OTIS_BUILD_PROFILE_ID,
+      session_id,
+      request_sequence,
+      decision_sequence,
+      source_first_sequence,
+      source_last_sequence,
+      authorization_sequence,
+      nonce,
+      accepted_code,
+      applied_code,
+      application_sequence,
+      dac_epoch,
+      reason,
+  };
+  const int used = otis_format_active_transaction_timing_v2(
+      output, sizeof(output), &record);
+  return publish_timing_sidecar(output, used, next_timing_sequence);
+}
+
+bool queue_current_transaction_timing_sidecar(
+    const char *event, uint64_t event_timestamp_ticks,
+    const char *reason) {
+  return queue_transaction_timing_sidecar(
+      event, event_timestamp_ticks, transaction_record_sequence,
+      transaction.expected_binding.session_id,
+      transaction.request.request_sequence,
+      transaction.request.decision_sequence,
+      transaction.request.source_first_sequence,
+      transaction.request.source_last_sequence,
+      transaction.request.authorization_sequence, transaction.request.nonce,
+      transaction.accepted.accepted_code, transaction.applied.applied_code,
+      transaction.applied.application_sequence, transaction.dac_epoch, reason);
+}
+
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+bool queue_hybrid_timing_sidecar(
+    const OtisCx317ActiveLiveDecision &source,
+    const OtisActiveHybridDecision &decision, uint64_t decision_ticks) {
+  char output[640] = {};
+  const uint32_t next_timing_sequence = timing_record_sequence + 1u;
+  const OtisActiveHybridTimingV2 record = {
+      next_timing_sequence,
+      hybrid_record_sequence,
+      decision.decision_sequence,
+      decision_ticks,
+      kRunIdentity,
+      kBuildIdentity,
+      OTIS_BUILD_PROFILE_ID,
+      source.capture_session,
+      source.source_first_sequence,
+      source.source_last_sequence,
+      decision.reason,
+  };
+  const int used = otis_format_active_hybrid_timing_v2(
+      output, sizeof(output), &record);
+  return publish_timing_sidecar(output, used, next_timing_sequence);
+}
+#endif
+#endif
 
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
 void hybrid_fail_static(const char *reason) {
@@ -308,6 +435,8 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER || \
@@ -320,7 +449,9 @@ OtisCx317ActiveBinding expected_binding(uint32_t session_id) {
     OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID || \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
-        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION || \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
       true,
 #elif OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID
@@ -383,10 +514,19 @@ bool active_integrity_healthy(uint32_t now_s) {
          capture_lease_live(now_s) && latest_health.abort_path_live;
 }
 
-bool reference_path_healthy(void) {
+bool gnss_metadata_healthy(void) {
+  return have_health && latest_health.gnss_metadata_valid &&
+         latest_health.gnss_identity_stable &&
+         latest_health.gnss_3d_evidence;
+}
+
+bool d14_d8_path_healthy(void) {
   return have_health && latest_health.session_id != 0u &&
-         latest_health.gnss_metadata_valid && latest_health.gnss_3d_evidence &&
          latest_health.raw_pps_valid && latest_health.count_valid;
+}
+
+bool reference_path_healthy(void) {
+  return gnss_metadata_healthy() && d14_d8_path_healthy();
 }
 
 bool reference_requalification_healthy(void) {
@@ -394,7 +534,10 @@ bool reference_requalification_healthy(void) {
 }
 
 bool critical_continuity_healthy(uint32_t now_s) {
-  return active_integrity_healthy(now_s) && reference_path_healthy() &&
+  const bool reference_healthy = gnss_metadata_hold_active
+                                     ? d14_d8_path_healthy()
+                                     : reference_path_healthy();
+  return active_integrity_healthy(now_s) && reference_healthy &&
          latest_health.session_id == transaction.expected_binding.session_id;
 }
 
@@ -605,7 +748,8 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s) {
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
 bool queue_active_hybrid_decision(
     const OtisCx317ActiveLiveDecision &source,
-    const OtisActiveHybridDecision &decision) {
+    const OtisActiveHybridDecision &decision,
+    uint64_t decision_timestamp_ticks) {
   const uint32_t next_sequence = hybrid_record_sequence + 1u;
   OtisActiveHybridDecisionRecordContext context = {
       next_sequence,
@@ -652,6 +796,13 @@ bool queue_active_hybrid_decision(
   frame = {};
 #endif
   hybrid_record_sequence = next_sequence;
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  if (!queue_hybrid_timing_sidecar(source, decision,
+                                   decision_timestamp_ticks))
+    return false;
+#else
+  (void)decision_timestamp_ticks;
+#endif
   if (carries_dependent_response)
     otis_dependent_response_identity_consume(&dependent_response_identity);
   return true;
@@ -733,6 +884,139 @@ bool queue_plant_sign_frame(
 }
 #endif
 
+bool withdraw_private_request_for_gnss_metadata_hold(void) {
+  if (transaction.state != OtisCx317ActiveState::RequestPending ||
+      evidence_phase != EvidencePhase::Request ||
+      !transaction.have_request || transaction.have_acceptance ||
+      transaction.have_application || !pending_actionable_request_valid ||
+      transaction.request.request_sequence !=
+          pending_actionable_request.request_sequence ||
+      transaction.request.nonce != pending_actionable_request.nonce)
+    return false;
+  transaction.request.actionable = false;
+  transaction.have_request = false;
+  transaction.have_acceptance = false;
+  transaction.have_application = false;
+  transaction.have_arm = false;
+  transaction.state = OtisCx317ActiveState::Disarmed;
+  transaction.reason = "gnss_metadata_private_request_withdrawn";
+  return true;
+}
+
+bool enter_gnss_metadata_hold(void) {
+  if (!transaction_bound || !manual_start_confirmed) return false;
+  if (!gnss_metadata_hold_active) {
+    gnss_metadata_hold_active = true;
+    gnss_metadata_hold_transaction_pending = false;
+    gnss_metadata_hold_entry_sequence = latest_health.gnss_metadata_sequence;
+    gnss_metadata_requalification_sequence = 0u;
+    gnss_metadata_qualification_frontier = 0u;
+    gnss_metadata_hold_session = transaction.expected_binding.session_id;
+    gnss_metadata_hold_applied_code = transaction.applied_code;
+    gnss_metadata_hold_dac_epoch = transaction.dac_epoch;
+  }
+
+  if (transaction.state == OtisCx317ActiveState::RequestPending &&
+      evidence_phase == EvidencePhase::Request) {
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    if (!health_event_ticks_available) return false;
+#endif
+    if (!withdraw_private_request_for_gnss_metadata_hold())
+      return false;
+    pending_actionable_request_valid = false;
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+    pending_hybrid_decision_valid = false;
+#endif
+    evidence_phase = EvidencePhase::None;
+    evidence_request_sequence = 0u;
+    evidence_pending_since_s = 0u;
+    if (!queue_frame("request_withdrawn", nullptr, 0.0))
+      return false;
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    if (!queue_current_transaction_timing_sidecar(
+            "request_withdrawn", health_event_timestamp_ticks,
+            transaction.reason))
+      return false;
+#endif
+  }
+
+  if (transaction.state == OtisCx317ActiveState::RequestPending ||
+      transaction.state ==
+          OtisCx317ActiveState::AcceptedAwaitingApplication ||
+      transaction.state == OtisCx317ActiveState::AwaitingResponse ||
+      evidence_phase != EvidencePhase::None) {
+    gnss_metadata_hold_transaction_pending = true;
+    return true;
+  }
+
+  gnss_metadata_hold_transaction_pending = false;
+  return otis_cx317_active_reference_hold(
+      &transaction, "gnss_metadata_unqualified_hold");
+}
+
+bool maybe_complete_gnss_metadata_requalification(void) {
+  if (!gnss_metadata_hold_active) return false;
+  if (gnss_metadata_hold_transaction_pending) {
+    if (transaction.state == OtisCx317ActiveState::AwaitingResponse &&
+        transaction.have_application &&
+        latest_health.applied_code_confirmed &&
+        latest_health.applied_code == transaction.applied_code) {
+      // An already released request remains Core-0-owned.  Once its exact
+      // application is confirmed, that code/epoch becomes the frozen hold
+      // identity while the D14/D8 response completes.
+      gnss_metadata_hold_applied_code = transaction.applied_code;
+      gnss_metadata_hold_dac_epoch = transaction.dac_epoch;
+    }
+    if (transaction.state == OtisCx317ActiveState::Disarmed &&
+        evidence_phase == EvidencePhase::None) {
+      gnss_metadata_hold_transaction_pending = false;
+      if (!otis_cx317_active_reference_hold(
+              &transaction, "gnss_metadata_unqualified_hold"))
+        return false;
+    } else {
+      return false;
+    }
+  }
+  if (transaction.state != OtisCx317ActiveState::ReferenceHold) return false;
+  if (!gnss_metadata_healthy()) {
+    gnss_metadata_requalification_sequence = 0u;
+    gnss_metadata_qualification_frontier = 0u;
+    return false;
+  }
+  if (gnss_metadata_requalification_sequence == 0u) {
+    if (latest_health.gnss_metadata_sequence <=
+        gnss_metadata_hold_entry_sequence)
+      return false;
+    gnss_metadata_requalification_sequence =
+        latest_health.gnss_metadata_sequence;
+    gnss_metadata_qualification_frontier =
+        latest_health.d14_d8_observation_sequence;
+    return false;
+  }
+  if (latest_health.d14_d8_observation_sequence <=
+      gnss_metadata_qualification_frontier)
+    return false;
+  if (latest_health.session_id != gnss_metadata_hold_session ||
+      !latest_health.applied_code_confirmed ||
+      latest_health.applied_code != gnss_metadata_hold_applied_code ||
+      transaction.applied_code != gnss_metadata_hold_applied_code ||
+      transaction.dac_epoch != gnss_metadata_hold_dac_epoch) {
+    otis_cx317_active_fault(
+        &transaction,
+        "gnss_metadata_requalification_session_code_or_epoch_contradiction");
+    return false;
+  }
+  if (!otis_cx317_active_reference_requalify(
+          &transaction, gnss_metadata_hold_session)) {
+    otis_cx317_active_fault(
+        &transaction, "gnss_metadata_requalification_transition_failed");
+    return false;
+  }
+  gnss_metadata_hold_active = false;
+  gnss_metadata_hold_transaction_pending = false;
+  return true;
+}
+
 void update_active_reference_and_integrity(uint32_t now_s) {
   // Before the one-shot setup acknowledgement there is no authoritative DAC
   // code to protect, and the host may not yet have established its capture
@@ -760,6 +1044,33 @@ void update_active_reference_and_integrity(uint32_t now_s) {
 
   const bool session_matches =
       latest_health.session_id == transaction.expected_binding.session_id;
+  const bool timing_reference_healthy = d14_d8_path_healthy();
+  const bool metadata_healthy = gnss_metadata_healthy();
+  if (!session_matches || !timing_reference_healthy) {
+    if (transaction_in_flight)
+      otis_cx317_active_fault(
+          &transaction,
+          "d14_d8_or_session_lost_during_unfinished_actuator_transaction");
+    else if (!otis_cx317_active_reference_hold(
+                 &transaction,
+                 session_matches ? "d14_d8_reference_quality_suspect_hold"
+                                 : "reference_session_changed_hold"))
+      otis_cx317_active_fault(&transaction,
+                              "reference_hold_transition_failed");
+    return;
+  }
+
+  if (!metadata_healthy) {
+    if (!enter_gnss_metadata_hold())
+      otis_cx317_active_fault(&transaction,
+                              "gnss_metadata_hold_transition_failed");
+    return;
+  }
+  if (gnss_metadata_hold_active) {
+    maybe_complete_gnss_metadata_requalification();
+    return;
+  }
+
   const bool reference_healthy = reference_path_healthy();
   if (transaction_in_flight) {
     if (!session_matches || !reference_healthy)
@@ -809,6 +1120,23 @@ bool otis_cx317_active_live_begin(void) {
   deferred_application_outcome_valid = false;
   last_application_acknowledged = false;
   estimator_history_reset = false;
+  gnss_metadata_hold_active = false;
+  gnss_metadata_hold_transaction_pending = false;
+  gnss_metadata_hold_entry_sequence = 0u;
+  gnss_metadata_requalification_sequence = 0u;
+  gnss_metadata_qualification_frontier = 0u;
+  gnss_metadata_hold_session = 0u;
+  gnss_metadata_hold_applied_code = 0u;
+  gnss_metadata_hold_dac_epoch = 0u;
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  timing_record_sequence = 0u;
+  manual_start_timing_recorded = false;
+  health_event_ticks_available = false;
+  health_event_timestamp_ticks = 0u;
+#endif
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+  pending_application_timestamp_ticks = 0u;
+#endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   hybrid_engine = {};
   hybrid_engine_ready = false;
@@ -831,7 +1159,6 @@ bool otis_cx317_active_live_begin(void) {
   plant_sign_attestation_sha256[0] = '\0';
 #endif
 #if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
-  pending_application_timestamp_ticks = 0u;
   setup_application_timestamp_ticks = 0u;
 #endif
 #endif
@@ -849,9 +1176,17 @@ void otis_cx317_active_live_emit_headers(void) {
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE
   otis_transport_write_cstr(
       "record_type,schema_version,transaction_record_sequence,event,run_identity,build_identity,profile_identity,session_id,authorization_sequence,nonce,request_sequence,decision_sequence,source_first_sequence,source_last_sequence,decision_timestamp_s,current_applied_code,requested_delta_codes,requested_code,correction_ordinal,cumulative_after_codes,pre_error_hz,accepted_code,accepted_timestamp_s,applied_code,application_sequence,application_timestamp_s,i2c_ok,clamped,ambiguous,dac_epoch,estimator_history_reset,correction_count,cumulative_movement_codes,post_error_hz,observed_response_hz,cumulative_response_hz,consecutive_indeterminate,active_state,response_class,reason,estimator_sha256,model_sha256,active_policy_sha256,response_policy_sha256,numerical_policy_sha256,actionable,evidence_state\r\n");
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  otis_transport_write_cstr(otis_active_transaction_timing_v2_csv_header());
+  otis_transport_write_cstr("\r\n");
+#endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   otis_transport_write_cstr(
       "record_type,schema_version,hybrid_record_sequence,decision_sequence,decision_timestamp_s,run_identity,build_identity,profile_identity,capture_session,source_first_sequence,source_last_sequence,frequency_estimator_sha256,frequency_error_hz,accumulated_edge_error_counts,tight_state,phase_estimator_sha256,phase_epoch,phase_observation_sequence,relative_phase_cycles,phase_continuous,phase_current,phase_step_detected,phase_recorder_published,current_applied_code,dac_epoch,phase_applied_code,phase_dac_epoch,state_before,state_after,frequency_term_hz,phase_term_hz,combined_demand_hz,raw_combined_delta_codes,requested_delta_codes,requested_code,counterfactual_frequency_only_delta_codes,phase_materially_influenced,step_limited,range_clamped,cadence_limited,count_limited,cumulative_budget_limited,correction_count_before,cumulative_movement_before_codes,authority_state,request_sequence,acceptance_sequence,application_sequence,response_class,actual_applied_code,actual_dac_epoch,downstream_epoch_exact,reason,active_policy_sha256,response_policy_sha256,actionable\r\n");
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  otis_transport_write_cstr(otis_active_hybrid_timing_v2_csv_header());
+  otis_transport_write_cstr("\r\n");
+#endif
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   otis_transport_write_cstr(otis_cx321_plant_sign_csv_header());
   otis_transport_write_cstr("\r\n");
@@ -891,6 +1226,25 @@ void otis_cx317_active_live_update_health(
 #else
   (void)health;
   (void)now_s;
+#endif
+}
+
+void otis_cx317_active_live_update_health_at_ticks(
+    const OtisCx317ActiveLiveHealth *health, uint32_t now_s,
+    uint64_t event_timestamp_ticks) {
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  uint64_t extended_ticks = 0u;
+  health_event_ticks_available =
+      otis_cx317_preview_live_extend_timer0_ticks(event_timestamp_ticks,
+                                                  &extended_ticks);
+  health_event_timestamp_ticks =
+      health_event_ticks_available ? extended_ticks : 0u;
+  otis_cx317_active_live_update_health(health, now_s);
+  health_event_ticks_available = false;
+  health_event_timestamp_ticks = 0u;
+#else
+  (void)event_timestamp_ticks;
+  otis_cx317_active_live_update_health(health, now_s);
 #endif
 }
 
@@ -1141,9 +1495,111 @@ bool otis_cx317_active_live_on_cross_core_ack(
           &transaction, "cross_core_actuator_acknowledgement_invalid");
     return false;
   }
+  const bool exact_metadata_rejection_context =
+      acknowledgement->kind == OtisActuatorAckKind::Rejected &&
+      acknowledgement->rejection_reason ==
+          OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance &&
+      gnss_metadata_hold_active && gnss_metadata_hold_transaction_pending &&
+      transaction.state == OtisCx317ActiveState::RequestPending &&
+      transaction.have_request && !transaction.have_acceptance &&
+      !transaction.have_application && evidence_phase == EvidencePhase::None &&
+      timing_actuator_guard.state ==
+          OtisActuatorGuardState::AwaitingAcceptance;
+  if (exact_metadata_rejection_context) {
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    uint64_t rejection_ticks = 0u;
+    if (!otis_cx317_preview_live_extend_timer0_ticks(
+            acknowledgement->acknowledgement_ticks, &rejection_ticks)) {
+      otis_cx317_active_fault(
+          &transaction, "core0_rejection_timestamp_projection_failed");
+      return false;
+    }
+#endif
+    const bool exact_guard_rejection =
+        otis_actuator_guard_discard_exact_rejection(
+            &timing_actuator_guard, acknowledgement,
+            gnss_metadata_hold_applied_code);
+    if (!exact_guard_rejection) {
+      // Preserve the established fail-static path for a contradictory tuple.
+      (void)otis_actuator_guard_acknowledge(&timing_actuator_guard,
+                                             acknowledgement);
+      otis_cx317_active_fault(
+          &transaction, "gnss_metadata_core0_rejection_identity_mismatch");
+      return false;
+    }
+    const OtisCx317Core0RejectedOutcome rejected = {
+        acknowledgement->request_sequence,
+        acknowledgement->decision_sequence,
+        acknowledgement->authorization_sequence,
+        acknowledgement->nonce,
+        acknowledgement->requested_code,
+        acknowledgement->accepted_code,
+        acknowledgement->applied_code,
+        true,
+        acknowledgement->rejection_reason ==
+            OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance,
+        acknowledgement->i2c_ok,
+        acknowledgement->clamped,
+        acknowledgement->ambiguous,
+    };
+    if (!otis_cx317_active_discard_released_request_on_metadata_rejection(
+            &transaction, &pending_actionable_request,
+            &pending_actionable_request_valid, gnss_metadata_hold_active,
+            &gnss_metadata_hold_transaction_pending, true,
+            gnss_metadata_hold_applied_code, gnss_metadata_hold_dac_epoch,
+            &rejected)) {
+      otis_cx317_active_fault(
+          &transaction, "gnss_metadata_core0_rejection_discard_failed");
+      return false;
+    }
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
+    pending_hybrid_decision_valid = false;
+#endif
+    evidence_phase = EvidencePhase::None;
+    evidence_request_sequence = 0u;
+    evidence_pending_since_s = 0u;
+    if (!queue_frame("request_withdrawn", nullptr, 0.0)) {
+      otis_cx317_active_fault(
+          &transaction, "core0_rejection_evidence_queue_fault");
+      return false;
+    }
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    if (!queue_current_transaction_timing_sidecar(
+            "request_withdrawn", rejection_ticks, transaction.reason)) {
+      otis_cx317_active_fault(
+          &transaction, "core0_rejection_exact_timing_sidecar_queue_fault");
+      return false;
+    }
+#endif
+    if (transaction.state != OtisCx317ActiveState::Disarmed ||
+        transaction.applied_code != gnss_metadata_hold_applied_code ||
+        transaction.dac_epoch != gnss_metadata_hold_dac_epoch) {
+      otis_cx317_active_fault(
+          &transaction, "core0_rejection_withdrawal_identity_changed");
+      return false;
+    }
+    if (!otis_cx317_active_reference_hold(
+            &transaction, "gnss_metadata_unqualified_hold") ||
+        transaction.applied_code != gnss_metadata_hold_applied_code ||
+        transaction.dac_epoch != gnss_metadata_hold_dac_epoch) {
+      otis_cx317_active_fault(
+          &transaction, "core0_rejection_reference_hold_failed");
+      return false;
+    }
+    return true;
+  }
   const bool guard_acknowledged = otis_actuator_guard_acknowledge(
       &timing_actuator_guard, acknowledgement);
   if (acknowledgement->kind == OtisActuatorAckKind::Accepted) {
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    uint64_t acceptance_ticks = 0u;
+    if (!otis_cx317_preview_live_extend_timer0_ticks(
+            acknowledgement->acknowledgement_ticks, &acceptance_ticks)) {
+      otis_cx317_active_fault(
+          &transaction, "core0_acceptance_timestamp_projection_failed");
+      return false;
+    }
+#endif
     if (!guard_acknowledged) {
       otis_cx317_active_fault(
           &transaction, "cross_core_acceptance_acknowledgement_invalid");
@@ -1162,6 +1618,14 @@ bool otis_cx317_active_live_on_cross_core_ack(
                               "acceptance_evidence_queue_fault");
       return false;
     }
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    if (!queue_current_transaction_timing_sidecar(
+            "core0_accepted", acceptance_ticks, transaction.reason)) {
+      otis_cx317_active_fault(
+          &transaction, "acceptance_exact_timing_sidecar_queue_fault");
+      return false;
+    }
+#endif
     return true;
   }
   if (acknowledgement->kind != OtisActuatorAckKind::Applied) {
@@ -1170,7 +1634,7 @@ bool otis_cx317_active_live_on_cross_core_ack(
     return false;
   }
   uint64_t application_ticks = acknowledgement->acknowledgement_ticks;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   if (!otis_cx317_preview_live_extend_timer0_ticks(
           acknowledgement->acknowledgement_ticks, &application_ticks)) {
     otis_cx317_active_fault(
@@ -1214,9 +1678,9 @@ bool otis_cx317_active_live_on_cross_core_ack(
   deferred_application_outcome.reason = transaction.reason;
   deferred_application_outcome_valid = true;
   last_application_acknowledged = acknowledged;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   pending_application_timestamp_ticks =
-      acknowledged ? application_ticks : 0u;
+      application_ticks;
 #endif
   if (acknowledged) {
     latest_health.applied_code = transaction.applied_code;
@@ -1274,6 +1738,34 @@ void otis_cx317_active_live_note_manual_start(uint16_t code, bool i2c_ok,
   (void)code;
   (void)i2c_ok;
   (void)now_s;
+#endif
+}
+
+bool otis_cx317_active_live_note_manual_start_timing(
+    uint16_t applied_code, uint32_t dac_epoch,
+    uint64_t setup_application_ticks, uint32_t capture_session) {
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  if (!initialized || !transaction_bound || !manual_start_confirmed ||
+      manual_start_timing_recorded || transaction_record_sequence == 0u ||
+      capture_session == 0u ||
+      capture_session != transaction.expected_binding.session_id ||
+      applied_code != transaction.applied_code || dac_epoch == 0u ||
+      dac_epoch != transaction.dac_epoch)
+    return false;
+  if (!queue_transaction_timing_sidecar(
+          "manual_start", setup_application_ticks,
+          transaction_record_sequence, capture_session, 0u, 0u, 0u, 0u, 0u,
+          0u, applied_code, applied_code, 0u, dac_epoch,
+          "manual_start_established"))
+    return false;
+  manual_start_timing_recorded = true;
+  return true;
+#else
+  (void)applied_code;
+  (void)dac_epoch;
+  (void)setup_application_ticks;
+  (void)capture_session;
+  return true;
 #endif
 }
 
@@ -1374,12 +1866,34 @@ static void active_live_on_decision_impl(
   if (!initialized || !transaction_bound || decision == nullptr ||
       outcome == nullptr)
     return;
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  if (!decision_ticks_available) {
+    otis_cx317_active_fault(
+        &transaction, "exact_long_run_decision_timestamp_unavailable");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+    return;
+  }
+#endif
   outcome->reason = transaction.reason;
   OtisCx317ActiveEligibility health = eligibility(decision->timestamp_s);
   // The completed selected estimate is created in this boundary callback;
   // the periodic health snapshot necessarily trails it by one service loop.
   health.estimator_valid = decision->measurement_valid;
   health.model_applicable = decision->model_applicable;
+  const bool completing_response_during_metadata_hold =
+      gnss_metadata_hold_active &&
+      transaction.state == OtisCx317ActiveState::AwaitingResponse;
+  if (completing_response_during_metadata_hold) {
+    // Metadata qualifies admission of a new correction, not the canonical
+    // D14/D8 observation needed to finish an already applied transaction.
+    health.gnss_metadata_valid = true;
+    health.gnss_identity_stable = true;
+    health.gnss_3d_evidence = true;
+  } else if (gnss_metadata_hold_active) {
+    outcome->reason = "gnss_metadata_hold_no_new_request";
+    return;
+  }
   const OtisCx317ActiveLiveDecision *effective_decision = decision;
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   OtisCx317ActiveLiveDecision hybrid_source = *decision;
@@ -1401,8 +1915,10 @@ static void active_live_on_decision_impl(
   }
   const bool common_health_clean =
       decision->measurement_valid && decision->model_applicable &&
-      health.gnss_metadata_valid && health.gnss_identity_stable &&
-      health.gnss_3d_evidence && health.raw_pps_valid && health.count_valid &&
+      (completing_response_during_metadata_hold ||
+       (health.gnss_metadata_valid && health.gnss_identity_stable &&
+        health.gnss_3d_evidence)) &&
+      health.raw_pps_valid && health.count_valid &&
       health.applied_code_confirmed && health.capture_owner_live &&
       health.abort_path_live && latest_health.reference_integrity_valid &&
       decision->phase_recorder_published;
@@ -1454,7 +1970,8 @@ static void active_live_on_decision_impl(
     outcome->reason = transaction.reason;
     return;
   }
-  if (!queue_active_hybrid_decision(*decision, hybrid_decision)) {
+  if (!queue_active_hybrid_decision(*decision, hybrid_decision,
+                                    decision_timestamp_ticks)) {
     hybrid_fail_static("active_hybrid_decision_evidence_queue_fault");
     otis_cx317_active_fault(
         &transaction, "active_hybrid_decision_evidence_queue_fault");
@@ -1534,6 +2051,15 @@ static void active_live_on_decision_impl(
       outcome->faulted = true;
       outcome->reason = transaction.reason;
     }
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+    else if (!queue_current_transaction_timing_sidecar(
+                 "response", decision_timestamp_ticks, response.reason)) {
+      otis_cx317_active_fault(
+          &transaction, "response_exact_timing_sidecar_queue_fault");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+    }
+#endif
     return;
   }
   if (transaction.state != OtisCx317ActiveState::Armed) return;
@@ -1627,6 +2153,21 @@ static void active_live_on_decision_impl(
     outcome->faulted = true;
     outcome->reason = transaction.reason;
   }
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  else if (!queue_current_transaction_timing_sidecar(
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+               "request_created",
+#else
+               "request_accepted",
+#endif
+               decision_timestamp_ticks, transaction.reason)) {
+    pending_actionable_request_valid = false;
+    otis_cx317_active_fault(
+        &transaction, "request_exact_timing_sidecar_queue_fault");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+  }
+#endif
 #else
   (void)decision;
   (void)decision_ticks_available;
@@ -1948,13 +2489,23 @@ bool otis_cx317_active_live_complete_application_evidence(
   }
 #endif
   evidence_pending_since_s = now_s;
-  if (!queue_frame(last_application_acknowledged && estimator_history_reset
-                       ? "application"
-                       : "application_fault",
-                   nullptr, 0.0)) {
+  const char *application_event =
+      last_application_acknowledged && estimator_history_reset
+          ? "application"
+          : "application_fault";
+  if (!queue_frame(application_event, nullptr, 0.0)) {
     otis_cx317_active_fault(&transaction, "application_evidence_queue_fault");
     return false;
   }
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+  if (!queue_current_transaction_timing_sidecar(
+          application_event, pending_application_timestamp_ticks,
+          transaction.reason)) {
+    otis_cx317_active_fault(
+        &transaction, "application_exact_timing_sidecar_queue_fault");
+    return false;
+  }
+#endif
   return true;
 #else
   (void)request_sequence;
@@ -2095,6 +2646,36 @@ void otis_cx317_active_live_visit_status(
           active.setup_partition_healthy
               ? OTIS_FLAG_NONE
               : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  visitor(context, "gnss_metadata_hold_active",
+          active.gnss_metadata_hold_active ? "true" : "false",
+          active.gnss_metadata_hold_active ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  visitor(context, "gnss_metadata_hold_transaction_pending",
+          active.gnss_metadata_hold_transaction_pending ? "true" : "false",
+          active.gnss_metadata_hold_transaction_pending ? OTIS_SEVERITY_WARN
+                                                        : OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  char metadata_value[24];
+  snprintf(metadata_value, sizeof(metadata_value), "%lu",
+           static_cast<unsigned long>(
+               active.gnss_metadata_hold_entry_sequence));
+  visitor(context, "gnss_metadata_hold_entry_sequence", metadata_value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(metadata_value, sizeof(metadata_value), "%lu",
+           static_cast<unsigned long>(
+               active.gnss_metadata_requalification_sequence));
+  visitor(context, "gnss_metadata_requalification_sequence", metadata_value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(metadata_value, sizeof(metadata_value), "%lu",
+           static_cast<unsigned long>(
+               active.gnss_metadata_qualification_frontier));
+  visitor(context, "gnss_metadata_qualification_frontier", metadata_value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  snprintf(metadata_value, sizeof(metadata_value), "%lu",
+           static_cast<unsigned long>(active.d14_d8_observation_sequence));
+  visitor(context, "d14_d8_observation_sequence", metadata_value,
+          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   visitor(context, "hybrid_state", active.hybrid_state,
           active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
           OTIS_FLAG_NONE);
@@ -2262,10 +2843,17 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
       evidence_phase == EvidencePhase::None &&
       otis_cx317_active_arm_eligibility_valid(&current_eligibility);
 #endif
-  status->state = transaction_bound
-                      ? otis_cx317_active_state_name(transaction.state)
-                      : "UNBOUND";
-  status->reason = transaction_bound ? transaction.reason : "session_unbound";
+  status->state = gnss_metadata_hold_active
+                      ? "GNSS_METADATA_HOLD"
+                      : (transaction_bound
+                             ? otis_cx317_active_state_name(transaction.state)
+                             : "UNBOUND");
+  status->reason = gnss_metadata_hold_active
+                       ? (gnss_metadata_hold_transaction_pending
+                              ? "gnss_metadata_hold_transaction_resolution_pending"
+                              : "gnss_metadata_unqualified_hold")
+                       : (transaction_bound ? transaction.reason
+                                            : "session_unbound");
   status->evidence_state = evidence_state_name();
   status->session_id = transaction_bound
                            ? transaction.expected_binding.session_id
@@ -2312,6 +2900,17 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
 #else
   status->setup_partition_healthy = true;
 #endif
+  status->gnss_metadata_hold_active = gnss_metadata_hold_active;
+  status->gnss_metadata_hold_transaction_pending =
+      gnss_metadata_hold_transaction_pending;
+  status->gnss_metadata_hold_entry_sequence =
+      gnss_metadata_hold_entry_sequence;
+  status->gnss_metadata_requalification_sequence =
+      gnss_metadata_requalification_sequence;
+  status->gnss_metadata_qualification_frontier =
+      gnss_metadata_qualification_frontier;
+  status->d14_d8_observation_sequence =
+      have_health ? latest_health.d14_d8_observation_sequence : 0u;
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   status->hybrid_state =

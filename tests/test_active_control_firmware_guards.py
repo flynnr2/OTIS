@@ -550,6 +550,12 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
         "setup_gnss_eligible",
         "setup_reference_eligible",
         "setup_partition_healthy",
+        "gnss_metadata_hold_active",
+        "gnss_metadata_hold_transaction_pending",
+        "gnss_metadata_hold_entry_sequence",
+        "gnss_metadata_requalification_sequence",
+        "gnss_metadata_qualification_frontier",
+        "d14_d8_observation_sequence",
         "hybrid_state",
         "hybrid_reason",
         "first_phase_checkpoint_passed",
@@ -704,6 +710,8 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         # Operator-authorized integration engineering profile: unchanged
         # CX322 authority with D9/D6 remaining outside control predicates.
         "cx322_d9_d6_integration_engineering",
+        # Exact 72-hour authority envelope around the unchanged CX322 law.
+        "cx322_d9_d6_72h_sustained_engineering",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

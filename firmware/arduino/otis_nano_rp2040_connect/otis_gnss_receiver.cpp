@@ -1496,6 +1496,7 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
   snapshot->gsa_count = receiver->gsa_count;
   snapshot->raw_acquisition_loss_count =
       receiver->raw_acquisition_loss_count;
+  snapshot->last_good_frame_sequence = receiver->last_good_frame_sequence;
   snapshot->minimum_line_length = receiver->minimum_line_length;
   snapshot->maximum_line_length = receiver->maximum_line_length;
   snapshot->minimum_interframe_gap_ms =

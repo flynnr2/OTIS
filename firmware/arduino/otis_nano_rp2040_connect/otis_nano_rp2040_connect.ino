@@ -974,6 +974,7 @@ void publish_dual_core_service_metadata(uint32_t now_ms) {
   OtisServiceMessage receiver = {};
   receiver.kind = OtisServiceMessageKind::ReceiverQualification;
   receiver.receiver.sequence = dual_core_service_sequence++;
+  receiver.receiver.metadata_sequence = gnss.last_good_frame_sequence;
   receiver.receiver.published_ticks = otis_capture_ticks_now();
   receiver.receiver.metadata_age_ms = gnss.metadata_age_ms;
   receiver.receiver.satellites = gnss.satellites;
@@ -1024,11 +1025,13 @@ void propagate_cx317_applied_epoch_to_previews(uint16_t applied_code,
 void propagate_cx317_applied_epoch_to_previews_exact(
     uint16_t applied_code, uint32_t dac_epoch, uint32_t now_s,
     uint64_t application_ticks, uint32_t capture_session) {
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   otis_cx317_preview_live_on_dac_applied_epoch_exact(
       applied_code, dac_epoch, now_s, application_ticks, capture_session);
+#if OTIS_ENABLE_CX320_ACTIVE_HYBRID
   if (!otis_phase_preview_live_update_applied_code(applied_code, dac_epoch))
     otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
+#endif
 #else
   (void)application_ticks;
   (void)capture_session;
@@ -1169,7 +1172,7 @@ void service_dual_core_timing_inputs(void) {
         if (active_status.manual_start_confirmed &&
             active_status.dac_epoch != 0u) {
           uint64_t setup_application_extended_ticks = 0u;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
           if (!otis_cx317_preview_live_project_setup_timer0_ticks(
                   ack.application_timestamp_ticks, ack.session_id,
                   &setup_application_extended_ticks)) {
@@ -1179,6 +1182,15 @@ void service_dual_core_timing_inputs(void) {
           }
 #else
           setup_application_extended_ticks = ack.application_timestamp_ticks;
+#endif
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
+          if (!otis_cx317_active_live_note_manual_start_timing(
+                  ack.applied_code, active_status.dac_epoch,
+                  setup_application_extended_ticks, ack.session_id)) {
+            otis_dual_core_latch_fault(
+                OtisPartitionFault::ActuatorAcknowledgementMismatch);
+            continue;
+          }
 #endif
           propagate_cx317_applied_epoch_to_previews_exact(
               ack.applied_code, active_status.dac_epoch, millis() / 1000u,
@@ -1378,33 +1390,59 @@ void service_dual_core_actuator_request(
   acknowledgement.nonce = request.nonce;
   acknowledgement.acknowledgement_ticks = otis_capture_ticks_now();
   acknowledgement.requested_code = request.requested_code;
+  // Every pre-application outcome carries the unchanged physical code.  This
+  // makes an exact Core 0 rejection distinguishable from a silent or
+  // contradictory outcome without inferring state from zero initialization.
+  acknowledgement.applied_code = request.current_applied_code;
 
   if (critical.kind == OtisCriticalMessageKind::ActuatorRequest) {
-    const bool accepted = !otis_dual_core_fail_static() &&
-                          otis_actuator_guard_start(
-                              &dual_core_service_actuator_guard, &request,
-                              millis() / 1000u);
-    acknowledgement.kind = accepted ? OtisActuatorAckKind::Accepted
-                                    : OtisActuatorAckKind::Rejected;
-    acknowledgement.accepted_code =
-        accepted ? request.requested_code : request.current_applied_code;
-    if (accepted && !otis_actuator_guard_acknowledge(
+    const bool platform_fail_static = otis_dual_core_fail_static();
+    const bool guard_started =
+        !platform_fail_static &&
+        otis_actuator_guard_start(&dual_core_service_actuator_guard, &request,
+                                  millis() / 1000u);
+    acknowledgement.kind = guard_started ? OtisActuatorAckKind::Accepted
+                                         : OtisActuatorAckKind::Rejected;
+    acknowledgement.rejection_reason =
+        guard_started
+            ? OtisActuatorRejectionReason::NotRejected
+            : (platform_fail_static
+                   ? OtisActuatorRejectionReason::PlatformFailStatic
+                   : OtisActuatorRejectionReason::GuardStartRejected);
+    acknowledgement.accepted_code = guard_started
+                                        ? request.requested_code
+                                        : request.current_applied_code;
+    if (guard_started && !otis_actuator_guard_acknowledge(
                         &dual_core_service_actuator_guard,
                         &acknowledgement)) {
       acknowledgement.kind = OtisActuatorAckKind::Rejected;
+      acknowledgement.rejection_reason =
+          OtisActuatorRejectionReason::GuardAcknowledgementRejected;
       acknowledgement.accepted_code = request.current_applied_code;
     }
     publish_dual_core_actuator_ack(acknowledgement);
     return;
   }
 
-  if (critical.kind != OtisCriticalMessageKind::ActuatorExecute ||
-      otis_dual_core_fail_static() ||
-      dual_core_service_actuator_guard.state !=
-          OtisActuatorGuardState::AwaitingApplication ||
-      !otis_actuator_guard_check_deadline(&dual_core_service_actuator_guard,
-                                          millis() / 1000u)) {
+  OtisActuatorRejectionReason execution_rejection =
+      OtisActuatorRejectionReason::NotRejected;
+  if (critical.kind != OtisCriticalMessageKind::ActuatorExecute) {
+    execution_rejection =
+        OtisActuatorRejectionReason::InvalidExecutionPhase;
+  } else if (otis_dual_core_fail_static()) {
+    execution_rejection = OtisActuatorRejectionReason::PlatformFailStatic;
+  } else if (dual_core_service_actuator_guard.state !=
+             OtisActuatorGuardState::AwaitingApplication) {
+    execution_rejection =
+        OtisActuatorRejectionReason::InvalidExecutionPhase;
+  } else if (!otis_actuator_guard_check_deadline(
+                 &dual_core_service_actuator_guard, millis() / 1000u)) {
+    execution_rejection =
+        OtisActuatorRejectionReason::AcknowledgementDeadlineExpired;
+  }
+  if (execution_rejection != OtisActuatorRejectionReason::NotRejected) {
     acknowledgement.kind = OtisActuatorAckKind::Rejected;
+    acknowledgement.rejection_reason = execution_rejection;
     acknowledgement.accepted_code = request.current_applied_code;
     publish_dual_core_actuator_ack(acknowledgement);
     return;
@@ -1422,6 +1460,8 @@ void service_dual_core_actuator_request(
       request.correction_ordinal == pending.correction_ordinal;
   if (!exact_release) {
     acknowledgement.kind = OtisActuatorAckKind::Rejected;
+    acknowledgement.rejection_reason =
+        OtisActuatorRejectionReason::ExecutionIdentityMismatch;
     acknowledgement.accepted_code = pending.current_applied_code;
     publish_dual_core_actuator_ack(acknowledgement);
     otis_dual_core_latch_fault(
@@ -1463,6 +1503,8 @@ void service_dual_core_actuator_request(
   // after the sole DAC write attempt returns.
   acknowledgement.acknowledgement_ticks = otis_capture_ticks_now();
   acknowledgement.kind = OtisActuatorAckKind::Applied;
+  acknowledgement.rejection_reason =
+      OtisActuatorRejectionReason::NotRejected;
   acknowledgement.accepted_code = applied.accepted_code;
   acknowledgement.applied_code = applied.applied_code;
   acknowledgement.i2c_ok = applied.i2c_ok;
@@ -2039,6 +2081,14 @@ void service_cx317_active_health(void) {
   const OtisCx317ActiveLiveHealth health = {
       snapshot.session,
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
+      dual_core_receiver.metadata_sequence,
+#else
+      gnss.last_good_frame_sequence,
+#endif
+      runtime_state.sequences.count_seq == 0u
+          ? 0u
+          : runtime_state.sequences.count_seq - 1u,
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
       dual_core_receiver_qualified_for_control(),
       dual_core_receiver.identity_stable,
       dual_core_receiver.gsa_3d,
@@ -2065,7 +2115,12 @@ void service_cx317_active_health(void) {
 #endif
       preview.selected_interval_count,
   };
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+  otis_cx317_active_live_update_health_at_ticks(
+      &health, now_ms / 1000u, otis_capture_ticks_now());
+#else
   otis_cx317_active_live_update_health(&health, now_ms / 1000u);
+#endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (dual_core_static_code.available &&
       otis_cx317_active_live_manual_start_allowed(
@@ -2073,7 +2128,7 @@ void service_cx317_active_health(void) {
     otis_cx317_active_live_note_manual_start(
         dual_core_static_code.applied_code, true, now_ms / 1000u);
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-#if !OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if !OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
     OtisCx317ActiveLiveStatus active_status = {};
     otis_cx317_active_live_get_status(&active_status, now_ms / 1000u);
     propagate_cx317_applied_epoch_to_previews(
@@ -2238,7 +2293,7 @@ void service_cx317_active_application_outcome(void) {
 #endif
   if (active_outcome.applied) {
 #if OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
     propagate_cx317_applied_epoch_to_previews_exact(
         active_outcome.applied_code, active_outcome.dac_epoch,
         millis() / 1000u, active_outcome.application_timestamp_ticks,

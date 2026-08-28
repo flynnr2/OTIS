@@ -175,6 +175,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
         "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
         "otis_sustained_hybrid_regulation_v1",
         "otis_gnss_baud_envelope_characterization_v1",
         "otis_gnss_baud_envelope_characterization_continuation_v1",

@@ -2,26 +2,52 @@
 
 ## Status
 
-The historical Prompt 04 terminal below remains valid for its frozen inputs.
-It is now followed by a separately operator-authorized engineering programme,
-bound by
-[`cx322_d9_d6_integration_engineering_contract_v1.json`](cx322_d9_d6_integration_engineering_contract_v1.json).
-That programme may test the unchanged CX322 request law concurrently with the
-fixed D8-to-D9 forwarding path and zero-authority D6 sidecar even though no
-oscilloscope or counter waveform evidence is available. It does not revise the
-Prompt 02 waveform terminal, authorize a frequency-only output soak, select the
-Prompt 03 reference oracle, or promote a delivered-output claim.
+The historical Prompt 02–04 terminals remain valid for their frozen inputs.
+Subsequent explicit operator directions now authorize two separate engineering
+long runs despite the unavailable oscilloscope/counter waveform evidence:
 
-The integrated engineering profile is distinct from historical CX322 and
-differs from `cx322_direct_hybrid` only by enabling fixed D9 forwarding and the
-D6 diagnostic monitor while keeping the D9/D6 readiness selector disabled.
-Its live entry requires fresh `capture_device --auto-detect`, 115200 baud, an
-exact post-attachment D9 source/divider/GPIO/readback transcript, observable
-D6 status (healthy or explicitly local-degraded), and the existing D14/D8,
-GNSS, DAC-epoch, transaction and independent-abort gates. Initial physical
-authority is narrower than the firmware ceiling: one automatic application,
-21 cumulative codes, no retry or restoration, first-response termination, and
-a 7,200-second absolute wall limit.
+- the 24-hour frequency-only programme bound by
+  [`d9_d6_frequency_only_digital_endurance_contract_v1.json`](d9_d6_frequency_only_digital_endurance_contract_v1.json);
+- the 72-hour unchanged-CX322 hybrid programme bound by
+  [`cx322_d9_d6_72h_integrated_engineering_contract_v1.json`](cx322_d9_d6_72h_integrated_engineering_contract_v1.json).
+
+This authority supersedes the original Gate B waveform dependency and the
+Prompt 04 stop boundary only for these explicitly identified engineering
+acquisitions. It does not change the Prompt 02 waveform terminal, qualify the
+delivered D9 waveform or load, or promote a public output claim. Oscilloscope
+and independently referenced counter evidence remain unknown and deferred,
+not failed and not required for the non-waveform tests.
+
+Both live entries require fresh `capture_device --auto-detect` for every
+enumeration, exactly one device at 115200 baud, exact post-attachment D9
+source/divider/GPIO/readback, D14/D8 continuity and control eligibility, D6
+present or explicitly local-degraded, same-receiver GNSS metadata, exact
+DAC-code/epoch identity, one serial owner and an independent abort path. The
+bench connection is D9 to D6 through a 1 kΩ series resistor. D14 remains the
+sole timing reference, D8 the sole oscillator/control truth, D9 an output, and
+D6 a fail-local zero-authority diagnostic.
+
+The 24-hour authority envelope permits at most 48 automatic applications,
+1,008 cumulative absolute codes and 49 total physical writes including setup.
+The 72-hour envelope permits at most 144 automatic applications, 3,024
+cumulative absolute codes and 145 total writes including setup. Both retain a
+21-code maximum step, 1,800-second minimum application cadence, one outstanding
+transaction, no retry or restoration, and an exact 1,500-second endpoint
+response reserve. These limits are cadence-derived safety ceilings, never
+targets or early completion conditions; authority remains available throughout
+the qualified interval outside the endpoint reserve.
+
+A naturally occurring recoverable GNSS serial-metadata anomaly enters bounded
+`GNSS_METADATA_HOLD`: D14/D8 capture, estimation, phase accumulation and any
+already-required response continue, the last confirmed DAC code is retained,
+and no new request is issued. Rearm requires fresh metadata from the same
+receiver followed by causally later exact D14/D8/session/code/epoch evidence.
+The programme does not deliberately create a physical GNSS anomaly. Actual D14
+loss remains a separate authoritative fault.
+
+The earlier one-application engineering smoke contract remains preserved as
+[`cx322_d9_d6_integration_engineering_contract_v1.json`](cx322_d9_d6_integration_engineering_contract_v1.json)
+and does not constrain either long-run authority envelope.
 
 Prompt 04 has closed at
 `non_effective_semantics_verified_promotion_blocked_by_d9_gate`. The complete
@@ -117,8 +143,12 @@ Prompt 04 72-hour promotion proposal.
 
 ## Stop boundary
 
-This bundle stops after the confirmed implementation, exact affected build and
-complete operational-path rehearsal. It must not start the later 72-hour
-integrated hybrid/output trial. That trial requires a new explicit authority
-decision binding the exact firmware, controller, output contract, qualified
-load, wiring, tools, stop conditions and evidence destinations produced here.
+The stop boundary above is the historical Prompt 04 boundary. The operator has
+since supplied the separate authority decision required there. Neither revised
+long run may start from that instruction alone: its current exact source,
+firmware binary, contract, capture inventory, command envelope, abort path,
+analyzer, finalizer and evidence destinations must first be frozen into an
+effective activation, and the same operationally significant bundle must pass
+the complete real-process rehearsal. A changed operational input invalidates
+that activation and requires the shortest affected rebuild or rehearsal before
+bench entry.

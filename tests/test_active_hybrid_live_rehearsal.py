@@ -10,6 +10,7 @@ import pytest
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
@@ -135,6 +136,44 @@ def test_rehearsal_manifest_is_strictly_non_authorizing_and_pty_only(
     assert observed["physical_actions_performed"] == 0
     assert observed["actionable"] is False
     assert observed["actuation_authorized"] is False
+    assert "active_transactions_v2" not in observed["contracts"]
+    assert "active_hybrid_decisions_v2" not in observed["contracts"]
+
+
+def test_campaign18_rehearsal_manifest_requires_exact_timing_sidecars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    bundle["programme_id"] = CX322_D9_D6_72H_PROGRAMME.programme_id
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal, "validate_bundle", lambda path, programme: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal, "validate_proposal", lambda path, programme: proposal
+    )
+    run_dir = tmp_path / "campaign18-run"
+    run_dir.mkdir()
+
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/pts/99",
+    )
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+    files = {entry["contract"]: entry for entry in observed["files"]}
+
+    assert observed["contracts"]["active_transactions_v2"] == 2
+    assert observed["contracts"]["active_hybrid_decisions_v2"] == 2
+    assert files["active_transactions_v2"].get("optional") is None
+    assert files["active_hybrid_decisions_v2"].get("optional") is None
+    assert {
+        "name": "rp2040_timer0_extended",
+        "nominal_hz": 16_000_000,
+    } in observed["domains"]
 
 
 def test_rehearsal_manifest_rejects_non_pty_device(

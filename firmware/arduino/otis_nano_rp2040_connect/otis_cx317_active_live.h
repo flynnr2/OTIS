@@ -17,6 +17,11 @@
 
 struct OtisCx317ActiveLiveHealth {
   uint32_t session_id;
+  // Monotonic producer identities.  Metadata qualification must advance
+  // first; a causally later exact D14/D8 observation must then advance before
+  // control can be rearmed.
+  uint32_t gnss_metadata_sequence;
+  uint32_t d14_d8_observation_sequence;
   bool gnss_metadata_valid;
   bool gnss_identity_stable;
   bool gnss_3d_evidence;
@@ -112,6 +117,12 @@ struct OtisCx317ActiveLiveStatus {
   bool setup_gnss_eligible;
   bool setup_reference_eligible;
   bool setup_partition_healthy;
+  bool gnss_metadata_hold_active;
+  bool gnss_metadata_hold_transaction_pending;
+  uint32_t gnss_metadata_hold_entry_sequence;
+  uint32_t gnss_metadata_requalification_sequence;
+  uint32_t gnss_metadata_qualification_frontier;
+  uint32_t d14_d8_observation_sequence;
   const char *hybrid_state;
   const char *hybrid_reason;
   uint16_t phase_nonzero_application_count;
@@ -144,6 +155,9 @@ void otis_cx317_active_live_visit_status(
     void *context, OtisCx317ActiveStatusVisitor visitor, uint32_t now_s);
 void otis_cx317_active_live_update_health(
     const OtisCx317ActiveLiveHealth *health, uint32_t now_s);
+void otis_cx317_active_live_update_health_at_ticks(
+    const OtisCx317ActiveLiveHealth *health, uint32_t now_s,
+    uint64_t event_timestamp_ticks);
 void otis_cx317_active_live_service(uint32_t now_s);
 bool otis_cx317_active_live_capture_lease(uint32_t lease_sequence,
                                          uint32_t now_s);
@@ -160,6 +174,9 @@ bool otis_cx317_active_live_manual_start_allowed(uint16_t requested_code);
 void otis_cx317_active_live_note_manual_start(uint16_t requested_code,
                                               bool i2c_ok,
                                               uint32_t now_s);
+bool otis_cx317_active_live_note_manual_start_timing(
+    uint16_t applied_code, uint32_t dac_epoch,
+    uint64_t setup_application_ticks, uint32_t capture_session);
 bool otis_cx317_active_live_confirm_setup_consumers(uint16_t applied_code,
                                                     uint32_t dac_epoch);
 bool otis_cx317_active_live_confirm_setup_consumers_exact(

@@ -362,6 +362,7 @@ OtisCrossCoreActuatorAck acknowledgement(OtisActuatorAckKind kind) {
   value.accepted_code = pending.requested_code;
   value.applied_code = pending.requested_code;
   value.kind = kind;
+  value.rejection_reason = OtisActuatorRejectionReason::NotRejected;
   value.i2c_ok = true;
   return value;
 }
@@ -929,6 +930,73 @@ void actuator_deadline_is_wrap_safe_in_one_named_domain() {
   }
 }
 
+void metadata_hold_exact_rejection_has_one_narrow_nonfaulting_guard_path() {
+  const OtisCrossCoreActuatorRequest pending = request();
+  auto exact_rejection = acknowledgement(OtisActuatorAckKind::Rejected);
+  exact_rejection.accepted_code = pending.current_applied_code;
+  exact_rejection.applied_code = pending.current_applied_code;
+  exact_rejection.rejection_reason =
+      OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance;
+  exact_rejection.i2c_ok = false;
+
+  otis_dual_core_partition_reset();
+  OtisActuatorTransactionGuard guard = {};
+  otis_actuator_guard_init(&guard);
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  assert(otis_actuator_guard_discard_exact_rejection(
+      &guard, &exact_rejection, pending.current_applied_code));
+  assert(guard.state == OtisActuatorGuardState::Idle);
+  assert(guard.pending.request_sequence == 0u);
+  assert(guard.pending.requested_code == 0u);
+  assert(strcmp(guard.reason,
+                "exact_rejection_discarded_without_application") == 0);
+  assert(!otis_dual_core_fail_static());
+
+  // The same exact tuple with a platform discriminator is never benign.
+  otis_dual_core_partition_reset();
+  otis_actuator_guard_init(&guard);
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  auto platform_rejection = exact_rejection;
+  platform_rejection.rejection_reason =
+      OtisActuatorRejectionReason::PlatformFailStatic;
+  assert(!otis_actuator_guard_discard_exact_rejection(
+      &guard, &platform_rejection, pending.current_applied_code));
+  assert(guard.state == OtisActuatorGuardState::AwaitingAcceptance);
+  assert(!otis_actuator_guard_acknowledge(&guard, &platform_rejection));
+  assert(guard.state == OtisActuatorGuardState::Fault);
+  assert(otis_dual_core_fail_static());
+
+  otis_dual_core_partition_reset();
+  otis_actuator_guard_init(&guard);
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  auto contradictory = exact_rejection;
+  contradictory.nonce++;
+  assert(!otis_actuator_guard_discard_exact_rejection(
+      &guard, &contradictory, pending.current_applied_code));
+  assert(guard.state == OtisActuatorGuardState::AwaitingAcceptance);
+  assert(!otis_actuator_guard_acknowledge(&guard, &contradictory));
+  assert(guard.state == OtisActuatorGuardState::Fault);
+  assert(otis_dual_core_fail_static());
+
+  // Outside metadata-hold dispatch, the established acknowledgement path
+  // still treats even an exact Rejected outcome as fail-static.
+  otis_dual_core_partition_reset();
+  otis_actuator_guard_init(&guard);
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  assert(!otis_actuator_guard_acknowledge(&guard, &exact_rejection));
+  assert(guard.state == OtisActuatorGuardState::Fault);
+  assert(otis_dual_core_fail_static());
+
+  // Metadata hold does not relax the independently checked silent deadline.
+  otis_dual_core_partition_reset();
+  otis_actuator_guard_init(&guard);
+  assert(otis_actuator_guard_start(&guard, &pending, 1801u));
+  assert(!otis_actuator_guard_check_deadline(
+      &guard, pending.monotonic_deadline_s + 1u));
+  assert(guard.state == OtisActuatorGuardState::Fault);
+  assert(otis_dual_core_fail_static());
+}
+
 void applied_ack_advances_stale_periodic_dac_state_before_health() {
   OtisCx317StaticCodeState state = {};
   OtisAppliedDacStateMessage stale = {};
@@ -984,6 +1052,7 @@ int main() {
   forwarded_monitor_overflow_does_not_mutate_actuator_transaction();
   stale_ack_and_timeout_fault_without_retry();
   actuator_deadline_is_wrap_safe_in_one_named_domain();
+  metadata_hold_exact_rejection_has_one_narrow_nonfaulting_guard_path();
   applied_ack_advances_stale_periodic_dac_state_before_health();
   return 0;
 }

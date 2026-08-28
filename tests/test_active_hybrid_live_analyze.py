@@ -28,8 +28,43 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _wall_origin_and_setup_order_exact,
 )
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
 )
+
+
+def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit() -> None:
+    terminal = {
+        "result": "healthy_stop",
+        "reason": CX322_D9_D6_72H_PROGRAMME.qualified_endpoint_reason,
+    }
+    assert live_analyze._campaign18_outcome(
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=False,
+    ) == ("passed", "cx322_d9_d6_72h_qualified_engineering_complete")
+    assert live_analyze._campaign18_outcome(
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=False,
+        terminal=terminal,
+        controller_authority_inhibited=False,
+    ) == ("bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete")
+    assert live_analyze._campaign18_outcome(
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=True,
+    ) == (
+        "bounded_nonpass",
+        "cx322_d9_d6_72h_controller_or_transaction_fault",
+    )
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,

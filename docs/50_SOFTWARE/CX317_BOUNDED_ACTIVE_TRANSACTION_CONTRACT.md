@@ -171,6 +171,30 @@ I2C outcome, DAC epoch, and explicit estimator-history reset. The response row
 ties post-error and observed/cumulative response classification back to the
 same immutable request.
 
+For the separately activated 24-hour D9/D6 frequency-only and 72-hour
+D9/D6/CX322 engineering programmes, every `ACT` row has a one-to-one `AT2`
+timing sidecar in `active_transactions_v2.csv`. `AT2` repeats the complete
+transaction identity and records the event boundary in the monotonic
+`rp2040_timer0_extended` domain. The 72-hour programme likewise gives every
+`AHY1` decision a one-to-one `AH2` timing sidecar in
+`active_hybrid_decisions_v2.csv`. The legacy whole-second fields remain
+display and backward-compatibility fields; cadence, endpoint, response-reserve,
+right-censor and terminal decisions in these programmes use only the exact
+sidecars. A missing, duplicate, reordered or identity-inconsistent sidecar is
+an evidence fault, never a reason to reconstruct exact time from rounded
+seconds.
+
+Those long-run profiles also implement `GNSS_METADATA_HOLD` without changing
+D14/D8 timing authority. A private Core 1 request may be withdrawn before
+durable release; a released request remains owned by Core 0 and must resolve
+through its exact retained transaction path. During the hold, no new request is
+created, the last confirmed DAC code/session/epoch is retained, and D14/D8
+capture, estimation, phase accumulation and an already-required response
+continue. Rearm requires fresh metadata from the same receiver followed by a
+causally later exact D14/D8 observation bound to that retained actuator
+identity. An ambiguous or platform-originated rejection remains fail-static;
+only the explicit pre-acceptance metadata-hold withdrawal is nonterminal.
+
 ## Fail-static behavior
 
 Duplicate, stale, reordered, expired, mismatched, clamped, ambiguous, missing,

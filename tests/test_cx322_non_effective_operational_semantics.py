@@ -5,6 +5,8 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
+import pytest
+
 from host.otis_tools.adaptive_steering_offline import RequestReleaseState
 from host.otis_tools.cx322_non_effective_operational_semantics import (
     AppliedPath,
@@ -111,6 +113,7 @@ def _assert_non_effective(*transitions: object) -> None:
         assert transition.effective_actuation_permitted is False
 
 
+@pytest.mark.historical
 def test_contract_is_semantically_bound_and_permanently_non_effective() -> None:
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     unsigned = {

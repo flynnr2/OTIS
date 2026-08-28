@@ -178,6 +178,25 @@ struct OtisCx317ActiveTransaction {
   uint8_t recent_applied_direction_count;
 };
 
+// Core 1 may consume this outcome without fault only for the narrow case in
+// which GNSS metadata became unqualified after the durable request was
+// released but before Core 0 accepted it.  The value deliberately repeats the
+// full request identity and the unchanged physical DAC state.
+struct OtisCx317Core0RejectedOutcome {
+  uint32_t request_sequence;
+  uint32_t decision_sequence;
+  uint32_t authorization_sequence;
+  uint32_t nonce;
+  uint16_t requested_code;
+  uint16_t accepted_code;
+  uint16_t applied_code;
+  bool rejected;
+  bool metadata_hold_cancelled_before_acceptance;
+  bool i2c_ok;
+  bool clamped;
+  bool ambiguous;
+};
+
 void otis_cx317_active_transaction_init(
     OtisCx317ActiveTransaction *transaction,
     const OtisCx317ActiveBinding *binding);
@@ -203,6 +222,16 @@ bool otis_cx317_active_accept(OtisCx317ActiveTransaction *transaction,
 bool otis_cx317_active_acknowledge_application(
     OtisCx317ActiveTransaction *transaction,
     const OtisCx317AppliedAck *acknowledgement);
+bool otis_cx317_active_discard_released_request_on_metadata_rejection(
+    OtisCx317ActiveTransaction *transaction,
+    OtisCx317ActionableRequest *pending_request,
+    bool *pending_request_valid,
+    bool metadata_hold_active,
+    bool *metadata_hold_transaction_pending,
+    bool request_durably_released,
+    uint16_t confirmed_applied_code,
+    uint32_t confirmed_dac_epoch,
+    const OtisCx317Core0RejectedOutcome *outcome);
 // CX321 charges its identification application to the global transaction
 // budgets, then starts the natural-controller reversal history empty.
 bool otis_cx317_active_rebase_natural_history_after_identification(

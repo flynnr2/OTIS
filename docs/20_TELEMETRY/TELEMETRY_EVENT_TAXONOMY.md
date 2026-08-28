@@ -72,6 +72,8 @@ contextualize, or derive from those facts.
 | `DISCIPLINE_STATE` | state          | Discipline loop state and estimator status                 |
 | `DIAGNOSTIC_EVENT` | diagnostic     | Health, quality, confidence, reason, and control effect    |
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
+| `ACTIVE_TRANSACTION_TIMING` | control_action | Exact counter-domain timing sidecar for an active transaction record |
+| `ACTIVE_HYBRID_DECISION_TIMING` | state | Exact counter-domain timing sidecar for a hybrid decision record |
 | `ENVIRONMENT`      | context        | Temperature, pressure, humidity, voltage, board context  |
 | `DEVICE_STATE`     | provenance     | Boot, firmware, hardware, clock-source, runtime state    |
 | `CONFIG_SNAPSHOT`  | provenance     | Run configuration, selected profile, calibration, schema |
@@ -176,6 +178,24 @@ An `MNS` record is never a D14 reference, never substitutes for D8, and cannot
 qualify a D9 waveform. Missing, stale, corrupt, discontinuous, or overflowing
 monitor evidence remains D6-local unless the implementation demonstrably
 compromises the separate D14/D8 path.
+
+### Exact active-control timing sidecars
+
+The long-run D9/D6 engineering profiles encode `ACTIVE_TRANSACTION_TIMING` as
+`AT2` in `active_transactions_v2.csv` and
+`ACTIVE_HYBRID_DECISION_TIMING` as `AH2` in
+`active_hybrid_decisions_v2.csv`. These are not new timing observations and do
+not replace D14 `REF` or D8 `CNT`. They bind each legacy `ACT1` transaction or
+`AHY1` decision one-to-one to a monotonic `rp2040_timer0_extended` event or
+decision timestamp and repeat the complete run, build, profile, session and
+source-frontier identity needed for causal replay.
+
+The original records remain canonical for transaction and controller content;
+the sidecars are canonical for their exact lifecycle timing in the activated
+24-hour and 72-hour programmes. A verifier must reject a missing, duplicate,
+reordered or identity-inconsistent join and must not substitute the legacy
+whole-second display fields for cadence, response-reserve, right-censor,
+endpoint or terminal decisions.
 
 ---
 

@@ -27,6 +27,9 @@ LIVE_STATE_CONTRACT = "cx317_active_status_live_state_v1"
 LIVE_STATE_PATH = Path("reports/cx317_active_status_live_state_v1.json")
 LIVE_STATE_SCHEMA_VERSION = 1
 LIVE_STATES = frozenset({"in_progress", "complete", "invalid"})
+LIVE_FRONTIER_COMPONENT = "active_status_live_state"
+LIVE_FRONTIER_TICKS_KEY = "frontier_timestamp_ticks"
+LIVE_FRONTIER_DOMAIN_KEY = "frontier_status_domain"
 
 
 def _positive_int(value: object) -> int | None:
@@ -308,6 +311,22 @@ def read_live_health_state(
             observed_monotonic_ns,
             "complete live-health query nonce is not current",
         )
+    frontier_timestamp_ticks = _positive_int(
+        value.get("frontier_timestamp_ticks")
+    )
+    frontier_status_domain = value.get("frontier_status_domain")
+    if frontier_timestamp_ticks is None or not isinstance(
+        frontier_status_domain, str
+    ) or not frontier_status_domain:
+        return _invalid_state(
+            "complete live-health retained producer frontier is absent"
+        )
+    latest[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
+        frontier_timestamp_ticks
+    )
+    latest[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
+        frontier_status_domain
+    )
     return LiveHealthState(
         "complete",
         latest,

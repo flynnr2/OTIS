@@ -24,6 +24,7 @@ from typing import Any, Callable, IO
 
 from .active_hybrid_activation import (
     EXPECTED_BOARD_SERIAL,
+    EXPECTED_BAUD,
     OPERATION,
     RUN_ACTIVATION_PATH,
     RUN_BUNDLE_PATH,
@@ -83,6 +84,7 @@ COMPLETE = Path("COMPLETE")
 NORMAL_FIFO = Path("control/normal_commands.fifo")
 EMERGENCY_FIFO = Path("control/emergency_abort.fifo")
 HOST_ABORT_FIFO = Path("control/host_abort.fifo")
+ACTIVATION_ATTEMPT_RESERVATION_SUFFIX = ".attempt-reservation-v1.json"
 ABSOLUTE_WALL_LIMIT_S = 57_600
 CAPTURE_DURATION_S = ABSOLUTE_WALL_LIMIT_S + 180
 SUPERVISOR_DURATION_S = ABSOLUTE_WALL_LIMIT_S + 120
@@ -170,6 +172,80 @@ def _copy_immutable(source: Path, destination: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _activation_attempt_reservation_path(
+    activation: dict[str, Any],
+) -> Path:
+    """Return one caller-independent reservation path for an activation.
+
+    The activation pathname is deliberately not part of this identity: an
+    exact byte-for-byte copy must not acquire a second upload attempt.  The
+    activation's immutable bundle binding supplies the common namespace and
+    its semantic SHA supplies the unique consumption key.
+    """
+
+    bundle = activation.get("bundle")
+    activation_sha256 = activation.get("activation_sha256")
+    if (
+        not isinstance(bundle, dict)
+        or not isinstance(bundle.get("path"), str)
+        or not isinstance(activation_sha256, str)
+        or len(activation_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in activation_sha256)
+    ):
+        raise ValueError("active-hybrid activation lacks a global attempt identity")
+    bundle_path = Path(bundle["path"]).resolve()
+    return bundle_path.parent / (
+        f".{bundle_path.name}.{activation_sha256}"
+        f"{ACTIVATION_ATTEMPT_RESERVATION_SUFFIX}"
+    )
+
+
+def _reserve_activation_attempt(
+    *,
+    activation_path: Path,
+    activation: dict[str, Any],
+    programme: ActiveHybridProgramme,
+    run_dir: Path,
+) -> Path:
+    """Consume one activation globally before any hardware-side operation."""
+
+    reservation_path = _activation_attempt_reservation_path(activation)
+    reservation = {
+        "schema_version": 1,
+        "record_type": "active_hybrid_activation_attempt_reservation_v1",
+        "created_utc": _utc_now(),
+        "status": "irreversibly_reserved_before_hardware",
+        "activation_path": str(activation_path.resolve()),
+        "activation_file_sha256": _sha256_file(activation_path.resolve()),
+        "activation_sha256": activation.get("activation_sha256"),
+        "activation_id": activation.get("activation_id"),
+        "programme_id": programme.programme_id,
+        "run_identity": activation.get("run_identity"),
+        "intended_run_directory": str(run_dir.resolve()),
+        "automatic_retry": False,
+        "reusable_across_run_directories": False,
+    }
+    try:
+        _atomic_new_json(reservation_path, reservation)
+    except FileExistsError as exc:
+        prior = _read_json(reservation_path)
+        prior_run = (
+            prior.get("intended_run_directory")
+            if isinstance(prior, dict)
+            else "unreadable_reservation"
+        )
+        raise RuntimeError(
+            "active-hybrid activation is already irreversibly reserved by "
+            f"physical attempt {prior_run}"
+        ) from exc
+    parent_descriptor = os.open(reservation_path.parent, os.O_RDONLY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
+    return reservation_path
 
 
 def _wait_until(
@@ -355,6 +431,8 @@ def _capture_command(
         else ["--device", device]
     )
     command.extend([
+        "--baud",
+        str(EXPECTED_BAUD),
         "--run-dir",
         str(run_dir),
         "--duration-s",
@@ -967,6 +1045,12 @@ def run_active_hybrid_qualification(
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX320 live run already exists: {run_dir}")
+    activation_reservation_path = _reserve_activation_attempt(
+        activation_path=activation_path,
+        activation=activation,
+        programme=programme,
+        run_dir=run_dir,
+    )
     device = (
         _fresh_auto_detect_device()
         if programme.fresh_serial_auto_detect
@@ -1084,6 +1168,7 @@ def run_active_hybrid_qualification(
     supervisor: subprocess.Popen[str] | None = None
     orchestration_error: Exception | None = None
     capture_closed = False
+    abort_delivery_resolved_or_bounded = False
     try:
         capture_log = (
             run_dir / _programme_path(CAPTURE_LOG, programme)
@@ -1151,7 +1236,13 @@ def run_active_hybrid_qualification(
             raise RuntimeError(
                 f"CX320 supervisor exited {supervisor_exit}, expected {sorted(valid_exits)}"
             )
-        _wait_for_terminal_abort_delivery(run_dir, terminal)
+        try:
+            _wait_for_terminal_abort_delivery(run_dir, terminal)
+        finally:
+            # A failed check writes the bounded delivery-failure record before
+            # raising.  Either result satisfies the required ordering gate for
+            # the subsequent retained close path; it must not be retried.
+            abort_delivery_resolved_or_bounded = True
         capture_exit = _graceful_capture_stop(capture)
         capture_closed = True
         advance_phase(
@@ -1172,15 +1263,27 @@ def run_active_hybrid_qualification(
             error=exc,
             phase="live_orchestration",
         )
-        if (
-            capture is not None
-            and (_terminal(run_dir) or {}).get("result") != "aborted"
-        ):
-            _bounded_priority_abort(
-                run_dir,
-                run_dir / EMERGENCY_FIFO,
-                capture,
-            )
+        if capture is not None:
+            caught_terminal = _terminal(run_dir)
+            if (
+                (caught_terminal or {}).get("result") == "aborted"
+                and not abort_delivery_resolved_or_bounded
+            ):
+                try:
+                    _wait_for_terminal_abort_delivery(run_dir, caught_terminal)
+                except (OSError, TimeoutError, TypeError, ValueError):
+                    # The helper has already retained a bounded delivery-
+                    # failure artifact.  Preserve the original orchestration
+                    # failure and proceed to bounded capture closure.
+                    pass
+                finally:
+                    abort_delivery_resolved_or_bounded = True
+            elif (caught_terminal or {}).get("result") != "aborted":
+                _bounded_priority_abort(
+                    run_dir,
+                    run_dir / EMERGENCY_FIFO,
+                    capture,
+                )
         if capture is None:
             capture_closed = True
             advance_phase(
@@ -1283,6 +1386,10 @@ def run_active_hybrid_qualification(
     result.update(
         {
             "activation_sha256": activation["activation_sha256"],
+            "activation_attempt_reservation": {
+                "path": str(activation_reservation_path),
+                "sha256": _sha256_file(activation_reservation_path),
+            },
             "bundle_sha256": activation["bundle"]["bundle_sha256"],
             "build_identity": activation["firmware"]["build_identity"],
             "firmware_flashes": 1,

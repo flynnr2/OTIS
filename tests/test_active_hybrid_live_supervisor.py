@@ -11,6 +11,7 @@ import pytest
 from host.otis_tools import active_hybrid_live_supervisor as live
 from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
 )
 from host.otis_tools.active_control_supervisor import (
@@ -34,6 +35,52 @@ def _utc(epoch: float) -> str:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_gnss_metadata_hold_is_static_and_requires_causal_requalification() -> None:
+    supervisor = object.__new__(live.ActiveHybridLiveSupervisor)
+    supervisor.state = {
+        "gnss_metadata_hold": None,
+        "gnss_metadata_hold_count": 0,
+    }
+    events: list[tuple[str, dict[str, object]]] = []
+    supervisor._save = lambda: None
+    supervisor._programme_event = (
+        lambda suffix, **payload: events.append((suffix, payload))
+    )
+    health = {
+        ("cx317_active", "state"): "GNSS_METADATA_HOLD",
+        ("cx317_active", "gnss_metadata_hold_active"): "true",
+        ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+        ("cx317_active", "confirmed_applied_code_known"): "true",
+        ("cx317_active", "confirmed_applied_code"): "0xA83C",
+        ("cx317_active", "dac_epoch"): "1",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
+        ("cx317_active", "gnss_metadata_hold_entry_sequence"): "20",
+    }
+    supervisor._update_gnss_metadata_hold(health, True)
+    assert supervisor.state["gnss_metadata_hold_count"] == 1
+    assert events[-1][0] == "gnss_metadata_hold_entered"
+
+    changed = dict(health)
+    changed[("cx317_active", "correction_count")] = "1"
+    with pytest.raises(ValueError, match="actuation identity changed"):
+        supervisor._update_gnss_metadata_hold(changed, True)
+
+    recovered = dict(health)
+    recovered.update(
+        {
+            ("cx317_active", "state"): "DISARMED",
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "21",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "100",
+            ("cx317_active", "d14_d8_observation_sequence"): "101",
+        }
+    )
+    supervisor._update_gnss_metadata_hold(recovered, False)
+    assert supervisor.state["gnss_metadata_hold"] is None
+    assert events[-1][0] == "gnss_metadata_hold_requalified"
 
 
 def _manifest(*, wall_origin_epoch: float = 1_800_000_000.0) -> dict:
@@ -271,6 +318,120 @@ def _health(
         }
     )
     return health
+
+
+def _set_campaign18_exact_clock(
+    supervisor: live.ActiveHybridLiveSupervisor, *, elapsed_ticks: int
+) -> dict[tuple[str, str], str]:
+    origin = 1_000_000
+    frontier = origin + elapsed_ticks
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["qualified_origin_timestamp_ticks"] = origin
+    supervisor.state["qualified_origin_extended_timestamp_ticks"] = origin
+    supervisor.state["qualified_origin_session_id"] = 1
+    supervisor.state["qualified_frontier_raw_ticks"] = frontier % (1 << 32)
+    supervisor.state["qualified_frontier_extended_ticks"] = frontier
+    health = _health(supervisor, uptime_s="999999999")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        frontier % (1 << 32)
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+    return health
+
+
+def test_campaign18_exact_tick_admission_boundary_uses_1500_second_reserve(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    admission_ticks = (
+        CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
+        - CX322_D9_D6_72H_PROGRAMME.correction_response_reserve_s
+    ) * live.RP2040_TIMER0_TICKS_PER_SECOND
+    before = _set_campaign18_exact_clock(
+        supervisor, elapsed_ticks=admission_ticks - 1
+    )
+
+    assert not supervisor._close_response_horizon_if_required(before)
+
+    at_boundary = dict(before)
+    at_boundary[
+        (live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)
+    ] = str((int(before[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)]) + 1) % (1 << 32))
+    assert supervisor._close_response_horizon_if_required(at_boundary)
+    assert supervisor.state["qualified_frontier_extended_ticks"] == (
+        1_000_000 + admission_ticks
+    )
+
+
+def test_campaign18_exact_259200_second_endpoint_and_descriptor_name(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    endpoint_ticks = (
+        CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
+        * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    before = _set_campaign18_exact_clock(
+        supervisor, elapsed_ticks=endpoint_ticks - 1
+    )
+    before.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    supervisor._maybe_finish(before, 1_800_000_000.0, 0.0)
+    assert supervisor.state["terminal"] is None
+
+    at_endpoint = dict(before)
+    at_endpoint[
+        (live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)
+    ] = str((int(before[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)]) + 1) % (1 << 32))
+    supervisor._maybe_finish(at_endpoint, 1_800_000_000.0, 0.0)
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx322_d9_d6_72h_72h_qualified_endpoint_complete"
+    )
+    assert supervisor.state["qualified_endpoint_extended_timestamp_ticks"] == (
+        1_000_000 + endpoint_ticks
+    )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ("prospective_repeated_alternation", "prospective_low_efficiency_path"),
+)
+def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
+    tmp_path: Path, reason: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason=reason,
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+            ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "0",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "0",
+            ("cx317_active", "d14_d8_observation_sequence"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["controller_authority_inhibited_reason"] == reason
+    assert health[("cx317_active", "fail_static")] == "true"
 
 
 def _ready() -> PrewriteReadiness:

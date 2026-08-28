@@ -80,18 +80,74 @@ def test_three_readiness_strata_change_only_output_and_monitor_selectors() -> No
     assert (monitor["OTIS_ENABLE_FORWARDED_D9_OUTPUT"], monitor["OTIS_ENABLE_FORWARDED_D6_MONITOR"]) == ("1", "1")
 
 
-def test_d9_frequency_only_profile_preserves_existing_lower_leg_policy() -> None:
+def test_d9_frequency_only_profile_preserves_law_but_has_distinct_24h_envelope() -> None:
     matrix = json.loads((ROOT / "firmware" / "arduino" / "firmware_matrix.json").read_text())
     profiles = {item["id"]: item["defines"] for item in matrix["profiles"]}
     candidate = profiles["d9_d6_frequency_only_lower"]
     baseline = profiles["cx319_tight_lower"]
-    excluded = {"OTIS_ENABLE_FORWARDED_D9_OUTPUT", "OTIS_ENABLE_FORWARDED_D6_MONITOR"}
-    assert {key: value for key, value in candidate.items() if key not in excluded} == baseline
+    excluded = {
+        "OTIS_ENABLE_FORWARDED_D9_OUTPUT",
+        "OTIS_ENABLE_FORWARDED_D6_MONITOR",
+        "OTIS_CX317_ACTIVE_CAMPAIGN",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES",
+    }
+    assert {key: value for key, value in candidate.items() if key not in excluded} == {
+        key: value for key, value in baseline.items() if key not in excluded
+    }
     assert candidate["OTIS_ENABLE_FORWARDED_D9_OUTPUT"] == "1"
     assert candidate["OTIS_ENABLE_FORWARDED_D6_MONITOR"] == "1"
     assert candidate.get("OTIS_ENABLE_CX320_ACTIVE_HYBRID", "0") == "0"
     assert candidate.get("OTIS_ENABLE_CX321_ACTIVE_HYBRID", "0") == "0"
     assert candidate.get("OTIS_ENABLE_CX322_DIRECT_HYBRID", "0") == "0"
+    assert candidate["OTIS_CX317_ACTIVE_CAMPAIGN"] == (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE"
+    )
+    assert candidate["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "48u"
+    assert candidate["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "1008u"
+
+    config = (SKETCH / "otis_config.h").read_text()
+    live = (SKETCH / "otis_cx317_active_live.cpp").read_text()
+    assert "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE 17" in config
+    assert "OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 48u" in config
+    assert "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 1008u" in config
+    assert 'kRunIdentity[] = "d9_d6_frequency_only_endurance:1"' in live
+    assert 'kExpectedProfile[] = "d9_d6_frequency_only_lower"' in live
+
+
+def test_d9_d6_72h_profile_changes_only_sustained_authority_envelope() -> None:
+    matrix = json.loads((ROOT / "firmware" / "arduino" / "firmware_matrix.json").read_text())
+    profiles = {item["id"]: item["defines"] for item in matrix["profiles"]}
+    baseline = profiles["cx322_d9_d6_integration_engineering"]
+    candidate = profiles["cx322_d9_d6_72h_sustained_engineering"]
+    envelope = {
+        "OTIS_CX317_ACTIVE_CAMPAIGN",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES",
+        "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS",
+        "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES",
+    }
+    assert {key: value for key, value in candidate.items() if key not in envelope} == {
+        key: value for key, value in baseline.items() if key not in envelope
+    }
+    assert candidate["OTIS_CX317_ACTIVE_CAMPAIGN"] == (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID"
+    )
+    assert candidate["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "144u"
+    assert candidate["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "3024u"
+    assert candidate["OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS"] == "144u"
+    assert candidate["OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES"] == "3024u"
+    assert candidate.get("OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION", "0") == "0"
+    assert candidate.get("OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE", "0") == "0"
+
+    config = (SKETCH / "otis_config.h").read_text()
+    policy = (SKETCH / "otis_active_hybrid_policy_engine.cpp").read_text()
+    live = (SKETCH / "otis_cx317_active_live.cpp").read_text()
+    assert "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID 18" in config
+    assert "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES != 3024u" in config
+    assert "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES" in policy
+    assert 'kRunIdentity[] = "cx322_d9_d6_72h_sustained_engineering:1"' in live
+    assert 'kExpectedProfile[] = "cx322_d9_d6_72h_sustained_engineering"' in live
 
 
 def test_d6_monitor_is_initialized_and_serviced_after_authoritative_d8_pair() -> None:

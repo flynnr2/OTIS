@@ -21,6 +21,7 @@ from typing import Any
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
@@ -33,7 +34,11 @@ from .active_hybrid_bundle import (
 )
 from .active_hybrid_proposal import validate_proposal
 from .evidence_index import package_identity
-from .run_paths import cx321_csv_files, default_csv_files
+from .run_paths import (
+    cx321_csv_files,
+    default_csv_files,
+    exact_active_timing_csv_files,
+)
 
 
 TOOL_ID = "cx320_active_hybrid_live_activation_v1"
@@ -92,6 +97,12 @@ SUSTAINED_REHEARSAL_COVERAGE = (
 INTEGRATED_REHEARSAL_COVERAGE = (
     "integrated_unarmed_concurrency_observation_boundary",
     "integrated_setup_provenance_boundary",
+)
+CAMPAIGN18_REHEARSAL_COVERAGE = (
+    "campaign18_exact_AT2_AH2_capture",
+    "campaign18_repeated_natural_transaction",
+    "campaign18_GNSS_hold_causal_requalification",
+    "campaign18_exact_72h_endpoint_clock",
 )
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
@@ -299,7 +310,11 @@ def validate_operational_rehearsal(
     if programme.sustained_regulation:
         expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
     if programme.engineering_unarmed_observation_s > 0:
-        expected_coverage.update(INTEGRATED_REHEARSAL_COVERAGE)
+        expected_coverage.add("integrated_unarmed_concurrency_observation_boundary")
+    if programme.forwarded_output_integration:
+        expected_coverage.add("integrated_setup_provenance_boundary")
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        expected_coverage.update(CAMPAIGN18_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
         or report.get("report_type") != programme.rehearsal_report_type
@@ -395,6 +410,61 @@ def validate_operational_rehearsal(
             raise ValueError(
                 "CX321 rehearsal lacks the exact real-process plant-sign "
                 "transaction path"
+            )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        topology = report.get("real_process_topology", {})
+        transaction = (
+            topology.get("cx322_real_transaction_path", {})
+            if isinstance(topology, dict)
+            else {}
+        )
+        clock = report.get("accelerated_qualified_device_clock", {})
+        manifest_path = path.parent / "process_topology/run/run_manifest.json"
+        manifest = _read_object(manifest_path, "Campaign 18 rehearsal manifest")
+        files = manifest.get("files", [])
+        required_exact = {
+            "active_transactions_v2": "csv/active_transactions_v2.csv",
+            "active_hybrid_decisions_v2": "csv/active_hybrid_decisions_v2.csv",
+        }
+        exact_files = {
+            item.get("contract"): item
+            for item in files
+            if isinstance(item, dict)
+            and item.get("contract") in required_exact
+        }
+        domains = manifest.get("domains", [])
+        if (
+            not isinstance(transaction, dict)
+            or transaction.get("complete_multi_transaction_sequence") is not True
+            or transaction.get("request_sequences_consumed") != [1, 2]
+            or transaction.get("gnss_hold_and_causal_requalification") is not True
+            or not isinstance(clock, dict)
+            or clock.get("correction_admission_close_elapsed_s") != 257_700
+            or clock.get("qualified_endpoint_elapsed_s") != 259_200
+            or clock.get("admission_open_at_floor_before_exact_boundary") is not True
+            or clock.get("admission_closed_at_exact_boundary") is not True
+            or clock.get("forward_host_utc_step_did_not_close_early") is not True
+            or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+            or manifest.get("programme_id") != programme.programme_id
+            or manifest.get("profile_identity") != programme.profile_id
+            or set(exact_files) != set(required_exact)
+            or any(
+                exact_files[name].get("path") != expected_path
+                or exact_files[name].get("optional") is not None
+                for name, expected_path in required_exact.items()
+            )
+            or manifest.get("contracts", {}).get("active_transactions_v2") != 2
+            or manifest.get("contracts", {}).get("active_hybrid_decisions_v2") != 2
+            or not any(
+                isinstance(item, dict)
+                and item.get("name") == "rp2040_timer0_extended"
+                and item.get("nominal_hz") == 16_000_000
+                for item in domains
+            )
+        ):
+            raise ValueError(
+                "Campaign 18 rehearsal lacks the activation-bearing exact "
+                "transaction, GNSS, or qualified-clock path"
             )
     if require_current_tools:
         if not isinstance(tool_bindings, dict):
@@ -892,7 +962,15 @@ def _required_files(
         "hybrid_preview_decisions_v1",
         "tight_deadband_decisions_v1",
     }
-    source = cx321_csv_files() if programme.identification_required else default_csv_files()
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        source = exact_active_timing_csv_files()
+        required.update(
+            {"active_transactions_v2", "active_hybrid_decisions_v2"}
+        )
+    elif programme.identification_required:
+        source = cx321_csv_files()
+    else:
+        source = default_csv_files()
     files: list[dict[str, Any]] = [dict(entry) for entry in source]
     if programme.identification_required:
         required.add("plant_sign_qualification_v1")
@@ -1105,7 +1183,16 @@ def create_run_manifest(
             },
         ],
         "contracts": {
-            entry["contract"]: 2 if entry["contract"] == "estimates_v2" else 1
+            entry["contract"]: (
+                2
+                if entry["contract"]
+                in {
+                    "estimates_v2",
+                    "active_transactions_v2",
+                    "active_hybrid_decisions_v2",
+                }
+                else 1
+            )
             for entry in files
         },
         "files": files,
@@ -1150,13 +1237,17 @@ def create_run_manifest(
             ),
         ],
     }
-    if programme.identification_required:
+    if (
+        programme.identification_required
+        or programme is CX322_D9_D6_72H_PROGRAMME
+    ):
         manifest["domains"].append(
             {
                 "name": "rp2040_timer0_extended",
                 "nominal_hz": 16_000_000,
             }
         )
+    if programme.identification_required:
         manifest["programme_policy"] = bundle["programme_policy"]
         manifest["identification"] = bundle["identification"]
         manifest[programme.manifest_section]["plant_sign_identification"] = {

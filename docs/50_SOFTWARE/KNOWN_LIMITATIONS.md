@@ -86,24 +86,32 @@
   and the D6 digital sidecar, voltage levels, duty cycle, rise/fall behavior,
   ringing, propagation delay, jitter, load sensitivity, and independently
   referenced frequency remain unmeasured. A successful D6 count comparison
-  cannot close those claims or authorize the 24-hour output soak. The exact D9
-  terminal is `output_function_correct_but_waveform_evidence_incomplete`, the
-  soak is `frequency_only_d9_output_soak_incomplete`, and unchanged CX322 is
-  `cx322_integration_blocked_by_d9_output_gate`.
+  cannot close those claims. The historical Prompt 02 terminals remain
+  `output_function_correct_but_waveform_evidence_incomplete`,
+  `frequency_only_d9_output_soak_incomplete`, and
+  `cx322_integration_blocked_by_d9_output_gate`. Later explicit operator
+  authority permits separate 24-hour frequency-only and 72-hour hybrid
+  engineering acquisitions without waveform instrumentation. Those runs may
+  establish digital continuity and control-performance evidence, but cannot
+  revise the historical terminal or qualify the delivered D9 waveform or load.
 - The Prompt 03 metadata-hold, phase-degradation, low-efficiency, fail-static,
-  and optional-evidence semantics are deterministic non-effective reference
-  code with a host-compiled native parity fixture. They are not emitted by a
-  live firmware profile or wired into the live parser, supervisor, controller,
-  or telemetry schema. The later `cx322_d9_d6_integration_engineering` profile
-  deliberately retains unchanged CX322 and does not select this oracle. These
-  reference semantics grant no DAC, arm, flash, serial, or trial authority.
+  and optional-evidence semantics remain deterministic non-effective reference
+  code for their original frozen contract. The later engineering long-run
+  profiles implement the applicable `GNSS_METADATA_HOLD` transaction semantics
+  in the existing live firmware, parser, supervisor, and telemetry path; that
+  implementation is bound only by each run's separate effective activation.
+  It does not retroactively make the Prompt 03 oracle effective or grant that
+  historical contract DAC, arm, flash, serial, or trial authority.
 - Prompt 04 verified the complete current Release matrix, three exact separated
   build manifests, the unchanged CX322 policy, the non-effective Prompt 03
   contract, and the retained sealed D9/D6 PTY operational path. It deliberately
   did not create a combined D9/D6/CX322 binary, live Prompt 03 telemetry path,
-  integrated rehearsal, or 72-hour proposal. A later operator-authorized
-  engineering profile now combines unchanged CX322 with fixed D9 forwarding
-  and D6 diagnostics under a distinct contract and narrower one-application,
-  21-code, 7,200-second host envelope. This is not the blocked 72-hour
-  proposal and cannot be promoted into a waveform, qualified-load, jitter,
-  independently referenced frequency, or public delivered-output claim.
+  integrated rehearsal, or 72-hour proposal. A later one-application,
+  21-code, 7,200-second smoke profile combined unchanged CX322 with fixed D9
+  forwarding and D6 diagnostics. Still later explicit operator authority
+  created distinct 24-hour frequency-only and 72-hour unchanged-CX322
+  engineering programmes with cadence-derived sustained-authority ceilings.
+  Their exact activations and complete operational-path rehearsals are required
+  before bench entry. Neither can be promoted into a waveform, qualified-load,
+  jitter, independently referenced frequency, or public delivered-output
+  claim.
