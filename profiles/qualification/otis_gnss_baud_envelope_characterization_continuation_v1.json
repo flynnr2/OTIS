@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "programme_id": "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
+  "contract_id": "otis_gnss_baud_envelope_characterization_continuation_v1",
+  "status": "frozen_non_effective_composite_continuation_contract",
+  "evidence_unit": "composite_multi_artifact_evidence",
+  "authority": {
+    "physical_authority": false,
+    "effective": false,
+    "non_actuating": true,
+    "flash_count": 1,
+    "continuous_capture_sessions": 1,
+    "automatic_retry_runs": 0,
+    "dac_writes_permitted": 0,
+    "control_arm_permitted": false,
+    "activation_requires_exact_bundle_binding": true
+  },
+  "inherited_original_contract": {
+    "source_run_id": "live_20260826T223754Z",
+    "activated_contract_path": "runs/otis_gnss_baud_envelope_characterization_v1/live_20260826T223754Z/reports/activated_contract_v1.json",
+    "file_sha256": "a03d06f0b55097314194973e2d0ef1d16b0e5c52e4fb8a4d31f23c91c7193e11",
+    "canonical_sha256": "e43cc21f5d8c0dfba0366f06604ca816d417bf25542776fb45bec91d1a1bbf5d",
+    "inheritance_scope": "exact_S06_through_S11_phase_definitions_durations_thresholds_transition_policy_and_final_state"
+  },
+  "topology": {
+    "reference_authority": "D14",
+    "oscillator_count_input": "D8",
+    "external_event_input": "D10",
+    "d10_role": "unused_optional_external_event_evidence",
+    "gnss_uart": "UART0_8N1_D0_GPIO1_RX_D1_GPIO0_TX",
+    "receiver": "installed_PA1616S_MT3339",
+    "host_transport": "one_continuously_drained_sole_owner_USB_serial_carrier"
+  },
+  "baud_allowlist": [9600, 19200, 38400, 57600, 115200],
+  "command_table": {
+    "identity": "sha256_of_exact_packets_in_ascending_baud_order",
+    "sha256": "baec66822073e5b2a82c731a0550e94ee9b23be251b275bb8ea63af610b6101c",
+    "host_may_supply_receiver_bytes": false,
+    "packets": [
+      {"baud": 9600, "wire": "$PMTK251,9600*17\r\n"},
+      {"baud": 19200, "wire": "$PMTK251,19200*22\r\n"},
+      {"baud": 38400, "wire": "$PMTK251,38400*27\r\n"},
+      {"baud": 57600, "wire": "$PMTK251,57600*2C\r\n"},
+      {"baud": 115200, "wire": "$PMTK251,115200*1F\r\n"}
+    ],
+    "other_fixed_packets": [
+      "$PMTK605*31\r\n",
+      "$PMTK414*33\r\n",
+      "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n"
+    ]
+  },
+  "firmware_profile": {
+    "profile_id": "otis_gnss_baud_envelope_characterization_continuation_v1",
+    "firmware_identity": "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
+    "compile_selector": "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION",
+    "opening_target_and_final_recovery_anchor_baud": 9600,
+    "startup_discovery_hint_baud": 57600,
+    "retain_discovered_startup_baud": true,
+    "dac_enabled": false,
+    "active_control_enabled": false,
+    "dual_core_partition": true,
+    "gnss_receiver_enabled": true,
+    "gnss_fixed_tx_enabled": true
+  },
+  "startup_discovery": {
+    "opening_target_baud": 9600,
+    "recovery_anchor_baud": 9600,
+    "hint_baud": 57600,
+    "hint_generated_define": "OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT",
+    "retain_generated_define": "OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD",
+    "hint_authority": "scan_order_only_not_confirmed_baud_epoch_or_transition_authority",
+    "startup_attempt_bauds": [57600, 9600, 19200, 38400, 57600, 115200],
+    "startup_attempt_count": 6,
+    "fallback_scan_bauds": [9600, 19200, 38400, 57600, 115200],
+    "recovery_scan_bauds": [9600, 19200, 38400, 57600, 115200],
+    "recovery_scan_unchanged": true,
+    "first_hint_permitted_transmit": "PMTK605_identity_query_only",
+    "pmtk251_before_fresh_identity_permitted": false,
+    "causal_telemetry_component": "gnss_receiver",
+    "pmtk605_peripheral_complete_counter_domain": "rp2040_timer0_extended",
+    "required_causal_telemetry": [
+      "startup_hint_attempted",
+      "startup_hint_baud",
+      "startup_hint_identity_outcome",
+      "startup_fallback_entered",
+      "initial_discovery_identity_baud",
+      "initial_discovery_outcome",
+      "pmtk605_peripheral_complete_count",
+      "pmtk605_last_peripheral_complete_ticks",
+      "pmtk605_last_peripheral_complete_ticks_available",
+      "pmtk605_last_peripheral_complete_ticks_domain"
+    ],
+    "basis_classification": "observed_serial_baud",
+    "sealed_prior_physical_state": {
+      "run_id": "live_20260826T223754Z",
+      "observed_serial_baud": 57600,
+      "terminal_reported_last_confirmed_baud": 57600,
+      "terminal_reported_last_confirmed_baud_epoch": 7,
+      "evidence_status": "failed",
+      "provenance_use": "startup_scan_order_and_continuation_attachment_only_not_programme_acceptance",
+      "seal_sha256": "fe3da719d3ddc94ce79437622b6b8b9c545ffbcb9bdfec650da06658ce6606bc",
+      "seal_file_sha256": "bcaf3c8806daf91e3eec7e042546b786009f3b4f4e8d28badbb3ed77dbe6cde0",
+      "snapshot_digest": "c577b7baef11707bed1256c2f1025d50c3026439a6737af99f8ceac045fc03fc"
+    },
+    "subsequent_observed_serial_baud_evidence": {
+      "run_id": "live_20260827T014904Z",
+      "observed_serial_baud": 57600,
+      "retained_snapshot_checksum_valid_delta_at_observed_baud": 64,
+      "evidence_status": "failed",
+      "seal_sha256": "651ae0a401ab59bf6bdcc85a9f5a61a291c05bc68b7b6bc17046903283c12224",
+      "snapshot_digest": "b135b2361b81ad3e8a1f484887d69c0d075e9ce08c7175fe6fb554eeddd9dcf4",
+      "health_csv_sha256": "a0ae39a38a1015abba6177f22d7dcf413457ece058f93e9bc2b578c2a50b7adc"
+    }
+  },
+  "prefix_validation": {
+    "source_run_id": "live_20260826T223754Z",
+    "source_run_path": "runs/otis_gnss_baud_envelope_characterization_v1/live_20260826T223754Z",
+    "evidence_manifest_sha256": "3857a80402b7af87f7d94d7f306aa32be9778b7e787c0fe4d9b20958307fb8bc",
+    "snapshot_digest": "c577b7baef11707bed1256c2f1025d50c3026439a6737af99f8ceac045fc03fc",
+    "seal_sha256": "fe3da719d3ddc94ce79437622b6b8b9c545ffbcb9bdfec650da06658ce6606bc",
+    "run_manifest_sha256": "4b04bf1c439d6c23b64e9ba9b184a42289c4d4ddc30477bf26b101513440e6c1",
+    "original_contract_file_sha256": "a03d06f0b55097314194973e2d0ef1d16b0e5c52e4fb8a4d31f23c91c7193e11",
+    "original_contract_canonical_sha256": "e43cc21f5d8c0dfba0366f06604ca816d417bf25542776fb45bec91d1a1bbf5d",
+    "firmware_build_manifest_sha256": "b65713618d252ae5f55c7082a7370bba21b8532f8bbcd3bcbb97b47ac0debd7f",
+    "firmware_source_sha256": "c64e17fe8ea0ccf8ce89834cd1bbcfa5c82ed3f0c28047bbb199f9b631f8ca4f",
+    "firmware_configuration_sha256": "c442e2cc113a8a767be7b539082f9d3c21069f1032d9e96c19486ca45005c7ca",
+    "firmware_uf2_sha256": "5293d8ce04328f2317d176a4c2f6fcd6dd2f1753e55b28081b9fcb61fcfef346",
+    "supervisor_events_sha256": "b8dca60881836e99fc704bdc65c78b4fe5ea861ceea2c9a0b9661ff3a557161b",
+    "supervisor_state_sha256": "7056e79b403d60b4b009ee09ebc00a669c278fea2facac803fbf0c18987a378e",
+    "analysis_sha256": "1ed560572b79da239d82cb47c87abf28486487d0fcf3b6d93048d5d498ae94d3",
+    "completed_segment_gate_event_sequences": {"S01": 5, "S02": 10, "S03": 15, "S04": 20, "S05": 25},
+    "s06_bridge_transition_requested_event_sequence": 26,
+    "s06_bridge_transition_confirmed_event_sequence": 27,
+    "s06_ordinary_entry_completed_event_sequence": 29,
+    "historical_failed_terminal_preserved": true,
+    "historical_global_classifications_imported": false
+  },
+  "continuation": {
+    "local_request_sequences": [1, 2, 3, 4, 5, 6],
+    "local_to_logical_segment_map": [
+      {"local_request_sequence": 1, "local_segment_id": "S01", "logical_segment_id": "S06"},
+      {"local_request_sequence": 2, "local_segment_id": "S02", "logical_segment_id": "S07"},
+      {"local_request_sequence": 3, "local_segment_id": "S03", "logical_segment_id": "S08"},
+      {"local_request_sequence": 4, "local_segment_id": "S04", "logical_segment_id": "S09"},
+      {"local_request_sequence": 5, "local_segment_id": "S05", "logical_segment_id": "S10"},
+      {"local_request_sequence": 6, "local_segment_id": "S06", "logical_segment_id": "S11"}
+    ],
+    "reject_logical_segment_ids_from_live_command_surface": ["S01", "S02", "S03", "S04", "S05"],
+    "preferred_attachment_baud": 57600,
+    "attachment_baud_allowlist": [9600, 19200, 38400, 57600, 115200],
+    "attachment_deadline_ms": 120000,
+    "attachment_deadline_terminal": "continuation_initial_attachment_unrecoverable",
+    "attachment_requires": [
+      "fresh_PMTK705_identity_at_one_allowed_attachment_baud",
+      "exact_output_configuration",
+      "fresh_checksum_qualified_RMC_GGA_and_two_GSA",
+      "no_PMTK251_before_attachment"
+    ],
+    "first_local_request_semantics": "same_target_57600_session_binding_with_no_PMTK251_and_first_dependent_snapshot",
+    "hint_hit_request1_semantics": "same_target_57600_binding_without_PMTK251",
+    "hint_miss_request1_semantics": "after_fresh_identity_output_and_metadata_at_an_allowed_fallback_baud_perform_the_normal_identity_gated_PMTK251_transition_to_57600",
+    "no_identity_semantics": "terminal_at_attachment_deadline_no_programme_command_permitted",
+    "attachment_evidence_sources": [
+      "build.OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD",
+      "gnss_receiver.startup_hint_identity_outcome",
+      "gnss_receiver.initial_discovery_identity_baud",
+      "gnss_receiver.initial_discovery_outcome",
+      "gnss_receiver.confirmed_baud",
+      "gnss_receiver.identity_stable",
+      "gnss_receiver.configuration_confirmed",
+      "gnss_receiver.metadata_fresh",
+      "gnss_receiver.checksum_requalified",
+      "gnss_receiver.gsa_checksum_requalified"
+    ]
+  },
+  "transition_policy": {
+    "initial_confirmed_baud": "fresh_attachment_baud_from_allowlist",
+    "initial_baud_epoch": 1,
+    "startup_identity_response_timeout_ms": 2000,
+    "request_acceptance_deadline_ms": 2000,
+    "uart_physical_transmit_deadline_ms": 500,
+    "target_identity_and_output_confirmation_deadline_ms": 10000,
+    "complete_transition_deadline_ms": 30000,
+    "recovery_scan_bauds": [9600, 19200, 38400, 57600, 115200],
+    "recovery_scan_count_after_target_failure": 1,
+    "recovery_scan_deadline_ms": 15000,
+    "serial_link_unrecoverable_deadline_ms": 60000
+  },
+  "programme_stop_conditions": [
+    "continuation_initial_attachment_unrecoverable",
+    "D14_or_D8_capture_loss_shared_queue_corruption_or_evidence_discontinuity",
+    "unknown_or_contradictory_firmware_receiver_request_baud_epoch_or_output_identity",
+    "emitted_UART_command_outside_frozen_fixed_table",
+    "raw_ring_memory_or_ordering_corruption",
+    "sole_USB_serial_owner_loss_or_nonfinalizable_evidence_carrier_fault",
+    "receiver_unrecoverable_at_all_five_frozen_rates_after_one_scan",
+    "independent_operator_stop"
+  ],
+  "counter_domains": {
+    "raw_device": {"name": "rp2040_timer0", "nominal_hz": 16000000, "width_bits": 32, "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"},
+    "derived_device": {"name": "rp2040_timer0_extended", "nominal_hz": 16000000, "width_bits": 64, "rollover": "non_wrapping_within_each_source_capture_only"},
+    "host_supervision": {"name": "host_monotonic_ns", "nominal_hz": 1000000000, "width_bits": 64, "rollover": "non_wrapping_for_continuation_duration"}
+  },
+  "schedule": {
+    "total_confirmed_online_seconds": 35700,
+    "segments": [
+      {"id": "S01", "logical_segment_id": "S06", "request_seq": 1, "target_baud": 57600, "confirmed_online_s": 1200, "phases": [{"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S02", "logical_segment_id": "S07", "request_seq": 2, "target_baud": 38400, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S03", "logical_segment_id": "S08", "request_seq": 3, "target_baud": 19200, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S04", "logical_segment_id": "S09", "request_seq": 4, "target_baud": 9600, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S05", "logical_segment_id": "S10", "request_seq": 5, "target_baud": 115200, "confirmed_online_s": 21900, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 900}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "ordinary_soak", "class": "ordinary_online", "duration_s": 20100}]},
+      {"id": "S06", "logical_segment_id": "S11", "request_seq": 6, "target_baud": 9600, "confirmed_online_s": 4500, "phases": [{"id": "closing_clean_soak", "class": "ordinary_online", "duration_s": 4500}]}
+    ]
+  },
+  "peak_status_workload": {
+    "command": "GNSS STATUS",
+    "minimum_period_ms": 1000,
+    "response_completion_deadline_ms": 5000,
+    "maximum_request_rate_hz": 1,
+    "challenges_per_900_second_phase": 900,
+    "next_challenge_requires_previous_complete_end_marker_and_host_drain": true,
+    "may_overlap_transition_discovery_recovery_or_metadata_requalification": false
+  },
+  "composite_analysis": {
+    "terminal": "composite_multi_artifact_characterization_complete",
+    "ordinary_programme_completion_terminal_permitted": false,
+    "capture_and_firmware_gap_between_prefix_and_continuation": true,
+    "counter_delta_rule": "subtract_only_within_one_source_run_artifact_contract_and_counter_baseline",
+    "row_source_fields": ["source_run_id", "source_artifact_sha256", "source_contract_sha256", "source_firmware_sha256", "source_counter_baseline_id"],
+    "firmware_compatibility_rule": "stratify_by_firmware_identity_unless_explicit_compatibility_proof_passes",
+    "historical_global_terminal_preserved": "programme_invalid_due_to_platform_or_evidence_failure",
+    "historical_global_per_baud_classes_imported": false
+  },
+  "final_state": {
+    "required_baud": 9600,
+    "identity_confirmed": true,
+    "configuration_confirmed": true,
+    "metadata_requalified": true
+  }
+}

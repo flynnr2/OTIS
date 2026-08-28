@@ -183,6 +183,16 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
   } else if (strncmp(command, "ACTIVE", 6) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveOther;
+  } else if (strncmp(command, "GNSS BAUD ", 10) == 0) {
+    parsed.kind = OtisSerialCommandKind::GnssBaud;
+    parsed.text_argument = command + 10;
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "GNSS STATUS ", 12) == 0) {
+    parsed.kind = OtisSerialCommandKind::GnssStatus;
+    parsed.text_argument = command + 12;
+    parsed.arguments_valid = parsed.text_argument[0] != '\0';
+  } else if (strncmp(command, "GNSS", 4) == 0) {
+    parsed.kind = OtisSerialCommandKind::GnssOther;
   } else if (strcmp(command, "SWEEP?") == 0) {
     parsed.kind = OtisSerialCommandKind::SweepQuery;
   } else if (strncmp(command, "SWEEP LOAD ", 11) == 0) {

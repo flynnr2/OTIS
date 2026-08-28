@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "programme_id": "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
+  "contract_id": "otis_gnss_baud_envelope_characterization_contract_v1",
+  "status": "frozen_non_effective_candidate_contract",
+  "decision": {
+    "question": "What is the highest rate in the frozen five-baud set that is clean under the real OTIS workload, has factor-of-two observed receive-service margin, transitions and requalifies reliably, and does not compromise D14/D8 timing capture?",
+    "unit_of_progress": "one continuous provenance-linked 12-confirmed-online-hour multi-baud programme",
+    "selection_rule": "select the highest baud with operationally_feasible_observed steady-online class and transition_reliable_observed transition class; otherwise retain 9600"
+  },
+  "authority": {
+    "physical_authority": false,
+    "effective": false,
+    "non_actuating": true,
+    "flash_count": 1,
+    "continuous_capture_sessions": 1,
+    "automatic_retry_runs": 0,
+    "dac_writes_permitted": 0,
+    "control_arm_permitted": false,
+    "phase_influence_permitted": false,
+    "d10_authority": false,
+    "activation_requires_exact_bundle_binding": true,
+    "activation_record_path": "runs/otis_gnss_baud_envelope_characterization_v1/activation/gnss_baud_envelope_live_activation_v1.json"
+  },
+  "topology": {
+    "reference_authority": "D14",
+    "oscillator_count_input": "D8",
+    "external_event_input": "D10",
+    "d10_role": "unused_optional_external_event_evidence",
+    "gnss_uart": "UART0_8N1_D0_GPIO1_RX_D1_GPIO0_TX",
+    "receiver": "installed_PA1616S_MT3339",
+    "host_transport": "one_continuously_drained_sole_owner_USB_serial_carrier"
+  },
+  "primary_sources": [
+    {
+      "path": "docs/datasheets/CD PA1616S Datasheet.v05.pdf",
+      "sha256": "1edf78b565231f887164a52e3ed0e6b001e9c6246cddc21dda7e64291ff8a8f2",
+      "finding": "MT3339 solution; 9600 bps module default"
+    },
+    {
+      "path": "docs/datasheets/CD+PA1616S+Datasheet.v03.pdf",
+      "sha256": "f041c26af4d3f244a33f8f0c6f6d5286e239173a9ea510346dc9c8c7cd3814c4",
+      "finding": "MT3339 solution; 9600 bps module default"
+    },
+    {
+      "path": "docs/datasheets/PMTK command packet-Complete-C39-A01.pdf",
+      "sha256": "88318174825c78e27c4f24eb9b205875e5336f1352e5fa2801a724dad6ce1160",
+      "finding": "PMTK251 set-only NMEA baud command supports 4800, 9600, 14400, 19200, 38400, 57600, and 115200"
+    }
+  ],
+  "baud_allowlist": [9600, 19200, 38400, 57600, 115200],
+  "baud_exclusions": {
+    "4800": "below the decision range; installed receiver default/recovery anchor is already-proven 9600",
+    "14400": "outside the prospectively frozen operating-candidate set and does not change the primary selection"
+  },
+  "command_table": {
+    "identity": "sha256_of_exact_packets_in_ascending_baud_order",
+    "sha256": "baec66822073e5b2a82c731a0550e94ee9b23be251b275bb8ea63af610b6101c",
+    "host_may_supply_receiver_bytes": false,
+    "packets": [
+      {"baud": 9600, "wire": "$PMTK251,9600*17\r\n"},
+      {"baud": 19200, "wire": "$PMTK251,19200*22\r\n"},
+      {"baud": 38400, "wire": "$PMTK251,38400*27\r\n"},
+      {"baud": 57600, "wire": "$PMTK251,57600*2C\r\n"},
+      {"baud": 115200, "wire": "$PMTK251,115200*1F\r\n"}
+    ],
+    "other_fixed_packets": [
+      "$PMTK605*31\r\n",
+      "$PMTK414*33\r\n",
+      "$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n"
+    ]
+  },
+  "firmware_profile": {
+    "profile_id": "otis_gnss_baud_envelope_characterization_v1",
+    "firmware_identity": "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
+    "compile_selector": "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION",
+    "initial_baud": 9600,
+    "dac_enabled": false,
+    "sweep_enabled": false,
+    "active_control_enabled": false,
+    "dual_core_partition": true,
+    "gnss_receiver_enabled": true,
+    "gnss_fixed_tx_enabled": true,
+    "required_artifacts": ["elf", "uf2", "bin", "map", "generated_profile_header", "build_manifest"]
+  },
+  "raw_uart_acquisition": {
+    "implementation": "interrupt_backed_non_overwriting_spsc_observation_ring",
+    "ring_capacity_entries": 1024,
+    "entry_fields": ["data_u8", "uart_error_flags", "loss_before"],
+    "consumer_byte_budget_per_call": 128,
+    "consumer_counter_budget_ticks": 4000,
+    "consumer_counter_budget_us_nominal": 250,
+    "consumer_counter_domain": "rp2040_timer0",
+    "factor_of_two_observed_margin_max_high_water_entries": 512,
+    "maximum_line_bytes": 96,
+    "maximum_discovery_line_bytes": 256,
+    "fault_capsule_total_capacity": 16,
+    "fault_capsule_policy": "retain first fault and at most fifteen subsequent first occurrences of a distinct fault-class-or-segment pair",
+    "isr_counter_reads": {"entry": 1, "exit": 1, "per_byte": 0},
+    "isr_forbidden": [
+      "parsing", "formatting", "logging", "allocation", "locks", "callbacks",
+      "snapshot_copy", "ring_high_water_calculation", "link_state_transition",
+      "PMTK_transmission", "timing_or_control_work", "unrelated_interrupt_clear"
+    ],
+    "overflow_semantics": "never overwrite retained entries; count dropped bytes; set loss_before on the next retained entry; close link and metadata collectors before delivering the post-gap byte"
+  },
+  "configured_output": {
+    "sentences": ["RMC", "GGA", "GSA"],
+    "nominal_frames_per_second": {"RMC": 1, "GGA": 1, "GSA": 2},
+    "qualification": "accept the exact qualified PMTK514 signature or the existing acknowledged-PMTK314 plus exact bounded observation fallback",
+    "different_checksum_valid_cadence_is_configuration_or_receiver_behaviour_evidence_not_automatically_transport_corruption"
+      : true
+  },
+  "host_commands": {
+    "transition": "GNSS BAUD OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1 <request_seq_u32> <segment_id_S01..S11> <source_baud_u32> <source_epoch_u32> <target_baud_u32>",
+    "status_challenge": "GNSS STATUS OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1 <challenge_seq_u32> <segment_id_S01..S11> <baud_epoch_u32>",
+    "separator": "single_ASCII_space",
+    "optional_fields": false,
+    "progressive_request_sequences": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "duplicate_policy": "an identical completed or in-progress request is idempotent",
+    "contradiction_policy": "stale, skipped, or contradictory sequence, source baud, source epoch, segment, programme, or target fails closed as a platform fault"
+  },
+  "transition_policy": {
+    "initial_confirmed_baud": 9600,
+    "initial_baud_epoch": 1,
+    "startup_identity_response_timeout_ms": 2000,
+    "request_acceptance_deadline_ms": 2000,
+    "uart_physical_transmit_deadline_ms": 500,
+    "target_identity_and_output_confirmation_deadline_ms": 10000,
+    "complete_transition_deadline_ms": 30000,
+    "recovery_scan_bauds": [9600, 19200, 38400, 57600, 115200],
+    "recovery_scan_count_after_target_failure": 1,
+    "recovery_scan_deadline_ms": 15000,
+    "serial_link_unrecoverable_deadline_ms": 60000,
+    "completion_requires": [
+      "request_accepted_exactly_once_or_idempotent_duplicate",
+      "partial_collectors_closed_with_planned_transition_reason",
+      "fixed_packet_physical_transmission_complete_and_UART_not_busy",
+      "UART0_selected_to_target",
+      "fresh_checksum_valid_PMTK705_at_target",
+      "exact_output_confirmation",
+      "fresh_RMC_GGA_and_two_normally_observed_GSA_streams_in_new_epoch",
+      "first_dependent_snapshot_bound_to_request_target_confirmed_baud_epoch_identity_configuration_and_metadata_frontier"
+    ]
+  },
+  "counter_domains": {
+    "raw_device": {
+      "name": "rp2040_timer0",
+      "nominal_hz": 16000000,
+      "width_bits": 32,
+      "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"
+    },
+    "derived_device": {
+      "name": "rp2040_timer0_extended",
+      "nominal_hz": 16000000,
+      "width_bits": 64,
+      "rollover": "non_wrapping_session_bound_D14_boundary_reconstruction"
+    },
+    "host_supervision": {
+      "name": "host_monotonic_ns",
+      "nominal_hz": 1000000000,
+      "width_bits": 64,
+      "rollover": "non_wrapping_for_programme_duration",
+      "decision_authority": "deadline_and_evidence_freshness_only_not_capture_timestamp_truth"
+    },
+    "confirmed_online_duration": "derive exact deltas in rp2040_timer0_extended from snapshots whose phase is ordinary_online, peak_status, or clean_requalification and whose confirmed baud/epoch/metadata frontier remain causal"
+  },
+  "phase_attribution": [
+    "ordinary_online", "peak_status", "clean_requalification",
+    "planned_transition", "discovery", "recovery"
+  ],
+  "schedule": {
+    "total_confirmed_online_seconds": 43200,
+    "transition_time_excluded": true,
+    "segments": [
+      {"id": "S01", "request_seq": 1, "target_baud": 9600, "confirmed_online_s": 1200, "phases": [{"id": "ordinary", "class": "ordinary_online", "duration_s": 1200}]},
+      {"id": "S02", "request_seq": 2, "target_baud": 19200, "confirmed_online_s": 1200, "phases": [{"id": "ordinary", "class": "ordinary_online", "duration_s": 1200}]},
+      {"id": "S03", "request_seq": 3, "target_baud": 38400, "confirmed_online_s": 1200, "phases": [{"id": "ordinary", "class": "ordinary_online", "duration_s": 1200}]},
+      {"id": "S04", "request_seq": 4, "target_baud": 57600, "confirmed_online_s": 1200, "phases": [{"id": "ordinary", "class": "ordinary_online", "duration_s": 1200}]},
+      {"id": "S05", "request_seq": 5, "target_baud": 115200, "confirmed_online_s": 1200, "phases": [{"id": "ordinary", "class": "ordinary_online", "duration_s": 1200}]},
+      {"id": "S06", "request_seq": 6, "target_baud": 57600, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S07", "request_seq": 7, "target_baud": 38400, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S08", "request_seq": 8, "target_baud": 19200, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S09", "request_seq": 9, "target_baud": 9600, "confirmed_online_s": 2700, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 1500}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "clean_requalification", "class": "clean_requalification", "duration_s": 300}]},
+      {"id": "S10", "request_seq": 10, "target_baud": 115200, "confirmed_online_s": 21900, "phases": [{"id": "ordinary_entry", "class": "ordinary_online", "duration_s": 900}, {"id": "peak_status", "class": "peak_status", "duration_s": 900}, {"id": "ordinary_soak", "class": "ordinary_online", "duration_s": 20100}]},
+      {"id": "S11", "request_seq": 11, "target_baud": 9600, "confirmed_online_s": 4500, "phases": [{"id": "closing_clean_soak", "class": "ordinary_online", "duration_s": 4500}]}
+    ]
+  },
+  "peak_status_workload": {
+    "command": "GNSS STATUS",
+    "minimum_period_ms": 1000,
+    "response_completion_deadline_ms": 5000,
+    "maximum_request_rate_hz": 1,
+    "challenges_per_900_second_phase": 900,
+    "next_challenge_requires_previous_complete_end_marker_and_host_drain": true,
+    "may_overlap_transition_discovery_recovery_or_metadata_requalification": false,
+    "artificial_uart_or_parser_gap_injection": false
+  },
+  "monitoring": {
+    "authoritative_poll_period_ms": 1000,
+    "evidence_stale_after_ms": 5000,
+    "report_repeated_local_faults": false,
+    "report": [
+      "segment_or_phase_change", "transition_result", "first_new_fault_class",
+      "stale_evidence", "serial_link_unrecoverable", "D14_D8_non_interference_fault",
+      "programme_terminal"
+    ]
+  },
+  "telemetry_schema": {
+    "uart_lifetime_counters": [
+      "bytes_observed", "bytes_dropped_before_retention", "rx_irq_count",
+      "maximum_isr_drain_batch", "maximum_isr_entry_gap_ticks",
+      "maximum_isr_residence_ticks", "hardware_overrun_count",
+      "hardware_framing_count", "hardware_parity_count", "hardware_break_count"
+    ],
+    "ring_lifetime_counters": [
+      "current_depth", "high_water", "overflow_count"
+    ],
+    "consumer_lifetime_counters": [
+      "service_call_count", "maximum_service_gap_ticks", "bytes_drained",
+      "maximum_drain_batch", "budget_exhausted_call_count",
+      "ring_nonempty_after_budget_call_count"
+    ],
+    "parser_and_metadata_lifetime_counters": [
+      "link_checksum_valid_count", "link_checksum_failure_count",
+      "metadata_checksum_valid_count", "metadata_checksum_failure_count",
+      "parser_drop_count", "truncated_count", "oversize_count",
+      "rmc_count", "gga_count", "gsa_count", "line_length_minimum",
+      "line_length_maximum", "inter_frame_gap_minimum_ticks",
+      "inter_frame_gap_maximum_ticks", "metadata_hold_count",
+      "metadata_hold_cumulative_ticks", "metadata_hold_longest_ticks",
+      "metadata_recovery_latency_ticks"
+    ],
+    "transaction_identity": [
+      "programme_id", "request_seq", "segment_id", "source_baud",
+      "source_baud_epoch", "target_baud", "confirmed_baud", "baud_epoch",
+      "transition_state", "recovery_state", "receiver_identity",
+      "configuration_identity", "metadata_frontier", "snapshot_generation"
+    ],
+    "segment_baseline_required_for_every_lifetime_counter": true,
+    "fault_capsule_fields": [
+      "segment_id", "phase", "baud", "baud_epoch", "fault_class",
+      "hardware_error_deltas", "ring_depth", "ring_high_water",
+      "preceding_consumer_gap_ticks", "partial_line_length",
+      "delimiter_or_checksum_classification", "last_good_frame_sequence",
+      "sanitized_sentence_type"
+    ],
+    "fault_capsule_forbidden": ["coordinates", "full_NMEA_payload"]
+  },
+  "segment_semantics": {
+    "rate_local_faults_continue": true,
+    "metadata_loss_action": "continue D14/D8 capture and canonical evidence; count hold; issue no control because none exists; resume segment time only after fresh ordinary RMC/GGA/GSA requalification",
+    "discovery_transition_and_recovery_counters_excluded_from_online_classes": true,
+    "d10_excluded_from_all_baud_classification_and_terminals": true
+  },
+  "classification": {
+    "steady_online_classes": [
+      "operationally_feasible_observed", "operationally_feasible_low_margin",
+      "nominally_clean_insufficient_evidence", "transport_unstable",
+      "platform_confounded", "not_exercised"
+    ],
+    "transition_classes": [
+      "transition_reliable_observed", "transition_unreliable",
+      "transition_platform_confounded", "transition_not_assessed"
+    ],
+    "operationally_feasible_observed_requires": [
+      "zero ordinary-online UART hardware errors in both visits",
+      "zero ordinary-online raw-ring overflows in both visits",
+      "zero ordinary-online checksum truncation oversize and parser-drop events in both visits",
+      "zero transport-caused metadata holds in ordinary and peak phases",
+      "exact identity and output configuration throughout",
+      "no D14/D8 or shared-platform degradation",
+      "no evidence that the ISR failed to drain available hardware bytes",
+      "ring high water no greater than 512 of 1024 entries under the largest ordinary or peak-load gap"
+    ],
+    "transition_reliable_observed_requires": "every scheduled entry and exit involving the baud completes within the frozen deadline and binds the first dependent snapshot",
+    "zero_event_bound": {"method": "one_sided_95_percent_Poisson_approximation", "formula": "3/N", "claim_limit": "finite_empirical_bound_not_timeless_probability_or_independence"}
+  },
+  "causal_fault_priority": [
+    {"first_evidence": "UART_overrun", "classification": "hardware_FIFO_not_drained_within_arrival_envelope"},
+    {"first_evidence": "UART_framing_parity_or_break_without_overrun", "classification": "baud_framing_electrical_or_receiver_serial"},
+    {"first_evidence": "raw_ring_overflow_without_UART_overrun", "classification": "firmware_consumer_or_service_plane_backlog"},
+    {"first_evidence": "parser_fault_with_clean_UART_and_ring", "classification": "receiver_byte_content_collector_semantics_or_parser"},
+    {"first_evidence": "metadata_quality_loss_with_clean_serial", "classification": "receiver_solution_or_qualification_change"},
+    {"first_evidence": "D14_D8_degradation_correlated_with_GNSS_load", "classification": "platform_isolation_defect"}
+  ],
+  "programme_stop_conditions": [
+    "D14_or_D8_capture_loss_shared_queue_corruption_or_evidence_discontinuity",
+    "unknown_or_contradictory_firmware_receiver_request_baud_epoch_or_output_identity",
+    "emitted_UART_command_outside_frozen_fixed_table",
+    "raw_ring_memory_or_ordering_corruption",
+    "sole_USB_serial_owner_loss_or_nonfinalizable_evidence_carrier_fault",
+    "receiver_unrecoverable_at_all_five_frozen_rates_after_one_scan",
+    "independent_operator_stop"
+  ],
+  "programme_terminals": [
+    "multi_baud_characterization_complete",
+    "multi_baud_characterization_partial_receiver_recovered",
+    "serial_link_unrecoverable",
+    "programme_invalid_due_to_platform_or_evidence_failure"
+  ],
+  "final_state": {
+    "planned_segment": "S11",
+    "required_baud": 9600,
+    "requires_fresh_PMTK705_identity": true,
+    "requires_exact_output_confirmation": true,
+    "requires_fresh_RMC_GGA_and_two_GSA_streams": true,
+    "blind_restore_permitted": false
+  },
+  "evidence_paths": {
+    "root": "runs/otis_gnss_baud_envelope_characterization_v1/",
+    "candidate": "runs/otis_gnss_baud_envelope_characterization_v1/candidate/",
+    "rehearsal": "runs/otis_gnss_baud_envelope_characterization_v1/rehearsal/",
+    "activation": "runs/otis_gnss_baud_envelope_characterization_v1/activation/",
+    "live": "runs/otis_gnss_baud_envelope_characterization_v1/live_<UTC>/",
+    "raw": "raw/serial.log",
+    "segment_ledger": "reports/gnss_baud_segment_ledger_v1.jsonl",
+    "transition_ledger": "reports/gnss_baud_transition_ledger_v1.jsonl",
+    "monitor_history": "reports/gnss_baud_monitor_history_v1.jsonl",
+    "analysis": "reports/gnss_baud_envelope_analysis_v1.json",
+    "seal": "reports/gnss_baud_envelope_seal_v1.json",
+    "snapshot": "evidence_snapshot_v1.json",
+    "registration": "evidence_registration_v1.json"
+  },
+  "bundle_identity_requirements": {
+    "hash": "sha256",
+    "source_revision_at_contract_freeze": "3fbc62c5ca2acd3e59648f671579ebcf85c10333",
+    "source_state": "bind_complete_post_implementation_dirty_state_and_each_tracked_file_hash_in_candidate_bundle",
+    "required": [
+      "campaign_contract", "firmware_matrix_profile", "generated_profile_header",
+      "build_invocation", "toolchain", "core_installation", "elf", "uf2", "bin", "map",
+      "command_table", "firmware_sources", "host_runner", "supervisor", "monitor",
+      "analyzer", "sealer", "snapshotter", "registrar", "preflight",
+      "operational_check", "python_environment", "host_OS", "expected_device_identity",
+      "expected_query_transcript", "schedule", "terminal_rules"
+    ],
+    "reuse_rule": "reuse a successful result only when every decision-relevant input identity is unchanged"
+  },
+  "operational_check": {
+    "mode": "accelerated_no_IO_actual_process_topology",
+    "must_complete_all_segments": true,
+    "must_exercise": [
+      "progressive_and_repeated_transition_ordering", "same_target_S01",
+      "rate_local_fault_continuation", "recovery_at_other_baud",
+      "five_rate_unrecoverable_terminal", "peak_status_phase",
+      "stale_evidence_detection", "transport_obstruction_and_bounded_abort",
+      "atomic_capture_rotation", "analysis", "seal", "snapshot",
+      "temporary_registration", "final_confirmed_9600"
+    ],
+    "does_not_claim": [
+      "real_UART_IRQ_timing", "PA1616S_electrical_behaviour",
+      "physical_multi_baud_transition", "USB_workload_coupling",
+      "firmware_cross_core_physical_propagation"
+    ]
+  }
+}

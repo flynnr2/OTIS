@@ -33,6 +33,55 @@ struct OtisPpsCountBoundaryObservation {
   uint32_t aperture_flags;
 };
 
+// A PIO/DMA word and its independently captured D14 REF can become visible to
+// foreground code in either order.  Hold a newly visible word for one complete
+// foreground pass so the capture ring can publish any same-boundary REF before
+// FIFO association commits.  The exact session/consumer identity prevents the
+// hold from being reused across a rearm or a different front-of-queue word.
+struct OtisPpsSnapshotAssociationGuard {
+  bool deferred_for_reference_drain;
+  uint32_t session;
+  uint32_t next_snapshot_sequence;
+};
+
+enum class OtisPpsSnapshotAssociationDecision : uint8_t {
+  AwaitSnapshot,
+  DeferForReferenceDrain,
+  Pair,
+  AssociationLoss,
+};
+
+static inline void otis_pps_snapshot_association_guard_reset(
+    OtisPpsSnapshotAssociationGuard *guard) {
+  if (guard == nullptr) return;
+  *guard = {false, 0u, 0u};
+}
+
+static inline OtisPpsSnapshotAssociationDecision
+otis_pps_snapshot_association_decide(
+    OtisPpsSnapshotAssociationGuard *guard, bool snapshot_available,
+    uint32_t snapshot_session, uint32_t next_snapshot_sequence,
+    bool another_reference_waiting) {
+  if (guard == nullptr) {
+    return OtisPpsSnapshotAssociationDecision::AssociationLoss;
+  }
+  if (another_reference_waiting) {
+    otis_pps_snapshot_association_guard_reset(guard);
+    return OtisPpsSnapshotAssociationDecision::AssociationLoss;
+  }
+  if (!snapshot_available) {
+    otis_pps_snapshot_association_guard_reset(guard);
+    return OtisPpsSnapshotAssociationDecision::AwaitSnapshot;
+  }
+  if (!guard->deferred_for_reference_drain ||
+      guard->session != snapshot_session ||
+      guard->next_snapshot_sequence != next_snapshot_sequence) {
+    *guard = {true, snapshot_session, next_snapshot_sequence};
+    return OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain;
+  }
+  return OtisPpsSnapshotAssociationDecision::Pair;
+}
+
 enum class OtisBoundarySequenceRelation : uint8_t {
   Continuous,
   Duplicate,

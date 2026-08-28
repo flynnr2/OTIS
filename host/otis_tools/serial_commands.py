@@ -65,6 +65,8 @@ SIMPLE_COMMANDS = frozenset(
     }
 )
 TIMESTAMPED_COMMAND_PREFIX = "OTISQ1"
+GNSS_BAUD_PROGRAMME_ID = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
+GNSS_CHARACTERIZATION_BAUDS = frozenset({9600, 19200, 38400, 57600, 115200})
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,59 @@ def parse_serial_command(text: str) -> SerialCommand:
             raise ValueError("Q2 CASE id must be in 1..38")
         return SerialCommand(
             f"Q2 CASE {int(fields[0], 10)} {int(fields[1], 10)}"
+        )
+
+    if command.startswith("GNSS BAUD "):
+        fields = command.split(" ")
+        if len(fields) != 8 or fields[:2] != ["GNSS", "BAUD"]:
+            raise ValueError(
+                "GNSS BAUD requires programme, request, segment, source baud, "
+                "source epoch, and target baud"
+            )
+        programme, request, segment, source, source_epoch, target = fields[2:]
+        if programme != GNSS_BAUD_PROGRAMME_ID:
+            raise ValueError("GNSS BAUD requires the exact characterization programme")
+        if not re.fullmatch(r"S(?:0[1-9]|1[01])", segment):
+            raise ValueError("GNSS BAUD segment must be S01..S11")
+        if (
+            not re.fullmatch(r"[1-9][0-9]*", request)
+            or int(request, 10) > 0xFFFFFFFF
+            or not re.fullmatch(r"[1-9][0-9]*", source_epoch)
+            or int(source_epoch, 10) > 0xFFFFFFFF
+        ):
+            raise ValueError("GNSS BAUD request and source epoch must be uint32")
+        if (
+            not source.isdigit()
+            or not target.isdigit()
+            or int(source, 10) not in GNSS_CHARACTERIZATION_BAUDS
+            or int(target, 10) not in GNSS_CHARACTERIZATION_BAUDS
+        ):
+            raise ValueError("GNSS BAUD source and target must be frozen candidates")
+        return SerialCommand(
+            f"GNSS BAUD {programme} {int(request, 10)} {segment} "
+            f"{int(source, 10)} {int(source_epoch, 10)} {int(target, 10)}"
+        )
+
+    if command.startswith("GNSS STATUS "):
+        fields = command.split(" ")
+        if len(fields) != 6 or fields[:2] != ["GNSS", "STATUS"]:
+            raise ValueError(
+                "GNSS STATUS requires programme, challenge, segment, and baud epoch"
+            )
+        programme, challenge, segment, baud_epoch = fields[2:]
+        if programme != GNSS_BAUD_PROGRAMME_ID:
+            raise ValueError("GNSS STATUS requires the exact characterization programme")
+        if not re.fullmatch(r"S(?:0[1-9]|1[01])", segment):
+            raise ValueError("GNSS STATUS segment must be S01..S11")
+        if any(
+            not re.fullmatch(r"[1-9][0-9]*", field)
+            or int(field, 10) > 0xFFFFFFFF
+            for field in (challenge, baud_epoch)
+        ):
+            raise ValueError("GNSS STATUS challenge and baud epoch must be non-zero uint32")
+        return SerialCommand(
+            f"GNSS STATUS {programme} {int(challenge, 10)} {segment} "
+            f"{int(baud_epoch, 10)}"
         )
 
     if command.startswith("ACTIVE SNAPSHOT "):

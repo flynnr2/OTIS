@@ -195,3 +195,109 @@ def test_rotation_operation_id_reuses_completed_response_without_reissuing(
 
     assert observed == response
     assert not (control / capture_device.SEGMENT_REQUEST).exists()
+
+
+def test_pending_rotation_drains_partial_record_before_single_validation(
+    tmp_path: Path,
+) -> None:
+    source = (tmp_path / "source").resolve()
+    transition = (tmp_path / "transition").resolve()
+    control = (tmp_path / "carrier").resolve()
+    device = "/dev/cu.usbmodemFAKE"
+    ensure_run_layout(source)
+    capture_device._create_manifest_if_missing(source, device, 115200)
+    prepare_transition(source / "run_manifest.json", transition)
+
+    class PartialChunkSerial:
+        """Full reads always contain a row but end partway into the next."""
+
+        def __init__(self) -> None:
+            self.record = b"#" + b"x" * 507 + b"\n"
+            self.offset = 0
+            self.read_calls = 0
+            self.closed = False
+
+        def read(self, size: int) -> bytes:
+            self.read_calls += 1
+            if size > 1:
+                time.sleep(0.002)
+            result = bytearray()
+            while len(result) < size:
+                available = min(size - len(result), len(self.record) - self.offset)
+                result.extend(self.record[self.offset : self.offset + available])
+                self.offset = (self.offset + available) % len(self.record)
+            return bytes(result)
+
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+        def close(self) -> None:
+            self.closed = True
+
+    serial = PartialChunkSerial()
+    factory_calls = 0
+
+    def factory(*_args, **_kwargs):
+        nonlocal factory_calls
+        factory_calls += 1
+        return serial
+
+    runner = CaptureDeviceRunner(
+        CaptureDeviceConfig(
+            device=device,
+            baud=115200,
+            run_dir=source,
+            read_size=512,
+            status_interval_s=999,
+            segment_control_dir=control,
+            segment_capability="test-capability",
+        ),
+        serial_factory=factory,
+    )
+    validation_calls = 0
+    validate = runner._validate_segment_request
+
+    def count_validation(request):
+        nonlocal validation_calls
+        validation_calls += 1
+        return validate(request)
+
+    runner._validate_segment_request = count_validation  # type: ignore[method-assign]
+    results: list[int] = []
+    worker = threading.Thread(target=lambda: results.append(runner.run()))
+    worker.start()
+    try:
+        _wait_until(
+            lambda: (control / "carrier_state.json").is_file()
+            and json.loads((control / "carrier_state.json").read_text()).get(
+                "status"
+            )
+            == "running"
+        )
+        _wait_until(lambda: serial.read_calls >= 3)
+        owner_pid = int(
+            json.loads((control / "carrier_state.json").read_text())["pid"]
+        )
+        response = request_rotation(
+            control_dir=control,
+            capability="test-capability",
+            to_run=transition,
+            mode="transition",
+            wait_timeout_s=0.5,
+            operation_id="partial-record-boundary-drain",
+        )
+    finally:
+        runner.request_stop()
+        worker.join(timeout=3.0)
+
+    assert not worker.is_alive()
+    assert results == [0]
+    assert response["pid"] == owner_pid
+    assert response["transport_generation"] == 2
+    assert response["serial_reopened"] is False
+    assert validation_calls == 1
+    assert factory_calls == 1
+    assert serial.closed is True
+    assert json.loads((source / capture_device.SEGMENT_CLOSURE).read_text())[
+        "closure_mode"
+    ] == "same_owner_logical_rotation"

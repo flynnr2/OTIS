@@ -16,6 +16,9 @@ PYTHON = sys.executable
 
 FAST_TESTS = (
     "tests/test_firmware_matrix.py",
+    "tests/test_gnss_baud_characterization_preflight.py",
+    "tests/test_gnss_baud_envelope_bundle.py",
+    "tests/test_gnss_baud_envelope_host.py",
     "tests/test_run_tools.py",
     "tests/test_diagnostics_contract.py",
     "tests/test_active_status_contract.py",
@@ -41,6 +44,9 @@ FAST_TESTS = (
 )
 
 CAMPAIGN_TESTS = (
+    "tests/test_gnss_baud_characterization_preflight.py",
+    "tests/test_gnss_baud_envelope_bundle.py",
+    "tests/test_gnss_baud_envelope_host.py",
     "tests/test_programme_status.py",
     "tests/test_active_status_contract.py",
     "tests/test_diagnostics_contract.py",

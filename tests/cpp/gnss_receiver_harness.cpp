@@ -56,6 +56,26 @@ void feed_link(OtisGnssLink *link, const std::string &text,
   for (char byte : text) otis_gnss_link_feed(link, byte, now_ms);
 }
 
+void retain_link_bytes(OtisGnssUartRxRing *ring, const std::string &text) {
+  for (char byte : text) {
+    const OtisGnssUartObservation observation = {
+        static_cast<uint8_t>(byte), kOtisGnssUartObservationNone};
+    assert(otis_gnss_uart_rx_ring_push_from_isr(ring, observation));
+  }
+}
+
+uint32_t drain_link_bytes(OtisGnssUartRxRing *ring, OtisGnssLink *link,
+                          uint32_t maximum, uint32_t now_ms) {
+  uint32_t drained = 0u;
+  OtisGnssUartObservation observation = {};
+  while (drained < maximum &&
+         otis_gnss_uart_rx_ring_pop(ring, &observation)) {
+    otis_gnss_link_feed(link, static_cast<char>(observation.byte), now_ms);
+    drained++;
+  }
+  return drained;
+}
+
 void establish_target_link(OtisGnssLink *link, uint32_t now_ms) {
   const OtisGnssLinkPolicy policy = link_policy();
   otis_gnss_link_reset(link, &policy, now_ms);
@@ -371,7 +391,8 @@ void test_observed_configuration_rejects_an_unexpected_sentence() {
   otis_gnss_link_tick(&link, 1600u);
   assert(!otis_gnss_link_online(&link));
   assert(link.configuration_failure_count == 1u);
-  assert(link.output_unexpected_sentence_mask == (1u << 5u));
+  assert(link.output_unexpected_sentence_mask == 0u);
+  assert(link.state == OtisGnssLinkState::SelectCandidateBaud);
   assert(link.last_identity_response_baud == 9600u);
 }
 
@@ -396,6 +417,169 @@ void test_discovery_noise_degradation_and_online_loss() {
   assert(std::string(otis_gnss_link_state_name(&link, 30005u)) == "lost");
 }
 
+void test_retained_identity_response_is_causal_before_timeout_advance() {
+  const OtisGnssLinkPolicy policy = {
+      9600u, 1200u, 2000u, 15000u, 10000u, 2500u};
+  OtisGnssLink link = {};
+  OtisGnssUartRxRing ring = {};
+  otis_gnss_uart_rx_ring_reset(&ring);
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  otis_gnss_link_tick(&link, 1200u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+
+  // A prompt response may already be ISR-retained while the UART hardware is
+  // still reporting BUSY.  The live service must commit TX completion first.
+  retain_link_bytes(&ring, sentence("PMTK705,AXN_5.10_3339,BUILD_1"));
+  otis_gnss_link_complete_action(&link, true, 1201u);
+  assert(link.state == OtisGnssLinkState::AwaitIdentityResponse);
+  drain_link_bytes(&ring, &link, UINT32_MAX, 1202u);
+  assert(link.identity_response_count == 1u);
+  assert(link.candidate_rejection_count == 0u);
+  assert(link.candidate_baud == 9600u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitOutputQuery);
+
+  // At a wall deadline, bytes accepted for this candidate can sit behind more
+  // than one bounded consumer batch.  Candidate advance remains inhibited
+  // until the retained producer frontier is drained and parsed.
+  otis_gnss_uart_rx_ring_reset(&ring);
+  otis_gnss_link_reset(&link, &policy, 0u);
+  take_action(&link, OtisGnssLinkActionKind::SetUartBaud);
+  otis_gnss_link_complete_action(&link, true, 0u);
+  otis_gnss_link_tick(&link, 1200u);
+  take_action(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(&link, true, 1201u);
+  retain_link_bytes(
+      &ring,
+      std::string(160u, 'x') + sentence("PMTK705,AXN_5.10_3339,BUILD_1"));
+  assert(drain_link_bytes(&ring, &link, 128u, 3201u) == 128u);
+  assert(otis_gnss_uart_rx_ring_depth(&ring) > 0u);
+  if (otis_gnss_uart_rx_ring_depth(&ring) == 0u)
+    otis_gnss_link_tick(&link, 3201u);
+  assert(link.state == OtisGnssLinkState::AwaitIdentityResponse);
+  assert(link.candidate_rejection_count == 0u);
+  drain_link_bytes(&ring, &link, UINT32_MAX, 3201u);
+  assert(link.identity_response_count == 1u);
+  assert(link.candidate_rejection_count == 0u);
+  assert(link.candidate_baud == 9600u);
+}
+
+void test_uart_ring_loss_markers_and_interleaved_high_water() {
+  OtisGnssUartRxRing ring = {};
+  otis_gnss_uart_rx_ring_reset(&ring);
+  otis_gnss_uart_rx_ring_reset_phase_window(&ring);
+  const OtisGnssUartObservation byte = {'A', kOtisGnssUartObservationNone};
+  for (uint32_t index = 0u; index < 100u; ++index)
+    assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+  OtisGnssUartObservation retained = {};
+  assert(otis_gnss_uart_rx_ring_pop(&ring, &retained));
+  for (uint32_t index = 0u; index < 50u; ++index)
+    assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+  assert(otis_gnss_uart_rx_ring_pop(&ring, &retained));
+  OtisGnssUartRxStats stats = {};
+  otis_gnss_uart_rx_ring_snapshot(&ring, &stats);
+  assert(stats.ring_high_water == 149u);
+  assert(stats.phase_window_ring_high_water == 149u);
+
+  while (otis_gnss_uart_rx_ring_pop(&ring, &retained)) {}
+  for (uint32_t index = 0u; index < kOtisGnssUartRxRingCapacity; ++index)
+    assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+  assert(!otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+  assert(otis_gnss_uart_rx_ring_pop(&ring, &retained));
+  assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+  while (otis_gnss_uart_rx_ring_pop(&ring, &retained)) {
+    if ((retained.flags & kOtisGnssUartObservationLossBefore) != 0u) break;
+  }
+  assert((retained.flags & kOtisGnssUartObservationLossBefore) != 0u);
+  otis_gnss_uart_rx_ring_snapshot(&ring, &stats);
+  assert(stats.uart_bytes_dropped_before_retention == 1u);
+  assert(stats.ring_overflow_count == 1u);
+}
+
+void test_uart_phase_window_maxima_reset_without_lifetime_contamination() {
+  OtisGnssUartRxRing ring = {};
+  otis_gnss_uart_rx_ring_reset(&ring);
+  otis_gnss_uart_rx_ring_reset_phase_window(&ring);
+  otis_gnss_uart_rx_ring_note_interrupt_from_isr(&ring, 100u, 160u, 40u);
+  otis_gnss_uart_rx_ring_note_interrupt_from_isr(&ring, 1100u, 1200u, 80u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 100u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 2100u);
+  otis_gnss_uart_rx_ring_note_consumer_complete(&ring, 90u, false, false);
+  OtisGnssUartRxStats high = {};
+  otis_gnss_uart_rx_ring_snapshot(&ring, &high);
+  assert(high.phase_window_maximum_bytes_drained_per_interrupt == 80u);
+  assert(high.phase_window_maximum_interrupt_gap_ticks == 1000u);
+  assert(high.phase_window_maximum_interrupt_residence_ticks == 100u);
+  assert(high.phase_window_maximum_consumer_service_gap_ticks == 2000u);
+  assert(high.phase_window_maximum_consumer_drain_batch == 90u);
+
+  otis_gnss_uart_rx_ring_reset_phase_window(&ring);
+  otis_gnss_uart_rx_ring_note_interrupt_from_isr(&ring, 3000u, 3010u, 4u);
+  otis_gnss_uart_rx_ring_note_interrupt_from_isr(&ring, 3100u, 3110u, 5u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 3000u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 3030u);
+  otis_gnss_uart_rx_ring_note_consumer_complete(&ring, 6u, false, false);
+  OtisGnssUartRxStats low = {};
+  otis_gnss_uart_rx_ring_snapshot(&ring, &low);
+  assert(low.phase_window_sequence == high.phase_window_sequence + 1u);
+  assert(low.phase_window_maximum_bytes_drained_per_interrupt == 5u);
+  assert(low.phase_window_maximum_interrupt_gap_ticks == 100u);
+  assert(low.phase_window_maximum_interrupt_residence_ticks == 10u);
+  assert(low.phase_window_maximum_consumer_service_gap_ticks == 30u);
+  assert(low.phase_window_maximum_consumer_drain_batch == 6u);
+  assert(low.maximum_bytes_drained_per_interrupt == 80u);
+  assert(low.maximum_consumer_service_gap_ticks == 2000u);
+}
+
+void test_uart_error_delivery_and_exact_preceding_gap_capsules() {
+  OtisGnssUartRxRing ring = {};
+  otis_gnss_uart_rx_ring_reset(&ring);
+  const OtisGnssUartObservation errored =
+      otis_gnss_uart_observation_from_dr(
+          static_cast<uint32_t>('X') | (1u << 8u) | (1u << 11u));
+  assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, errored));
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 100u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 1100u);
+  otis_gnss_uart_rx_ring_note_consumer_start(&ring, 1130u);
+  OtisGnssUartRxStats stats = {};
+  otis_gnss_uart_rx_ring_snapshot(&ring, &stats);
+  assert(stats.hardware_framing_count == 1u);
+  assert(stats.hardware_overrun_count == 1u);
+  assert(stats.maximum_consumer_service_gap_ticks == 1000u);
+  assert(stats.last_consumer_service_gap_ticks == 30u);
+  OtisGnssUartObservation delivered = {};
+  assert(otis_gnss_uart_rx_ring_pop(&ring, &delivered));
+  assert(delivered.byte == 'X');
+  assert((delivered.flags & kOtisGnssUartObservationFramingError) != 0u);
+  assert((delivered.flags & kOtisGnssUartObservationOverrunError) != 0u);
+
+  OtisGnssReceiver receiver = {};
+  otis_gnss_receiver_reset(&receiver, 0u);
+  for (uint8_t segment = 1u; segment <= 3u; ++segment) {
+    const OtisGnssParserFaultContext context = {
+        segment, OtisGnssObservationPhase::OrdinaryOnline, 9600u,
+        static_cast<uint32_t>(segment), 1u, 2u, 3u, 4u, 7u, 11u,
+        static_cast<uint32_t>(20u + segment),
+    };
+    otis_gnss_receiver_set_fault_context(&receiver, &context);
+    otis_gnss_receiver_note_collector_loss_at_ticks(
+        &receiver, segment * 10u, segment * 160000u,
+        segment == 1u ? OtisGnssParserFaultClass::RawAcquisitionLoss
+                      : (segment == 2u
+                             ? OtisGnssParserFaultClass::DelimiterBeforeNewline
+                             : OtisGnssParserFaultClass::Checksum));
+  }
+  const OtisGnssReceiverSnapshot receiver_stats = snapshot(receiver, 40u);
+  assert(receiver_stats.fault_capsule_count == 3u);
+  for (uint8_t index = 0u; index < 3u; ++index) {
+    assert(receiver_stats.fault_capsules[index].valid);
+    assert(receiver_stats.fault_capsules[index].segment_ordinal == index + 1u);
+    assert(receiver_stats.fault_capsules[index].preceding_consumer_gap_ticks ==
+           21u + index);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -412,5 +596,9 @@ int main() {
   test_physical_receiver_extension_must_remain_disabled();
   test_observed_configuration_rejects_an_unexpected_sentence();
   test_discovery_noise_degradation_and_online_loss();
+  test_retained_identity_response_is_causal_before_timeout_advance();
+  test_uart_ring_loss_markers_and_interleaved_high_water();
+  test_uart_phase_window_maxima_reset_without_lifetime_contamination();
+  test_uart_error_delivery_and_exact_preceding_gap_capsules();
   return 0;
 }

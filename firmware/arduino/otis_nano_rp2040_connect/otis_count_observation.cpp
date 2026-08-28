@@ -251,6 +251,7 @@ struct PpsGatedRatioBackend {
 };
 
 PpsGatedRatioBackend pps_gated_ratio = {};
+uint32_t pps_gate_status_snapshot_generation = 0u;
 
 OtisPpsDiagnostics pps_diagnostics = {};
 #endif
@@ -389,6 +390,14 @@ const char *physical_pps_state_name(OtisPhysicalPpsState state) {
 
 void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                           const char *severity, uint32_t flags) {
+  pps_gate_status_snapshot_generation++;
+  if (pps_gate_status_snapshot_generation == 0u)
+    pps_gate_status_snapshot_generation = 1u;
+  emit_status(status_context, "pps_gate", "snapshot", "begin",
+              OTIS_SEVERITY_INFO, flags);
+  emit_status_u32(status_context, "pps_gate", "snapshot_generation",
+                  pps_gate_status_snapshot_generation,
+                  OTIS_SEVERITY_INFO, flags);
   emit_status(status_context, "pps_gate", "backend", "pps_gated_ratio",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status(status_context, "pps_gate", "boundary_owner", "pio_state_machine",
@@ -447,6 +456,12 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                     pps_gated_ratio.previous_observation.sequence,
                     OTIS_SEVERITY_INFO, flags);
   }
+  emit_status_u32(
+      status_context, "pps_gate", "boundary_reference_sequence",
+      pps_gated_ratio.have_previous_observation
+          ? pps_gated_ratio.previous_observation.reference_sequence
+          : 0u,
+      OTIS_SEVERITY_INFO, flags);
   emit_status_u32(status_context, "pps_gate", "boundary_ring_depth",
                   otis_pps_count_boundary_ring_depth(), OTIS_SEVERITY_INFO,
                   flags);
@@ -593,6 +608,8 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
   emit_status_u32(status_context, "pps_gate", "physical_pps_reminder_count",
                   pps_diagnostics.physical_pps_reminder_count,
                   OTIS_SEVERITY_INFO, flags);
+  emit_status(status_context, "pps_gate", "snapshot", "end",
+              OTIS_SEVERITY_INFO, flags);
 }
 
 void emit_pps_gate_window_status(OtisRuntimeState *runtime_state,

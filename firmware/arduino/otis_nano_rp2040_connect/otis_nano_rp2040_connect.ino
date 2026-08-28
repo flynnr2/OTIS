@@ -44,6 +44,7 @@
 #include "otis_status_emit.h"
 #include "otis_status_led.h"
 #include "otis_timebase.h"
+#include "otis_timer0_extension.h"
 #include "otis_transport_serial.h"
 #include "otis_transport_liveness.h"
 
@@ -87,6 +88,133 @@ bool boot_capability_status_emitted = false;
 bool run_mode_status_emitted = false;
 bool transport_started = false;
 bool config_query_provenance_emitted = false;
+
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+constexpr uint64_t kGnssSnapshotProjectionMaximumDistanceTicks = 19200000ull;
+OtisTimer0Extension gnss_snapshot_timer0_extension = {};
+uint32_t gnss_snapshot_capture_session = 0u;
+uint32_t gnss_snapshot_reference_sequence = 0u;
+uint32_t gnss_snapshot_session_change_count = 0u;
+uint32_t gnss_characterization_snapshot_generation = 0u;
+
+struct GnssPlatformCounterMirror {
+  bool pps_gate_available;
+  uint32_t snapshot_generation;
+  uint32_t capture_session;
+  uint32_t reference_sequence;
+  uint32_t boundary_ring_dropped_count;
+  uint32_t rejected_window_count;
+  uint32_t missing_pps_count;
+  uint32_t pps_interval_anomaly_count;
+  uint32_t boundary_sequence_gap_count;
+  uint32_t boundary_sequence_duplicate_count;
+  uint32_t boundary_overflow_count;
+  uint32_t counter_snapshot_invalid_count;
+  uint32_t physical_aperture_incomplete_count;
+  uint32_t association_loss_count;
+  uint32_t snapshot_continuity_loss_count;
+  uint32_t physical_pps_missing_count;
+};
+
+GnssPlatformCounterMirror gnss_platform_counter_mirror = {};
+GnssPlatformCounterMirror gnss_platform_counter_staging = {};
+bool gnss_platform_counter_staging_active = false;
+uint32_t gnss_platform_counter_staging_seen_mask = 0u;
+constexpr uint32_t kGnssPlatformCounterCompleteMask = (1u << 12u) - 1u;
+
+void note_gnss_platform_counter_telemetry(
+    const OtisTelemetryMessage &telemetry) {
+  if (strcmp(telemetry.component, "pps_gate") != 0) return;
+  if (strcmp(telemetry.key, "snapshot") == 0) {
+    if (strcmp(telemetry.value, "begin") == 0) {
+      gnss_platform_counter_staging = {};
+      gnss_platform_counter_staging_active = true;
+      gnss_platform_counter_staging_seen_mask = 0u;
+    } else if (strcmp(telemetry.value, "end") == 0) {
+      if (gnss_platform_counter_staging_active &&
+          gnss_platform_counter_staging.snapshot_generation != 0u &&
+          gnss_platform_counter_staging.capture_session != 0u &&
+          gnss_platform_counter_staging.reference_sequence != 0u &&
+          gnss_platform_counter_staging_seen_mask ==
+              kGnssPlatformCounterCompleteMask) {
+        gnss_platform_counter_staging.pps_gate_available = true;
+        gnss_platform_counter_mirror = gnss_platform_counter_staging;
+      }
+      gnss_platform_counter_staging_active = false;
+    }
+    return;
+  }
+  if (!gnss_platform_counter_staging_active) return;
+  char *end = nullptr;
+  const unsigned long parsed = strtoul(telemetry.value, &end, 10);
+  if (end == telemetry.value || *end != '\0' || parsed > UINT32_MAX) return;
+  if (strcmp(telemetry.key, "snapshot_generation") == 0) {
+    gnss_platform_counter_staging.snapshot_generation =
+        static_cast<uint32_t>(parsed);
+    return;
+  }
+  if (strcmp(telemetry.key, "snapshot_session") == 0) {
+    gnss_platform_counter_staging.capture_session =
+        static_cast<uint32_t>(parsed);
+    return;
+  }
+  if (strcmp(telemetry.key, "boundary_reference_sequence") == 0) {
+    gnss_platform_counter_staging.reference_sequence =
+        static_cast<uint32_t>(parsed);
+    return;
+  }
+  uint32_t *destination = nullptr;
+  uint32_t seen_bit = 0u;
+#define SELECT_PPS_GATE_COUNTER(name, member, bit) \
+  if (strcmp(telemetry.key, name) == 0) { \
+    destination = &gnss_platform_counter_staging.member; \
+    seen_bit = 1u << bit; \
+  }
+  SELECT_PPS_GATE_COUNTER("boundary_ring_dropped_count",
+                          boundary_ring_dropped_count, 0u);
+  SELECT_PPS_GATE_COUNTER("rejected_window_count", rejected_window_count,
+                          1u);
+  SELECT_PPS_GATE_COUNTER("missing_pps_count", missing_pps_count, 2u);
+  SELECT_PPS_GATE_COUNTER("pps_interval_anomaly_count",
+                          pps_interval_anomaly_count, 3u);
+  SELECT_PPS_GATE_COUNTER("boundary_sequence_gap_count",
+                          boundary_sequence_gap_count, 4u);
+  SELECT_PPS_GATE_COUNTER("boundary_sequence_duplicate_count",
+                          boundary_sequence_duplicate_count, 5u);
+  SELECT_PPS_GATE_COUNTER("boundary_overflow_count", boundary_overflow_count,
+                          6u);
+  SELECT_PPS_GATE_COUNTER("counter_snapshot_invalid_count",
+                          counter_snapshot_invalid_count, 7u);
+  SELECT_PPS_GATE_COUNTER("physical_aperture_incomplete_count",
+                          physical_aperture_incomplete_count, 8u);
+  SELECT_PPS_GATE_COUNTER("association_loss_count", association_loss_count,
+                          9u);
+  SELECT_PPS_GATE_COUNTER("snapshot_continuity_loss_count",
+                          snapshot_continuity_loss_count, 10u);
+  SELECT_PPS_GATE_COUNTER("physical_pps_missing_count",
+                          physical_pps_missing_count, 11u);
+#undef SELECT_PPS_GATE_COUNTER
+  if (destination == nullptr) return;
+  *destination = static_cast<uint32_t>(parsed);
+  gnss_platform_counter_staging_seen_mask |= seen_bit;
+}
+
+void note_gnss_d14_snapshot_boundary(uint32_t capture_session,
+                                     uint32_t reference_sequence,
+                                     uint64_t raw_boundary_ticks) {
+  const uint32_t previous_session = gnss_snapshot_capture_session;
+  uint64_t extended_ticks = 0u;
+  if (!otis_timer0_extension_advance_boundary(
+          &gnss_snapshot_timer0_extension, raw_boundary_ticks,
+          capture_session, &extended_ticks))
+    return;
+  if (previous_session != 0u && previous_session != capture_session)
+    gnss_snapshot_session_change_count++;
+  gnss_snapshot_capture_session = capture_session;
+  gnss_snapshot_reference_sequence = reference_sequence;
+  (void)extended_ticks;
+}
+#endif
 
 #if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
 bool cx318_stage4_premise_write_consumed = false;
@@ -1377,6 +1505,11 @@ void service_dual_core_outputs(void) {
     } else if (observation.kind ==
                OtisObservationMessageKind::PpsSnapshot) {
       const OtisPpsSnapshotMessage &snapshot = observation.snapshot;
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+      note_gnss_d14_snapshot_boundary(
+          snapshot.session, snapshot.reference_sequence,
+          snapshot.reference_timestamp_ticks);
+#endif
       otis_emit_pps_snapshot(
           snapshot.session, snapshot.sequence,
           snapshot.cumulative_down_counter, snapshot.reference_sequence,
@@ -1420,6 +1553,9 @@ void service_dual_core_outputs(void) {
   uint8_t telemetry_budget = 12u;
   while (telemetry_budget-- > 0u &&
          otis_dual_core_take_telemetry(&telemetry)) {
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+    note_gnss_platform_counter_telemetry(telemetry);
+#endif
     emit_status_direct(telemetry.component, telemetry.key, telemetry.value,
                        telemetry.severity, telemetry.flags);
 #if OTIS_ENABLE_GNSS_RECEIVER
@@ -1988,6 +2124,7 @@ void drain_pps_count_boundary_ring(void) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   static bool have_pending_reference = false;
   static OtisPpsCountBoundaryObservation pending_reference = {};
+  static OtisPpsSnapshotAssociationGuard snapshot_association_guard = {};
 
   if (!have_pending_reference) {
     have_pending_reference =
@@ -2006,7 +2143,13 @@ void drain_pps_count_boundary_ring(void) {
       OTIS_RP2040_TIMER0_TICKS_PER_US;
   bool another_reference_waiting =
       otis_pps_count_boundary_ring_depth() != 0u;
-  if (stats.fault_latched || another_reference_waiting ||
+  const OtisPpsSnapshotAssociationDecision association_decision =
+      otis_pps_snapshot_association_decide(
+          &snapshot_association_guard, stats.backlog_depth != 0u,
+          stats.session, stats.consumer_ordinal, another_reference_waiting);
+  if (stats.fault_latched ||
+      association_decision ==
+          OtisPpsSnapshotAssociationDecision::AssociationLoss ||
       pending_age_ticks > association_timeout_ticks) {
     // A second physical REF before the first association closes is immediate
     // association loss, even if a word has since appeared. Queue/foreground
@@ -2034,9 +2177,18 @@ void drain_pps_count_boundary_ring(void) {
     otis_cx317_preview_live_on_capture_fault(
         association_reason, millis() / 1000u, &cx317_code);
     otis_phase_preview_live_note_reset();
+    otis_pps_snapshot_association_guard_reset(&snapshot_association_guard);
     otis_pps_snapshot_backend_rearm();
     otis_pps_count_boundary_ring_reset();
     have_pending_reference = false;
+    return;
+  }
+
+  // The capture drain follows this service phase.  Defer a newly visible PIO
+  // word for one complete loop so a CPU-only short REF followed by the genuine
+  // same-boundary REF cannot consume and shift otherwise valid PIO snapshots.
+  if (association_decision !=
+      OtisPpsSnapshotAssociationDecision::Pair) {
     return;
   }
 
@@ -2044,6 +2196,7 @@ void drain_pps_count_boundary_ring(void) {
   if (!otis_pps_snapshot_backend_pop(&snapshot)) {
     return;
   }
+  otis_pps_snapshot_association_guard_reset(&snapshot_association_guard);
 
   OtisPpsCountBoundaryObservation observation = pending_reference;
   observation.session = snapshot.session;
@@ -2054,6 +2207,11 @@ void drain_pps_count_boundary_ring(void) {
         OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
         OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
   }
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+  note_gnss_d14_snapshot_boundary(
+      observation.session, observation.reference_sequence,
+      observation.pps_timestamp_ticks);
+#endif
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   OtisObservationMessage snapshot_message = {};
   snapshot_message.kind = OtisObservationMessageKind::PpsSnapshot;
@@ -2349,6 +2507,579 @@ void emit_env_sensor_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
 }
 
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+const char *gnss_recovery_state_name(OtisGnssTransitionState state) {
+  switch (state) {
+    case OtisGnssTransitionState::RecoveryScanning:
+      return "scanning";
+    case OtisGnssTransitionState::Recovered:
+      return "recovered";
+    case OtisGnssTransitionState::Unrecoverable:
+      return "unrecoverable";
+    default:
+      return "not_active";
+  }
+}
+
+void emit_gnss_characterization_snapshot_fields(
+    const OtisGnssReceiverSnapshot &status, uint32_t generation) {
+  constexpr char kCharacterizationComponent[] =
+      "gnss_baud_characterization";
+  emit_status(kCharacterizationComponent, "programme_id",
+              kOtisGnssBaudCharacterizationProgrammeId,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(kCharacterizationComponent, "contract_sha256",
+              OTIS_GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status(kCharacterizationComponent, "command_table_id",
+              "otis_gnss_fixed_pmtk_v1", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "profile_id", OTIS_BUILD_PROFILE_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "git_commit", OTIS_BUILD_GIT_COMMIT,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "source_sha256", OTIS_BUILD_SOURCE_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("build", "config_sha256", OTIS_BUILD_CONFIG_SHA256,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("firmware", "version", OTIS_FIRMWARE_VERSION,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(kCharacterizationComponent, "snapshot_generation",
+                  generation, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "snapshot_cadence",
+              "command_response_coherent_begin_end", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+
+  const bool platform_mirror_causal =
+      gnss_platform_counter_mirror.pps_gate_available &&
+      gnss_platform_counter_mirror.capture_session ==
+          gnss_snapshot_capture_session &&
+      gnss_platform_counter_mirror.reference_sequence != 0u &&
+      gnss_platform_counter_mirror.reference_sequence <=
+          gnss_snapshot_reference_sequence;
+  const uint32_t bound_capture_session =
+      platform_mirror_causal
+          ? gnss_platform_counter_mirror.capture_session
+          : gnss_snapshot_capture_session;
+  const uint32_t bound_reference_sequence =
+      platform_mirror_causal
+          ? gnss_platform_counter_mirror.reference_sequence
+          : gnss_snapshot_reference_sequence;
+  uint64_t extended_ticks = 0u;
+  const bool extended_ticks_available =
+      bound_capture_session != 0u &&
+      otis_timer0_extension_project_nearest(
+          &gnss_snapshot_timer0_extension, otis_capture_ticks_now(),
+          bound_capture_session,
+          kGnssSnapshotProjectionMaximumDistanceTicks, &extended_ticks);
+  emit_status(kCharacterizationComponent, "extended_counter_available",
+              extended_ticks_available ? "true" : "false",
+              extended_ticks_available ? OTIS_SEVERITY_INFO
+                                       : OTIS_SEVERITY_WARN,
+              extended_ticks_available ? OTIS_FLAG_NONE
+                                       : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status_u64_decimal(kCharacterizationComponent,
+                          "extended_counter_ticks", extended_ticks,
+                          extended_ticks_available ? OTIS_SEVERITY_INFO
+                                                   : OTIS_SEVERITY_WARN,
+                          extended_ticks_available
+                              ? OTIS_FLAG_NONE
+                              : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status_u64_decimal(kCharacterizationComponent,
+                          "snapshot_extended_ticks", extended_ticks,
+                          extended_ticks_available ? OTIS_SEVERITY_INFO
+                                                   : OTIS_SEVERITY_WARN,
+                          extended_ticks_available
+                              ? OTIS_FLAG_NONE
+                              : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status(kCharacterizationComponent,
+              "snapshot_extended_ticks_available",
+              extended_ticks_available ? "true" : "false",
+              extended_ticks_available ? OTIS_SEVERITY_INFO
+                                       : OTIS_SEVERITY_WARN,
+              extended_ticks_available ? OTIS_FLAG_NONE
+                                       : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status(kCharacterizationComponent, "snapshot_counter_domain",
+              "rp2040_timer0_extended", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(kCharacterizationComponent, "snapshot_tick_rate_hz",
+                  kOtisGnssRp2040Timer0TicksPerSecond,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(kCharacterizationComponent, "snapshot_capture_session",
+                  bound_capture_session, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "snapshot_reference_sequence",
+                  bound_reference_sequence, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent,
+              "platform_mirror_causal_binding",
+              platform_mirror_causal ? "true" : "false",
+              platform_mirror_causal ? OTIS_SEVERITY_INFO
+                                     : OTIS_SEVERITY_WARN,
+              platform_mirror_causal ? OTIS_FLAG_NONE
+                                     : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status_u32(kCharacterizationComponent,
+                  "snapshot_session_change_count",
+                  gnss_snapshot_session_change_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "initial_confirmed_baud",
+                  9600u, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(kCharacterizationComponent, "initial_baud_epoch", 1u,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+
+  emit_status(kCharacterizationComponent, "observation_phase",
+              otis_gnss_observation_phase_name(status.observation_phase),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "transition_state",
+              otis_gnss_transition_state_name(status.transition_state),
+              status.transition_platform_fault ? OTIS_SEVERITY_ERROR
+                                               : OTIS_SEVERITY_INFO,
+              status.transition_platform_fault
+                  ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                  : OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "recovery_state",
+              gnss_recovery_state_name(status.transition_state),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "request_disposition",
+              otis_gnss_request_disposition_name(
+                  status.last_request_disposition),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "request_sequence",
+                  status.transition_request_sequence, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "request_seq",
+                  status.transition_request_sequence, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "segment_id", status.segment_id,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "source_baud",
+                  status.transition_source_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "source_baud_epoch",
+                  status.transition_source_baud_epoch, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "target_baud",
+                  status.transition_target_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "confirmed_baud",
+                  status.confirmed_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "baud_epoch",
+                  status.baud_epoch, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "recovered_baud",
+                  status.transition_recovered_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "receiver_identity",
+              status.receiver_identity_available ? status.receiver_release
+                                                 : "unavailable",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "configuration_identity",
+              status.configuration_confirmed
+                  ? status.output_configuration_signature
+                  : "unavailable",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "transition_evidence_frontier",
+                  status.transition_evidence_frontier, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "metadata_frontier",
+                  status.transition_evidence_frontier, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent,
+              "target_command_transmit_complete",
+              status.transition_target_command_transmit_complete
+                  ? "true"
+                  : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "target_command_transmit_elapsed_ms",
+                  status.transition_target_command_transmit_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "target_identity_confirmed",
+              status.transition_target_identity_confirmed ? "true"
+                                                          : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "target_identity_elapsed_ms",
+                  status.transition_target_identity_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "target_output_confirmed",
+              status.transition_target_output_confirmed ? "true"
+                                                        : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "target_output_elapsed_ms",
+                  status.transition_target_output_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "transition_complete_elapsed_ms",
+                  status.transition_complete_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "recovery_started_elapsed_ms",
+                  status.transition_recovery_started_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "recovery_terminal_elapsed_ms",
+                  status.transition_recovery_terminal_elapsed_ms,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "first_dependent_snapshot",
+              status.transition_first_dependent_snapshot ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "platform_fault",
+              status.transition_platform_fault ? "true" : "false",
+              status.transition_platform_fault ? OTIS_SEVERITY_ERROR
+                                               : OTIS_SEVERITY_INFO,
+              status.transition_platform_fault
+                  ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                  : OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "accepted_count",
+                  status.transition_accepted_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "duplicate_count",
+                  status.transition_duplicate_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "rejected_count",
+                  status.transition_rejected_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "completed_count",
+                  status.transition_completed_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "recovered_count",
+                  status.transition_recovered_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "unrecoverable_count",
+                  status.transition_unrecoverable_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "status_challenge_active",
+              status.status_challenge_active ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "status_challenge_sequence",
+                  status.status_challenge_sequence, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent,
+                  "status_challenge_completed_count",
+                  status.status_challenge_completed_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(kCharacterizationComponent, "status_request_disposition",
+              otis_gnss_request_disposition_name(
+                  status.last_status_request_disposition),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "status_request_sequence",
+                  status.last_status_request_sequence,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  char status_request_segment_id[kOtisGnssSegmentIdMaximumBytes];
+  if (status.last_status_request_segment_ordinal >= 1u &&
+      status.last_status_request_segment_ordinal <= 11u)
+    snprintf(status_request_segment_id, sizeof(status_request_segment_id),
+             "S%02u", status.last_status_request_segment_ordinal);
+  else
+    snprintf(status_request_segment_id, sizeof(status_request_segment_id),
+             "none");
+  emit_status(kCharacterizationComponent, "status_request_segment_id",
+              status_request_segment_id, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_NONE);
+  emit_status_u32(kCharacterizationComponent, "status_request_baud_epoch",
+                  status.last_status_request_baud_epoch,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+
+  // Re-emit one bounded, causally sampled platform counter set inside this
+  // same coherent envelope. PPS-gate values are mirrored only from complete
+  // Core1 telemetry messages; Core0 never reads the timing core's private
+  // mutable backend state.
+  emit_status_u32("capture", "dropped_count",
+                  otis_capture_ring_dropped_count(), OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("capture", "pps_count_boundary_dropped_count",
+                  otis_pps_count_boundary_ring_dropped_count(),
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
+  OtisCaptureIrqReferenceStats characterization_d14 = {};
+  otis_capture_irq_get_reference_stats(&characterization_d14);
+  emit_status_u32("pps_d14", "rejected_short_count",
+                  characterization_d14.d14_rejected_short_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("pps_d14", "rejected_long_count",
+                  characterization_d14.d14_rejected_long_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
+  emit_status("pps_gate", "characterization_mirror_available",
+              gnss_platform_counter_mirror.pps_gate_available ? "true"
+                                                             : "false",
+              gnss_platform_counter_mirror.pps_gate_available
+                  ? OTIS_SEVERITY_INFO
+                  : OTIS_SEVERITY_WARN,
+              gnss_platform_counter_mirror.pps_gate_available
+                  ? OTIS_FLAG_NONE
+                  : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  emit_status_u32("pps_gate", "characterization_mirror_generation",
+                  gnss_platform_counter_mirror.snapshot_generation,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("pps_gate", "characterization_mirror_capture_session",
+                  gnss_platform_counter_mirror.capture_session,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("pps_gate",
+                  "characterization_mirror_reference_sequence",
+                  gnss_platform_counter_mirror.reference_sequence,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#define EMIT_GNSS_PPS_GATE_COUNTER(key, member) \
+  emit_status_u32("pps_gate", key, gnss_platform_counter_mirror.member, \
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE)
+  EMIT_GNSS_PPS_GATE_COUNTER("boundary_ring_dropped_count",
+                             boundary_ring_dropped_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("rejected_window_count",
+                             rejected_window_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("missing_pps_count", missing_pps_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("pps_interval_anomaly_count",
+                             pps_interval_anomaly_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("boundary_sequence_gap_count",
+                             boundary_sequence_gap_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("boundary_sequence_duplicate_count",
+                             boundary_sequence_duplicate_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("boundary_overflow_count",
+                             boundary_overflow_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("counter_snapshot_invalid_count",
+                             counter_snapshot_invalid_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("physical_aperture_incomplete_count",
+                             physical_aperture_incomplete_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("association_loss_count",
+                             association_loss_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("snapshot_continuity_loss_count",
+                             snapshot_continuity_loss_count);
+  EMIT_GNSS_PPS_GATE_COUNTER("physical_pps_missing_count",
+                             physical_pps_missing_count);
+#undef EMIT_GNSS_PPS_GATE_COUNTER
+#if OTIS_ENABLE_DUAL_CORE_PARTITION
+  OtisDualCoreQueueStats characterization_queues = {};
+  otis_dual_core_get_stats(&characterization_queues);
+  emit_status_u32("dual_core", "service_publish_failures",
+                  characterization_queues.service_activity.publish_failures,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("dual_core", "telemetry_dropped",
+                  characterization_queues.telemetry_dropped,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("dual_core", "partition_fault",
+              otis_partition_fault_name(characterization_queues.fault),
+              characterization_queues.fault == OtisPartitionFault::None
+                  ? OTIS_SEVERITY_INFO
+                  : OTIS_SEVERITY_ERROR,
+              characterization_queues.fault == OtisPartitionFault::None
+                  ? OTIS_FLAG_NONE
+                  : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+#endif
+
+  const OtisGnssUartRxStats &uart = status.uart_rx;
+  emit_status("gnss_uart_rx", "counter_domain",
+              "rp2040_timer0_unsigned_delta", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_uart_rx", "tick_rate_hz",
+                  kOtisGnssRp2040Timer0TicksPerSecond,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_uart_rx", "ring_capacity_entries",
+                  kOtisGnssUartRxRingCapacity, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_uart_rx", "headroom_pass_maximum_entries",
+                  kOtisGnssUartRxHeadroomPassMaximum,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_uart_rx", "consumer_byte_budget_per_call",
+                  kOtisGnssUartRxConsumerByteBudget,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_uart_rx", "consumer_tick_budget_per_call",
+                  kOtisGnssUartRxConsumerTickBudget,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_uart_rx", "isr_drain_policy",
+              "drain_fifo_until_empty", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_uart_rx", "isr_timing_policy",
+              "entry_exit_timer_reads_only", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_uart_rx", "isr_policy",
+              "uart0_rx_drain_to_empty_entry_exit_timer_only",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#define EMIT_GNSS_UART_U32(key, member) \
+  emit_status_u32("gnss_uart_rx", key, uart.member, OTIS_SEVERITY_INFO, \
+                  OTIS_FLAG_NONE)
+  EMIT_GNSS_UART_U32("uart_bytes_observed", uart_bytes_observed);
+  EMIT_GNSS_UART_U32("uart_bytes_dropped_before_retention",
+                     uart_bytes_dropped_before_retention);
+  EMIT_GNSS_UART_U32("uart_rx_interrupt_count", uart_rx_interrupt_count);
+  EMIT_GNSS_UART_U32("maximum_bytes_drained_per_interrupt",
+                     maximum_bytes_drained_per_interrupt);
+  EMIT_GNSS_UART_U32("maximum_interrupt_gap_ticks",
+                     maximum_interrupt_gap_ticks);
+  EMIT_GNSS_UART_U32("maximum_interrupt_residence_ticks",
+                     maximum_interrupt_residence_ticks);
+  EMIT_GNSS_UART_U32("hardware_overrun_count", hardware_overrun_count);
+  EMIT_GNSS_UART_U32("hardware_framing_count", hardware_framing_count);
+  EMIT_GNSS_UART_U32("hardware_parity_count", hardware_parity_count);
+  EMIT_GNSS_UART_U32("hardware_break_count", hardware_break_count);
+  EMIT_GNSS_UART_U32("ring_current_depth", ring_current_depth);
+  EMIT_GNSS_UART_U32("ring_high_water", ring_high_water);
+  EMIT_GNSS_UART_U32("ring_overflow_count", ring_overflow_count);
+  emit_status_u64_decimal("gnss_uart_rx", "consumer_service_call_count",
+                          uart.consumer_service_call_count,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_uart_rx",
+                  "consumer_service_call_count_width_bits", 64u,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  EMIT_GNSS_UART_U32("consumer_bytes_drained", consumer_bytes_drained);
+  EMIT_GNSS_UART_U32("maximum_consumer_service_gap_ticks",
+                     maximum_consumer_service_gap_ticks);
+  EMIT_GNSS_UART_U32("last_consumer_service_gap_ticks",
+                     last_consumer_service_gap_ticks);
+  EMIT_GNSS_UART_U32("last_consumer_drain_batch",
+                     last_consumer_drain_batch);
+  EMIT_GNSS_UART_U32("maximum_consumer_drain_batch",
+                     maximum_consumer_drain_batch);
+  EMIT_GNSS_UART_U32("consumer_budget_exhausted_count",
+                     consumer_budget_exhausted_count);
+  EMIT_GNSS_UART_U32("ring_nonempty_after_budget_count",
+                     ring_nonempty_after_budget_count);
+  EMIT_GNSS_UART_U32("phase_window_sequence", phase_window_sequence);
+  EMIT_GNSS_UART_U32(
+      "phase_window_maximum_bytes_drained_per_interrupt",
+      phase_window_maximum_bytes_drained_per_interrupt);
+  EMIT_GNSS_UART_U32("phase_window_maximum_interrupt_gap_ticks",
+                     phase_window_maximum_interrupt_gap_ticks);
+  EMIT_GNSS_UART_U32("phase_window_maximum_interrupt_residence_ticks",
+                     phase_window_maximum_interrupt_residence_ticks);
+  EMIT_GNSS_UART_U32("phase_window_ring_high_water",
+                     phase_window_ring_high_water);
+  EMIT_GNSS_UART_U32(
+      "phase_window_maximum_consumer_service_gap_ticks",
+      phase_window_maximum_consumer_service_gap_ticks);
+  EMIT_GNSS_UART_U32("phase_window_maximum_consumer_drain_batch",
+                     phase_window_maximum_consumer_drain_batch);
+#undef EMIT_GNSS_UART_U32
+  emit_status("gnss_uart_rx", "completed_peak_available",
+              status.completed_peak_uart_available ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_uart_rx", "completed_peak_challenge_sequence",
+                  status.completed_peak_challenge_sequence,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_uart_rx", "completed_peak_observation_phase",
+              status.completed_peak_uart_available ? "peak_load"
+                                                   : "unavailable",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_uart_rx", "completed_peak_retention_policy",
+              "until_next_accepted_status_challenge", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32(
+      "gnss_uart_rx",
+      "completed_peak_maximum_bytes_drained_per_interrupt",
+      status.completed_peak_uart
+          .phase_window_maximum_bytes_drained_per_interrupt,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_uart_rx",
+                  "completed_peak_maximum_interrupt_gap_ticks",
+                  status.completed_peak_uart
+                      .phase_window_maximum_interrupt_gap_ticks,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_uart_rx",
+                  "completed_peak_maximum_interrupt_residence_ticks",
+                  status.completed_peak_uart
+                      .phase_window_maximum_interrupt_residence_ticks,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_uart_rx", "completed_peak_ring_high_water",
+                  status.completed_peak_uart.phase_window_ring_high_water,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(
+      "gnss_uart_rx",
+      "completed_peak_maximum_consumer_service_gap_ticks",
+      status.completed_peak_uart
+          .phase_window_maximum_consumer_service_gap_ticks,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(
+      "gnss_uart_rx", "completed_peak_maximum_consumer_drain_batch",
+      status.completed_peak_uart
+          .phase_window_maximum_consumer_drain_batch,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+
+  emit_status("gnss_receiver", "service_metric_counter_domain",
+              "gnss_service_timer0_extended", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_receiver", "service_metric_tick_rate_hz",
+                  kOtisGnssRp2040Timer0TicksPerSecond,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_receiver", "link_raw_acquisition_loss_count",
+                  status.link_raw_acquisition_loss_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "raw_acquisition_loss_count",
+                  status.raw_acquisition_loss_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "minimum_line_length",
+                  status.minimum_line_length, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "maximum_line_length",
+                  status.maximum_line_length, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u64_decimal("gnss_receiver", "minimum_interframe_gap_ticks",
+                          status.minimum_interframe_gap_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u64_decimal("gnss_receiver", "maximum_interframe_gap_ticks",
+                          status.maximum_interframe_gap_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "metadata_hold_count",
+                  status.metadata_hold_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u64_decimal("gnss_receiver", "metadata_hold_cumulative_ticks",
+                          status.metadata_hold_cumulative_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u64_decimal("gnss_receiver", "metadata_hold_longest_ticks",
+                          status.metadata_hold_longest_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u64_decimal("gnss_receiver",
+                          "metadata_recovery_latency_ticks",
+                          status.metadata_recovery_latency_ticks,
+                          OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "fault_capsule_count",
+                  status.fault_capsule_count, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "fault_capsule_dropped_count",
+                  status.fault_capsule_dropped_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  for (uint32_t index = 0u; index < kOtisGnssFaultCapsuleCapacity; ++index) {
+    const OtisGnssParserFaultCapsule &capsule = status.fault_capsules[index];
+    char key[24];
+    char value[192];
+    snprintf(key, sizeof(key), "fault_capsule_%02lu",
+             static_cast<unsigned long>(index));
+    if (!capsule.valid) {
+      snprintf(value, sizeof(value), "unavailable");
+    } else {
+      char segment_id[kOtisGnssSegmentIdMaximumBytes];
+      if (capsule.segment_ordinal >= 1u && capsule.segment_ordinal <= 11u)
+        snprintf(segment_id, sizeof(segment_id), "S%02u",
+                 capsule.segment_ordinal);
+      else
+        snprintf(segment_id, sizeof(segment_id), "none");
+      snprintf(
+          value, sizeof(value),
+          "segment=%s,phase=%s,baud=%lu,epoch=%lu,class=%s,hw=%lu/%lu/%lu/%lu,depth=%lu,hwm=%lu,gap=%lu,partial=%u,last_good=%lu,type=%s",
+          segment_id,
+          otis_gnss_observation_phase_name(capsule.observation_phase),
+          static_cast<unsigned long>(capsule.baud),
+          static_cast<unsigned long>(capsule.baud_epoch),
+          otis_gnss_parser_fault_class_name(capsule.fault_class),
+          static_cast<unsigned long>(capsule.hardware_overrun_delta),
+          static_cast<unsigned long>(capsule.hardware_framing_delta),
+          static_cast<unsigned long>(capsule.hardware_parity_delta),
+          static_cast<unsigned long>(capsule.hardware_break_delta),
+          static_cast<unsigned long>(capsule.raw_ring_depth),
+          static_cast<unsigned long>(capsule.raw_ring_high_water),
+          static_cast<unsigned long>(capsule.preceding_consumer_gap_ticks),
+          capsule.partial_line_length,
+          static_cast<unsigned long>(capsule.last_good_frame_sequence),
+          capsule.sentence_type[0] == '\0' ? "none" : capsule.sentence_type);
+    }
+    emit_status("gnss_receiver", key, value, OTIS_SEVERITY_INFO,
+                OTIS_FLAG_NONE);
+  }
+}
+#endif
+
 void emit_gnss_receiver_status(void) {
   // Status bursts deliberately service UART0 after every complete STS frame.
   // Take the freshness anchor here, after any preceding burst service, so a
@@ -2357,6 +3088,15 @@ void emit_gnss_receiver_status(void) {
   const uint32_t now_ms = millis();
   OtisGnssReceiverSnapshot status;
   otis_gnss_receiver_get_snapshot(now_ms, &status);
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+  gnss_characterization_snapshot_generation++;
+  if (gnss_characterization_snapshot_generation == 0u)
+    gnss_characterization_snapshot_generation = 1u;
+  const uint32_t characterization_generation =
+      gnss_characterization_snapshot_generation;
+  emit_status("gnss_baud_characterization", "snapshot", "begin",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
   bool raw_pps_control_eligible = false;
 #if OTIS_CAPTURE_BACKEND == OTIS_CAPTURE_BACKEND_IRQ
   OtisCaptureIrqReferenceStats pps_status;
@@ -2440,6 +3180,48 @@ void emit_gnss_receiver_status(void) {
   emit_status_u32("gnss_receiver", "identity_response_count",
                   status.identity_response_count, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "startup_hint_attempted",
+              status.startup_hint_attempted ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "startup_hint_baud",
+                  status.startup_hint_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "startup_hint_identity_outcome",
+              otis_gnss_startup_hint_identity_outcome_name(
+                  status.startup_hint_identity_outcome),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "startup_fallback_entered",
+              status.startup_fallback_entered ? "true" : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  if (status.initial_discovery_identity_baud == 0u) {
+    emit_status("gnss_receiver", "initial_discovery_identity_baud",
+                "unavailable", OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  } else {
+    emit_status_u32("gnss_receiver", "initial_discovery_identity_baud",
+                    status.initial_discovery_identity_baud,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  }
+  emit_status("gnss_receiver", "initial_discovery_outcome",
+              otis_gnss_initial_discovery_outcome_name(
+                  status.initial_discovery_outcome),
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "pmtk605_peripheral_complete_count",
+                  status.pmtk605_peripheral_complete_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u64_decimal(
+      "gnss_receiver", "pmtk605_last_peripheral_complete_ticks",
+      status.pmtk605_last_peripheral_complete_ticks,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver",
+              "pmtk605_last_peripheral_complete_ticks_available",
+              status.pmtk605_last_peripheral_complete_ticks_available
+                  ? "true"
+                  : "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver",
+              "pmtk605_last_peripheral_complete_ticks_domain",
+              "rp2040_timer0_extended", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("gnss_receiver", "output_response_count",
                   status.output_response_count, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
@@ -2649,6 +3431,17 @@ void emit_gnss_receiver_status(void) {
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32("gnss_receiver", "gsa_count", status.gsa_count,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+  // Refresh at the tail so the retained phase-window maxima include the
+  // synchronous status workload which services UART0 after every STS frame.
+  OtisGnssReceiverSnapshot characterization_status = {};
+  otis_gnss_receiver_get_snapshot(millis(), &characterization_status);
+  emit_gnss_characterization_snapshot_fields(characterization_status,
+                                               characterization_generation);
+  emit_status("gnss_baud_characterization", "snapshot", "end",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  otis_gnss_receiver_finish_status_snapshot();
+#endif
 }
 
 void emit_h0_pin_status(void) {
@@ -4410,6 +5203,55 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 requested ? OTIS_FLAG_NONE
                           : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 #endif
+  } else if (command.kind == OtisSerialCommandKind::GnssBaud) {
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+    const OtisGnssRequestDisposition disposition =
+        otis_gnss_receiver_request_baud_transition(
+            command.arguments_valid ? command.text_argument : "", millis());
+    emit_status("gnss_baud_characterization", "baud_request_disposition",
+                otis_gnss_request_disposition_name(disposition),
+                disposition == OtisGnssRequestDisposition::Accepted ||
+                        disposition == OtisGnssRequestDisposition::Duplicate
+                    ? OTIS_SEVERITY_INFO
+                    : OTIS_SEVERITY_ERROR,
+                disposition == OtisGnssRequestDisposition::Accepted ||
+                        disposition == OtisGnssRequestDisposition::Duplicate
+                    ? OTIS_FLAG_NONE
+                    : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    emit_gnss_receiver_status();
+#else
+    emit_status("gnss_baud_characterization", "baud_request_disposition",
+                "rejected_disabled", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  } else if (command.kind == OtisSerialCommandKind::GnssStatus) {
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+    const OtisGnssRequestDisposition disposition =
+        otis_gnss_receiver_begin_status_challenge(
+            command.arguments_valid ? command.text_argument : "", millis());
+    emit_status("gnss_baud_characterization",
+                "status_request_disposition",
+                otis_gnss_request_disposition_name(disposition),
+                disposition == OtisGnssRequestDisposition::Accepted ||
+                        disposition == OtisGnssRequestDisposition::Duplicate
+                    ? OTIS_SEVERITY_INFO
+                    : OTIS_SEVERITY_ERROR,
+                disposition == OtisGnssRequestDisposition::Accepted ||
+                        disposition == OtisGnssRequestDisposition::Duplicate
+                    ? OTIS_FLAG_NONE
+                    : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+    if (disposition == OtisGnssRequestDisposition::Accepted)
+      otis_gnss_receiver_complete_status_challenge(millis());
+    emit_gnss_receiver_status();
+#else
+    emit_status("gnss_baud_characterization",
+                "status_request_disposition", "rejected_disabled",
+                OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
+  } else if (command.kind == OtisSerialCommandKind::GnssOther) {
+    emit_status("gnss_baud_characterization", "command",
+                "rejected_unknown", OTIS_SEVERITY_WARN,
+                OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::DualCoreQuery) {
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
     OtisDualCoreQueueStats queues;
