@@ -52,6 +52,7 @@ from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    integrated_setup_provenance_contract,
     programme_from_mapping,
 )
 from .active_hybrid_policy import ActiveHybridController, load_policy
@@ -2368,6 +2369,24 @@ def _exercise_prewrite_qualification_boundary(
     reduced_health = _reduce_complete_active_health(
         qualified_health, generation=612
     )
+    pre_setup_dac_provenance_exact = (
+        qualified_health.get(("dac", "applied_code_known")) == "false"
+        and qualified_health.get(("dac", "last_applied_code")) == "unavailable"
+        and qualified_health.get(
+            ("cx317_active", "confirmed_applied_code_known")
+        )
+        == "false"
+        and qualified_health.get(("cx317_active", "confirmed_applied_code"))
+        == "unavailable"
+        and qualified_health.get(("cx317_active", "dac_epoch")) == "0"
+        and waiting.state["latest_prewrite_readiness"].get(
+            "physical_dac_confirmation"
+        )
+        == "unknown_before_live_stimulus"
+        and waiting.state["manual_start_sent"] is False
+        and waiting.state["setup_requested_utc"] is None
+        and waiting.state["setup_confirmed_utc"] is None
+    )
     waiting.state["manual_start_sent"] = True
     waiting._check_fail_static_health(reduced_health)
 
@@ -2406,6 +2425,13 @@ def _exercise_prewrite_qualification_boundary(
         "atomic_handoff_hybrid_state": reduced_health.get(
             ("cx317_active", "hybrid_state")
         ),
+        "pre_setup_dac_provenance_exact": pre_setup_dac_provenance_exact,
+        "pre_setup_physical_applied_code": (
+            "unknown_unreadable_after_power_cycle"
+            if programme.forwarded_output_integration
+            else "unknown"
+        ),
+        "pre_setup_firmware_dac_epoch": 0,
         "first_post_setup_consumer_passed": True,
         "missing_authority_at_660s_is_terminal": deadline_rejected,
         "setup_commands_issued": 0,
@@ -2418,6 +2444,7 @@ def _exercise_prewrite_qualification_boundary(
             "ready_at_observed_612s",
             "unarmed_setup_held_before_boundary",
             "unarmed_observation_complete_at_boundary",
+            "pre_setup_dac_provenance_exact",
             "first_post_setup_consumer_passed",
             "missing_authority_at_660s_is_terminal",
         )
@@ -3253,6 +3280,29 @@ def _exercise_cx322_real_transaction_path(
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
         manual = transactions[0]
+        setup_establishment_exact = (
+            manual["event"] == "manual_start"
+            and manual["request_sequence"] == "0"
+            and manual["application_sequence"] == "0"
+            and manual["requested_code"] == str(programme.setup_code)
+            and manual["accepted_code"] == str(programme.setup_code)
+            and manual["applied_code"] == str(programme.setup_code)
+            and manual["dac_epoch"] == "1"
+            and manual["i2c_ok"] == "true"
+            and manual["reason"] == "manual_start_established"
+        )
+        first_setup_consumer_exact = (
+            bool(ahy)
+            and ahy[0]["current_applied_code"] == str(programme.setup_code)
+            and ahy[0]["actual_applied_code"] == str(programme.setup_code)
+            and ahy[0]["actual_dac_epoch"] == "1"
+        )
+        if programme.forwarded_output_integration and not (
+            setup_establishment_exact and first_setup_consumer_exact
+        ):
+            raise RuntimeError(
+                "integrated setup establishment did not reach its first exact consumer"
+            )
         with write_lock:
             _write_all_fd(
                 master,
@@ -3428,6 +3478,22 @@ def _exercise_cx322_real_transaction_path(
         == 4 * len(applications),
         "first_phase_observation_checkpoint_exact": True,
         "first_response_consumer_exact": first_response_consumer_exact,
+        "setup_establishment_exact": setup_establishment_exact,
+        "first_setup_consumer_exact": first_setup_consumer_exact,
+        "setup_establishment": {
+            "physical_applied_code_before_setup": (
+                "unknown_unreadable_after_power_cycle"
+                if programme.forwarded_output_integration
+                else "unknown"
+            ),
+            "applied_code": int(manual["applied_code"]),
+            "dac_epoch": int(manual["dac_epoch"]),
+            "operation": (
+                "prospectively_frozen_authorized_stimulus_not_restoration"
+                if programme.forwarded_output_integration
+                else "exact_authorized_setup"
+            ),
+        },
         "first_response_consumer_reason": first_response_consumer_reason,
         "later_authority_release_reason": summary[
             "later_authority_release_reason"
@@ -3478,6 +3544,8 @@ def _exercise_cx322_real_transaction_path(
     if not (
         result["response_retained_nonterminal"]
         and result["firmware_consumption_confirmed"]
+        and result["setup_establishment_exact"]
+        and result["first_setup_consumer_exact"]
         and result["first_phase_observation_checkpoint_exact"]
         and result["first_response_consumer_exact"]
         and result["complete_multi_transaction_sequence"]
@@ -4001,6 +4069,11 @@ def run(
     coverage = {name: True for name in REHEARSAL_COVERAGE}
     if programme.engineering_unarmed_observation_s > 0:
         coverage["integrated_unarmed_concurrency_observation_boundary"] = True
+    if programme.forwarded_output_integration:
+        provenance = integrated_setup_provenance_contract(programme)
+        if bundle.get("setup", {}).get("provenance") != provenance:
+            raise ValueError("integrated rehearsal setup provenance differs")
+        coverage["integrated_setup_provenance_boundary"] = True
     if programme.sustained_regulation:
         coverage.update(
             {
@@ -4025,6 +4098,11 @@ def run(
         "physical_actions_performed": 0,
         "qualification_evidence": False,
         "coverage": coverage,
+        "setup_provenance_contract": (
+            integrated_setup_provenance_contract(programme)
+            if programme.forwarded_output_integration
+            else None
+        ),
         "tool_bindings": bundle["host_tools"],
         "real_process_topology": topology,
         "first_response_endpoint_topology": first_response_topology,
@@ -4099,7 +4177,10 @@ def run(
                 "active_hybrid_status_handoff",
                 "setup_authority_qualification_deadline",
                 *(
-                    ["integrated_unarmed_concurrency_observation_boundary"]
+                    [
+                        "integrated_unarmed_concurrency_observation_boundary",
+                        "integrated_setup_provenance_boundary",
+                    ]
                     if programme.engineering_unarmed_observation_s > 0
                     else []
                 ),

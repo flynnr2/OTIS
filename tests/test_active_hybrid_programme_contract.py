@@ -85,6 +85,14 @@ def test_cx322_d9_d6_descriptor_is_distinct_with_unchanged_controller() -> None:
         "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
     )
     assert programme.engineering_unarmed_observation_s == 1_800
+    assert programme.engineering_contract_path is not None
+    assert programme.engineering_contract_path.name == (
+        "cx322_d9_d6_integration_engineering_contract_v1.json"
+    )
+    setup_provenance = activation.integrated_setup_provenance_contract(programme)
+    assert activation._authority(programme)["setup_provenance"] == setup_provenance
+    assert setup_provenance["authorized_setup_code"] == 0xA83C
+    assert setup_provenance["prior_or_nominal_state_inferred"] is False
     assert programme.maximum_physical_applications == 4
     assert programme.maximum_cumulative_movement_codes == 84
     assert programme.maximum_step_codes == 21

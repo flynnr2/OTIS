@@ -14,6 +14,7 @@ from .active_hybrid_evidence_audit import audit_predecessor
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
+    integrated_setup_provenance_contract,
     programme_from_mapping,
 )
 from .programme_status import OFFLINE_PREPARATION, load_programme_status
@@ -147,6 +148,24 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         ),
         "no_physical_actions_performed": True,
     }
+    if programme.forwarded_output_integration:
+        provenance = integrated_setup_provenance_contract(programme)
+        checks.update(
+            {
+                "integrated_engineering_contract_bound": isinstance(
+                    bundle.get("engineering_contract"), dict
+                ),
+                "unknown_boot_DAC_state_not_inferred": (
+                    bundle.get("setup", {}).get("provenance") == provenance
+                    and provenance["prior_or_nominal_state_inferred"] is False
+                ),
+                "setup_is_frozen_stimulus_not_restoration": (
+                    provenance["setup_operation"]
+                    == "prospectively_frozen_authorized_stimulus_not_restoration"
+                    and provenance["automatic_or_nominal_restoration"] is False
+                ),
+            }
+        )
     if not all(checks.values()):
         raise ValueError(f"CX320 structural preflight failed: {checks}")
     report: dict[str, Any] = {

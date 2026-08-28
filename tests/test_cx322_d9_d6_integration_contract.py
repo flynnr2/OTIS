@@ -78,6 +78,19 @@ def test_claim_and_authority_boundary_remains_explicit() -> None:
     assert contract["device_and_transport"]["stored_device_path_permitted"] is False
     assert contract["device_and_transport"]["stored_board_serial_permitted"] is False
     assert contract["initial_bench_envelope"]["maximum_automatic_applications"] == 1
+    provenance = contract["initial_bench_envelope"]["starting_state_provenance"]
+    assert contract["initial_bench_envelope"]["starting_code_policy"] == (
+        "query_if_observable_else_establish_first_known_state_by_exact_authorized_setup_never_infer_or_restore"
+    )
+    assert provenance["physical_applied_code_before_setup"] == (
+        "unknown_unreadable_after_power_cycle"
+    )
+    assert provenance["authorized_setup_code_hex"] == "0xA83C"
+    assert provenance["setup_operation"] == (
+        "prospectively_frozen_authorized_stimulus_not_restoration"
+    )
+    assert provenance["prior_or_nominal_state_inferred"] is False
+    assert provenance["automatic_or_nominal_restoration"] is False
     unavailable = " ".join(contract["claim_boundary"]["engineering_tests_cannot_establish"])
     assert "waveform" in unavailable
     assert "jitter" in unavailable

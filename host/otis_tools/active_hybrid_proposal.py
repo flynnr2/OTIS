@@ -17,6 +17,7 @@ from .active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     PROGRAMMES,
     get_active_hybrid_programme,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
@@ -106,8 +107,10 @@ def _progressive_envelope(
     }
 
 
-def _requested_authority() -> dict[str, Any]:
-    return {
+def _requested_authority(
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
         "firmware_flash_limit": 1,
         "reset_for_entry_or_bounded_recovery": True,
         "serial_access": True,
@@ -120,6 +123,11 @@ def _requested_authority() -> dict[str, Any]:
         "automatic_retry": False,
         "automatic_restoration": False,
     }
+    if programme.forwarded_output_integration:
+        value["setup_provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
+    return value
 
 
 def _non_effective_authority() -> dict[str, Any]:
@@ -199,7 +207,7 @@ def create_successor_proposal(
         "build_identity": bundle["firmware"]["build_identity"],
         "firmware_uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
         "progressive_envelope": _progressive_envelope(programme),
-        "requested_after_separate_decision": _requested_authority(),
+        "requested_after_separate_decision": _requested_authority(programme),
         "authority": authority_fields,
         "claim_boundary": {
             "offline_replay_is_not_observed_physical_response": True,
@@ -303,7 +311,9 @@ def validate_proposal(
         raise ValueError("CX320 proposal build identity differs")
     if proposal.get("progressive_envelope") != _progressive_envelope(programme):
         raise ValueError("CX320 proposal progressive envelope differs")
-    if proposal.get("requested_after_separate_decision") != _requested_authority():
+    if proposal.get("requested_after_separate_decision") != _requested_authority(
+        programme
+    ):
         raise ValueError("active-hybrid requested authority envelope differs")
     if programme.identification_required and proposal.get(
         "programme_policy_sha256"

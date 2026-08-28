@@ -3,21 +3,31 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from host.otis_tools import active_hybrid_live_analyze as live_analyze
 from host.otis_tools.active_hybrid_live_analyze import (
+    PRE_SETUP_PROVENANCE_UNRESOLVED,
     _classify_decision,
     _cx320_commands_exact,
     _frequency_metrics,
+    _historical_manifest_for_superseding_replay,
     _legacy_checkpoint_terminal_misclassified,
     _legacy_plant_terminal_decision,
     _metric_contract,
     _phase_metrics,
+    _pre_setup_commands_exact,
+    _pre_setup_provenance_terminal_facts,
+    _pre_setup_wall_origin_exact,
     _replay_ahy,
     _response_attestations,
     _response_dependent_consumer_propagation,
     _sustained_regulation_outcome,
     _tight_deadband_policy_sha256,
     _wall_origin_and_setup_order_exact,
+)
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
 )
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
@@ -294,6 +304,232 @@ def test_command_and_wall_origin_setup_order_are_exact() -> None:
     assert not _wall_origin_and_setup_order_exact(
         manifest, supervisor_state, list(reversed(supervisor_events)), markers
     )
+
+
+def test_pre_setup_provenance_terminal_requires_exact_no_authority_path() -> None:
+    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    manifest = {
+        "started_at_utc": "2026-08-28T13:25:50Z",
+        "manifest_sha256": "a" * 64,
+    }
+    commands = [
+        "CONFIG?",
+        "DUALCORE?",
+        "DAC?",
+        "ACTIVE LEASE 1",
+        "ACTIVE SNAPSHOT 9",
+        "CONFIG?",
+        "ACTIVE LEASE 2",
+    ]
+    events = [
+        {
+            "event": f"{programme.key}_live_supervisor_started",
+            "wall_origin_utc": manifest["started_at_utc"],
+            "manifest_sha256": manifest["manifest_sha256"],
+        },
+        *[
+            {"event": "command_submitted", "command": command}
+            for command in commands
+        ],
+        *[
+            {"event": "host_written", "command": command}
+            for command in commands
+        ],
+        {"event": "emergency_device_abort_submitted"},
+    ]
+    markers = [
+        {"event": "capture_started"},
+        *[
+            {"event": "host_command_sent", "command": command}
+            for command in commands
+        ],
+        {"event": "host_command_sent", "command": "ACTIVE ABORT"},
+        {"event": "capture_stopped"},
+    ]
+    capture_state = {"emergency_aborts_sent": 1}
+    supervisor_state = {
+        "wall_origin_utc": manifest["started_at_utc"],
+        "manual_start_sent": False,
+        "setup_requested_utc": None,
+        "setup_confirmed_utc": None,
+        "setup_authority_path": None,
+        "prewrite_contract_ready_utc": None,
+        "arm_pending": False,
+        "terminal_static_code": None,
+        "latest_prewrite_readiness": {
+            "physical_dac_confirmation": "unknown_before_live_stimulus"
+        },
+    }
+    health = {
+        ("dac", "applied_code_known"): "false",
+        ("dac", "last_applied_code"): "unavailable",
+        ("cx317_active", "confirmed_applied_code_known"): "false",
+        ("cx317_active", "confirmed_applied_code"): "unavailable",
+        ("cx317_active", "dac_epoch"): "0",
+        ("cx317_active", "state"): "ABORTED",
+        ("cx317_active", "hybrid_state"): "SETUP_PENDING",
+        ("cx317_active", "fail_static"): "true",
+        ("cx317_active", "manual_start_confirmed"): "false",
+        ("cx317_active", "evidence_pending"): "false",
+        ("cx317_active", "evidence_phase"): "evidence_clear",
+        ("cx317_active", "evidence_request_sequence"): "0",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "automatic_application_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
+    }
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "reason": (
+            f"{programme.key}_live_supervisor_fault:"
+            "live active_fail_static asserted"
+        ),
+    }
+    assert _pre_setup_commands_exact(markers, events, capture_state)
+    assert _pre_setup_wall_origin_exact(
+        manifest, supervisor_state, events, markers, programme
+    )
+
+    arguments = {
+        "programme": programme,
+        "terminal": terminal,
+        "supervisor_state": supervisor_state,
+        "health": health,
+        "active_rows": [],
+        "decision_rows": [],
+        "dac_rows": [],
+        "estimate_rows": [],
+        "command_stream_exact": True,
+        "wall_origin_exact": True,
+        "abort_ordering_exact": True,
+        "capture_closure_exact": True,
+        "d9_readback_exact": True,
+        "aligned_interval_count": 448,
+    }
+    facts = _pre_setup_provenance_terminal_facts(**arguments)
+    assert facts["exact"] is True
+    assert facts["aligned_d14_d8_d6_interval_count"] == 448
+    assert facts["setup_or_application_authority_reached"] is False
+    assert facts["measurement_authority_fault_claimed"] is False
+
+    assert not _pre_setup_provenance_terminal_facts(
+        **{**arguments, "active_rows": [{"event": "manual_start"}]}
+    )["exact"]
+    assert not _pre_setup_provenance_terminal_facts(
+        **{**arguments, "d9_readback_exact": False}
+    )["exact"]
+    assert not _pre_setup_provenance_terminal_facts(
+        **{**arguments, "aligned_interval_count": 0}
+    )["exact"]
+
+    setup_command = "ACTIVE SETUP 1 2 3 4 5 0xA83C 1 " + "b" * 64
+    assert not _pre_setup_commands_exact(
+        [
+            *markers[:-2],
+            {"event": "host_command_sent", "command": setup_command},
+            *markers[-2:],
+        ],
+        [
+            *events,
+            {"event": "command_submitted", "command": setup_command},
+            {"event": "host_written", "command": setup_command},
+        ],
+        capture_state,
+    )
+
+
+def test_pre_setup_provenance_decision_never_waives_other_integrity_faults() -> None:
+    arguments = {
+        "operator_abort": False,
+        "platform_terminal": True,
+        "phase_degraded": False,
+        "endpoint_complete": False,
+        "material_applications": 0,
+        "first_checkpoint_passed": False,
+        "responses_healthy": False,
+        "tight_reacquired_and_retained": False,
+        "policy_limits_exact": False,
+        "phase_pass": False,
+        "frequency_pass": False,
+        "minimum_material_applications": 2,
+        "fact_gathering": True,
+        "pre_setup_provenance_unresolved": True,
+    }
+    assert _classify_decision(integrity_exact=True, **arguments) == (
+        "bounded_nonpass",
+        PRE_SETUP_PROVENANCE_UNRESOLVED,
+    )
+    assert _classify_decision(integrity_exact=False, **arguments) == (
+        "failed",
+        "measurement_authority_or_platform_fault",
+    )
+
+
+def test_superseding_replay_rebinds_once_validated_historical_manifest(
+    tmp_path: Path,
+) -> None:
+    identities = {
+        "bundle": "bundle_sha256",
+        "proposal": "proposal_sha256",
+        "activation": "activation_sha256",
+    }
+    bindings: dict[str, dict[str, object]] = {}
+    for name, semantic_key in identities.items():
+        unsigned = {"schema_version": 1, "artifact": name}
+        artifact = {
+            **unsigned,
+            semantic_key: live_analyze._canonical_sha256(unsigned),
+        }
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps(artifact), encoding="utf-8")
+        bindings[name] = {
+            "path": str(path),
+            "size_bytes": path.stat().st_size,
+            "sha256": live_analyze._sha256_file(path),
+            semantic_key: artifact[semantic_key],
+        }
+    manifest_unsigned = {
+        "schema_version": 1,
+        "run_id": "attempt-1",
+        "run_identity": "cx322_d9_d6_integration_engineering:1",
+        "firmware": {"build_identity": "b" * 64 + ":" + "c" * 64},
+        **bindings,
+    }
+    manifest = {
+        **manifest_unsigned,
+        "manifest_sha256": live_analyze._canonical_sha256(manifest_unsigned),
+    }
+    manifest_path = tmp_path / "run_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    prior_unsigned = {
+        "schema_version": 1,
+        "run_id": manifest["run_id"],
+        "run_identity": manifest["run_identity"],
+        "build_identity": manifest["firmware"]["build_identity"],
+        "bundle_sha256": bindings["bundle"]["bundle_sha256"],
+        "proposal_sha256": bindings["proposal"]["proposal_sha256"],
+        "activation_sha256": bindings["activation"]["activation_sha256"],
+        "acquisition_gate": {
+            "checks": {"frozen_live_manifest_exact": True}
+        },
+    }
+    prior = {
+        **prior_unsigned,
+        "seal_sha256": live_analyze._canonical_sha256(prior_unsigned),
+    }
+    prior_path = tmp_path / "prior_seal.json"
+    prior_path.write_text(json.dumps(prior), encoding="utf-8")
+
+    observed, provenance = _historical_manifest_for_superseding_replay(
+        manifest_path, prior_path
+    )
+
+    assert observed == manifest
+    assert provenance["current_contract_validation"] is False
+    assert provenance["predecessor_frozen_manifest_attestation_exact"] is True
+    (tmp_path / "activation.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="activation byte binding differs"):
+        _historical_manifest_for_superseding_replay(manifest_path, prior_path)
 
 
 def test_ahy_replay_detects_materiality_counterfactual_tamper() -> None:

@@ -78,7 +78,18 @@
     "automatic_retry": false,
     "stop_after_first_complete_application_first_consumer_and_response": true,
     "absolute_wall_limit_seconds": 7200,
-    "starting_code_policy": "query_and_bind_actual_state_never_guess_or_restore"
+    "starting_code_policy": "query_if_observable_else_establish_first_known_state_by_exact_authorized_setup_never_infer_or_restore",
+    "starting_state_provenance": {
+      "physical_applied_code_before_setup": "unknown_unreadable_after_power_cycle",
+      "firmware_dac_epoch_before_setup": "zero_is_new_firmware_session_not_physical_DAC_history",
+      "pre_setup_query": "DAC?_required_expected_to_report_unavailable",
+      "authorized_setup_code": 43068,
+      "authorized_setup_code_hex": "0xA83C",
+      "setup_operation": "prospectively_frozen_authorized_stimulus_not_restoration",
+      "first_confirmed_state_boundary": "exact_setup_acceptance_application_DAC_epoch_and_first_dependent_consumer",
+      "prior_or_nominal_state_inferred": false,
+      "automatic_or_nominal_restoration": false
+    }
   },
   "stop_conditions": [
     "D14_or_D8_authoritative_capture_invalid_or_discontinuous",
@@ -106,5 +117,5 @@
       "general_D9_waveform_qualification"
     ]
   },
-  "contract_semantic_sha256": "02327759a02083de94e21064c529f95548ba20978c249613996c3bfa1b706d0c"
+  "contract_semantic_sha256": "b21b94db83dd5f583f960ebf2339653134604ffd3cf9b902eb3731febaaf52b9"
 }

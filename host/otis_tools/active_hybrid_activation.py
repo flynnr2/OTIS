@@ -21,6 +21,7 @@ from typing import Any
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
@@ -90,6 +91,7 @@ SUSTAINED_REHEARSAL_COVERAGE = (
 )
 INTEGRATED_REHEARSAL_COVERAGE = (
     "integrated_unarmed_concurrency_observation_boundary",
+    "integrated_setup_provenance_boundary",
 )
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
@@ -311,6 +313,11 @@ def validate_operational_rehearsal(
         or set(coverage) != expected_coverage
         or any(coverage.get(name) is not True for name in expected_coverage)
         or tool_bindings != bundle.get("host_tools")
+        or (
+            programme.forwarded_output_integration
+            and report.get("setup_provenance_contract")
+            != integrated_setup_provenance_contract(programme)
+        )
     ):
         raise ValueError("CX320 live-topology rehearsal receipt differs or is incomplete")
     if programme.identification_required:
@@ -408,7 +415,7 @@ def validate_operational_rehearsal(
 def _authority(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
-    return {
+    value: dict[str, Any] = {
         "effective": True,
         "physical_execution": True,
         "firmware_flash_limit": 1,
@@ -443,6 +450,11 @@ def _authority(
         "live_extension": False,
         "authority_consumed_by_first_physical_terminal": True,
     }
+    if programme.forwarded_output_integration:
+        value["setup_provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
+    return value
 
 
 def _attempt_descriptor(
@@ -516,12 +528,27 @@ def _attempt_descriptor(
             and isinstance(scientific_checks, dict)
             and scientific_checks.get("qualified_12h_endpoint_complete") is False
         )
+        bounded_pre_setup_provenance = (
+            seal.get("status") == "bounded_nonpass"
+            and seal.get("primary_decision")
+            == "pre_setup_provenance_unresolved"
+            and acquisition_gate.get("passed") is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and seal.get("pre_setup_provenance_terminal", {}).get("exact")
+            is True
+        )
         if (
             not (run_dir / "COMPLETE").is_file()
             or not (
                 failed_physical_gate
                 or failed_post_acquisition_gate
                 or bounded_operator_abort
+                or bounded_pre_setup_provenance
             )
         ):
             raise ValueError(
@@ -649,6 +676,15 @@ def create_activation(
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
         },
         "authority": _authority(programme),
     }
@@ -754,6 +790,15 @@ def validate_frozen_activation(
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
         }
         or activation.get("authority") != _authority(programme)
     ):
@@ -955,9 +1000,24 @@ def create_run_manifest(
                 "code": programme.setup_code,
                 "code_hex": f"0x{programme.setup_code:04X}",
                 "maximum_applications": 1,
-                "physical_applied_code_before_setup": "unknown",
+                "physical_applied_code_before_setup": (
+                    integrated_setup_provenance_contract(programme)[
+                        "physical_applied_code_before_setup"
+                    ]
+                    if programme.forwarded_output_integration
+                    else "unknown"
+                ),
                 "same_code_reapplication_opens_new_epoch": True,
                 "exact_consumer_epoch_propagation_required": True,
+                **(
+                    {
+                        "provenance": integrated_setup_provenance_contract(
+                            programme
+                        )
+                    }
+                    if programme.forwarded_output_integration
+                    else {}
+                ),
             },
             "automatic_control": {
                 "authorized": True,
@@ -1178,8 +1238,30 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or len(set(host.get("fifos", {}).values())) != 3
         or section.get("authority") != activation["authority"]
         or section.get("run_identity") != programme.runtime_run_identity
-        or section.get("setup", {}).get("code") != programme.setup_code
-        or section.get("setup", {}).get("maximum_applications") != 1
+        or section.get("setup")
+        != {
+            "code": programme.setup_code,
+            "code_hex": f"0x{programme.setup_code:04X}",
+            "maximum_applications": 1,
+            "physical_applied_code_before_setup": (
+                integrated_setup_provenance_contract(programme)[
+                    "physical_applied_code_before_setup"
+                ]
+                if programme.forwarded_output_integration
+                else "unknown"
+            ),
+            "same_code_reapplication_opens_new_epoch": True,
+            "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
+        }
         or control
         != {
             "authorized": True,

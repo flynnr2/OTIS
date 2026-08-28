@@ -15,6 +15,7 @@ from .active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     PROGRAMMES,
     get_active_hybrid_programme,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
@@ -151,6 +152,47 @@ def _binding(path: Path) -> dict[str, Any]:
         "path": str(path),
         "sha256": _sha256_file(path),
         "size_bytes": path.stat().st_size,
+    }
+
+
+def _engineering_contract_binding(
+    programme: ActiveHybridProgramme,
+) -> dict[str, Any]:
+    path = programme.engineering_contract_path
+    if path is None or not path.is_file():
+        raise ValueError("integrated engineering contract is unavailable")
+    contract = _read_object(path)
+    claimed = contract.get("contract_semantic_sha256")
+    unsigned = {
+        key: value
+        for key, value in contract.items()
+        if key != "contract_semantic_sha256"
+    }
+    envelope = contract.get("initial_bench_envelope", {})
+    if (
+        claimed != _canonical_sha256(unsigned)
+        or contract.get("contract_id")
+        != "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_CONTRACT_V1"
+        or contract.get("firmware_profile", {}).get("profile_id")
+        != programme.profile_id
+        or envelope.get("unarmed_concurrency_observation_seconds")
+        != programme.engineering_unarmed_observation_s
+        or envelope.get("maximum_automatic_applications")
+        != programme.authorized_maximum_applications
+        or envelope.get("maximum_cumulative_movement_codes")
+        != programme.authorized_maximum_cumulative_movement_codes
+        or envelope.get("maximum_step_codes") != programme.maximum_step_codes
+        or envelope.get("absolute_wall_limit_seconds")
+        != programme.authorized_absolute_wall_limit_s
+        or envelope.get("starting_code_policy")
+        != "query_if_observable_else_establish_first_known_state_by_exact_authorized_setup_never_infer_or_restore"
+        or envelope.get("starting_state_provenance")
+        != integrated_setup_provenance_contract(programme)
+    ):
+        raise ValueError("integrated engineering contract semantics differ")
+    return {
+        **_binding(path),
+        "contract_semantic_sha256": claimed,
     }
 
 
@@ -364,7 +406,13 @@ def create_bundle(
         "setup": {
             "exact_code": programme.setup_code,
             "exact_code_hex": f"0x{programme.setup_code:04X}",
-            "physical_applied_code_before_setup": "unknown",
+            "physical_applied_code_before_setup": (
+                integrated_setup_provenance_contract(programme)[
+                    "physical_applied_code_before_setup"
+                ]
+                if programme.forwarded_output_integration
+                else "unknown"
+            ),
             "one_setup_application": True,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_acknowledgement_required": True,
@@ -464,6 +512,11 @@ def create_bundle(
         },
         "authority": authority,
     }
+    if programme.forwarded_output_integration:
+        bundle["engineering_contract"] = _engineering_contract_binding(programme)
+        bundle["setup"]["provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
     if programme.sustained_regulation:
         bundle["reversal_challenge"] = policy_document["reversal_challenge"]
         bundle["sustained_regulation_acceptance"] = (
@@ -592,6 +645,17 @@ def validate_bundle(
         raise ValueError("unexpected CX320 bundle identity")
     if any(bundle.get("authority", {}).get(name) is not False for name in REQUIRED_FALSE_AUTHORITY):
         raise ValueError("CX320 bundle contains effective physical authority")
+    if programme.forwarded_output_integration and (
+        bundle.get("engineering_contract")
+        != _engineering_contract_binding(programme)
+        or bundle.get("setup", {}).get("provenance")
+        != integrated_setup_provenance_contract(programme)
+        or bundle.get("setup", {}).get("physical_applied_code_before_setup")
+        != integrated_setup_provenance_contract(programme)[
+            "physical_applied_code_before_setup"
+        ]
+    ):
+        raise ValueError("integrated setup provenance or contract binding differs")
     if set(bundle.get("host_tools", {})) != set(TOOL_PATHS):
         raise ValueError("CX320 bundle does not bind the complete current host path")
     for section, bindings in (("host_tools", bundle.get("host_tools", {})),):

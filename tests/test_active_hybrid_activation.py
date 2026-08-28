@@ -208,6 +208,11 @@ def test_integrated_activation_requires_unarmed_observation_coverage(
         "qualification_evidence": False,
         "coverage": {name: True for name in expected_coverage},
         "tool_bindings": {},
+        "setup_provenance_contract": (
+            activation.integrated_setup_provenance_contract(
+                CX322_D9_D6_INTEGRATION_PROGRAMME
+            )
+        ),
     }
     path = tmp_path / "integrated-rehearsal.json"
     _write(path, _semantic(unsigned, "rehearsal_sha256"))
@@ -523,6 +528,63 @@ def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
     assert observed["attempt"]["predecessor_physical_terminal"][
         "primary_decision"
     ] == "operator_abort"
+
+
+def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-pre-setup"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "bounded_nonpass",
+        "run_id": "attempt-pre-setup",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "pre_setup_provenance_unresolved",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "pre_setup_provenance_terminal": {"exact": True},
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": (
+                    "cx322_d9_d6_live_supervisor_fault:"
+                    "live active_fail_static asserted"
+                ),
+            },
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation.create_activation(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        operational_rehearsal_path=rehearsal_path,
+        serial_device="/dev/cu.usbmodem-test",
+        operator_instruction_ref="expanded bounded recovery authority",
+        output_path=tmp_path / "activation-pre-setup-successor.json",
+        attempt_ordinal=2,
+        attempt_reason="establish first known DAC state prospectively",
+        predecessor_terminal_path=predecessor_path,
+    )
+
+    assert observed["attempt"]["ordinal"] == 2
+    assert observed["attempt"]["automatic_retry"] is False
+    assert observed["attempt"]["predecessor_physical_terminal"][
+        "primary_decision"
+    ] == "pre_setup_provenance_unresolved"
 
 
 def test_later_activation_accepts_failed_post_acquisition_terminal(

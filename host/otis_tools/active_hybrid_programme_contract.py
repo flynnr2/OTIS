@@ -67,6 +67,7 @@ class ActiveHybridProgramme:
     engineering_maximum_cumulative_movement_codes: int | None = None
     engineering_absolute_wall_limit_s: int | None = None
     terminal_after_first_response: bool = False
+    engineering_contract_path: Path | None = None
 
     @property
     def campaign_name(self) -> str:
@@ -101,6 +102,34 @@ class ActiveHybridProgramme:
     @property
     def authorized_absolute_wall_limit_s(self) -> int:
         return self.engineering_absolute_wall_limit_s or self.absolute_wall_limit_s
+
+
+def integrated_setup_provenance_contract(
+    programme: ActiveHybridProgramme,
+) -> dict[str, Any]:
+    """Freeze setup semantics when the physical boot DAC code is unreadable."""
+
+    if not programme.forwarded_output_integration:
+        raise ValueError("setup-provenance contract is integration-specific")
+    return {
+        "physical_applied_code_before_setup": (
+            "unknown_unreadable_after_power_cycle"
+        ),
+        "firmware_dac_epoch_before_setup": (
+            "zero_is_new_firmware_session_not_physical_DAC_history"
+        ),
+        "pre_setup_query": "DAC?_required_expected_to_report_unavailable",
+        "authorized_setup_code": programme.setup_code,
+        "authorized_setup_code_hex": f"0x{programme.setup_code:04X}",
+        "setup_operation": (
+            "prospectively_frozen_authorized_stimulus_not_restoration"
+        ),
+        "first_confirmed_state_boundary": (
+            "exact_setup_acceptance_application_DAC_epoch_and_first_dependent_consumer"
+        ),
+        "prior_or_nominal_state_inferred": False,
+        "automatic_or_nominal_restoration": False,
+    }
 
 _COMMON_TERMINALS = frozenset(
     {
@@ -331,6 +360,7 @@ CX322_D9_D6_INTEGRATION_PROGRAMME = ActiveHybridProgramme(
         {
             "bounded_integrated_engineering_evidence_acquired",
             "bounded_integrated_engineering_early_safety_stop",
+            "pre_setup_provenance_unresolved",
             "right_censored_incomplete",
             "measurement_authority_or_platform_fault",
             "operator_abort",
@@ -358,6 +388,10 @@ CX322_D9_D6_INTEGRATION_PROGRAMME = ActiveHybridProgramme(
     engineering_maximum_cumulative_movement_codes=21,
     engineering_absolute_wall_limit_s=7_200,
     terminal_after_first_response=True,
+    engineering_contract_path=REPO_ROOT
+    / "docs/60_EXPERIMENTS/"
+    "OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/"
+    "cx322_d9_d6_integration_engineering_contract_v1.json",
 )
 
 
