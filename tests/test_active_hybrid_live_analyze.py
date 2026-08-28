@@ -13,6 +13,7 @@ from host.otis_tools.active_hybrid_live_analyze import (
     _frequency_metrics,
     _historical_manifest_for_superseding_replay,
     _legacy_checkpoint_terminal_misclassified,
+    _legacy_first_response_endpoint_misclassified,
     _legacy_plant_terminal_decision,
     _metric_contract,
     _phase_metrics,
@@ -283,6 +284,29 @@ def test_command_and_wall_origin_setup_order_are_exact() -> None:
     assert _cx320_commands_exact(
         markers,
         events,
+        {"emergency_aborts_sent": 0},
+        setup_code=0xA83C,
+        allowed_emergency_aborts=0,
+    )
+
+    repeated_config = [*submitted, "CONFIG?"]
+    repeated_events = [
+        {"event": "command_submitted", "command": command}
+        for command in repeated_config
+    ] + [
+        {"event": "host_written", "command": command}
+        for command in repeated_config
+    ]
+    repeated_markers = [
+        {"event": "capture_started"},
+        *[
+            {"event": "host_command_sent", "command": command}
+            for command in repeated_config
+        ],
+    ]
+    assert _cx320_commands_exact(
+        repeated_markers,
+        repeated_events,
         {"emergency_aborts_sent": 0},
         setup_code=0xA83C,
         allowed_emergency_aborts=0,
@@ -669,6 +693,116 @@ def test_terminal_response_sign_rejection_is_exact_without_phase4_ack(
             "expected_rejection": True,
         }
     ]
+
+
+def test_superseding_replay_accepts_only_attestation_tool_identity_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    path = run_dir / "reports/step_001/record_000005_response_replay_attestation.json"
+    path.parent.mkdir(parents=True)
+    common = {
+        "schema_version": 1,
+        "attestation_type": "cx320_response_replayed_before_acknowledgement_v1",
+        "tool": "cx320_active_hybrid_response_evidence_guard_v1",
+        "request_sequence": 1,
+        "transaction_record_sequence": 5,
+        "exact_replay": True,
+    }
+    retained_unsigned = {**common, "tool_sha256": "a" * 64}
+    retained = {
+        **retained_unsigned,
+        "attestation_sha256": live_analyze._canonical_sha256(retained_unsigned),
+    }
+    replayed_unsigned = {**common, "tool_sha256": "b" * 64}
+    replayed = {
+        **replayed_unsigned,
+        "attestation_sha256": live_analyze._canonical_sha256(replayed_unsigned),
+    }
+    path.write_text(json.dumps(retained), encoding="utf-8")
+    monkeypatch.setattr(
+        live_analyze,
+        "replay_response_before_acknowledgement",
+        lambda **_: replayed,
+    )
+    response = {
+        "event": "response",
+        "request_sequence": "1",
+        "transaction_record_sequence": "5",
+    }
+
+    assert _response_attestations(run_dir, [response], [])[0] is False
+    exact, _, comparisons, _ = _response_attestations(
+        run_dir,
+        [response],
+        [],
+        allow_superseded_attestation_tool_identity=True,
+    )
+    assert exact is True
+    assert comparisons[0]["retained_attestation_tool_identity_superseded"] is True
+
+    replayed["exact_replay"] = False
+    replayed_unsigned = {
+        key: value for key, value in replayed.items() if key != "attestation_sha256"
+    }
+    replayed["attestation_sha256"] = live_analyze._canonical_sha256(
+        replayed_unsigned
+    )
+    assert _response_attestations(
+        run_dir,
+        [response],
+        [],
+        allow_superseded_attestation_tool_identity=True,
+    )[0] is False
+
+
+def test_legacy_integrated_first_response_endpoint_requires_exact_chain() -> None:
+    applications = {
+        "exact": True,
+        "automatic_application_count": 1,
+        "physical_control_application_count": 1,
+        "frequency_only_application_count": 1,
+        "phase_material_application_count": 0,
+        "all_response_checkpoints_passed": True,
+    }
+    terminal = {
+        "result": "nonpass",
+        "primary_decision": "right_censored_incomplete",
+        "reason": "cx322_d9_d6_integration_2h_absolute_wall_endpoint",
+    }
+    events = [
+        {
+            "event": "transaction_phase_acknowledged",
+            "request_sequence": 1,
+            "phase": phase,
+        }
+        for phase in (1, 2, 3, 4)
+    ] + [
+        {
+            "event": "response_retained_as_nonterminal_observation",
+            "request_sequence": 1,
+            "response_class": "healthy_indeterminate_near_resolution",
+        }
+    ]
+    arguments = {
+        "programme": CX322_D9_D6_INTEGRATION_PROGRAMME,
+        "terminal": terminal,
+        "applications": applications,
+        "active_hybrid_replay_exact": True,
+        "transaction_history_exact": True,
+        "capsules_exact": True,
+        "response_attestations_exact": True,
+        "supervisor_events": events,
+        "static_terminal_exact": True,
+    }
+
+    assert _legacy_first_response_endpoint_misclassified(**arguments)
+    assert not _legacy_first_response_endpoint_misclassified(
+        **{**arguments, "supervisor_events": events[:-2] + events[-1:]}
+    )
+    assert not _legacy_first_response_endpoint_misclassified(
+        **{**arguments, "applications": {**applications, "automatic_application_count": 2}}
+    )
 
 
 def test_terminal_classification_uses_one_declared_primary_decision() -> None:

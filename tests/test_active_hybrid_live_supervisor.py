@@ -636,6 +636,39 @@ def test_integrated_physical_run_stops_after_first_complete_response(
     }
 
 
+def test_integrated_physical_run_accepts_frequency_only_first_response(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.manifest["qualification_evidence"] = True
+    supervisor.state["arm_pending"] = False
+    health = _health(
+        supervisor,
+        state="DISARMED",
+        evidence_phase="evidence_clear",
+        evidence_pending="false",
+        evidence_request_sequence="0",
+        confirmed_applied_code_known="true",
+        confirmed_applied_code=str(0xA837),
+        correction_count="1",
+        cumulative_movement_codes="5",
+        first_phase_checkpoint_passed="false",
+        phase_material_application_count="0",
+        frequency_only_application_count="1",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"].endswith(
+        "first_complete_application_consumer_and_response"
+    )
+    assert supervisor.state["terminal"]["preliminary_decision"] == (
+        "pending_offline_scientific_analysis"
+    )
+
+
 def test_integrated_rehearsal_exercises_same_first_response_terminal(
     tmp_path: Path,
 ) -> None:

@@ -27,6 +27,7 @@ from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
     programme_from_mapping,
+    progressive_checkpoint_contract,
 )
 from .active_control_supervisor import (
     ESTIMATES_CSV,
@@ -1644,8 +1645,16 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     == "first_response"
                 )
             )
-            and self.state.get("first_phase_observation_checkpoint_exact") is True
-            and _truth(health, "first_phase_checkpoint_passed")
+            and (
+                not progressive_checkpoint_contract(self.programme).get(
+                    "phase_material_application_count_is_acquisition_pass_gate",
+                    True,
+                )
+                or (
+                    self.state.get("first_phase_observation_checkpoint_exact") is True
+                    and _truth(health, "first_phase_checkpoint_passed")
+                )
+            )
             and int(health.get(("cx317_active", "correction_count"), "0")) == 1
             and self._healthy_terminal_ready(health)
         ):

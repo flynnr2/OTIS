@@ -175,6 +175,9 @@ def replay_active_hybrid_history(
     expected_active_policy_sha256: str | None = None,
     plant_sign_handoff: dict[str, Any] | None = None,
     estimate_rows: list[dict[str, str]] | None = None,
+    maximum_applications: int | None = None,
+    maximum_cumulative_movement_codes: int | None = None,
+    phase_checkpoint_required: bool = True,
 ) -> dict[str, Any]:
     """Replay the real request/application/response chronology exactly.
 
@@ -196,6 +199,21 @@ def replay_active_hybrid_history(
     controller = ActiveHybridController(
         policy, setup_application_s=setup_application_s
     )
+    authorized_maximum_applications = (
+        policy.maximum_applications
+        if maximum_applications is None
+        else maximum_applications
+    )
+    authorized_maximum_cumulative_movement_codes = (
+        policy.maximum_cumulative_movement_codes
+        if maximum_cumulative_movement_codes is None
+        else maximum_cumulative_movement_codes
+    )
+    if (
+        authorized_maximum_applications < 0
+        or authorized_maximum_cumulative_movement_codes < 0
+    ):
+        raise ValueError("active-hybrid authority budgets must be non-negative")
     exact_timestamps_s = _exact_decision_timestamps_s(
         decisions, estimate_rows, estimator_id=policy.frequency_estimator_id
     )
@@ -336,6 +354,55 @@ def replay_active_hybrid_history(
                 and decision_sequence not in seen_decisions
             )
             request = mappings["request_created"].get(decision_sequence)
+            carried_completed_transaction_exact = False
+            authority_budget_closed = (
+                replayed.correction_count_before
+                >= authorized_maximum_applications
+                or (
+                    replayed.cumulative_movement_before_codes
+                    + abs(replayed.requested_delta_codes)
+                    > authorized_maximum_cumulative_movement_codes
+                )
+            )
+            authority_budget_suppression_candidate = (
+                replayed.requested_delta_codes != 0
+                and request is None
+                and not controller.transaction_outstanding
+                and row.get("authority_state") == "DISARMED"
+                and row.get("actionable") == "false"
+                and authority_budget_closed
+            )
+            if authority_budget_suppression_candidate:
+                completed_before = [
+                    prior_decision
+                    for prior_decision in mappings["response"]
+                    if prior_decision < decision_sequence
+                    and prior_decision in mappings["request_created"]
+                    and prior_decision in mappings["application"]
+                ]
+                if completed_before:
+                    carried_decision = max(completed_before)
+                    carried_request = mappings["request_created"][carried_decision]
+                    carried_application = mappings["application"][carried_decision]
+                    carried_response = mappings["response"][carried_decision]
+                    carried_completed_transaction_exact = (
+                        int(row.get("request_sequence", "0"))
+                        == int(carried_request["request_sequence"])
+                        and int(row.get("acceptance_sequence", "0"))
+                        == int(carried_request["request_sequence"])
+                        and int(row.get("application_sequence", "0"))
+                        == int(carried_application["application_sequence"])
+                        and int(row.get("actual_applied_code", "-1"))
+                        == int(carried_application["applied_code"])
+                        and int(row.get("actual_dac_epoch", "-1"))
+                        == int(carried_application["dac_epoch"])
+                        and row.get("response_class")
+                        == carried_response["response_class"]
+                    )
+            authority_budget_suppressed = (
+                authority_budget_suppression_candidate
+                and carried_completed_transaction_exact
+            )
             transaction_exact = (
                 (replayed.requested_delta_codes == 0 and request is None)
                 or (
@@ -346,6 +413,7 @@ def replay_active_hybrid_history(
                     == replayed.requested_delta_codes
                     and int(request["requested_code"]) == replayed.requested_code
                 )
+                or authority_budget_suppressed
             )
             response_exact = True
             predicted_sign_observed: bool | None = None
@@ -402,6 +470,7 @@ def replay_active_hybrid_history(
                     response_exact
                     and (
                         policy.response_checkpoint_observational
+                        or not phase_checkpoint_required
                         or predicted_sign_observed
                     )
                 )
@@ -444,6 +513,10 @@ def replay_active_hybrid_history(
                     "numerical_exact": numerical_exact,
                     "sequence_exact": sequence_exact,
                     "transaction_binding_exact": transaction_exact,
+                    "authority_budget_suppressed": authority_budget_suppressed,
+                    "carried_completed_transaction_exact": (
+                        carried_completed_transaction_exact
+                    ),
                     "response_evidence_exact": response_exact,
                     "response_checkpoint_exact": response_exact,
                     "predicted_sign_observed": predicted_sign_observed,
@@ -454,7 +527,7 @@ def replay_active_hybrid_history(
             exact &= row_exact
             prior_record_sequence = record_sequence
             seen_decisions.add(decision_sequence)
-            if replayed.requested_delta_codes != 0:
+            if replayed.requested_delta_codes != 0 and not authority_budget_suppressed:
                 application = mappings["application"].get(decision_sequence)
                 if application is None:
                     raise ValueError("nonzero AHY decision lacks ACT application")
@@ -516,6 +589,9 @@ def replay_response_before_acknowledgement(
     expected_active_policy_sha256: str | None = None,
     plant_sign_csv: Path | None = None,
     estimates_csv: Path | None = None,
+    maximum_applications: int | None = None,
+    maximum_cumulative_movement_codes: int | None = None,
+    phase_checkpoint_required: bool = True,
 ) -> dict[str, Any]:
     validation = validate_csv(
         active_hybrid_csv,
@@ -572,6 +648,9 @@ def replay_response_before_acknowledgement(
         expected_active_policy_sha256=active_policy_sha256,
         plant_sign_handoff=plant_sign_handoff,
         estimate_rows=(None if estimates_csv is None else _rows(estimates_csv)),
+        maximum_applications=maximum_applications,
+        maximum_cumulative_movement_codes=maximum_cumulative_movement_codes,
+        phase_checkpoint_required=phase_checkpoint_required,
     )
     if not replay["exact"]:
         raise IndependentReplayMismatch(
@@ -623,7 +702,11 @@ def replay_response_before_acknowledgement(
         or response["response_class"] not in admissible_response_classes
     ):
         raise ValueError("CX320 applied code, epoch, or response evidence differs")
-    if not predicted_sign_observed and not policy.response_checkpoint_observational:
+    if (
+        not predicted_sign_observed
+        and phase_checkpoint_required
+        and not policy.response_checkpoint_observational
+    ):
         raise ResponseCheckpointRejected(
             "CX320 frozen response-sign checkpoint did not pass"
         )
@@ -650,6 +733,7 @@ def replay_response_before_acknowledgement(
         "response_checkpoint_mode": (
             "observational_non_terminal"
             if policy.response_checkpoint_observational
+            or not phase_checkpoint_required
             else "admission_gate"
         ),
         "exact_replay": True,

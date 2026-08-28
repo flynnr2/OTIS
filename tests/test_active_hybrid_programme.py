@@ -741,6 +741,194 @@ def test_response_guard_replays_tight_loss_as_frequency_only(
     assert attestation["requested_delta_codes"] == -21
 
 
+def test_frequency_only_response_attestation_can_be_non_checkpointing(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy()
+    controller = ActiveHybridController(policy)
+    entered_phase_qualify = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=1800,
+            sequence=1800,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="TIGHT_INSIDE",
+            relative_phase_cycles=720,
+        )
+    )
+    decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=3600,
+            sequence=3600,
+            frequency_error_hz=0.01,
+            counts=6,
+            tight_state="OUTSIDE",
+            relative_phase_cycles=720,
+        )
+    )
+    run_identity = "cx320_active_hybrid:3200001"
+    build_identity = "a" * 64 + ":" + "c" * 64
+    rows = [
+        _ahy_row(
+            item,
+            record_sequence=index,
+            run_identity=run_identity,
+            build_identity=build_identity,
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=policy.response_policy_sha256,
+        )
+        for index, item in enumerate((entered_phase_qualify, decision), start=1)
+    ]
+    transactions = _transaction_rows(
+        decision,
+        record_sequence=1,
+        request_sequence=1,
+        application_sequence=1,
+        dac_epoch=2,
+        cumulative_movement=21,
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        estimator_sha256=policy.frequency_estimator_sha256,
+        model_sha256=policy.plant_model_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    transactions[-1].update(
+        {
+            "post_error_hz": "0.000000000",
+            "observed_response_hz": "0.000000000",
+            "cumulative_response_hz": "0.000000000",
+            "consecutive_indeterminate": "1",
+            "response_class": "healthy_indeterminate_near_resolution",
+            "reason": "healthy_evidence_below_empirical_detection_floor",
+        }
+    )
+    controller.note_application(
+        decision,
+        applied_code=int(transactions[2]["applied_code"]),
+        dac_epoch=2,
+        downstream_consumers_exact=True,
+    )
+    response_timestamp = int(transactions[2]["application_timestamp_s"]) + (
+        policy.settling_exclusion_s + policy.fresh_support_s
+    )
+    response_decision = controller.decide(
+        _observation(
+            controller,
+            timestamp_s=response_timestamp,
+            sequence=response_timestamp,
+            frequency_error_hz=0.0,
+            counts=0,
+            tight_state="OUTSIDE",
+            relative_phase_cycles=720,
+            outstanding_response=True,
+        )
+    )
+    response_ahy = _ahy_row(
+        response_decision,
+        record_sequence=3,
+        run_identity=run_identity,
+        build_identity=build_identity,
+        policy_sha256=policy.policy_sha256,
+        response_policy_sha256=policy.response_policy_sha256,
+    )
+    response_ahy.update(
+        {
+            "authority_state": "AWAITING_RESPONSE",
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+        }
+    )
+    rows.append(response_ahy)
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, rows)
+    _write_csv(act_path, CONTRACT_FIELDS["active_transactions_v1"], transactions)
+
+    with pytest.raises(ResponseCheckpointRejected):
+        replay_response_before_acknowledgement(
+            active_hybrid_csv=ahy_path,
+            active_transactions_csv=act_path,
+            response_row=transactions[-1],
+        )
+    attestation = replay_response_before_acknowledgement(
+        active_hybrid_csv=ahy_path,
+        active_transactions_csv=act_path,
+        response_row=transactions[-1],
+        phase_checkpoint_required=False,
+    )
+    assert attestation["exact_replay"] is True
+    assert attestation["phase_materially_influenced"] is False
+    assert attestation["response_checkpoint_mode"] == "observational_non_terminal"
+
+
+def test_replay_accepts_exact_nonzero_demand_suppressed_at_engineering_cap() -> None:
+    primary, rows, transactions = _modeled_transaction(_bundle())
+    del primary
+    suppressed = next(
+        row
+        for row in rows
+        if row["decision_sequence"] == "4"
+    )
+    suppressed = dict(suppressed)
+    suppressed.update(
+        {
+            "authority_state": "DISARMED",
+            "request_sequence": "1",
+            "acceptance_sequence": "1",
+            "application_sequence": "1",
+            "response_class": "healthy_detected",
+        }
+    )
+    prefix = [*rows[:3], suppressed]
+    completed_first_transaction = [
+        row
+        for row in transactions
+        if int(row["decision_sequence"]) < int(suppressed["decision_sequence"])
+    ]
+    replay = replay_active_hybrid_history(
+        prefix,
+        completed_first_transaction,
+        expected_run_identity=str(_bundle()["run_identity"]),
+        expected_build_identity=str(_bundle()["firmware"]["build_identity"]),
+        expected_profile_identity="cx320_active_hybrid",
+        maximum_applications=1,
+        maximum_cumulative_movement_codes=21,
+    )
+
+    assert replay["exact"] is True
+    assert replay["comparisons"][-1]["authority_budget_suppressed"] is True
+    assert replay["comparisons"][-1]["carried_completed_transaction_exact"] is True
+
+    in_authority = [*rows[:3], {**suppressed, "authority_state": "ARMED"}]
+    assert not replay_active_hybrid_history(
+        in_authority,
+        completed_first_transaction,
+        expected_run_identity=str(_bundle()["run_identity"]),
+        expected_build_identity=str(_bundle()["firmware"]["build_identity"]),
+        expected_profile_identity="cx320_active_hybrid",
+        maximum_applications=1,
+        maximum_cumulative_movement_codes=21,
+    )["exact"]
+
+    contradictory_carry = [
+        *rows[:3],
+        {**suppressed, "application_sequence": "2"},
+    ]
+    assert not replay_active_hybrid_history(
+        contradictory_carry,
+        completed_first_transaction,
+        expected_run_identity=str(_bundle()["run_identity"]),
+        expected_build_identity=str(_bundle()["firmware"]["build_identity"]),
+        expected_profile_identity="cx320_active_hybrid",
+        maximum_applications=1,
+        maximum_cumulative_movement_codes=21,
+    )["exact"]
+
+
 def test_inside_deadband_checkpoint_still_requires_observed_command_sign(
     tmp_path: Path,
 ) -> None:

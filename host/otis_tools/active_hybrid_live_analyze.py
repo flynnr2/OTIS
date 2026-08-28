@@ -29,6 +29,7 @@ from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
     programme_from_mapping,
+    progressive_checkpoint_contract,
 )
 from .active_hybrid_live_supervisor import (
     forwarded_output_integration_prewrite_evidence,
@@ -685,6 +686,9 @@ def _replay_ahy(
     expected_active_policy_sha256: str | None = None,
     plant_sign_records: list[dict[str, str]] | None = None,
     estimate_rows: list[dict[str, str]] | None = None,
+    maximum_applications: int | None = None,
+    maximum_cumulative_movement_codes: int | None = None,
+    phase_checkpoint_required: bool = True,
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
@@ -725,6 +729,9 @@ def _replay_ahy(
             )
         ),
         estimate_rows=estimate_rows,
+        maximum_applications=maximum_applications,
+        maximum_cumulative_movement_codes=maximum_cumulative_movement_codes,
+        phase_checkpoint_required=phase_checkpoint_required,
     )
 
 
@@ -736,6 +743,7 @@ def _response_attestations(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
     policy_path: Path | None = None,
     expected_active_policy_sha256: str | None = None,
+    allow_superseded_attestation_tool_identity: bool = False,
 ) -> tuple[bool, dict[str, str], list[dict[str, Any]], frozenset[int]]:
     exact = True
     hashes: dict[str, str] = {}
@@ -743,6 +751,7 @@ def _response_attestations(
     rejected_record_sequences: set[int] = set()
     for response in (row for row in active_rows if row.get("event") == "response"):
         relative: Path | None = None
+        retained_tool_identity_superseded = False
         try:
             request_sequence: object = int(response["request_sequence"])
             record_sequence: object = int(response["transaction_record_sequence"])
@@ -764,6 +773,16 @@ def _response_attestations(
                     else None
                 ),
                 estimates_csv=(estimates_path if estimates_path.is_file() else None),
+                maximum_applications=programme.authorized_maximum_applications,
+                maximum_cumulative_movement_codes=(
+                    programme.authorized_maximum_cumulative_movement_codes
+                ),
+                phase_checkpoint_required=bool(
+                    progressive_checkpoint_contract(programme).get(
+                        "phase_material_application_count_is_acquisition_pass_gate",
+                        True,
+                    )
+                ),
             )
             retained = _read_object(path) if path.is_file() else {}
             phase_acknowledged = any(
@@ -778,7 +797,23 @@ def _response_attestations(
                 and int(item.get("request_sequence", -1)) == request_sequence
                 for item in supervisor_events
             )
-            row_exact = retained == replayed or (
+            retained_tool_identity_superseded = (
+                allow_superseded_attestation_tool_identity
+                and bool(retained)
+                and _semantic_identity_exact(retained, "attestation_sha256")
+                and _semantic_identity_exact(replayed, "attestation_sha256")
+                and {
+                    key: value
+                    for key, value in retained.items()
+                    if key not in {"tool_sha256", "attestation_sha256"}
+                }
+                == {
+                    key: value
+                    for key, value in replayed.items()
+                    if key not in {"tool_sha256", "attestation_sha256"}
+                }
+            )
+            row_exact = retained == replayed or retained_tool_identity_superseded or (
                 not path.exists() and not phase_acknowledged and recovered_host_hold
             )
             if path.is_file():
@@ -837,6 +872,11 @@ def _response_attestations(
                 "replayed_attestation_sha256": replayed.get("attestation_sha256"),
                 "checkpoint_passed": checkpoint_passed,
                 "expected_rejection": expected_rejection,
+                **(
+                    {"retained_attestation_tool_identity_superseded": True}
+                    if retained_tool_identity_superseded
+                    else {}
+                ),
             }
         )
     return exact, hashes, comparisons, frozenset(rejected_record_sequences)
@@ -885,7 +925,11 @@ def _cx320_commands_exact(
         submitted == acknowledged
         and sent == expected_sent
         and grammar_exact
-        and submitted.count("CONFIG?") == 1
+        # Forwarded-output integrations re-query CONFIG? periodically so D9
+        # source/divider/readback continuity is retained throughout the run.
+        # Exact submitted/written/sent equality above makes every repetition
+        # accountable; requiring exactly one contradicts the real supervisor.
+        and submitted.count("CONFIG?") >= 1
         and submitted.count("DUALCORE?") == 1
         and submitted.count("DAC?") == 1
         and sum(setup.fullmatch(command) is not None for command in submitted) == 1
@@ -1845,6 +1889,71 @@ def _legacy_checkpoint_terminal_misclassified(
     )
 
 
+def _legacy_first_response_endpoint_misclassified(
+    *,
+    programme: ActiveHybridProgramme,
+    terminal: dict[str, Any],
+    applications: dict[str, Any],
+    active_hybrid_replay_exact: bool,
+    transaction_history_exact: bool,
+    capsules_exact: bool,
+    response_attestations_exact: bool,
+    supervisor_events: list[dict[str, Any]],
+    static_terminal_exact: bool,
+) -> bool:
+    """Recognize the integrated smoke endpoint that the old supervisor missed.
+
+    The frozen integration contract made the phase-material checkpoint
+    observational, but the live supervisor accidentally required it before
+    taking the first-complete-response terminal.  Correction is deliberately
+    narrow: one exact application, its complete four-phase acknowledgement
+    chain, one healthy retained response, and the exact wall endpoint.
+    """
+
+    if not (
+        programme.forwarded_output_integration
+        and programme.terminal_after_first_response
+        and progressive_checkpoint_contract(programme).get(
+            "phase_material_application_count_is_acquisition_pass_gate",
+            True,
+        )
+        is False
+        and terminal.get("result") == "nonpass"
+        and terminal.get("primary_decision") == "right_censored_incomplete"
+        and terminal.get("reason")
+        == f"{programme.key}_2h_absolute_wall_endpoint"
+        and applications.get("exact") is True
+        and applications.get("automatic_application_count") == 1
+        and applications.get("physical_control_application_count") == 1
+        and applications.get("frequency_only_application_count") == 1
+        and applications.get("phase_material_application_count") == 0
+        and applications.get("all_response_checkpoints_passed") is True
+        and active_hybrid_replay_exact
+        and transaction_history_exact
+        and capsules_exact
+        and response_attestations_exact
+        and static_terminal_exact
+    ):
+        return False
+    phase_acknowledgements = [
+        (int(item.get("request_sequence", 0)), int(item.get("phase", 0)))
+        for item in supervisor_events
+        if item.get("event") == "transaction_phase_acknowledged"
+    ]
+    retained_responses = [
+        item
+        for item in supervisor_events
+        if item.get("event") == "response_retained_as_nonterminal_observation"
+        and item.get("response_class")
+        in {"healthy_detected", "healthy_indeterminate_near_resolution", "inside_deadband"}
+    ]
+    return (
+        phase_acknowledgements == [(1, 1), (1, 2), (1, 3), (1, 4)]
+        and len(retained_responses) == 1
+        and int(retained_responses[0].get("request_sequence", 0)) == 1
+    )
+
+
 def _legacy_plant_terminal_decision(
     terminal: dict[str, Any], rows: list[dict[str, str]]
 ) -> str | None:
@@ -2233,6 +2342,16 @@ def analyze(
             ),
             plant_sign_records=plant_sign_records,
             estimate_rows=exact_estimate_rows,
+            maximum_applications=programme.authorized_maximum_applications,
+            maximum_cumulative_movement_codes=(
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
+            phase_checkpoint_required=bool(
+                progressive_checkpoint_contract(programme).get(
+                    "phase_material_application_count_is_acquisition_pass_gate",
+                    True,
+                )
+            ),
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         retained_input_failures.append(f"active-hybrid replay: {exc}")
@@ -2272,6 +2391,7 @@ def analyze(
             if programme.identification_required
             else policy.policy_sha256
         ),
+        allow_superseded_attestation_tool_identity=(supersedes_seal is not None),
     )
     try:
         capsule_exact, capsule_hashes = _capsules_exact(
@@ -2626,12 +2746,27 @@ def analyze(
     except (TypeError, ValueError):
         static_terminal_exact = False
         retained_input_failures.append("terminal static code is malformed")
-    try:
-        pre_setup_command_exact = _pre_setup_commands_exact(
-            markers, supervisor_events, capture_state
-        )
-    except (KeyError, TypeError, ValueError):
-        pre_setup_command_exact = False
+    pre_setup_terminal_claimed = (
+        programme.forwarded_output_integration
+        and programme.terminal_after_first_response
+        and terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and terminal.get("reason")
+        == f"{programme.key}_live_supervisor_fault:live active_fail_static asserted"
+    )
+    if pre_setup_terminal_claimed:
+        try:
+            pre_setup_command_exact = _pre_setup_commands_exact(
+                markers, supervisor_events, capture_state
+            )
+        except (KeyError, TypeError, ValueError):
+            pre_setup_command_exact = False
+    else:
+        # The pre-setup abort grammar is only evidence for that terminal.  A
+        # successful setup has a different command grammar and must not be
+        # judged by a predicate that expressly forbids ACTIVE SETUP.
+        pre_setup_command_exact = True
     pre_setup_wall_origin_exact = _pre_setup_wall_origin_exact(
         manifest_value,
         supervisor_state,
@@ -2685,13 +2820,31 @@ def analyze(
             "not_reached_before_terminal": True,
             "reason": "no setup, application, estimate, or active-hybrid records",
         }
+    legacy_first_response_endpoint_misclassified = (
+        _legacy_first_response_endpoint_misclassified(
+            programme=programme,
+            terminal=terminal,
+            applications=applications,
+            active_hybrid_replay_exact=bool(ahy_replay.get("exact")),
+            transaction_history_exact=transaction_history_exact,
+            capsules_exact=capsule_exact,
+            response_attestations_exact=attestation_exact,
+            supervisor_events=supervisor_events,
+            static_terminal_exact=static_terminal_exact,
+        )
+    )
     engineering_endpoint_complete = (
         programme.terminal_after_first_response
-        and terminal.get("result") == "healthy_stop"
-        and terminal.get("reason")
-        == (
-            f"{programme.key}_first_complete_application_"
-            "consumer_and_response"
+        and (
+            (
+                terminal.get("result") == "healthy_stop"
+                and terminal.get("reason")
+                == (
+                    f"{programme.key}_first_complete_application_"
+                    "consumer_and_response"
+                )
+            )
+            or legacy_first_response_endpoint_misclassified
         )
     )
     endpoint_complete = engineering_endpoint_complete or (
@@ -3064,12 +3217,14 @@ def analyze(
             "legacy_supervisor_terminal_misclassification_corrected": (
                 legacy_checkpoint_terminal_misclassified
                 or legacy_plant_terminal_misclassified
+                or legacy_first_response_endpoint_misclassified
             ),
             "offline_corrected_primary_decision": (
                 primary_decision
                 if (
                     legacy_checkpoint_terminal_misclassified
                     or legacy_plant_terminal_misclassified
+                    or legacy_first_response_endpoint_misclassified
                     or pre_setup_provenance_exact
                 )
                 else None
