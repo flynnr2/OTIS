@@ -31,6 +31,7 @@ PROFILE_BY_STRATUM = {
     "output": "d9_forwarded_output_no_control",
     "monitor": "d9_d6_forwarded_output_no_control",
 }
+READINESS_BRINGUP_MODE = "H1_OCXO_OBSERVE_OPEN_LOOP"
 _REQUIRED_ENABLED_STATUS = {
     "contract_id": CONTRACT_ID,
     "source": "D8_GPIO20_GPIN0",
@@ -342,9 +343,12 @@ def _analyze_stratum(run_dir: Path, contract: Mapping[str, Any], stratum: str) -
     d8_rows = _rows_for_contract(run_dir, manifest, "pps_snapshots_v1", "csv/pps_snapshots.csv")
     monitor_rows = _rows_for_contract(run_dir, manifest, "forwarded_monitor_snapshots_v1", "csv/forwarded_monitor_snapshots.csv")
     output_status, output_history = _latest_status(health_rows, "forwarded_clock_output")
+    build_status, _ = _latest_status(health_rows, "build")
+    if build_status.get("profile_id") != PROFILE_BY_STRATUM[stratum]:
+        errors.append("build status profile_id does not match requested D9/D6 stratum")
     boot_status, _ = _latest_status(health_rows, "boot_capabilities")
-    if boot_status.get("selected_profile") != PROFILE_BY_STRATUM[stratum]:
-        errors.append("boot status selected_profile does not match requested D9/D6 stratum")
+    if boot_status.get("selected_profile") != READINESS_BRINGUP_MODE:
+        errors.append("boot status selected_profile does not match readiness bring-up mode")
 
     first_valid_ticks: int | None = None
     if stratum == "baseline":

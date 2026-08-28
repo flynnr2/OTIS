@@ -170,10 +170,15 @@ def deterministic_wire_transcript(
 
     if stratum not in PROFILE_BY_STRATUM:
         raise ValueError(f"unknown D9/D6 rehearsal stratum: {stratum}")
-    lines: list[str] = [_status(1, "boot_capabilities", "selected_profile", PROFILE_BY_STRATUM[stratum])]
-    sequence = 1
+    lines: list[str] = [
+        _status(1, "build", "profile_id", PROFILE_BY_STRATUM[stratum]),
+        _status(2, "boot_capabilities", "selected_profile", "H1_OCXO_OBSERVE_OPEN_LOOP"),
+    ]
+    sequence = 3
     if stratum == "baseline":
-        lines.append(_status(2, "forwarded_clock_output", "state", "disabled"))
+        lines.append(
+            _status(sequence, "forwarded_clock_output", "state", "disabled")
+        )
         lines.extend(
             _authoritative_snapshot(index, 0xFFFFFFFF - index * 10_000_000)
             for index in range(3)

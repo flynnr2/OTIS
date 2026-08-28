@@ -26,6 +26,8 @@ def test_deterministic_transcript_carries_d9_identity_and_local_d6_faults() -> N
 
     assert "forwarded_clock_output,integer_divider,1" in transcript
     assert "forwarded_clock_output,fractional_divider,0" in transcript
+    assert "build,profile_id,d9_d6_forwarded_output_no_control" in transcript
+    assert "boot_capabilities,selected_profile,H1_OCXO_OBSERVE_OPEN_LOOP" in transcript
     assert "controller,hybrid_authority,false" in transcript
     assert "forwarded_clock_monitor,state,monitor_absent" in transcript
     assert "forwarded_clock_monitor,state,monitor_overflow" in transcript

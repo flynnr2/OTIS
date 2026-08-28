@@ -53,7 +53,21 @@ def _status(profile: str, *, enabled: bool) -> list[list[object]]:
         "readback_valid": "true",
         "first_valid_ticks": "1",
     }
-    rows = [["STS", 1, 1, 0, "rp2040_timer0", "boot_capabilities", "selected_profile", profile, "INFO", 0]]
+    rows = [
+        ["STS", 1, 1, 0, "rp2040_timer0", "build", "profile_id", profile, "INFO", 0],
+        [
+            "STS",
+            1,
+            2,
+            0,
+            "rp2040_timer0",
+            "boot_capabilities",
+            "selected_profile",
+            "H1_OCXO_OBSERVE_OPEN_LOOP",
+            "INFO",
+            0,
+        ],
+    ]
     for sequence, (key, value) in enumerate(values.items(), start=2):
         rows.append(["STS", 1, sequence, sequence, "rp2040_timer0", "forwarded_clock_output", key, value, "INFO", 0])
     return rows
