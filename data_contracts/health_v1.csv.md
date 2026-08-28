@@ -178,6 +178,25 @@ Registry `valid` and `complete` remain separate status keys. An invalid
 registry is a `FatalConflict`; a valid but incomplete registry is
 `RequiredUnavailable`, because an expected dynamic resource did not bind.
 
+## Forwarded-output and D6 monitor status
+
+The compile-time D9 output emits component `forwarded_clock_output` with its
+exact contract ID and semantic SHA-256, selected/configured/readback state,
+source/destination GPIOs and functions, requested and applied AUXSRC/divider,
+inversion, drive strength, slew rate, nominal frequency, first-valid
+`rp2040_timer0` tick, and explicit validity reason. Before physical waveform
+qualification, a successful readback is
+`configured_10mhz_forwarded_unqualified`; it is not a waveform claim.
+
+The optional component `forwarded_clock_monitor` reports configured/running
+state, local session, snapshot/no-snapshot/backlog/RX-stall counters, fault
+flags, and actual PIO state-machine/program allocation. These keys and the
+separate monitor queue depth/high-water/drop counters are diagnostic-only.
+Their values must not enter D14/D8 validity, control eligibility, actuation,
+abort, or a run terminal. Raw D6 snapshots use the independent
+[`forwarded_monitor_snapshots_v1`](forwarded_monitor_snapshots_v1.csv.md)
+contract.
+
 ## Diagnostics relationship
 
 `health_v1` is low-level status evidence. First-class diagnostic findings are

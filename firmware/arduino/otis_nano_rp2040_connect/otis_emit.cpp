@@ -73,6 +73,9 @@ void otis_emit_csv_headers(void) {
       "record_type,schema_version,session,snapshot_sequence,cumulative_down_counter,reference_sequence,reference_timestamp_ticks,status,backend");
   otis_emit_line_end();
   otis_transport_write_cstr(
+      "record_type,schema_version,session,snapshot_sequence,cumulative_down_counter,reference_sequence,reference_timestamp_ticks,status,backend,channel_id");
+  otis_emit_line_end();
+  otis_transport_write_cstr(
       "record_type,schema_version,truth_seq,generator_session,profile_id,profile_version,generator_sequence,event,intended_class,scheduled_offset_us,scheduled_interval_us,pulse_width_us,flags");
   otis_emit_line_end();
 }
@@ -133,6 +136,36 @@ void otis_emit_pps_snapshot(uint32_t session, uint32_t snapshot_sequence,
   otis_transport_write_uint32(status);
   otis_emit_comma();
   otis_emit_csv_text(backend);
+  otis_emit_line_end();
+  otis_transport_flush_if_needed();
+}
+
+void otis_emit_forwarded_monitor_snapshot(
+    uint32_t session, uint32_t reference_session, uint32_t snapshot_sequence,
+    uint32_t cumulative_down_counter, uint32_t reference_sequence,
+    uint64_t reference_timestamp_ticks, uint32_t status, const char *backend,
+    uint32_t channel_id) {
+  otis_emit_csv_text(OTIS_RECORD_MNS);
+  otis_emit_comma();
+  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_emit_comma();
+  otis_transport_write_uint32(session);
+  otis_emit_comma();
+  otis_transport_write_uint32(reference_session);
+  otis_emit_comma();
+  otis_transport_write_uint32(snapshot_sequence);
+  otis_emit_comma();
+  otis_transport_write_uint32(cumulative_down_counter);
+  otis_emit_comma();
+  otis_transport_write_uint32(reference_sequence);
+  otis_emit_comma();
+  otis_print_uint64(reference_timestamp_ticks);
+  otis_emit_comma();
+  otis_transport_write_uint32(status);
+  otis_emit_comma();
+  otis_emit_csv_text(backend);
+  otis_emit_comma();
+  otis_transport_write_uint32(channel_id);
   otis_emit_line_end();
   otis_transport_flush_if_needed();
 }

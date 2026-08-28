@@ -12,6 +12,10 @@ RAW_SERIAL_LOG = "serial.log"
 RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
+# This is deliberately distinct from the D8 PIO/DMA snapshot evidence above.
+# It carries only the D6 observation of the forwarded D9 output and is never a
+# substitute for authoritative D14/D8 capture evidence.
+FORWARDED_MONITOR_SNAPSHOTS_CSV = "forwarded_monitor_snapshots.csv"
 ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
@@ -67,6 +71,10 @@ class RunPaths:
         return self.csv_dir / PPS_SNAPSHOTS_CSV
 
     @property
+    def forwarded_monitor_snapshots_csv(self) -> Path:
+        return self.csv_dir / FORWARDED_MONITOR_SNAPSHOTS_CSV
+
+    @property
     def association_loss_decisions_csv(self) -> Path:
         return self.csv_dir / ASSOCIATION_LOSS_DECISIONS_CSV
 
@@ -120,6 +128,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
+        {
+            "path": f"{CSV_DIR}/{FORWARDED_MONITOR_SNAPSHOTS_CSV}",
+            "contract": "forwarded_monitor_snapshots_v1",
+            "optional": True,
+        },
         {
             "path": f"{CSV_DIR}/{ASSOCIATION_LOSS_DECISIONS_CSV}",
             "contract": "association_loss_decisions_v1",

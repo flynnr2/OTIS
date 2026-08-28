@@ -178,6 +178,10 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "otis_gnss_baud_envelope_characterization_v1",
         "otis_gnss_baud_envelope_characterization_continuation_v1",
         "otis_gnss_baud_envelope_characterization_resume_v1",
+        "d9_disabled_no_control_baseline",
+        "d9_forwarded_output_no_control",
+        "d9_d6_forwarded_output_no_control",
+        "d9_d6_frequency_only_lower",
     ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"

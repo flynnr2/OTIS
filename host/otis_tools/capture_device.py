@@ -303,11 +303,23 @@ def _create_manifest_if_missing(
         "channels": [
             {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},
             {"channel_id": 2, "role": "pps_gated_oscillator_count", "record_family": "count_observations_v1"},
+            {
+                "channel_id": 3,
+                "role": "diagnostic_forwarded_d9_clock_monitor",
+                "record_family": "forwarded_monitor_snapshots_v1",
+                "capture_domain": "rp2040_timer0",
+                "reference_channel_id": 1,
+                "reference_event": "d14_accepted_pps_boundary",
+                "authority": "diagnostic_only",
+                "control_authority": False,
+                "terminal_authority": False,
+            },
         ],
         "contracts": {
             "raw_events_v1": 1,
             "count_observations_v1": 1,
             "pps_snapshots_v1": 1,
+            "forwarded_monitor_snapshots_v1": 1,
             "association_loss_decisions_v1": 1,
             "health_v1": 1,
             "dac_steps_v1": 1,

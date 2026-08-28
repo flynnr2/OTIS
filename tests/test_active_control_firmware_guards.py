@@ -664,6 +664,11 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
         "otis_sustained_hybrid_regulation_v1",
+        # This is the retained CX319 lower-leg frequency-only controller with
+        # D9 forwarding/D6 monitoring.  It is the sole D9 profile permitted
+        # to compile bounded active control; the three readiness strata stay
+        # non-actuating.
+        "d9_d6_frequency_only_lower",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":

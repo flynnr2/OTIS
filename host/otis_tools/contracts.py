@@ -49,6 +49,24 @@ PPS_SNAPSHOT_FIELDS = [
     "backend",
 ]
 
+# D6 is a locally wired observation of the forwarded D9 output.  It is
+# intentionally a separate raw contract from the authoritative D8 SNP stream:
+# monitor loss, noise, or absence must never be reinterpreted as a D14/D8
+# capture, validity, steering, or terminal condition.
+FORWARDED_MONITOR_SNAPSHOT_FIELDS = [
+    "record_type",
+    "schema_version",
+    "session",
+    "reference_session",
+    "snapshot_sequence",
+    "cumulative_down_counter",
+    "reference_sequence",
+    "reference_timestamp_ticks",
+    "status",
+    "backend",
+    "channel_id",
+]
+
 ASSOCIATION_LOSS_DECISION_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -541,6 +559,7 @@ CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
+    "forwarded_monitor_snapshots_v1": FORWARDED_MONITOR_SNAPSHOT_FIELDS,
     "association_loss_decisions_v1": ASSOCIATION_LOSS_DECISION_V1_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
@@ -565,6 +584,7 @@ CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
     "pps_snapshots_v1": {"SNP"},
+    "forwarded_monitor_snapshots_v1": {"MNS"},
     "association_loss_decisions_v1": {"ASL"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
@@ -587,6 +607,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "raw_events_v1": 1,
     "count_observations_v1": 1,
     "pps_snapshots_v1": 1,
+    "forwarded_monitor_snapshots_v1": 1,
     "association_loss_decisions_v1": 1,
     "health_v1": 1,
     "dac_steps_v1": 1,
@@ -609,6 +630,7 @@ SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
     "pps_snapshots_v1": "snapshot_sequence",
+    "forwarded_monitor_snapshots_v1": "snapshot_sequence",
     "association_loss_decisions_v1": "decision_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
@@ -631,6 +653,7 @@ TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "pps_snapshots_v1": ("reference_timestamp_ticks",),
+    "forwarded_monitor_snapshots_v1": ("reference_timestamp_ticks",),
     "association_loss_decisions_v1": ("decision_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
@@ -652,12 +675,14 @@ TIMESTAMP_FIELDS = {
 CHANNEL_FIELDS = {
     "raw_events_v1": "channel_id",
     "count_observations_v1": "channel_id",
+    "forwarded_monitor_snapshots_v1": "channel_id",
 }
 
 DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
     "pps_snapshots_v1": (),
+    "forwarded_monitor_snapshots_v1": (),
     "association_loss_decisions_v1": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
@@ -678,6 +703,7 @@ DOMAIN_FIELDS = {
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
     "pps_snapshots_v1": "rp2040_timer0",
+    "forwarded_monitor_snapshots_v1": "rp2040_timer0",
     "association_loss_decisions_v1": "rp2040_timer0",
     "dac_steps_v1": "host_elapsed_ms",
     "plant_sign_qualification_v1": "rp2040_timer0_extended",
@@ -685,6 +711,7 @@ CONTRACT_IMPLICIT_TIME_DOMAINS = {
 
 SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
+    "forwarded_monitor_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
     "active_hybrid_decisions_v1": "capture_session",
     "plant_sign_qualification_v1": "capture_session",
@@ -938,6 +965,7 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     # reconstruction layer validates adjacency using both session and ordinal.
     if contract in {
         "pps_snapshots_v1",
+        "forwarded_monitor_snapshots_v1",
         "relative_phase_observations_v1",
         "phase_estimator_outputs_v1",
     }:
@@ -1078,6 +1106,28 @@ def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str])
             )
     if not row.get("backend"):
         errors.append(f"row {row_number}: backend must not be empty")
+
+
+def _check_forwarded_monitor_snapshot(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_pps_snapshot(row, row_number, errors)
+    if row.get("backend") != "pio_wait_cumulative_snapshot_cpu_v1":
+        errors.append(
+            f"row {row_number}: forwarded monitor backend must be "
+            "pio_wait_cumulative_snapshot_cpu_v1"
+        )
+    _parse_non_negative_int(
+        row.get("reference_session", ""), "reference_session", row_number, errors
+    )
+    channel_id = _parse_non_negative_int(
+        row.get("channel_id", ""), "channel_id", row_number, errors
+    )
+    if channel_id is not None and channel_id != 3:
+        errors.append(
+            f"row {row_number}: forwarded monitor channel_id must be 3 (D6); "
+            f"got {channel_id}"
+        )
 
 
 def _check_association_loss_decision_v1(
@@ -2581,6 +2631,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_count_observation(row, row_count, errors)
             if context.contract == "pps_snapshots_v1":
                 _check_pps_snapshot(row, row_count, errors)
+            if context.contract == "forwarded_monitor_snapshots_v1":
+                _check_forwarded_monitor_snapshot(row, row_count, errors)
             if context.contract == "association_loss_decisions_v1":
                 _check_association_loss_decision_v1(row, row_count, errors)
             if context.contract == "health_v1":

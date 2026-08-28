@@ -34,6 +34,11 @@ Contains the GNSS PPS or other external reference, the CX317-controlled VCOCXO o
 other plant oscillator, DAC and analogue steering path, buffers/dividers, and
 external event inputs.
 
+The optional D8/GPIN0 to D9/GPOUT0 path is a delivered forwarded output, not a
+new reference or measurement authority. The optional D6 loopback is a
+zero-authority diagnostic observation of that output. Both remain distinct
+from canonical D14/D8 capture and control truth.
+
 The RP2040 system oscillator is an implementation clock. It runs the instrument
 and provides capture coordinates, but it is not automatically metrological truth.
 

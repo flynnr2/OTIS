@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/d9_d6_candidate_bundle_v1.schema.json",
+  "title": "OTIS D9/D6 Prompt 01 immutable non-effective candidate bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_type", "tool", "bundle_id", "effective", "physical_authority", "terminal", "source_state", "dependencies", "contract", "firmware_profiles", "host_tools", "bench_topology", "serial", "scope", "commands", "stop_conditions", "evidence_destinations", "verification", "rehearsal", "finalization", "authority"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "bundle_type": {"const": "otis_d9_d6_candidate_bundle_v1"},
+    "tool": {"const": "otis_d9_d6_candidate_bundle_v1"},
+    "bundle_id": {"$ref": "#/$defs/sha256"},
+    "effective": {"const": false},
+    "physical_authority": {"const": false},
+    "terminal": {"const": "d9_d6_candidate_bundle_ready_for_physical_authority"},
+    "source_state": {"type": "object"},
+    "dependencies": {"type": "object"},
+    "contract": {"type": "object", "additionalProperties": false, "required": ["d9_d6_readiness", "readiness_contract"], "properties": {"d9_d6_readiness": {"type": "object", "additionalProperties": false, "required": ["contract_id", "contract_semantic_sha256", "profile", "physical_authority"], "properties": {"contract_id": {"const": "OTIS_D9_D6_READINESS_CONTRACT_V1"}, "contract_semantic_sha256": {"const": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d"}, "profile": {"const": "d9_d6_forwarded_output_no_control"}, "physical_authority": {"const": false}}}, "readiness_contract": {"$ref": "#/$defs/binding"}}},
+    "firmware_profiles": {"type": "array", "minItems": 3, "items": {"type": "object"}},
+    "host_tools": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/binding"}},
+    "bench_topology": {"type": "object"},
+    "serial": {"type": "object"},
+    "scope": {"type": "object"},
+    "commands": {"type": "object"},
+    "stop_conditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "evidence_destinations": {"type": "object", "minProperties": 1},
+    "verification": {"type": "object"},
+    "rehearsal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hardware_operations", "input_bundle", "input_id", "report"],
+      "properties": {
+        "status": {"const": "passed"},
+        "hardware_operations": {"const": false},
+        "input_bundle": {"$ref": "#/$defs/binding"},
+        "input_id": {"$ref": "#/$defs/sha256"},
+        "report": {"$ref": "#/$defs/binding"}
+      }
+    },
+    "finalization": {"type": "object"},
+    "authority": {"type": "object"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "binding": {"type": "object", "additionalProperties": false, "required": ["path", "size_bytes", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "size_bytes": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}}
+  }
+}

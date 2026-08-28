@@ -41,6 +41,12 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "cx320_active_hybrid",
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
+        # Current non-actuating forwarded-output readiness packages.  These
+        # profiles have no DAC/FLL/hybrid authority and are admitted solely so
+        # their capture/analyzer/seal evidence can use the current lifecycle.
+        "d9_disabled_no_control_baseline",
+        "d9_forwarded_output_no_control",
+        "d9_d6_forwarded_output_no_control",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (

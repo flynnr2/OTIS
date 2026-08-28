@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_D9_D6_READINESS_CONTRACT_V1",
+  "contract_status": "frozen_readiness_pre_candidate_bundle",
+  "contract_semantic_sha256": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d",
+  "signal": {
+    "identity": "conditioned_cx317_vcocxo",
+    "nominal_frequency_hz": 10000000,
+    "authoritative_observation_gpio": "D8/GPIO20"
+  },
+  "d9_output": {
+    "source": "GPIO20/CLOCK_GPIN0/clksrc_gpin0",
+    "destination": "D9/GPIO21/CLOCK_GPOUT0",
+    "divider": {"integer": 1, "fractional": 0},
+    "inversion": false,
+    "electrical_envelope": {
+      "drive_strength": "2mA",
+      "slew_rate": "slow",
+      "load": "high_impedance_only_until_explicitly_requalified",
+      "instrument_input": "no_50_ohm_termination"
+    },
+    "states": [
+      "disabled",
+      "invalid_or_transitioning",
+      "configured_10mhz_forwarded_unqualified",
+      "qualified_10mhz_forwarded"
+    ],
+    "current_contract_state": "disabled",
+    "validity_boundary": "configuration_and_exact_readback_must_precede_any_non_disabled_state"
+  },
+  "d6_monitor": {
+    "purpose": "zero_authority_diagnostic_monitor",
+    "gpio": "D6/GPIO18",
+    "wiring": {
+      "path": "D9_to_D6",
+      "series_resistance_ohms": 1000,
+      "evidence_status": "operator_reported_not_electrically_qualified"
+    },
+    "states": [
+      "disabled",
+      "monitoring_unqualified",
+      "count_consistent_diagnostic_only",
+      "monitor_invalid_or_unavailable"
+    ],
+    "current_contract_state": "disabled",
+    "count_semantics": {
+      "reference": "accepted_D14_gated_cumulative_snapshot_intervals_only",
+      "snapshot_contract": "forwarded_monitor_snapshots_v1",
+      "identity_boundary": "monitor_session_and_reference_session_and_adjacent_monitor_and_reference_sequences",
+      "expected_d8_to_d6_ratio": "1:1",
+      "maximum_absolute_interval_count_difference_cycles": 2,
+      "absence_interpretation": "diagnostic_unavailable_not_clean_D9_result"
+    },
+    "authority": "must_not_affect_D14_D8_validity_estimation_control_abort_or_terminal"
+  },
+  "serial": {
+    "firmware_host_target_baud": 115200,
+    "device_selection": "capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*",
+    "receiver_service": "disabled_in_readiness_strata_no_receiver_command"
+  },
+  "physical_state": {
+    "bench_authority": false,
+    "post_power_cycle_identity": "unknown_until_observed",
+    "d9_claim_state": "unmeasured_pre_physical_qualification"
+  },
+  "metrics": {
+    "configuration": "exact_source_destination_divider_and_readback_identity_required",
+    "d6_diagnostic": "D14_gated_D8_D6_count_ratio_and_continuity_reported_separately",
+    "waveform": "external_instrument_required_before_qualified_10mhz_forwarded",
+    "soak": "prohibited_until_waveform_frequency_gate_passes"
+  },
+  "stop_conditions": [
+    "unknown_or_contradictory_source_destination_divider_or_readback_identity",
+    "D14_or_D8_authoritative_capture_degradation",
+    "D6_monitor_backpressures_or_changes_D14_D8_or_control_behavior",
+    "D9_waveform_or_frequency_claim_attempted_without_external_instrument_evidence",
+    "any_attempt_to_use_D6_or_D9_for_control_authority"
+  ],
+  "authority": {
+    "d9_has_control_authority": false,
+    "d6_has_control_authority": false,
+    "may_write_dac": false,
+    "may_arm_fll": false,
+    "may_arm_hybrid": false
+  },
+  "loss_segment_procedure": {
+    "status": "deferred_no_conflict_free_operator_procedure_frozen",
+    "physical_execution_permitted": false,
+    "required_behavior_if_later_frozen": "control_disarmed_last_confirmed_code_preserved_and_fresh_causal_requalification_required"
+  },
+  "identity_placeholders": {
+    "source_revision": "unbound_pre_candidate_bundle",
+    "firmware_profile": "d9_d6_forwarded_output_no_control",
+    "firmware_binary": "unbound_pre_candidate_bundle",
+    "host_tool_bundle": "unbound_pre_candidate_bundle",
+    "instrument": "external_waveform_frequency_instrument_required_unbound",
+    "evidence_destination": "unbound_pre_candidate_bundle"
+  },
+  "claims_not_made": [
+    "no_D9_voltage_amplitude_claim",
+    "no_50_ohm_load_compatibility_claim",
+    "no_absolute_frequency_accuracy_claim",
+    "no_UTC_claim",
+    "no_jitter_claim",
+    "no_phase_noise_claim",
+    "no_phase_alignment_claim",
+    "no_physical_D8_to_D9_propagation_claim",
+    "no_D6_result_is_a_D9_waveform_claim",
+    "no_sustained_soak_claim"
+  ]
+}

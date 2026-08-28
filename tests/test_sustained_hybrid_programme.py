@@ -117,6 +117,7 @@ def test_full_multi_transaction_sequence_reaches_first_recovery_consumer() -> No
     )
 
 
+@pytest.mark.historical
 def test_synthetic_sensitivity_is_characterization_not_an_entry_failure(
     tmp_path: Path,
 ) -> None:

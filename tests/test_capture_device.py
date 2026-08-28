@@ -29,6 +29,7 @@ from host.otis_tools.capture_device import (
     SEGMENT_PROTOCOL_ID,
 )
 from host.otis_tools.capture_segment_rotation import prepare_transition
+from host.otis_tools.evidence import create_evidence_snapshot
 from host.otis_tools.run_paths import RunPaths, default_csv_files, ensure_run_layout
 from host.otis_tools.serial_commands import (
     CommandFifo,
@@ -202,6 +203,8 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
         [
             b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n",
             b"CNT,1,7,2,1,16000001,rp2040_timer0,16,R,h0_tcxo_16mhz,0\n",
+            b"SNP,1,7,0,4294967295,1,16000000,0,pio_wait_cumulative_snapshot_dma_v1\n",
+            b"MNS,1,7,3,0,4294967295,1,16000000,0,pio_wait_cumulative_snapshot_cpu_v1,3\n",
             b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n",
             b"ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0\n",
             b"PGT,1,1,1,CLEAN_NOMINAL,1,0,start,marker,0,0,0,0\n",
@@ -219,6 +222,18 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     assert "CNT,1,7,2,1,16000001,rp2040_timer0,16,R,h0_tcxo_16mhz,0" in paths.count_observations_csv.read_text(
         encoding="utf-8"
     )
+    assert "SNP,1,7,0,4294967295,1,16000000" in paths.pps_snapshots_csv.read_text(
+        encoding="utf-8"
+    )
+    assert "MNS,1,7,3,0,4294967295,1,16000000" not in paths.pps_snapshots_csv.read_text(
+        encoding="utf-8"
+    )
+    assert "MNS,1,7,3,0,4294967295,1,16000000" in paths.forwarded_monitor_snapshots_csv.read_text(
+        encoding="utf-8"
+    )
+    assert "SNP,1,7,0,4294967295,1,16000000" not in paths.forwarded_monitor_snapshots_csv.read_text(
+        encoding="utf-8"
+    )
     assert "STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768" in paths.health_csv.read_text(encoding="utf-8")
     assert "ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0" in paths.environment_csv.read_text(
         encoding="utf-8"
@@ -226,6 +241,66 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     assert "PGT,1,1,1,CLEAN_NOMINAL" in paths.pseudo_pps_truth_csv.read_text(
         encoding="utf-8"
     )
+
+
+def test_capture_device_declares_and_retains_d6_monitor_evidence(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    config = _config(tmp_path)
+    serial = FakeSerial(
+        [
+            b"MNS,1,7,3,0,4294967295,1,16000000,0,pio_wait_cumulative_snapshot_cpu_v1,3\n",
+        ],
+        stop_event=stop_event,
+    )
+    runner = CaptureDeviceRunner(
+        config,
+        serial_factory=lambda *_args, **_kwargs: serial,
+        stop_event=stop_event,
+    )
+
+    assert runner.run() == 0
+
+    paths = RunPaths(config.run_dir)
+    manifest = json.loads(paths.manifest.read_text(encoding="utf-8"))
+    monitor_file = {
+        "path": "csv/forwarded_monitor_snapshots.csv",
+        "contract": "forwarded_monitor_snapshots_v1",
+        "optional": True,
+    }
+    assert monitor_file in manifest["files"]
+    d6 = next(item for item in manifest["channels"] if item["channel_id"] == 3)
+    assert d6 == {
+        "channel_id": 3,
+        "role": "diagnostic_forwarded_d9_clock_monitor",
+        "record_family": "forwarded_monitor_snapshots_v1",
+        "capture_domain": "rp2040_timer0",
+        "reference_channel_id": 1,
+        "reference_event": "d14_accepted_pps_boundary",
+        "authority": "diagnostic_only",
+        "control_authority": False,
+        "terminal_authority": False,
+    }
+    assert paths.forwarded_monitor_snapshots_csv.is_file()
+
+    # The generic evidence finalizer obtains its scope from manifest files, so
+    # an emitted D6 record is retained with the regular run package without
+    # becoming a required authority-bearing artifact.
+    (config.run_dir / "COMPLETE").touch()
+    (config.run_dir / "selected_profile.yaml").write_text(
+        "profile_id: cx319_tight_lower\n", encoding="utf-8"
+    )
+    snapshot_path = create_evidence_snapshot(config.run_dir)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    artifacts = {item["path"]: item for item in snapshot["artifacts"]}
+    assert artifacts["csv/forwarded_monitor_snapshots.csv"] == {
+        "path": "csv/forwarded_monitor_snapshots.csv",
+        "role": "declared_artifact",
+        "contract": "forwarded_monitor_snapshots_v1",
+        "size_bytes": paths.forwarded_monitor_snapshots_csv.stat().st_size,
+        "sha256": sha256(paths.forwarded_monitor_snapshots_csv.read_bytes()).hexdigest(),
+    }
 
 
 def test_capture_device_reconnect_drops_partial_without_truncating(tmp_path: Path) -> None:

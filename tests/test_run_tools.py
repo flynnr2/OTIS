@@ -68,6 +68,23 @@ def test_mapping_informed_part_b_profiles_are_current_evidence_packages(
     assert load_manifest(run_dir).data == value
 
 
+@pytest.mark.parametrize(
+    "profile_id",
+    (
+        "d9_disabled_no_control_baseline",
+        "d9_forwarded_output_no_control",
+        "d9_d6_forwarded_output_no_control",
+    ),
+)
+def test_non_actuating_d9_d6_readiness_profiles_are_current_evidence_packages(
+    tmp_path: Path, profile_id: str
+) -> None:
+    run_dir = tmp_path / profile_id
+    value = _write_manifest(run_dir, cx319={"profile_id": profile_id})
+
+    assert load_manifest(run_dir).data == value
+
+
 def test_current_floor_requires_supported_cx319_profile_identity(
     tmp_path: Path,
 ) -> None:

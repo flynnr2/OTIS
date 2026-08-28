@@ -68,6 +68,7 @@ contextualize, or derive from those facts.
 | `EVENT_CAPTURE`    | observation    | External/user timing event captured by the timing fabric |
 | `REF_CAPTURE`      | observation    | Reference event captured by the timing fabric            |
 | `COUNT_OBSERVATION` | observation   | Gated/windowed count of a high-rate source               |
+| `FORWARDED_MONITOR_SNAPSHOT` | diagnostic | Raw zero-authority D6 cumulative snapshot         |
 | `DISCIPLINE_STATE` | state          | Discipline loop state and estimator status                 |
 | `DIAGNOSTIC_EVENT` | diagnostic     | Health, quality, confidence, reason, and control effect    |
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
@@ -162,6 +163,19 @@ Those are host-derived, profile, reporting, or control-readiness questions.
 
 The compact CSV representation in `count_observations_v1.csv` uses `CNT` as the
 wire tag for `COUNT_OBSERVATION`.
+
+### `FORWARDED_MONITOR_SNAPSHOT`
+
+`FORWARDED_MONITOR_SNAPSHOT` is a raw observation of the optional D6 loopback
+sidecar, encoded as `MNS` in `forwarded_monitor_snapshots_v1.csv`. It preserves
+the monitor session, D14/D8 reference session and boundary identity, cumulative
+down-counter value, local status, backend, and channel 3. It may corroborate a
+declared D8:D6 edge-count relationship but has zero timing or control authority.
+
+An `MNS` record is never a D14 reference, never substitutes for D8, and cannot
+qualify a D9 waveform. Missing, stale, corrupt, discontinuous, or overflowing
+monitor evidence remains D6-local unless the implementation demonstrably
+compromises the separate D14/D8 path.
 
 ---
 

@@ -28,6 +28,7 @@ enum class BootPhase : uint8_t {
   PreviewInit = 13,
   CapabilityAudit = 14,
   ForwardedOutputInit = 15,
+  ForwardedMonitorInit = 16,
 };
 
 enum class BootFatal : uint8_t {

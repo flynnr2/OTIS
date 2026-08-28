@@ -45,6 +45,7 @@ def _copy_required_source(tmp_path: Path) -> Path:
     return target
 
 
+@pytest.mark.historical
 def test_prefix_validator_replays_exact_original_gates_with_source_tags() -> None:
     result = bundle._validate_historical_continuation_source(_contract())
 
@@ -91,6 +92,7 @@ def test_prefix_validator_rejects_changed_original_identity(field: str) -> None:
         bundle._validate_historical_continuation_source(contract)
 
 
+@pytest.mark.historical
 def test_prefix_validator_rejects_changed_s06_event_29(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

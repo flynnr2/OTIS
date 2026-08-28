@@ -6,6 +6,14 @@
 
 #include "otis_build_profile_config.h"
 
+// Exact non-actuating programme role used to keep the D9-disabled,
+// D9-enabled/D6-disabled and D9-enabled/D6-enabled strata on the same
+// dual-core D14/D8 service topology. It grants no receiver, DAC, estimator or
+// control authority by itself.
+#ifndef OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#define OTIS_ENABLE_D9_D6_READINESS_PROFILE 0
+#endif
+
 // The only initial forwarded-output topology is D8/GPIO20/GPIN0 through
 // GPOUT0 to D9/GPIO21 at an integer divide of one.  These are compile-time
 // selectors: neither the source, destination nor divider has a command path.
@@ -25,6 +33,10 @@
 #endif
 #if OTIS_ENABLE_FORWARDED_D6_MONITOR && !OTIS_ENABLE_FORWARDED_D9_OUTPUT
 #error "The D6 diagnostic monitor requires the exact compile-time D9 output."
+#endif
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE != 0 && \
+    OTIS_ENABLE_D9_D6_READINESS_PROFILE != 1
+#error "OTIS_ENABLE_D9_D6_READINESS_PROFILE must be 0 or 1."
 #endif
 
 #ifndef OTIS_MINIMUM_FREE_STACK_BYTES
@@ -411,6 +423,10 @@
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_ACTIVE_I_ONLY_V1"
 #elif OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
+#elif OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#define OTIS_FIRMWARE_VERSION "OTIS_D9_D6_READINESS_V1"
+#elif OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#define OTIS_FIRMWARE_VERSION "OTIS_D9_FORWARDED_OUTPUT_V1"
 #elif OTIS_ENABLE_DUAL_CORE_PARTITION
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1"
 #elif OTIS_ENABLE_CX317_I_ONLY_PREVIEW
@@ -1193,8 +1209,22 @@
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW && \
     !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
-    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !OTIS_ENABLE_FORWARDED_D6_MONITOR && \
+    !OTIS_ENABLE_D9_D6_READINESS_PROFILE
 #error "The dual-core partition requires an explicit protected timing preview."
+#endif
+
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE && \
+    (!OTIS_ENABLE_DUAL_CORE_PARTITION || OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     OTIS_ENABLE_GNSS_RECEIVER || OTIS_ENABLE_DAC_AD5693R || \
+     OTIS_ENABLE_ENV_SENSORS || OTIS_ENABLE_CX317_I_ONLY_PREVIEW || \
+     OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW)
+#error "The D9/D6 readiness profile is exact dual-core D14/D8 observation with receiver, DAC, estimator and control authority disabled."
+#endif
+
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR && !OTIS_ENABLE_DUAL_CORE_PARTITION
+#error "The D6 diagnostic monitor requires the isolated dual-core partition."
 #endif
 
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW && !OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -1774,6 +1804,21 @@
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #if OTIS_ENABLE_DUAL_CORE_PARTITION != OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #error "Effective OTIS_ENABLE_DUAL_CORE_PARTITION differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE != OTIS_BUILD_EXPECTED_OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#error "Effective OTIS_ENABLE_D9_D6_READINESS_PROFILE differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT != OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#error "Effective OTIS_ENABLE_FORWARDED_D9_OUTPUT differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D6_MONITOR
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR != OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D6_MONITOR
+#error "Effective OTIS_ENABLE_FORWARDED_D6_MONITOR differs from the generated profile."
 #endif
 #endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_BOUNDED_ACTIVE

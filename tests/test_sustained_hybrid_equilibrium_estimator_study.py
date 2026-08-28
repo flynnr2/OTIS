@@ -176,6 +176,7 @@ def test_terminal_selection_precedence_and_tie_rule() -> None:
     assert terminal == study.OBSERVABLE_TERMINAL
 
 
+@pytest.mark.historical
 def test_exact_baseline_reproduction_and_stage0_terminal(
     contract: dict,
     published_report: dict,

@@ -327,6 +327,7 @@ def test_gain_sensitivity_is_visible_after_counterfactual_divergence() -> None:
     assert len({item.modeled_relative_phase_cycles for item in outputs}) == 3
 
 
+@pytest.mark.historical
 def test_sealed_stage7b_frequency_only_forced_zero_replays_shadow_codes_exactly() -> None:
     run = Path(
         "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/"
@@ -397,6 +398,7 @@ def test_repeated_preview_is_deterministic() -> None:
     assert [asdict(item) for item in first] == [asdict(item) for item in second]
 
 
+@pytest.mark.historical
 def test_selected_profile_is_schema_valid_bound_nonactionable_and_stage4_only() -> None:
     profile_path = Path("profiles/discipline/cx318_hybrid_preview_selected_v1.json")
     schema_path = Path("schemas/cx318_hybrid_preview_selected_v1.schema.json")

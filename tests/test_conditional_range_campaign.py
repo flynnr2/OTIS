@@ -112,6 +112,7 @@ def test_campaign_is_a_focused_zero_authority_conditional_sequence() -> None:
     ]
 
 
+@pytest.mark.historical
 def test_mapping_informed_part_b_rebinds_without_rewriting_v3_promotion() -> None:
     programme = _validated_programme()
     readiness_path = Path(

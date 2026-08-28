@@ -163,6 +163,24 @@ struct OtisObservationMessage {
   OtisCountObservationMessage count;
 };
 
+// D6 forwarded-output evidence has a separate lossy queue. It cannot consume
+// the authoritative observation queue or make its exhaustion fail D14/D8.
+enum class OtisMonitorObservationKind : uint8_t {
+  Snapshot,
+};
+
+struct OtisMonitorObservationMessage {
+  OtisMonitorObservationKind kind;
+  uint32_t session;
+  uint32_t reference_session;
+  uint32_t sequence;
+  uint32_t cumulative_down_counter;
+  uint32_t reference_sequence;
+  uint64_t reference_timestamp_ticks;
+  uint32_t status;
+  uint8_t channel_id;
+};
+
 enum class OtisCriticalMessageKind : uint8_t {
   ActuatorRequest,
   ActuatorAccepted,

@@ -29,11 +29,13 @@
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
 #include "otis_forwarded_clock_output.h"
+#include "otis_forwarded_clock_monitor.h"
 #include "otis_gnss_receiver.h"
 #include "otis_memory_budget.h"
 #include "otis_modes.h"
 #include "otis_observe_only_discipline_live.h"
 #include "otis_pps_count_boundary_ring.h"
+#include "otis_pps_count_boundary.h"
 #include "otis_pps_snapshot_backend.h"
 #include "otis_pseudo_pps.h"
 #include "otis_protocol.h"
@@ -470,6 +472,12 @@ void configure_selected_capabilities(void) {
                               OtisBootCapabilityRequirement::Required);
 #endif
 
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::ForwardedMonitor,
+                              OtisBootCapabilityRequirement::Optional);
+#endif
+
 #if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
   otis_boot_capability_select(&boot_capabilities,
                               OtisBootCapability::PseudoPpsGenerator,
@@ -707,6 +715,60 @@ void publish_dual_core_timing_status_u32(const char *component,
                                          const char *severity,
                                          uint32_t flags);
 
+void publish_forwarded_clock_monitor_status(void) {
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR
+  OtisForwardedClockMonitorStats monitor = {};
+  otis_forwarded_clock_monitor_get_stats(&monitor);
+  const char *severity = monitor.fault_latched ? OTIS_SEVERITY_WARN
+                                               : OTIS_SEVERITY_INFO;
+  const uint32_t flags = monitor.fault_latched
+                             ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                             : OTIS_FLAG_NONE;
+  publish_dual_core_timing_status(
+      "forwarded_clock_monitor", "state",
+      monitor.fault_latched
+          ? "monitor_invalid_or_unavailable"
+          : (monitor.running ? "monitoring_unqualified" : "disabled"),
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "configured", monitor.configured,
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "running", monitor.running, severity,
+      flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "session", monitor.session, severity,
+      flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "reference_service_count",
+      monitor.reference_service_count, severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "snapshot_count", monitor.snapshot_count,
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "no_snapshot_count",
+      monitor.no_snapshot_count, severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "fifo_backlog_count",
+      monitor.fifo_backlog_count, severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "pio_rxstall_count",
+      monitor.pio_rxstall_count, severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "fault_flags", monitor.fault_flags,
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "state_machine", monitor.state_machine,
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "program_offset", monitor.program_offset,
+      severity, flags);
+  publish_dual_core_timing_status_u32(
+      "forwarded_clock_monitor", "program_length", monitor.program_length,
+      severity, flags);
+#endif
+}
+
 void publish_dual_core_diagnostic_snapshot(OtisRunControlKind kind,
                                            uint32_t query_sequence,
                                            uint32_t query_nonce) {
@@ -730,6 +792,7 @@ void publish_dual_core_diagnostic_snapshot(OtisRunControlKind kind,
         OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     otis_count_observation_emit_configuration_status(
         &dual_core_timing_status_context);
+    publish_forwarded_clock_monitor_status();
   } else {
     publish_dual_core_timing_status(
         "timing_diagnostic_snapshot", "query_kind", "runtime",
@@ -849,6 +912,7 @@ void publish_dual_core_timing_health(uint32_t now_ms) {
 
   otis_count_observation_emit_status(&runtime_state,
                                      &dual_core_timing_status_context);
+  publish_forwarded_clock_monitor_status();
 
   OtisCaptureIrqReferenceStats d14;
   otis_capture_irq_get_reference_stats(&d14);
@@ -1533,6 +1597,21 @@ void service_dual_core_outputs(void) {
     }
   }
 
+  OtisMonitorObservationMessage monitor_observation;
+  uint8_t monitor_budget = 8u;
+  while (monitor_budget-- > 0u &&
+         otis_dual_core_take_monitor_observation(&monitor_observation)) {
+    otis_emit_forwarded_monitor_snapshot(
+        monitor_observation.session, monitor_observation.reference_session,
+        monitor_observation.sequence,
+        monitor_observation.cumulative_down_counter,
+        monitor_observation.reference_sequence,
+        monitor_observation.reference_timestamp_ticks,
+        monitor_observation.status,
+        "pio_wait_cumulative_snapshot_cpu_v1",
+        monitor_observation.channel_id);
+  }
+
   OtisCriticalRecordMessage critical;
   uint8_t critical_budget = 8u;
   while (critical_budget-- > 0u &&
@@ -1572,6 +1651,32 @@ void service_dual_core_outputs(void) {
     }
 #endif
   }
+}
+
+void service_forwarded_clock_monitor_boundary(
+    const OtisPpsCountBoundaryObservation &authoritative) {
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR
+  if (!otis_forwarded_clock_monitor_service(
+          authoritative.session, authoritative.reference_sequence)) {
+    return;
+  }
+  OtisForwardedClockMonitorSnapshot snapshot = {};
+  if (!otis_forwarded_clock_monitor_read(&snapshot)) return;
+
+  OtisMonitorObservationMessage raw = {};
+  raw.kind = OtisMonitorObservationKind::Snapshot;
+  raw.session = snapshot.session;
+  raw.reference_session = snapshot.reference_session;
+  raw.sequence = snapshot.sequence;
+  raw.cumulative_down_counter = snapshot.cumulative_down_counter;
+  raw.reference_sequence = snapshot.reference_sequence;
+  raw.reference_timestamp_ticks = authoritative.pps_timestamp_ticks;
+  raw.status = snapshot.status;
+  raw.channel_id = OTIS_CHANNEL_FORWARDED_CLOCK_MONITOR;
+  otis_dual_core_publish_monitor_observation(&raw);
+#else
+  (void)authoritative;
+#endif
 }
 
 bool dual_core_evidence_transport_busy(void) {
@@ -1655,6 +1760,10 @@ void discard_dual_core_outputs_after_transport_fault(void) {
   OtisObservationMessage observation;
   for (uint8_t budget = 24u;
        budget-- > 0u && otis_dual_core_take_observation(&observation);) {}
+  OtisMonitorObservationMessage monitor_observation;
+  for (uint8_t budget = 8u;
+       budget-- > 0u &&
+       otis_dual_core_take_monitor_observation(&monitor_observation);) {}
   OtisCriticalRecordMessage critical;
   for (uint8_t budget = 8u;
        budget-- > 0u && otis_dual_core_take_critical(&critical);) {}
@@ -1676,6 +1785,11 @@ void discard_dual_core_outputs_before_first_carrier(void) {
   OtisObservationMessage observation;
   for (uint8_t budget = 24u;
        budget-- > 0u && otis_dual_core_take_observation(&observation);)
+    note_pre_carrier_discard();
+  OtisMonitorObservationMessage monitor_observation;
+  for (uint8_t budget = 8u;
+       budget-- > 0u &&
+       otis_dual_core_take_monitor_observation(&monitor_observation);)
     note_pre_carrier_discard();
   OtisCriticalRecordMessage critical;
   for (uint8_t budget = 8u;
@@ -2242,6 +2356,7 @@ void drain_pps_count_boundary_ring(void) {
       "pio_wait_cumulative_snapshot_dma_v1");
 #endif
   emit_pps_count_boundary(observation, snapshot.status);
+  service_forwarded_clock_monitor_boundary(observation);
   have_pending_reference = false;
 #endif
 }
@@ -3460,6 +3575,11 @@ void emit_h0_pin_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   OtisForwardedClockOutputStatus output = {};
   otis_forwarded_clock_output_get_status(&output);
+  emit_status("forwarded_clock_output", "contract_id", output.contract_id,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("forwarded_clock_output", "contract_sha256",
+              output.contract_sha256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("forwarded_clock_output", "state", output.reason,
               output.valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
               output.valid ? OTIS_FLAG_PROFILE_ASSUMPTION
@@ -3474,6 +3594,36 @@ void emit_h0_pin_status(void) {
   emit_status_u32("forwarded_clock_output", "fractional_divider",
                   output.fractional_divider, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "applied_auxsrc",
+                  output.applied_auxsrc, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "applied_integer_divider",
+                  output.applied_integer_divider, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "applied_fractional_divider",
+                  output.applied_fractional_divider, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "source_gpio_function",
+                  output.source_gpio_function, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "destination_gpio_function",
+                  output.destination_gpio_function, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "inversion",
+                  output.inversion, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "drive_strength_ma",
+                  output.drive_strength_ma, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("forwarded_clock_output", "slew_rate",
+              output.slew_rate_fast ? "fast" : "slow",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "nominal_frequency_hz",
+                  output.nominal_frequency_hz, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u64_decimal("forwarded_clock_output", "first_valid_ticks",
+                          output.first_valid_ticks, OTIS_SEVERITY_INFO,
+                          OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("forwarded_clock_output", "readback_valid",
               output.readback_valid ? "true" : "false",
               output.readback_valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
@@ -4800,11 +4950,22 @@ void boot_phase_pps_input_init(void) {
 
 void boot_phase_forwarded_output_init(void) {
   begin_boot_phase(BootPhase::ForwardedOutputInit);
-#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
   const bool ready = otis_forwarded_clock_output_begin();
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
   record_capability_result(OtisBootCapability::ForwardedOutput, ready);
+#else
+  (void)ready;
 #endif
   complete_boot_phase(BootPhase::ForwardedOutputInit);
+}
+
+void boot_phase_forwarded_monitor_init(void) {
+  begin_boot_phase(BootPhase::ForwardedMonitorInit);
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR
+  const bool ready = otis_forwarded_clock_monitor_begin();
+  record_capability_result(OtisBootCapability::ForwardedMonitor, ready);
+#endif
+  complete_boot_phase(BootPhase::ForwardedMonitorInit);
 }
 
 void boot_phase_ring_buffers_init(void) {
@@ -5299,6 +5460,20 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status_u32("dual_core", "observation_depth",
                     queues.observation_depth, OTIS_SEVERITY_INFO,
                     OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "monitor_observation_depth",
+                    queues.monitor_observation_depth, OTIS_SEVERITY_INFO,
+                    OTIS_FLAG_NONE);
+    emit_status_u32("dual_core", "monitor_observation_high_water",
+                    queues.monitor_observation_high_water,
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+    emit_status_u32(
+        "dual_core", "monitor_observation_dropped",
+        queues.monitor_observation_dropped,
+        queues.monitor_observation_dropped ? OTIS_SEVERITY_WARN
+                                           : OTIS_SEVERITY_INFO,
+        queues.monitor_observation_dropped
+            ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+            : OTIS_FLAG_NONE);
     emit_status_u32("dual_core", "critical_depth", queues.critical_depth,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     emit_status_u32("dual_core", "evidence_depth", queues.evidence_depth,
@@ -5882,6 +6057,7 @@ void setup() {
   // The count boundary handler must exist before the primary PPS IRQ is armed.
 #if !OTIS_ENABLE_DUAL_CORE_PARTITION
   boot_phase_timer_init();
+  boot_phase_forwarded_output_init();
 #endif
 #endif
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_GPIO_LOOPBACK
@@ -5964,6 +6140,7 @@ void setup1() {
   otis_dual_core_set_timing_owner_active(true);
   boot_phase_timer_init();
   boot_phase_forwarded_output_init();
+  boot_phase_forwarded_monitor_init();
   boot_phase_pps_input_init();
   boot_phase_preview_init();
   boot_phase_capability_audit();

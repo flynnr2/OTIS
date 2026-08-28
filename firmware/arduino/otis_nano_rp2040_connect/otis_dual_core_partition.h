@@ -10,6 +10,7 @@ constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
 constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
+constexpr uint32_t OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH = 16u;
 // The non-active portion of Stage 7 timing health reaches 67 telemetry
 // messages. ACTIVE status has one fixed 33-field vocabulary plus three
 // complete-generation envelope records in both the direct and cross-core
@@ -20,14 +21,16 @@ constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
     OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
     OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT;
-constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST = 67u;
+constexpr uint32_t OTIS_FORWARDED_MONITOR_HEALTH_TELEMETRY_BURST = 13u;
+constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST =
+    67u + OTIS_FORWARDED_MONITOR_HEALTH_TELEMETRY_BURST;
 constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 139u,
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 152u,
               "Stage 7 health plus one ACTIVE? response must remain exact");
 // Retain the already-proven conservative split-boot capacity after removing
 // the obsolete D10 witness records; a smaller exact startup count is not
@@ -137,6 +140,9 @@ struct OtisDualCoreQueueStats {
   uint32_t telemetry_dropped;
   uint32_t phase_preview_depth;
   uint32_t phase_preview_high_water;
+  uint32_t monitor_observation_depth;
+  uint32_t monitor_observation_high_water;
+  uint32_t monitor_observation_dropped;
   OtisTimingProgressStats timing_progress;
   OtisServiceQueueStats service_activity;
   OtisServiceFaultCapsule service_fault;
@@ -156,6 +162,13 @@ bool otis_dual_core_take_service(OtisServiceMessage *message);
 bool otis_dual_core_publish_observation(
     const OtisObservationMessage *message);
 bool otis_dual_core_take_observation(OtisObservationMessage *message);
+
+// Core 1 producer / Core 0 consumer. D6 diagnostic evidence is additive and
+// drop-new; queue failure is recorded locally and never latches fail-static.
+bool otis_dual_core_publish_monitor_observation(
+    const OtisMonitorObservationMessage *message);
+bool otis_dual_core_take_monitor_observation(
+    OtisMonitorObservationMessage *message);
 
 // Core 1 producer / Core 0 consumer. Transaction/state evidence is
 // non-droppable.

@@ -108,6 +108,7 @@ def test_mode_architectures_preserve_phase_priority_and_reset_support() -> None:
     assert reset_reason == "maintenance_1200s_support_incomplete"
 
 
+@pytest.mark.historical
 def test_comparison_preserves_early_phase_path_and_rejects_all_candidates(
     report: dict,
 ) -> None:

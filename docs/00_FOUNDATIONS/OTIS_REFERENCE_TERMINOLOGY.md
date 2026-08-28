@@ -382,6 +382,24 @@ versioned command policy. Reactive does not mean immediate or aggressive; the
 observation window, persistence, correction fraction, cadence, and actuator
 limits remain explicit and may be deliberately slow.
 
+### Forwarded clock output
+
+A hardware clock-output path that presents a selected input clock at another
+pin through an explicitly identified source mux and divider. For the initial
+OTIS D9 path, D8/GPIO20/GPIN0 is forwarded through GPOUT0 to D9/GPIO21 with
+integer divisor one and fractional divisor zero. Forwarding does not make the
+source the MCU system, reference, peripheral, PIO, or DMA clock and does not by
+itself qualify the delivered electrical waveform.
+
+### Diagnostic forwarded-output monitor
+
+A zero-authority observation of a forwarded output, retained separately from
+the authoritative measurement path. OTIS uses D6/GPIO18 for this role. A D6
+count relationship may corroborate digital threshold crossings and continuity,
+but D6 never becomes D14 PPS authority, D8 oscillator truth, control evidence,
+or a waveform instrument. Monitor absence or failure is local unless it
+demonstrably compromises the independent D14/D8 capture path.
+
 ### Correction debt
 
 A derived control state representing fractional actuator demand that has been

@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/d9_d6_readiness_contract_v1.schema.json",
+  "title": "OTIS D9 forwarded-output and D6 diagnostic readiness contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_id",
+    "contract_status",
+    "contract_semantic_sha256",
+    "signal",
+    "d9_output",
+    "d6_monitor",
+    "serial",
+    "physical_state",
+    "metrics",
+    "stop_conditions",
+    "authority",
+    "loss_segment_procedure",
+    "identity_placeholders",
+    "claims_not_made"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "contract_id": {"const": "OTIS_D9_D6_READINESS_CONTRACT_V1"},
+    "contract_status": {"const": "frozen_readiness_pre_candidate_bundle"},
+    "contract_semantic_sha256": {"$ref": "#/$defs/sha256"},
+    "signal": {"$ref": "#/$defs/signal"},
+    "d9_output": {"$ref": "#/$defs/d9Output"},
+    "d6_monitor": {"$ref": "#/$defs/d6Monitor"},
+    "serial": {"$ref": "#/$defs/serial"},
+    "physical_state": {"$ref": "#/$defs/physicalState"},
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "stop_conditions": {"$ref": "#/$defs/stringArray"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "loss_segment_procedure": {"$ref": "#/$defs/lossProcedure"},
+    "identity_placeholders": {"$ref": "#/$defs/identityPlaceholders"},
+    "claims_not_made": {"$ref": "#/$defs/stringArray"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "nominal_frequency_hz", "authoritative_observation_gpio"],
+      "properties": {
+        "identity": {"const": "conditioned_cx317_vcocxo"},
+        "nominal_frequency_hz": {"const": 10000000},
+        "authoritative_observation_gpio": {"const": "D8/GPIO20"}
+      }
+    },
+    "d9Output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "destination", "divider", "inversion", "electrical_envelope", "states", "current_contract_state", "validity_boundary"],
+      "properties": {
+        "source": {"const": "GPIO20/CLOCK_GPIN0/clksrc_gpin0"},
+        "destination": {"const": "D9/GPIO21/CLOCK_GPOUT0"},
+        "divider": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["integer", "fractional"],
+          "properties": {"integer": {"const": 1}, "fractional": {"const": 0}}
+        },
+        "inversion": {"const": false},
+        "electrical_envelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["drive_strength", "slew_rate", "load", "instrument_input"],
+          "properties": {
+            "drive_strength": {"const": "2mA"},
+            "slew_rate": {"const": "slow"},
+            "load": {"const": "high_impedance_only_until_explicitly_requalified"},
+            "instrument_input": {"const": "no_50_ohm_termination"}
+          }
+        },
+        "states": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 4,
+          "items": {"enum": ["disabled", "invalid_or_transitioning", "configured_10mhz_forwarded_unqualified", "qualified_10mhz_forwarded"]},
+          "allOf": [
+            {"contains": {"const": "disabled"}},
+            {"contains": {"const": "invalid_or_transitioning"}},
+            {"contains": {"const": "configured_10mhz_forwarded_unqualified"}},
+            {"contains": {"const": "qualified_10mhz_forwarded"}}
+          ]
+        },
+        "current_contract_state": {"const": "disabled"},
+        "validity_boundary": {"const": "configuration_and_exact_readback_must_precede_any_non_disabled_state"}
+      }
+    },
+    "d6Monitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose", "gpio", "wiring", "states", "current_contract_state", "count_semantics", "authority"],
+      "properties": {
+        "purpose": {"const": "zero_authority_diagnostic_monitor"},
+        "gpio": {"const": "D6/GPIO18"},
+        "wiring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "series_resistance_ohms", "evidence_status"],
+          "properties": {
+            "path": {"const": "D9_to_D6"},
+            "series_resistance_ohms": {"const": 1000},
+            "evidence_status": {"const": "operator_reported_not_electrically_qualified"}
+          }
+        },
+        "states": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 4,
+          "items": {"enum": ["disabled", "monitoring_unqualified", "count_consistent_diagnostic_only", "monitor_invalid_or_unavailable"]},
+          "allOf": [
+            {"contains": {"const": "disabled"}},
+            {"contains": {"const": "monitoring_unqualified"}},
+            {"contains": {"const": "count_consistent_diagnostic_only"}},
+            {"contains": {"const": "monitor_invalid_or_unavailable"}}
+          ]
+        },
+        "current_contract_state": {"const": "disabled"},
+        "count_semantics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference", "snapshot_contract", "identity_boundary", "expected_d8_to_d6_ratio", "maximum_absolute_interval_count_difference_cycles", "absence_interpretation"],
+          "properties": {
+            "reference": {"const": "accepted_D14_gated_cumulative_snapshot_intervals_only"},
+            "snapshot_contract": {"const": "forwarded_monitor_snapshots_v1"},
+            "identity_boundary": {"const": "monitor_session_and_reference_session_and_adjacent_monitor_and_reference_sequences"},
+            "expected_d8_to_d6_ratio": {"const": "1:1"},
+            "maximum_absolute_interval_count_difference_cycles": {"const": 2},
+            "absence_interpretation": {"const": "diagnostic_unavailable_not_clean_D9_result"}
+          }
+        },
+        "authority": {"const": "must_not_affect_D14_D8_validity_estimation_control_abort_or_terminal"}
+      }
+    },
+    "serial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware_host_target_baud", "device_selection", "receiver_service"],
+      "properties": {
+        "firmware_host_target_baud": {"const": 115200},
+        "device_selection": {"const": "capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*"},
+        "receiver_service": {"const": "disabled_in_readiness_strata_no_receiver_command"}
+      }
+    },
+    "physicalState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bench_authority", "post_power_cycle_identity", "d9_claim_state"],
+      "properties": {
+        "bench_authority": {"const": false},
+        "post_power_cycle_identity": {"const": "unknown_until_observed"},
+        "d9_claim_state": {"const": "unmeasured_pre_physical_qualification"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration", "d6_diagnostic", "waveform", "soak"],
+      "properties": {
+        "configuration": {"const": "exact_source_destination_divider_and_readback_identity_required"},
+        "d6_diagnostic": {"const": "D14_gated_D8_D6_count_ratio_and_continuity_reported_separately"},
+        "waveform": {"const": "external_instrument_required_before_qualified_10mhz_forwarded"},
+        "soak": {"const": "prohibited_until_waveform_frequency_gate_passes"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["d9_has_control_authority", "d6_has_control_authority", "may_write_dac", "may_arm_fll", "may_arm_hybrid"],
+      "properties": {
+        "d9_has_control_authority": {"const": false},
+        "d6_has_control_authority": {"const": false},
+        "may_write_dac": {"const": false},
+        "may_arm_fll": {"const": false},
+        "may_arm_hybrid": {"const": false}
+      }
+    },
+    "lossProcedure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "physical_execution_permitted", "required_behavior_if_later_frozen"],
+      "properties": {
+        "status": {"const": "deferred_no_conflict_free_operator_procedure_frozen"},
+        "physical_execution_permitted": {"const": false},
+        "required_behavior_if_later_frozen": {"const": "control_disarmed_last_confirmed_code_preserved_and_fresh_causal_requalification_required"}
+      }
+    },
+    "identityPlaceholders": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_revision", "firmware_profile", "firmware_binary", "host_tool_bundle", "instrument", "evidence_destination"],
+      "properties": {
+        "source_revision": {"const": "unbound_pre_candidate_bundle"},
+        "firmware_profile": {"const": "d9_d6_forwarded_output_no_control"},
+        "firmware_binary": {"const": "unbound_pre_candidate_bundle"},
+        "host_tool_bundle": {"const": "unbound_pre_candidate_bundle"},
+        "instrument": {"const": "external_waveform_frequency_instrument_required_unbound"},
+        "evidence_destination": {"const": "unbound_pre_candidate_bundle"}
+      }
+    }
+  }
+}

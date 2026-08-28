@@ -76,4 +76,11 @@
   future bundle. They do not make the uncalibrated plant model generally
   control-ready or turn an indeterminate natural material response into
   observed sign.
-- OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.
+- OTIS has an offline-verified compile-time D8/GPIN0 to D9/GPOUT0
+  integer-divide-one implementation and a zero-authority D6 loopback monitor,
+  but it still does not provide a physically qualified D9 delivered timing
+  output. With only a multimeter and the D6 digital sidecar, voltage levels,
+  duty cycle, rise/fall behavior, ringing, propagation delay, jitter, load
+  sensitivity, and independently referenced frequency remain unmeasured. A
+  successful D6 count comparison cannot close those claims or authorize the
+  24-hour output soak.
