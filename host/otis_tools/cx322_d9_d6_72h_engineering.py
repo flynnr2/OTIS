@@ -2968,7 +2968,8 @@ class Engineering72hProgrammeAdapter:
     minimum_code: int
     maximum_code: int
     maximum_outstanding_transactions: int
-    sustained_regulation: bool = False
+    generic_sustained_regulation_mode: bool = False
+    sustained_authority_programme: bool = True
     deliberate_reversal_challenge: bool = False
 
     def as_dict(self) -> dict[str, object]:

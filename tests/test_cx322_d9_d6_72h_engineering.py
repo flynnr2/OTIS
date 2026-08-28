@@ -564,7 +564,8 @@ def test_bundle_binds_exact_build_contract_and_no_io_preflight(
     assert result["promotion_permitted"] is False
     assert result["firmware_profile_matrix_integrated"] is True
     assert result["physical_activation_ready"] is False
-    assert result["programme"]["sustained_regulation"] is False
+    assert result["programme"]["generic_sustained_regulation_mode"] is False
+    assert result["programme"]["sustained_authority_programme"] is True
     assert result["programme"]["maximum_physical_writes"] == 145
     assert result["remaining_live_components"] == [
         "separate_exact_physical_activation"

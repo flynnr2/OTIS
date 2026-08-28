@@ -237,6 +237,13 @@ def create_successor_proposal(
                 }
                 if programme.sustained_regulation
                 else {
+                    "controller_request_law_unchanged": True,
+                    "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+                if programme.prospectively_changed_authority_envelope
+                else {
                     "scientific_limits_and_duration_unchanged": True,
                     "successor_qualification_criterion_prospectively_frozen": True,
                     "inherits_physical_authority": False,
@@ -366,6 +373,7 @@ def validate_proposal(
             )
             or (
                 programme.identification_required
+                and not programme.prospectively_changed_authority_envelope
                 and (
                     lineage.get("scientific_limits_and_duration_unchanged")
                     is not True
@@ -374,6 +382,22 @@ def validate_proposal(
                     )
                     is not True
                     or lineage.get("inherits_physical_authority") is not False
+                )
+            )
+            or (
+                programme.prospectively_changed_authority_envelope
+                and (
+                    lineage.get("controller_request_law_unchanged") is not True
+                    or lineage.get(
+                        "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme"
+                    )
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                    or "scientific_limits_and_duration_unchanged" in lineage
                 )
             )
             or (
