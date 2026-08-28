@@ -11,8 +11,10 @@ raw D14 PPS capture. UART arrival time never timestamps PPS, establishes UTC
 traceability, calibrates receiver/cable delay, or replaces D14 timing authority.
 
 GNSS serial acquisition is not a boot or capture prerequisite. For an ordinary
-115200 profile, `begin()` starts one fixed sequence: select UART0 at 9600, send
-`PMTK251,115200`, switch UART0 to 115200, and remain there. Queries and
+115200 profile, `begin()` starts one fixed sequence: send `PMTK251,115200` once
+at each of the seven supported receiver rates, select UART0 at 115200, and
+remain there. This is a deterministic configuration broadcast, not discovery;
+it does not inspect responses or infer the retained receiver rate. Queries and
 configuration advance through bounded Core 0 service calls. D14/D8 capture,
 host attachment and telemetry continue while the link is `discovering`,
 `validating`, `degraded` or `lost`. GNSS-dependent control remains inhibited
@@ -49,7 +51,7 @@ electrically idle-high; it is not returned to a high-impedance GPIO input.
 | GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
 | Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
 | UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
-| Baud policy | Ordinary 115200 profiles: one 9600-rate `PMTK251,115200`, then fixed 115200 with no scan. Characterization profile: 9600, 19200, 38400, 57600, 115200. | The characterization recovery scan remains confined to its frozen five-rate decision set. |
+| Baud policy | Ordinary 115200 profiles: one `PMTK251,115200` at each supported rate (4800, 9600, 14400, 19200, 38400, 57600 and 115200), then fixed 115200 with no scan. Characterization profile: 9600, 19200, 38400, 57600, 115200. | The ordinary configuration broadcast covers every rate supported by the receiver command contract. The characterization recovery scan remains confined to its frozen five-rate decision set. |
 | Selected operational baud | 115200 | Completed baud-envelope composite: 23,100 confirmed-online seconds, zero UART fault deltas, peak raw-ring high water 208/1024 |
 | Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 and receiver-extension fields zero | PMTK514 readback must match one explicitly qualified field shape after acknowledgement |
 | PPS | Independent breakout PPS output on D14 | UART metadata never substitutes for the D14 timestamp |
@@ -88,8 +90,9 @@ does not power-cycle the separately powered PA1616S receiver. The receiver's
 selected serial baud therefore persists across MCU reset while receiver power
 is continuous. A receiver power cycle restores the module default of 9600. The
 ordinary fixed bootstrap handles both cases without inferring the reset cause:
-a retained 115200 receiver ignores the 9600-rate packet, while a default-rate
-receiver accepts it; UART0 then remains fixed at 115200.
+the packet sent at the receiver's retained rate promotes it to 115200 and the
+final 115200-rate packet reasserts that configuration; UART0 then remains fixed
+at 115200.
 
 The exact baud-envelope continuation profile uses the prior sealed 57600
 observation only as provenance for scan ordering. Its first permitted receiver
@@ -122,9 +125,10 @@ deltas. Peak raw-ring high water was 208 of 1024 entries, satisfying the frozen
 factor-of-two headroom criterion. Composite analysis SHA-256 is
 `5db6c3f908e4669f84235627e94fe6e140798d095de12f7fa751ad8d9453068a`.
 
-Ordinary firmware therefore targets 115200. On every startup it opens UART0 at
-9600, sends the fixed `PMTK251,115200` packet once, changes UART0 to 115200, and
-does not scan or fall back. It then requires fresh identity and output
+Ordinary firmware therefore targets 115200. On every startup it sends the
+fixed `PMTK251,115200` packet once at each supported rate and then leaves UART0
+at 115200. It does not listen, discover, scan, infer, or fall back during this
+configuration broadcast. It then requires fresh identity and output
 qualification at 115200 before the online state. After a link loss it remains
 at 115200 and requalifies there without resending PMTK251.
 
@@ -292,8 +296,8 @@ timestamps.
 
 `tests/cpp/gnss_receiver_harness.cpp` and `tests/test_gnss_receiver.py` cover:
 
-- the fixed 9600-rate promotion packet followed by permanent 115200 selection
-  and exact configuration confirmation;
+- the fixed seven-rate promotion broadcast followed by permanent 115200
+  selection and exact configuration confirmation;
 - failed 115200 qualification remaining at 115200 without a baud scan;
 - wrong-baud/checksum noise isolation, degraded discovery and online loss;
 - fixed command checksums, the sole bounded UART write site and absence of a

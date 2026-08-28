@@ -367,6 +367,12 @@ constexpr char kGnssTargetBaudCommand[] = "$PMTK251,9600*17\r\n";
 constexpr uint32_t kGnssCandidateBauds[] = {
     115200u, 9600u, 57600u, 38400u, 19200u, 14400u, 4800u,
 };
+constexpr uint32_t kGnssOperationalBootstrapBauds[] = {
+    9600u, 19200u, 38400u, 57600u, 14400u, 4800u, 115200u,
+};
+constexpr size_t kGnssOperationalBootstrapBaudCount =
+    sizeof(kGnssOperationalBootstrapBauds) /
+    sizeof(kGnssOperationalBootstrapBauds[0]);
 constexpr char kGnssTargetBaudCommand[] = "$PMTK251,115200*1F\r\n";
 #endif
 constexpr size_t kGnssCandidateBaudCount =
@@ -958,11 +964,12 @@ void otis_gnss_link_reset(OtisGnssLink *link,
   select_candidate(link, now_ms);
 #endif
 #elif OTIS_GNSS_UART_BAUD == 115200u
-  // Fixed operational bootstrap: a receiver already at 115200 ignores the
-  // 9600-rate packet; a receiver at 9600 accepts it.  In both cases the next
-  // action switches UART0 to 115200 and no discovery scan follows.
-  link->candidate_baud = 9600u;
-  link->pending_baud = 9600u;
+  // Fixed operational bootstrap: transmit the same set-115200 packet once at
+  // every supported retained rate, then stay at 115200.  No response-driven
+  // discovery or fallback is involved.
+  link->candidate_index = 0u;
+  link->candidate_baud = kGnssOperationalBootstrapBauds[0];
+  link->pending_baud = link->candidate_baud;
   link->state_started_ms = now_ms;
   reset_link_line(link);
   queue_link_action(link, OtisGnssLinkState::SelectCandidateBaud,
@@ -1228,6 +1235,19 @@ void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
       link->state_started_ms = now_ms;
       break;
     case OtisGnssLinkState::TransmitTargetBaud:
+#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    OTIS_GNSS_UART_BAUD == 115200u
+      if (link->candidate_index + 1u <
+          kGnssOperationalBootstrapBaudCount) {
+        link->candidate_index++;
+        link->candidate_baud =
+            kGnssOperationalBootstrapBauds[link->candidate_index];
+        link->pending_baud = link->candidate_baud;
+        queue_link_action(link, OtisGnssLinkState::SelectCandidateBaud,
+                          OtisGnssLinkActionKind::SetUartBaud);
+        break;
+      }
+#endif
       link->pending_baud = link->policy.target_baud;
       queue_link_action(link, OtisGnssLinkState::SelectTargetBaud,
                         OtisGnssLinkActionKind::SetUartBaud);

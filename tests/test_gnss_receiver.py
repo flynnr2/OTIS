@@ -239,7 +239,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
-    assert "uart0_fixed_bootstrap_9600_to_115200_8n1" in sketch
+    assert "uart0_fixed_bootstrap_all_supported_to_115200_8n1" in sketch
 
     assert "kOtisGnssMaximumLineBytes = 96u" in header
     assert "kOtisGnssDiscoveryMaximumLineBytes = 256u" in header
