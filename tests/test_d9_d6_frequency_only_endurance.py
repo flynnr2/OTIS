@@ -680,6 +680,98 @@ def test_live_d9_gate_times_out_if_configuration_snapshot_never_completes(
     )
 
 
+def test_live_run_loop_holds_setup_until_post_config_d9_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from host.otis_tools import frequency_control_supervisor
+
+    run_dir = tmp_path / "run"
+    supervisor = endurance.create_live_supervisor(
+        run_dir=run_dir,
+        bundle=_bundle(tmp_path),
+    )
+    (run_dir / "capture_in_progress.flag").touch()
+    ready = {
+        ("cx317_active", "run_identity"): supervisor.spec.run_identity,
+        ("cx317_active", "build_identity"): supervisor.expected_build_identity,
+        ("cx317_active", "profile_identity"): supervisor.spec.profile,
+        ("cx317_active", "session_id"): "4",
+        ("cx317_active", "state"): "DISARMED",
+        ("cx317_active", "reason"): "initialized_disarmed",
+        ("cx317_active", "manual_start_confirmed"): "false",
+        ("cx317_active", "snapshot_generation_complete"): "7",
+        ("cx317_active", "query_nonce"): str(
+            supervisor.state["host_attach_query_nonce"]
+        ),
+        ("cx317_active", "uptime_s"): "1000",
+        ("command", "config_snapshot"): "end",
+        ("forwarded_clock_output", "first_valid_ticks"): "100",
+        **endurance.EXPECTED_D9_HEALTH,
+    }
+    for key, value in supervisor.identities.items():
+        ready[("cx317_active", key)] = value
+    health_rows = iter(({}, ready, ready))
+    commands: list[str] = []
+    loop_count = 0
+
+    class NoAbort:
+        def __init__(self, _path: Path) -> None:
+            pass
+
+        def __enter__(self) -> "NoAbort":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def poll(self) -> bool:
+            return False
+
+    def finish_after_setup(
+        _health: dict[tuple[str, str], str],
+        _now_epoch: float,
+        _elapsed_monotonic_s: float,
+    ) -> None:
+        nonlocal loop_count
+        loop_count += 1
+        if loop_count == 3:
+            supervisor.state["terminal"] = {
+                "result": "healthy_stop",
+                "reason": "deterministic_test_complete",
+            }
+
+    monkeypatch.setattr(frequency_control_supervisor, "AbortFifo", NoAbort)
+    monkeypatch.setattr(frequency_control_supervisor.time, "sleep", lambda _: None)
+    supervisor._command = commands.append  # type: ignore[method-assign]
+    supervisor._check_capture_transport_state = lambda: {}  # type: ignore[method-assign]
+    supervisor._renew_lease = lambda: None  # type: ignore[method-assign]
+    supervisor._process_transactions = lambda: None  # type: ignore[method-assign]
+    supervisor._current_health = lambda: next(health_rows)  # type: ignore[method-assign]
+    supervisor._check_setup_transaction_timeout = (  # type: ignore[method-assign]
+        lambda _health, _now: None
+    )
+    supervisor._check_prewrite_contract = (  # type: ignore[method-assign]
+        lambda _health, _elapsed: None
+    )
+    supervisor._prewrite_readiness = (  # type: ignore[method-assign]
+        lambda _health: SimpleNamespace(ready=True)
+    )
+    supervisor._maybe_qualify = lambda _health: None  # type: ignore[method-assign]
+    supervisor._maybe_finish = finish_after_setup  # type: ignore[method-assign]
+
+    assert supervisor.run() == 0
+
+    setup_commands = [
+        command for command in commands if command.startswith("ACTIVE SETUP ")
+    ]
+    assert len(setup_commands) == 1
+    assert supervisor.state["d9_exact_readback_established"] is True
+    snapshot_command = next(
+        command for command in commands if command.startswith("ACTIVE SNAPSHOT ")
+    )
+    assert commands.index(setup_commands[0]) > commands.index(snapshot_command)
+
+
 def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     report = endurance.pty_operational_rehearsal(
@@ -694,6 +786,8 @@ def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> N
     assert report["application_admission_reserve_s"] == 1500
     assert report["long_analysis_horizon_keeps_control_admission_open"] is True
     assert report["opportunity_causal_ledger_exercised"] is True
+    assert report["backlogged_configuration_startup_hold_exercised"] is True
+    assert report["no_setup_before_d9_exact_readback_established"] is True
 
     bundle_path = tmp_path / "bundle.json"
     preflight_path = tmp_path / "preflight.json"
@@ -1081,6 +1175,11 @@ def test_shared_frequency_control_path_uses_a808_setup_then_arm(tmp_path: Path) 
     }
     for key, value in supervisor.identities.items():
         health[("cx317_active", key)] = value
+
+    supervisor._maybe_start_or_arm(health)
+    assert commands == []
+
+    supervisor.state["d9_exact_readback_established"] = True
     supervisor._maybe_start_or_arm(health)
 
     assert supervisor.spec.start_code == 0xA808
@@ -1180,6 +1279,7 @@ def test_control_admission_closes_only_for_exact_1500s_response(
         run_dir=tmp_path / "admission", bundle=_bundle(tmp_path)
     )
     supervisor.accounting.armed_ticks = 1
+    supervisor.state["d9_exact_readback_established"] = True
     calls: list[dict[tuple[str, str], str]] = []
     monkeypatch.setattr(
         endurance.FrequencyControlSupervisor,
