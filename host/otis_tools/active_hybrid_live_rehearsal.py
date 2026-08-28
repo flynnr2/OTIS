@@ -3352,6 +3352,20 @@ def _exercise_cx322_real_transaction_path(
         if row.get("authority_state") == "AWAITING_RESPONSE"
         and int(row.get("request_sequence", "0")) > 0
     }
+    decision_frontier_ticks = {
+        int(row["decision_sequence"]): (
+            int(row["decision_timestamp_s"])
+            * RP2040_TIMER0_TICKS_PER_SECOND
+        )
+        % RP2040_TIMER0_MICROS_WRAP_TICKS
+        for row in ahy
+    }
+    request_frontier_ticks = {
+        request_sequence: decision_frontier_ticks[
+            int(application["decision_sequence"])
+        ]
+        for request_sequence, application in applications.items()
+    }
 
     def emit_active_status() -> None:
         state["generation"] += 1
@@ -3476,6 +3490,19 @@ def _exercise_cx322_real_transaction_path(
                             3: "response_pending",
                             4: "evidence_clear",
                         }[phase]
+                        if (
+                            phase == 1
+                            and programme is CX322_D9_D6_72H_PROGRAMME
+                        ):
+                            # The raw RP2040 timer wraps every ~4295 s.  A
+                            # real device publishes status much more often
+                            # than the half-wrap ambiguity boundary.  Retain
+                            # that genuine cadence relationship while the PTY
+                            # fixture accelerates 1800 s control intervals.
+                            state["frontier_timestamp_ticks"] = (
+                                request_frontier_ticks[request_sequence]
+                            )
+                            emit_active_status()
                         if phase >= 2:
                             state["applied"] = True
                             application = applications[request_sequence]
