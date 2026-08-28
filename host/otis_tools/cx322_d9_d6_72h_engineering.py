@@ -55,6 +55,10 @@ from .active_hybrid_live_supervisor import (
     FORWARDED_MONITOR_OBSERVABILITY_KEYS,
 )
 from .active_status_contract import ACTIVE_STATUS_CONTRACT_KEYS
+from .gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_REQUIRED_DEFINES,
+    require_exact_gnss_operational_baud_policy,
+)
 from .run_paths import default_csv_files, exact_active_timing_csv_files
 from .serial_commands import (
     send_command_to_fifo,
@@ -251,6 +255,7 @@ def _intended_profile_defines(contract: Mapping[str, Any]) -> dict[str, str]:
         "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS": "144u",
         "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES": "3024u",
         "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "1800u",
+        **GNSS_OPERATIONAL_REQUIRED_DEFINES,
     }
     if any(expected.get(key) != value for key, value in required.items()):
         raise ValueError("CX322 D9/D6 firmware authority selectors differ")
@@ -355,6 +360,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         "independent_abort_delivery_required": True,
     }:
         raise ValueError("72h serial auto-detection/baud contract differs")
+    require_exact_gnss_operational_baud_policy(
+        contract.get("gnss_uart_policy", {}), owner="72h engineering"
+    )
     envelope = contract["controller_envelope"]
     expected_envelope = {
         "automatic_application_limit": 144,
@@ -536,6 +544,7 @@ def freeze_bundle(
         "profile_id": contract["firmware"]["profile_id"],
         "firmware_profile_matrix_integrated": _profile_matrix_integrated(contract),
         "serial": contract["serial"],
+        "gnss_uart_policy": contract["gnss_uart_policy"],
         "time": contract["time"],
         "starting_dac": contract["starting_dac"],
         "controller_envelope": contract["controller_envelope"],
@@ -586,6 +595,7 @@ def validate_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
     )
     copied = (
         "serial",
+        "gnss_uart_policy",
         "time",
         "starting_dac",
         "controller_envelope",
@@ -633,6 +643,7 @@ def draft_live_activation(
         "run_identity": run_identity,
         "run_directory": str(run_directory.resolve()),
         "serial": checked["serial"],
+        "gnss_uart_policy": checked["gnss_uart_policy"],
         "controller_envelope": checked["controller_envelope"],
         "adapter_authority": {
             "retained_evidence_reader": True,
@@ -3926,6 +3937,7 @@ def no_io_preflight(bundle: Mapping[str, Any]) -> dict[str, object]:
         "programme": programme_adapter(checked).as_dict(),
         "serial_selection": checked["serial"]["selection"],
         "baud": checked["serial"]["baud"],
+        "gnss_uart_policy": checked["gnss_uart_policy"],
         "qualified_duration_s": checked["time"]["qualified_duration_s"],
         "milestones_qualified_s": checked["time"]["milestones_qualified_s"],
         "terminals": checked["terminals"],

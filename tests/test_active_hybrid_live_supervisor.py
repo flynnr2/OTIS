@@ -23,6 +23,9 @@ from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
 )
 from host.otis_tools.prewrite_readiness_contract import PrewriteReadiness
 from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_PREWRITE_EXACT,
+)
 
 
 def _utc(epoch: float) -> str:
@@ -793,6 +796,28 @@ def test_integrated_prewrite_keeps_d6_fault_values_zero_authority() -> None:
     )
     assert missing == ("forwarded_clock_monitor.state",)
     assert mismatches == ()
+
+
+def test_integrated_runtime_rejects_post_bootstrap_promotion_attempt(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.state["prewrite_contract_ready_utc"] = "2026-08-28T00:00:00Z"
+    health = _health(supervisor)
+    health.update(GNSS_OPERATIONAL_PREWRITE_EXACT)
+    health.update(_forwarded_integration_health())
+    health[
+        (
+            "gnss_receiver",
+            "post_bootstrap_target_baud_command_attempt_count",
+        )
+    ] = "1"
+
+    with pytest.raises(
+        ValueError, match="integrated GNSS bootstrap/runtime invariant changed"
+    ):
+        supervisor._check_fail_static_health(health)
 
 
 def test_integrated_physical_run_stops_after_first_complete_response(

@@ -353,7 +353,7 @@ docs/60_EXPERIMENTS/OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_PROGRAMME_PROM
 docs/60_EXPERIMENTS/OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_PROGRAMME_PROMPT.md,658,uncertainty,measurement_uncertainty_semantics,static as actuator-provenance uncertainty; and
 docs/60_EXPERIMENTS/OTIS_CROSS_CAMPAIGN_ADAPTIVE_STEERING_OFFLINE_PROGRAMME_PROMPT.md,709,uncertainty,measurement_uncertainty_semantics,"acceptance/application/acknowledgement uncertainty, safety/range violation or"
 docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/01_INTEGRATION_BASE_AND_D9_D6_READINESS_PROMPT.md,181,uncertainty,measurement_uncertainty_semantics,"- retain wiring, load, probe, cable, instrument, bandwidth and uncertainty"
-docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/02_D9_WAVEFORM_AND_FREQUENCY_ONLY_SOAK_PROMPT.md,66,uncertainty,measurement_uncertainty_semantics,path. Treat a mismatch as provenance uncertainty; do not restore a guessed
+docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/02_D9_WAVEFORM_AND_FREQUENCY_ONLY_SOAK_PROMPT.md,70,uncertainty,measurement_uncertainty_semantics,path. Treat a mismatch as provenance uncertainty; do not restore a guessed
 docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/BOARD_MOTION_TELEMETRY_PROGRAMME.md,65,uncertainty,measurement_uncertainty_semantics,"sensor timestamp, and preserve the associated age and uncertainty semantics."
 docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/DISCIPLINED_10MHZ_OUTPUT_PROGRAMME.md,167,uncertainty,measurement_uncertainty_semantics,relevant bandwidth or uncertainty; and
 docs/60_EXPERIMENTS/OTIS_PUBLIC_READINESS_PROGRAMMES/HYBRID_PHASE_FREQUENCY_CONTROL_PROGRAMME.md,70,uncertainty,measurement_uncertainty_semantics,"calibrated uncertainty is unavailable, and epochs may not be joined by guessed"
@@ -794,8 +794,8 @@ tests/cpp/observe_only_discipline_engine_harness.cpp,44,confidence,confidence_se
 tests/cpp/observe_only_discipline_engine_harness.cpp,89,confidence,confidence_semantics,"<< ',' << otis_observe_only_discipline_confidence_name(decision.confidence) << ','"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,38,uncertainty,measurement_uncertainty_semantics,"""expected"": [""bias_hz"", ""combined_uncertainty_hz""]"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,45,uncertainty,measurement_uncertainty_semantics,"""id"": ""unavailable_uncertainty"","
-tests/test_cx322_d9_d6_72h_engineering.py,1312,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""available"","
-tests/test_cx322_d9_d6_72h_engineering.py,1330,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""available"","
+tests/test_cx322_d9_d6_72h_engineering.py,1316,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""available"","
+tests/test_cx322_d9_d6_72h_engineering.py,1334,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""available"","
 tests/test_measurement_semantics.py,18,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
 tests/test_measurement_semantics.py,19,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
 tests/test_measurement_semantics.py,50,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","

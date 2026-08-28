@@ -149,6 +149,8 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "no_physical_actions_performed": True,
     }
     if programme.forwarded_output_integration:
+        from .gnss_operational_baud_policy import GNSS_OPERATIONAL_BAUD_POLICY
+
         provenance = integrated_setup_provenance_contract(programme)
         checks.update(
             {
@@ -163,6 +165,10 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
                     provenance["setup_operation"]
                     == "prospectively_frozen_authorized_stimulus_not_restoration"
                     and provenance["automatic_or_nominal_restoration"] is False
+                ),
+                "gnss_boot_to_permanent_115200_policy_bound": (
+                    bundle.get("gnss_uart_policy")
+                    == GNSS_OPERATIONAL_BAUD_POLICY
                 ),
             }
         )

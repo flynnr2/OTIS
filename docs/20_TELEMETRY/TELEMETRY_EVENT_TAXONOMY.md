@@ -312,6 +312,15 @@ Examples:
 - selected clock source;
 - timing fabric configuration.
 
+For an ordinary GNSS UART bootstrap, `DEVICE_STATE`/status evidence must keep
+the fixed policy identity distinct from receiver qualification: ordered source
+rates, receiver-side settle, attempt and peripheral-completion counts,
+completed-rate mask, local UART baud and baud epoch, post-bootstrap baud-change
+count, and autodiscovery-disabled state describe what firmware did. Fresh
+PMTK705 identity, exact output configuration and current metadata separately
+establish whether the receiver qualified. RP2040 UART completion alone is not
+receiver acceptance.
+
 ### `CONFIG_SNAPSHOT`
 
 `CONFIG_SNAPSHOT` records describe the run configuration required for replay.

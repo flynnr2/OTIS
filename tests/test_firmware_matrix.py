@@ -140,6 +140,15 @@ def test_integrated_cx322_profile_changes_only_d9_d6_selectors() -> None:
         "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
     }
     assert integrated == expected
+    for profile_id in (
+        "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
+        "d9_d6_frequency_only_lower",
+    ):
+        defines = _profile(matrix, profile_id)["defines"]
+        assert defines["OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"] == "1"
+        assert defines["OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS"] == "1200u"
 
 
 @pytest.mark.parametrize(

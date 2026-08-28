@@ -497,6 +497,19 @@ void test_uart_ring_loss_markers_and_interleaved_high_water() {
   assert(stats.ring_overflow_count == 1u);
 }
 
+void test_uart_ring_intentional_epoch_discard_is_bounded_and_exact() {
+  OtisGnssUartRxRing ring = {};
+  otis_gnss_uart_rx_ring_reset(&ring);
+  const OtisGnssUartObservation byte = {'N', kOtisGnssUartObservationNone};
+  for (uint32_t index = 0u; index < kOtisGnssUartRxRingCapacity; ++index)
+    assert(otis_gnss_uart_rx_ring_push_from_isr(&ring, byte));
+
+  assert(otis_gnss_uart_rx_ring_discard_all(&ring) ==
+         kOtisGnssUartRxRingCapacity);
+  assert(otis_gnss_uart_rx_ring_depth(&ring) == 0u);
+  assert(otis_gnss_uart_rx_ring_discard_all(&ring) == 0u);
+}
+
 void test_uart_phase_window_maxima_reset_without_lifetime_contamination() {
   OtisGnssUartRxRing ring = {};
   otis_gnss_uart_rx_ring_reset(&ring);
@@ -598,6 +611,7 @@ int main() {
   test_discovery_noise_degradation_and_online_loss();
   test_retained_identity_response_is_causal_before_timeout_advance();
   test_uart_ring_loss_markers_and_interleaved_high_water();
+  test_uart_ring_intentional_epoch_discard_is_bounded_and_exact();
   test_uart_phase_window_maxima_reset_without_lifetime_contamination();
   test_uart_error_delivery_and_exact_preceding_gap_capsules();
   return 0;

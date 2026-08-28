@@ -33,12 +33,25 @@
   attachments.
 - The PA1616S/MT3339 selected baud persists across an MCU reset or flash while
   the receiver remains powered; only a receiver power cycle restores its 9600
-  module default. Ordinary 115200 firmware handles any supported retained rate
-  by sending the same fixed `PMTK251,115200` packet once at all seven rates and
-  then remaining at 115200. This deterministic configuration broadcast does
-  not inspect responses or discover the current rate. The separate baud-
+  module default. Ordinary 115200 firmware handles the two legitimate
+  operational starts—reset-default 9600 or retained-operational 115200—by
+  sending the same fixed `PMTK251,115200` packet once at 9600 and once at
+  115200, waiting 1200 ms after each physical UART drain, then remaining at
+  115200. This deterministic transaction does not inspect responses or discover
+  the current rate, is never retried after boot, and requires exact ordered
+  completion/epoch telemetry before control. The separate baud-
   characterization continuation retains its sealed discovery and PMTK605/
   PMTK705 rules; those experimental rules do not govern ordinary operation.
+- The 2026-08-28 D9/D6 frequency-only attempt 5 preserved healthy D14/D8 and
+  D9/D6 digital evidence and issued no DAC write, but failed GNSS startup. Its
+  implementation changed UART rates and queried identity immediately after
+  RP2040 peripheral completion, repeatedly truncating the receiver stream.
+  Peripheral completion did not prove receiver parsing/application. That run
+  remains an identity/evidence failure; the exact per-rate settle and permanent
+  post-bootstrap 115200 contract are a platform correction, not a
+  reinterpretation of the failed acquisition. Rates other than 9600 and 115200
+  are characterization-only; returning from such a profile to ordinary
+  firmware requires that characterization's explicit final transition.
 - A continuation from logical S06 `peak_status` creates a real capture-session
   and firmware boundary. The final result is necessarily a multi-artifact
   composite: counters may be differenced only within one source artifact, and

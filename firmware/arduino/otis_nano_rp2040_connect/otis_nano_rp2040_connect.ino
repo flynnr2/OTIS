@@ -3345,14 +3345,82 @@ void emit_gnss_receiver_status(void) {
               link_severity, link_flags);
   emit_status("gnss_receiver", "uart_configuration",
 #if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
-    OTIS_GNSS_UART_BAUD == 115200u
-              "uart0_fixed_bootstrap_all_supported_to_115200_8n1",
+    OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+              "uart0_configuration_blind_default_or_retained_115200_v1",
 #elif OTIS_GNSS_UART_BAUD == 9600u
               "uart0_autodiscovery_8n1_target_9600",
 #else
               "uart0_autodiscovery_8n1_target_115200",
 #endif
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  emit_status("gnss_receiver", "operational_baud_policy",
+              "configuration_blind_default_or_retained_115200_v1",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "operational_bootstrap_state",
+              status.operational_bootstrap_failed
+                  ? "failed"
+                  : (status.operational_bootstrap_complete ? "complete"
+                                                           : "in_progress"),
+              status.operational_bootstrap_failed ? OTIS_SEVERITY_ERROR
+                                                  : OTIS_SEVERITY_INFO,
+              status.operational_bootstrap_failed
+                  ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT
+                  : OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "operational_bootstrap_ordered_source_bauds",
+              "9600,115200",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_settle_ms",
+                  OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_attempt_count",
+                  status.operational_bootstrap_attempt_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "target_baud_command_attempt_count",
+                  status.target_baud_command_attempt_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(
+      "gnss_receiver", "post_bootstrap_target_baud_command_attempt_count",
+      status.post_bootstrap_target_baud_command_attempt_count,
+      status.post_bootstrap_target_baud_command_attempt_count == 0u
+          ? OTIS_SEVERITY_INFO
+          : OTIS_SEVERITY_ERROR,
+      status.post_bootstrap_target_baud_command_attempt_count == 0u
+          ? OTIS_FLAG_NONE
+          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32(
+      "gnss_receiver", "operational_bootstrap_peripheral_complete_count",
+      status.operational_bootstrap_peripheral_complete_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_completed_rate_mask",
+                  status.operational_bootstrap_completed_rate_mask,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_first_completed_baud",
+                  status.operational_bootstrap_first_completed_baud,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_second_completed_baud",
+                  status.operational_bootstrap_second_completed_baud,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "local_uart_baud",
+                  status.local_uart_baud, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "local_uart_baud_epoch",
+                  status.local_uart_baud_epoch, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_NONE);
+  emit_status_u32("gnss_receiver", "post_bootstrap_baud_change_count",
+                  status.post_bootstrap_baud_change_count,
+                  status.post_bootstrap_baud_change_count == 0u
+                      ? OTIS_SEVERITY_INFO
+                      : OTIS_SEVERITY_ERROR,
+                  status.post_bootstrap_baud_change_count == 0u
+                      ? OTIS_FLAG_NONE
+                      : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status_u32("gnss_receiver", "operational_bootstrap_rx_discarded_count",
+                  status.operational_bootstrap_rx_discarded_count,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status("gnss_receiver", "autodiscovery_enabled", "false",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#endif
   emit_status_u32("gnss_receiver", "candidate_baud", status.candidate_baud,
                   link_severity, link_flags);
   if (status.confirmed_baud == 0u) {
@@ -3391,6 +3459,13 @@ void emit_gnss_receiver_status(void) {
   emit_status("gnss_receiver", "startup_fallback_entered",
               status.startup_fallback_entered ? "true" : "false",
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  emit_status("gnss_receiver", "initial_discovery_identity_baud",
+              "not_applicable", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("gnss_receiver", "initial_discovery_outcome", "not_applicable",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+#else
   if (status.initial_discovery_identity_baud == 0u) {
     emit_status("gnss_receiver", "initial_discovery_identity_baud",
                 "unavailable", OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
@@ -3403,6 +3478,7 @@ void emit_gnss_receiver_status(void) {
               otis_gnss_initial_discovery_outcome_name(
                   status.initial_discovery_outcome),
               OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+#endif
   emit_status_u32("gnss_receiver", "pmtk605_peripheral_complete_count",
                   status.pmtk605_peripheral_complete_count,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);

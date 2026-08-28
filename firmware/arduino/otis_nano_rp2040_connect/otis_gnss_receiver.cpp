@@ -358,7 +358,7 @@ constexpr char kGnssTargetBaud19200Command[] = "$PMTK251,19200*22\r\n";
 constexpr char kGnssTargetBaud38400Command[] = "$PMTK251,38400*27\r\n";
 constexpr char kGnssTargetBaud57600Command[] = "$PMTK251,57600*2C\r\n";
 constexpr char kGnssTargetBaud115200Command[] = "$PMTK251,115200*1F\r\n";
-#elif OTIS_GNSS_UART_BAUD == 9600u
+#elif !OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
 constexpr uint32_t kGnssCandidateBauds[] = {
     9600u, 115200u, 57600u, 38400u, 19200u, 14400u, 4800u,
 };
@@ -368,7 +368,7 @@ constexpr uint32_t kGnssCandidateBauds[] = {
     115200u, 9600u, 57600u, 38400u, 19200u, 14400u, 4800u,
 };
 constexpr uint32_t kGnssOperationalBootstrapBauds[] = {
-    9600u, 19200u, 38400u, 57600u, 14400u, 4800u, 115200u,
+    9600u, 115200u,
 };
 constexpr size_t kGnssOperationalBootstrapBaudCount =
     sizeof(kGnssOperationalBootstrapBauds) /
@@ -552,6 +552,18 @@ void fail_validation_or_restart(OtisGnssLink *link, uint32_t now_ms) {
   restart_discovery(link, now_ms, false);
 }
 
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+void fail_operational_bootstrap(OtisGnssLink *link) {
+  link->operational_bootstrap_failed = true;
+  link->operational_bootstrap_complete = false;
+  link->state = OtisGnssLinkState::OperationalBootstrapFailed;
+  link->action_pending = false;
+  link->action_in_progress = false;
+  link->pending_action = OtisGnssLinkActionKind::None;
+  reset_link_line(link);
+}
+#endif
+
 void restart_discovery(OtisGnssLink *link, uint32_t now_ms,
                        bool link_was_lost) {
   if (link_was_lost) link->link_loss_count++;
@@ -565,17 +577,18 @@ void restart_discovery(OtisGnssLink *link, uint32_t now_ms,
   link->candidate_index = 0u;
   link->discovery_cycle++;
   link->discovery_started_ms = now_ms;
-#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
-    OTIS_GNSS_UART_BAUD == 115200u
-  // Operational 115200 profiles never scan.  Startup has already sent the
-  // fixed promotion packet at 9600; recovery stays at the required rate and
-  // requalifies the receiver there.
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  // The finite write-only promotion is a boot transaction and is never
+  // repeated. Later qualification failures remain at 115200, listen through a
+  // full passive interval, and request fresh identity/configuration evidence.
+  if (!link->operational_bootstrap_complete) {
+    fail_operational_bootstrap(link);
+    return;
+  }
   link->candidate_baud = link->policy.target_baud;
-  link->pending_baud = link->policy.target_baud;
   link->state_started_ms = now_ms;
   reset_link_line(link);
-  queue_link_action(link, OtisGnssLinkState::SelectTargetBaud,
-                    OtisGnssLinkActionKind::SetUartBaud);
+  link->state = OtisGnssLinkState::PassiveListen;
 #else
   select_candidate(link, now_ms);
 #endif
@@ -942,8 +955,13 @@ void process_link_line(OtisGnssLink *link, uint32_t now_ms) {
     note_command_ack(link, fields, field_count, now_ms);
   }
 
-  if (link->state == OtisGnssLinkState::PassiveListen)
+  if (link->state == OtisGnssLinkState::PassiveListen) {
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+    queue_identity_query(link, link->operational_bootstrap_complete);
+#else
     queue_identity_query(link, false);
+#endif
+  }
 }
 
 }  // namespace
@@ -963,10 +981,12 @@ void otis_gnss_link_reset(OtisGnssLink *link,
 #else
   select_candidate(link, now_ms);
 #endif
-#elif OTIS_GNSS_UART_BAUD == 115200u
-  // Fixed operational bootstrap: transmit the same set-115200 packet once at
-  // every supported retained rate, then stay at 115200.  No response-driven
-  // discovery or fallback is involved.
+#elif OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  // Fixed operational bootstrap: cover reset-default 9600 and retained-
+  // operational 115200 with the same set-115200 packet and an explicit
+  // receiver-side settle after each packet, then stay at 115200. No
+  // response-driven discovery, learning, fallback, or post-boot promotion
+  // retry is involved.
   link->candidate_index = 0u;
   link->candidate_baud = kGnssOperationalBootstrapBauds[0];
   link->pending_baud = link->candidate_baud;
@@ -979,6 +999,17 @@ void otis_gnss_link_reset(OtisGnssLink *link,
 #endif
 }
 
+bool otis_gnss_link_tick_may_advance_with_rx_backlog(
+    const OtisGnssLink *link) {
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  return link != nullptr &&
+         link->state == OtisGnssLinkState::OperationalBootstrapSettle;
+#else
+  (void)link;
+  return false;
+#endif
+}
+
 void otis_gnss_link_tick(OtisGnssLink *link, uint32_t now_ms) {
   if (link == nullptr || !link->service_initialized || link->action_pending ||
       link->action_in_progress)
@@ -987,8 +1018,38 @@ void otis_gnss_link_tick(OtisGnssLink *link, uint32_t now_ms) {
     case OtisGnssLinkState::PassiveListen:
       if (elapsed_at_least(now_ms, link->state_started_ms,
                            link->policy.passive_dwell_ms))
-        queue_identity_query(link, false);
+        queue_identity_query(
+            link,
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+            link->operational_bootstrap_complete
+#else
+            false
+#endif
+        );
       break;
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+    case OtisGnssLinkState::OperationalBootstrapSettle:
+      if (elapsed_at_least(now_ms, link->state_started_ms,
+                           OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS)) {
+        if (link->candidate_index + 1u <
+            kGnssOperationalBootstrapBaudCount) {
+          link->candidate_index++;
+          link->candidate_baud =
+              kGnssOperationalBootstrapBauds[link->candidate_index];
+          link->pending_baud = link->candidate_baud;
+          queue_link_action(link, OtisGnssLinkState::SelectCandidateBaud,
+                            OtisGnssLinkActionKind::SetUartBaud);
+        } else {
+          link->operational_bootstrap_complete = true;
+          link->candidate_baud = link->policy.target_baud;
+          reset_link_line(link);
+          queue_identity_query(link, true);
+        }
+      }
+      break;
+    case OtisGnssLinkState::OperationalBootstrapFailed:
+      break;
+#endif
     case OtisGnssLinkState::AwaitIdentityResponse:
       if (elapsed_at_least(now_ms, link->state_started_ms,
                            link->policy.response_timeout_ms)) {
@@ -1159,6 +1220,8 @@ void otis_gnss_link_note_collector_loss(OtisGnssLink *link) {
 void otis_gnss_link_note_baud_epoch_boundary(OtisGnssLink *link) {
   if (link == nullptr || !link->service_initialized) return;
   reset_link_line(link);
+  link->valid_frame_seen = false;
+  link->last_valid_frame_ms = 0u;
   if (link->state == OtisGnssLinkState::AwaitTargetBaudEpochBoundary) {
 #if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
     OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD
@@ -1188,6 +1251,14 @@ bool otis_gnss_link_take_action(OtisGnssLink *link,
       action->bytes = fixed_target_baud_command(link->policy.target_baud,
                                                 &action->length);
       if (action->bytes == nullptr || action->length == 0u) return false;
+      link->target_baud_command_attempt_count++;
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+      if (!link->operational_bootstrap_complete) {
+        link->operational_bootstrap_attempt_count++;
+      } else {
+        link->post_bootstrap_target_baud_command_attempt_count++;
+      }
+#endif
       break;
     case OtisGnssLinkActionKind::TransmitOutputQuery:
       action->bytes = kGnssOutputQuery;
@@ -1214,6 +1285,14 @@ void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
   if (!success) {
     if (action != OtisGnssLinkActionKind::SetUartBaud)
       link->transmit_failure_count++;
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+    if (!link->operational_bootstrap_complete &&
+        (link->state == OtisGnssLinkState::SelectCandidateBaud ||
+         link->state == OtisGnssLinkState::TransmitTargetBaud)) {
+      fail_operational_bootstrap(link);
+      return;
+    }
+#endif
     fail_validation_or_restart(link, now_ms);
     return;
   }
@@ -1221,8 +1300,7 @@ void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
   switch (link->state) {
     case OtisGnssLinkState::SelectCandidateBaud:
       reset_link_line(link);
-#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
-    OTIS_GNSS_UART_BAUD == 115200u
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
       queue_link_action(link, OtisGnssLinkState::TransmitTargetBaud,
                         OtisGnssLinkActionKind::TransmitTargetBaud);
 #else
@@ -1235,23 +1313,26 @@ void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
       link->state_started_ms = now_ms;
       break;
     case OtisGnssLinkState::TransmitTargetBaud:
-#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
-    OTIS_GNSS_UART_BAUD == 115200u
-      if (link->candidate_index + 1u <
-          kGnssOperationalBootstrapBaudCount) {
-        link->candidate_index++;
-        link->candidate_baud =
-            kGnssOperationalBootstrapBauds[link->candidate_index];
-        link->pending_baud = link->candidate_baud;
-        queue_link_action(link, OtisGnssLinkState::SelectCandidateBaud,
-                          OtisGnssLinkActionKind::SetUartBaud);
-        break;
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+      link->operational_bootstrap_peripheral_complete_count++;
+      if (link->operational_bootstrap_peripheral_complete_count == 1u) {
+        link->operational_bootstrap_first_completed_baud =
+            link->candidate_baud;
+      } else if (link->operational_bootstrap_peripheral_complete_count == 2u) {
+        link->operational_bootstrap_second_completed_baud =
+            link->candidate_baud;
       }
-#endif
+      link->operational_bootstrap_completed_rate_mask |=
+          static_cast<uint32_t>(1u << link->candidate_index);
+      link->state = OtisGnssLinkState::OperationalBootstrapSettle;
+      link->state_started_ms = now_ms;
+      break;
+#else
       link->pending_baud = link->policy.target_baud;
       queue_link_action(link, OtisGnssLinkState::SelectTargetBaud,
                         OtisGnssLinkActionKind::SetUartBaud);
       break;
+#endif
     case OtisGnssLinkState::SelectTargetBaud:
       link->candidate_baud = link->policy.target_baud;
       reset_link_line(link);
@@ -1308,6 +1389,8 @@ const char *otis_gnss_link_state_name(const OtisGnssLink *link,
                                       uint32_t now_ms) {
   if (link == nullptr || !link->service_initialized) return "disabled";
   if (otis_gnss_link_online(link)) return "online";
+  if (link->state == OtisGnssLinkState::OperationalBootstrapFailed)
+    return "failed";
   if (link->link_loss_count > 0u) return "lost";
   if (otis_gnss_link_discovery_degraded(link, now_ms)) return "degraded";
   if (link->state >= OtisGnssLinkState::TransmitTargetBaud)
@@ -1352,6 +1435,10 @@ const char *otis_gnss_link_phase_name(const OtisGnssLink *link) {
       return "online";
     case OtisGnssLinkState::AwaitTargetBaudEpochBoundary:
       return "await_target_baud_epoch_boundary";
+    case OtisGnssLinkState::OperationalBootstrapSettle:
+      return "operational_bootstrap_settle";
+    case OtisGnssLinkState::OperationalBootstrapFailed:
+      return "operational_bootstrap_failed";
   }
   return "unknown";
 }
@@ -1888,6 +1975,10 @@ OtisGnssUartRxRing live_uart_rx_ring = {};
 bool live_receiver_started = false;
 bool live_uart_initialized = false;
 bool live_uart_irq_installed = false;
+uint32_t live_uart_baud = 0u;
+uint32_t live_uart_baud_epoch = 0u;
+uint32_t live_post_bootstrap_baud_change_count = 0u;
+uint32_t live_operational_bootstrap_rx_discarded_count = 0u;
 uint32_t live_pmtk605_peripheral_complete_count = 0u;
 uint64_t live_pmtk605_last_peripheral_complete_ticks = 0u;
 bool live_pmtk605_last_peripheral_complete_ticks_available = false;
@@ -2211,7 +2302,8 @@ uint64_t update_live_service_timer0_extension() {
   return live_service_timer0_extended_ticks;
 }
 
-void __not_in_flash_func(otis_gnss_uart0_rx_isr)() {
+void __not_in_flash_func(drain_live_uart0_fifo_to_ring)(
+    bool record_interrupt_statistics) {
   const uint32_t entry_ticks = live_timer0_ticks_from_register();
   uint32_t drained = 0u;
   uart_hw_t *const hardware = uart_get_hw(uart0);
@@ -2223,14 +2315,58 @@ void __not_in_flash_func(otis_gnss_uart0_rx_isr)() {
     drained++;
   }
   const uint32_t exit_ticks = live_timer0_ticks_from_register();
-  otis_gnss_uart_rx_ring_note_interrupt_from_isr(
-      &live_uart_rx_ring, entry_ticks, exit_ticks, drained);
+  if (record_interrupt_statistics)
+    otis_gnss_uart_rx_ring_note_interrupt_from_isr(
+        &live_uart_rx_ring, entry_ticks, exit_ticks, drained);
 }
 
-void configure_live_uart(uint32_t baud, bool opening_target_epoch) {
+void __not_in_flash_func(otis_gnss_uart0_rx_isr)() {
+  drain_live_uart0_fifo_to_ring(true);
+}
+
+bool live_uart0_rx_byte_available(void *context) {
+  uart_hw_t *const hardware = static_cast<uart_hw_t *>(context);
+  return (hardware->fr & UART_UARTFR_RXFE_BITS) == 0u;
+}
+
+void live_uart0_discard_rx_byte(void *context) {
+  uart_hw_t *const hardware = static_cast<uart_hw_t *>(context);
+  (void)hardware->dr;
+}
+
+bool prepare_live_uart_baud_change() {
+  if (!live_uart_initialized) return true;
+  uart_set_irq_enables(uart0, false, false);
+  irq_set_enabled(UART0_IRQ, false);
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+  if (!live_link.operational_bootstrap_complete) {
+    // Bytes received while deliberately listening at the non-matching member
+    // of the fixed 9600/115200 pair are not qualification evidence. Discard
+    // the bounded old-epoch frontier explicitly so continuous wrong-baud noise
+    // cannot postpone the planned transition indefinitely.
+    live_operational_bootstrap_rx_discarded_count +=
+        otis_gnss_uart_rx_ring_discard_all(&live_uart_rx_ring);
+    uart_hw_t *const hardware = uart_get_hw(uart0);
+    live_operational_bootstrap_rx_discarded_count +=
+        otis_gnss_uart_rx_bounded_hardware_discard(
+            live_uart0_rx_byte_available, live_uart0_discard_rx_byte,
+            hardware, kOtisGnssUartRxTransitionHardwareDiscardBudget);
+    return true;
+  }
+#endif
+  // This is a synchronous handoff drain with UART0 IRQ excluded, not an RX
+  // interrupt. Preserve its bytes without fabricating interrupt statistics.
+  drain_live_uart0_fifo_to_ring(false);
+  if (otis_gnss_uart_rx_ring_depth(&live_uart_rx_ring) != 0u) {
+    uart_set_irq_enables(uart0, true, false);
+    irq_set_enabled(UART0_IRQ, true);
+    return false;
+  }
+  return true;
+}
+
+void configure_live_uart(uint32_t baud, bool opening_baud_epoch) {
   if (live_uart_initialized) {
-    uart_set_irq_enables(uart0, false, false);
-    irq_set_enabled(UART0_IRQ, false);
     uart_deinit(uart0);
   }
   uart_init(uart0, baud);
@@ -2246,11 +2382,15 @@ void configure_live_uart(uint32_t baud, bool opening_target_epoch) {
     irq_set_priority(UART0_IRQ, PICO_LOWEST_IRQ_PRIORITY);
     live_uart_irq_installed = true;
   }
-  if (opening_target_epoch)
+  if (opening_baud_epoch) {
     otis_gnss_uart_rx_ring_mark_baud_epoch(&live_uart_rx_ring);
+    live_uart_baud_epoch++;
+    if (live_uart_baud_epoch == 0u) live_uart_baud_epoch = 1u;
+  }
   uart_set_irq_enables(uart0, true, false);
   irq_set_enabled(UART0_IRQ, true);
   live_uart_initialized = true;
+  live_uart_baud = baud;
 }
 
 void service_live_uart_rx_ring(uint32_t now_ms) {
@@ -2371,14 +2511,27 @@ void progress_live_transmit(uint32_t now_ms) {
 
 void begin_pending_link_action(uint32_t now_ms) {
   if (live_transmit.active) return;
+  if (live_link.action_pending &&
+      live_link.pending_action == OtisGnssLinkActionKind::SetUartBaud &&
+      (!live_uart_initialized || live_link.pending_baud != live_uart_baud) &&
+      !prepare_live_uart_baud_change())
+    return;
   OtisGnssLinkAction action;
   if (!otis_gnss_link_take_action(&live_link, &action)) return;
   if (action.kind == OtisGnssLinkActionKind::SetUartBaud) {
-    const bool opening_target_epoch =
+    const bool baud_changed =
+        !live_uart_initialized || action.baud != live_uart_baud;
+    if (!baud_changed) {
+      otis_gnss_link_complete_action(&live_link, true, now_ms);
+      return;
+    }
+    if (live_link.operational_bootstrap_complete)
+      live_post_bootstrap_baud_change_count++;
+    configure_live_uart(action.baud, true);
+    const bool opening_characterization_target_epoch =
         live_link.state == OtisGnssLinkState::SelectTargetBaud &&
         live_characterization.request_available;
-    configure_live_uart(action.baud, opening_target_epoch);
-    if (opening_target_epoch) {
+    if (opening_characterization_target_epoch) {
 #if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
       live_characterization.baud_epoch++;
       if (live_characterization.baud_epoch == 0u)
@@ -2410,6 +2563,10 @@ bool otis_gnss_receiver_begin(void) {
   live_receiver_started = false;
   live_uart_initialized = false;
   live_uart_irq_installed = false;
+  live_uart_baud = 0u;
+  live_uart_baud_epoch = 0u;
+  live_post_bootstrap_baud_change_count = 0u;
+  live_operational_bootstrap_rx_discarded_count = 0u;
   live_transmit = {};
   live_characterization = {};
   live_characterization.observation_phase =
@@ -2460,10 +2617,12 @@ void otis_gnss_receiver_service(uint32_t now_ms) {
   otis_gnss_receiver_note_time_at_ticks(
       &live_receiver, now_ms, live_service_timer0_extended_ticks,
       OTIS_GNSS_RECONNECT_GAP_MS);
-  // A wall-clock response deadline cannot advance the link past bytes already
-  // accepted by the ISR for the current candidate.  Drain that exact producer
-  // frontier first; no retained observation is reset or discarded.
-  if (otis_gnss_uart_rx_ring_depth(&live_uart_rx_ring) == 0u)
+  // Ordinary response deadlines cannot advance past bytes already accepted by
+  // the ISR for the current candidate. The fixed operational settle is the
+  // sole exception: old-epoch bytes are deliberately non-qualification
+  // evidence and cannot postpone its finite baud transition.
+  if (otis_gnss_uart_rx_ring_depth(&live_uart_rx_ring) == 0u ||
+      otis_gnss_link_tick_may_advance_with_rx_backlog(&live_link))
     otis_gnss_link_tick(&live_link, now_ms);
   service_characterization_transaction(now_ms);
   begin_pending_link_action(now_ms);
@@ -2518,6 +2677,30 @@ void otis_gnss_receiver_get_snapshot(uint32_t now_ms,
   snapshot->last_identity_response_baud =
       live_link.last_identity_response_baud;
   snapshot->discovery_cycle = live_link.discovery_cycle;
+  snapshot->operational_bootstrap_complete =
+      live_link.operational_bootstrap_complete;
+  snapshot->operational_bootstrap_failed =
+      live_link.operational_bootstrap_failed;
+  snapshot->operational_bootstrap_attempt_count =
+      live_link.operational_bootstrap_attempt_count;
+  snapshot->target_baud_command_attempt_count =
+      live_link.target_baud_command_attempt_count;
+  snapshot->post_bootstrap_target_baud_command_attempt_count =
+      live_link.post_bootstrap_target_baud_command_attempt_count;
+  snapshot->operational_bootstrap_peripheral_complete_count =
+      live_link.operational_bootstrap_peripheral_complete_count;
+  snapshot->operational_bootstrap_completed_rate_mask =
+      live_link.operational_bootstrap_completed_rate_mask;
+  snapshot->operational_bootstrap_first_completed_baud =
+      live_link.operational_bootstrap_first_completed_baud;
+  snapshot->operational_bootstrap_second_completed_baud =
+      live_link.operational_bootstrap_second_completed_baud;
+  snapshot->local_uart_baud = live_uart_baud;
+  snapshot->local_uart_baud_epoch = live_uart_baud_epoch;
+  snapshot->post_bootstrap_baud_change_count =
+      live_post_bootstrap_baud_change_count;
+  snapshot->operational_bootstrap_rx_discarded_count =
+      live_operational_bootstrap_rx_discarded_count;
   snapshot->link_last_valid_frame_age_ms =
       live_link.valid_frame_seen
           ? static_cast<uint32_t>(now_ms - live_link.last_valid_frame_ms)

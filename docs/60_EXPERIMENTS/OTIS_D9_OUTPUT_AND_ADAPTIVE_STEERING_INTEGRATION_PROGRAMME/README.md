@@ -27,6 +27,17 @@ bench connection is D9 to D6 through a 1 kΩ series resistor. D14 remains the
 sole timing reference, D8 the sole oscillator/control truth, D9 an output, and
 D6 a fail-local zero-authority diagnostic.
 
+Every exact live firmware start first executes the ordinary configuration-blind
+GNSS bootstrap: the fixed set-115200 packet is sent once in the frozen
+9600 then 115200 order, with 1200 ms receiver-side settle after each physical
+UART drain, followed by permanent UART0 operation and qualification at 115200. No
+host or runtime baud command, response-driven discovery, fallback scan or
+post-bootstrap promotion retry is permitted. Pre-write readiness requires the
+exact ordered bootstrap completions/counters/rate mask, local UART baud and
+epoch, zero post-bootstrap PMTK251 attempts or baud changes, fresh same-receiver identity/configuration and
+current metadata. A bootstrap or qualification failure keeps DAC authority at
+zero while D14/D8 and D9/D6 acquisition continue.
+
 The 24-hour authority envelope permits at most 48 automatic applications,
 1,008 cumulative absolute codes and 49 total physical writes including setup.
 The 72-hour envelope permits at most 144 automatic applications, 3,024

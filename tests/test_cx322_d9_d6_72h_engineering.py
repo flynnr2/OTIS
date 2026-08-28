@@ -512,6 +512,10 @@ def test_contract_is_exact_72h_engineering_and_non_promotional() -> None:
     assert contract["firmware"]["deliberate_reversal_challenge_enabled"] is False
     assert contract["serial"]["baud"] == 115200
     assert "--auto-detect" in contract["serial"]["selection"]
+    assert contract["gnss_uart_policy"]["maximum_total_attempts"] == 2
+    assert contract["gnss_uart_policy"]["settle_after_peripheral_drain_ms"] == 1200
+    assert contract["gnss_uart_policy"]["autodiscovery_permitted"] is False
+    assert contract["gnss_uart_policy"]["post_bootstrap_baud_change_permitted"] is False
     assert contract["time"]["qualified_duration_s"] == 259_200
     assert contract["time"]["source_counter_domain"] == "rp2040_timer0"
     assert contract["time"]["counter_domain"] == "rp2040_timer0_extended"

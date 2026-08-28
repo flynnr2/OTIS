@@ -91,6 +91,8 @@ def test_d9_frequency_only_profile_preserves_law_but_has_distinct_24h_envelope()
         "OTIS_CX317_ACTIVE_CAMPAIGN",
         "OTIS_CX317_ACTIVE_CORRECTION_LIMIT",
         "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES",
+        "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION",
+        "OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS",
     }
     assert {key: value for key, value in candidate.items() if key not in excluded} == {
         key: value for key, value in baseline.items() if key not in excluded

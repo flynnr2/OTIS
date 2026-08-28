@@ -28,6 +28,7 @@ from .host_attach_health_contract import (
     evaluate_telemetry_drop_history,
     telemetry_drop_observations,
 )
+from .gnss_operational_baud_policy import GNSS_OPERATIONAL_PREWRITE_EXACT
 
 
 RUNTIME_CONTRACT_ID = "cx319_g1_prewrite_runtime_contract_v4"
@@ -51,6 +52,7 @@ GNSS_PREWRITE_EXACT = {
     ("gnss_receiver", "metadata_control_eligible"): "true",
     ("gnss_receiver", "raw_pps_control_eligible"): "true",
     ("gnss_receiver", "control_eligible"): "true",
+    **GNSS_OPERATIONAL_PREWRITE_EXACT,
 }
 
 

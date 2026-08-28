@@ -19,6 +19,10 @@ from .active_hybrid_programme_contract import (
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
+from .gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_BAUD_POLICY,
+    GNSS_OPERATIONAL_REQUIRED_DEFINES,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -290,6 +294,7 @@ def _validate_build(
                 "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
                 "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
                 "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
+                **GNSS_OPERATIONAL_REQUIRED_DEFINES,
             }
         )
     if programme.sustained_regulation:
@@ -424,6 +429,11 @@ def create_bundle(
             "policy_sha256": policy.policy_sha256,
         },
         "firmware": firmware,
+        **(
+            {"gnss_uart_policy": GNSS_OPERATIONAL_BAUD_POLICY}
+            if programme.forwarded_output_integration
+            else {}
+        ),
         "offline_replay": replay,
         "host_tools": {name: _binding(path) for name, path in TOOL_PATHS.items()},
         "topology": {
@@ -705,6 +715,7 @@ def validate_bundle(
     if programme.forwarded_output_integration and (
         bundle.get("engineering_contract")
         != _engineering_contract_binding(programme)
+        or bundle.get("gnss_uart_policy") != GNSS_OPERATIONAL_BAUD_POLICY
         or bundle.get("setup", {}).get("provenance")
         != integrated_setup_provenance_contract(programme)
         or bundle.get("setup", {}).get("physical_applied_code_before_setup")

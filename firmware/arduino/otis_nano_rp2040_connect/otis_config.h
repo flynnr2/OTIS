@@ -714,11 +714,34 @@
 #endif
 
 #ifndef OTIS_GNSS_UART_BAUD
-// The installed receiver resets to 9600 on a receiver power cycle but retains
-// its selected rate across an MCU reset/flash. Ordinary discovery probes the
-// operational target first, then 9600, and issues the fixed PMTK251 command
-// only after fresh identity establishes which rate is actually active.
+// The installed receiver resets to 9600 on a receiver power cycle and otherwise
+// retains its last selected rate. Operational firmware aligns it to 115200 with
+// the finite configuration-blind promotion policy below. Characterization
+// profiles retain their separate evidence-bearing discovery state machine.
 #define OTIS_GNSS_UART_BAUD 115200u
+#endif
+
+// A write-only boot transaction covers the receiver's only two ordinary start
+// states: reset-default 9600 and retained-operational 115200. It sends the one
+// fixed PMTK251 set-115200 packet at 9600, settles, repeats it idempotently at
+// 115200, settles, and then remains permanently at 115200. It never listens to
+// select a rate and never repeats the promotion after boot. Characterization
+// rates remain confined to the separate characterization profile.
+#ifndef OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+#if OTIS_ENABLE_GNSS_RECEIVER && OTIS_GNSS_UART_TX_ENABLED && \
+    OTIS_GNSS_UART_BAUD == 115200u && \
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#define OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION 1
+#else
+#define OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION 0
+#endif
+#endif
+
+// Peripheral TX completion proves only that the last stop bit left UART0. The
+// receiver gets one full passive interval to parse and apply each PMTK251
+// command before UART0 changes rate or sends the first identity query.
+#ifndef OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS
+#define OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS 1200u
 #endif
 
 // The continuation bundle may retain the freshly rediscovered startup rate
@@ -1018,6 +1041,26 @@
 
 #if OTIS_GNSS_UART_BAUD != 9600u && OTIS_GNSS_UART_BAUD != 115200u
 #error "The GNSS receiver target must be 9600 or 115200 baud."
+#endif
+
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION && \
+    (!OTIS_ENABLE_GNSS_RECEIVER || !OTIS_GNSS_UART_TX_ENABLED || \
+     OTIS_GNSS_UART_BAUD != 115200u || \
+     OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION)
+#error "Configuration-blind GNSS promotion requires an ordinary TX-enabled 115200 receiver profile."
+#endif
+
+#if OTIS_ENABLE_GNSS_RECEIVER && OTIS_GNSS_UART_TX_ENABLED && \
+    OTIS_GNSS_UART_BAUD == 115200u && \
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+#error "Ordinary 115200 GNSS profiles must use the configuration-blind promotion policy."
+#endif
+
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION && \
+    (OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS < 1000u || \
+     OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS > 5000u)
+#error "GNSS operational promotion settle must be between 1 and 5 seconds."
 #endif
 
 #if OTIS_GNSS_SERVICE_BYTE_BUDGET < 1u || \

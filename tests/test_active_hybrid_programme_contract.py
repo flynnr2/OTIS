@@ -12,6 +12,7 @@ from host.otis_tools import active_hybrid_live_supervisor as supervisor
 from host.otis_tools.active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     CX321_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     get_active_hybrid_programme,
     programme_from_mapping,
@@ -155,3 +156,54 @@ def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(
     assert result["defines"]["OTIS_CX317_ACTIVE_CAMPAIGN"].endswith(
         "CX321_ACTIVE_HYBRID"
     )
+
+
+def test_forwarded_integration_build_requires_exact_gnss_boot_policy(
+    tmp_path: Path,
+) -> None:
+    programme = CX322_D9_D6_72H_PROGRAMME
+    matrix = json.loads(
+        (Path(__file__).resolve().parents[1]
+         / "firmware/arduino/firmware_matrix.json").read_text(encoding="utf-8")
+    )
+    profile = next(
+        item for item in matrix["profiles"] if item["id"] == programme.profile_id
+    )
+    uf2 = tmp_path / "cx322_d9_d6.uf2"
+    uf2.write_bytes(b"cx322-d9-d6-exact-build-fixture")
+    manifest = {
+        "provenance": {
+            "configuration": {
+                "profile_id": programme.profile_id,
+                "defines": profile["defines"],
+                "sha256": "1" * 64,
+            },
+            "source": {
+                "sha256": "2" * 64,
+                "state": "clean",
+                "git_commit": "3" * 40,
+            },
+            "target": {
+                "fqbn": "rp2040:rp2040:arduino_nano_connect:freq=133"
+            },
+            "toolchain": {
+                "compiler_identity": "fixture-compiler",
+                "installed_sha256": "4" * 64,
+            },
+        },
+        "artifacts": [
+            {"name": uf2.name, "sha256": sha256(uf2.read_bytes()).hexdigest()}
+        ],
+    }
+    manifest_path = tmp_path / "firmware_build_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = bundle._validate_build(manifest_path, programme)
+    assert result["defines"]["OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"] == "1"
+
+    del manifest["provenance"]["configuration"]["defines"][  # type: ignore[index]
+        "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="compile-time envelope differs"):
+        bundle._validate_build(manifest_path, programme)

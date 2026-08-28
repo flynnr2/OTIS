@@ -31,6 +31,23 @@
     "sole_serial_owner_required": true,
     "independent_abort_delivery_required": true
   },
+  "gnss_uart_policy": {
+    "policy_id": "configuration_blind_default_or_retained_115200_v1",
+    "target_baud": 115200,
+    "ordinary_receiver_start_states": [9600, 115200],
+    "ordered_source_bauds": [9600, 115200],
+    "command": "$PMTK251,115200*1F\r\n",
+    "attempts_per_source_baud": 1,
+    "maximum_total_attempts": 2,
+    "response_gated": false,
+    "autodiscovery_permitted": false,
+    "fallback_scan_permitted": false,
+    "rx_epoch_isolation_required": true,
+    "settle_after_peripheral_drain_ms": 1200,
+    "final_validation_baud": 115200,
+    "post_bootstrap_baud_change_permitted": false,
+    "post_bootstrap_promotion_retry_permitted": false
+  },
   "time": {
     "source_counter_domain": "rp2040_timer0",
     "counter_domain": "rp2040_timer0_extended",
@@ -197,5 +214,5 @@
     "host_programme_record_replay_and_finalization_rehearsal_status": "implemented",
     "remaining_live_status": "live_capture_adapter_integration_and_exact_physical_activation_required"
   },
-  "contract_semantic_sha256": "d577ae525eb87c2d55796488949a76e17e4dee5650ab1363eb28896bf19296ed"
+  "contract_semantic_sha256": "ea727c32798d6eb719ca63840486ebc38395dc05cc8a494ddea29887c134af0c"
 }

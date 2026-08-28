@@ -42,6 +42,11 @@ from .active_transactions import (
     SUPERVISOR_STATE,
     validate_transaction_history,
 )
+from .bounded_tight_deadband_prewrite_contract import (
+    PrewriteReadiness,
+    canonical_prewrite_fixture,
+    evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
+)
 from .capture_device import _detect_single_device
 from .capture_runtime_checks import _capture_state_ready, _markers, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
@@ -62,13 +67,18 @@ from .frequency_control_supervisor import (
     FrequencyControlSupervisor,
     TightDeadbandLeg,
 )
+from .gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_BAUD_POLICY,
+    GNSS_OPERATIONAL_REQUIRED_DEFINES,
+    gnss_operational_runtime_invariant_errors,
+    require_exact_gnss_operational_baud_policy,
+)
 from .no_write_qualification_supervisor import load_no_write_qualification_spec
 from .measurement_replay import (
     COUNT_INVALID_FLAGS,
     EXPECTED_BACKEND as EXPECTED_D8_SNAPSHOT_BACKEND,
     REFERENCE_INVALID_FLAGS,
 )
-from .prewrite_readiness_contract import canonical_prewrite_fixture
 from .run_paths import (
     ACTIVE_TRANSACTIONS_V2_CSV,
     CONTROL_PREVIEWS_CSV,
@@ -239,6 +249,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         raise ValueError("frequency-only endurance profile differs")
     if value.get("serial") != {"baud": 115200, "selection": "fresh_capture_device_auto_detect_every_enumeration", "stored_path_permitted": False}:
         raise ValueError("frequency-only endurance serial contract differs")
+    require_exact_gnss_operational_baud_policy(
+        value.get("gnss_uart_policy", {}), owner="frequency-only endurance"
+    )
     if any(value["authority"].get(key) is not False for key in ("hybrid_pll", "phase_request", "d9_control", "d6_control", "d10_control", "automatic_retry", "nominal_restoration")):
         raise ValueError("frequency-only endurance authority boundary differs")
     if value["envelope"] != {"qualified_duration_s": 86400, "initial_qualification_deadline_s": 5400, "absolute_wall_limit_s": 108000, "milestone_qualified_duration_s": 21600, "maximum_setup_establishments": 1, "maximum_automatic_applications": 48, "maximum_total_physical_dac_writes": 49, "maximum_cumulative_movement_codes": 1008, "maximum_step_codes": 21, "minimum_application_cadence_s": 1800, "maximum_outstanding_transactions": 1, "automatic_limits_are_nonbinding_cadence_derived_ceilings": True, "dac_min_code": "0xA800", "dac_max_code": "0xAB00"}:
@@ -346,13 +359,14 @@ def freeze_bundle(*, build_manifest_path: Path, source_revision: str, contract_p
         "OTIS_CX317_RECOVERY_FRESH_SUPPORT_S": "600u",
         "OTIS_CX317_DECISION_CADENCE_S": "1800u",
         "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "1800u",
+        **GNSS_OPERATIONAL_REQUIRED_DEFINES,
     }
     if any(defines.get(key) != expected for key, expected in required.items()):
         raise ValueError("build lacks exact D9/D6/FLL selectors")
     firmware = _exact_firmware(build_manifest_path, source_revision=source_revision)
     if firmware["profile_id"] != contract["profile_id"]:
         raise ValueError("build provenance profile differs from frequency-only contract")
-    unsigned: dict[str, object] = {"schema_version": 1, "bundle_type": "otis_d9_d6_frequency_only_digital_endurance_bundle_v1", "tool": TOOL_ID, "effective": False, "physical_authority": False, "source_revision": source_revision, "contract": _binding(contract_path), "contract_semantic_sha256": contract["contract_semantic_sha256"], "firmware_build": firmware["build_manifest"], "firmware": firmware, "profile_id": contract["profile_id"], "serial": contract["serial"], "terminal_family": contract["terminal_family"], "unresolved_delivered_output_claims": contract["unresolved_delivered_output_claims"]}
+    unsigned: dict[str, object] = {"schema_version": 1, "bundle_type": "otis_d9_d6_frequency_only_digital_endurance_bundle_v1", "tool": TOOL_ID, "effective": False, "physical_authority": False, "source_revision": source_revision, "contract": _binding(contract_path), "contract_semantic_sha256": contract["contract_semantic_sha256"], "firmware_build": firmware["build_manifest"], "firmware": firmware, "profile_id": contract["profile_id"], "serial": contract["serial"], "gnss_uart_policy": contract["gnss_uart_policy"], "terminal_family": contract["terminal_family"], "unresolved_delivered_output_claims": contract["unresolved_delivered_output_claims"]}
     return {**unsigned, "bundle_sha256": canonical_sha256(unsigned)}
 
 
@@ -372,6 +386,8 @@ def validate_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("frequency-only endurance firmware source/configuration/UF2 identity differs")
     if value.get("contract_semantic_sha256") != contract["contract_semantic_sha256"] or value.get("profile_id") != contract["profile_id"]:
         raise ValueError("frequency-only endurance bundle contract/profile differs")
+    if value.get("gnss_uart_policy") != GNSS_OPERATIONAL_BAUD_POLICY:
+        raise ValueError("frequency-only endurance bundle GNSS UART policy differs")
     if value.get("effective") is not False or value.get("physical_authority") is not False:
         raise ValueError("bundle must remain non-effective before live activation")
     return value
@@ -550,6 +566,7 @@ def no_io_preflight(bundle: Mapping[str, Any]) -> dict[str, object]:
         "firmware_build_identity": value["firmware"]["build_identity"],
         "firmware_build_manifest_sha256": value["firmware_build"]["sha256"],
         "firmware_flash_authority": _firmware_flash_authority(),
+        "gnss_uart_policy": value["gnss_uart_policy"],
         "terminal_family": value["terminal_family"],
         "unresolved_delivered_output_claims": value["unresolved_delivered_output_claims"],
     }
@@ -2181,6 +2198,49 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
         self.state.update(self.accounting.state_fields())
         self._save()
 
+    def _prewrite_readiness(
+        self, health: dict[tuple[str, str], str]
+    ) -> PrewriteReadiness:
+        """Bind setup authority to the exact GNSS and D9/D6 boot state."""
+
+        identity = {
+            "run_identity": self.spec.run_identity,
+            "build_identity": self.expected_build_identity,
+            "profile_identity": self.spec.profile,
+            **self.identities,
+        }
+        readiness = evaluate_setup_prewrite_readiness(
+            health,
+            expected_identity=identity,
+            planned_live_stimulus_code=self.spec.start_code,
+            active_row_count=len(_read_csv_rows(self.run_dir / ACTIVE_CSV)),
+            dac_row_count=len(
+                _read_csv_rows(self.run_dir / "csv" / "dac_steps.csv")
+            ),
+            telemetry_drop_baseline=0,
+        )
+        mismatches = list(readiness.mismatches)
+        if health.get(("cx317_active", "query_nonce")) != str(
+            self.state["host_attach_query_nonce"]
+        ):
+            mismatches.append("solicited post-attachment snapshot is absent")
+        return PrewriteReadiness(
+            contract_id=(
+                "d9_d6_frequency_only_active_prewrite_runtime_contract_v1"
+            ),
+            ready=not readiness.missing and not mismatches,
+            missing=readiness.missing,
+            mismatches=tuple(dict.fromkeys(mismatches)),
+            inherited_preview_baseline_code=(
+                readiness.inherited_preview_baseline_code
+            ),
+            inherited_preview_baseline_provenance=(
+                readiness.inherited_preview_baseline_provenance
+            ),
+            planned_live_stimulus_code=readiness.planned_live_stimulus_code,
+            physical_dac_confirmation=readiness.physical_dac_confirmation,
+        )
+
     def _persist_accounting(self) -> None:
         self.state.update(self.accounting.state_fields())
         self._save()
@@ -2638,6 +2698,24 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
 
     def _check_fail_static_health(self, health: dict[tuple[str, str], str]) -> None:
         super()._check_fail_static_health(health)
+        gnss_missing, gnss_mismatches = (
+            gnss_operational_runtime_invariant_errors(
+                health,
+                require_present=(
+                    self.state["prewrite_contract_ready_utc"] is not None
+                ),
+            )
+        )
+        if gnss_missing or gnss_mismatches:
+            self._abort(
+                "frequency_only_d9_d6_invalid_due_to_identity_or_evidence_failure"
+            )
+            self._event(
+                "frequency_only_gnss_bootstrap_runtime_invariant_terminal",
+                missing=gnss_missing,
+                mismatches=gnss_mismatches,
+            )
+            return
         if (
             not self.state.get("d9_exact_readback_established")
             and health.get(("command", "config_snapshot")) != "end"

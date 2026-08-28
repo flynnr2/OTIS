@@ -134,6 +134,8 @@ enum class OtisGnssLinkState : uint8_t {
   Online = 14u,
   ObserveConfiguredOutput = 15u,
   AwaitTargetBaudEpochBoundary = 16u,
+  OperationalBootstrapSettle = 17u,
+  OperationalBootstrapFailed = 18u,
 };
 
 enum class OtisGnssOutputConfirmationMethod : uint8_t {
@@ -205,6 +207,8 @@ struct OtisGnssLink {
   bool discovery_output_repair_active;
   bool startup_hint_attempted;
   bool startup_fallback_entered;
+  bool operational_bootstrap_complete;
+  bool operational_bootstrap_failed;
   OtisGnssStartupHintIdentityOutcome startup_hint_identity_outcome;
   OtisGnssInitialDiscoveryOutcome initial_discovery_outcome;
   OtisGnssLinkState state;
@@ -223,6 +227,13 @@ struct OtisGnssLink {
   uint32_t discovery_started_ms;
   uint32_t last_valid_frame_ms;
   uint32_t discovery_cycle;
+  uint32_t operational_bootstrap_attempt_count;
+  uint32_t target_baud_command_attempt_count;
+  uint32_t post_bootstrap_target_baud_command_attempt_count;
+  uint32_t operational_bootstrap_peripheral_complete_count;
+  uint32_t operational_bootstrap_completed_rate_mask;
+  uint32_t operational_bootstrap_first_completed_baud;
+  uint32_t operational_bootstrap_second_completed_baud;
   uint32_t checksum_valid_count;
   uint32_t checksum_failure_count;
   uint32_t oversize_count;
@@ -335,6 +346,8 @@ struct OtisGnssReceiverSnapshot {
   bool gsa_checksum_requalified;
   bool startup_hint_attempted;
   bool startup_fallback_entered;
+  bool operational_bootstrap_complete;
+  bool operational_bootstrap_failed;
   bool pmtk605_last_peripheral_complete_ticks_available;
   uint8_t fix_quality;
   uint8_t fix_dimension;
@@ -354,6 +367,17 @@ struct OtisGnssReceiverSnapshot {
   uint32_t confirmed_baud;
   uint32_t last_identity_response_baud;
   uint32_t discovery_cycle;
+  uint32_t operational_bootstrap_attempt_count;
+  uint32_t target_baud_command_attempt_count;
+  uint32_t post_bootstrap_target_baud_command_attempt_count;
+  uint32_t operational_bootstrap_peripheral_complete_count;
+  uint32_t operational_bootstrap_completed_rate_mask;
+  uint32_t operational_bootstrap_first_completed_baud;
+  uint32_t operational_bootstrap_second_completed_baud;
+  uint32_t local_uart_baud;
+  uint32_t local_uart_baud_epoch;
+  uint32_t post_bootstrap_baud_change_count;
+  uint32_t operational_bootstrap_rx_discarded_count;
   uint32_t link_last_valid_frame_age_ms;
   uint32_t link_checksum_valid_count;
   uint32_t link_checksum_failure_count;
@@ -454,6 +478,11 @@ struct OtisGnssReceiverSnapshot {
 void otis_gnss_link_reset(OtisGnssLink *link,
                           const OtisGnssLinkPolicy *policy,
                           uint32_t now_ms);
+// The operational settle state deliberately ignores any retained bytes from
+// the old baud epoch, so its wall-clock deadline must advance even while the
+// RX ring remains nonempty. All other states preserve the producer frontier.
+bool otis_gnss_link_tick_may_advance_with_rx_backlog(
+    const OtisGnssLink *link);
 void otis_gnss_link_tick(OtisGnssLink *link, uint32_t now_ms);
 void otis_gnss_link_feed(OtisGnssLink *link, char byte, uint32_t now_ms);
 bool otis_gnss_link_take_action(OtisGnssLink *link,

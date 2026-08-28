@@ -4,6 +4,7 @@
   "purpose": "Engineering-only 24-hour sustained D14-relative frequency discipline with D14/D8 non-interference observation, fixed D9 forwarding, and a D6 diagnostic sidecar; it is not a delivered-output waveform qualification.",
   "profile_id": "d9_d6_frequency_only_lower",
   "serial": {"baud": 115200, "selection": "fresh_capture_device_auto_detect_every_enumeration", "stored_path_permitted": false},
+  "gnss_uart_policy": {"policy_id": "configuration_blind_default_or_retained_115200_v1", "target_baud": 115200, "ordinary_receiver_start_states": [9600, 115200], "ordered_source_bauds": [9600, 115200], "command": "$PMTK251,115200*1F\r\n", "attempts_per_source_baud": 1, "maximum_total_attempts": 2, "response_gated": false, "autodiscovery_permitted": false, "fallback_scan_permitted": false, "rx_epoch_isolation_required": true, "settle_after_peripheral_drain_ms": 1200, "final_validation_baud": 115200, "post_bootstrap_baud_change_permitted": false, "post_bootstrap_promotion_retry_permitted": false},
   "authority": {"hybrid_pll": false, "phase_request": false, "d9_control": false, "d6_control": false, "d10_control": false, "automatic_retry": false, "nominal_restoration": false},
   "envelope": {"qualified_duration_s": 86400, "initial_qualification_deadline_s": 5400, "absolute_wall_limit_s": 108000, "milestone_qualified_duration_s": 21600, "maximum_setup_establishments": 1, "maximum_automatic_applications": 48, "maximum_total_physical_dac_writes": 49, "maximum_cumulative_movement_codes": 1008, "maximum_step_codes": 21, "minimum_application_cadence_s": 1800, "maximum_outstanding_transactions": 1, "automatic_limits_are_nonbinding_cadence_derived_ceilings": true, "dac_min_code": "0xA800", "dac_max_code": "0xAB00"},
   "starting_dac": {"exact_setup_code": "0xA808", "setup_establishments": 1, "setup_retry": false, "automatic_restore": false, "required_first_consumer_and_response_path": true},
@@ -16,5 +17,5 @@
   "unresolved_delivered_output_claims": ["voltage_levels_or_logic_margin", "duty_cycle_rise_fall_or_ringing", "load_response", "propagation_delay_or_jitter", "independently_referenced_frequency", "general_waveform_qualification"],
   "terminal_family": ["frequency_only_d9_d6_digital_endurance_passed", "frequency_only_d9_d6_digital_endurance_incomplete", "frequency_only_d9_d6_digital_noninterference_failed", "frequency_only_d9_d6_controller_or_transaction_fault", "frequency_only_d9_d6_invalid_due_to_identity_or_evidence_failure", "operator_abort"],
   "safe_final_state": "D9_disabled_or_explicitly_recorded_safe_output_state; retain_last_confirmed_DAC_code_and_epoch_without_restoration",
-  "contract_semantic_sha256": "aab17314ffb9e2c55efaef0c70df52cbf73a4f846e24dd01f2635bfe4feac77e"
+  "contract_semantic_sha256": "97e68acb455b6fd5cbf66ea2b9c34478b994570429d721726cc91bcf455ad949"
 }

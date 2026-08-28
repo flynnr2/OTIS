@@ -11,6 +11,9 @@ from host.otis_tools.active_hybrid_programme_contract import (
     SUSTAINED_HYBRID_PROGRAMME,
     integrated_setup_provenance_contract,
 )
+from host.otis_tools.gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_BAUD_POLICY,
+)
 
 
 def test_structural_preflight_accepts_exact_declared_live_authority_state() -> None:
@@ -94,6 +97,7 @@ def test_cx321_structural_preflight_exercises_extended_phase4_envelope(
             "uf2": {"sha256": "f" * 64},
         },
         "policy": {"policy_sha256": "1" * 64},
+        "gnss_uart_policy": GNSS_OPERATIONAL_BAUD_POLICY,
         "offline_replay": {"selection_checks": {"selected": True}},
         "topology": {"normal_and_priority_abort_fifos_distinct": True},
     }
@@ -164,6 +168,7 @@ def test_integrated_preflight_requires_bound_unknown_to_known_setup_semantics(
             "uf2": {"sha256": "f" * 64},
         },
         "policy": {"policy_sha256": "1" * 64},
+        "gnss_uart_policy": GNSS_OPERATIONAL_BAUD_POLICY,
         "offline_replay": {"selection_checks": {"selected": True}},
         "topology": {"normal_and_priority_abort_fifos_distinct": True},
     }

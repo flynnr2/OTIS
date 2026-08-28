@@ -72,6 +72,9 @@ from .frequency_control_supervisor import (
     FrequencyControlSupervisor,
     TightDeadbandLeg,
 )
+from .gnss_operational_baud_policy import (
+    gnss_operational_runtime_invariant_errors,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 from .time_domains import forward_progress
 
@@ -1099,6 +1102,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             platform_health = dict(health)
             platform_health[("cx317_active", "fail_static")] = "false"
         ControlSupervisorBase._check_fail_static_health(self, platform_health)
+        gnss_missing, gnss_mismatches = (
+            gnss_operational_runtime_invariant_errors(
+                health,
+                require_present=(
+                    self.programme.forwarded_output_integration
+                    and self.state["prewrite_contract_ready_utc"] is not None
+                ),
+            )
+            if self.programme.forwarded_output_integration
+            else ((), ())
+        )
+        if gnss_missing or gnss_mismatches:
+            raise ValueError(
+                "integrated GNSS bootstrap/runtime invariant changed: "
+                + "; ".join((*gnss_missing, *gnss_mismatches))
+            )
         if (
             self.programme.forwarded_output_integration
             and self.state["prewrite_contract_ready_utc"] is not None

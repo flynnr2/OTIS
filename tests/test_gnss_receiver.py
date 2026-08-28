@@ -46,6 +46,9 @@ def test_operational_115200_fixed_bootstrap_and_no_scan_recovery(
             "-Werror",
             "-DOTIS_GNSS_HOST_TEST",
             "-DOTIS_GNSS_UART_BAUD=115200u",
+            "-DOTIS_ENABLE_GNSS_RECEIVER=1",
+            "-DOTIS_GNSS_UART_TX_ENABLED=1",
+            "-DOTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION=1",
             "-I",
             str(FIRMWARE),
             str(ROOT / "tests/cpp/gnss_operational_baud_harness.cpp"),
@@ -182,6 +185,39 @@ def test_retained_startup_baud_requires_an_explicit_characterization_hint(
     )
 
 
+def test_operational_promotion_rejects_an_unqualified_settle(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "invalid_operational_settle.cpp"
+    source.write_text('#include "otis_config.h"\n', encoding="utf-8")
+    result = subprocess.run(
+        [
+            "c++",
+            "-std=c++17",
+            "-DOTIS_GNSS_HOST_TEST",
+            "-DOTIS_ENABLE_GNSS_RECEIVER=1",
+            "-DOTIS_GNSS_UART_TX_ENABLED=1",
+            "-DOTIS_GNSS_UART_BAUD=115200u",
+            "-DOTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION=1",
+            "-DOTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS=999u",
+            "-I",
+            str(FIRMWARE),
+            "-c",
+            str(source),
+            "-o",
+            str(tmp_path / "invalid_operational_settle.o"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert (
+        "GNSS operational promotion settle must be between 1 and 5 seconds."
+        in result.stderr
+    )
+
+
 def test_gnss_uart_has_only_the_bounded_discovery_configuration_tx_path() -> None:
     source = (FIRMWARE / "otis_gnss_receiver.cpp").read_text(encoding="utf-8")
     board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
@@ -206,7 +242,9 @@ def test_gnss_uart_has_only_the_bounded_discovery_configuration_tx_path() -> Non
     assert '"$PMTK605*31\\r\\n"' in source
     assert '"$PMTK251,9600*17\\r\\n"' in source
     assert '"$PMTK251,115200*1F\\r\\n"' in source
-    assert "Operational 115200 profiles never scan" in source
+    assert "finite write-only promotion is a boot transaction" in source
+    assert "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION" in source
+    assert "OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS" in source
     assert '"$PMTK414*33\\r\\n"' in source
     assert '"$PMTK314,0,1,0,1,1,0' in source
     assert "OtisGnssLinkState::ObserveConfiguredOutput" in source
@@ -239,12 +277,23 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
-    assert "uart0_fixed_bootstrap_all_supported_to_115200_8n1" in sketch
+    assert (
+        "uart0_configuration_blind_default_or_retained_115200_v1"
+    ) in sketch
+    assert "operational_bootstrap_peripheral_complete_count" in sketch
+    assert "post_bootstrap_target_baud_command_attempt_count" in sketch
+    assert "post_bootstrap_baud_change_count" in sketch
+    assert '"initial_discovery_outcome", "not_applicable"' in sketch
+    assert "continuous wrong-baud noise" in source
+    assert "otis_gnss_uart_rx_ring_discard_all" in source
+    assert "otis_gnss_link_tick_may_advance_with_rx_backlog" in source
+    assert "otis_gnss_uart_rx_bounded_hardware_discard" in source
 
     assert "kOtisGnssMaximumLineBytes = 96u" in header
     assert "kOtisGnssDiscoveryMaximumLineBytes = 256u" in header
     assert "kOtisGnssUartRxConsumerByteBudget = 128u" in ring_header
     assert "kOtisGnssUartRxConsumerTickBudget = 4000u" in ring_header
+    assert "kOtisGnssUartRxTransitionHardwareDiscardBudget = 32u" in ring_header
     assert ring_header.count("uint64_t consumer_service_call_count;") == 2
     assert '"consumer_service_call_count_width_bits", 64u' in sketch
     assert "OTIS_GNSS_SERVICE_TX_BYTE_BUDGET" in source
@@ -265,7 +314,9 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     )
     assert service.index("service_live_uart_rx_ring(now_ms)") < service.index(
         "otis_gnss_uart_rx_ring_depth(&live_uart_rx_ring) == 0u"
-    ) < service.index("otis_gnss_link_tick(&live_link, now_ms)")
+    ) < service.index("otis_gnss_link_tick_may_advance_with_rx_backlog") < (
+        service.index("otis_gnss_link_tick(&live_link, now_ms)")
+    )
     loop1 = sketch[sketch.index("void loop1()") : sketch.index("void loop()")]
     loop = sketch[sketch.index("void loop()") :]
     dual_start = loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION")

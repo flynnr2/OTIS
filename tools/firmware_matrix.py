@@ -80,6 +80,8 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_GNSS_RECEIVER",
     "OTIS_GNSS_UART_TX_ENABLED",
     "OTIS_GNSS_UART_BAUD",
+    "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION",
+    "OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS",
     "OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT",
     "OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD",
     "OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME",
@@ -610,6 +612,20 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
         if characterization_enabled not in {"0", "1"}:
             raise MatrixError(
                 "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION must be 0 or 1"
+            )
+        if profile_id in {
+            "cx322_direct_hybrid",
+            "cx322_d9_d6_integration_engineering",
+            "cx322_d9_d6_72h_sustained_engineering",
+            "d9_d6_frequency_only_lower",
+        } and (
+            defines.get("OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION") != "1"
+            or defines.get("OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS")
+            != "1200u"
+        ):
+            raise MatrixError(
+                "D9/D6 operational profiles require the exact finite "
+                "configuration-blind GNSS promotion contract"
             )
         if (
             characterization_enabled == "1"

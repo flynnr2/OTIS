@@ -13,6 +13,12 @@ constexpr uint32_t kOtisGnssUartRxRingMask =
 constexpr uint32_t kOtisGnssUartRxHeadroomPassMaximum = 512u;
 constexpr uint32_t kOtisGnssUartRxConsumerByteBudget = 128u;
 constexpr uint32_t kOtisGnssUartRxConsumerTickBudget = 4000u;
+// The RP2040 UART receive FIFO is 32 entries deep. An operational baud-epoch
+// handoff may race a continuously transmitting receiver, so the synchronous
+// discard must be bounded independently of the external RX-empty condition.
+// Any byte arriving beyond this budget is discarded by the immediately
+// following UART deinitialization.
+constexpr uint32_t kOtisGnssUartRxTransitionHardwareDiscardBudget = 32u;
 constexpr uint32_t kOtisGnssRp2040Timer0TicksPerSecond = 16000000u;
 // Frozen retention: first occurrence plus up to fifteen subsequent distinct
 // fault-class/segment pairs. Repeated events in an already-retained pair are
@@ -134,6 +140,16 @@ void otis_gnss_uart_rx_ring_mark_baud_epoch(OtisGnssUartRxRing *ring);
 void otis_gnss_uart_rx_ring_reset_phase_window(OtisGnssUartRxRing *ring);
 bool otis_gnss_uart_rx_ring_pop(OtisGnssUartRxRing *ring,
                                 OtisGnssUartObservation *observation);
+// Caller must exclude the producer. Returns the exact retained observations
+// discarded at an intentional baud-epoch boundary.
+uint32_t otis_gnss_uart_rx_ring_discard_all(OtisGnssUartRxRing *ring);
+using OtisGnssUartRxByteAvailable = bool (*)(void *context);
+using OtisGnssUartRxDiscardByte = void (*)(void *context);
+// Calls byte_available no more than budget + 1 times and discard_byte no more
+// than budget times. This remains finite even if the producer never stops.
+uint32_t otis_gnss_uart_rx_bounded_hardware_discard(
+    OtisGnssUartRxByteAvailable byte_available,
+    OtisGnssUartRxDiscardByte discard_byte, void *context, uint32_t budget);
 uint32_t otis_gnss_uart_rx_ring_depth(const OtisGnssUartRxRing *ring);
 void otis_gnss_uart_rx_ring_note_consumer_start(OtisGnssUartRxRing *ring,
                                                 uint32_t entry_ticks);

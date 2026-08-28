@@ -481,6 +481,10 @@ def test_contract_bundle_and_no_io_preflight_are_frequency_only(tmp_path: Path) 
     result = endurance.no_io_preflight(bundle)
     assert contract["profile_id"] == "d9_d6_frequency_only_lower"
     assert result["hardware_operations"] is False
+    assert result["gnss_uart_policy"] == contract["gnss_uart_policy"]
+    assert bundle["gnss_uart_policy"]["maximum_total_attempts"] == 2
+    assert bundle["gnss_uart_policy"]["settle_after_peripheral_drain_ms"] == 1200
+    assert bundle["gnss_uart_policy"]["autodiscovery_permitted"] is False
     assert "general_waveform_qualification" in result["unresolved_delivered_output_claims"]
     assert contract["envelope"]["maximum_automatic_applications"] == 48
     assert contract["envelope"]["maximum_cumulative_movement_codes"] == 1008
@@ -677,6 +681,41 @@ def test_live_d9_gate_times_out_if_configuration_snapshot_never_completes(
     ]
     assert events[-1]["event"] == (
         "frequency_only_d9_configuration_snapshot_timeout"
+    )
+
+
+def test_live_frequency_only_rejects_post_bootstrap_promotion_attempt(
+    tmp_path: Path,
+) -> None:
+    supervisor = endurance.create_live_supervisor(
+        run_dir=tmp_path / "run",
+        bundle=_bundle(tmp_path),
+    )
+    identity = {
+        "run_identity": supervisor.spec.run_identity,
+        "build_identity": supervisor.expected_build_identity,
+        "profile_identity": supervisor.spec.profile,
+        **supervisor.identities,
+    }
+    health = endurance.canonical_prewrite_fixture(
+        expected_identity=identity,
+        planned_live_stimulus_code=supervisor.spec.start_code,
+    )
+    health.update(endurance.EXPECTED_D9_HEALTH)
+    health[("forwarded_clock_output", "first_valid_ticks")] = "100"
+    health[("command", "config_snapshot")] = "end"
+    health[
+        (
+            "gnss_receiver",
+            "post_bootstrap_target_baud_command_attempt_count",
+        )
+    ] = "1"
+    supervisor.state["prewrite_contract_ready_utc"] = "2026-08-28T00:00:00Z"
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "frequency_only_d9_d6_invalid_due_to_identity_or_evidence_failure"
     )
 
 
