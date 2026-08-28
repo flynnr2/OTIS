@@ -83,6 +83,39 @@ def test_gnss_metadata_hold_is_static_and_requires_causal_requalification() -> N
     assert events[-1][0] == "gnss_metadata_hold_requalified"
 
 
+def test_campaign18_runtime_hold_follows_confirmed_setup_evidence(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["manual_start_sent"] = False
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    health = _health(
+        supervisor,
+        state="GNSS_METADATA_HOLD",
+        gnss_metadata_hold_active="true",
+        gnss_metadata_hold_transaction_pending="false",
+        gnss_metadata_hold_entry_sequence="50",
+        gnss_metadata_requalification_sequence="0",
+        gnss_metadata_qualification_frontier="0",
+        d14_d8_observation_sequence="500",
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["gnss_metadata_hold_count"] == 1
+    assert supervisor.state["gnss_metadata_hold"] == {
+        "entry_sequence": 50,
+        "applied_code": live.SETUP_CODE,
+        "dac_epoch": 1,
+        "correction_count": 0,
+        "cumulative_movement_codes": 0,
+        "transaction_resolution_pending": False,
+        "entered_utc": supervisor.state["gnss_metadata_hold"]["entered_utc"],
+    }
+
+
 def _manifest(*, wall_origin_epoch: float = 1_800_000_000.0) -> dict:
     policy_path = (
         ROOT / "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json"

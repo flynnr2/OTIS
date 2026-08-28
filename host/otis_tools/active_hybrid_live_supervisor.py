@@ -1125,9 +1125,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 "CX320 continuous runtime health contract failed: "
                 + integrity.diagnostic()
             )
-        if self.state["manual_start_sent"] and not self._identity_ready(health):
+        setup_established = self.state["setup_confirmed_utc"] is not None
+        if setup_established and not self._identity_ready(health):
             raise ValueError("CX320 exact runtime identity became unavailable")
-        if self.state["manual_start_sent"]:
+        if setup_established:
             metadata_hold_active = (
                 health.get(("cx317_active", "state")) == "GNSS_METADATA_HOLD"
                 and _truth(health, "gnss_metadata_hold_active")
@@ -1148,7 +1149,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._update_gnss_metadata_hold(health, metadata_hold_active)
 
         if hybrid_state is None:
-            if self.state["manual_start_sent"]:
+            if setup_established:
                 raise ValueError("CX320 hybrid firmware state is absent")
             return
         if hybrid_state not in self.programme.hybrid_states:
