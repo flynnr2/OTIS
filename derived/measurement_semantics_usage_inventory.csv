@@ -83,8 +83,8 @@ docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md,133,confidence,confidence_semantic
 docs/00_FOUNDATIONS/OTIS_GPSDO_Design_Lessons.md,114,confidence,confidence_semantics,"* estimator confidence,"
 docs/00_FOUNDATIONS/OTIS_GPSDO_Design_Lessons.md,269,confidence,confidence_semantics,"* confidence-weighted steering,"
 docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,27,uncertainty,measurement_uncertainty_semantics,- what uncertainty or policy decision remains embedded in the value.
-docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,482,dispersion,sample_dispersion_or_repeatability,- low timestamp dispersion;
-docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,520,uncertainty,measurement_uncertainty_semantics,- edge uncertainty;
+docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,517,dispersion,sample_dispersion_or_repeatability,- low timestamp dispersion;
+docs/00_FOUNDATIONS/OTIS_REFERENCE_TERMINOLOGY.md,555,uncertainty,measurement_uncertainty_semantics,- edge uncertainty;
 docs/00_FOUNDATIONS/OTIS_VISION.md,17,uncertainty,measurement_uncertainty_semantics,- lock is presented as a Boolean without uncertainty or reasons;
 docs/00_FOUNDATIONS/OTIS_VISION.md,34,uncertainty,measurement_uncertainty_semantics,"- health, uncertainty, and control-eligibility reporting."
 docs/00_FOUNDATIONS/OTIS_VISION.md,42,uncertainty,measurement_uncertainty_semantics,"- What estimates were derived, with what uncertainty?"
