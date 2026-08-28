@@ -2667,6 +2667,7 @@
     "cx322_d9_d6_integration_engineering": {
       "state": "operator_authorized_preflight_rehearsal_and_bounded_bench",
       "allowed_operations": [
+        "offline_preparation",
         "cx322_d9_d6_integration_engineering_live"
       ],
       "effective_date": "2026-08-28",

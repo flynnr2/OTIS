@@ -24,6 +24,7 @@ def test_tracked_status_closes_prior_work_and_selects_integrated_engineering() -
     )
     integrated = status["programmes"][status["active_programme"]]
     assert integrated["allowed_operations"] == [
+        "offline_preparation",
         "cx322_d9_d6_integration_engineering_live"
     ]
     assert integrated["finite_envelope"][
