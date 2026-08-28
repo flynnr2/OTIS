@@ -112,6 +112,8 @@ class NonEffectiveOperationalSemantics {
         last_completed_application_sequence_(0u),
         last_completed_first_consumer_frontier_(0u),
         last_completed_response_frontier_(0u),
+        last_completed_request_identity_{0u, 0u},
+        last_completed_outcome_("none"),
         completed_fll_episode_count_(0u),
         last_fll_exposure_end_(0u),
         d9_output_valid_(true),
@@ -204,8 +206,9 @@ class NonEffectiveOperationalSemantics {
   bool apply_request(const RequestIdentity &identity, uint16_t code,
                      uint32_t dac_epoch, uint32_t application_sequence) {
     if (!exact_request(identity) || request_phase_ != RequestPhase::Accepted ||
-        request_owner_ != RequestOwner::Core0 || dac_epoch <= dac_epoch_ ||
-        application_sequence == 0u) {
+        request_owner_ != RequestOwner::Core0 || code < 0xA800u ||
+        code > 0xAB00u || dac_epoch <= dac_epoch_ ||
+        application_sequence <= last_completed_application_sequence_) {
       fail_static();
       return false;
     }
@@ -263,6 +266,8 @@ class NonEffectiveOperationalSemantics {
     last_completed_application_sequence_ = application_sequence_;
     last_completed_first_consumer_frontier_ = first_consumer_evidence_frontier_;
     last_completed_response_frontier_ = response_evidence_frontier_;
+    last_completed_request_identity_ = request_identity_;
+    last_completed_outcome_ = "accepted_applied_response_complete";
     clear_request();
     if (metadata_loss_pending_) {
       metadata_loss_pending_ = false;
@@ -279,6 +284,8 @@ class NonEffectiveOperationalSemantics {
       fail_static();
       return false;
     }
+    last_completed_request_identity_ = request_identity_;
+    last_completed_outcome_ = "rejected_or_expired";
     clear_request();
     if (metadata_loss_pending_) {
       metadata_loss_pending_ = false;
@@ -412,6 +419,12 @@ class NonEffectiveOperationalSemantics {
   uint32_t completed_fll_episode_count() const {
     return completed_fll_episode_count_;
   }
+  RequestIdentity last_completed_request_identity() const {
+    return last_completed_request_identity_;
+  }
+  const std::string &last_completed_outcome() const {
+    return last_completed_outcome_;
+  }
 
  private:
   bool absorbing() const {
@@ -475,6 +488,8 @@ class NonEffectiveOperationalSemantics {
   uint32_t last_completed_application_sequence_;
   uint32_t last_completed_first_consumer_frontier_;
   uint32_t last_completed_response_frontier_;
+  RequestIdentity last_completed_request_identity_;
+  std::string last_completed_outcome_;
   uint32_t completed_fll_episode_count_;
   uint32_t last_fll_exposure_end_;
   std::set<std::string> completed_episode_ids_;
@@ -512,6 +527,8 @@ void verify_metadata_acceptance_phase_latch_and_zero_authority() {
   assert(state.metadata_hold());
   assert(state.phase_degraded());
   assert(!state.phase_loss_pending());
+  assert(state.last_completed_request_identity() == request);
+  assert(state.last_completed_outcome() == "accepted_applied_response_complete");
   assert(!state.effective_actuation_permitted());
   assert(!state.begin_private_request({99u, 0xC399u}));
   printf("parity_acceptance_response=mode=GNSS_METADATA_HOLD,code=0x%04X,"
@@ -627,6 +644,26 @@ void verify_stale_applied_identity_is_not_a_contradiction() {
   assert(stale.fail_static_latched());
 }
 
+void verify_native_application_guards() {
+  NonEffectiveOperationalSemantics outside;
+  const RequestIdentity outside_request = {40u, 0xC340u};
+  assert(outside.begin_private_request(outside_request));
+  assert(outside.release_request(outside_request));
+  assert(outside.accept_request(outside_request));
+  assert(!outside.apply_request(outside_request, 0xA700u, 5u, 1u));
+  assert(outside.fail_static_latched());
+
+  NonEffectiveOperationalSemantics backwards;
+  assert(backwards.retain_completed_transaction_for_replay(5u, 101u, 102u,
+                                                            0xA83Cu, 4u));
+  const RequestIdentity backwards_request = {41u, 0xC341u};
+  assert(backwards.begin_private_request(backwards_request));
+  assert(backwards.release_request(backwards_request));
+  assert(backwards.accept_request(backwards_request));
+  assert(!backwards.apply_request(backwards_request, 0xA83Du, 5u, 5u));
+  assert(backwards.fail_static_latched());
+}
+
 }  // namespace
 
 int main() {
@@ -634,7 +671,8 @@ int main() {
   verify_private_withdrawal_and_absorbing_states();
   verify_delivered_output_and_optional_evidence_isolation();
   verify_stale_applied_identity_is_not_a_contradiction();
+  verify_native_application_guards();
   puts("terminal=non_effective_semantics_verified_promotion_blocked_by_d9_gate");
-  puts("native_cases=metadata_acceptance_phase_latch,absorbing_states,fll_independence,optional_isolation,stale_identity");
+  puts("native_cases=metadata_acceptance_phase_latch,absorbing_states,fll_independence,optional_isolation,stale_identity,application_guards");
   return 0;
 }

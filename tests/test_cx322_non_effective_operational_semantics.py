@@ -221,6 +221,9 @@ def test_metadata_loss_covers_private_and_exact_core0_acceptance_path() -> None:
     assert response.state.transaction_owner is TransactionOwner.NONE
     assert response.state.transaction_phase is TransactionPhase.NONE
     assert response.state.last_response_frontier == 102
+    assert response.state.last_completed_request_sequence == 8
+    assert response.state.last_completed_request_nonce == 8008
+    assert response.state.last_completed_outcome == "accepted_applied_response_complete"
     _assert_non_effective(private, released, accepted, applied, response)
 
 
@@ -307,6 +310,17 @@ def test_repeated_outcomes_nonce_and_direct_phase_entry_are_exact() -> None:
         request_sequence=13,
         request_nonce=1313,
     )
+    rejected = metadata_loss(
+        _state(),
+        request_state=RequestReleaseState.RELEASED_PENDING,
+        request_sequence=14,
+        request_nonce=1414,
+        authoritative_outcome="rejected",
+        outcome_sequence=62,
+    )
+    assert rejected.state.last_completed_request_sequence == 14
+    assert rejected.state.last_completed_request_nonce == 1414
+    assert rejected.state.last_completed_outcome == "rejected"
     for contradictory in (
         late_rejection,
         wrong_nonce,
@@ -539,9 +553,24 @@ def test_fail_static_and_low_efficiency_inhibit_are_absorbing() -> None:
         inhibited, request_state=RequestReleaseState.UNUSED_ARM
     )
     phase = degrade_phase_to_fll(inhibited)
+    accepted = accept_released_request(
+        inhibited, request_sequence=1, request_nonce=1, outcome_sequence=1
+    )
+    applied = complete_accepted_application(
+        inhibited, AppliedTransaction(1, 1, 1, 1, 0xA83C, 4, 101)
+    )
+    response = complete_metadata_response_then_hold(
+        inhibited,
+        request_sequence=1,
+        request_nonce=1,
+        response_frontier=101,
+    )
     assert metadata.state is inhibited
     assert phase.state is inhibited
-    _assert_non_effective(metadata, phase)
+    assert accepted.state is inhibited
+    assert applied.state is inhibited
+    assert response.state is inhibited
+    _assert_non_effective(metadata, phase, accepted, applied, response)
 
 
 def test_d9_and_all_optional_faults_remain_local_to_healthy_d14_d8() -> None:

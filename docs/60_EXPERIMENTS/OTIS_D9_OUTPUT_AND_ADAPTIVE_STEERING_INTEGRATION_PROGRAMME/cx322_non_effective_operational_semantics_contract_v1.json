@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "OTIS_CX322_NON_EFFECTIVE_OPERATIONAL_SEMANTICS_V1",
-  "contract_semantic_sha256": "704cfed034c959994d11f2ea71d8438ba0b0366c5437ce62edd7c1c84d2ea660",
+  "contract_semantic_sha256": "bbf2595b14f45b57742fc459f28d3abe58adac3b4782ac05b4fed49df3ac8f00",
   "entry_controller_terminal": "cx322_integration_blocked_by_d9_output_gate",
   "entry_controller_decision_semantic_sha256": "3ab6a0a004788e5856eabe27b45956160ec2b66d05a8a42237c7cf4325bda82f",
   "terminal": "operational_semantics_implemented_promotion_blocked_by_d9_gate",
@@ -35,7 +35,7 @@
     "header_path": "firmware/arduino/otis_nano_rp2040_connect/otis_cx317_active_transaction.h",
     "header_sha256": "07851e05ef6bd3832672419833643be7d75e028a1539d321ace6685537c10121",
     "non_effective_oracle_path": "host/otis_tools/cx322_non_effective_operational_semantics.py",
-    "non_effective_oracle_sha256": "a32361e274823dedc28a5f0ff945b6a74fd8dac33e9c9d773472715f9c9499dc",
+    "non_effective_oracle_sha256": "2786c7d4a615e20d2e7cec6895bea18c3566ef4884d16a9b0c8de36a0f3827d8",
     "offline_reference_path": "host/otis_tools/adaptive_steering_offline.py",
     "offline_reference_sha256": "923aac30cad045d053404dba0c34f862f17a2e34cae93b9becb87dd9fae70217"
   },
@@ -92,9 +92,9 @@
   },
   "native_fixture": {
     "path": "tests/cpp/cx322_non_effective_operational_semantics_harness.cpp",
-    "sha256": "afa16febf35b4f4993bdf96dcf00fb6932abd8cd7a70bdc9c287c0bdc919d424",
+    "sha256": "a124e80702f1ad4ea7f9951ed4190e1feb6bb611a3ab3d2c0fda9c445b5f4d6b",
     "pytest_path": "tests/test_cx322_non_effective_operational_semantics_native.py",
-    "pytest_sha256": "865c139f2d456fe77848653118c6a59a13e63f4dc317ce384c5c0e234e139abc",
+    "pytest_sha256": "8829fb76bdf417b013dd9a428d394cf4c337e2a1e34c58d34987826349095132",
     "claim": "deterministic_native_reference_fixture_not_integrated_firmware_binary"
   },
   "semantic_change_ledger": [

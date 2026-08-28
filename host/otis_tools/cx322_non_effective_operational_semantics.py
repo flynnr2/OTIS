@@ -83,6 +83,9 @@ class Cx322OperationalState:
     last_application_sequence: int = 0
     last_first_consumer_frontier: int = -1
     last_response_frontier: int = -1
+    last_completed_request_sequence: int = 0
+    last_completed_request_nonce: int = 0
+    last_completed_outcome: str = "none"
     phase_loss_pending: bool = False
     retired_phase_epochs: tuple[str, ...] = ()
     fll_episode_ids: tuple[str, ...] = ()
@@ -128,6 +131,21 @@ class Cx322OperationalState:
             raise ValueError("retired phase epochs must be unique")
         if len(set(self.fll_episode_ids)) != len(self.fll_episode_ids):
             raise ValueError("FLL low-efficiency episodes must be unique")
+        if self.last_completed_outcome not in {
+            "none",
+            "rejected",
+            "expired",
+            "accepted_applied_response_complete",
+        }:
+            raise ValueError("completed transaction outcome is unknown")
+        if self.last_completed_outcome == "none":
+            if self.last_completed_request_sequence or self.last_completed_request_nonce:
+                raise ValueError("clear completed outcome cannot retain request identity")
+        elif not (
+            self.last_completed_request_sequence > 0
+            and self.last_completed_request_nonce > 0
+        ):
+            raise ValueError("completed outcome requires request sequence and nonce")
 
 
 @dataclass(frozen=True)
@@ -352,6 +370,9 @@ def metadata_loss(
                     pending_request_sequence=None,
                     pending_request_nonce=None,
                     last_outcome_sequence=outcome_sequence,
+                    last_completed_request_sequence=request_sequence,
+                    last_completed_request_nonce=request_nonce,
+                    last_completed_outcome=authoritative_outcome,
                 ),
                 f"released_request_{authoritative_outcome}_then_remain_metadata_hold",
             )
@@ -394,7 +415,13 @@ def metadata_loss(
             if outcome_sequence is None or outcome_sequence <= state.last_outcome_sequence:
                 return _fail_static(hold, "released_request_outcome_sequence_contradictory")
             return _transition(
-                replace(hold, last_outcome_sequence=outcome_sequence),
+                replace(
+                    hold,
+                    last_outcome_sequence=outcome_sequence,
+                    last_completed_request_sequence=request_sequence,
+                    last_completed_request_nonce=request_nonce,
+                    last_completed_outcome=authoritative_outcome,
+                ),
                 f"released_request_{authoritative_outcome}_then_enter_metadata_hold",
             )
         phase = TransactionPhase.RELEASED_PENDING
@@ -433,6 +460,9 @@ def accept_released_request(
     request_nonce: int,
     outcome_sequence: int,
 ) -> OperationalTransition:
+    absorbed = _absorbing(state, "request_acceptance")
+    if absorbed is not None:
+        return absorbed
     if state.transaction_phase is not TransactionPhase.RELEASED_PENDING:
         return _fail_static(state, "acceptance_without_released_pending_request")
     if (
@@ -455,6 +485,9 @@ def accept_released_request(
 def complete_accepted_application(
     state: Cx322OperationalState, application: AppliedTransaction
 ) -> OperationalTransition:
+    absorbed = _absorbing(state, "application_completion")
+    if absorbed is not None:
+        return absorbed
     if state.transaction_phase is not TransactionPhase.ACCEPTED_APPLICATION_PENDING:
         return _fail_static(state, "application_without_accepted_request")
     if (
@@ -518,6 +551,9 @@ def complete_metadata_response_then_hold(
     request_nonce: int,
     response_frontier: int,
 ) -> OperationalTransition:
+    absorbed = _absorbing(state, "response_completion")
+    if absorbed is not None:
+        return absorbed
     if state.transaction_phase is not TransactionPhase.RESPONSE_PENDING:
         return _fail_static(state, "response_without_pending_application")
     if (
@@ -535,6 +571,9 @@ def complete_metadata_response_then_hold(
         transaction_phase=TransactionPhase.NONE,
         pending_request_sequence=None,
         pending_request_nonce=None,
+        last_completed_request_sequence=request_sequence,
+        last_completed_request_nonce=request_nonce,
+        last_completed_outcome="accepted_applied_response_complete",
     )
     if resolved.phase_loss_pending:
         return _transition(

@@ -125,5 +125,5 @@ def test_cx322_non_effective_operational_semantics_native_fixture(
         requalified_parity,
         "terminal=non_effective_semantics_verified_promotion_blocked_by_d9_gate",
         "native_cases=metadata_acceptance_phase_latch,absorbing_states,"
-        "fll_independence,optional_isolation,stale_identity",
+        "fll_independence,optional_isolation,stale_identity,application_guards",
     ]
