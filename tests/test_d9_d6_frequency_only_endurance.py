@@ -618,6 +618,68 @@ def test_d9_invalidity_and_hybrid_transaction_are_terminals() -> None:
     assert second.terminal == "frequency_only_d9_d6_controller_or_transaction_fault"
 
 
+def test_live_d9_gate_waits_for_complete_configuration_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = endurance.create_live_supervisor(
+        run_dir=tmp_path / "run",
+        bundle=_bundle(tmp_path),
+    )
+
+    supervisor._check_fail_static_health({})
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["d9_exact_readback_established"] is False
+
+    health = dict(endurance.EXPECTED_D9_HEALTH)
+    health[("forwarded_clock_output", "first_valid_ticks")] = "100"
+    health[("command", "config_snapshot")] = "begin"
+    supervisor._check_fail_static_health(health)
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["d9_exact_readback_established"] is False
+
+    health[("command", "config_snapshot")] = "end"
+    supervisor._check_fail_static_health(health)
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["d9_exact_readback_established"] is True
+
+    del health[("forwarded_clock_output", "readback_valid")]
+    supervisor._check_fail_static_health(health)
+    assert supervisor.state["terminal"]["reason"] == (
+        "frequency_only_d9_d6_digital_noninterference_failed"
+    )
+
+
+def test_live_d9_gate_times_out_if_configuration_snapshot_never_completes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = endurance.create_live_supervisor(
+        run_dir=tmp_path / "run",
+        bundle=_bundle(tmp_path),
+    )
+    supervisor._d9_configuration_wait_started_monotonic = 100.0
+    monkeypatch.setattr(
+        endurance.time,
+        "monotonic",
+        lambda: 100.0 + endurance.D9_CONFIGURATION_SNAPSHOT_COMPLETION_TIMEOUT_S,
+    )
+    supervisor._abort = lambda reason: supervisor.state.__setitem__(  # type: ignore[method-assign]
+        "terminal", {"result": "aborted", "reason": reason}
+    )
+
+    supervisor._check_fail_static_health({})
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "frequency_only_d9_d6_digital_noninterference_failed"
+    )
+    events = [
+        json.loads(line)
+        for line in supervisor.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["event"] == (
+        "frequency_only_d9_configuration_snapshot_timeout"
+    )
+
+
 def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     report = endurance.pty_operational_rehearsal(

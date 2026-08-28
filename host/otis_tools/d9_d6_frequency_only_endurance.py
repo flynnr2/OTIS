@@ -112,6 +112,7 @@ CANDIDATE_WINDOW_MATERIAL_NOISE_REDUCTION = Fraction(1, 5)
 CANDIDATE_WINDOW_MAXIMUM_GROUP_DELAY_S = 300
 APPLICATION_ADMISSION_RESERVE_S = 1500
 CAPTURE_EVIDENCE_DRAIN_MARGIN_S = 180
+D9_CONFIGURATION_SNAPSHOT_COMPLETION_TIMEOUT_S = 30.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
 U32_MASK = (1 << 32) - 1
 QUALIFIED_INTERVAL_LEDGER_PATH = Path(
@@ -2154,6 +2155,8 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
         }
         self.state.setdefault("programme_id", contract["contract_id"])
         self.state.setdefault("d9_d6_overlay", True)
+        self.state.setdefault("d9_exact_readback_established", False)
+        self.state.setdefault("d9_exact_readback_established_utc", None)
         self.state.setdefault("exact_setup_code", "0xA808")
         self.state.setdefault("qualified_counter_domain", "rp2040_timer0")
         self.state.setdefault("soak_armed_frontier_ticks", self.accounting.armed_ticks)
@@ -2173,6 +2176,7 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("gnss_metadata_hold_identity", None)
         self.state.setdefault("transaction_outstanding_high_watermark", 0)
         self.state.setdefault("first_complete_application_path_observed", False)
+        self._d9_configuration_wait_started_monotonic = time.monotonic()
         self.state.update(self.accounting.state_fields())
         self._save()
 
@@ -2633,6 +2637,26 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
 
     def _check_fail_static_health(self, health: dict[tuple[str, str], str]) -> None:
         super()._check_fail_static_health(health)
+        if (
+            not self.state.get("d9_exact_readback_established")
+            and health.get(("command", "config_snapshot")) != "end"
+        ):
+            wait_s = (
+                time.monotonic()
+                - self._d9_configuration_wait_started_monotonic
+            )
+            if wait_s >= D9_CONFIGURATION_SNAPSHOT_COMPLETION_TIMEOUT_S:
+                self._abort(
+                    "frequency_only_d9_d6_digital_noninterference_failed"
+                )
+                self._event(
+                    "frequency_only_d9_configuration_snapshot_timeout",
+                    timeout_s=D9_CONFIGURATION_SNAPSHOT_COMPLETION_TIMEOUT_S,
+                    observed_config_snapshot=health.get(
+                        ("command", "config_snapshot")
+                    ),
+                )
+            return
         missing, mismatches = _d9_gate(health)
         if missing or mismatches:
             self._abort("frequency_only_d9_d6_digital_noninterference_failed")
@@ -2642,6 +2666,13 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
                 mismatches=mismatches,
             )
             return
+        if not self.state.get("d9_exact_readback_established"):
+            self.state["d9_exact_readback_established"] = True
+            self.state["d9_exact_readback_established_utc"] = _utc_now()
+            self._event(
+                "frequency_only_d9_exact_readback_established_after_complete_"
+                "configuration_snapshot"
+            )
         self.state["d6_missing_observability"] = _d6_observability(health)
         self._update_metadata_hold(health)
         self._update_lost_opportunities(health)
