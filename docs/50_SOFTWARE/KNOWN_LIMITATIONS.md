@@ -98,3 +98,10 @@
   rehearsal exists, by design, because the valid Prompt 02 D9 gate blocked
   promotion. These semantics grant no DAC, arm, flash, serial, or trial
   authority.
+- Prompt 04 verified the complete current Release matrix, three exact separated
+  build manifests, the unchanged CX322 policy, the non-effective Prompt 03
+  contract, and the retained sealed D9/D6 PTY operational path. It deliberately
+  did not create a combined D9/D6/CX322 binary, live Prompt 03 telemetry path,
+  integrated rehearsal, or 72-hour proposal. Those are blocked by the missing
+  D9 waveform and qualified-load evidence; passing deterministic reference and
+  separated-build checks cannot be promoted into a physical integration claim.

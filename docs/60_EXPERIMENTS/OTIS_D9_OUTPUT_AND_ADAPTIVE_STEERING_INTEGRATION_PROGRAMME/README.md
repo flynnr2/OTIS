@@ -2,8 +2,15 @@
 
 ## Status
 
-Prompt 02 has closed with the D9 waveform gate incomplete and the unchanged
-CX322 integration blocked. See
+Prompt 04 has closed at
+`non_effective_semantics_verified_promotion_blocked_by_d9_gate`. The complete
+current Release gate, exact separated builds, retained D9/D6 operational-path
+evidence, and non-effective Prompt 03 semantics have been verified without
+creating a combined D9/D6/CX322 profile or trial proposal. See
+[`PROMPT04_BLOCKED_PROMOTION_VERIFICATION.md`](PROMPT04_BLOCKED_PROMOTION_VERIFICATION.md).
+
+Prompt 02 closed with the D9 waveform gate incomplete and the unchanged CX322
+integration blocked. See
 [`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md)
 and its machine-readable
 [`prompt02_controller_decision_v1.json`](prompt02_controller_decision_v1.json).
@@ -78,6 +85,12 @@ claim; it does not authorize a renewed D9/FLL soak.
 Prompt 03 has now reached
 `operational_semantics_implemented_promotion_blocked_by_d9_gate`. See
 [`PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md`](PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md).
+
+Prompt 04 has verified the resulting non-effective boundary. Its three exact
+builds remain intentionally separated: non-actuating D9/D6, compile-only
+unqualified frequency control, and retained standalone CX322. No actionable
+integrated profile, live rehearsal package, physical authority, or 72-hour
+proposal exists.
 
 ## Stop boundary
 
