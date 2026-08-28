@@ -53,6 +53,7 @@ from .capture_segment_rotation import prepare_transition, request_rotation
 from .contracts import (
     ACTIVE_TRANSACTION_V1_FIELDS,
     ACTIVE_TRANSACTION_V2_FIELDS,
+    CONTRACT_FIELDS,
     CONTRACT_SCHEMA_VERSIONS,
 )
 from .cx322_non_effective_operational_semantics import (
@@ -613,6 +614,7 @@ def _validate_activation_report(
             "pre_upload_fresh_auto_detect_exercised",
             "post_upload_fresh_auto_detect_exercised",
             "capture_own_auto_detect_command_exercised",
+            "firmware_policy_identity_replayed_by_live_supervisor",
         )
         false_fields = [key for key in required_true if report.get(key) is not True]
         if (
@@ -2146,6 +2148,9 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
             mode="live", leg=TightDeadbandLeg("A", inherited_leg.required_direction, inherited_leg.required_direction_name),
             allow_manual_start=True, allow_arm=True, spec=spec,
             identities=inherited_identities,
+            tight_deadband_policy_sha256=inherited_identities[
+                "active_policy_sha256"
+            ],
             expected_build_identity=str(firmware["build_identity"]),
             prewrite_contract_startup_grace_s=float(contract["envelope"]["initial_qualification_deadline_s"]),
             # This inherited value controls only the legacy wall-clock response
@@ -4615,6 +4620,55 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
         raise RuntimeError(
             "frequency-only startup did not establish D9 before exact setup"
         )
+    tdb_row = {
+        field: "" for field in CONTRACT_FIELDS["tight_deadband_decisions_v1"]
+    }
+    tdb_row.update(
+        {
+            "record_type": "TDB",
+            "schema_version": "1",
+            "decision_sequence": "1",
+            "estimate_id": "est:cx317:selected600:000001",
+            "decision_timestamp_ticks": str(600 * TIMER_HZ),
+            "time_domain": "rp2040_timer0",
+            "capture_session": "4",
+            "dac_epoch": "1",
+            "integer_edge_error_counts": "4",
+            "absolute_edge_error_counts": "4",
+            "state_before": "REQUALIFY_OUTSIDE",
+            "state_after": "OUTSIDE",
+            "entry_counter": "0",
+            "release_counter": "0",
+            "transition": "true",
+            "frequency_controller_eligible": "true",
+            "requalified": "false",
+            "requalification_reason": "",
+            "historical_v2_inside": "false",
+            "symmetric_two_count_inside": "false",
+            "policy_id": "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
+            "policy_sha256": supervisor.identities["active_policy_sha256"],
+            "actionable": "false",
+            "actuation_authorized": "false",
+            "authorization_consumed": "false",
+            "reason_codes": "outside_loose_evidence",
+        }
+    )
+    _write_csv_rows(
+        run_dir / "csv/tight_deadband_decisions_v1.csv",
+        CONTRACT_FIELDS["tight_deadband_decisions_v1"],
+        [tdb_row],
+    )
+    replayed_tdb = supervisor._latest_tdb()
+    if (
+        replayed_tdb is None
+        or replayed_tdb["policy_sha256"]
+        != supervisor.identities["active_policy_sha256"]
+        or supervisor.tight_deadband_policy_sha256
+        != supervisor.identities["active_policy_sha256"]
+    ):
+        raise RuntimeError(
+            "frequency-only live supervisor did not replay the firmware policy identity"
+        )
     transaction_rows = _rehearsal_transaction_rows(checked)
     _write_csv_rows(
         run_dir / ACTIVE_CSV,
@@ -4763,7 +4817,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
         or not exact_response_reserve_closes_admission
     ):
         raise RuntimeError("accelerated endpoint or GNSS metadata-hold oracle differed")
-    report = {"schema_version": 1, "tool": TOOL_ID, "report_type": "frequency_only_exact_operational_rehearsal_v1", "status": "passed", "hardware_operations": False, "bundle_sha256": checked["bundle_sha256"], "profile_id": checked["profile_id"], "firmware_build_identity": checked["firmware"]["build_identity"], "firmware_build_manifest_sha256": checked["firmware_build"]["sha256"], "firmware_flash_authority": _firmware_flash_authority(), "mode": "PTY_fixture", "baud": 115200, "serial_selection": "PTY_fixture_not_auto_detect", "production_upload_orchestration_exercised": True, "deterministic_upload_and_reenumeration_injected": True, "exactly_one_upload_no_retry_enforced": True, "global_activation_consumption_replay_blocked": global_activation_consumption_replay_blocked, "pre_upload_fresh_auto_detect_exercised": True, "post_upload_fresh_auto_detect_exercised": True, "capture_own_auto_detect_command_exercised": True, "rehearsal_firmware_entry_sha256": rehearsal_firmware_entry["record_sha256"], "production_capture_duration_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]) + CAPTURE_EVIDENCE_DRAIN_MARGIN_S, "authority_and_wall_terminal_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]), "priority_abort_delivered": True, "abort_delivery_retained_before_capture_close": True, "rotation": rotation, "actual_supervisor_exercised": True, "backlogged_configuration_startup_hold_exercised": True, "no_setup_before_d9_exact_readback_established": True, "setup_authority_false_holds_without_consuming_setup": True, "setup_issued_only_after_fresh_exact_authority_snapshot": True, "complete_response_transactions": 2, "responses_retained_observationally": True, "one_outstanding_transaction_enforced": True, "opportunity_causal_ledger_exercised": True, "accelerated_exact_counter_endpoint_reached": True, "application_admission_reserve_s": APPLICATION_ADMISSION_RESERVE_S, "long_analysis_horizon_keeps_control_admission_open": long_analysis_horizon_keeps_admission_open, "gnss_metadata_hold_deterministic_oracle_comparison": metadata_fact, "gnss_metadata_hold_effective_live_supervisor_fault_injection": True, "gnss_metadata_hold_confirmed_session_code_epoch_bound": True, "gnss_metadata_hold_fresh_causal_requalification_exercised": True, "analyzer_metric_paths_exercised": {"response_horizons_s": list(RESPONSE_HORIZONS_S), "long_horizons_right_censor_without_closing_control": True, "chatter": _chatter_metrics(transaction_rows), "response": _response_and_horizon_metrics(transaction_rows, [])}, "unresolved_delivered_output_claims": checked["unresolved_delivered_output_claims"], "not_proved": ["physical_USB_enumeration", "physical_firmware_upload", "physical_firmware_field_emission", "physical_cross_core_propagation", "physical_D9_waveform_or_load", "physical_D6_loopback", "physical_D14_D8_or_DAC_response"]}
+    report = {"schema_version": 1, "tool": TOOL_ID, "report_type": "frequency_only_exact_operational_rehearsal_v1", "status": "passed", "hardware_operations": False, "bundle_sha256": checked["bundle_sha256"], "profile_id": checked["profile_id"], "firmware_build_identity": checked["firmware"]["build_identity"], "firmware_build_manifest_sha256": checked["firmware_build"]["sha256"], "firmware_flash_authority": _firmware_flash_authority(), "mode": "PTY_fixture", "baud": 115200, "serial_selection": "PTY_fixture_not_auto_detect", "production_upload_orchestration_exercised": True, "deterministic_upload_and_reenumeration_injected": True, "exactly_one_upload_no_retry_enforced": True, "global_activation_consumption_replay_blocked": global_activation_consumption_replay_blocked, "pre_upload_fresh_auto_detect_exercised": True, "post_upload_fresh_auto_detect_exercised": True, "capture_own_auto_detect_command_exercised": True, "firmware_policy_identity_replayed_by_live_supervisor": True, "rehearsal_firmware_entry_sha256": rehearsal_firmware_entry["record_sha256"], "production_capture_duration_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]) + CAPTURE_EVIDENCE_DRAIN_MARGIN_S, "authority_and_wall_terminal_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]), "priority_abort_delivered": True, "abort_delivery_retained_before_capture_close": True, "rotation": rotation, "actual_supervisor_exercised": True, "backlogged_configuration_startup_hold_exercised": True, "no_setup_before_d9_exact_readback_established": True, "setup_authority_false_holds_without_consuming_setup": True, "setup_issued_only_after_fresh_exact_authority_snapshot": True, "complete_response_transactions": 2, "responses_retained_observationally": True, "one_outstanding_transaction_enforced": True, "opportunity_causal_ledger_exercised": True, "accelerated_exact_counter_endpoint_reached": True, "application_admission_reserve_s": APPLICATION_ADMISSION_RESERVE_S, "long_analysis_horizon_keeps_control_admission_open": long_analysis_horizon_keeps_admission_open, "gnss_metadata_hold_deterministic_oracle_comparison": metadata_fact, "gnss_metadata_hold_effective_live_supervisor_fault_injection": True, "gnss_metadata_hold_confirmed_session_code_epoch_bound": True, "gnss_metadata_hold_fresh_causal_requalification_exercised": True, "analyzer_metric_paths_exercised": {"response_horizons_s": list(RESPONSE_HORIZONS_S), "long_horizons_right_censor_without_closing_control": True, "chatter": _chatter_metrics(transaction_rows), "response": _response_and_horizon_metrics(transaction_rows, [])}, "unresolved_delivered_output_claims": checked["unresolved_delivered_output_claims"], "not_proved": ["physical_USB_enumeration", "physical_firmware_upload", "physical_firmware_field_emission", "physical_cross_core_propagation", "physical_D9_waveform_or_load", "physical_D6_loopback", "physical_D14_D8_or_DAC_response"]}
     _write_new(output_dir / "reports/rehearsal.json", report); return report
 
 

@@ -114,6 +114,7 @@ def _activation_for_bundle(
             "pre_upload_fresh_auto_detect_exercised": True,
             "post_upload_fresh_auto_detect_exercised": True,
             "capture_own_auto_detect_command_exercised": True,
+            "firmware_policy_identity_replayed_by_live_supervisor": True,
             "priority_abort_delivered": True,
             "abort_delivery_retained_before_capture_close": True,
             "actual_supervisor_exercised": True,
@@ -848,6 +849,21 @@ def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> N
     assert report["no_setup_before_d9_exact_readback_established"] is True
     assert report["setup_authority_false_holds_without_consuming_setup"] is True
     assert report["setup_issued_only_after_fresh_exact_authority_snapshot"] is True
+    assert report["firmware_policy_identity_replayed_by_live_supervisor"] is True
+
+    replayed_rows = list(
+        csv.DictReader(
+            (
+                tmp_path
+                / "rehearsal/run/csv/tight_deadband_decisions_v1.csv"
+            ).open(encoding="utf-8", newline="")
+        )
+    )
+    assert replayed_rows[0]["policy_sha256"] == (
+        endurance.load_no_write_qualification_spec("A")[1][
+            "active_policy_sha256"
+        ]
+    )
 
     bundle_path = tmp_path / "bundle.json"
     preflight_path = tmp_path / "preflight.json"
