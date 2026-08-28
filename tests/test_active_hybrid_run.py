@@ -113,6 +113,22 @@ def _activation(tmp_path: Path) -> tuple[Path, dict, dict]:
     return activation_path, activation, bundle
 
 
+def test_live_children_start_in_isolated_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    process = FakeProcess(1234)
+
+    def popen(command: list[str], **kwargs: object) -> FakeProcess:
+        captured["command"] = command
+        captured.update(kwargs)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", popen)
+    assert runner._launch_process(["fixture"], SimpleNamespace()) is process
+    assert captured["start_new_session"] is True
+
+
 def test_process_commands_bind_one_owner_three_fifos_and_finite_limits(
     tmp_path: Path,
 ) -> None:

@@ -47,67 +47,59 @@ void finish_configuration(OtisGnssLink *link, uint32_t now_ms) {
   assert(link->last_identity_response_baud == 115200u);
 }
 
-void test_warm_flash_attaches_at_retained_115200_without_baud_command() {
+void run_fixed_9600_to_115200_bootstrap(OtisGnssLink *link) {
+  OtisGnssLinkAction action =
+      take(link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 9600u);
+  otis_gnss_link_complete_action(link, true, 0u);
+
+  action = take(link, OtisGnssLinkActionKind::TransmitTargetBaud);
+  assert(std::string(action.bytes, action.length) ==
+         "$PMTK251,115200*1F\r\n");
+  otis_gnss_link_complete_action(link, true, 1u);
+
+  action = take(link, OtisGnssLinkActionKind::SetUartBaud);
+  assert(action.baud == 115200u);
+  otis_gnss_link_complete_action(link, true, 2u);
+  action = take(link, OtisGnssLinkActionKind::TransmitIdentityQuery);
+  otis_gnss_link_complete_action(link, true, 3u);
+}
+
+void test_operational_startup_always_promotes_from_9600_then_stays_115200() {
   OtisGnssLink link = {};
   const OtisGnssLinkPolicy selected = policy();
   otis_gnss_link_reset(&link, &selected, 0u);
-
-  OtisGnssLinkAction action =
-      take(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 115200u);
-  otis_gnss_link_complete_action(&link, true, 0u);
-  feed(&link, sentence("GPRMC,000000.000,V,,,,,,,,,,N"), 1u);
-  action = take(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
-  otis_gnss_link_complete_action(&link, true, 2u);
-  feed(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 3u);
+  run_fixed_9600_to_115200_bootstrap(&link);
+  feed(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 4u);
 
   assert(link.candidate_rejection_count == 0u);
   assert(link.candidate_baud == 115200u);
   assert(link.state == OtisGnssLinkState::TransmitOutputQuery);
-  finish_configuration(&link, 4u);
+  finish_configuration(&link, 5u);
 }
 
-void test_receiver_power_cycle_discovers_9600_then_promotes_to_115200() {
+void test_failed_115200_qualification_never_scans_another_baud() {
   OtisGnssLink link = {};
   const OtisGnssLinkPolicy selected = policy();
   otis_gnss_link_reset(&link, &selected, 0u);
+  run_fixed_9600_to_115200_bootstrap(&link);
+  otis_gnss_link_tick(&link, 753u);
 
   OtisGnssLinkAction action =
       take(&link, OtisGnssLinkActionKind::SetUartBaud);
   assert(action.baud == 115200u);
-  otis_gnss_link_complete_action(&link, true, 0u);
-  otis_gnss_link_tick(&link, 1200u);
+  otis_gnss_link_complete_action(&link, true, 754u);
   action = take(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
-  otis_gnss_link_complete_action(&link, true, 1200u);
-  otis_gnss_link_tick(&link, 1950u);
-
-  action = take(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 9600u);
-  otis_gnss_link_complete_action(&link, true, 1950u);
-  feed(&link, sentence("GPRMC,000000.000,V,,,,,,,,,,N"), 1951u);
-  action = take(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
-  otis_gnss_link_complete_action(&link, true, 1952u);
-  feed(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 1953u);
-
-  action = take(&link, OtisGnssLinkActionKind::TransmitTargetBaud);
-  assert(std::string(action.bytes, action.length) ==
-         "$PMTK251,115200*1F\r\n");
-  otis_gnss_link_complete_action(&link, true, 1954u);
-  action = take(&link, OtisGnssLinkActionKind::SetUartBaud);
-  assert(action.baud == 115200u);
-  otis_gnss_link_complete_action(&link, true, 1955u);
-  action = take(&link, OtisGnssLinkActionKind::TransmitIdentityQuery);
-  otis_gnss_link_complete_action(&link, true, 1956u);
-  feed(&link, sentence("PMTK705,AXN_5.10_3339,BUILD_1"), 1957u);
-
-  assert(link.candidate_rejection_count == 1u);
-  finish_configuration(&link, 1958u);
+  otis_gnss_link_complete_action(&link, true, 755u);
+  assert(link.candidate_baud == 115200u);
+  assert(link.candidate_rejection_count == 0u);
+  assert(link.discovery_cycle == 2u);
 }
 
 }  // namespace
 
 int main() {
-  test_warm_flash_attaches_at_retained_115200_without_baud_command();
-  test_receiver_power_cycle_discovers_9600_then_promotes_to_115200();
+  test_operational_startup_always_promotes_from_9600_then_stays_115200();
+  test_failed_115200_qualification_never_scans_another_baud();
   return 0;
 }

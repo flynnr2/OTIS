@@ -485,6 +485,7 @@ def _launch_process(command: list[str], log: IO[str]) -> subprocess.Popen[str]:
         stdout=log,
         stderr=log,
         text=True,
+        start_new_session=True,
     )
 
 

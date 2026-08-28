@@ -559,7 +559,20 @@ void restart_discovery(OtisGnssLink *link, uint32_t now_ms,
   link->candidate_index = 0u;
   link->discovery_cycle++;
   link->discovery_started_ms = now_ms;
+#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    OTIS_GNSS_UART_BAUD == 115200u
+  // Operational 115200 profiles never scan.  Startup has already sent the
+  // fixed promotion packet at 9600; recovery stays at the required rate and
+  // requalifies the receiver there.
+  link->candidate_baud = link->policy.target_baud;
+  link->pending_baud = link->policy.target_baud;
+  link->state_started_ms = now_ms;
+  reset_link_line(link);
+  queue_link_action(link, OtisGnssLinkState::SelectTargetBaud,
+                    OtisGnssLinkActionKind::SetUartBaud);
+#else
   select_candidate(link, now_ms);
+#endif
 }
 
 void queue_identity_query(OtisGnssLink *link, bool at_target) {
@@ -944,6 +957,16 @@ void otis_gnss_link_reset(OtisGnssLink *link,
 #else
   select_candidate(link, now_ms);
 #endif
+#elif OTIS_GNSS_UART_BAUD == 115200u
+  // Fixed operational bootstrap: a receiver already at 115200 ignores the
+  // 9600-rate packet; a receiver at 9600 accepts it.  In both cases the next
+  // action switches UART0 to 115200 and no discovery scan follows.
+  link->candidate_baud = 9600u;
+  link->pending_baud = 9600u;
+  link->state_started_ms = now_ms;
+  reset_link_line(link);
+  queue_link_action(link, OtisGnssLinkState::SelectCandidateBaud,
+                    OtisGnssLinkActionKind::SetUartBaud);
 #else
   select_candidate(link, now_ms);
 #endif
@@ -1191,8 +1214,14 @@ void otis_gnss_link_complete_action(OtisGnssLink *link, bool success,
   switch (link->state) {
     case OtisGnssLinkState::SelectCandidateBaud:
       reset_link_line(link);
+#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    OTIS_GNSS_UART_BAUD == 115200u
+      queue_link_action(link, OtisGnssLinkState::TransmitTargetBaud,
+                        OtisGnssLinkActionKind::TransmitTargetBaud);
+#else
       link->state = OtisGnssLinkState::PassiveListen;
       link->state_started_ms = now_ms;
+#endif
       break;
     case OtisGnssLinkState::TransmitIdentityQuery:
       link->state = OtisGnssLinkState::AwaitIdentityResponse;
@@ -2355,9 +2384,9 @@ void begin_pending_link_action(uint32_t now_ms) {
 
 bool otis_gnss_receiver_begin(void) {
 #if OTIS_ENABLE_GNSS_RECEIVER
-  // Start only the bounded state machine here. Baud discovery, PMTK identity
-  // validation, and configuration proceed incrementally from service calls so
-  // GNSS serial acquisition cannot delay the timing-core boot handoff.
+  // Start only the bounded state machine here. The fixed operational bootstrap
+  // (or characterization discovery), identity validation, and configuration
+  // proceed incrementally so GNSS cannot delay the timing-core boot handoff.
   live_receiver_started = false;
   live_uart_initialized = false;
   live_uart_irq_installed = false;

@@ -33,7 +33,7 @@ def test_bounded_gnss_parser_fixtures(tmp_path: Path) -> None:
     subprocess.run([str(executable)], check=True, cwd=ROOT)
 
 
-def test_operational_115200_warm_and_power_cycle_startup_paths(
+def test_operational_115200_fixed_bootstrap_and_no_scan_recovery(
     tmp_path: Path,
 ) -> None:
     executable = tmp_path / "gnss_operational_baud_harness"
@@ -206,6 +206,7 @@ def test_gnss_uart_has_only_the_bounded_discovery_configuration_tx_path() -> Non
     assert '"$PMTK605*31\\r\\n"' in source
     assert '"$PMTK251,9600*17\\r\\n"' in source
     assert '"$PMTK251,115200*1F\\r\\n"' in source
+    assert "Operational 115200 profiles never scan" in source
     assert '"$PMTK414*33\\r\\n"' in source
     assert '"$PMTK314,0,1,0,1,1,0' in source
     assert "OtisGnssLinkState::ObserveConfiguredOutput" in source
@@ -238,6 +239,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
+    assert "uart0_fixed_bootstrap_9600_to_115200_8n1" in sketch
 
     assert "kOtisGnssMaximumLineBytes = 96u" in header
     assert "kOtisGnssDiscoveryMaximumLineBytes = 256u" in header

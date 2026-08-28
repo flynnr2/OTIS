@@ -1,4 +1,4 @@
-# CX317 GNSS Serial Discovery and Runtime RX-Only Contract
+# CX317 GNSS Serial Bootstrap and Runtime RX-Only Contract
 
 Status: current implementation contract. The historical filename is retained
 for stable references. The 3000 ms metadata-freshness value remains subject to
@@ -10,8 +10,9 @@ This service qualifies contemporaneous receiver health beside the independent
 raw D14 PPS capture. UART arrival time never timestamps PPS, establishes UTC
 traceability, calibrates receiver/cable delay, or replaces D14 timing authority.
 
-GNSS serial acquisition is not a boot or capture prerequisite. `begin()` only
-initializes fixed state and the first UART candidate; discovery, queries and
+GNSS serial acquisition is not a boot or capture prerequisite. For an ordinary
+115200 profile, `begin()` starts one fixed sequence: select UART0 at 9600, send
+`PMTK251,115200`, switch UART0 to 115200, and remain there. Queries and
 configuration advance through bounded Core 0 service calls. D14/D8 capture,
 host attachment and telemetry continue while the link is `discovering`,
 `validating`, `degraded` or `lost`. GNSS-dependent control remains inhibited
@@ -48,7 +49,7 @@ electrically idle-high; it is not returned to a high-impedance GPIO input.
 | GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
 | Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
 | UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
-| Discovery baud set | Ordinary profiles: 9600, 115200, 57600, 38400, 19200, 14400, 4800. Characterization profile: 9600, 19200, 38400, 57600, 115200. | MT3339 PMTK251 supported values; the characterization recovery scan is deliberately restricted to its frozen five-rate decision set. |
+| Baud policy | Ordinary 115200 profiles: one 9600-rate `PMTK251,115200`, then fixed 115200 with no scan. Characterization profile: 9600, 19200, 38400, 57600, 115200. | The characterization recovery scan remains confined to its frozen five-rate decision set. |
 | Selected operational baud | 115200 | Completed baud-envelope composite: 23,100 confirmed-online seconds, zero UART fault deltas, peak raw-ring high water 208/1024 |
 | Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 and receiver-extension fields zero | PMTK514 readback must match one explicitly qualified field shape after acknowledgement |
 | PPS | Independent breakout PPS output on D14 | UART metadata never substitutes for the D14 timestamp |
@@ -66,8 +67,10 @@ The local `docs/datasheets/PMTK command packet-Complete-C39-A01.pdf` has
 SHA-256 `88318174825c78e27c4f24eb9b205875e5336f1352e5fa2801a724dad6ce1160`.
 It documents PMTK acknowledgements, PMTK605/705 identity, PMTK414/514 output
 query/readback, all seven candidate baud values, and the temporary/retained
-configuration qualifications. The state machine therefore discovers current
-state rather than assuming either reset-to-default or backup retention.
+configuration qualifications. Ordinary 115200 firmware deliberately converges
+both reset-to-default and retained-rate cases with the same fixed bootstrap.
+The characterization state machine continues to discover current state for its
+separate experiment.
 
 The command set contains no query/data pair for the current NMEA-port baud.
 `PMTK251` is set-only. Baud confirmation is therefore an operational
@@ -80,12 +83,13 @@ link online.
 
 ### Reset, receiver power, and continuation attachment
 
-An MCU reset or firmware flash resets the MCU-side UART and discovery state; it
+An MCU reset or firmware flash resets the MCU-side UART state; it
 does not power-cycle the separately powered PA1616S receiver. The receiver's
 selected serial baud therefore persists across MCU reset while receiver power
-is continuous. A receiver power cycle restores the module default of 9600.
-Discovery must establish the contemporaneous serial baud rather than infer it
-from the MCU reset cause.
+is continuous. A receiver power cycle restores the module default of 9600. The
+ordinary fixed bootstrap handles both cases without inferring the reset cause:
+a retained 115200 receiver ignores the 9600-rate packet, while a default-rate
+receiver accepts it; UART0 then remains fixed at 115200.
 
 The exact baud-envelope continuation profile uses the prior sealed 57600
 observation only as provenance for scan ordering. Its first permitted receiver
@@ -118,13 +122,11 @@ deltas. Peak raw-ring high water was 208 of 1024 entries, satisfying the frozen
 factor-of-two headroom criterion. Composite analysis SHA-256 is
 `5db6c3f908e4669f84235627e94fe6e140798d095de12f7fa751ad8d9453068a`.
 
-Ordinary firmware therefore targets 115200. Startup probes 115200 first because
-the receiver retains its rate across an MCU reset or firmware flash. If no fresh
-identity is returned, it probes the receiver's 9600 power-cycle default. Only a
-fresh PMTK705 identity at 9600 permits the fixed `PMTK251,115200` transition;
-firmware then changes UART0 to 115200 and requires another fresh identity before
-output qualification and the online state. Discovery never infers receiver
-state from reset cause.
+Ordinary firmware therefore targets 115200. On every startup it opens UART0 at
+9600, sends the fixed `PMTK251,115200` packet once, changes UART0 to 115200, and
+does not scan or fall back. It then requires fresh identity and output
+qualification at 115200 before the online state. After a link loss it remains
+at 115200 and requalifies there without resending PMTK251.
 
 The first physical exercise on 2026-08-25 proved repeated post-transition
 communication at 115200 but failed the later `PMTK414`/`PMTK514` output-
@@ -290,9 +292,9 @@ timestamps.
 
 `tests/cpp/gnss_receiver_harness.cpp` and `tests/test_gnss_receiver.py` cover:
 
-- passive target-baud discovery and exact configuration confirmation;
-- timeout at 115200, discovery at 9600, bounded transition to 115200, identity
-  re-query and output reconfiguration/readback;
+- the fixed 9600-rate promotion packet followed by permanent 115200 selection
+  and exact configuration confirmation;
+- failed 115200 qualification remaining at 115200 without a baud scan;
 - wrong-baud/checksum noise isolation, degraded discovery and online loss;
 - fixed command checksums, the sole bounded UART write site and absence of a
   generic transmit API;

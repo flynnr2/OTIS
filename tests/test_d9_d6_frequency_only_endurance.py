@@ -997,6 +997,7 @@ def test_run_live_uploads_before_capture_and_keeps_108000s_authority(
     original_upload = endurance._execute_activation_authorized_upload
     upload_count = 0
     capture_command: list[str] = []
+    capture_popen_kwargs: dict[str, object] = {}
     supervisor_duration: list[float] = []
 
     def upload_once(**kwargs: object):  # type: ignore[no-untyped-def]
@@ -1059,8 +1060,9 @@ def test_run_live_uploads_before_capture_and_keeps_108000s_authority(
         supervisor_duration.append(float(kwargs["duration_s"]))
         return Supervisor()
 
-    def popen(command: list[str], **_: object) -> Capture:
+    def popen(command: list[str], **kwargs: object) -> Capture:
         capture_command.extend(command)
+        capture_popen_kwargs.update(kwargs)
         return capture
 
     def stop_capture(current: Capture) -> None:
@@ -1104,6 +1106,7 @@ def test_run_live_uploads_before_capture_and_keeps_108000s_authority(
     assert capture_command[capture_command.index("--duration-s") + 1] == "108180"
     assert "--auto-detect" in capture_command
     assert "--device" not in capture_command
+    assert capture_popen_kwargs["start_new_session"] is True
     assert supervisor_duration == [108000.0]
     assert result["capture_returncode"] == 0
     assert result["firmware_flash_count"] == 1

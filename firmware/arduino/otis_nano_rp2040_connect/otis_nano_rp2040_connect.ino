@@ -3344,7 +3344,10 @@ void emit_gnss_receiver_status(void) {
               status.configuration_confirmed ? "true" : "false",
               link_severity, link_flags);
   emit_status("gnss_receiver", "uart_configuration",
-#if OTIS_GNSS_UART_BAUD == 9600u
+#if !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    OTIS_GNSS_UART_BAUD == 115200u
+              "uart0_fixed_bootstrap_9600_to_115200_8n1",
+#elif OTIS_GNSS_UART_BAUD == 9600u
               "uart0_autodiscovery_8n1_target_9600",
 #else
               "uart0_autodiscovery_8n1_target_115200",

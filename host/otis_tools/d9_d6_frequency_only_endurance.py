@@ -3053,7 +3053,14 @@ def run_live(*, activation_path: Path, run_dir: Path, startup_timeout_s: float =
     capture: subprocess.Popen[str] | None = None
     lifecycle: dict[str, Any] | None = None
     try:
-        capture = subprocess.Popen(command, cwd=ROOT, stdout=capture_output, stderr=subprocess.STDOUT, text=True)
+        capture = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            stdout=capture_output,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
         _wait_for_capture_ready(run_dir, capture, startup_timeout_s)
         if _serial_owner_pids(detected) != {capture.pid}:
             raise RuntimeError("capture did not become the sole serial owner")

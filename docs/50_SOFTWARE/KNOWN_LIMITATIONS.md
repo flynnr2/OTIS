@@ -33,10 +33,11 @@
   attachments.
 - The PA1616S/MT3339 selected baud persists across an MCU reset or flash while
   the receiver remains powered; only a receiver power cycle restores its 9600
-  module default. Continuation attachment therefore cannot assume 9600 after
-  MCU reset. It uses the sealed 57600 observation only as a PMTK605/PMTK705
-  discovery hint, then falls back through the complete frozen five-rate scan.
-  No PMTK251 is permitted before fresh identity at an allowed baud.
+  module default. Ordinary 115200 firmware handles either state with one fixed
+  9600-rate `PMTK251,115200` packet and then remains at 115200. The separate
+  baud-characterization continuation retains its sealed discovery and
+  PMTK605/PMTK705 rules; those experimental rules do not govern ordinary
+  operation.
 - A continuation from logical S06 `peak_status` creates a real capture-session
   and firmware boundary. The final result is necessarily a multi-artifact
   composite: counters may be differenced only within one source artifact, and
