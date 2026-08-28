@@ -794,8 +794,8 @@ tests/cpp/observe_only_discipline_engine_harness.cpp,44,confidence,confidence_se
 tests/cpp/observe_only_discipline_engine_harness.cpp,89,confidence,confidence_semantics,"<< ',' << otis_observe_only_discipline_confidence_name(decision.confidence) << ','"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,38,uncertainty,measurement_uncertainty_semantics,"""expected"": [""bias_hz"", ""combined_uncertainty_hz""]"
 tests/fixtures/pps_backend_qualification/scenarios_v1.json,45,uncertainty,measurement_uncertainty_semantics,"""id"": ""unavailable_uncertainty"","
-tests/test_cx322_d9_d6_72h_engineering.py,1230,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""available"","
-tests/test_cx322_d9_d6_72h_engineering.py,1248,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""available"","
+tests/test_cx322_d9_d6_72h_engineering.py,1312,uncertainty,measurement_uncertainty_semantics,"calibrated_uncertainty_status=""available"","
+tests/test_cx322_d9_d6_72h_engineering.py,1330,uncertainty,measurement_uncertainty_semantics,"uncertainty_status=""available"","
 tests/test_measurement_semantics.py,18,uncertainty,measurement_uncertainty_semantics,from host.otis_tools.uncertainty import (
 tests/test_measurement_semantics.py,19,uncertainty,measurement_uncertainty_semantics,"evaluate_uncertainty,"
 tests/test_measurement_semantics.py,50,uncertainty,measurement_uncertainty_semantics,"""uncertainty_status"": ""unavailable"","
