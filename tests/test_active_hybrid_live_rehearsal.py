@@ -113,6 +113,23 @@ def test_campaign18_status_fixture_publishes_exact_producer_frontier() -> None:
     assert updates[-1]["frontier_status_domain"] == "rp2040_timer0"
 
 
+def test_campaign18_multi_transaction_reporting_uses_observed_cardinality() -> None:
+    labels = rehearsal._observational_transaction_result_labels(
+        applications={1: {}, 2: {}},
+        summary={},
+        first_response_consumer_reason=(
+            "first_phase_observation_recorded_and_tight_reacquired"
+        ),
+    )
+
+    assert labels == {
+        "response_class": "multiple_observational",
+        "later_authority_release_reason": (
+            "first_phase_observation_recorded_and_tight_reacquired"
+        ),
+    }
+
+
 def test_integrated_snapshot_overlap_latches_live_reducer_but_allows_later_abort_snapshot() -> None:
     first_generation = 41
     overlap = rehearsal._overlapping_active_status_generation_fixture(

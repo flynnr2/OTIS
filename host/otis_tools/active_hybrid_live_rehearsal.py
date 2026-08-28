@@ -3821,15 +3821,16 @@ def _exercise_cx322_real_transaction_path(
         for event in events
         if event.get("event") == "response_retained_as_nonterminal_observation"
     ]
+    transaction_labels = _observational_transaction_result_labels(
+        applications=applications,
+        summary=summary,
+        first_response_consumer_reason=str(first_response_consumer_reason),
+    )
     result = {
         "active_hybrid_rows_captured": len(ahy),
         "active_transaction_rows_captured": len(transactions),
         "evidence_phase_commands": evidence_commands,
-        "response_class": (
-            "multiple_observational"
-            if programme.sustained_regulation
-            else summary["response_class"]
-        ),
+        "response_class": transaction_labels["response_class"],
         "response_retained_nonterminal": len(retained_response_events)
         >= len(applications),
         "firmware_consumption_confirmed": len(evidence_commands)
@@ -3853,9 +3854,9 @@ def _exercise_cx322_real_transaction_path(
             ),
         },
         "first_response_consumer_reason": first_response_consumer_reason,
-        "later_authority_release_reason": summary[
+        "later_authority_release_reason": transaction_labels[
             "later_authority_release_reason"
-        ] if not programme.sustained_regulation else first_response_consumer_reason,
+        ],
         "last_status_generation": int(state["generation"]),
         "applied_code": int(state["applied_code"]),
         "applied_dac_epoch": int(state["dac_epoch"]),
@@ -3929,6 +3930,27 @@ def _exercise_cx322_real_transaction_path(
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
     return result
+
+
+def _observational_transaction_result_labels(
+    *,
+    applications: dict[int, dict[str, Any]],
+    summary: dict[str, Any],
+    first_response_consumer_reason: str,
+) -> dict[str, str]:
+    """Describe observed responses from the exercised transaction cardinality."""
+
+    if len(applications) > 1:
+        return {
+            "response_class": "multiple_observational",
+            "later_authority_release_reason": first_response_consumer_reason,
+        }
+    return {
+        "response_class": str(summary["response_class"]),
+        "later_authority_release_reason": str(
+            summary["later_authority_release_reason"]
+        ),
+    }
 
 
 def _run_real_process_topology(
