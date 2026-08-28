@@ -6,6 +6,9 @@ import json
 
 import pytest
 
+from host.otis_tools.active_hybrid_analyze import (
+    _scenario_terminal_classifications,
+)
 from host.otis_tools.active_hybrid_evidence_guard import (
     FROZEN_AHY_HALF_SERIALIZATION_QUANTUM,
     ResponseCheckpointRejected,
@@ -30,6 +33,7 @@ from host.otis_tools.active_hybrid_rehearsal import (
 from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
 from host.otis_tools.active_hybrid_supervisor import (
@@ -351,6 +355,19 @@ def test_phase_degradation_and_transport_faults_are_distinct() -> None:
     assert abort_failure["terminal_reason"] == "failed_priority_abort_delivery"
     assert abort_failure["abort_delivered"] is False
     assert abort_failure["capture_close_rejected_before_delivery"] is True
+
+
+def test_integrated_rehearsal_uses_its_declared_acquired_terminal() -> None:
+    classifications = _scenario_terminal_classifications(
+        CX322_D9_D6_INTEGRATION_PROGRAMME
+    )
+
+    assert classifications["modeled_phase_transaction"] == (
+        "bounded_integrated_engineering_evidence_acquired"
+    )
+    assert set(classifications.values()) <= (
+        CX322_D9_D6_INTEGRATION_PROGRAMME.terminal_decisions
+    )
 
 
 def test_owner_cannot_close_before_abort_delivery() -> None:
