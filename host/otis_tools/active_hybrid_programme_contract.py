@@ -73,6 +73,9 @@ class ActiveHybridProgramme:
     firmware_hybrid_maximum_automatic_applications: int | None = None
     firmware_hybrid_maximum_cumulative_movement_codes: int | None = None
     correction_response_reserve_s: int = 1800
+    accelerated_rehearsal_terminal_classifications: tuple[
+        tuple[str, str], ...
+    ] = ()
 
     @property
     def campaign_name(self) -> str:
@@ -492,6 +495,24 @@ CX322_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     firmware_hybrid_maximum_automatic_applications=144,
     firmware_hybrid_maximum_cumulative_movement_codes=3_024,
     correction_response_reserve_s=1_500,
+    accelerated_rehearsal_terminal_classifications=(
+        (
+            "modeled_phase_transaction",
+            "cx322_d9_d6_72h_right_censored_incomplete",
+        ),
+        (
+            "clean_phase_degradation",
+            "cx322_d9_d6_72h_right_censored_incomplete",
+        ),
+        (
+            "shared_fail_static_transport_obstruction",
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+        ),
+        (
+            "abort_delivery_failure",
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+        ),
+    ),
 )
 
 

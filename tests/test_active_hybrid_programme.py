@@ -33,6 +33,7 @@ from host.otis_tools.active_hybrid_rehearsal import (
 from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
@@ -367,6 +368,30 @@ def test_integrated_rehearsal_uses_its_declared_acquired_terminal() -> None:
     )
     assert set(classifications.values()) <= (
         CX322_D9_D6_INTEGRATION_PROGRAMME.terminal_decisions
+    )
+
+
+def test_72h_rehearsal_uses_campaign18_terminal_family() -> None:
+    classifications = _scenario_terminal_classifications(
+        CX322_D9_D6_72H_PROGRAMME
+    )
+
+    assert classifications == {
+        "modeled_phase_transaction": (
+            "cx322_d9_d6_72h_right_censored_incomplete"
+        ),
+        "clean_phase_degradation": (
+            "cx322_d9_d6_72h_right_censored_incomplete"
+        ),
+        "shared_fail_static_transport_obstruction": (
+            "cx322_d9_d6_72h_identity_or_evidence_fault"
+        ),
+        "abort_delivery_failure": (
+            "cx322_d9_d6_72h_identity_or_evidence_fault"
+        ),
+    }
+    assert set(classifications.values()) <= (
+        CX322_D9_D6_72H_PROGRAMME.terminal_decisions
     )
 
 
