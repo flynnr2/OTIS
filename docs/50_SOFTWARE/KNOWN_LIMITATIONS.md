@@ -12,6 +12,37 @@
 - Offline hostile-input tests establish bounded loop work and queue failure
   semantics, not a measured physical maximum service interval. That interval
   remains a Q1 measurement.
+- The completed GNSS baud-envelope composite qualifies the installed PA1616S
+  UART path through 115200 under the exercised OTIS/USB workload. Its 115200
+  strata retained 23,100 confirmed-online seconds, zero UART transport/parser
+  fault deltas, and peak raw-ring use of 208/1024; ordinary firmware now targets
+  115200. This is finite physical evidence for the installed topology, not a
+  timeless failure-rate guarantee or qualification of arbitrary receivers,
+  wiring, workloads, or firmware service changes.
+- The first baud-envelope physical attempt reached and held confirmed 57600,
+  then ended at
+  `programme_invalid_due_to_platform_or_evidence_failure`. That terminal and
+  its run-global failure classification remain immutable. The retained prefix
+  can supply only its provenance-bound completed S01 through S05 plus S06
+  transition and `ordinary_entry` evidence to a separately frozen composite
+  analysis. Three later exact-profile entries retained checksum-valid 57600
+  NMEA with zero UART/ring/parser loss while bounded PMTK605 writes completed
+  at the RP2040 peripheral without a PMTK705 response. Peripheral completion
+  alone does not establish D1 waveform delivery or receiver acceptance, so
+  those entries are attachment evidence gaps rather than successful programme
+  attachments.
+- The PA1616S/MT3339 selected baud persists across an MCU reset or flash while
+  the receiver remains powered; only a receiver power cycle restores its 9600
+  module default. Continuation attachment therefore cannot assume 9600 after
+  MCU reset. It uses the sealed 57600 observation only as a PMTK605/PMTK705
+  discovery hint, then falls back through the complete frozen five-rate scan.
+  No PMTK251 is permitted before fresh identity at an allowed baud.
+- A continuation from logical S06 `peak_status` creates a real capture-session
+  and firmware boundary. The final result is necessarily a multi-artifact
+  composite: counters may be differenced only within one source artifact, and
+  the result cannot claim one continuous 12-hour acquisition. This limits
+  continuity claims even if all logical segment durations and classification
+  gates are eventually satisfied.
 - Q1 real-I/O, Q2 inhibited-actuator, Q3 physical no-write, bounded lower-side
   frequency acquisition, the complete range map and mapping-informed Part B
   have physical evidence. Those results qualify only their exact

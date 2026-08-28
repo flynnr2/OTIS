@@ -77,7 +77,7 @@ def _validate_gnss_source_contract(target_baud: int) -> None:
         '"$PMTK251,9600*17\\r\\n"',
         '"$PMTK251,115200*1F\\r\\n"',
         '"$PMTK414*33\\r\\n"',
-        "configure_live_uart(action.baud)",
+        "configure_live_uart(action.baud, opening_target_epoch)",
         "link->confirmed_baud == link->policy.target_baud",
         "OtisGnssLinkState::ObserveConfiguredOutput",
         "OtisGnssOutputConfirmationMethod::Pmtk314AckObservedExact",
@@ -88,7 +88,7 @@ def _validate_gnss_source_contract(target_baud: int) -> None:
         raise ValueError("GNSS dual-baud discovery source contract differs")
     if (
         target_baud != 9600
-        or "#define OTIS_GNSS_UART_BAUD 9600u" not in config
+        or "#define OTIS_GNSS_UART_BAUD 115200u" not in config
         or "OTIS_GNSS_UART_BAUD != 9600u && OTIS_GNSS_UART_BAUD != 115200u"
         not in config
     ):

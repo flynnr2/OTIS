@@ -1121,6 +1121,16 @@ class CaptureDeviceRunner:
         request_path = control_dir / SEGMENT_REQUEST
         if not request_path.is_file():
             return sink
+        # A rotation may close the old sink only between complete device
+        # records.  Defer request parsing, manifest checks, and the physical
+        # owner probe until that boundary; otherwise a pending request repeats
+        # expensive validation for every byte used to finish the current row.
+        if (
+            self.framer.buffer
+            or self.framer.discarding_oversize
+            or sink.raw_writer.partial
+        ):
+            return sink
         try:
             request = json.loads(request_path.read_text(encoding="utf-8"))
             if not isinstance(request, dict):
@@ -1145,8 +1155,6 @@ class CaptureDeviceRunner:
             request_path.unlink(missing_ok=True)
             return sink
 
-        if self.framer.buffer or self.framer.discarding_oversize or sink.raw_writer.partial:
-            return sink
         new_sink: CaptureSegmentSink | None = None
         try:
             new_sink = CaptureSegmentSink(
@@ -1275,13 +1283,23 @@ class CaptureDeviceRunner:
                                     serial_handle,
                                     raw_writer,
                                 )
-                            # After a planned-duration or graceful-signal
-                            # request, drain only the current device record.
+                            # After a planned-duration, graceful-signal, or
+                            # segment-rotation request, drain only the current
+                            # device record.
                             # Reading one byte at a time prevents a following
                             # record from being consumed before the capture
                             # can stop on the newline boundary.
+                            rotation_pending = (
+                                self.config.segment_control_dir is not None
+                                and (
+                                    self.config.segment_control_dir
+                                    / SEGMENT_REQUEST
+                                ).is_file()
+                            )
                             drain_to_boundary = (
-                                duration_reached or self.graceful_stop_requested
+                                duration_reached
+                                or self.graceful_stop_requested
+                                or rotation_pending
                             )
                             read_size = 1 if drain_to_boundary else self.config.read_size
                             data = serial_handle.read(read_size)

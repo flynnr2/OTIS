@@ -12,6 +12,23 @@ CURRENT_EVIDENCE_EPOCH = "CX319_EVIDENCE_EPOCH_1"
 SUSTAINED_HYBRID_EVIDENCE_EPOCH = "OTIS_SUSTAINED_HYBRID_EVIDENCE_EPOCH_1"
 SUSTAINED_HYBRID_STAGE = "OTIS_SUSTAINED_HYBRID_REGULATION_LIVE"
 SUSTAINED_HYBRID_PROFILE_ID = "otis_sustained_hybrid_regulation_v1"
+GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH = "OTIS_GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH_1"
+GNSS_BAUD_ENVELOPE_STAGE = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_LIVE"
+GNSS_BAUD_ENVELOPE_PROFILE_ID = "otis_gnss_baud_envelope_characterization_v1"
+GNSS_BAUD_CONTINUATION_EVIDENCE_EPOCH = (
+    "OTIS_GNSS_BAUD_ENVELOPE_CONTINUATION_EVIDENCE_EPOCH_1"
+)
+GNSS_BAUD_CONTINUATION_STAGE = (
+    "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_CONTINUATION_LIVE"
+)
+GNSS_BAUD_CONTINUATION_PROFILE_ID = (
+    "otis_gnss_baud_envelope_characterization_continuation_v1"
+)
+GNSS_BAUD_RESUME_EVIDENCE_EPOCH = (
+    "OTIS_GNSS_BAUD_ENVELOPE_RESUME_EVIDENCE_EPOCH_1"
+)
+GNSS_BAUD_RESUME_STAGE = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_RESUME_LIVE"
+GNSS_BAUD_RESUME_PROFILE_ID = "otis_gnss_baud_envelope_characterization_resume_v1"
 CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
     {
         "cx319_tight_lower",
@@ -164,6 +181,34 @@ def find_manifest_path(run_dir: Path) -> Path | None:
 def _require_current_epoch(data: dict) -> None:
     stage = str(data.get("stage", ""))
     run_id = str(data.get("run_id", ""))
+    gnss_profile_by_stage = {
+        GNSS_BAUD_ENVELOPE_STAGE: (
+            GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH,
+            GNSS_BAUD_ENVELOPE_PROFILE_ID,
+        ),
+        GNSS_BAUD_CONTINUATION_STAGE: (
+            GNSS_BAUD_CONTINUATION_EVIDENCE_EPOCH,
+            GNSS_BAUD_CONTINUATION_PROFILE_ID,
+        ),
+        GNSS_BAUD_RESUME_STAGE: (
+            GNSS_BAUD_RESUME_EVIDENCE_EPOCH,
+            GNSS_BAUD_RESUME_PROFILE_ID,
+        ),
+    }
+    if stage in gnss_profile_by_stage:
+        epoch, profile_id = gnss_profile_by_stage[stage]
+        programme = data.get("gnss_baud_envelope")
+        if (
+            data.get("compatibility_floor") == epoch
+            and isinstance(programme, dict)
+            and programme.get("profile_id") == profile_id
+            and programme.get("programme_id")
+            == "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
+        ):
+            return
+        raise ValueError(
+            f"manifest does not satisfy {epoch}; {ARCHIVAL_CHECKOUT_GUIDANCE}"
+        )
     if stage == SUSTAINED_HYBRID_STAGE:
         programme = data.get("sustained_hybrid")
         if (

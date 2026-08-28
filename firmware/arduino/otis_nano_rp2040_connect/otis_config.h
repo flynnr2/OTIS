@@ -261,6 +261,13 @@
 #define OTIS_ENABLE_GNSS_RECEIVER 0
 #endif
 
+// Enables only the fixed-command, non-actuating, continuous multi-baud GNSS
+// characterization transaction. Ordinary measurement, preview, and active
+// profiles leave this surface absent.
+#ifndef OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#define OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION 0
+#endif
+
 // Firmware provenance is supplied by the pinned matrix builder or its explicit
 // Arduino IDE profile generator. A hand-maintained source literal is not
 // evidence of the tree or toolchain that produced a binary. Host-only C++
@@ -360,6 +367,8 @@
 #ifndef OTIS_FIRMWARE_VERSION
 #if OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP
 #define OTIS_FIRMWARE_VERSION "CX318_STAGE4_SINGLE_WRITE_PREMISE_SETUP_V1"
+#elif OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#define OTIS_FIRMWARE_VERSION "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
 #elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
 #define OTIS_FIRMWARE_VERSION "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
 #elif OTIS_ENABLE_CX322_DIRECT_HYBRID
@@ -647,7 +656,43 @@
 #endif
 
 #ifndef OTIS_GNSS_UART_BAUD
-#define OTIS_GNSS_UART_BAUD 9600u
+// The installed receiver resets to 9600 on a receiver power cycle but retains
+// its selected rate across an MCU reset/flash. Ordinary discovery probes the
+// operational target first, then 9600, and issues the fixed PMTK251 command
+// only after fresh identity establishes which rate is actually active.
+#define OTIS_GNSS_UART_BAUD 115200u
+#endif
+
+// The continuation bundle may retain the freshly rediscovered startup rate
+// instead of issuing PMTK251 to force OTIS_GNSS_UART_BAUD. This selector does
+// not import request, segment, epoch, or completion state from an earlier run.
+#ifndef OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD
+#define OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD 0
+#endif
+
+#ifndef OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME
+#define OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME 0
+#endif
+
+#ifndef OTIS_GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256
+#if OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME
+#define OTIS_GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256 \
+  "a91b095fb155292e979a84424c22141f88285ba6db065ffba7c167d9179c67c9"
+#elif OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD
+#define OTIS_GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256 \
+  "7f029d106b684ac96623c5d3be28f3ebc6b69a3cd38e2641561ed04a2d204a22"
+#else
+#define OTIS_GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256 \
+  "08308e05ecc4b169a46ace1eb339b93a778abe04070278fcc3c47519666b0550"
+#endif
+#endif
+
+// The exact characterization profile may begin discovery at the receiver baud
+// preserved by the preceding sealed run. OTIS_GNSS_UART_BAUD remains the
+// configured target and recovery anchor; ordinary profiles retain their
+// existing candidate order by compiling a zero hint.
+#ifndef OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT
+#define OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT 0u
 #endif
 
 #ifndef OTIS_GNSS_SERVICE_BYTE_BUDGET
@@ -858,6 +903,55 @@
 
 #if OTIS_GNSS_UART_TX_ENABLED != 0 && OTIS_GNSS_UART_TX_ENABLED != 1
 #error "OTIS_GNSS_UART_TX_ENABLED must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION != 0 && \
+    OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION != 1
+#error "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION must be 0 or 1."
+#endif
+
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#if OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD != 0 && \
+    OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD != 1
+#error "GNSS retained-discovered-startup-baud selector must be 0 or 1."
+#endif
+#if OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 0u && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 9600u && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 19200u && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 38400u && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 57600u && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 115200u
+#error "GNSS characterization startup baud hint must be in the frozen five-rate set."
+#endif
+#if OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD && \
+    OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT == 0u
+#error "Retaining a discovered startup baud requires an explicit nonzero hint."
+#endif
+#elif OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != 0u || \
+    OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD != 0
+#error "GNSS continuation selectors are restricted to characterization firmware."
+#endif
+
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !defined(OTIS_GNSS_HOST_TEST) && \
+    (!OTIS_ENABLE_GNSS_RECEIVER || !OTIS_GNSS_UART_TX_ENABLED || \
+     !OTIS_ENABLE_DUAL_CORE_PARTITION || \
+     OTIS_SW1_BRINGUP_MODE != OTIS_SW1_MODE_H1_OCXO_OBSERVE || \
+     OTIS_TCXO_COUNTER_BACKEND != OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO || \
+     !OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED || OTIS_GNSS_UART_BAUD != 9600u)
+#error "GNSS baud characterization requires the exact protected D14/D8, UART0, and initial-9600 topology."
+#endif
+
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !defined(OTIS_GNSS_HOST_TEST) && \
+    (OTIS_ENABLE_DAC_AD5693R || OTIS_ENABLE_H1_DAC_SWEEP || \
+     OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP || \
+     OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     OTIS_ENABLE_CX320_ACTIVE_HYBRID || \
+     OTIS_ENABLE_CX321_ACTIVE_HYBRID || \
+     OTIS_ENABLE_CX322_DIRECT_HYBRID || \
+     OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION)
+#error "GNSS baud characterization structurally excludes every DAC and active-control authority path."
 #endif
 
 #if OTIS_ENABLE_GNSS_RECEIVER && !OTIS_GNSS_UART_TX_ENABLED
@@ -1077,7 +1171,8 @@
 #endif
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW && \
-    !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
+    !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
 #error "The dual-core partition requires an explicit protected timing preview."
 #endif
 
@@ -1735,9 +1830,27 @@
 #error "Effective OTIS_ENABLE_GNSS_RECEIVER differs from the generated profile."
 #endif
 #endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#if OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION != \
+    OTIS_BUILD_EXPECTED_OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#error "Effective OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION differs from the generated profile."
+#endif
+#endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_GNSS_UART_TX_ENABLED
 #if OTIS_GNSS_UART_TX_ENABLED != OTIS_BUILD_EXPECTED_OTIS_GNSS_UART_TX_ENABLED
 #error "Effective OTIS_GNSS_UART_TX_ENABLED differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT
+#if OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT != \
+    OTIS_BUILD_EXPECTED_OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT
+#error "Effective OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD
+#if OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD != \
+    OTIS_BUILD_EXPECTED_OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD
+#error "Effective retained-discovered-startup-baud selector differs from the generated profile."
 #endif
 #endif
 #ifndef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DAC_AD5693R

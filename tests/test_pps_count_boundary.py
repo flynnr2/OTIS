@@ -96,6 +96,45 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
               assert(!gap.observation_pair_valid);
               assert(!gap.fifo_continuous);
               assert(!gap.control_eligible);
+
+              // A CPU-only early REF is pending when the next genuine PIO
+              // snapshot first appears.  The guard must yield one capture-ring
+              // drain; the genuine REF then makes the old association fail
+              // before either the count path or its first control consumer can
+              // observe a shifted snapshot.
+              OtisPpsSnapshotAssociationGuard association = {{}};
+              uint32_t emitted_count_count = 0u;
+              uint32_t first_control_consumer_count = 0u;
+              OtisPpsSnapshotAssociationDecision decision =
+                  otis_pps_snapshot_association_decide(
+                      &association, true, 1u, 19588u, false);
+              assert(decision ==
+                     OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
+              assert(emitted_count_count == 0u);
+              assert(first_control_consumer_count == 0u);
+
+              decision = otis_pps_snapshot_association_decide(
+                  &association, true, 1u, 19588u, true);
+              assert(decision ==
+                     OtisPpsSnapshotAssociationDecision::AssociationLoss);
+              assert(emitted_count_count == 0u);
+              assert(first_control_consumer_count == 0u);
+
+              // After rearm, the first clean identity is still deferred once,
+              // then reaches exactly one downstream count/control decision.
+              decision = otis_pps_snapshot_association_decide(
+                  &association, true, 2u, 0u, false);
+              assert(decision ==
+                     OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
+              decision = otis_pps_snapshot_association_decide(
+                  &association, true, 2u, 0u, false);
+              assert(decision == OtisPpsSnapshotAssociationDecision::Pair);
+              if (decision == OtisPpsSnapshotAssociationDecision::Pair) {{
+                ++emitted_count_count;
+                ++first_control_consumer_count;
+              }}
+              assert(emitted_count_count == 1u);
+              assert(first_control_consumer_count == 1u);
               return 0;
             }}
             """

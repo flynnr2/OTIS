@@ -17,21 +17,28 @@ host attachment and telemetry continue while the link is `discovering`,
 `validating`, `degraded` or `lost`. GNSS-dependent control remains inhibited
 until the serial link and required metadata independently qualify.
 
-Nano D1/GPIO0 is owned by the GNSS service. Transmission is limited to four
-compile-time fixed PMTK packets:
+Nano D1/GPIO0 is owned by the GNSS service. In ordinary firmware profiles,
+transmission is limited to four compile-time fixed PMTK packets:
 
 - `$PMTK605*31` - query receiver firmware identity;
-- `$PMTK251,9600*17` - request the frozen target baud;
+- `$PMTK251,115200*1F` - request the selected operational baud;
 - `$PMTK414*33` - query NMEA output configuration; and
 - `$PMTK314,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29` - enable exactly
   RMC, GGA and GSA once per position fix.
 
-No host command, runtime payload or general receiver-write API exists. Once the
-target baud, identity and output configuration are confirmed, the service is
-runtime RX-only. In this retained telemetry terminology, `rx_only=true` means
-that the fixed configuration transaction is complete and no transmit action is
-pending or active. D1 remains UART-mapped and electrically idle-high; it is not
-returned to a high-impedance GPIO input.
+No host-supplied receiver bytes, runtime payload, or general receiver-write API
+exists. The exact no-DAC baud-envelope characterization profiles additionally
+compile in three fixed PMTK251 packets for 19200, 38400, and 57600, and accept
+only their contract-bound progressive `GNSS BAUD` and `GNSS STATUS` requests.
+Firmware, not the host, selects from the five fixed packets. Every ordinary
+profile omits that command surface and the three additional packets.
+
+Once the selected target baud, identity, and output configuration are
+confirmed, the ordinary service is runtime RX-only. In retained telemetry,
+`rx_only=true` means that no fixed query, configuration, or transition
+transmission is pending or active; the characterization profile may leave that
+state only for its next exact scheduled transition. D1 remains UART-mapped and
+electrically idle-high; it is not returned to a high-impedance GPIO input.
 
 ## Frozen physical and protocol mapping
 
@@ -41,8 +48,8 @@ returned to a high-impedance GPIO input.
 | GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
 | Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
 | UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
-| Discovery baud set | 9600, 115200, 57600, 38400, 19200, 14400, 4800 | MT3339 PMTK251 supported values; target first, then the documented alternatives |
-| Frozen operational baud | 9600 | Confirmed checksum-valid PMTK705 after any baud transition |
+| Discovery baud set | Ordinary profiles: 9600, 115200, 57600, 38400, 19200, 14400, 4800. Characterization profile: 9600, 19200, 38400, 57600, 115200. | MT3339 PMTK251 supported values; the characterization recovery scan is deliberately restricted to its frozen five-rate decision set. |
+| Selected operational baud | 115200 | Completed baud-envelope composite: 23,100 confirmed-online seconds, zero UART fault deltas, peak raw-ring high water 208/1024 |
 | Frozen NMEA output | RMC, GGA and GSA once per position fix; all other PMTK314 and receiver-extension fields zero | PMTK514 readback must match one explicitly qualified field shape after acknowledgement |
 | PPS | Independent breakout PPS output on D14 | UART metadata never substitutes for the D14 timestamp |
 
@@ -70,6 +77,54 @@ a fresh checksum-valid `PMTK705` identity response at that baud. `PMTK414` and
 Keep baud-transition qualification and output-configuration qualification as
 separate recorded facts even when both are required before declaring the full
 link online.
+
+### Reset, receiver power, and continuation attachment
+
+An MCU reset or firmware flash resets the MCU-side UART and discovery state; it
+does not power-cycle the separately powered PA1616S receiver. The receiver's
+selected serial baud therefore persists across MCU reset while receiver power
+is continuous. A receiver power cycle restores the module default of 9600.
+Discovery must establish the contemporaneous serial baud rather than infer it
+from the MCU reset cause.
+
+The exact baud-envelope continuation profile uses the prior sealed 57600
+observation only as provenance for scan ordering. Its first permitted receiver
+transmission is the fixed PMTK605 identity query at 57600. A fresh
+checksum-valid PMTK705 response confirms that attachment baud; absence of that
+response enters the complete frozen fallback scan over 9600, 19200, 38400,
+57600, and 115200. The hint is not a confirmed-baud fact and never suppresses
+fallback.
+
+No PMTK251 packet is permitted before a fresh PMTK705 identity response at one
+allowed attachment baud. Continuation attachment then also requires exact
+output configuration and fresh checksum-qualified RMC, GGA, and both normally
+observed GSA streams. If that qualified attachment is already at 57600, the
+first run-local request binds the current receiver state without PMTK251 and
+without creating a new baud epoch. At any other allowed attachment baud, the
+first request uses the ordinary bounded fixed-packet transition to 57600 after
+identity is established.
+
+These rules are confined to the exact non-actuating continuation profile. They
+preserve that historical campaign's attachment semantics; ordinary firmware
+now targets the subsequently selected 115200 operational rate.
+
+### Operational 115200 promotion
+
+The completed three-artifact composite retained all 21 frozen logical phases
+across 9600, 19200, 38400, 57600, and 115200. At 115200 it retained 23,100
+confirmed-online seconds with zero hardware overrun, framing, parity, break,
+raw-retention drop, checksum-failure, parser-drop, truncation, or overflow
+deltas. Peak raw-ring high water was 208 of 1024 entries, satisfying the frozen
+factor-of-two headroom criterion. Composite analysis SHA-256 is
+`5db6c3f908e4669f84235627e94fe6e140798d095de12f7fa751ad8d9453068a`.
+
+Ordinary firmware therefore targets 115200. Startup probes 115200 first because
+the receiver retains its rate across an MCU reset or firmware flash. If no fresh
+identity is returned, it probes the receiver's 9600 power-cycle default. Only a
+fresh PMTK705 identity at 9600 permits the fixed `PMTK251,115200` transition;
+firmware then changes UART0 to 115200 and requires another fresh identity before
+output qualification and the online state. Discovery never infers receiver
+state from reset cause.
 
 The first physical exercise on 2026-08-25 proved repeated post-transition
 communication at 115200 but failed the later `PMTK414`/`PMTK514` output-
@@ -130,15 +185,22 @@ and identifies itself as updated 2025-07-23.
 
 ## Discovery and configuration state machine
 
+The sequence below describes the ordinary service and generic target
+transition. The continuation-only hint, full five-rate fallback, and retained
+same-target binding are the bounded exceptions defined above; they do not
+alter ordinary production behavior.
+
 1. Select a candidate baud without waiting and clear the discovery frame.
 2. Listen passively for 1200 ms. Any checksum-valid NMEA/PMTK frame is link
    evidence only; wrong-baud bytes never enter the canonical metadata parser.
 3. Send PMTK605 and require a checksum-valid PMTK705 within 750 ms. Silence or
    unrelated NMEA advances to the next candidate.
-4. If identity is found away from 9600, send PMTK251 at the identified baud,
-   wait for bounded physical transmission completion, switch UART0 to 9600,
-   and require a fresh PMTK705 response at the target baud. An acknowledgement
-   at the producer boundary is not sufficient.
+4. If identity is found away from the profile's current target, send the fixed
+   PMTK251 packet at the identified baud, wait for bounded physical
+   transmission completion, switch UART0 to that target, and require a fresh
+   PMTK705 response there. The ordinary target is 115200; the exact
+   characterization profile binds its current target to the progressive
+   request. An acknowledgement at the producer boundary is not sufficient.
 5. Query PMTK514. Accept only the exact documented 19-field
    RMC/GGA/GSA-only signature or the exact qualified 22-field PA1616S signature
    with three trailing zeros. Otherwise send the fixed PMTK314 packet, require
@@ -157,7 +219,16 @@ online link reports `lost` while reacquisition proceeds.
 - No heap allocation.
 - Separate fixed buffers: 256 bytes for PMTK/NMEA discovery and 96 bytes for
   canonical RMC/GGA/GSA metadata.
-- At most 32 UART RX bytes and eight UART TX bytes are handled per service call.
+- UART0 RX uses a fixed 1024-entry, two-byte-per-entry, non-overwriting SPSC
+  observation ring. Its ISR retains byte order and FE/PE/BE/OE flags, records
+  drops, interrupt gap, batch, and residence counters, and does no parsing,
+  formatting, allocation, logging, receiver transition, or timing/control
+  work.
+- Core 0 drains at most 128 observations or 4000 `rp2040_timer0` ticks per
+  service call. A loss-before marker closes both fixed collectors before the
+  first retained post-gap byte is delivered. Maximum service gap, drain batch,
+  budget exhaustion, depth, high water, and overflow are monotonic telemetry.
+- At most eight UART TX bytes are handled per service call.
 - A transmit has one absolute 500 ms horizon; intermittent FIFO progress does
   not extend it. Failure is recorded and discovery restarts.
 - UART changes use the documented candidate set only. Each transition resets
@@ -179,8 +250,9 @@ online link reports `lost` while reacquisition proceeds.
 `gnss_receiver.metadata_control_eligible` is true only when:
 
 1. the service is initialized;
-2. `link_state=online`, `confirmed_baud=115200`, PMTK705 identity is available,
-   PMTK514 configuration is exact, and the service has returned to RX-only;
+2. `link_state=online`, `confirmed_baud` equals the profile's exact current
+   target, PMTK705 identity is available, output configuration is exactly
+   qualified, and the service has returned to RX-only;
 3. RMC and GGA are fresh and checksum-requalified after the latest parser fault;
 4. RMC is valid, GGA fix quality and satellite count are non-zero, UTC/date are
    available; and

@@ -53,6 +53,7 @@ PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_ENV_SENSORS",
 }
 OPTIONAL_PROFILE_SELECTOR_NAMES = {
+    "OTIS_PPS_GATE_STATUS_PERIOD_MS",
     "OTIS_DAC_MIN_CODE",
     "OTIS_DAC_MAX_CODE",
     "OTIS_ENABLE_CX317_I_ONLY_PREVIEW",
@@ -78,6 +79,11 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_GNSS_RECEIVER",
     "OTIS_GNSS_UART_TX_ENABLED",
     "OTIS_GNSS_UART_BAUD",
+    "OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT",
+    "OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD",
+    "OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME",
+    "OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS",
+    "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION",
     "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
     "OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL",
     "OTIS_CX317_ACTIVE_CAMPAIGN",
@@ -94,9 +100,91 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_FC0_STARTUP_INHIBIT_MS",
     "OTIS_FC0_CONTROL_READY_CLEAN_WINDOWS",
 }
+GNSS_BAUD_CHARACTERIZATION_PROFILE_ID = (
+    "otis_gnss_baud_envelope_characterization_v1"
+)
+GNSS_BAUD_CONTINUATION_PROFILE_ID = (
+    "otis_gnss_baud_envelope_characterization_continuation_v1"
+)
+GNSS_BAUD_RESUME_PROFILE_ID = "otis_gnss_baud_envelope_characterization_resume_v1"
+GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_DEFINE = (
+    "OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT"
+)
+GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_BAUD = 57600
+GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_DEFINE = (
+    "OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD"
+)
+GNSS_BAUD_CHARACTERIZATION_STARTUP_ATTEMPTS = (
+    57600,
+    9600,
+    19200,
+    38400,
+    57600,
+    115200,
+)
+GNSS_BAUD_CHARACTERIZATION_FALLBACK_SCAN = (9600, 19200, 38400, 57600, 115200)
+GNSS_BAUD_CHARACTERIZATION_STARTUP_TELEMETRY = (
+    "startup_hint_attempted",
+    "startup_hint_baud",
+    "startup_hint_identity_outcome",
+    "startup_fallback_entered",
+    "initial_discovery_identity_baud",
+    "initial_discovery_outcome",
+    "pmtk605_peripheral_complete_count",
+    "pmtk605_last_peripheral_complete_ticks",
+    "pmtk605_last_peripheral_complete_ticks_available",
+    "pmtk605_last_peripheral_complete_ticks_domain",
+)
+GNSS_BAUD_CHARACTERIZATION_CONTRACT = (
+    REPO_ROOT
+    / "profiles"
+    / "qualification"
+    / "otis_gnss_baud_envelope_characterization_v1.json"
+)
+GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256 = (
+    "08308e05ecc4b169a46ace1eb339b93a778abe04070278fcc3c47519666b0550"
+)
+GNSS_BAUD_CONTINUATION_CONTRACT = (
+    REPO_ROOT
+    / "profiles"
+    / "qualification"
+    / "otis_gnss_baud_envelope_characterization_continuation_v1.json"
+)
+GNSS_BAUD_CONTINUATION_CONTRACT_SHA256 = (
+    "7f029d106b684ac96623c5d3be28f3ebc6b69a3cd38e2641561ed04a2d204a22"
+)
+GNSS_BAUD_RESUME_CONTRACT = (
+    REPO_ROOT
+    / "profiles"
+    / "qualification"
+    / "otis_gnss_baud_envelope_characterization_resume_v1.json"
+)
+GNSS_BAUD_RESUME_CONTRACT_SHA256 = (
+    "a91b095fb155292e979a84424c22141f88285ba6db065ffba7c167d9179c67c9"
+)
+GNSS_BAUD_CHARACTERIZATION_PACKETS = {
+    b"$PMTK251,9600*17\r\n",
+    b"$PMTK251,19200*22\r\n",
+    b"$PMTK251,38400*27\r\n",
+    b"$PMTK251,57600*2C\r\n",
+    b"$PMTK251,115200*1F\r\n",
+}
+GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS = {
+    "programme_id": b"OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
+    "baud_handler": b"baud_request_disposition",
+    "status_handler": b"status_request_disposition",
+    "coherent_snapshot": b"snapshot_generation",
+    "metadata_frontier": b"metadata_frontier",
+    "extended_counter": b"extended_counter_ticks",
+    "phase_window": b"phase_window_ring_high_water",
+    "isr_policy": b"uart0_rx_drain_to_empty_entry_exit_timer_only",
+}
+GNSS_BAUD_PACKET_PATTERN = re.compile(
+    rb"\$PMTK251,[0-9]+\*[0-9A-F]{2}\r\n"
+)
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
-EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".map", ".uf2")
+EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".h", ".map", ".uf2")
 INSTALLATION_NOISE_NAMES = {".DS_Store", "installed.json"}
 LIFECYCLE_CLASSES = {
     "keep_active",
@@ -154,6 +242,117 @@ def _load_json(path: Path) -> dict[str, Any]:
         raise MatrixError("firmware matrix root must be an object")
     return value
 
+
+def _gnss_baud_contract() -> dict[str, Any]:
+    contract = _load_json(GNSS_BAUD_CHARACTERIZATION_CONTRACT)
+    actual_sha256 = sha256(GNSS_BAUD_CHARACTERIZATION_CONTRACT.read_bytes()).hexdigest()
+    firmware_profile = contract.get("firmware_profile", {})
+    authority = contract.get("authority", {})
+    topology = contract.get("topology", {})
+    transition_policy = contract.get("transition_policy", {})
+    packets = contract.get("command_table", {}).get("packets", [])
+    packet_bytes = {str(item["wire"]).encode("ascii") for item in packets}
+    ordered = [
+        str(item["wire"]).encode("ascii")
+        for item in sorted(packets, key=lambda item: int(item["baud"]))
+    ]
+    if (
+        actual_sha256 != GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256
+        or contract.get("programme_id")
+        != "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
+        or firmware_profile.get("profile_id")
+        != GNSS_BAUD_CHARACTERIZATION_PROFILE_ID
+        or authority.get("physical_authority") is not False
+        or authority.get("dac_writes_permitted") != 0
+        or topology.get("reference_authority") != "D14"
+        or topology.get("oscillator_count_input") != "D8"
+        or transition_policy.get("initial_confirmed_baud") != 9600
+        or transition_policy.get("initial_baud_epoch") != 1
+        or packet_bytes != GNSS_BAUD_CHARACTERIZATION_PACKETS
+        or sha256(b"".join(ordered)).hexdigest()
+        != contract.get("command_table", {}).get("sha256")
+    ):
+        raise MatrixError(
+            "frozen GNSS baud characterization contract/profile binding differs"
+        )
+    return contract
+
+
+def _gnss_baud_continuation_contract() -> dict[str, Any]:
+    contract = _load_json(GNSS_BAUD_CONTINUATION_CONTRACT)
+    actual_sha256 = sha256(GNSS_BAUD_CONTINUATION_CONTRACT.read_bytes()).hexdigest()
+    startup = contract.get("startup_discovery", {})
+    continuation = contract.get("continuation", {})
+    prefix = contract.get("prefix_validation", {})
+    schedule = contract.get("schedule", {})
+    mapping = continuation.get("local_to_logical_segment_map", [])
+    if (
+        actual_sha256 != GNSS_BAUD_CONTINUATION_CONTRACT_SHA256
+        or contract.get("contract_id")
+        != "otis_gnss_baud_envelope_characterization_continuation_v1"
+        or contract.get("firmware_profile", {}).get("profile_id")
+        != GNSS_BAUD_CONTINUATION_PROFILE_ID
+        or contract.get("authority", {}).get("physical_authority") is not False
+        or startup.get("hint_baud") != 57600
+        or startup.get("startup_attempt_bauds")
+        != list(GNSS_BAUD_CHARACTERIZATION_STARTUP_ATTEMPTS)
+        or startup.get("fallback_scan_bauds")
+        != list(GNSS_BAUD_CHARACTERIZATION_FALLBACK_SCAN)
+        or startup.get("recovery_scan_bauds")
+        != list(GNSS_BAUD_CHARACTERIZATION_FALLBACK_SCAN)
+        or startup.get("required_causal_telemetry")
+        != list(GNSS_BAUD_CHARACTERIZATION_STARTUP_TELEMETRY)
+        or prefix.get("source_run_id") != "live_20260826T223754Z"
+        or prefix.get("original_contract_file_sha256")
+        != "a03d06f0b55097314194973e2d0ef1d16b0e5c52e4fb8a4d31f23c91c7193e11"
+        or prefix.get("original_contract_canonical_sha256")
+        != "e43cc21f5d8c0dfba0366f06604ca816d417bf25542776fb45bec91d1a1bbf5d"
+        or prefix.get("supervisor_events_sha256")
+        != "b8dca60881836e99fc704bdc65c78b4fe5ea861ceea2c9a0b9661ff3a557161b"
+        or [item.get("logical_segment_id") for item in mapping]
+        != ["S06", "S07", "S08", "S09", "S10", "S11"]
+        or continuation.get("local_request_sequences") != [1, 2, 3, 4, 5, 6]
+        or continuation.get("attachment_deadline_ms") != 120000
+        or schedule.get("total_confirmed_online_seconds") != 35700
+        or contract.get("composite_analysis", {}).get("terminal")
+        != "composite_multi_artifact_characterization_complete"
+    ):
+        raise MatrixError("frozen GNSS continuation contract/profile binding differs")
+    return contract
+
+
+def _gnss_baud_resume_contract() -> dict[str, Any]:
+    contract = _load_json(GNSS_BAUD_RESUME_CONTRACT)
+    startup = contract.get("startup_discovery", {})
+    continuation = contract.get("continuation", {})
+    prefix = contract.get("prefix_validation", {})
+    schedule = contract.get("schedule", {})
+    mapping = continuation.get("local_to_logical_segment_map", [])
+    if (
+        sha256(GNSS_BAUD_RESUME_CONTRACT.read_bytes()).hexdigest()
+        != GNSS_BAUD_RESUME_CONTRACT_SHA256
+        or contract.get("contract_id")
+        != "otis_gnss_baud_envelope_characterization_resume_v1"
+        or contract.get("firmware_profile", {}).get("profile_id")
+        != GNSS_BAUD_RESUME_PROFILE_ID
+        or contract.get("authority", {}).get("physical_authority") is not False
+        or startup.get("hint_baud") != 115200
+        or startup.get("fallback_scan_bauds")
+        != list(GNSS_BAUD_CHARACTERIZATION_FALLBACK_SCAN)
+        or startup.get("recovery_scan_bauds")
+        != list(GNSS_BAUD_CHARACTERIZATION_FALLBACK_SCAN)
+        or startup.get("required_causal_telemetry")
+        != list(GNSS_BAUD_CHARACTERIZATION_STARTUP_TELEMETRY)
+        or prefix.get("source_run_id") != "live_20260827T092556Z"
+        or prefix.get("supervisor_events_sha256")
+        != "9125fca098454ba379c14126d8b17e22b28db8b2649cb38781a09c32df2fef19"
+        or [item.get("logical_segment_id") for item in mapping] != ["S10", "S11"]
+        or continuation.get("local_request_sequences") != [1, 2]
+        or continuation.get("attachment_deadline_ms") != 120000
+        or schedule.get("total_confirmed_online_seconds") != 24600
+    ):
+        raise MatrixError("frozen GNSS resume contract/profile binding differs")
+    return contract
 
 def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
     matrix = _load_json(path)
@@ -345,6 +544,104 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "bounded controller-to-DAC reachability is restricted to "
                 "the current bounded-active profiles"
             )
+        characterization_enabled = defines.get(
+            "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION", "0"
+        )
+        if characterization_enabled not in {"0", "1"}:
+            raise MatrixError(
+                "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION must be 0 or 1"
+            )
+        if (
+            characterization_enabled == "1"
+            and profile_id
+            not in {
+                GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
+                GNSS_BAUD_CONTINUATION_PROFILE_ID,
+                GNSS_BAUD_RESUME_PROFILE_ID,
+            }
+        ):
+            raise MatrixError(
+                "GNSS baud characterization is restricted to its exact profile"
+            )
+        if profile_id in {
+            GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
+            GNSS_BAUD_CONTINUATION_PROFILE_ID,
+            GNSS_BAUD_RESUME_PROFILE_ID,
+        }:
+            continuation_profile = profile_id in {
+                GNSS_BAUD_CONTINUATION_PROFILE_ID,
+                GNSS_BAUD_RESUME_PROFILE_ID,
+            }
+            characterization_contract = (
+                (
+                    _gnss_baud_resume_contract()
+                    if profile_id == GNSS_BAUD_RESUME_PROFILE_ID
+                    else _gnss_baud_continuation_contract()
+                )
+                if continuation_profile
+                else _gnss_baud_contract()
+            )
+            startup_identity_response_timeout_ms = int(
+                characterization_contract["transition_policy"][
+                    "startup_identity_response_timeout_ms"
+                ]
+            )
+            required_characterization_defines = {
+                "OTIS_SW1_BRINGUP_MODE": "OTIS_SW1_MODE_H1_OCXO_OBSERVE",
+                "OTIS_CAPTURE_BACKEND": "OTIS_CAPTURE_BACKEND_IRQ",
+                "OTIS_TCXO_COUNTER_BACKEND": (
+                    "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
+                ),
+                "OTIS_ENABLE_PSEUDO_PPS_GENERATOR": "0",
+                "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED": "1",
+                "OTIS_PPS_GATE_STATUS_PERIOD_MS": "1000u",
+                "OTIS_ENABLE_GNSS_RECEIVER": "1",
+                "OTIS_GNSS_UART_TX_ENABLED": "1",
+                "OTIS_GNSS_UART_BAUD": "9600u",
+                "OTIS_GNSS_COMMAND_RESPONSE_TIMEOUT_MS": (
+                    f"{startup_identity_response_timeout_ms}u"
+                ),
+                "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION": "1",
+                "OTIS_ENABLE_DUAL_CORE_PARTITION": "1",
+                "OTIS_ENABLE_DAC_AD5693R": "0",
+                "OTIS_ENABLE_H1_DAC_SWEEP": "0",
+                "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "0",
+                "OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP": "0",
+                "OTIS_ENABLE_CX320_ACTIVE_HYBRID": "0",
+                "OTIS_ENABLE_CX321_ACTIVE_HYBRID": "0",
+                "OTIS_ENABLE_CX322_DIRECT_HYBRID": "0",
+                "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION": "0",
+            }
+            if continuation_profile:
+                required_characterization_defines.update(
+                    {
+                        GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_DEFINE: (
+                            f"{int(characterization_contract['startup_discovery']['hint_baud'])}u"
+                        ),
+                        GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_DEFINE: "1",
+                    }
+                )
+            elif any(
+                name in defines
+                for name in (
+                    GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_DEFINE,
+                    GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_DEFINE,
+                )
+            ):
+                raise MatrixError(
+                    "original GNSS characterization profile cannot carry "
+                    "continuation startup selectors"
+                )
+            mismatches = {
+                name: (defines.get(name), expected_value)
+                for name, expected_value in required_characterization_defines.items()
+                if defines.get(name) != expected_value
+            }
+            if mismatches:
+                raise MatrixError(
+                    "GNSS baud characterization profile authority or topology "
+                    f"differs: {mismatches}"
+                )
     if pass_count == 0 or fail_count == 0:
         raise MatrixError(
             "firmware matrix must contain supported and expected-fail profiles"
@@ -969,6 +1266,174 @@ def _artifact_hashes(artifacts_dir: Path) -> list[dict[str, Any]]:
     return sorted(artifacts, key=lambda item: item["name"])
 
 
+def _gnss_binary_contract(
+    profile: dict[str, Any], artifacts_dir: Path
+) -> dict[str, Any]:
+    """Verify the emitted ELF contains only its authorized PMTK251 surface."""
+    elf_paths = sorted(
+        path for path in artifacts_dir.iterdir()
+        if path.is_file() and path.suffix == ".elf"
+    )
+    if len(elf_paths) != 1:
+        raise MatrixError(
+            "GNSS binary audit requires exactly one emitted ELF; "
+            f"found {len(elf_paths)}"
+        )
+    image = elf_paths[0].read_bytes()
+    actual_packets = set(GNSS_BAUD_PACKET_PATTERN.findall(image))
+    defines = profile["defines"]
+    characterization_enabled = (
+        defines.get("OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION", "0") == "1"
+    )
+    continuation_enabled = profile.get("id") in {
+        GNSS_BAUD_CONTINUATION_PROFILE_ID,
+        GNSS_BAUD_RESUME_PROFILE_ID,
+    }
+    if characterization_enabled:
+        campaign_contract = (
+            (
+                _gnss_baud_resume_contract()
+                if profile.get("id") == GNSS_BAUD_RESUME_PROFILE_ID
+                else _gnss_baud_continuation_contract()
+            )
+            if continuation_enabled
+            else _gnss_baud_contract()
+        )
+        expected_packets = GNSS_BAUD_CHARACTERIZATION_PACKETS
+    elif (
+        defines.get("OTIS_ENABLE_GNSS_RECEIVER", "0") == "1"
+        and defines.get("OTIS_GNSS_UART_TX_ENABLED", "0") == "1"
+    ):
+        target_baud = defines.get("OTIS_GNSS_UART_BAUD")
+        ordinary_packets = {
+            "9600u": b"$PMTK251,9600*17\r\n",
+            "115200u": b"$PMTK251,115200*1F\r\n",
+        }
+        expected_packet = ordinary_packets.get(target_baud)
+        if expected_packet is None:
+            raise MatrixError(
+                "ordinary GNSS profile has no auditable fixed target packet"
+            )
+        expected_packets = {expected_packet}
+    else:
+        expected_packets = set()
+    if actual_packets != expected_packets:
+        render = lambda values: sorted(
+            value.decode("ascii").replace("\r", "\\r").replace("\n", "\\n")
+            for value in values
+        )
+        raise MatrixError(
+            "emitted GNSS PMTK251 packet set differs: "
+            f"expected {render(expected_packets)}, found {render(actual_packets)}"
+        )
+    topology_markers_present = {
+        "D14": b"D14" in image,
+        "D8_GPIO20_GPIN0": b"D8_GPIO20_GPIN0" in image,
+    }
+    if characterization_enabled and not all(topology_markers_present.values()):
+        raise MatrixError(
+            "GNSS characterization binary omits the D14/D8 topology markers"
+        )
+    marker_presence = {
+        name: marker in image
+        for name, marker in GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS.items()
+    }
+    if characterization_enabled and not all(marker_presence.values()):
+        missing = sorted(name for name, present in marker_presence.items()
+                         if not present)
+        raise MatrixError(
+            "GNSS characterization binary omits required command/status "
+            f"markers: {missing}"
+        )
+    return {
+        "contract": "otis_gnss_fixed_packet_binary_contract_v1",
+        "status": "verified",
+        "characterization_transition_surface": (
+            "enabled" if characterization_enabled else "disabled"
+        ),
+        "pmtk251_packets": sorted(
+            packet.decode("ascii") for packet in actual_packets
+        ),
+        "characterization_markers": marker_presence,
+        "dac_and_control_write_authority": {
+            "OTIS_ENABLE_DAC_AD5693R": defines["OTIS_ENABLE_DAC_AD5693R"],
+            "OTIS_ENABLE_H1_DAC_SWEEP": defines["OTIS_ENABLE_H1_DAC_SWEEP"],
+            "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": defines.get(
+                "OTIS_ENABLE_CX317_BOUNDED_ACTIVE", "0"
+            ),
+            "OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP": defines.get(
+                "OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP", "0"
+            ),
+            "OTIS_ENABLE_CX320_ACTIVE_HYBRID": defines.get(
+                "OTIS_ENABLE_CX320_ACTIVE_HYBRID", "0"
+            ),
+            "OTIS_ENABLE_CX321_ACTIVE_HYBRID": defines.get(
+                "OTIS_ENABLE_CX321_ACTIVE_HYBRID", "0"
+            ),
+            "OTIS_ENABLE_CX322_DIRECT_HYBRID": defines.get(
+                "OTIS_ENABLE_CX322_DIRECT_HYBRID", "0"
+            ),
+            "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION": defines.get(
+                "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION", "0"
+            ),
+        },
+        "topology_markers_present": topology_markers_present,
+        "campaign_contract": (
+            {
+                "path": str(
+                    (
+                        GNSS_BAUD_RESUME_CONTRACT
+                        if profile.get("id") == GNSS_BAUD_RESUME_PROFILE_ID
+                        else (
+                            GNSS_BAUD_CONTINUATION_CONTRACT
+                            if continuation_enabled
+                            else GNSS_BAUD_CHARACTERIZATION_CONTRACT
+                        )
+                    ).relative_to(REPO_ROOT)
+                ),
+                "sha256": (
+                    GNSS_BAUD_RESUME_CONTRACT_SHA256
+                    if profile.get("id") == GNSS_BAUD_RESUME_PROFILE_ID
+                    else (
+                        GNSS_BAUD_CONTINUATION_CONTRACT_SHA256
+                        if continuation_enabled
+                        else GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256
+                    )
+                ),
+            }
+            if characterization_enabled
+            else None
+        ),
+        "startup_discovery": (
+            {
+                "opening_target_baud": 9600,
+                "recovery_anchor_baud": 9600,
+                "hint_baud": int(campaign_contract["startup_discovery"]["hint_baud"]),
+                "hint_define": GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_DEFINE,
+                "hint_define_value": defines.get(
+                    GNSS_BAUD_CHARACTERIZATION_STARTUP_HINT_DEFINE
+                ),
+                "retain_define": GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_DEFINE,
+                "retain_define_value": defines.get(
+                    GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_DEFINE
+                ),
+                "provenance": campaign_contract["startup_discovery"],
+            }
+            if continuation_enabled
+            else None
+        ),
+        "continuation": (
+            {
+                "profile_id": profile["id"],
+                "retain_discovered_startup_baud": True,
+                "provenance": campaign_contract["continuation"],
+            }
+            if continuation_enabled
+            else None
+        ),
+    }
+
+
 def _resource_usage_from_build_output(output: str) -> dict[str, int]:
     program_match = PROGRAM_USAGE_PATTERN.search(output)
     memory_match = DYNAMIC_MEMORY_USAGE_PATTERN.search(output)
@@ -1178,9 +1643,9 @@ def _compile_profile(
         temporary_root = Path(temporary_root_value)
         temporary_sketch_path = temporary_root / SKETCH.name
         shutil.copytree(SKETCH, temporary_sketch_path)
+        generated_header_text = provenance_header(provenance)
         (temporary_sketch_path / GENERATED_HEADER_NAME).write_text(
-            provenance_header(provenance),
-            encoding="utf-8",
+            generated_header_text, encoding="utf-8"
         )
         command = [
             arduino_cli,
@@ -1240,8 +1705,12 @@ def _compile_profile(
         outcome_matches = outcome_matches and error_matched
     build_manifest_path = artifacts_dir / "firmware_build_manifest.json"
     if passed:
+        (artifacts_dir / GENERATED_HEADER_NAME).write_text(
+            generated_header_text, encoding="utf-8"
+        )
         resource_usage = _resource_usage_from_build_output(combined)
         resource_report = _enforce_resource_budgets(matrix, resource_usage)
+        gnss_binary_contract = _gnss_binary_contract(profile, artifacts_dir)
         artifacts = _artifact_hashes(artifacts_dir)
         after_hashing = _capture_source_state(
             matrix,
@@ -1260,6 +1729,7 @@ def _compile_profile(
                 "schema_version": 1,
                 "provenance": provenance,
                 "resource_budget": resource_report,
+                "gnss_binary_contract": gnss_binary_contract,
                 "artifacts": artifacts,
             },
         )

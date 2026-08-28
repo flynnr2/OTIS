@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-This document specifies a new, non-actuating GNSS serial-link experiment. It
-does not authorize a firmware flash, reset, serial-device access, PMTK
-transmission, physical acquisition, receiver reconfiguration, or any DAC or
+This document records the completed, non-actuating GNSS serial-link experiment.
+Its acquisition authority is exhausted; the retained result authorizes the
+separate ordinary-firmware baud selection described below, not any DAC or
 control action.
 
 The programme identity is
@@ -13,12 +13,36 @@ highest defensible operational baud for the installed PA1616S/MT3339 receiver
 and current OTIS service-plane topology while preserving enough evidence to
 explain why each tested baud is clean, marginal, or unusable.
 
-The programme is deliberately one continuous, provenance-linked physical run,
-not a series of independent pass/fail attempts. Baud-local corruption,
-metadata dequalification, transition failure, and recovery are scientific
-observations. They degrade or terminate only the current baud segment unless a
-separate platform, evidence, or unrecoverable-link condition makes the rest of
-the programme impossible or invalid.
+The original programme was deliberately designed as one continuous,
+provenance-linked physical run, not a series of independent pass/fail attempts.
+The first physical run did not complete that design. Its retained prefix and a
+separately frozen bounded continuation may support a composite decision, but
+the composite is not one continuous physical run and must preserve the gap
+between its source artifacts. Baud-local corruption, metadata dequalification,
+transition failure, and recovery remain scientific observations. They degrade
+or terminate only the current baud segment unless a separate platform,
+evidence, or unrecoverable-link condition makes the rest of the programme
+impossible or invalid.
+
+## Result and promotion decision
+
+The provenance-preserving three-artifact composite completed all 21 frozen
+logical phases and classified every tested baud from 9600 through 115200 as
+`operationally_feasible_observed` with
+`transition_reliable_observed`. At 115200, the combined source-local strata
+contain 23,100 confirmed-online seconds, zero hardware overrun, framing,
+parity, break, raw-retention drop, checksum-failure, parser-drop, truncation,
+or overflow deltas, and a maximum raw-ring high water of 208/1024. The selected
+operational baud is therefore 115200. The composite content SHA-256 is
+`5db6c3f908e4669f84235627e94fe6e140798d095de12f7fa751ad8d9453068a`.
+
+Ordinary firmware probes 115200 first for the common firmware-flash case where
+the separately powered receiver retains its selected rate. If the receiver was
+power-cycled and returned to 9600, firmware establishes fresh identity at 9600,
+sends the fixed `PMTK251,115200` command, switches UART0, and requires a second
+fresh identity at 115200 before qualifying output and declaring the link
+online. The exact historical characterization profiles remain frozen at their
+original 9600 opening/recovery semantics.
 
 ## Decision served
 
@@ -97,6 +121,55 @@ quickly. It processes a line only at newline and resynchronizes at `$`. A
 truncation therefore indicates an incomplete collected line, a malformed line,
 or a parser-shape rejection. The new telemetry must identify which upstream
 condition preceded it.
+
+## Physical prefix and bounded continuation
+
+The sealed `live_20260826T223754Z` artifact retains completed S01 through S05,
+the confirmed transition into S06, and S06 `ordinary_entry`. Its historical
+`programme_invalid_due_to_platform_or_evidence_failure` terminal is immutable.
+A continuation does not change that terminal, relabel the source run as
+successful, or import any unsupported run-global conclusion from it.
+
+The installed receiver's selected serial baud persists while the receiver
+remains powered, including across an MCU reset or firmware flash. Only a
+receiver power cycle restores the PA1616S/MT3339 module default of 9600. A new
+MCU session therefore discovers contemporaneous receiver state; it never
+assumes that MCU reset implies receiver baud 9600.
+
+The bounded continuation uses the sealed last observed 57600 state only to
+order discovery. It first sends the fixed PMTK605 identity query at 57600 and
+requires a fresh checksum-valid PMTK705 response. If that hint does not
+identify the receiver, it performs the complete five-rate identity scan over
+9600, 19200, 38400, 57600, and 115200. The hint is provenance-bound scan
+ordering, not baud confirmation, transition authority, or permission to skip
+fallback. No PMTK251 packet may be sent before fresh identity is established at
+one allowed attachment baud. Programme attachment additionally requires exact
+output configuration and fresh checksum-qualified RMC, GGA, and two GSA
+observations.
+
+After attachment, run-local requests and source segment IDs S01 through S06 map
+respectively to logical segments S06 through S11. Logical S01 through S05 are
+not executable on the continuation command surface. If attachment is already
+at 57600, local S01 binds that contemporaneous state without transmitting
+PMTK251 or opening a new baud epoch; otherwise it performs the ordinary bounded
+transition from the freshly identified attachment baud to 57600. In either
+case, the first continuation online phase is logical S06 `peak_status`, because
+the source artifact already supplies S06 transition and `ordinary_entry`
+evidence.
+
+The final decision is a provenance-linked composite of the immutable prefix
+artifact and the continuation artifact. It must identify the capture-session
+and firmware boundary explicitly. Counter baselines and deltas are valid only
+within their source artifact: never subtract counters across the gap, imply
+counter continuity, or describe the composite as one continuous twelve-hour
+acquisition. Reuse of S01 through S05 and S06 transition/`ordinary_entry`
+evidence is limited to the exact source identities and frozen criteria recorded
+by the composite contract.
+
+This continuation did not itself change the ordinary production target. The
+completed composite and the promotion decision recorded above subsequently
+selected 115200; the historical characterization profile and its source
+artifacts remain unchanged.
 
 ## Supported baud set and exact command boundary
 
@@ -244,6 +317,14 @@ The transaction is complete only after:
    target, confirmed baud, baud epoch, identity, configuration, and fresh
    metadata frontier.
 
+The continuation's initial same-target 57600 binding is the sole exception to
+steps 3 and 4. Because no receiver baud changes, it must transmit no PMTK251
+packet and must preserve the attachment baud epoch. It still requires exact
+request acceptance, a newly advanced checksum-qualified metadata frontier, and
+the first dependent snapshot before logical S06 `peak_status` may begin. A
+continuation attached at any other allowed baud uses the ordinary baud-changing
+transaction above.
+
 An acknowledgement that the host request was accepted is not transition
 completion. Retransmission of the identical request must be idempotent; a
 contradictory sequence, target, or source epoch is a platform fault.
@@ -264,7 +345,7 @@ the bounded recovery window and then use the programme-level
 `serial_link_unrecoverable` terminal because subsequent baud transitions are no
 longer executable.
 
-## One continuous overnight physical programme
+## Original continuous schedule and composite execution
 
 Use one firmware artifact, one flash, one capture session, one continuously
 known USB serial owner, and no MCU reset between baud segments. Never write the
@@ -293,6 +374,11 @@ return visits total three hours. The 115200 soak and closing 9600 segment
 complete the exact 12 hours. Every rate receives at least two separated visits;
 115200 receives six hours 25 minutes total, and 9600 receives two hours 20
 minutes total.
+
+Those totals describe the frozen logical schedule. When the prefix and
+continuation artifacts are combined, their logical online intervals may cover
+that schedule, but their intervening capture/firmware gap remains material.
+The composite must not be called a continuous 12-hour run.
 
 This is screening and operating evidence, not a multi-day failure-rate
 qualification. If faults are absent, the retained frame denominator and `3/N`
@@ -331,6 +417,14 @@ Freeze its maximum cadence from the existing operational host contract. Do not
 send a new challenge until the preceding response has a complete end marker and
 the host has drained it. Record challenge identity, response size, duration,
 USB transport progress, UART ring high-water, and maximum UART consumer gap.
+Each 900-second peak phase still requires exactly 900 challenges whose starts
+are at least 1,000 ms apart and whose retained response/drain intervals do not
+overlap. The independent response-completion liveness deadline is 5,000 ms
+from host FIFO submission through retention of the coherent completed-or-
+rejected response end marker. It is not the one-second minimum start cadence;
+a response may legitimately take longer than one second. Deadline expiry is an
+`evidence_discontinuity` terminal that retains the exact challenge and timeout
+detail.
 
 Do not intentionally obstruct the only evidence carrier during the live
 characterization. Cover transport-obstruction detection and independent
@@ -497,6 +591,17 @@ Deliver exactly one programme terminal:
 
 A result in which one or several bauds are unstable can still be
 `multi_baud_characterization_complete`.
+
+For the bounded continuation, its run-local completion terminal establishes
+only that logical S06 `peak_status` through S11 completed under the
+continuation contract and that S11 freshly confirmed 9600. It does not
+supersede the source artifact's failed terminal and is not the original
+single-artifact `multi_baud_characterization_complete` terminal. Only the
+separate composite analyzer may produce
+`composite_multi_artifact_characterization_complete`, after binding both
+artifact identities, retaining their terminals, checking the reused and new
+logical phases against the frozen criteria, and reporting the capture/firmware
+gap and within-artifact counter provenance.
 
 ## Required retained artifacts
 

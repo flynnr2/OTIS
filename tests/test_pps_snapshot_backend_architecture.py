@@ -116,12 +116,18 @@ def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
         encoding="utf-8"
     )
     body = _function_body(sketch, "void drain_pps_count_boundary_ring(void)")
+    helper = (FW / "otis_pps_count_boundary.h").read_text(encoding="utf-8")
     assert "another_reference_waiting" in body
+    assert "otis_pps_snapshot_association_decide" in body
+    assert "DeferForReferenceDrain" in helper
     assert "otis_pps_snapshot_backend_rearm()" in body
     assert "paired retroactively" in body
     assert "discard_first_recovery_snapshot" not in body
     assert "otis_pps_count_boundary_ring_reset()" in body
     assert body.index("another_reference_waiting") < body.index(
+        "otis_pps_snapshot_backend_pop"
+    )
+    assert body.index("otis_pps_snapshot_association_decide") < body.index(
         "otis_pps_snapshot_backend_pop"
     )
     assert "otis_count_observation_note_association_loss" in body
@@ -165,11 +171,14 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx319_range_part_b_lower",
         "cx319_range_part_b_upper",
         "cx319_range_part_b_upper_completion",
-            "cx320_active_hybrid",
-            "cx321_active_hybrid",
-            "cx322_direct_hybrid",
-            "otis_sustained_hybrid_regulation_v1",
-        ]
+        "cx320_active_hybrid",
+        "cx321_active_hybrid",
+        "cx322_direct_hybrid",
+        "otis_sustained_hybrid_regulation_v1",
+        "otis_gnss_baud_envelope_characterization_v1",
+        "otis_gnss_baud_envelope_characterization_continuation_v1",
+        "otis_gnss_baud_envelope_characterization_resume_v1",
+    ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
         for profile in candidate_profiles

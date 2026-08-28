@@ -2,8 +2,9 @@
 
 ## Status
 
-Normative for `CX319_EVIDENCE_EPOCH_1`. Current HEAD has eight supported firmware
-profiles and eight expected-failure guards in
+Normative for the current evidence epochs accepted by `host/otis_tools/run_loader.py`.
+Current HEAD has eleven supported firmware profiles and eight expected-failure
+guards in
 `firmware/arduino/firmware_matrix.json`.
 
 The only lifecycle values are:
@@ -33,7 +34,8 @@ firmware/host regressions and the fast-tier firmware smoke builds:
 Current capture, serial ownership, abort, rotation, transaction, supervisor,
 replay, analyzer, evidence, sealing, registration, range-spanning,
 domain-rollover and accelerated operational-path tests, including the CX321
-producer-to-first-consumer path, plus all eight supported firmware profiles:
+producer-to-first-consumer path and the GNSS baud-characterization contract and
+preflight guards, plus all eleven supported firmware profiles:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier campaign
@@ -41,7 +43,7 @@ producer-to-first-consumer path, plus all eight supported firmware profiles:
 
 ### Release
 
-The complete current Python/native suite and all eight profiles plus all eight
+The complete current Python/native suite and all eleven profiles plus all eight
 expected-failure guards:
 
 ```bash
@@ -70,6 +72,10 @@ the applicable operation-specific authority, and explicit operator authority.
 The range-spanning programme carries its frozen operator transition in
 `profiles/qualification/cx319_range_spanning_programme_v1.json`; it does not
 authorize phase/hybrid actuation or bypass Part A-to-Part B prerequisites.
+The GNSS baud-envelope profile is separately non-actuating and keeps physical
+authority false in its tracked contract. Any live use requires an exact-bundle
+activation record that binds separate operator authority without changing the
+tracked contract.
 
 ## Change rule
 
