@@ -235,6 +235,8 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "pps_capture";
     case OtisBootCapability::CountBackend:
       return "count_backend";
+    case OtisBootCapability::ForwardedOutput:
+      return "forwarded_clock_output";
     case OtisBootCapability::PseudoPpsGenerator:
       return "pseudo_pps_generator";
     case OtisBootCapability::Dac:

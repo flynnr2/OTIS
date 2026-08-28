@@ -28,6 +28,7 @@
 #include "otis_dual_core_receiver_gate.h"
 #include "otis_emit.h"
 #include "otis_env_sensors.h"
+#include "otis_forwarded_clock_output.h"
 #include "otis_gnss_receiver.h"
 #include "otis_memory_budget.h"
 #include "otis_modes.h"
@@ -460,6 +461,12 @@ void configure_selected_capabilities(void) {
     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
   otis_boot_capability_select(&boot_capabilities,
                               OtisBootCapability::CountBackend,
+                              OtisBootCapabilityRequirement::Required);
+#endif
+
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
+  otis_boot_capability_select(&boot_capabilities,
+                              OtisBootCapability::ForwardedOutput,
                               OtisBootCapabilityRequirement::Required);
 #endif
 
@@ -3451,6 +3458,27 @@ void emit_h0_pin_status(void) {
               OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status("pins", "ch2_osc_observation", "D8_GPIO20_GPIN0",
               OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  OtisForwardedClockOutputStatus output = {};
+  otis_forwarded_clock_output_get_status(&output);
+  emit_status("forwarded_clock_output", "state", output.reason,
+              output.valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              output.valid ? OTIS_FLAG_PROFILE_ASSUMPTION
+                           : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
+  emit_status("forwarded_clock_output", "source", "D8_GPIO20_GPIN0",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("forwarded_clock_output", "destination", "D9_GPIO21_GPOUT0",
+              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "integer_divider",
+                  output.integer_divider, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("forwarded_clock_output", "fractional_divider",
+                  output.fractional_divider, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status("forwarded_clock_output", "readback_valid",
+              output.readback_valid ? "true" : "false",
+              output.readback_valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+              output.readback_valid ? OTIS_FLAG_PROFILE_ASSUMPTION
+                                    : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
 }
 
 void emit_selected_capability_status(void) {
@@ -4770,6 +4798,15 @@ void boot_phase_pps_input_init(void) {
   complete_boot_phase(BootPhase::PpsInputInit);
 }
 
+void boot_phase_forwarded_output_init(void) {
+  begin_boot_phase(BootPhase::ForwardedOutputInit);
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
+  const bool ready = otis_forwarded_clock_output_begin();
+  record_capability_result(OtisBootCapability::ForwardedOutput, ready);
+#endif
+  complete_boot_phase(BootPhase::ForwardedOutputInit);
+}
+
 void boot_phase_ring_buffers_init(void) {
   begin_boot_phase(BootPhase::RingBuffersInit);
   otis_capture_ring_reset();
@@ -5926,6 +5963,7 @@ void setup1() {
                    __ATOMIC_RELEASE);
   otis_dual_core_set_timing_owner_active(true);
   boot_phase_timer_init();
+  boot_phase_forwarded_output_init();
   boot_phase_pps_input_init();
   boot_phase_preview_init();
   boot_phase_capability_audit();

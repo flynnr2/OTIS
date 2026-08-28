@@ -6,6 +6,27 @@
 
 #include "otis_build_profile_config.h"
 
+// The only initial forwarded-output topology is D8/GPIO20/GPIN0 through
+// GPOUT0 to D9/GPIO21 at an integer divide of one.  These are compile-time
+// selectors: neither the source, destination nor divider has a command path.
+#ifndef OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#define OTIS_ENABLE_FORWARDED_D9_OUTPUT 0
+#endif
+
+#ifndef OTIS_ENABLE_FORWARDED_D6_MONITOR
+#define OTIS_ENABLE_FORWARDED_D6_MONITOR 0
+#endif
+
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT != 0 && OTIS_ENABLE_FORWARDED_D9_OUTPUT != 1
+#error "OTIS_ENABLE_FORWARDED_D9_OUTPUT must be 0 or 1."
+#endif
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR != 0 && OTIS_ENABLE_FORWARDED_D6_MONITOR != 1
+#error "OTIS_ENABLE_FORWARDED_D6_MONITOR must be 0 or 1."
+#endif
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR && !OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#error "The D6 diagnostic monitor requires the exact compile-time D9 output."
+#endif
+
 #ifndef OTIS_MINIMUM_FREE_STACK_BYTES
 #define OTIS_MINIMUM_FREE_STACK_BYTES 1024u
 #endif
