@@ -9,6 +9,7 @@ import pytest
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
 )
 
@@ -180,6 +181,46 @@ def test_sustained_activation_rejects_missing_multi_transaction_coverage(
             require_current_tools=False,
             programme=SUSTAINED_HYBRID_PROGRAMME,
         )
+
+
+def test_integrated_activation_requires_unarmed_observation_coverage(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        "programme_id": CX322_D9_D6_INTEGRATION_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    expected_coverage = (
+        set(activation.REHEARSAL_COVERAGE)
+        | set(activation.INTEGRATED_REHEARSAL_COVERAGE)
+    )
+    unsigned = {
+        "schema_version": 1,
+        "report_type": (
+            CX322_D9_D6_INTEGRATION_PROGRAMME.rehearsal_report_type
+        ),
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {name: True for name in expected_coverage},
+        "tool_bindings": {},
+    }
+    path = tmp_path / "integrated-rehearsal.json"
+    _write(path, _semantic(unsigned, "rehearsal_sha256"))
+
+    result = activation.validate_operational_rehearsal(
+        path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=CX322_D9_D6_INTEGRATION_PROGRAMME,
+    )
+
+    assert result["rehearsal_sha256"]
 
 
 @pytest.mark.parametrize(

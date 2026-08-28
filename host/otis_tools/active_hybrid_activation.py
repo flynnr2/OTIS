@@ -88,6 +88,9 @@ SUSTAINED_REHEARSAL_COVERAGE = (
     "separate_automatic_physical_challenge_accounting",
     "mandatory_sustained_status_snapshot_identity",
 )
+INTEGRATED_REHEARSAL_COVERAGE = (
+    "integrated_unarmed_concurrency_observation_boundary",
+)
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
     "emergency_abort": "control/emergency_abort.fifo",
@@ -293,6 +296,8 @@ def validate_operational_rehearsal(
     expected_coverage = set(REHEARSAL_COVERAGE)
     if programme.sustained_regulation:
         expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
+    if programme.engineering_unarmed_observation_s > 0:
+        expected_coverage.update(INTEGRATED_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
         or report.get("report_type") != programme.rehearsal_report_type
