@@ -35,6 +35,7 @@ CURRENT_PROFILES = {
     "cx321_active_hybrid",
     "cx322_direct_hybrid",
     "otis_sustained_hybrid_regulation_v1",
+    "d9_forwarded_output_no_control",
     GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
     GNSS_BAUD_CONTINUATION_PROFILE_ID,
     GNSS_BAUD_RESUME_PROFILE_ID,
@@ -59,7 +60,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 21
+    assert len(profiles) == 22
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -88,6 +89,7 @@ def test_verification_tiers_are_explicit_and_small() -> None:
         GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
         GNSS_BAUD_CONTINUATION_PROFILE_ID,
         GNSS_BAUD_RESUME_PROFILE_ID,
+        "d9_forwarded_output_no_control",
     ]
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="campaign"

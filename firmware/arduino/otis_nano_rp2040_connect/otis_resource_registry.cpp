@@ -235,10 +235,20 @@ bool otis_resource_registry_begin(void) {
                   "cpu_usb_pio_dma_clock_tree");
 
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
-                  OTIS_PIN_INTERNAL_CLOCK_VISIBILITY,
-                  OTIS_OWNER_CLOCK_VISIBILITY, "reserved_gpout0_pin");
+                  OTIS_PIN_FORWARDED_CLOCK_OUTPUT,
+                  OTIS_OWNER_FORWARDED_CLOCK_OUTPUT,
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
+                  "d9_gpio21_gpout0_forwarded_output");
+#else
+                  "reserved_d9_gpio21_gpout0_disabled_profile");
+#endif
   add_bound_claim(OtisResourceType::Clock, kRp2040Instance, kClockGpout0,
-                  OTIS_OWNER_CLOCK_VISIBILITY, "reserved_internal_visibility");
+                  OTIS_OWNER_FORWARDED_CLOCK_OUTPUT,
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT
+                  "gpout0_gpin0_integer_divide_one");
+#else
+                  "reserved_gpout0_disabled_profile");
+#endif
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
                   OTIS_PIN_SECONDARY_DIAGNOSTIC_CLOCK,
                   OTIS_OWNER_DIAGNOSTIC_CLOCK, "reserved_gpout3_pin");

@@ -5,7 +5,8 @@
 
 #define OTIS_OWNER_ARDUINO_CLOCK_TREE "arduino_clock_tree"
 #define OTIS_OWNER_ARDUINO_TIMEBASE "arduino_timebase"
-#define OTIS_OWNER_CLOCK_VISIBILITY "clock_visibility"
+#define OTIS_OWNER_FORWARDED_CLOCK_OUTPUT "forwarded_clock_output"
+#define OTIS_OWNER_FORWARDED_CLOCK_MONITOR "forwarded_clock_monitor"
 #define OTIS_OWNER_DIAGNOSTIC_CLOCK "diagnostic_clock"
 #define OTIS_OWNER_STATUS_LED "status_led"
 #define OTIS_OWNER_EDGE_CAPTURE "edge_capture"
