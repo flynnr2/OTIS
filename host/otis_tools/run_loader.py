@@ -38,6 +38,13 @@ GNSS_BAUD_RESUME_EVIDENCE_EPOCH = (
 )
 GNSS_BAUD_RESUME_STAGE = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_RESUME_LIVE"
 GNSS_BAUD_RESUME_PROFILE_ID = "otis_gnss_baud_envelope_characterization_resume_v1"
+D9_D6_FREQUENCY_ONLY_ENDURANCE_EVIDENCE_EPOCH = (
+    "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_EPOCH_1"
+)
+D9_D6_FREQUENCY_ONLY_ENDURANCE_STAGE = (
+    "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_LIVE"
+)
+D9_D6_FREQUENCY_ONLY_ENDURANCE_PROFILE_ID = "d9_d6_frequency_only_lower"
 CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
     {
         "cx319_tight_lower",
@@ -57,6 +64,7 @@ CURRENT_PACKAGE_PROFILE_IDENTITIES = frozenset(
         "d9_disabled_no_control_baseline",
         "d9_forwarded_output_no_control",
         "d9_d6_forwarded_output_no_control",
+        "d9_d6_frequency_only_lower",
     }
 )
 ARCHIVAL_CHECKOUT_GUIDANCE = (
@@ -250,6 +258,24 @@ def _require_current_epoch(data: dict) -> None:
         raise ValueError(
             "manifest does not satisfy "
             f"{CX322_D9_D6_INTEGRATION_EVIDENCE_EPOCH}; "
+            f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
+        )
+    if stage == D9_D6_FREQUENCY_ONLY_ENDURANCE_STAGE:
+        programme = data.get("frequency_only_engineering")
+        if (
+            data.get("compatibility_floor")
+            == D9_D6_FREQUENCY_ONLY_ENDURANCE_EVIDENCE_EPOCH
+            and isinstance(programme, dict)
+            and programme.get("profile_id")
+            == D9_D6_FREQUENCY_ONLY_ENDURANCE_PROFILE_ID
+            and programme.get("contract_id")
+            == "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_V1"
+            and programme.get("digital_endurance_only") is True
+        ):
+            return
+        raise ValueError(
+            "manifest does not satisfy "
+            f"{D9_D6_FREQUENCY_ONLY_ENDURANCE_EVIDENCE_EPOCH}; "
             f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
         )
     if stage.startswith("CX322_"):
