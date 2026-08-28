@@ -1671,6 +1671,7 @@ def _cx322_active_status_wire_fixture(
     gnss_metadata_requalification_sequence: int = 0,
     gnss_metadata_qualification_frontier: int = 0,
     d14_d8_observation_sequence: int = 0,
+    frontier_timestamp_ticks: int | None = None,
 ) -> bytes:
     """Return one complete CX322 status snapshot for a phase frontier."""
 
@@ -1809,9 +1810,17 @@ def _cx322_active_status_wire_fixture(
         *((key, values[key]) for key in keys),
         (SNAPSHOT_COMPLETE_KEY, str(generation)),
     ]
+    def record_timestamp_ticks(sequence: int) -> int:
+        if frontier_timestamp_ticks is None:
+            return (generation * 1000 + sequence) * 16000
+        remaining_records = len(records) - sequence
+        return (
+            frontier_timestamp_ticks - remaining_records * 16000
+        ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+
     return "".join(
         f"STS,1,{generation * 1000 + sequence},"
-        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"{record_timestamp_ticks(sequence)},rp2040_timer0,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
@@ -3331,6 +3340,17 @@ def _exercise_cx322_real_transaction_path(
         "gnss_metadata_requalification_sequence": 0,
         "gnss_metadata_qualification_frontier": 0,
         "d14_d8_observation_sequence": 0,
+        "frontier_timestamp_ticks": None,
+    }
+    response_frontier_ticks = {
+        int(row["request_sequence"]): (
+            int(row["decision_timestamp_s"])
+            * RP2040_TIMER0_TICKS_PER_SECOND
+        )
+        % RP2040_TIMER0_MICROS_WRAP_TICKS
+        for row in ahy
+        if row.get("authority_state") == "AWAITING_RESPONSE"
+        and int(row.get("request_sequence", "0")) > 0
     }
 
     def emit_active_status() -> None:
@@ -3399,6 +3419,11 @@ def _exercise_cx322_real_transaction_path(
             d14_d8_observation_sequence=int(
                 state["d14_d8_observation_sequence"]
             ),
+            frontier_timestamp_ticks=(
+                None
+                if state["frontier_timestamp_ticks"] is None
+                else int(state["frontier_timestamp_ticks"])
+            ),
         )
         with write_lock:
             _write_all_fd(master, payload)
@@ -3466,6 +3491,10 @@ def _exercise_cx322_real_transaction_path(
                                 )
                                 state[target] = int(application[key])
                         if phase == 4:
+                            if programme is CX322_D9_D6_72H_PROGRAMME:
+                                state["frontier_timestamp_ticks"] = (
+                                    response_frontier_ticks[request_sequence]
+                                )
                             if (
                                 request_sequence == 1
                                 and (
@@ -3517,6 +3546,20 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
+        if programme is CX322_D9_D6_72H_PROGRAMME:
+            setup_epoch_estimates = [
+                row
+                for row in estimates
+                if row.get("source_dac_ref") == "live:DAC:1"
+            ]
+            if not setup_epoch_estimates:
+                raise RuntimeError(
+                    "Campaign18 rehearsal lacks a setup-epoch qualified origin"
+                )
+            state["frontier_timestamp_ticks"] = int(
+                setup_epoch_estimates[-1]["estimator_timestamp_ticks"]
+            )
+            emit_active_status()
         manual = transactions[0]
         setup_establishment_exact = (
             manual["event"] == "manual_start"

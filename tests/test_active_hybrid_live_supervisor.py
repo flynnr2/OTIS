@@ -893,6 +893,39 @@ def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
     )
 
 
+def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=4,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=origin,
+    )
+    health = _health(supervisor, dac_epoch="1")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        origin
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+
+    supervisor._maybe_qualify(health)
+
+    assert supervisor.state["qualified_origin_estimate_id"] == (
+        "est:cx317:selected600:000004"
+    )
+    assert supervisor.state["qualified_origin_timestamp_ticks"] == origin
+    assert supervisor.state["qualified_origin_extended_timestamp_ticks"] == origin
+    assert supervisor.state["qualified_frontier_raw_ticks"] == origin
+    assert supervisor.state["qualified_frontier_extended_ticks"] == origin
+
+
 def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
     tmp_path: Path,
 ) -> None:

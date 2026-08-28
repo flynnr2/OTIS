@@ -81,6 +81,38 @@ def test_cx322_post_abort_snapshot_preserves_confirmed_static_state() -> None:
     assert ",cx317_active,dac_epoch,2," in payload
 
 
+def test_campaign18_status_fixture_publishes_exact_producer_frontier() -> None:
+    policy_path = CX322_D9_D6_72H_PROGRAMME.policy_path
+    frontier = (2400 * 16_000_000) % (1 << 32)
+    payload = rehearsal._cx322_active_status_wire_fixture(
+        generation=3,
+        query_nonce="77",
+        evidence_phase="evidence_clear",
+        bundle={
+            "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+            "firmware": {"build_identity": "a" * 64 + ":" + "b" * 64},
+            "policy": {
+                "path": str(policy_path),
+                "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+            },
+        },
+        applied=False,
+        checkpoint_passed=False,
+        frontier_timestamp_ticks=frontier,
+    )
+    rows = [
+        dict(zip(CONTRACT_FIELDS["health_v1"], row, strict=True))
+        for row in csv.reader(payload.decode("ascii").splitlines())
+    ]
+
+    reducer = ActiveStatusLiveReducer()
+    updates = [item for row in rows if (item := reducer.observe(row)) is not None]
+
+    assert updates[-1]["state"] == "complete"
+    assert updates[-1]["frontier_timestamp_ticks"] == frontier
+    assert updates[-1]["frontier_status_domain"] == "rp2040_timer0"
+
+
 def test_integrated_snapshot_overlap_latches_live_reducer_but_allows_later_abort_snapshot() -> None:
     first_generation = 41
     overlap = rehearsal._overlapping_active_status_generation_fixture(
