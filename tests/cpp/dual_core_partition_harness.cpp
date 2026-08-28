@@ -437,6 +437,42 @@ void stage7_concurrent_health_and_active_query_burst_does_not_drop() {
   }
 }
 
+void complete_telemetry_burst_admission_reserves_every_record() {
+  otis_dual_core_partition_reset();
+  assert(otis_dual_core_telemetry_can_publish(
+      OTIS_TIMING_HEALTH_TELEMETRY_BURST));
+  const uint32_t exact_prefix =
+      OTIS_TELEMETRY_QUEUE_DEPTH - OTIS_TIMING_HEALTH_TELEMETRY_BURST;
+  for (uint32_t sequence = 1u; sequence <= exact_prefix; ++sequence) {
+    const OtisTelemetryMessage summary = telemetry(sequence);
+    assert(otis_dual_core_publish_telemetry(&summary));
+  }
+  assert(otis_dual_core_telemetry_can_publish(
+      OTIS_TIMING_HEALTH_TELEMETRY_BURST));
+  const OtisTelemetryMessage one_too_many = telemetry(exact_prefix + 1u);
+  assert(otis_dual_core_publish_telemetry(&one_too_many));
+  assert(!otis_dual_core_telemetry_can_publish(
+      OTIS_TIMING_HEALTH_TELEMETRY_BURST));
+  assert(otis_dual_core_telemetry_can_publish(
+      OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST));
+
+  otis_dual_core_partition_reset();
+  const uint32_t active_pressure_prefix =
+      OTIS_TELEMETRY_QUEUE_DEPTH -
+      OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST + 1u;
+  for (uint32_t sequence = 1u; sequence <= active_pressure_prefix;
+       ++sequence) {
+    const OtisTelemetryMessage summary = telemetry(sequence);
+    assert(otis_dual_core_publish_telemetry(&summary));
+  }
+  assert(!otis_dual_core_telemetry_can_publish(
+      OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST));
+  OtisTelemetryMessage drained = {};
+  assert(otis_dual_core_take_telemetry(&drained));
+  assert(otis_dual_core_telemetry_can_publish(
+      OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST));
+}
+
 void boot_telemetry_exhaustion_is_bounded_and_fail_static() {
   otis_dual_core_partition_reset();
   for (uint32_t sequence = 1u; sequence <= OTIS_TELEMETRY_QUEUE_DEPTH;
@@ -935,6 +971,7 @@ int main() {
   diagnostic_queries_cross_poll_mutation_and_fault_boundaries();
   bounded_core0_stall_preserves_raw_evidence();
   stage7_concurrent_health_and_active_query_burst_does_not_drop();
+  complete_telemetry_burst_admission_reserves_every_record();
   boot_telemetry_exhaustion_is_bounded_and_fail_static();
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();

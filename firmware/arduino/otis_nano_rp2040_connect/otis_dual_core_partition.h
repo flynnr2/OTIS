@@ -183,6 +183,9 @@ bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message);
 // Core 1 producer / Core 0 consumer. Duplicate summaries may drop, always
 // with an explicit saturating counter.
 bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message);
+// Admission check for an all-or-nothing logical telemetry burst. The sole
+// Core 1 producer calls this immediately before publishing the burst.
+bool otis_dual_core_telemetry_can_publish(uint32_t message_count);
 // Boot publication is non-blocking. The queue is statically sized for the
 // declared startup burst; exceeding that budget is an explicit fail-static
 // partition fault rather than an unbounded timing-core wait.

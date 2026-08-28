@@ -53,6 +53,7 @@ from .bounded_tight_deadband_prewrite_contract import (
     evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
 )
 from .frequency_control_supervisor import (
+    ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
     ACTIVE_STATUS_COMPLETE_MAX_AGE_S,
     ARM_LIFETIME_S,
     ARM_PROGRESS_THRESHOLD,
@@ -606,10 +607,28 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("host_verification_hold", None)
         self.state.setdefault("persistent_wrong_direction_terminal", False)
         self.state.setdefault("unarmed_observation_complete_utc", None)
+        # The attachment nonce is immutable package identity. Runtime queries
+        # rotate a separate nonce so a fresh file cannot masquerade as the
+        # causally requested post-frontier snapshot.
+        self.state.setdefault(
+            "active_snapshot_request_nonce",
+            int(self.state["host_attach_query_nonce"]),
+        )
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
         self._event(f"{self.programme.key}_{suffix}", **payload)
+
+    def _current_health(
+        self, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        if required_query_nonce is None:
+            required_query_nonce = int(
+                self.state["active_snapshot_request_nonce"]
+            )
+        return super()._current_health(
+            required_query_nonce=required_query_nonce
+        )
 
     def _identity_ready(
         self, health: dict[tuple[str, str], str]
@@ -631,18 +650,40 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _fresh_active_snapshot_after(
         self, generation: int
     ) -> dict[tuple[str, str], str]:
-        self._command(self._status_query_command())
-        deadline = time.monotonic() + 5.0
+        prior_nonce = int(self.state["active_snapshot_request_nonce"])
+        query_nonce = prior_nonce + 1 if prior_nonce < 0xFFFFFFFF else 1
+        if query_nonce == int(self.state["host_attach_query_nonce"]):
+            query_nonce = query_nonce + 1 if query_nonce < 0xFFFFFFFF else 1
+        self.state["active_snapshot_request_nonce"] = query_nonce
+        self._save()
+        self._programme_event(
+            "active_snapshot_query_started",
+            query_nonce=query_nonce,
+            pre_submit_snapshot_generation=generation,
+        )
+        self._command(f"ACTIVE SNAPSHOT {query_nonce}")
+        # One request remains outstanding until a matching, later complete
+        # generation arrives. Fresh host publication alone is insufficient:
+        # periodic snapshots retain the prior nonce, and a generation at or
+        # behind the pre-submit frontier cannot answer this request.
+        deadline = time.monotonic() + ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
         while True:
-            health = self._current_health()
+            health = self._current_health(required_query_nonce=query_nonce)
             observed = int(
                 health.get(("cx317_active", "snapshot_generation_complete"), "0")
             )
             if observed > generation:
+                self._programme_event(
+                    "active_snapshot_query_completed",
+                    query_nonce=query_nonce,
+                    pre_submit_snapshot_generation=generation,
+                    response_snapshot_generation=observed,
+                )
                 return health
             if time.monotonic() >= deadline:
                 raise TimeoutError(
-                    "CX320 fresh active snapshot did not follow evidence acknowledgement"
+                    "CX320 causally bound active snapshot did not follow "
+                    f"query_nonce={query_nonce} generation={generation}"
                 )
             time.sleep(0.05)
 
@@ -809,7 +850,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         missing = list(readiness.missing)
         mismatches = list(readiness.mismatches)
         if health.get(("cx317_active", "query_nonce")) != str(
-            self.state["host_attach_query_nonce"]
+            self.state["active_snapshot_request_nonce"]
         ):
             mismatches.append("solicited post-attachment snapshot is absent")
         if self.programme.forwarded_output_integration:
@@ -1778,8 +1819,15 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     self._renew_lease()
                     last_lease = now
                 if now - last_query >= QUERY_PERIOD_S:
-                    self._command(self._status_query_command())
-                    last_query = now
+                    current = self._current_health()
+                    generation = int(
+                        current.get(
+                            ("cx317_active", "snapshot_generation_complete"),
+                            "0",
+                        )
+                    )
+                    self._fresh_active_snapshot_after(generation)
+                    last_query = time.monotonic()
                 if (
                     self.programme.forwarded_output_integration
                     and now - last_output_status_query

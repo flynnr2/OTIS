@@ -374,7 +374,7 @@ def test_hybrid_response_checkpoint_uses_observed_sign_not_class_name() -> None:
     )
 
 
-def test_abort_consumption_publishes_complete_resulting_active_snapshot() -> None:
+def test_abort_consumption_uses_admitted_resulting_active_snapshot() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
     )
@@ -388,6 +388,18 @@ def test_abort_consumption_publishes_complete_resulting_active_snapshot() -> Non
     accepted = branch.index("abort_accepted_on_core1", abort)
     snapshot = branch.index("publish_dual_core_active_status", accepted)
     assert abort < accepted < snapshot
+
+    publisher_start = sketch.index("bool publish_dual_core_active_status")
+    publisher = sketch[
+        publisher_start : sketch.index(
+            "OtisSetupAuthorityContext", publisher_start
+        )
+    ]
+    capacity = publisher.index("otis_dual_core_telemetry_can_publish")
+    first_record = publisher.index("otis_cx317_active_live_visit_status")
+    assert capacity < first_record
+    assert "OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST" in publisher
+    assert "return false" in publisher
 
 
 def test_automatic_apply_propagates_the_new_dac_epoch_before_completion() -> None:
@@ -596,6 +608,29 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
     assert '"0x%04X"' in visitor
     assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT" in visitor
     assert '"unavailable"' in visitor
+
+
+def test_dual_core_active_snapshot_bursts_are_admitted_before_first_record() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    periodic = sketch[
+        sketch.index("void publish_dual_core_timing_health") : sketch.index(
+            "void publish_dual_core_service_metadata"
+        )
+    ]
+    query_publish = sketch.index("const bool snapshot_published")
+    query = sketch[query_publish - 300 : query_publish + 900]
+
+    assert periodic.index("otis_dual_core_telemetry_can_publish(") < (
+        periodic.index("dual_core_last_timing_status_ms = now_ms")
+    )
+    assert "OTIS_TIMING_HEALTH_TELEMETRY_BURST" in periodic
+    assert "publish_dual_core_active_status(millis())" in query
+    assert "status_query_snapshot_deferred_capacity_on_core1" in query
+    assert query.index("const bool snapshot_published") < query.index(
+        "status_query_snapshot_deferred_capacity_on_core1"
+    )
 
 
 def test_stage7_dual_core_authority_has_four_durable_phases_and_one_owner() -> None:

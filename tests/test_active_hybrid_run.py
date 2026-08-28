@@ -11,6 +11,13 @@ from host.otis_tools import active_hybrid_run as runner
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_INTEGRATION_PROGRAMME,
 )
+from host.otis_tools.active_status_contract import (
+    ACTIVE_STATUS_KEYS,
+    ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+)
 
 
 class FakeProcess:
@@ -41,6 +48,30 @@ class FakeProcess:
 def _write(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _raw_active_abort_snapshot(generation: int) -> str:
+    values = {key: f"value:{key}" for key in ACTIVE_STATUS_KEYS}
+    values.update({
+        "state": "ABORTED",
+        "fail_static": "true",
+        "evidence_pending": "false",
+        "evidence_phase": "evidence_clear",
+        "evidence_request_sequence": "0",
+        "confirmed_applied_code_known": "true",
+        "confirmed_applied_code": str(0xA83C),
+    })
+    fields = [
+        (SNAPSHOT_BEGIN_KEY, str(generation)),
+        (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+        *((key, values[key]) for key in ACTIVE_STATUS_KEYS),
+        (SNAPSHOT_COMPLETE_KEY, str(generation)),
+    ]
+    return "".join(
+        f"STS,1,{index},{index * 1600},rp2040_timer0,cx317_active,"
+        f"{key},{value},INFO,0\n"
+        for index, (key, value) in enumerate(fields, start=1)
+    )
 
 
 def _activation(tmp_path: Path) -> tuple[Path, dict, dict]:
@@ -200,6 +231,72 @@ def test_abort_delivery_waits_for_complete_consumed_firmware_state(
     monkeypatch.setattr(runner, "_wait_until", wait)
     runner._wait_for_terminal_abort_delivery(tmp_path, terminal)
     assert observed == ["priority abort delivery before sole-owner capture close"]
+
+
+def test_abort_delivery_uses_retained_complete_abort_snapshot_when_live_state_is_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "last_confirmed_code": 0xA83C,
+    }
+    _write(tmp_path / "reports/capture_device_state.json", {
+        "capture_active": True, "emergency_abort_latched": True,
+        "emergency_aborts_sent": 1,
+    })
+    raw = tmp_path / "raw/serial.log"
+    raw.parent.mkdir(parents=True)
+    raw.write_text(
+        _raw_active_abort_snapshot(195)
+        + '# OTIS_HOST {"event":"emergency_abort_sent"}\n'
+        + _raw_active_abort_snapshot(196),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runner, "read_live_health_state",
+        lambda _path: SimpleNamespace(state="invalid", health={}),
+    )
+    monkeypatch.setattr(runner, "_wait_until", lambda predicate, *_args: predicate())
+
+    runner._wait_for_terminal_abort_delivery(tmp_path, terminal)
+
+
+def test_abort_delivery_does_not_use_a_pre_marker_firmware_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    terminal = {
+        "result": "aborted",
+        "primary_decision": "measurement_authority_or_platform_fault",
+        "last_confirmed_code": 0xA83C,
+    }
+    _write(tmp_path / "reports/capture_device_state.json", {
+        "capture_active": True, "emergency_abort_latched": True,
+        "emergency_aborts_sent": 1,
+    })
+    raw = tmp_path / "raw/serial.log"
+    raw.parent.mkdir(parents=True)
+    raw.write_text(
+        _raw_active_abort_snapshot(195)
+        + '# OTIS_HOST {"event":"emergency_abort_sent"}\n'
+        + "STS,1,999,999,rp2040_timer0,cx317_active,"
+        "snapshot_generation_begin,196,INFO,0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runner, "read_live_health_state",
+        lambda _path: SimpleNamespace(state="invalid", health={}),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_wait_until",
+        lambda predicate, *_args: (
+            None if predicate() else (_ for _ in ()).throw(TimeoutError("bounded"))
+        ),
+    )
+
+    with pytest.raises(TimeoutError, match="bounded"):
+        runner._wait_for_terminal_abort_delivery(tmp_path, terminal)
 
 
 def test_prewrite_abort_does_not_invent_a_confirmed_static_code() -> None:

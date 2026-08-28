@@ -9,6 +9,7 @@ retry or restoration path.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -32,6 +33,7 @@ from .active_hybrid_activation import (
     validate_activation,
     validate_frozen_run_manifest,
 )
+from .active_status_contract import complete_active_status_snapshots
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
@@ -40,7 +42,12 @@ from .active_hybrid_programme_contract import (
 )
 from .board_identity import read_board_identity
 from .capture_device import _detect_single_device
-from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
+from .capture_runtime_checks import (
+    HOST_MARKER_PREFIX,
+    _capture_state_ready,
+    _serial_owner_pids,
+)
+from .contracts import HEALTH_FIELDS
 from .evidence import (
     EVIDENCE_MANIFEST,
     create_evidence_snapshot,
@@ -468,6 +475,52 @@ def _record_abort_delivery_failure(
     return path
 
 
+def _retained_abort_consumption_health(run_dir: Path) -> dict[tuple[str, str], str] | None:
+    """Return a complete post-abort firmware snapshot from canonical records.
+
+    The live reducer deliberately latches ``invalid`` when an ordinary
+    supervisor snapshot overlaps a prior incomplete generation.  That remains
+    a control-plane fault, but it must not erase a later complete, retained
+    ABORTED/fail-static snapshot when deciding whether the independent abort
+    reached firmware before the sole capture owner may close.
+    """
+    raw_path = run_dir / "raw/serial.log"
+    if not raw_path.is_file():
+        return None
+    abort_sent = False
+    rows: list[dict[str, str]] = []
+    with raw_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(HOST_MARKER_PREFIX):
+                try:
+                    marker = json.loads(line[len(HOST_MARKER_PREFIX) :])
+                except json.JSONDecodeError:
+                    continue
+                if marker.get("event") == "emergency_abort_sent":
+                    # Reset at the independently retained transmission marker:
+                    # only a causally later firmware snapshot can prove that
+                    # this abort reached and was consumed by the device.
+                    abort_sent = True
+                    rows = []
+                continue
+            if not abort_sent or not line.startswith("STS,"):
+                continue
+            try:
+                values = next(csv.reader([line.rstrip("\r\n")]))
+            except csv.Error:
+                continue
+            if len(values) != len(HEALTH_FIELDS):
+                continue
+            rows.append(dict(zip(HEALTH_FIELDS, values, strict=True)))
+    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
+    if not snapshots:
+        return None
+    latest = snapshots[-1]
+    if int(latest["snapshot_generation_complete"]) != newest_started_generation:
+        return None
+    return {("cx317_active", key): value for key, value in latest.items()}
+
+
 def _wait_for_terminal_abort_delivery(
     run_dir: Path, terminal: dict[str, Any]
 ) -> None:
@@ -484,9 +537,16 @@ def _wait_for_terminal_abort_delivery(
         ):
             return False
         live = read_live_health_state(run_dir / LIVE_STATE_PATH)
-        if live.state != "complete":
+        # Prefer the atomic live state.  On its explicitly-invalid branch,
+        # use only a complete retained firmware abort snapshot—not a partial
+        # health prefix and never a fresh query/nonce request.
+        health = (
+            live.health
+            if live.state == "complete"
+            else _retained_abort_consumption_health(run_dir)
+        )
+        if health is None:
             return False
-        health = live.health
         if not (
             health.get(("cx317_active", "state")) == "ABORTED"
             and health.get(("cx317_active", "fail_static")) == "true"

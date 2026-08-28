@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -12,8 +13,13 @@ from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
+from host.otis_tools.active_status_contract import (
+    complete_active_status_snapshots,
+)
+from host.otis_tools.active_status_live_state import ActiveStatusLiveReducer
 from host.otis_tools.capture_serial import CsvRecordSplitter
 from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
+from host.otis_tools.contracts import CONTRACT_FIELDS
 
 
 def _binding(path: Path) -> dict[str, object]:
@@ -72,6 +78,38 @@ def test_cx322_post_abort_snapshot_preserves_confirmed_static_state() -> None:
     assert ",cx317_active,correction_count,1," in payload
     assert ",cx317_active,cumulative_movement_codes,5," in payload
     assert ",cx317_active,dac_epoch,2," in payload
+
+
+def test_integrated_snapshot_overlap_latches_live_reducer_but_allows_later_abort_snapshot() -> None:
+    first_generation = 41
+    overlap = rehearsal._overlapping_active_status_generation_fixture(
+        first_generation=first_generation
+    )
+    post_abort = rehearsal._post_abort_active_status_wire_fixture(
+        generation=first_generation + 2,
+        bundle={"programme_id": CX322_D9_D6_INTEGRATION_PROGRAMME.programme_id},
+        applied_code=0xA837,
+        dac_epoch=2,
+        correction_count=1,
+        cumulative_movement_codes=5,
+    )
+    rows = [
+        dict(zip(CONTRACT_FIELDS["health_v1"], row, strict=True))
+        for row in csv.reader((overlap + post_abort).decode("ascii").splitlines())
+    ]
+
+    reducer = ActiveStatusLiveReducer()
+    updates = [item for row in rows if (item := reducer.observe(row)) is not None]
+    assert updates[-1]["state"] == "invalid"
+    assert "before the prior generation" in str(updates[-1]["reason"])
+
+    snapshots, newest_started = complete_active_status_snapshots(rows)
+    assert newest_started == first_generation + 2
+    assert snapshots[-1]["snapshot_generation_complete"] == str(
+        first_generation + 2
+    )
+    assert snapshots[-1]["state"] == "ABORTED"
+    assert snapshots[-1]["fail_static"] == "true"
 
 
 def test_rehearsal_manifest_is_strictly_non_authorizing_and_pty_only(
@@ -345,6 +383,24 @@ def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
         < supervisor_continue
         < capture_continue
     )
+
+
+def test_integrated_overlap_precedes_obstruction_and_requires_retained_fallback() -> None:
+    source = Path(rehearsal.__file__).read_text(encoding="utf-8")
+    overlap = source.index("_overlapping_active_status_generation_fixture(")
+    invalid = source.index(
+        '"integrated overlapping active-status generations latch invalid"', overlap
+    )
+    capture_stop = source.index("os.kill(capture.pid, signal.SIGSTOP)", invalid)
+    abort = source.index("send_abort(host_abort)", capture_stop)
+    delivery = source.index(
+        "_wait_for_terminal_abort_delivery(run_dir, terminal_state[\"terminal\"])",
+        abort,
+    )
+    retained = source.index("_retained_abort_consumption_health(run_dir)", delivery)
+    rotation = source.index("prepare_transition(", retained)
+
+    assert overlap < invalid < capture_stop < abort < delivery < retained < rotation
 
 
 def test_integrated_wire_fixture_captures_d14_d8_d9_d6_and_localizes_d6_fault(

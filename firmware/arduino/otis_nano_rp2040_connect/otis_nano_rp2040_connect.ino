@@ -826,9 +826,16 @@ void publish_dual_core_active_status_field(void *, const char *key,
   publish_dual_core_timing_status("cx317_active", key, value, severity, flags);
 }
 
-void publish_dual_core_active_status(uint32_t now_ms) {
+bool publish_dual_core_active_status(uint32_t now_ms) {
+  // Every caller, including priority abort consumption, must either publish
+  // the complete generation or defer it.  A partial active snapshot is not a
+  // useful lossy summary because host decisions bind begin/complete identity.
+  if (!otis_dual_core_telemetry_can_publish(
+          OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST))
+    return false;
   otis_cx317_active_live_visit_status(
       nullptr, publish_dual_core_active_status_field, now_ms / 1000u);
+  return true;
 }
 
 OtisSetupAuthorityContext current_dual_core_setup_authority_context(
@@ -887,6 +894,12 @@ void publish_dual_core_setup_phase(const char *phase,
 
 void publish_dual_core_timing_health(uint32_t now_ms) {
   if ((uint32_t)(now_ms - dual_core_last_timing_status_ms) < kStatusPeriodMs)
+    return;
+  // Do not begin a complete-generation health capsule unless the queue can
+  // retain every record. Retry from the same due boundary after Core 0 drains;
+  // a missing completion marker is never a permissible lossy summary.
+  if (!otis_dual_core_telemetry_can_publish(
+          OTIS_TIMING_HEALTH_TELEMETRY_BURST))
     return;
   dual_core_last_timing_status_ms = now_ms;
 
@@ -1288,7 +1301,9 @@ void service_dual_core_timing_inputs(void) {
                  "abort_accepted_on_core1");
         otis_dual_core_publish_critical(&transition);
         // Preserve the resulting consumer state before the sole serial owner
-        // closes; producer-side command delivery is not proof of consumption.
+        // closes when capacity permits. If a prior burst occupies the queue,
+        // the admitted periodic publisher retains the ABORTED state later;
+        // producer-side command delivery is not proof of consumption.
         publish_dual_core_active_status(millis());
       } else if (message.run_control.kind ==
                  OtisRunControlKind::EvidenceRelease) {
@@ -1323,12 +1338,15 @@ void service_dual_core_timing_inputs(void) {
                  OtisRunControlKind::StatusQuery) {
         otis_cx317_active_live_set_status_query_nonce(
             message.run_control.nonce);
+        const bool snapshot_published =
+            publish_dual_core_active_status(millis());
         snprintf(transition.component, sizeof(transition.component), "%s",
                  "cx317_active");
         snprintf(transition.reason, sizeof(transition.reason), "%s",
-                 "status_query_received_on_core1");
+                 snapshot_published
+                     ? "status_query_snapshot_published_on_core1"
+                     : "status_query_snapshot_deferred_capacity_on_core1");
         otis_dual_core_publish_critical(&transition);
-        publish_dual_core_active_status(millis());
 #endif
       } else if (message.run_control.kind ==
                      OtisRunControlKind::DiagnosticConfigQuery ||

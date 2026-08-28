@@ -1175,6 +1175,83 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 
+def test_snapshot_query_rotates_nonce_and_requires_later_generation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["host_attach_query_nonce"] = 99
+    supervisor.state["active_snapshot_request_nonce"] = 99
+    same_generation = _health(
+        supervisor,
+        snapshot_generation_begin="7",
+        snapshot_generation_complete="7",
+        query_nonce="100",
+    )
+    later_generation = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        query_nonce="100",
+    )
+    snapshots = iter((same_generation, later_generation))
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        supervisor, "_current_health", lambda **_kwargs: next(snapshots)
+    )
+
+    selected = supervisor._fresh_active_snapshot_after(7)
+
+    assert commands == ["ACTIVE SNAPSHOT 100"]
+    assert supervisor.state["host_attach_query_nonce"] == 99
+    assert supervisor.state["active_snapshot_request_nonce"] == 100
+    assert selected[("cx317_active", "snapshot_generation_complete")] == "8"
+    events = [
+        json.loads(line)
+        for line in supervisor.events_path
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    started = next(
+        item
+        for item in events
+        if item["event"].endswith("active_snapshot_query_started")
+    )
+    completed = next(
+        item
+        for item in events
+        if item["event"].endswith("active_snapshot_query_completed")
+    )
+    assert started["query_nonce"] == 100
+    assert started["pre_submit_snapshot_generation"] == 7
+    assert completed["response_snapshot_generation"] == 8
+
+
+def test_ordinary_health_read_uses_rotated_request_not_attach_nonce(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["host_attach_query_nonce"] = 99
+    supervisor.state["active_snapshot_request_nonce"] = 100
+    observed: list[int | None] = []
+
+    def parent_health(
+        _supervisor, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        observed.append(required_query_nonce)
+        return {}
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor,
+        "_current_health",
+        parent_health,
+    )
+
+    assert supervisor._current_health() == {}
+    assert observed == [100]
+    assert supervisor.state["host_attach_query_nonce"] == 99
+
+
 def test_evidence_prepare_waits_through_causally_stale_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:

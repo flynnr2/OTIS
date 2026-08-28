@@ -396,6 +396,12 @@ bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message) {
   return false;
 }
 
+bool otis_dual_core_telemetry_can_publish(uint32_t message_count) {
+  return message_count <= OTIS_TELEMETRY_QUEUE_DEPTH &&
+         telemetry_to_service.depth() <=
+             OTIS_TELEMETRY_QUEUE_DEPTH - message_count;
+}
+
 bool otis_dual_core_publish_boot_telemetry(
     const OtisTelemetryMessage *message) {
   if (message != nullptr && telemetry_to_service.try_push(*message))

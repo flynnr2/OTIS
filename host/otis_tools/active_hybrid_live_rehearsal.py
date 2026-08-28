@@ -43,7 +43,10 @@ from .active_hybrid_live_supervisor import (
     forwarded_output_integration_prewrite_evidence,
     load_active_hybrid_spec,
 )
-from .active_hybrid_run import _wait_for_terminal_abort_delivery
+from .active_hybrid_run import (
+    _retained_abort_consumption_health,
+    _wait_for_terminal_abort_delivery,
+)
 from .active_transactions import (
     _await_cx321_plant_sign_response,
     _join_cx321_psq_response_to_act,
@@ -73,7 +76,11 @@ from .active_status_contract import (
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
 )
-from .active_status_live_state import ActiveStatusLiveReducer
+from .active_status_live_state import (
+    LIVE_STATE_PATH,
+    ActiveStatusLiveReducer,
+    read_live_health_state,
+)
 from .bounded_tight_deadband_prewrite_contract import (
     RAW_PPS_QUALIFICATION_DEADLINE_S,
     canonical_prewrite_fixture,
@@ -420,6 +427,32 @@ def _post_abort_active_status_wire_fixture(
         f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
+    ).encode()
+
+
+def _overlapping_active_status_generation_fixture(
+    *, first_generation: int
+) -> bytes:
+    """Start two generations without completing the first one.
+
+    This is deliberately a malformed live-control-plane sequence.  Capture
+    must publish its reducer's terminal ``invalid`` state, while the raw
+    stream remains available to prove that a later independently delivered
+    abort reached the firmware.  It is used only by the integrated CX322 PTY
+    rehearsal immediately before its existing normal-FIFO obstruction.
+    """
+
+    if first_generation <= 0:
+        raise ValueError("overlap generation must be positive")
+    records = (
+        (first_generation, 1),
+        (first_generation + 1, 2),
+    )
+    return "".join(
+        f"STS,1,{generation * 1000 + sequence},"
+        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"cx317_active,{SNAPSHOT_BEGIN_KEY},{generation},INFO,0\r\n"
+        for generation, sequence in records
     ).encode()
 
 
@@ -3633,6 +3666,9 @@ def _run_real_process_topology(
     normal_fifo_queued = 0
     normal_fifo_saturated = False
     real_transaction_path: dict[str, Any] | None = None
+    overlap_first_generation: int | None = None
+    overlap_newest_started_generation: int | None = None
+    retained_abort_fallback_verified = False
     try:
         _wait_until(
             lambda: (
@@ -3816,6 +3852,36 @@ def _run_real_process_topology(
                 5.0,
                 "final real-process status generation before obstruction",
             )
+        if (
+            programme.forwarded_output_integration
+            and programme.response_checkpoint_observational
+            and endpoint_mode == "abort_path"
+        ):
+            # Deliberately poison the *live* reducer after all normal CX322
+            # consumers have finished and while the supervisor is stopped.
+            # On resume, its independent-abort poll must win before that
+            # invalid control-plane state could be consumed.  The subsequent
+            # retained complete ABORTED snapshot is therefore the only legal
+            # proof that abort delivery reached firmware before capture closes.
+            last_generation = int(
+                real_transaction_path["last_status_generation"]
+            )
+            overlap_first_generation = last_generation + 1
+            overlap_newest_started_generation = overlap_first_generation + 1
+            _write_all_fd(
+                master,
+                _overlapping_active_status_generation_fixture(
+                    first_generation=overlap_first_generation
+                ),
+            )
+            _wait_until(
+                lambda: read_live_health_state(
+                    run_dir / LIVE_STATE_PATH
+                ).state
+                == "invalid",
+                5.0,
+                "integrated overlapping active-status generations latch invalid",
+            )
         os.kill(capture.pid, signal.SIGSTOP)
         capture_stopped = True
         for _ in range(100_000):
@@ -3849,6 +3915,11 @@ def _run_real_process_topology(
             if real_transaction_path is None
             else int(real_transaction_path["last_status_generation"]) + 1
         )
+        if overlap_newest_started_generation is not None:
+            # ``complete_active_status_snapshots`` deliberately rejects a
+            # complete generation behind a newer begun frontier.  Advance the
+            # terminal snapshot beyond both deliberately overlapped starts.
+            post_abort_generation = overlap_newest_started_generation + 1
         _write_all_fd(
             master,
             _post_abort_active_status_wire_fixture(
@@ -3911,6 +3982,16 @@ def _run_real_process_topology(
             run_dir / "reports/cx317_active_supervisor_state.json"
         )
         _wait_for_terminal_abort_delivery(run_dir, terminal_state["terminal"])
+        if overlap_newest_started_generation is not None:
+            if read_live_health_state(run_dir / LIVE_STATE_PATH).state != "invalid":
+                raise RuntimeError(
+                    "integrated overlap rehearsal did not retain invalid live state"
+                )
+            if _retained_abort_consumption_health(run_dir) is None:
+                raise RuntimeError(
+                    "integrated overlap rehearsal lacks complete retained abort state"
+                )
+            retained_abort_fallback_verified = True
         prepare_transition(run_dir / "run_manifest.json", transition_dir)
         rotation = request_rotation(
             control_dir=carrier_dir,
@@ -3970,6 +4051,16 @@ def _run_real_process_topology(
             ACTIVE_HYBRID_DECISION_V1_FIELDS
         ),
         "post_abort_complete_active_snapshot": True,
+        "integrated_live_snapshot_overlap": (
+            {
+                "first_incomplete_generation": overlap_first_generation,
+                "newest_started_generation": overlap_newest_started_generation,
+                "live_reducer_state": "invalid",
+                "retained_abort_fallback_verified": retained_abort_fallback_verified,
+            }
+            if overlap_newest_started_generation is not None
+            else None
+        ),
         "supervisor_terminal": terminal.get("terminal"),
         "rotation": rotation,
         "capture_output_sha256": sha256(capture_output.encode()).hexdigest(),

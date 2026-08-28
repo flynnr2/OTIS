@@ -336,13 +336,17 @@ class FrequencyControlSupervisor(ControlSupervisorBase):
     def _status_query_command(self) -> str:
         return f"ACTIVE SNAPSHOT {self.state['host_attach_query_nonce']}"
 
-    def _current_health(self) -> dict[tuple[str, str], str]:
+    def _current_health(
+        self, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        if required_query_nonce is None:
+            required_query_nonce = int(
+                self.state["host_attach_query_nonce"]
+            )
         while True:
             selection = read_live_health_state(
                 self.run_dir / LIVE_STATE_PATH,
-                required_query_nonce=int(
-                    self.state["host_attach_query_nonce"]
-                ),
+                required_query_nonce=required_query_nonce,
             )
             if selection.state in {"absent", "unmatched"}:
                 return {}
