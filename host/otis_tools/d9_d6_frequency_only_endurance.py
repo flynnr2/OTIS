@@ -615,6 +615,7 @@ def _validate_activation_report(
             "post_upload_fresh_auto_detect_exercised",
             "capture_own_auto_detect_command_exercised",
             "firmware_policy_identity_replayed_by_live_supervisor",
+            "actual_frequency_only_exact_counter_arm_exercised",
         )
         false_fields = [key for key in required_true if report.get(key) is not True]
         if (
@@ -2918,12 +2919,12 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
         if self.state["terminal"] is not None:
             return
         setup = self.state["setup_confirmed_utc"]
-        if setup is not None and self.accounting.armed_ticks is None:
-            if now_epoch - _parse_utc_epoch(setup) >= int(self.contract["envelope"]["initial_qualification_deadline_s"]):
-                self._abort("frequency_only_qualification_deadline_expired")
-            return
         self._arm_exact_counter_accounting(health)
         if self.accounting.armed_ticks is None:
+            if setup is not None and now_epoch - _parse_utc_epoch(setup) >= int(
+                self.contract["envelope"]["initial_qualification_deadline_s"]
+            ):
+                self._abort("frequency_only_qualification_deadline_expired")
             return
         self._observe_exact_counter_intervals(health)
         if self.accounting.terminal is not None:
@@ -4686,6 +4687,104 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
     supervisor.state["observed_manual_record_sequences"] = [1]
     supervisor._save()
     supervisor._process_transactions()
+    opening_ticks = 100
+    closing_ticks = opening_ticks + TIMER_HZ
+    _write_csv_rows(
+        run_dir / "csv/raw_events.csv",
+        CONTRACT_FIELDS["raw_events_v1"],
+        [
+            {
+                "record_type": "REF",
+                "schema_version": "1",
+                "event_seq": "1",
+                "channel_id": "1",
+                "edge": "R",
+                "timestamp_ticks": str(opening_ticks),
+                "capture_domain": "rp2040_timer0",
+                "flags": "0",
+            },
+            {
+                "record_type": "REF",
+                "schema_version": "1",
+                "event_seq": "2",
+                "channel_id": "1",
+                "edge": "R",
+                "timestamp_ticks": str(closing_ticks),
+                "capture_domain": "rp2040_timer0",
+                "flags": "0",
+            },
+        ],
+    )
+    _write_csv_rows(
+        run_dir / "csv/pps_snapshots.csv",
+        CONTRACT_FIELDS["pps_snapshots_v1"],
+        [
+            {
+                "record_type": "SNP",
+                "schema_version": "1",
+                "session": "4",
+                "snapshot_sequence": "0",
+                "cumulative_down_counter": "20000000",
+                "reference_sequence": "10",
+                "reference_timestamp_ticks": str(opening_ticks),
+                "status": "0",
+                "backend": EXPECTED_D8_SNAPSHOT_BACKEND,
+            },
+            {
+                "record_type": "SNP",
+                "schema_version": "1",
+                "session": "4",
+                "snapshot_sequence": "1",
+                "cumulative_down_counter": "10000000",
+                "reference_sequence": "11",
+                "reference_timestamp_ticks": str(closing_ticks),
+                "status": "0",
+                "backend": EXPECTED_D8_SNAPSHOT_BACKEND,
+            },
+        ],
+    )
+    _write_csv_rows(
+        run_dir / "csv/count_observations.csv",
+        CONTRACT_FIELDS["count_observations_v1"],
+        [
+            {
+                "record_type": "CNT",
+                "schema_version": "1",
+                "count_seq": "1",
+                "channel_id": "2",
+                "gate_open_ticks": str(opening_ticks),
+                "gate_close_ticks": str(closing_ticks),
+                "gate_domain": "rp2040_timer0",
+                "counted_edges": "10000000",
+                "source_edge": "R",
+                "source_domain": "h1_cx317_ocxo_10mhz",
+                "flags": "0",
+            }
+        ],
+    )
+    startup_health.update(
+        {
+            ("cx317_active", "manual_start_confirmed"): "true",
+            ("cx317_active", "confirmed_applied_code_known"): "true",
+            ("cx317_active", "confirmed_applied_code"): str(
+                supervisor.spec.start_code
+            ),
+            ("cx317_active", "dac_epoch"): "1",
+            ("cx317_active", "evidence_phase"): "evidence_clear",
+            ("cx317_active", "evidence_pending"): "false",
+        }
+    )
+    supervisor._maybe_qualify(startup_health)
+    supervisor._maybe_finish(startup_health, time.time(), 0.0)
+    if (
+        supervisor.accounting.armed_ticks != closing_ticks
+        or supervisor.state["soak_armed_frontier_ticks"] != closing_ticks
+        or supervisor.state["soak_armed_count_sequence"] != 1
+        or supervisor.state["terminal"] is not None
+    ):
+        raise RuntimeError(
+            "actual frequency-only supervisor exact-counter arm transition differed"
+        )
     _write_csv_rows(
         run_dir / "csv" / CONTROL_PREVIEWS_CSV,
         [
@@ -4817,7 +4916,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
         or not exact_response_reserve_closes_admission
     ):
         raise RuntimeError("accelerated endpoint or GNSS metadata-hold oracle differed")
-    report = {"schema_version": 1, "tool": TOOL_ID, "report_type": "frequency_only_exact_operational_rehearsal_v1", "status": "passed", "hardware_operations": False, "bundle_sha256": checked["bundle_sha256"], "profile_id": checked["profile_id"], "firmware_build_identity": checked["firmware"]["build_identity"], "firmware_build_manifest_sha256": checked["firmware_build"]["sha256"], "firmware_flash_authority": _firmware_flash_authority(), "mode": "PTY_fixture", "baud": 115200, "serial_selection": "PTY_fixture_not_auto_detect", "production_upload_orchestration_exercised": True, "deterministic_upload_and_reenumeration_injected": True, "exactly_one_upload_no_retry_enforced": True, "global_activation_consumption_replay_blocked": global_activation_consumption_replay_blocked, "pre_upload_fresh_auto_detect_exercised": True, "post_upload_fresh_auto_detect_exercised": True, "capture_own_auto_detect_command_exercised": True, "firmware_policy_identity_replayed_by_live_supervisor": True, "rehearsal_firmware_entry_sha256": rehearsal_firmware_entry["record_sha256"], "production_capture_duration_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]) + CAPTURE_EVIDENCE_DRAIN_MARGIN_S, "authority_and_wall_terminal_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]), "priority_abort_delivered": True, "abort_delivery_retained_before_capture_close": True, "rotation": rotation, "actual_supervisor_exercised": True, "backlogged_configuration_startup_hold_exercised": True, "no_setup_before_d9_exact_readback_established": True, "setup_authority_false_holds_without_consuming_setup": True, "setup_issued_only_after_fresh_exact_authority_snapshot": True, "complete_response_transactions": 2, "responses_retained_observationally": True, "one_outstanding_transaction_enforced": True, "opportunity_causal_ledger_exercised": True, "accelerated_exact_counter_endpoint_reached": True, "application_admission_reserve_s": APPLICATION_ADMISSION_RESERVE_S, "long_analysis_horizon_keeps_control_admission_open": long_analysis_horizon_keeps_admission_open, "gnss_metadata_hold_deterministic_oracle_comparison": metadata_fact, "gnss_metadata_hold_effective_live_supervisor_fault_injection": True, "gnss_metadata_hold_confirmed_session_code_epoch_bound": True, "gnss_metadata_hold_fresh_causal_requalification_exercised": True, "analyzer_metric_paths_exercised": {"response_horizons_s": list(RESPONSE_HORIZONS_S), "long_horizons_right_censor_without_closing_control": True, "chatter": _chatter_metrics(transaction_rows), "response": _response_and_horizon_metrics(transaction_rows, [])}, "unresolved_delivered_output_claims": checked["unresolved_delivered_output_claims"], "not_proved": ["physical_USB_enumeration", "physical_firmware_upload", "physical_firmware_field_emission", "physical_cross_core_propagation", "physical_D9_waveform_or_load", "physical_D6_loopback", "physical_D14_D8_or_DAC_response"]}
+    report = {"schema_version": 1, "tool": TOOL_ID, "report_type": "frequency_only_exact_operational_rehearsal_v1", "status": "passed", "hardware_operations": False, "bundle_sha256": checked["bundle_sha256"], "profile_id": checked["profile_id"], "firmware_build_identity": checked["firmware"]["build_identity"], "firmware_build_manifest_sha256": checked["firmware_build"]["sha256"], "firmware_flash_authority": _firmware_flash_authority(), "mode": "PTY_fixture", "baud": 115200, "serial_selection": "PTY_fixture_not_auto_detect", "production_upload_orchestration_exercised": True, "deterministic_upload_and_reenumeration_injected": True, "exactly_one_upload_no_retry_enforced": True, "global_activation_consumption_replay_blocked": global_activation_consumption_replay_blocked, "pre_upload_fresh_auto_detect_exercised": True, "post_upload_fresh_auto_detect_exercised": True, "capture_own_auto_detect_command_exercised": True, "firmware_policy_identity_replayed_by_live_supervisor": True, "actual_frequency_only_exact_counter_arm_exercised": True, "rehearsal_firmware_entry_sha256": rehearsal_firmware_entry["record_sha256"], "production_capture_duration_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]) + CAPTURE_EVIDENCE_DRAIN_MARGIN_S, "authority_and_wall_terminal_s": int(load_contract()["envelope"]["absolute_wall_limit_s"]), "priority_abort_delivered": True, "abort_delivery_retained_before_capture_close": True, "rotation": rotation, "actual_supervisor_exercised": True, "backlogged_configuration_startup_hold_exercised": True, "no_setup_before_d9_exact_readback_established": True, "setup_authority_false_holds_without_consuming_setup": True, "setup_issued_only_after_fresh_exact_authority_snapshot": True, "complete_response_transactions": 2, "responses_retained_observationally": True, "one_outstanding_transaction_enforced": True, "opportunity_causal_ledger_exercised": True, "accelerated_exact_counter_endpoint_reached": True, "application_admission_reserve_s": APPLICATION_ADMISSION_RESERVE_S, "long_analysis_horizon_keeps_control_admission_open": long_analysis_horizon_keeps_admission_open, "gnss_metadata_hold_deterministic_oracle_comparison": metadata_fact, "gnss_metadata_hold_effective_live_supervisor_fault_injection": True, "gnss_metadata_hold_confirmed_session_code_epoch_bound": True, "gnss_metadata_hold_fresh_causal_requalification_exercised": True, "analyzer_metric_paths_exercised": {"response_horizons_s": list(RESPONSE_HORIZONS_S), "long_horizons_right_censor_without_closing_control": True, "chatter": _chatter_metrics(transaction_rows), "response": _response_and_horizon_metrics(transaction_rows, [])}, "unresolved_delivered_output_claims": checked["unresolved_delivered_output_claims"], "not_proved": ["physical_USB_enumeration", "physical_firmware_upload", "physical_firmware_field_emission", "physical_cross_core_propagation", "physical_D9_waveform_or_load", "physical_D6_loopback", "physical_D14_D8_or_DAC_response"]}
     _write_new(output_dir / "reports/rehearsal.json", report); return report
 
 

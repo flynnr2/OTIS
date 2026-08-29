@@ -115,6 +115,7 @@ def _activation_for_bundle(
             "post_upload_fresh_auto_detect_exercised": True,
             "capture_own_auto_detect_command_exercised": True,
             "firmware_policy_identity_replayed_by_live_supervisor": True,
+            "actual_frequency_only_exact_counter_arm_exercised": True,
             "priority_abort_delivered": True,
             "abort_delivery_retained_before_capture_close": True,
             "actual_supervisor_exercised": True,
@@ -850,6 +851,7 @@ def test_pty_rehearsal_uses_real_capture_abort_and_rotation(tmp_path: Path) -> N
     assert report["setup_authority_false_holds_without_consuming_setup"] is True
     assert report["setup_issued_only_after_fresh_exact_authority_snapshot"] is True
     assert report["firmware_policy_identity_replayed_by_live_supervisor"] is True
+    assert report["actual_frequency_only_exact_counter_arm_exercised"] is True
 
     replayed_rows = list(
         csv.DictReader(
