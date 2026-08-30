@@ -6,7 +6,7 @@ Hybrid Attempt 2 is a **failed physical qualification with a correct bounded
 stop and a recovered host-finalization escape**. It is not a 72-hour result and
 must not be spliced into a successor run.
 
-At `2026-08-30T14:19:29Z`, one anomalous short D14 edge divided an otherwise
+Around `2026-08-30T14:19:29Z`, one anomalous short D14 edge divided an otherwise
 one-second reference interval into approximately 0.138 s and 0.862 s. The
 D14/D8 association correctly rejected the ambiguous aperture, opened capture
 session 2 and requalified. The event's physical or receiver origin is unknown;
@@ -75,12 +75,26 @@ Campaign18 seal and registration:
   `6cf66e684b2aa7eb0a1092874718cfbee5f316966e73b1cc30f37e20db8346d0`;
 - primary decision: `cx322_d9_d6_72h_identity_or_evidence_fault`.
 
+That registered primary decision preserves the contemporaneous supervisor
+misclassification: the host did not recognize the authoritative capture-session
+change at its earliest health boundary and later reported the downstream
+fail-static as a generic identity/evidence fault. The frozen programme semantics
+make the earlier D14/D8 discontinuity the actual physical terminal. Prospectively,
+the Campaign18 supervisor now binds the qualified origin to
+`pps_gate.snapshot_session` and the qualified-origin values of
+`rejected_window_count`, `physical_aperture_incomplete_count` and
+`association_loss_count`. Any later change stops before transaction processing,
+preserves the last confirmed code, delivers the priority abort and emits
+`cx322_d9_d6_72h_D14_D8_authority_or_capture_fault`. The retained Attempt 2 seal
+is not rewritten.
+
 ## Successor readiness
 
 A successor is authorized only as a new attempt with a fresh 72-qualified-hour
 clock. It must bind this failed predecessor seal, retain the same no-challenge
 hybrid policy, regenerate the host bundle because the finalizer changed, and
-repeat the complete operational-path rehearsal. The firmware, electrical
+repeat the complete operational-path rehearsal because both finalization and
+the earliest supervisor stop/classification path changed. The firmware, electrical
 topology and control policy did not cause the host-finalization escape and need
 not change solely to repair it.
 

@@ -351,6 +351,10 @@ def _health(
             ("cx318_preview", "actionable"): "false",
             ("cx318_preview", "actuation_authorized"): "false",
             ("cx318_preview", "authorization_consumed"): "false",
+            ("pps_gate", "rejected_window_count"): "0",
+            ("pps_gate", "physical_aperture_incomplete_count"): "1",
+            ("pps_gate", "association_loss_count"): "0",
+            ("pps_gate", "snapshot_session"): "1",
         }
     )
     return health
@@ -1003,6 +1007,120 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
     assert supervisor.state["qualified_origin_extended_timestamp_ticks"] == origin
     assert supervisor.state["qualified_frontier_raw_ticks"] == origin
     assert supervisor.state["qualified_frontier_extended_ticks"] == origin
+    assert supervisor.state["qualified_authoritative_capture_baseline"] == {
+        "rejected_window_count": 0,
+        "physical_aperture_incomplete_count": 1,
+        "association_loss_count": 0,
+    }
+
+
+def test_campaign18_session_discontinuity_aborts_before_transaction_processing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": {
+                "rejected_window_count": 0,
+                "physical_aperture_incomplete_count": 1,
+                "association_loss_count": 0,
+            },
+            "terminal_static_code": 0xA853,
+        }
+    )
+    supervisor._save()
+    capture_flag = supervisor.run_dir / live.CAPTURE_IN_PROGRESS_FLAG
+    capture_flag.parent.mkdir(parents=True, exist_ok=True)
+    capture_flag.write_text("fixture\n", encoding="utf-8")
+    discontinuity = _health(supervisor, session_id="1")
+    discontinuity.update(
+        {
+            ("pps_gate", "snapshot_session"): "2",
+            ("pps_gate", "rejected_window_count"): "1",
+            ("pps_gate", "physical_aperture_incomplete_count"): "2",
+            ("pps_gate", "association_loss_count"): "1",
+        }
+    )
+    normal_commands: list[str] = []
+    emergency_commands: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        supervisor, "_command", lambda command: normal_commands.append(command)
+    )
+    monkeypatch.setattr(supervisor, "_check_capture_transport_state", lambda: None)
+    monkeypatch.setattr(supervisor, "_renew_lease", lambda: None)
+    monkeypatch.setattr(supervisor, "_current_health", lambda **_kwargs: discontinuity)
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: discontinuity,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_process_transactions",
+        lambda: pytest.fail(
+            "post-discontinuity transaction processing must not run"
+        ),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.active_transactions.send_command_to_fifo",
+        lambda path, command: emergency_commands.append((path, command)),
+    )
+
+    assert supervisor.run() == 2
+
+    assert normal_commands == ["CONFIG?", "DUALCORE?", "DAC?"]
+    assert emergency_commands == [
+        (supervisor.emergency_command_fifo, "ACTIVE ABORT")
+    ]
+    assert supervisor.state["terminal"]["last_confirmed_code"] == 0xA853
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+    )
+    assert "capture_session_changed:1->2" in supervisor.state["terminal"][
+        "reason"
+    ]
+
+
+def test_campaign18_qualification_rejects_incomplete_capture_baseline_atomically(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=4,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=origin,
+    )
+    health = _health(supervisor, dac_epoch="1")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        origin
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+    del health[("pps_gate", "association_loss_count")]
+
+    with pytest.raises(ValueError, match="baseline is incomplete"):
+        supervisor._maybe_qualify(health)
+
+    for key in (
+        "qualification_started_utc",
+        "qualified_origin_estimate_id",
+        "qualified_origin_timestamp_ticks",
+        "qualified_origin_session_id",
+        "qualified_origin_extended_timestamp_ticks",
+        "qualified_frontier_raw_ticks",
+        "qualified_frontier_extended_ticks",
+        "qualified_authoritative_capture_baseline",
+    ):
+        assert supervisor.state[key] is None
 
 
 def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(

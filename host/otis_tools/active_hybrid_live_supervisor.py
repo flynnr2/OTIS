@@ -534,6 +534,13 @@ def _truth(health: dict[tuple[str, str], str], key: str) -> bool:
     return health.get(("cx317_active", key)) == "true"
 
 
+_AUTHORITATIVE_CAPTURE_COUNTERS = (
+    "rejected_window_count",
+    "physical_aperture_incomplete_count",
+    "association_loss_count",
+)
+
+
 class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     """CX320 live authority layered on the proven active-control transport."""
 
@@ -610,6 +617,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_frontier_raw_ticks", None)
         self.state.setdefault("qualified_frontier_extended_ticks", None)
         self.state.setdefault("qualified_endpoint_extended_timestamp_ticks", None)
+        self.state.setdefault("qualified_authoritative_capture_baseline", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
         self.state.setdefault("first_phase_observation_checkpoint_exact", False)
@@ -1440,8 +1448,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             session_id = int(health[("cx317_active", "session_id")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 qualified origin device clock is malformed") from exc
+        authoritative_capture_baseline: dict[str, int] | None = None
+        qualified_origin_extended_ticks: int | None = None
+        qualified_frontier_raw_ticks: int | None = None
+        qualified_frontier_extended_ticks: int | None = None
         if self.programme is CX322_D9_D6_72H_PROGRAMME:
             try:
+                session_id = int(health[("pps_gate", "snapshot_session")])
                 frontier_ticks = int(
                     health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
                 )
@@ -1475,11 +1488,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if forward.valid and forward.distance_ticks is not None and (
                 forward.distance_ticks <= maximum_lead_ticks
             ):
-                self.state["qualified_origin_extended_timestamp_ticks"] = (
-                    origin_ticks
-                )
-                self.state["qualified_frontier_raw_ticks"] = frontier_ticks
-                self.state["qualified_frontier_extended_ticks"] = (
+                qualified_origin_extended_ticks = origin_ticks
+                qualified_frontier_raw_ticks = frontier_ticks
+                qualified_frontier_extended_ticks = (
                     origin_ticks + forward.distance_ticks
                 )
             elif reverse.valid and reverse.distance_ticks is not None and (
@@ -1488,6 +1499,21 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 return
             else:
                 raise ValueError("CX320 qualified origin device clock is incoherent")
+            authoritative_capture_baseline = {}
+            for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+                try:
+                    value = int(health[("pps_gate", key)])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "campaign18 authoritative capture baseline is incomplete: "
+                        + key
+                    ) from exc
+                if value < 0:
+                    raise ValueError(
+                        "campaign18 authoritative capture baseline is negative: "
+                        + key
+                    )
+                authoritative_capture_baseline[key] = value
         else:
             current_uptime_lower_bound_ticks = (
                 current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
@@ -1511,6 +1537,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
         self.state["qualified_origin_session_id"] = session_id
+        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+            self.state["qualified_origin_extended_timestamp_ticks"] = (
+                qualified_origin_extended_ticks
+            )
+            self.state["qualified_frontier_raw_ticks"] = (
+                qualified_frontier_raw_ticks
+            )
+            self.state["qualified_frontier_extended_ticks"] = (
+                qualified_frontier_extended_ticks
+            )
+        self.state["qualified_authoritative_capture_baseline"] = (
+            authoritative_capture_baseline
+        )
         self._save()
         self._programme_event(
             "qualified_origin_established",
@@ -1522,7 +1561,71 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
             qualified_duration_s=self.programme.qualified_duration_s,
+            authoritative_capture_baseline=self.state.get(
+                "qualified_authoritative_capture_baseline"
+            ),
         )
+
+    def _abort_on_authoritative_capture_discontinuity(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        """Stop Campaign 18 before any post-discontinuity transaction work."""
+
+        if self.programme is not CX322_D9_D6_72H_PROGRAMME:
+            return False
+        origin_session = self.state.get("qualified_origin_session_id")
+        if origin_session is None:
+            return False
+        if type(origin_session) is not int:
+            raise ValueError("campaign18 retained qualified session is malformed")
+        try:
+            current_session = int(health[("pps_gate", "snapshot_session")])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "campaign18 current authoritative capture session is unavailable"
+            ) from exc
+
+        fault: str | None = None
+        if current_session != origin_session:
+            fault = f"capture_session_changed:{origin_session}->{current_session}"
+        baseline = self.state.get("qualified_authoritative_capture_baseline")
+        if not isinstance(baseline, dict):
+            raise ValueError(
+                "campaign18 retained authoritative capture baseline is incomplete"
+            )
+        observed_counters: dict[str, int] = {}
+        for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+            try:
+                expected = int(baseline[key])
+                observed = int(health[("pps_gate", key)])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "campaign18 authoritative capture counter is unavailable: "
+                    + key
+                ) from exc
+            observed_counters[key] = observed
+            if fault is None and observed != expected:
+                fault = f"{key}_changed:{expected}->{observed}"
+        if fault is None:
+            return False
+
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        reason = (
+            f"{self.programme.key}_D14_D8_authority_or_capture_fault:{fault}"
+        )
+        self._programme_event(
+            "authoritative_capture_discontinuity_observed",
+            reason=reason,
+            qualified_origin_session_id=origin_session,
+            observed_capture_session_id=current_session,
+            authoritative_capture_baseline=baseline,
+            observed_authoritative_capture_counters=observed_counters,
+            last_confirmed_code=self.state.get("terminal_static_code"),
+            new_control_authority=False,
+        )
+        self._abort(reason)
+        return True
 
     def _qualified_elapsed_ticks(
         self, health: dict[tuple[str, str], str]
@@ -1534,7 +1637,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if type(origin) is not int or type(origin_session) is not int:
             raise ValueError("CX320 retained qualified origin is incomplete")
         try:
-            current_session = int(health[("cx317_active", "session_id")])
+            current_session = int(
+                health[
+                    (
+                        "pps_gate"
+                        if self.programme is CX322_D9_D6_72H_PROGRAMME
+                        else "cx317_active",
+                        "snapshot_session"
+                        if self.programme is CX322_D9_D6_72H_PROGRAMME
+                        else "session_id",
+                    )
+                ]
+            )
             current_uptime_s = int(health[("cx317_active", "uptime_s")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 current qualified device clock is malformed") from exc
@@ -2029,6 +2143,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         elif reason == "phase_or_frequency_regulation_not_sustained":
             terminal["primary_decision"] = reason
+        elif reason.startswith(
+            f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
+        ):
+            terminal["primary_decision"] = (
+                "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+            )
         elif self.programme.sustained_regulation and reason in {
             "prospective_repeated_alternation",
             "prospective_low_efficiency_path",
@@ -2119,17 +2239,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 ):
                     self._command("CONFIG?")
                     last_output_status_query = now
-                self._process_transactions()
                 health = self._current_health()
-                self._check_fail_static_health(health)
-                self._check_setup_transaction_timeout(health, time.time())
-                self._check_prewrite_contract(health, now - started)
-                self._maybe_qualify(health)
-                self._maybe_finish(health, time.time(), now - started)
-                if self.state["terminal"] is None:
-                    self._maybe_start_or_arm(
-                        health, elapsed_monotonic_s=now - started
-                    )
+                if not self._abort_on_authoritative_capture_discontinuity(health):
+                    self._process_transactions()
+                    health = self._current_health()
+                    if not self._abort_on_authoritative_capture_discontinuity(
+                        health
+                    ):
+                        self._check_fail_static_health(health)
+                        self._check_setup_transaction_timeout(health, time.time())
+                        self._check_prewrite_contract(health, now - started)
+                        self._maybe_qualify(health)
+                        self._maybe_finish(health, time.time(), now - started)
+                        if self.state["terminal"] is None:
+                            self._maybe_start_or_arm(
+                                health, elapsed_monotonic_s=now - started
+                            )
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
                         self._programme_event(
