@@ -539,6 +539,28 @@ _AUTHORITATIVE_CAPTURE_COUNTERS = (
     "physical_aperture_incomplete_count",
     "association_loss_count",
 )
+_AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
+    "valid": "true",
+    "control_eligible": "true",
+    "reference_validity": "valid",
+    "count_validity": "valid",
+    "boundary_validity": "valid",
+    "aperture_validity": "valid",
+    "observation_pair_validity": "valid",
+    "fifo_continuity": "continuous",
+    "association_state": "clean",
+}
+
+
+def _authoritative_capture_health_faults(
+    health: dict[tuple[str, str], str],
+) -> list[str]:
+    faults: list[str] = []
+    for key, expected in _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items():
+        observed = health.get(("pps_gate", key))
+        if observed != expected:
+            faults.append(f"{key}:{observed!r}!={expected!r}")
+    return faults
 
 
 class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
@@ -1453,6 +1475,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         qualified_frontier_raw_ticks: int | None = None
         qualified_frontier_extended_ticks: int | None = None
         if self.programme is CX322_D9_D6_72H_PROGRAMME:
+            if _authoritative_capture_health_faults(health):
+                return
             try:
                 session_id = int(health[("pps_gate", "snapshot_session")])
                 frontier_ticks = int(
@@ -1503,16 +1527,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
                 try:
                     value = int(health[("pps_gate", key)])
-                except (KeyError, TypeError, ValueError) as exc:
-                    raise ValueError(
-                        "campaign18 authoritative capture baseline is incomplete: "
-                        + key
-                    ) from exc
+                except (KeyError, TypeError, ValueError):
+                    return
                 if value < 0:
-                    raise ValueError(
-                        "campaign18 authoritative capture baseline is negative: "
-                        + key
-                    )
+                    return
                 authoritative_capture_baseline[key] = value
         else:
             current_uptime_lower_bound_ticks = (
@@ -1576,55 +1594,65 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         origin_session = self.state.get("qualified_origin_session_id")
         if origin_session is None:
             return False
+        faults: list[str] = []
         if type(origin_session) is not int:
-            raise ValueError("campaign18 retained qualified session is malformed")
+            faults.append("qualified_capture_session_malformed")
+            origin_session = -1
+        faults.extend(_authoritative_capture_health_faults(health))
         try:
             current_session = int(health[("pps_gate", "snapshot_session")])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(
-                "campaign18 current authoritative capture session is unavailable"
-            ) from exc
+        except (KeyError, TypeError, ValueError):
+            current_session = -1
+            faults.append("current_capture_session_unavailable")
 
-        fault: str | None = None
         if current_session != origin_session:
-            fault = f"capture_session_changed:{origin_session}->{current_session}"
+            faults.append(
+                f"capture_session_changed:{origin_session}->{current_session}"
+            )
         baseline = self.state.get("qualified_authoritative_capture_baseline")
         if not isinstance(baseline, dict):
-            raise ValueError(
-                "campaign18 retained authoritative capture baseline is incomplete"
-            )
-        observed_counters: dict[str, int] = {}
+            baseline = {}
+            faults.append("qualified_authoritative_capture_baseline_unavailable")
+        observed_counters: dict[str, int | str | None] = {}
         for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
             try:
                 expected = int(baseline[key])
                 observed = int(health[("pps_gate", key)])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    "campaign18 authoritative capture counter is unavailable: "
-                    + key
-                ) from exc
+            except (KeyError, TypeError, ValueError):
+                observed_counters[key] = health.get(("pps_gate", key))
+                faults.append(f"{key}_unavailable")
+                continue
             observed_counters[key] = observed
-            if fault is None and observed != expected:
-                fault = f"{key}_changed:{expected}->{observed}"
-        if fault is None:
+            if observed != expected:
+                faults.append(f"{key}_changed:{expected}->{observed}")
+        if not faults:
             return False
 
         self.state["arm_pending"] = False
         self.state["arm_sent_at_utc"] = None
         reason = (
-            f"{self.programme.key}_D14_D8_authority_or_capture_fault:{fault}"
+            f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
+            + ",".join(faults)
         )
-        self._programme_event(
-            "authoritative_capture_discontinuity_observed",
-            reason=reason,
-            qualified_origin_session_id=origin_session,
-            observed_capture_session_id=current_session,
-            authoritative_capture_baseline=baseline,
-            observed_authoritative_capture_counters=observed_counters,
-            last_confirmed_code=self.state.get("terminal_static_code"),
-            new_control_authority=False,
-        )
+        detail = {
+            "reason": reason,
+            "qualified_origin_session_id": origin_session,
+            "observed_capture_session_id": current_session,
+            "authoritative_capture_baseline": baseline,
+            "observed_authoritative_capture_counters": observed_counters,
+            "last_confirmed_code": self.state.get("terminal_static_code"),
+            "new_control_authority": False,
+        }
+        self.state["authoritative_capture_terminal_detail"] = detail
         self._abort(reason)
+        try:
+            self._programme_event(
+                "authoritative_capture_discontinuity_observed", **detail
+            )
+        except OSError:
+            # The priority abort and retained terminal are decision-bearing;
+            # this supplementary event must never delay or undo them.
+            pass
         return True
 
     def _qualified_elapsed_ticks(

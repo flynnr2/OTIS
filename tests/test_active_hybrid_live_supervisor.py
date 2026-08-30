@@ -355,6 +355,15 @@ def _health(
             ("pps_gate", "physical_aperture_incomplete_count"): "1",
             ("pps_gate", "association_loss_count"): "0",
             ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "valid"): "true",
+            ("pps_gate", "control_eligible"): "true",
+            ("pps_gate", "reference_validity"): "valid",
+            ("pps_gate", "count_validity"): "valid",
+            ("pps_gate", "boundary_validity"): "valid",
+            ("pps_gate", "aperture_validity"): "valid",
+            ("pps_gate", "observation_pair_validity"): "valid",
+            ("pps_gate", "fifo_continuity"): "continuous",
+            ("pps_gate", "association_state"): "clean",
         }
     )
     return health
@@ -1014,8 +1023,34 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
     }
 
 
-def test_campaign18_session_discontinuity_aborts_before_transaction_processing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("health_changes", "reason_fragment"),
+    (
+        (
+            {
+                ("pps_gate", "snapshot_session"): "2",
+                ("pps_gate", "rejected_window_count"): "1",
+                ("pps_gate", "physical_aperture_incomplete_count"): "2",
+                ("pps_gate", "association_loss_count"): "1",
+            },
+            "capture_session_changed:1->2",
+        ),
+        (
+            {
+                ("pps_gate", "association_state"): "lost",
+                ("pps_gate", "aperture_validity"): "invalid",
+                ("pps_gate", "observation_pair_validity"): "invalid",
+                ("pps_gate", "control_eligible"): "false",
+            },
+            "association_state:'lost'!='clean'",
+        ),
+    ),
+)
+def test_campaign18_capture_discontinuity_aborts_before_transaction_processing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    health_changes: dict[tuple[str, str], str],
+    reason_fragment: str,
 ) -> None:
     supervisor = _supervisor(tmp_path)
     supervisor.programme = CX322_D9_D6_72H_PROGRAMME
@@ -1036,14 +1071,7 @@ def test_campaign18_session_discontinuity_aborts_before_transaction_processing(
     capture_flag.parent.mkdir(parents=True, exist_ok=True)
     capture_flag.write_text("fixture\n", encoding="utf-8")
     discontinuity = _health(supervisor, session_id="1")
-    discontinuity.update(
-        {
-            ("pps_gate", "snapshot_session"): "2",
-            ("pps_gate", "rejected_window_count"): "1",
-            ("pps_gate", "physical_aperture_incomplete_count"): "2",
-            ("pps_gate", "association_loss_count"): "1",
-        }
-    )
+    discontinuity.update(health_changes)
     normal_commands: list[str] = []
     emergency_commands: list[tuple[Path, str]] = []
     monkeypatch.setattr(
@@ -1079,12 +1107,53 @@ def test_campaign18_session_discontinuity_aborts_before_transaction_processing(
     assert supervisor.state["terminal"]["primary_decision"] == (
         "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
     )
-    assert "capture_session_changed:1->2" in supervisor.state["terminal"][
-        "reason"
+    assert reason_fragment in supervisor.state["terminal"]["reason"]
+
+
+def test_campaign18_missing_counter_aborts_before_optional_event_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": {
+                "rejected_window_count": 0,
+                "physical_aperture_incomplete_count": 1,
+                "association_loss_count": 0,
+            },
+            "terminal_static_code": 0xA853,
+        }
+    )
+    health = _health(supervisor)
+    del health[("pps_gate", "association_loss_count")]
+    emergency_commands: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        "host.otis_tools.active_transactions.send_command_to_fifo",
+        lambda path, command: emergency_commands.append((path, command)),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_programme_event",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("fixture")),
+    )
+
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+
+    assert emergency_commands == [
+        (supervisor.emergency_command_fifo, "ACTIVE ABORT")
     ]
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+    )
+    assert "association_loss_count_unavailable" in supervisor.state[
+        "terminal"
+    ]["reason"]
 
 
-def test_campaign18_qualification_rejects_incomplete_capture_baseline_atomically(
+def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(
     tmp_path: Path,
 ) -> None:
     supervisor = _supervisor(tmp_path)
@@ -1107,8 +1176,7 @@ def test_campaign18_qualification_rejects_incomplete_capture_baseline_atomically
     )
     del health[("pps_gate", "association_loss_count")]
 
-    with pytest.raises(ValueError, match="baseline is incomplete"):
-        supervisor._maybe_qualify(health)
+    supervisor._maybe_qualify(health)
 
     for key in (
         "qualification_started_utc",
