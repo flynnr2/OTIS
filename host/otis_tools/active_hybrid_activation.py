@@ -616,6 +616,34 @@ def _attempt_descriptor(
             and isinstance(supervisor_terminal, dict)
             and supervisor_terminal.get("result") == "aborted"
         )
+        campaign18_capture_terminal = (
+            programme is CX322_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and acquisition_gate.get("passed") is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("static_terminal_exact") is True
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and endpoint_complete_check is False
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and (
+                seal.get("primary_decision")
+                == "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+                or (
+                    seal.get("primary_decision")
+                    == "cx322_d9_d6_72h_identity_or_evidence_fault"
+                    and supervisor_terminal.get("primary_decision")
+                    == "measurement_authority_or_platform_fault"
+                    and supervisor_terminal.get("reason")
+                    == (
+                        "cx322_d9_d6_72h_live_supervisor_fault:"
+                        "live active_fail_static asserted"
+                    )
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -648,6 +676,7 @@ def _attempt_descriptor(
             or not (
                 failed_physical_gate
                 or failed_post_acquisition_gate
+                or campaign18_capture_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )

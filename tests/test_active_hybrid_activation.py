@@ -721,6 +721,111 @@ def test_campaign18_later_activation_accepts_programme_operator_abort_terminal(
     ] == "cx322_d9_d6_72h_operator_abort"
 
 
+@pytest.mark.parametrize(
+    ("primary_decision", "supervisor_primary_decision", "supervisor_reason"),
+    (
+        (
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault",
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault",
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault:session",
+        ),
+        (
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+            "measurement_authority_or_platform_fault",
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "live active_fail_static asserted",
+        ),
+    ),
+)
+def test_campaign18_later_activation_accepts_exact_capture_terminal(
+    tmp_path: Path,
+    primary_decision: str,
+    supervisor_primary_decision: str,
+    supervisor_reason: str,
+) -> None:
+    predecessor_run = tmp_path / "campaign18-attempt-2"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "campaign18-attempt-2",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": primary_decision,
+        "acquisition_gate": {"passed": True},
+        "descriptive_prior_comparisons": {
+            "qualified_endpoint_complete": False,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": supervisor_primary_decision,
+                "reason": supervisor_reason,
+            },
+        },
+    }
+    predecessor_path = reports / "cx322_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=3,
+        reason="fresh Campaign18 interval after capture discontinuity",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 3
+    assert observed["predecessor_physical_terminal"]["primary_decision"] == (
+        primary_decision
+    )
+
+
+def test_campaign18_legacy_capture_terminal_requires_exact_misclassification(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "campaign18-attempt-2"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "campaign18-attempt-2",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx322_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": True},
+        "descriptive_prior_comparisons": {
+            "qualified_endpoint_complete": False,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": "measurement_authority_or_platform_fault",
+                "reason": "a different identity failure",
+            },
+        },
+    }
+    predecessor_path = reports / "cx322_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=3,
+            reason="fresh Campaign18 interval after capture discontinuity",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX322_D9_D6_72H_PROGRAMME,
+        )
+
+
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
